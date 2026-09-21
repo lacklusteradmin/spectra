@@ -31,13 +31,12 @@
 //! `impl` block.
 
 pub(crate) use crate::fetch::chains::{
-    aptos::AptosClient, bitcoin::BitcoinClient, bitcoin::UtxoTxStatus,
-    bitcoin_cash::BitcoinCashClient, bitcoin_gold::BitcoinGoldClient, bitcoin_sv::BitcoinSvClient,
-    bittensor::BittensorClient, cardano::CardanoClient, dash::DashClient, decred::DecredClient,
-    dogecoin::DogecoinClient, evm::EvmClient, icp::IcpClient, kaspa::KaspaClient,
-    litecoin::LitecoinClient, monero::MoneroClient, near::NearClient, polkadot::PolkadotClient,
+    aptos::AptosClient, bitcoin::BitcoinClient, bitcoin::UtxoTxStatus, bitcoin_sv::BitcoinSvClient,
+    bittensor::BittensorClient, blockbook::BlockbookClient, cardano::CardanoClient,
+    decred::DecredClient, dogecoin::DogecoinClient, evm::EvmClient, icp::IcpClient,
+    kaspa::KaspaClient, monero::MoneroClient, near::NearClient, polkadot::PolkadotClient,
     solana::SolanaClient, stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient,
-    xrp::XrpClient, zcash::ZcashClient,
+    xrp::XrpClient,
 };
 pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::http::HttpClient;
@@ -124,6 +123,7 @@ pub use reset::ResetOutcome;
 mod state;
 mod transaction_recheck;
 mod transactions;
+mod transport;
 mod types;
 mod wallet_import;
 
@@ -145,7 +145,20 @@ pub(crate) struct EndpointIndex {
 }
 
 impl EndpointIndex {
-    fn from_list(list: Vec<ChainEndpoints>) -> Self {
+    fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
+        for row in &list {
+            let (chain_id, slot) = match row.chain_id.split_once(':') {
+                Some((chain_id, "secondary")) => (chain_id, EndpointSlot::Secondary),
+                Some((chain_id, "explorer")) => (chain_id, EndpointSlot::Explorer),
+                _ => (row.chain_id.as_str(), EndpointSlot::Primary),
+            };
+            if let Some(chain) = Chain::from_str_id(chain_id) {
+                for url in &row.endpoints {
+                    crate::endpoint_api::validate_configured_endpoint(chain, slot, url)?;
+                }
+            }
+        }
+
         let mut endpoints = std::collections::HashMap::with_capacity(list.len());
         let mut api_keys = std::collections::HashMap::new();
         for entry in list {
@@ -154,10 +167,10 @@ impl EndpointIndex {
                 api_keys.insert(entry.chain_id, key);
             }
         }
-        Self {
+        Ok(Self {
             endpoints,
             api_keys,
-        }
+        })
     }
 }
 
@@ -166,6 +179,7 @@ impl EndpointIndex {
 /// Swift holds one instance for the lifetime of the app session.
 #[derive(Clone, uniffi::Object)]
 pub struct WalletService {
+    transport_cache_dir: Arc<parking_lot::Mutex<Option<String>>>,
     pub(crate) send_reviews: Arc<tokio::sync::Mutex<HashMap<String, send_review::ReviewedSend>>>,
     pub(crate) projection_sequence: Arc<std::sync::atomic::AtomicU64>,
     app_refresh_lock: Arc<tokio::sync::Mutex<()>>,
@@ -234,6 +248,7 @@ impl WalletService {
                 .try_init();
         });
         Ok(Arc::new(Self {
+            transport_cache_dir: Arc::new(parking_lot::Mutex::new(None)),
             trc20_metadata: Arc::new(crate::fetch::chains::tron::MetadataCache::default()),
             send_reviews: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             app_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -241,7 +256,7 @@ impl WalletService {
             projection_sequence: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
             uses_catalog_endpoints: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
+            endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints)?)),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(AsyncRwLock::new(CoreAppState::default())),
@@ -277,6 +292,28 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Resolve the adapter and URLs from one configuration snapshot.
+    /// Unknown custom URLs use the chain's declared default API.
+    pub(crate) async fn fetch_endpoints(
+        &self,
+        chain: Chain,
+    ) -> Result<(crate::EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
+        let urls = self.endpoints_for(chain.str_id()).await;
+        let catalog = crate::app_core::endpoint_catalog()?;
+        let api = urls
+            .iter()
+            .find_map(|url| {
+                catalog
+                    .endpoint_records
+                    .iter()
+                    .find(|row| row.chain_id == chain.str_id() && row.endpoint == *url)
+                    .and_then(|row| row.api)
+            })
+            .or_else(|| chain.endpoint_api(EndpointSlot::Primary))
+            .ok_or_else(|| format!("No fetch API for {}", chain.str_id()))?;
+        Ok((api, urls))
+    }
+
     pub(crate) async fn endpoints_for(&self, chain_id: &str) -> Arc<Vec<String>> {
         let base = self
             .endpoints
@@ -318,43 +355,27 @@ impl WalletService {
 /// Catalog transport configuration for a non-platform front end.
 pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
     let mut endpoints = Vec::new();
-    for row in crate::chain_endpoints()? {
-        let chain = Chain::from_str_id(&row.chain_id).expect("catalog chain");
-        let primary = if chain.is_evm() {
-            row.evm_rpc
-        } else {
-            crate::filtered_endpoint_records_for_chain(
-                row.chain_id.clone(),
-                crate::app_core::ENDPOINT_KIND_RPC_NODE
-                    | crate::app_core::ENDPOINT_CAPABILITY_BALANCE
-                    | crate::app_core::ENDPOINT_KIND_BACKEND,
-            )?
-            .into_iter()
-            .map(|r| r.endpoint)
-            .collect()
-        };
-        endpoints.push(ChainEndpoints {
-            chain_id: row.chain_id,
-            endpoints: primary,
-            api_key: None,
-        });
-        if !row.explorer_supplemental.is_empty() {
+    for chain in Chain::all() {
+        let records = crate::filtered_endpoint_records_for_chain(chain.str_id().into(), 0)?;
+        for slot in [
+            EndpointSlot::Primary,
+            EndpointSlot::Secondary,
+            EndpointSlot::Explorer,
+        ] {
+            let Some(api) = chain.endpoint_api(slot) else {
+                continue;
+            };
             endpoints.push(ChainEndpoints {
-                chain_id: chain.endpoint_str_id(chain.supplemental_endpoint_slot()),
-                endpoints: row.explorer_supplemental,
-                api_key: None,
-            });
-        }
-        if !chain.secondary_endpoint_ids().is_empty() {
-            endpoints.push(ChainEndpoints {
-                chain_id: chain.endpoint_str_id(crate::registry::EndpointSlot::Secondary),
-                endpoints: crate::endpoints_for_ids(
-                    chain
-                        .secondary_endpoint_ids()
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect(),
-                )?,
+                chain_id: chain.endpoint_str_id(slot),
+                endpoints: records
+                    .iter()
+                    .filter(|record| {
+                        record.api == Some(api)
+                            && (slot != EndpointSlot::Primary
+                                || record.capabilities.iter().any(|c| c == "balance"))
+                    })
+                    .map(|record| record.endpoint.clone())
+                    .collect(),
                 api_key: None,
             });
         }
@@ -366,23 +387,8 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
 mod a_primary_endpoint_can_serve_a_primary_read {
     use super::*;
 
-    /// A chain's primary list holds only endpoints that answer one of the
-    /// roles it was filtered on.
-    ///
-    /// `catalog_endpoints` asks a non-EVM chain for `RPC | BALANCE | BACKEND`
-    /// and hands the result to `with_fallback`, which tries them top to bottom
-    /// for reads. An endpoint that serves none of the three is not a slower
-    /// fallback, it is a wrong one: `ENDPOINT_KIND_BACKEND` was written
-    /// `1 << 9` like `ENDPOINT_KIND_INDEXER`, so the mask also matched every
-    /// indexer, and Bitcoin Cash's list picked up
-    /// `…/push/transaction` (broadcast only) and
-    /// `…/dashboards/transaction/` (a verification URL prefix) as its second
-    /// and third choices for a balance read.
-    ///
-    /// Stated over the catalog rather than over the constants, so it holds
-    /// whatever the mask is next written as. Supplemental and secondary rows
-    /// are deliberately excluded — those carry `web-link` explorers on
-    /// purpose, and they are the `:explorer` / `:secondary` ids here.
+    /// Operation URL prefixes and incompatible API families are never passed
+    /// to a primary client as base URLs, even when they share a chain.
     #[test]
     fn no_chain_is_offered_an_endpoint_that_answers_none_of_them() {
         let mut checked = 0;
@@ -391,17 +397,17 @@ mod a_primary_endpoint_can_serve_a_primary_read {
                 continue; // a `:secondary` or `:explorer` slot, not the primary list
             }
             for endpoint in &row.endpoints {
-                let Some(tag) = crate::endpoint_tag(endpoint.clone()) else {
-                    continue; // no catalog row: a user-typed RPC or an assembled base
-                };
-                let serves = tag.kind == "rpc-node"
-                    || tag.kind == "backend"
-                    || tag.capabilities.iter().any(|c| c == "balance");
+                let chain = Chain::from_str_id(&row.chain_id).unwrap();
+                let record = crate::filtered_endpoint_records_for_chain(row.chain_id.clone(), 0)
+                    .unwrap()
+                    .into_iter()
+                    .find(|record| &record.endpoint == endpoint)
+                    .unwrap();
+                assert_eq!(record.api, chain.endpoint_api(EndpointSlot::Primary));
                 assert!(
-                    serves,
-                    "{} lists {endpoint} as a primary endpoint, but it is a {:?} \
-                     claiming only {:?}",
-                    row.chain_id, tag.kind, tag.capabilities
+                    record.capabilities.iter().any(|c| c == "balance"),
+                    "{} lists operation-only URL {endpoint} as a base",
+                    row.chain_id
                 );
                 checked += 1;
             }
@@ -420,10 +426,11 @@ impl WalletService {
         &self,
         endpoints: Vec<ChainEndpoints>,
     ) -> Result<(), SpectraBridgeError> {
+        let index = EndpointIndex::from_list(endpoints)?;
         self.uses_catalog_endpoints
             .store(false, std::sync::atomic::Ordering::Relaxed);
         let mut guard = self.endpoints.write().await;
-        *guard = EndpointIndex::from_list(endpoints);
+        *guard = index;
         Ok(())
     }
 
@@ -441,7 +448,7 @@ pub mod app_refresh;
 mod owned_send;
 pub mod send_review;
 
-pub use owned_send::{OwnedReplacementDraft, OwnedSendQuote};
+pub use owned_send::{OwnedReplacementDraft, OwnedSendPreview, OwnedSendQuote};
 
 impl WalletService {
     pub(crate) fn secrets(&self) -> Result<Arc<dyn SecretStore>, SpectraBridgeError> {

@@ -148,13 +148,7 @@ impl KaspaClient {
         &self,
         path: &str,
     ) -> Result<T, String> {
-        let path = path.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move { client.get_json(&url, RetryProfile::ChainRead).await }
-        })
-        .await
+        self.client.get_path(&self.endpoints, path).await
     }
 
     pub async fn fetch_balance(&self, address: &str) -> Result<KasBalance, String> {

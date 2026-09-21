@@ -5,13 +5,14 @@
 fields are rejected. Core indexes by network ID and derives settings families
 and titles from the registry, including separate mainnet/testnet groups.
 CLI catalog rows identify the network with `chainId`. Core validates the vocabulary,
-uses distinct role-mask bits, and exposes the same strings to CLI diagnostics
-and the localized Endpoints screen. `kind` describes the API surface separately.
+uses distinct capability-mask bits, and exposes the same capabilities to CLI
+diagnostics and the localized Endpoints screen. `api` declares the request/response
+contract (see [Endpoint APIs](ENDPOINT-APIS.md)); `kind` has been removed.
 
 | Capability | Meaning |
 |---|---|
 | `balance` | Native-coin balance |
-| `native-history` | Address transaction history for the native coin |
+| `history` | Address transaction history for the native coin |
 | `token-history` | Fungible-token transfer history for an address; excludes approvals and arbitrary contract activity |
 | `token-discovery` | Enumerate an address's token holdings without supplying a token list |
 | `token-balance` | Query an address's balance of a specified token |
@@ -20,7 +21,8 @@ and the localized Endpoints screen. `kind` describes the API surface separately.
 | `broadcast` | Submit a signed transaction |
 | `verification` | Transaction verification data |
 
-`history` is removed, with no alias. A native-history source does not implicitly
+`history` replaces `native-history`, with no alias for the old name. It still
+means native-coin history. A history source does not implicitly
 claim token history, and token-balance does not imply token discovery. Discovery
 is about address holdings, not Spectra's bundled token catalog. Web links have
 no capabilities.
@@ -41,7 +43,7 @@ this directory is not an exhaustive inventory of every provider feature.
   transfers via signature/transaction reads in `core/src/fetch/chains/solana.rs`.
 - Sui and Aptos APIs: token balance/discovery via their coin balance and account
   resource queries in the respective `core/src/fetch/chains/` clients. No new
-  token-history claim is inferred from their native-history label.
+  token-history claim is inferred from their history label.
 - NEAR RPC: `token-balance` via `ft_balance_of` in the NEAR client. Address
   history belongs to the separately registered NearBlocks indexer.
 - Tron account indexers: token holdings and transfer history; Tron node API

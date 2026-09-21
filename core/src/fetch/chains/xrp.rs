@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::http::{with_fallback, HttpClient, RetryProfile};
+use crate::http::HttpClient;
 
 // ── Public result types
 
@@ -65,36 +65,17 @@ impl XrpClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = std::sync::Arc::new(rpc(method, params));
-        with_fallback(&self.endpoints, |url| {
-            let client = self.client.clone();
-            let body = std::sync::Arc::clone(&body);
-            async move {
-                let resp: Value = client
-                    .post_json(&url, &*body, RetryProfile::ChainRead)
-                    .await?;
-                let result = resp
-                    .get("result")
-                    .ok_or_else(|| "missing result".to_string())?;
-                if let Some(status) = result.get("status").and_then(|s| s.as_str()) {
-                    if status == "error" {
-                        let msg = result
-                            .get("error_message")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("unknown error");
-                        return Err(format!("xrp rpc error: {msg}"));
-                    }
-                }
-                Ok(result.clone())
-            }
-        })
+        crate::fetch::json_rpc::call(
+            crate::EndpointApi::XrplJsonRpc,
+            &self.client,
+            &self.endpoints,
+            method,
+            params,
+        )
         .await
     }
 }
 
-fn rpc(method: &str, params: Value) -> Value {
-    json!({ "method": method, "params": [params] })
-}
 // XRP fetch paths: balance, sequence, fee, history.
 
 impl XrpClient {

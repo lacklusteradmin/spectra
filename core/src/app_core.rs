@@ -1,36 +1,23 @@
 use crate::store::wallet_domain::CoreSeedDerivationPaths;
+use crate::EndpointApi;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml");
 
 pub const ENDPOINT_CAPABILITY_BALANCE: u32 = 1 << 1;
-pub const ENDPOINT_CAPABILITY_NATIVE_HISTORY: u32 = 1 << 2;
+pub const ENDPOINT_CAPABILITY_HISTORY: u32 = 1 << 2;
 pub const ENDPOINT_CAPABILITY_UTXO: u32 = 1 << 3;
 pub const ENDPOINT_CAPABILITY_FEE: u32 = 1 << 4;
 pub const ENDPOINT_CAPABILITY_BROADCAST: u32 = 1 << 5;
 const ENDPOINT_CAPABILITY_VERIFICATION: u32 = 1 << 6;
-pub const ENDPOINT_KIND_RPC_NODE: u32 = 1 << 7;
-const ENDPOINT_KIND_WEB_LINK: u32 = 1 << 8;
-/// An address-indexed API. Its own bit because an indexer is not a `/tx/`
-/// link, and the two were sharing one — which is how `explorer_supplemental`
-/// briefly picked up every Esplora endpoint Bitcoin has.
-const ENDPOINT_KIND_INDEXER: u32 = 1 << 9;
-/// A Monero light-wallet server. Its own bit for the same reason — which the
-/// comment above did not stop this one from being written `1 << 9` as well.
-/// `catalog_endpoints` asks for `RPC | BALANCE | BACKEND`, so every indexer
-/// matched it too, and the sixteen indexer rows that carry no `balance`
-/// capability were handed to non-EVM chains as general API bases: Bitcoin
-/// Cash's primary list held `/push/transaction` and a `/dashboards/transaction/`
-/// URL prefix, which `with_fallback` would try for a balance read.
-pub(crate) const ENDPOINT_KIND_BACKEND: u32 = 1 << 10;
 const ENDPOINT_CAPABILITY_TOKEN_HISTORY: u32 = 1 << 11;
 const ENDPOINT_CAPABILITY_TOKEN_DISCOVERY: u32 = 1 << 12;
 const ENDPOINT_CAPABILITY_TOKEN_BALANCE: u32 = 1 << 13;
 
 const ENDPOINT_CAPABILITIES: [&str; 9] = [
     "balance",
-    "native-history",
+    "history",
     "token-history",
     "token-discovery",
     "token-balance",
@@ -55,7 +42,7 @@ pub enum AppCoreEndpointSlot {
 pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
     /// Parallel to `endpoint_records`: pre-computed bitmask per record so the
-    /// hot-path filter avoids per-call string matching on kinds and capabilities.
+    /// hot-path filter avoids per-call string matching on capabilities.
     pub(crate) endpoint_filter_masks: Vec<u32>,
     /// Concrete network ID → record indices, preserving endpoint order.
     endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>>,
@@ -75,9 +62,8 @@ struct TomlEndpointFile {
 struct TomlEndpoint {
     id: String,
     chain_id: String,
-    provider_id: String,
+    api: Option<EndpointApi>,
     endpoint: String,
-    kind: String,
     capabilities: Vec<String>,
     #[serde(default)]
     probe_url: Option<String>,
@@ -95,12 +81,23 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
     fn try_from(e: TomlEndpoint) -> Result<Self, Self::Error> {
         crate::registry::Chain::from_str_id(&e.chain_id)
             .ok_or_else(|| format!("{}: unknown endpoint chain_id {:?}", e.id, e.chain_id))?;
+        if e.api.is_none() && !e.capabilities.is_empty() {
+            return Err(format!(
+                "{}: web links cannot declare API capabilities",
+                e.id
+            ));
+        }
+        if e.api.is_some() && (e.explorer_label.is_some() || !e.tx_suffix.is_empty()) {
+            return Err(format!(
+                "{}: APIs cannot declare explorer link fields",
+                e.id
+            ));
+        }
         Ok(AppCoreEndpointRecord {
             id: e.id,
             chain_id: e.chain_id,
-            provider_id: e.provider_id,
+            api: e.api,
             endpoint: e.endpoint,
-            kind: e.kind,
             capabilities: e.capabilities,
             probe_url: e.probe_url,
             supplements_rpc_list: e.supplements_rpc_list,
@@ -114,19 +111,9 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreEndpointRecord {
     pub id: String,
+    pub api: Option<EndpointApi>,
     pub chain_id: String,
-    #[serde(rename = "providerID")]
-    pub provider_id: String,
     pub endpoint: String,
-    /// What this endpoint *is*, which decides how to talk to it: a JSON-RPC
-    /// node, an address-indexed API, a Monero light-wallet backend, or a
-    /// `/tx/` link for a person to tap.
-    ///
-    /// Split out of `roles`, which held this alongside what the endpoint is
-    /// *used for*. Nothing forced the two to stay consistent, and both drifted:
-    /// ten EVM chains' JSON-RPC nodes were missing the `rpc` marker, so the
-    /// diagnostics screen probed them with a GET and called them unreachable.
-    pub kind: String,
     /// What this endpoint is used for. A capability is a claim about the
     /// endpoint that has to be true — see `no_evm_node_claims_history`.
     pub capabilities: Vec<String>,
@@ -154,12 +141,11 @@ pub struct AppCoreEndpointRecord {
 /// settings screen assembles some of its groups itself — Bitcoin's Esplora
 /// bases, and whatever RPC the user typed in. Those have no catalog row, and
 /// asking by URL lets them come back `None` instead of forcing the caller to
-/// invent a kind for an endpoint it knows nothing about.
+/// invent an API for an endpoint it knows nothing about.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreEndpointTag {
-    /// `rpc-node`, `indexer`, `web-link` or `backend`.
-    pub kind: String,
+    pub api: Option<String>,
     pub capabilities: Vec<String>,
 }
 
@@ -216,7 +202,7 @@ pub fn derivation_paths_for_preset(
     Ok(seed_derivation_paths_for_account(preset.account_index())?)
 }
 
-/// A chain's endpoint records, filtered to a role mask.
+/// A chain's endpoint records, filtered by any requested capability.
 ///
 /// Was also exported with role *names*, for an app wrapper that nothing
 /// called; the CLI and core pass the mask constants.
@@ -259,15 +245,17 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
             AppCoreChainEndpoints {
                 service_endpoints: endpoint_records_for_chain(catalog, &id, 0)
                     .into_iter()
-                    .filter(|r| r.kind != "web-link")
+                    .filter(|r| r.api.is_some())
                     .map(|r| r.endpoint)
                     .collect(),
-                backends: endpoint_records_for_chain(catalog, &id, ENDPOINT_KIND_BACKEND)
+                backends: endpoint_records_for_chain(catalog, &id, 0)
                     .into_iter()
+                    .filter(|r| r.api == Some(EndpointApi::MoneroLightWallet))
                     .map(|r| r.endpoint)
                     .collect(),
-                evm_rpc: endpoint_records_for_chain(catalog, &id, ENDPOINT_KIND_RPC_NODE)
+                evm_rpc: endpoint_records_for_chain(catalog, &id, 0)
                     .into_iter()
+                    .filter(|r| r.api == Some(EndpointApi::EvmJsonRpc))
                     .map(|r| r.endpoint)
                     .collect(),
                 // Supplemental APIs registered alongside the RPC list.
@@ -283,26 +271,6 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
             }
         })
         .collect())
-}
-
-/// Endpoints for catalog record ids, in the order asked.
-///
-/// Not exported: the app's only call named three Monero backend ids and three
-/// display names beside them. It reads the catalog's settings list for the
-/// chain now, which is where those three already were.
-pub fn endpoints_for_ids(ids: Vec<String>) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(endpoint_catalog().and_then(|catalog| {
-        ids.iter()
-            .map(|id| {
-                catalog
-                    .endpoint_records
-                    .iter()
-                    .find(|r| &r.id == id)
-                    .map(|r| r.endpoint.clone())
-                    .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
-            })
-            .collect::<Result<Vec<_>, _>>()
-    })?)
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────
@@ -336,7 +304,6 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
         .map(|r| {
             r.capabilities
                 .iter()
-                .chain(std::iter::once(&r.kind))
                 .fold(0u32, |acc, role| acc | endpoint_filter_bit(role))
         })
         .collect();
@@ -358,7 +325,7 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
 pub(crate) fn endpoint_filter_bit(role: &str) -> u32 {
     match role {
         "balance" => ENDPOINT_CAPABILITY_BALANCE,
-        "native-history" => ENDPOINT_CAPABILITY_NATIVE_HISTORY,
+        "history" => ENDPOINT_CAPABILITY_HISTORY,
         "token-history" => ENDPOINT_CAPABILITY_TOKEN_HISTORY,
         "token-discovery" => ENDPOINT_CAPABILITY_TOKEN_DISCOVERY,
         "token-balance" => ENDPOINT_CAPABILITY_TOKEN_BALANCE,
@@ -366,12 +333,6 @@ pub(crate) fn endpoint_filter_bit(role: &str) -> u32 {
         "fee" => ENDPOINT_CAPABILITY_FEE,
         "broadcast" => ENDPOINT_CAPABILITY_BROADCAST,
         "verification" => ENDPOINT_CAPABILITY_VERIFICATION,
-        // Kinds map onto the same mask so a caller can still ask for "the RPC
-        // nodes" in one filter.
-        "rpc-node" => ENDPOINT_KIND_RPC_NODE,
-        "web-link" => ENDPOINT_KIND_WEB_LINK,
-        "indexer" => ENDPOINT_KIND_INDEXER,
-        "backend" => ENDPOINT_KIND_BACKEND,
         _ => 0,
     }
 }
@@ -436,9 +397,9 @@ fn transaction_explorer_entry(
     catalog: &AppCoreCatalog,
     chain_id: &str,
 ) -> Option<AppCoreExplorerEntry> {
-    // A `/tx/` link for a person to open, which is exactly `web-link`.
-    endpoint_records_for_chain(catalog, chain_id, ENDPOINT_KIND_WEB_LINK)
+    endpoint_records_for_chain(catalog, chain_id, 0)
         .into_iter()
+        .filter(|record| record.api.is_none())
         .find_map(|record| {
             record.explorer_label.map(|label| AppCoreExplorerEntry {
                 endpoint: record.endpoint,
@@ -532,7 +493,7 @@ pub fn endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
         .iter()
         .find(|r| r.endpoint.trim_end_matches('/') == trimmed)
         .map(|r| AppCoreEndpointTag {
-            kind: r.kind.clone(),
+            api: r.api.map(|api| api.as_str().to_string()),
             capabilities: r.capabilities.clone(),
         })
 }
@@ -732,32 +693,16 @@ pub(super) fn bitcoin_esplora_base_urls(
     catalog: &AppCoreCatalog,
     chain_id: &str,
 ) -> Result<Vec<String>, String> {
-    let ids: &[&str] = match chain_id {
-        "bitcoin" => &[
-            "bitcoin.mainnet.blockstream",
-            "bitcoin.mainnet.mempool",
-            "bitcoin.mainnet.mempool_emzy",
-            "bitcoin.mainnet.maestro",
-        ],
-        "bitcoin-testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
-        "bitcoin-testnet-4" => &["bitcoin.testnet4.mempool"],
-        "bitcoin-signet" => &["bitcoin.signet.blockstream", "bitcoin.signet.mempool"],
-        _ => return Err(format!("Not a Bitcoin network: {chain_id}")),
-    };
-    endpoints_for_known_ids(catalog, ids)
-}
-
-fn endpoints_for_known_ids(catalog: &AppCoreCatalog, ids: &[&str]) -> Result<Vec<String>, String> {
-    ids.iter()
-        .map(|id| {
-            catalog
-                .endpoint_records
-                .iter()
-                .find(|r| r.id == *id)
-                .map(|r| r.endpoint.clone())
-                .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
-        })
-        .collect()
+    let chain = crate::registry::Chain::from_str_id(chain_id)
+        .ok_or_else(|| format!("Unknown network: {chain_id}"))?;
+    if chain.mainnet_counterpart() != crate::registry::Chain::Bitcoin {
+        return Err(format!("Not a Bitcoin network: {chain_id}"));
+    }
+    Ok(endpoint_records_for_chain(catalog, chain_id, 0)
+        .into_iter()
+        .filter(|record| record.api == Some(EndpointApi::Esplora))
+        .map(|record| record.endpoint)
+        .collect())
 }
 
 #[cfg(test)]
@@ -887,21 +832,44 @@ mod endpoint_network_index_tests {
     fn invalid_network_ids_and_title_based_ownership_are_refused() {
         let valid = r#"id = "test"
 chain_id = "ethereum-sepolia"
-provider_id = "test"
+api = "evm-json-rpc"
 endpoint = "https://example.com"
-kind = "rpc-node"
 capabilities = []"#;
         let row = toml::from_str::<TomlEndpoint>(valid).unwrap();
         assert_eq!(
             AppCoreEndpointRecord::try_from(row).unwrap().chain_id,
             "ethereum-sepolia"
         );
+        assert!(
+            toml::from_str::<TomlEndpoint>(&valid.replace("evm-json-rpc", "made-up-api")).is_err()
+        );
+        let missing =
+            toml::from_str::<TomlEndpoint>(&valid.replace("api = \"evm-json-rpc\"\n", "")).unwrap();
+        assert!(AppCoreEndpointRecord::try_from(missing).is_ok());
+        let link_with_api =
+            toml::from_str::<TomlEndpoint>(&format!("{valid}\nexplorer_label = \"Explorer\""))
+                .unwrap();
+        assert!(AppCoreEndpointRecord::try_from(link_with_api).is_err());
+        let link = format!(
+            "{}\nexplorer_label = \"Explorer\"",
+            valid.replace("api = \"evm-json-rpc\"\n", "")
+        );
+        assert!(
+            AppCoreEndpointRecord::try_from(toml::from_str::<TomlEndpoint>(&link).unwrap()).is_ok()
+        );
+        let link_with_capability =
+            link.replace("capabilities = []", "capabilities = [\"balance\"]");
+        assert!(AppCoreEndpointRecord::try_from(
+            toml::from_str::<TomlEndpoint>(&link_with_capability).unwrap()
+        )
+        .is_err());
+
         for bad in ["Ethereum Sepolia", "unknown-network", ""] {
             let row =
                 toml::from_str::<TomlEndpoint>(&valid.replace("ethereum-sepolia", bad)).unwrap();
             assert!(AppCoreEndpointRecord::try_from(row).is_err());
         }
-        for field in ["chain_name", "group_title"] {
+        for field in ["chain_name", "group_title", "kind"] {
             assert!(
                 toml::from_str::<TomlEndpoint>(&format!("{valid}\n{field} = \"Ethereum\" "))
                     .is_err()
@@ -1007,7 +975,7 @@ mod supplemental_endpoints_are_data {
 }
 
 #[cfg(test)]
-mod an_endpoints_kind_is_not_its_capabilities {
+mod endpoint_capabilities {
     use crate::registry::Chain;
 
     fn records() -> Vec<super::AppCoreEndpointRecord> {
@@ -1042,14 +1010,14 @@ mod an_endpoints_kind_is_not_its_capabilities {
             let Some(chain) = Chain::from_str_id(&record.chain_id) else {
                 continue;
             };
-            if !chain.is_evm() || record.kind != "rpc-node" {
+            if !chain.is_evm() || record.api != Some(crate::EndpointApi::EvmJsonRpc) {
                 continue;
             }
             assert!(
-                !record.capabilities.iter().any(|c| matches!(
-                    c.as_str(),
-                    "native-history" | "token-history" | "token-discovery"
-                )),
+                !record
+                    .capabilities
+                    .iter()
+                    .any(|c| matches!(c.as_str(), "history" | "token-history" | "token-discovery")),
                 "{} {} is an EVM node and cannot serve address history",
                 record.chain_id,
                 record.endpoint
@@ -1057,97 +1025,14 @@ mod an_endpoints_kind_is_not_its_capabilities {
         }
     }
 
-    /// Every record says what it is, and says it with one of the four names
-    /// the readers switch on.
     #[test]
-    fn every_record_has_a_kind_the_readers_understand() {
-        for record in records() {
-            assert!(
-                matches!(
-                    record.kind.as_str(),
-                    "rpc-node" | "indexer" | "web-link" | "backend"
-                ),
-                "{} {} has kind {:?}",
-                record.chain_id,
-                record.endpoint,
-                record.kind
-            );
+    fn every_capability_owns_a_distinct_bit() {
+        let mut bits = std::collections::HashSet::new();
+        for capability in super::ENDPOINT_CAPABILITIES {
+            let bit = super::endpoint_filter_bit(capability);
+            assert!(bit.is_power_of_two());
+            assert!(bits.insert(bit));
         }
-    }
-
-    /// A kind is never a capability and a capability is never a kind. Holding
-    /// both in one array is what let the `rpc` marker go missing on ten chains
-    /// while their capabilities looked complete.
-    #[test]
-    fn the_two_vocabularies_do_not_overlap() {
-        use super::ENDPOINT_CAPABILITIES as CAPABILITIES;
-        for record in records() {
-            assert!(
-                !CAPABILITIES.contains(&record.kind.as_str()),
-                "{}",
-                record.kind
-            );
-            for capability in &record.capabilities {
-                assert!(
-                    CAPABILITIES.contains(&capability.as_str()),
-                    "{} {} lists {capability:?} as a capability",
-                    record.chain_id,
-                    record.endpoint
-                );
-            }
-        }
-    }
-
-    /// Each of the fourteen role names owns a bit no other name owns.
-    ///
-    /// Both vocabularies share one `u32` mask, and a repeated shift amount is
-    /// invisible: the constants still compile, every filter still returns
-    /// endpoints, and the only symptom is a mask quietly matching a kind it
-    /// never asked for. It has happened twice — `explorer`/`indexer` first,
-    /// then `indexer`/`backend`, where `catalog_endpoints`' `RPC | BALANCE |
-    /// BACKEND` collected every indexer as well. Asserting it here costs one
-    /// test and removes the third occurrence.
-    #[test]
-    fn every_filter_criterion_owns_a_distinct_bit() {
-        use std::collections::HashMap;
-
-        // The two vocabularies of `data/endpoints.toml`, pinned against the
-        // data by `every_record_has_a_kind_the_readers_understand` and
-        // `the_two_vocabularies_do_not_overlap` above.
-        const FILTER_CRITERIA: [&str; 13] = [
-            "rpc-node",
-            "indexer",
-            "web-link",
-            "backend",
-            "balance",
-            "native-history",
-            "token-history",
-            "token-discovery",
-            "token-balance",
-            "utxo",
-            "fee",
-            "broadcast",
-            "verification",
-        ];
-
-        let mut owner: HashMap<u32, &str> = HashMap::new();
-        for role in FILTER_CRITERIA {
-            let bit = super::endpoint_filter_bit(role);
-            assert_ne!(bit, 0, "{role:?} maps to no bit");
-            assert!(bit.is_power_of_two(), "{role:?} is {bit:#x}, not one bit");
-            if let Some(other) = owner.insert(bit, role) {
-                panic!("{role:?} and {other:?} share bit {bit:#x}");
-            }
-        }
-
-        // Obsolete catalog spellings are not accepted as filter criteria.
-        assert_eq!(super::endpoint_filter_bit("rpc"), 0);
-        assert_eq!(super::endpoint_filter_bit("explorer"), 0);
-
-        // A name the catalog never uses claims nothing, rather than
-        // defaulting onto some other role's bit.
-        assert_eq!(super::endpoint_filter_bit("not-a-role"), 0);
-        assert_eq!(super::endpoint_filter_bit("history"), 0);
     }
 
     #[test]
@@ -1164,7 +1049,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
         };
         let balances = selected("ethereum", "token-balance");
         assert!(balances.contains(&"ethereum.rpc.publicnode".into()));
-        for capability in ["native-history", "token-history", "token-discovery"] {
+        for capability in ["history", "token-history", "token-discovery"] {
             let rows = selected("ethereum", capability);
             assert!(rows.contains(&"ethereum.explorer.blockscout".into()));
             assert!(!rows.contains(&"ethereum.rpc.publicnode".into()));
@@ -1174,7 +1059,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
             assert_eq!(selected("ton", capability), ["ton.api.v3"]);
             assert!(selected("bitcoin", capability).is_empty());
         }
-        assert!(selected("ton", "native-history").contains(&"ton.api.v2".into()));
+        assert!(selected("ton", "history").contains(&"ton.api.v2".into()));
         assert!(selected("solana", "token-discovery").contains(&"solana.rpc.mainnet".into()));
         assert!(selected("near", "token-discovery").is_empty());
         assert!(selected("near", "token-balance").contains(&"near.rpc.mainnet".into()));
@@ -1183,7 +1068,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
     /// A web link is a URL for a person, so it claims nothing.
     #[test]
     fn a_web_link_has_no_capabilities() {
-        for record in records().iter().filter(|r| r.kind == "web-link") {
+        for record in records().iter().filter(|r| r.api.is_none()) {
             assert!(
                 record.capabilities.is_empty(),
                 "{} {} is a link and claims {:?}",
@@ -1200,20 +1085,20 @@ mod an_endpoint_can_be_asked_what_it_is {
     /// The settings screen shows a URL per row and nothing else. The catalog
     /// knows what each one is; this is how the row asks.
     #[test]
-    fn a_catalog_endpoint_reports_its_kind_and_capabilities() {
+    fn a_catalog_endpoint_reports_its_api_and_capabilities() {
         let node = super::endpoint_tag("https://ethereum-rpc.publicnode.com".into())
             .expect("Ethereum's node is in the catalog");
-        assert_eq!(node.kind, "rpc-node");
+        assert_eq!(node.api.as_deref(), Some("evm-json-rpc"));
         assert!(node.capabilities.contains(&"balance".to_string()));
         assert!(
-            !node.capabilities.contains(&"native-history".to_string()),
+            !node.capabilities.contains(&"history".to_string()),
             "an EVM node cannot serve address history"
         );
 
         let indexer = super::endpoint_tag("https://eth.blockscout.com".into())
             .expect("Ethereum's indexer is in the catalog");
-        assert_eq!(indexer.kind, "indexer");
-        assert!(indexer.capabilities.contains(&"native-history".to_string()));
+        assert_eq!(indexer.api.as_deref(), Some("blockscout"));
+        assert!(indexer.capabilities.contains(&"history".to_string()));
     }
 
     /// A trailing slash is not a different endpoint.
@@ -1226,7 +1111,7 @@ mod an_endpoint_can_be_asked_what_it_is {
     }
 
     /// An endpoint the user typed has no catalog row, and saying so beats
-    /// guessing a kind for it.
+    /// guessing an API for it.
     #[test]
     fn an_endpoint_the_catalog_does_not_list_has_no_tag() {
         assert!(super::endpoint_tag("https://my-own-node.example".into()).is_none());

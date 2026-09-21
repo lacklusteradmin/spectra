@@ -347,29 +347,51 @@ check "refuses the wrong password"          $REJECTED \
 check "will not print a seed without --yes" $USAGE \
     spectra wallet export "Renamed BTC"
 
-section "endpoint kinds and capabilities"
+section "endpoint APIs and capabilities"
+check "API routing excludes incompatible wire formats" 0 python3 - "$BIN" "$DATA_DIR" <<'PYAPI'
+import json, subprocess, sys
+binary, directory = sys.argv[1:]
+catalog = json.loads(subprocess.check_output([binary, "--data-dir", directory, "--json", "endpoints", "--catalog"]))
+records = catalog["endpoints"]
+assert all("kind" not in r for r in records)
+assert all(r["api"] is not None or not r["capabilities"] for r in records)
+configured = {r["chainId"]: r["endpoints"] for r in catalog["configured"]}
+btc = configured["bitcoin"]
+assert btc and all(any(r["endpoint"] == url and r["api"] == "esplora" for r in records) for url in btc)
+assert "https://blockchain.info/multiaddr" not in btc
+assert configured["ton"] == ["https://toncenter.com/api/v2"]
+assert configured["ton:secondary"] == ["https://toncenter.com/api/v3"]
+assert configured["tron"] == ["https://api.trongrid.io"]
+assert configured["bittensor:secondary"] == ["https://api.taostats.io"]
+# Existing clients have no matching catalog API for these chains.
+assert configured["litecoin"] == []
+assert configured["bitcoin-cash"] == []
+assert configured["monero"] == []
+PYAPI
+lacks "endpoint catalog omits unused provider metadata" '"providerID"' \
+    spectra --json endpoints --catalog
 # `roles` held two things at once: what an endpoint is, and what it is used
 # for. Nothing kept them consistent, and both drifted — ten EVM chains' RPC
 # nodes lost the `rpc` marker, and forty-six claimed a `history` capability no
 # EVM node can serve, because `eth_getTransactionsByAddress` is not a method.
-contains "an EVM node is an rpc-node"        '"kind":"rpc-node"' \
+contains "an EVM node declares its API"        '"api":"evm-json-rpc"' \
     spectra --json endpoints --catalog --chain Ethereum
 contains "and does not claim address history" '"capabilities":["balance","fee","broadcast","token-balance"]' \
     spectra --json endpoints --catalog --chain Ethereum
 
-lacks "the ambiguous history capability is gone" '"history"' \
+lacks "the old native-history capability is gone" '"native-history"' \
     spectra --json endpoints --catalog
-contains "Bitcoin exposes native history" '"native-history"' \
+contains "Bitcoin exposes native history" '"history"' \
     spectra --json endpoints --catalog --chain Bitcoin
 lacks "Bitcoin does not claim token balances" '"token-balance"' \
     spectra --json endpoints --catalog --chain Bitcoin
-contains "an indexer separates token history and holdings" '"capabilities":["native-history","token-balance","token-discovery","token-history"]' \
+contains "an indexer separates token history and holdings" '"capabilities":["history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain Ethereum
-contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","native-history","fee","broadcast","token-balance","token-discovery","token-history"]' \
+contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","history","fee","broadcast","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain Solana
-contains "TON v2 only claims native history" '"capabilities":["balance","native-history","fee","broadcast","verification"]' \
+contains "TON v2 only claims native history" '"capabilities":["balance","history","fee","broadcast","verification"]' \
     spectra --json endpoints --catalog --chain TON
-contains "TON v3 exposes jetton balances and transfers" '"capabilities":["balance","native-history","token-balance","token-discovery","token-history"]' \
+contains "TON v3 exposes jetton balances and transfers" '"capabilities":["balance","history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain TON
 
 section "endpoint network identity"
@@ -1281,7 +1303,7 @@ contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not fou
     spectra --json send rebroadcast missing --yes
 
 section "Offline integration suites"
-for domain in wallets portfolio history send diagnostics; do
+for domain in wallets portfolio history send diagnostics transport; do
     check "$domain integration checks" $OK \
         python3 "$(dirname "$0")/cli-$domain.py" "$BIN"
 done

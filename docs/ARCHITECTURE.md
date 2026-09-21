@@ -42,6 +42,23 @@ revision; front ends must reject older results. History pages are bounded querie
 while recent/pending activity and indexed aggregates arrive in a separate summary.
 A summary is not the entire history; details and actions resolve stored IDs.
 
+Import forms and backup-quiz navigation are platform view state. Core exposes
+secret/address validators and enforces validation again on import; it does not
+model the front end's pages or rename-form completeness. Device authentication
+uses explicit action policies so the send preference cannot disable unlock,
+delete or reset protection. Native authentication remains a platform operation.
+
+Send previews carry their wallet, deployment and concrete network identity plus
+core-derived shortcut amounts and display details. Clients do not return previews
+with separately reconstructed metadata for reinterpretation. Destination activity
+is a core enum computed from raw smallest-unit balances, never formatted amounts.
+
+The platform registers a cache directory with `configure_network_runtime`.
+Thereafter core reconciles Tor transports on committed settings changes and reset;
+clients render status or request reconnect. CLI network services also register
+and await transport readiness. Settings editing remains usable offline. Stopping
+or changing transport cancels bootstrap and invalidates obsolete completions.
+
 Settings forms may display optimistic edits. Runtime effects (Tor, notification
 permission/delivery and refresh cadence) read only the last committed projection;
 an uncommitted edit is never transport configuration. Send confirmation renders

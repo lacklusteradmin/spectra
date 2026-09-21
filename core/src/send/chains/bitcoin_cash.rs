@@ -2,12 +2,12 @@
 
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::chains::bitcoin_cash::decode_bch_to_hash20;
-use crate::fetch::chains::bitcoin_cash::{BchSendResult, BitcoinCashClient};
+use crate::fetch::chains::blockbook::{BlockbookClient, BlockbookSendResult};
 
-impl BitcoinCashClient {
+impl BlockbookClient {
     /// Fetch UTXOs for `from_address`, sign a BCH P2PKH (SIGHASH_FORKID) transaction,
     /// and broadcast.
-    pub async fn sign_and_broadcast(
+    pub async fn sign_bitcoin_cash_and_broadcast(
         &self,
         from_address: &str,
         to_address: &str,
@@ -15,7 +15,8 @@ impl BitcoinCashClient {
         fee_sat: u64,
         private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
-    ) -> Result<BchSendResult, String> {
+    ) -> Result<BlockbookSendResult, String> {
+        self.require_chain(crate::registry::Chain::BitcoinCash)?;
         let utxos = self.fetch_utxos(from_address).await?;
         let hash20 = decode_bch_to_hash20(from_address)?;
         let script_pubkey = p2pkh_script(&hash20);

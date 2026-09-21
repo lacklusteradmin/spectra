@@ -5,14 +5,14 @@ use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
 use crate::derivation::chains::litecoin::{
     decode_ltc_address, is_mweb_address, ltc_p2pkh_script, parse_mweb_address,
 };
-use crate::fetch::chains::litecoin::{LitecoinClient, LtcSendResult};
+use crate::fetch::chains::blockbook::{BlockbookClient, BlockbookSendResult};
 use crate::send::chains::mweb::{build_peg_in_extension, MWEB_PEGIN_OVERHEAD_BYTES};
 
-impl LitecoinClient {
+impl BlockbookClient {
     /// Fetch UTXOs, sign a legacy P2PKH LTC transaction, and broadcast.
     /// Automatically routes to the MWEB peg-in path when `to_address` is
     /// an `ltcmweb1` or `tmweb1` stealth address.
-    pub async fn sign_and_broadcast(
+    pub async fn sign_litecoin_and_broadcast(
         &self,
         from_address: &str,
         to_address: &str,
@@ -20,7 +20,8 @@ impl LitecoinClient {
         fee_sat: u64,
         private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
-    ) -> Result<LtcSendResult, String> {
+    ) -> Result<BlockbookSendResult, String> {
+        self.require_chain(crate::registry::Chain::Litecoin)?;
         if is_mweb_address(to_address) {
             return self
                 .sign_and_broadcast_mweb_peg_in(
@@ -68,7 +69,7 @@ impl LitecoinClient {
         fee_sat: u64,
         private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
-    ) -> Result<LtcSendResult, String> {
+    ) -> Result<BlockbookSendResult, String> {
         let mweb_addr = parse_mweb_address(to_mweb_address)?;
 
         // Enforce a fee floor that covers both the on-chain tx and the MWEB

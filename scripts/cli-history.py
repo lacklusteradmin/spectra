@@ -20,6 +20,34 @@ binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
 
 
 class HistoryTests(unittest.TestCase):
+    def test_blockbook_history_is_shared_across_networks(self):
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                assert self.path.startswith('/api/v2/address/'), self.path
+                body = json.dumps({'transactions': [{'txid': 'ab' * 32, 'blockHeight': 42,
+                    'blockTime': 1700000000, 'value': '123456789', 'fees': '1000', 'vin': []}]}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-api-history-') as directory:
+                def run(*args):
+                    p = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                        input='abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+                        capture_output=True, text=True, timeout=60)
+                    assert p.returncode == 0, (p.stdout, p.stderr)
+                    return json.loads(p.stdout)
+                for chain in ('dash', 'zcash'):
+                    run('wallet', 'import', '--chain', chain, '--name', chain, '--seed-file', '-')
+                    history = run('history', chain, '--endpoint', f'http://127.0.0.1:{server.server_port}')
+                    assert history['count'] == 1, history
+                    tx = history['transactions'][0]
+                    assert tx['hash'] == 'ab' * 32 and tx['amount'] == 1.23456789, tx
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
     def test_stored_pages(self):
         """History pages deduplicate, sort, search Unicode and keep distinct identities."""
         with tempfile.TemporaryDirectory(prefix='spectra-history-pages-') as directory:

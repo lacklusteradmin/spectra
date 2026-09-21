@@ -108,10 +108,17 @@ impl Ctx {
     pub fn service(&self) -> CliResult<Arc<WalletService>> {
         let service = WalletService::new_catalog().map_err(CliError::from)?;
         service.set_secret_store(self.secrets.clone());
-        self.rt
-            .block_on(service.open_state(self.db_path()))
-            .map_err(CliError::from)?;
+        self.prepare_transport(&service)?;
         Ok(service)
+    }
+
+    pub fn prepare_transport(&self, service: &WalletService) -> CliResult<()> {
+        self.rt.block_on(service.open_state(self.db_path()))?;
+        self.rt.block_on(service.configure_network_runtime(
+            self.data_dir.join("cache").to_string_lossy().into_owned(),
+        ))?;
+        self.rt.block_on(service.await_network_ready())?;
+        Ok(())
     }
 
     pub fn state(&self) -> CliResult<CoreAppState> {
@@ -123,7 +130,11 @@ impl Ctx {
     }
 
     pub fn apply(&self, command: StateCommand) -> CliResult<StateTransition> {
-        let service = self.service()?;
+        // Editing stored settings must work offline, including turning Tor off
+        // after a failed bootstrap. Network commands initialize the runtime.
+        let service = WalletService::new_catalog()?;
+        service.set_secret_store(self.secrets.clone());
+        self.rt.block_on(service.open_state(self.db_path()))?;
         self.rt
             .block_on(service.apply_state_command(command))
             .map_err(CliError::from)

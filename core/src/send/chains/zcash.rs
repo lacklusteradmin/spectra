@@ -11,7 +11,7 @@
 
 use super::bitcoin_wire::{decode_txid_le, varint};
 use crate::derivation::chains::zcash::{decode_zcash_address, zcash_p2pkh_script};
-use crate::fetch::chains::zcash::{ZcashClient, ZecSendResult};
+use crate::fetch::chains::blockbook::{BlockbookClient, BlockbookSendResult};
 
 // ── Network upgrade descriptor ────────────────────────────────────────────
 
@@ -42,9 +42,9 @@ const BLAKE2B_PERSONALIZED_LEN: usize = 32;
 
 // ── Public broadcast + signing entrypoint ─────────────────────────────────
 
-impl ZcashClient {
+impl BlockbookClient {
     /// Fetch UTXOs + chain tip, sign a V5 transparent transaction, broadcast.
-    pub async fn sign_and_broadcast(
+    pub async fn sign_zcash_and_broadcast(
         &self,
         from_address: &str,
         to_address: &str,
@@ -53,7 +53,8 @@ impl ZcashClient {
         private_key_bytes: &[u8],
         network_upgrade: ZcashNetworkUpgrade,
         dust_threshold_zats: u64,
-    ) -> Result<ZecSendResult, String> {
+    ) -> Result<BlockbookSendResult, String> {
+        self.require_chain(crate::registry::Chain::Zcash)?;
         let utxos = self.fetch_utxos(from_address).await?;
         let tip = self.fetch_chain_tip_height().await?;
         // Match zcashd default: 40-block expiry window.
@@ -388,9 +389,10 @@ mod expiry_tests {
             )
             .mount(&server)
             .await;
-        let client = ZcashClient::new(Arc::new(vec![server.uri()]));
+        let client =
+            BlockbookClient::new(Arc::new(vec![server.uri()]), crate::registry::Chain::Zcash);
         let err = client
-            .sign_and_broadcast("from", "to", 1, 1, &[1; 32], ZcashNetworkUpgrade::NU5, 546)
+            .sign_zcash_and_broadcast("from", "to", 1, 1, &[1; 32], ZcashNetworkUpgrade::NU5, 546)
             .await
             .unwrap_err();
         assert!(err.contains("json decode"), "{err}");

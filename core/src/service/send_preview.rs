@@ -178,19 +178,8 @@ impl WalletService {
                 let values: Vec<u64> = utxos.into_iter().map(|u| u.value_koin).collect();
                 Ok(utxo_fee_preview_json(values, rate))
             }
-            Chain::Litecoin => {
-                let client = LitecoinClient::new(eps);
-                let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 {
-                    fee_rate_svb
-                } else {
-                    client.fetch_fee_rate(3).await
-                };
-                let values: Vec<u64> = utxos.into_iter().map(|u| u.value_sat).collect();
-                Ok(utxo_fee_preview_json(values, rate))
-            }
-            Chain::BitcoinCash => {
-                let client = BitcoinCashClient::new(eps);
+            Chain::Litecoin | Chain::BitcoinCash => {
+                let client = BlockbookClient::new(eps, chain);
                 let utxos = client.fetch_utxos(&address).await?;
                 let rate = if fee_rate_svb > 0 {
                     fee_rate_svb

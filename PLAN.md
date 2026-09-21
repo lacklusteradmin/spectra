@@ -77,7 +77,7 @@ Navigation, editing and rendering caches remain platform view state.
 | 0 — Prove ownership on display currency | Done | `open_state` and state commands bind, update and persist core-owned state |
 | 1 — Move domain collections | Done | Wallets and address book are core-owned; history has its own queryable store; Swift renders projections |
 | 2 — Replace planners with intents | Done | No `core_plan_*` exports remain; some pure helpers only needed renaming |
-| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions now owned by core; obsolete projection mutations removed |
+| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions owned by core; transport lifecycle and destination activity closed in the follow-up review; UI draft abstraction removed |
 | C1 — Reshape core | Done | Shared chain catalog, service modules split by responsibility, duplicate modules and derivation primitives consolidated |
 | C2 — Reduce the FFI surface | Done | Owned operations and coherent snapshots replace caller-assembled decisions |
 | 4 — Android | Not started beyond skeleton | Implement against the shared core once the boundary is ready |

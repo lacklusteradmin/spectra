@@ -15,9 +15,9 @@ Use domain meaning rather than the layer that originally implemented a rule.
   Internal borrowed parsing helpers may state their input (`*_str`, `*_segments`).
 - Structured results use the ordinary function name. A separate raw JSON API
   ends in `_json`; `_typed` is not a substitute for naming the difference.
-- Endpoint kinds use `ENDPOINT_KIND_*`; abilities use `ENDPOINT_CAPABILITY_*`.
+- Endpoint abilities use `ENDPOINT_CAPABILITY_*`; wire contracts use `EndpointApi`.
   A combined selection uses a filter mask. Core defines the bits; callers import
-  them. Do not accept historical synonyms for catalog kind names.
+  them. Do not accept historical capability synonyms.
 - Handwritten Swift follows UniFFI's `Id` / `Ids` spelling for identifiers.
   Keep platform names such as `UUID` and protocol terms unchanged.
 - Name Swift files after their primary type, with the existing domain-extension

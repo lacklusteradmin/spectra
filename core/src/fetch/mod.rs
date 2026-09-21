@@ -11,3 +11,4 @@ pub mod transactions;
 // Per-chain read-path clients: client struct + shared types + balance /
 // history / metadata / fee-estimate RPC methods.
 pub mod chains;
+pub(crate) mod json_rpc;

@@ -2,23 +2,15 @@
 # `chain_id` references a concrete chains.id in chains.toml. Mainnets and
 # testnets are peers; display names and settings groups are derived from registry.
 #
-# Two vocabularies, deliberately separate. They used to share one `roles` array
-# and nothing kept them consistent: ten EVM chains' JSON-RPC nodes lost their
-# marker and were probed with a GET, and forty-six records claimed a `history`
-# capability no EVM node can serve.
-#
-#   kind          what the endpoint *is*, which decides how to talk to it
-#     rpc-node    JSON-RPC. POST a method to it.
-#     indexer     an address-indexed API. Its rows are keyed by address.
-#     web-link    a /tx/ URL for a person to open. Not an API; claims nothing.
-#     backend     a Monero light-wallet server.
+# `api` specifies the request/response contract; omit it for browser links.
+# Browser links have no capabilities; explorer_label enables a transaction button.
 #
 #   capabilities  what it is used *for*, and a claim that has to be true
-#     balance native-history token-history token-discovery token-balance
+#     balance history token-history token-discovery token-balance
 #     utxo fee broadcast verification
 #
 # `balance` is native-coin balance; token balances have their own capability.
-# `native-history` is address history for the native coin; `token-history` is
+# `history` is address history for the native coin; `token-history` is
 # fungible-token transfers, not approvals or arbitrary contract activity.
 # `token-discovery` enumerates holdings without a caller-supplied token list;
 # `token-balance` answers about a specified token. See docs/ENDPOINT-CAPABILITIES.md.
@@ -36,1456 +28,1245 @@
 
 [[endpoints]]
 id = "bitcoin.blockchain_info.multiaddr"
+api = "blockchain-info"
 chain_id = "bitcoin"
-provider_id = "blockchain-info"
 endpoint = "https://blockchain.info/multiaddr"
-kind = "indexer"
-capabilities = ["balance", "native-history"]
+capabilities = ["balance", "history"]
 
 [[endpoints]]
 id = "bitcoin.blockchair.xpub"
+api = "blockchair"
 chain_id = "bitcoin"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin/dashboards/xpub/"
-kind = "indexer"
-capabilities = ["balance", "native-history"]
+capabilities = ["balance", "history"]
 
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
+api = "esplora"
 chain_id = "bitcoin"
-provider_id = "esplora"
 endpoint = "https://blockstream.info/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://blockstream.info/api"
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool"
+api = "esplora"
 chain_id = "bitcoin"
-provider_id = "esplora"
 endpoint = "https://mempool.space/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/api"
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool_emzy"
+api = "esplora"
 chain_id = "bitcoin"
-provider_id = "esplora"
 endpoint = "https://mempool.emzy.de/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.emzy.de/api"
 
 [[endpoints]]
 id = "bitcoin.mainnet.maestro"
+api = "esplora"
 chain_id = "bitcoin"
-provider_id = "maestro-esplora"
 endpoint = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
 
 [[endpoints]]
 id = "bitcoin.explorer.tx"
 chain_id = "bitcoin"
-provider_id = "mempool"
 endpoint = "https://mempool.space/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Mempool"
 
 [[endpoints]]
 id = "bitcoin.testnet.blockstream"
+api = "esplora"
 chain_id = "bitcoin-testnet"
-provider_id = "esplora"
 endpoint = "https://blockstream.info/testnet/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://blockstream.info/testnet/api"
 
 [[endpoints]]
 id = "bitcoin.testnet.mempool"
+api = "esplora"
 chain_id = "bitcoin-testnet"
-provider_id = "esplora"
 endpoint = "https://mempool.space/testnet/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/testnet/api"
 
 [[endpoints]]
 id = "bitcoin.testnet4.mempool"
+api = "esplora"
 chain_id = "bitcoin-testnet-4"
-provider_id = "esplora"
 endpoint = "https://mempool.space/testnet4/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/testnet4/api"
 
 [[endpoints]]
 id = "bitcoin.signet.blockstream"
+api = "esplora"
 chain_id = "bitcoin-signet"
-provider_id = "esplora"
 endpoint = "https://blockstream.info/signet/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://blockstream.info/signet/api"
 
 [[endpoints]]
 id = "bitcoin.signet.mempool"
+api = "esplora"
 chain_id = "bitcoin-signet"
-provider_id = "esplora"
 endpoint = "https://mempool.space/signet/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/signet/api"
 
 [[endpoints]]
 id = "bitcoincash.blockchair.api"
+api = "blockchair"
 chain_id = "bitcoin-cash"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "verification"]
 probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
 
 [[endpoints]]
 id = "bitcoincash.blockchair.push"
+api = "blockchair"
 chain_id = "bitcoin-cash"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash/push/transaction"
-kind = "indexer"
 capabilities = ["broadcast"]
 probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
 
 [[endpoints]]
 id = "bitcoincash.blockchair.txprefix"
+api = "blockchair"
 chain_id = "bitcoin-cash"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash/dashboards/transaction/"
-kind = "indexer"
 capabilities = ["verification"]
 probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
 
 [[endpoints]]
 id = "bitcoincash.actorforth.api"
+api = "bch-rest-v2"
 chain_id = "bitcoin-cash"
-provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "verification"]
+capabilities = ["balance", "history", "utxo", "verification"]
 probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
 
 [[endpoints]]
 id = "bitcoincash.actorforth.broadcast"
+api = "bch-rest-v2"
 chain_id = "bitcoin-cash"
-provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2/rawtransactions/sendRawTransaction/"
-kind = "indexer"
 capabilities = ["broadcast"]
 probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
 
 [[endpoints]]
 id = "bitcoincash.actorforth.txprefix"
+api = "bch-rest-v2"
 chain_id = "bitcoin-cash"
-provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2/transaction/details/"
-kind = "indexer"
 capabilities = ["verification"]
 probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
 
 [[endpoints]]
 id = "bitcoincash.explorer.tx"
 chain_id = "bitcoin-cash"
-provider_id = "blockchair"
 endpoint = "https://blockchair.com/bitcoin-cash/transaction/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Blockchair"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.api"
+api = "whatsonchain"
 chain_id = "bitcoin-sv"
-provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "verification"]
+capabilities = ["balance", "history", "utxo", "verification"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.chaininfo"
+api = "whatsonchain"
 chain_id = "bitcoin-sv"
-provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
-kind = "indexer"
 capabilities = ["verification"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.broadcast"
+api = "whatsonchain"
 chain_id = "bitcoin-sv"
-provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main/tx/raw"
-kind = "indexer"
 capabilities = ["broadcast"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.txprefix"
+api = "whatsonchain"
 chain_id = "bitcoin-sv"
-provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main/tx/hash/"
-kind = "indexer"
 capabilities = ["verification"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.api"
+api = "blockchair"
 chain_id = "bitcoin-sv"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "verification"]
 probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.push"
+api = "blockchair"
 chain_id = "bitcoin-sv"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv/push/transaction"
-kind = "indexer"
 capabilities = ["broadcast"]
 probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.txprefix"
+api = "blockchair"
 chain_id = "bitcoin-sv"
-provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv/dashboards/transaction/"
-kind = "indexer"
 capabilities = ["verification"]
 probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
 
 [[endpoints]]
 id = "bitcoinsv.explorer.tx"
 chain_id = "bitcoin-sv"
-provider_id = "whatsonchain"
 endpoint = "https://whatsonchain.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In WhatsOnChain"
 
 [[endpoints]]
 id = "litecoin.litecoinspace.api"
+api = "esplora"
 chain_id = "litecoin"
-provider_id = "litecoinspace"
 endpoint = "https://litecoinspace.org/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://litecoinspace.org/api"
 
 [[endpoints]]
 id = "litecoin.blockcypher.api"
+api = "blockcypher"
 chain_id = "litecoin"
-provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/ltc/main"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/ltc/main"
 
 [[endpoints]]
 id = "litecoin.sochain.api"
+api = "sochain-v2"
 chain_id = "litecoin"
-provider_id = "sochain"
 endpoint = "https://sochain.com/api/v2"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "verification"]
+capabilities = ["balance", "history", "utxo", "verification"]
 probe_url = "https://sochain.com/api/v2"
 
 [[endpoints]]
 id = "litecoin.explorer.tx"
 chain_id = "litecoin"
-provider_id = "litecoinspace"
 endpoint = "https://litecoinspace.org/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In LitecoinSpace"
 
 [[endpoints]]
 id = "dogecoin.mainnet.blockcypher"
+api = "blockcypher"
 chain_id = "dogecoin"
-provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/doge/main"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/doge/main"
 
 [[endpoints]]
 id = "dogecoin.testnet.blockcypher"
+api = "blockcypher"
 chain_id = "dogecoin-testnet"
-provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/doge/test3"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/doge/test3"
 
 [[endpoints]]
 id = "dogecoin.explorer.tx"
 chain_id = "dogecoin"
-provider_id = "dogechain"
 endpoint = "https://dogechain.info/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Dogechain"
 
 [[endpoints]]
 id = "tron.tronscan.account"
+api = "tronscan"
 chain_id = "tron"
-provider_id = "tronscan"
 endpoint = "https://apilist.tronscanapi.com/api/accountv2"
-kind = "indexer"
-capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://apilist.tronscanapi.com/api/system/status"
 
 [[endpoints]]
 id = "tron.trongrid.accounts.io"
+api = "trongrid-v1"
 chain_id = "tron"
-provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.io/v1/accounts"
-kind = "indexer"
-capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
 
 [[endpoints]]
 id = "tron.trongrid.accounts.pro"
+api = "trongrid-v1"
 chain_id = "tron"
-provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.pro/v1/accounts"
-kind = "indexer"
-capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
 
 [[endpoints]]
 id = "tron.trongrid.accounts.network"
+api = "trongrid-v1"
 chain_id = "tron"
-provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.network/v1/accounts"
-kind = "indexer"
-capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
 
 [[endpoints]]
 id = "tron.trongrid.rpc.io"
+api = "tron-http"
 chain_id = "tron"
-provider_id = "trongrid-rpc"
 endpoint = "https://api.trongrid.io"
-kind = "rpc-node"
-capabilities = ["fee", "broadcast", "verification", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
 
 [[endpoints]]
 id = "tron.rpc.publicnode"
+api = "tron-json-rpc"
 chain_id = "tron"
-provider_id = "rpc"
 endpoint = "https://tron-rpc.publicnode.com"
 # Replaced api.trongrid.pro and .network, both unreachable.
-kind = "rpc-node"
 capabilities = ["fee", "broadcast", "verification", "token-balance"]
 
 [[endpoints]]
 id = "tron.explorer.tx"
 chain_id = "tron"
-provider_id = "tronscan"
 endpoint = "https://tronscan.org/#/transaction/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In TronScan"
 
 [[endpoints]]
 id = "solana.rpc.mainnet"
+api = "solana-json-rpc"
 chain_id = "solana"
-provider_id = "solana-mainnet-beta"
 endpoint = "https://api.mainnet-beta.solana.com"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.mainnet-beta.solana.com"
 
 [[endpoints]]
 id = "solana.rpc.publicnode"
+api = "solana-json-rpc"
 chain_id = "solana"
-provider_id = "solana-publicnode"
 endpoint = "https://solana-rpc.publicnode.com"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "fee", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://solana-rpc.publicnode.com"
 
 [[endpoints]]
 id = "xrp.history.xrpscan_api"
+api = "xrpscan"
 chain_id = "xrp"
-provider_id = "xrpscan"
 endpoint = "https://api.xrpscan.com/api/v1/account"
-kind = "indexer"
-capabilities = ["balance", "native-history"]
+capabilities = ["balance", "history"]
 
 [[endpoints]]
 id = "xrp.history.xrpscan"
+api = "xrpscan"
 chain_id = "xrp"
-provider_id = "xrpscan"
 endpoint = "https://xrpscan.com/api/v1/account"
-kind = "indexer"
-capabilities = ["native-history"]
+capabilities = ["history"]
 
 [[endpoints]]
 id = "xrp.rpc.s1"
+api = "xrpl-json-rpc"
 chain_id = "xrp"
-provider_id = "ripple-s1"
 endpoint = "https://s1.ripple.com:51234/"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://s1.ripple.com:51234/"
 
 [[endpoints]]
 id = "xrp.rpc.s2"
+api = "xrpl-json-rpc"
 chain_id = "xrp"
-provider_id = "ripple-s2"
 endpoint = "https://s2.ripple.com:51234/"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://s2.ripple.com:51234/"
 
 [[endpoints]]
 id = "xrp.rpc.cluster"
+api = "xrpl-json-rpc"
 chain_id = "xrp"
-provider_id = "xrpl-cluster"
 endpoint = "https://xrplcluster.com/"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://xrplcluster.com/"
 
 [[endpoints]]
 id = "xrp.explorer.tx"
 chain_id = "xrp"
-provider_id = "xrpscan"
 endpoint = "https://livenet.xrpl.org/transactions/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In XRP Explorer"
 
 [[endpoints]]
 id = "cardano.koios.primary"
+api = "koios"
 chain_id = "cardano"
-provider_id = "koios"
 endpoint = "https://api.koios.rest/api/v1"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://api.koios.rest/api/v1/tip"
 
 [[endpoints]]
 id = "cardano.koios.xray"
+api = "koios"
 chain_id = "cardano"
-provider_id = "koios"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://graph.xray.app/output/services/koios/mainnet/api/v1/tip"
 
 [[endpoints]]
 id = "cardano.koios.happystaking"
+api = "koios"
 chain_id = "cardano"
-provider_id = "koios"
 endpoint = "https://koios.happystaking.io:8453/api/v1"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://koios.happystaking.io:8453/api/v1/tip"
 
 [[endpoints]]
 id = "cardano.explorer.tx"
 chain_id = "cardano"
-provider_id = "cexplorer"
 endpoint = "https://cexplorer.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Cardano Explorer"
 
 [[endpoints]]
 id = "aptos.rpc.aptoslabs"
+api = "aptos-rest"
 chain_id = "aptos"
-provider_id = "aptos-mainnet-rpc"
 endpoint = "https://api.mainnet.aptoslabs.com/v1"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://api.mainnet.aptoslabs.com/v1/spec"
 
 [[endpoints]]
 id = "aptos.rpc.mainnet"
+api = "aptos-rest"
 chain_id = "aptos"
-provider_id = "aptoslabs-mainnet"
 endpoint = "https://mainnet.aptoslabs.com/v1"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://mainnet.aptoslabs.com/v1/spec"
 
 [[endpoints]]
 id = "aptos.explorer.tx"
 chain_id = "aptos"
-provider_id = "aptoslabs-explorer"
 endpoint = "https://explorer.aptoslabs.com/txn/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Aptos Explorer"
 tx_suffix = "?network=mainnet"
 
 [[endpoints]]
 id = "ton.api.v2"
+api = "toncenter-v2"
 chain_id = "ton"
-provider_id = "toncenter-v2"
 endpoint = "https://toncenter.com/api/v2"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 probe_url = "https://toncenter.com/api/v2/getMasterchainInfo"
 
 [[endpoints]]
 id = "ton.api.v3"
+api = "toncenter-v3"
 chain_id = "ton"
-provider_id = "toncenter-v3"
 endpoint = "https://toncenter.com/api/v3"
-kind = "indexer"
-capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://toncenter.com/api/v3/jetton/wallets"
 
 [[endpoints]]
 id = "ton.explorer.tx"
 chain_id = "ton"
-provider_id = "tonviewer"
 endpoint = "https://tonviewer.com/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Tonviewer"
 
 [[endpoints]]
 id = "sui.rpc.publicnode"
+api = "sui-json-rpc"
 chain_id = "sui"
-provider_id = "sui-publicnode"
 endpoint = "https://sui-rpc.publicnode.com"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://sui-rpc.publicnode.com"
 
 [[endpoints]]
 id = "sui.rpc.blockvision"
+api = "sui-json-rpc"
 chain_id = "sui"
-provider_id = "sui-blockvision"
 endpoint = "https://sui-mainnet-endpoint.blockvision.org"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://sui-mainnet-endpoint.blockvision.org"
 
 [[endpoints]]
 id = "sui.rpc.blockpi"
+api = "sui-json-rpc"
 chain_id = "sui"
-provider_id = "sui-blockpi"
 endpoint = "https://sui.blockpi.network/v1/rpc/public"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://sui.blockpi.network/v1/rpc/public"
 
 [[endpoints]]
 id = "sui.rpc.suiscan"
+api = "sui-json-rpc"
 chain_id = "sui"
-provider_id = "sui-suiscan"
 endpoint = "https://rpc-mainnet.suiscan.xyz"
-kind = "rpc-node"
-capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://rpc-mainnet.suiscan.xyz"
 
 [[endpoints]]
 id = "near.rpc.mainnet"
+api = "near-json-rpc"
 chain_id = "near"
-provider_id = "near-mainnet-rpc"
 endpoint = "https://rpc.mainnet.near.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.mainnet.near.org"
 
 [[endpoints]]
 id = "near.rpc.fastnear"
+api = "near-json-rpc"
 chain_id = "near"
-provider_id = "fastnear-rpc"
 endpoint = "https://free.rpc.fastnear.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://free.rpc.fastnear.com"
 
 [[endpoints]]
 id = "near.history.nearblocks"
+api = "nearblocks"
 chain_id = "near"
-provider_id = "nearblocks"
 endpoint = "https://api.nearblocks.io/v1"
-kind = "indexer"
-capabilities = ["native-history"]
+capabilities = ["history"]
 probe_url = "https://api.nearblocks.io/v1/stats"
 
 [[endpoints]]
 id = "near.explorer.tx"
 chain_id = "near"
-provider_id = "nearblocks"
 endpoint = "https://nearblocks.io/txns/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In NearBlocks"
 
 [[endpoints]]
 id = "polkadot.sidecar.parity"
+api = "substrate-sidecar"
 chain_id = "polkadot"
-provider_id = "sidecar"
 endpoint = "https://polkadot-public-sidecar.parity-chains.parity.io"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://polkadot-public-sidecar.parity-chains.parity.io/transaction/material"
 
 [[endpoints]]
 id = "polkadot.rpc.onfinality"
+api = "substrate-json-rpc"
 chain_id = "polkadot"
-provider_id = "rpc"
 endpoint = "https://polkadot.api.onfinality.io/public"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 probe_url = "https://polkadot.api.onfinality.io/public"
 
 [[endpoints]]
 id = "polkadot.rpc.official"
+api = "substrate-json-rpc"
 chain_id = "polkadot"
-provider_id = "rpc"
 endpoint = "https://rpc.polkadot.io"
 # The official node, which was not in this file while two of the three
 # listed for Polkadot were dead.
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "polkadot.explorer.tx"
 chain_id = "polkadot"
-provider_id = "subscan"
 endpoint = "https://polkadot.subscan.io/extrinsic/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Subscan"
 
 [[endpoints]]
 id = "stellar.horizon.primary"
+api = "horizon"
 chain_id = "stellar"
-provider_id = "horizon"
 endpoint = "https://horizon.stellar.org"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://horizon.stellar.org/fee_stats"
 
 [[endpoints]]
 id = "stellar.horizon.lobstr"
+api = "horizon"
 chain_id = "stellar"
-provider_id = "horizon"
 endpoint = "https://horizon.stellar.lobstr.co"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://horizon.stellar.lobstr.co/fee_stats"
 
 [[endpoints]]
 id = "stellar.explorer.tx"
 chain_id = "stellar"
-provider_id = "stellar-expert"
 endpoint = "https://stellar.expert/explorer/public/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Stellar Expert"
 
 [[endpoints]]
 id = "monero.backend.1"
+api = "monero-light-wallet"
 chain_id = "monero"
-provider_id = "trusted-backend"
 endpoint = "https://monerolws1.edge.app"
-kind = "backend"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.backend.2"
+api = "monero-light-wallet"
 chain_id = "monero"
-provider_id = "trusted-backend"
 endpoint = "https://monerolws2.edge.app"
-kind = "backend"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.backend.3"
+api = "monero-light-wallet"
 chain_id = "monero"
-provider_id = "trusted-backend"
 endpoint = "https://monerolws3.edge.app"
-kind = "backend"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.explorer.tx"
 chain_id = "monero"
-provider_id = "xmrchain"
 endpoint = "https://xmrchain.net/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Monero Explorer"
 
 [[endpoints]]
 id = "icp.rosetta"
+api = "icp-rosetta"
 chain_id = "internet-computer"
-provider_id = "rosetta"
 endpoint = "https://rosetta-api.internetcomputer.org"
-kind = "indexer"
-capabilities = ["balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "history", "fee", "broadcast"]
 probe_url = "https://rosetta-api.internetcomputer.org/network/list"
 
 [[endpoints]]
 id = "icp.explorer.tx"
 chain_id = "internet-computer"
-provider_id = "dashboard"
 endpoint = "https://dashboard.internetcomputer.org/transaction/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In ICP Dashboard"
 
 [[endpoints]]
 id = "ethereum.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "ethereum"
-provider_id = "rpc"
 endpoint = "https://ethereum-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.rpc.cloudflare"
+api = "evm-json-rpc"
 chain_id = "ethereum"
-provider_id = "rpc"
 endpoint = "https://cloudflare-eth.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "ethereum"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/eth"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.explorer.ethplorer"
+api = "ethplorer"
 chain_id = "ethereum"
-provider_id = "ethplorer"
 endpoint = "https://api.ethplorer.io"
 # The one endpoint registered alongside an RPC list rather than instead
 # of it — see supplements_rpc_list.
-kind = "indexer"
-capabilities = ["native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.ethplorer.io/getAddressInfo/0x0000000000000000000000000000000000000000?apiKey=freekey"
 supplements_rpc_list = true
 
 [[endpoints]]
 id = "ethereum.explorer.blockscout"
+api = "blockscout"
 chain_id = "ethereum"
-provider_id = "blockscout"
 endpoint = "https://eth.blockscout.com"
 # Keyless. Etherscan-V1 request shape; 3/3 in the 2026-09 sweep.
-kind = "indexer"
-capabilities = ["native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["history", "token-balance", "token-discovery", "token-history"]
 
 [[endpoints]]
 id = "ethereum.explorer.tx"
 chain_id = "ethereum"
-provider_id = "etherscan-web"
 endpoint = "https://etherscan.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Etherscan"
 
 [[endpoints]]
 id = "ethereum.sepolia.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "ethereum-sepolia"
-provider_id = "rpc"
 endpoint = "https://ethereum-sepolia-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.hoodi.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "ethereum-hoodi"
-provider_id = "rpc"
 endpoint = "https://ethereum-hoodi-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereumclassic.rpc.etcdesktop"
+api = "evm-json-rpc"
 chain_id = "ethereum-classic"
-provider_id = "rpc"
 endpoint = "https://etc.etcdesktop.com"
 # Replaced geth-at.etc-network.info, which stopped answering. Returns
 # chain id 0x3d.
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "ethereumclassic.explorer.blockscout"
+api = "blockscout"
 chain_id = "ethereum-classic"
-provider_id = "blockscout"
 endpoint = "https://blockscout.com/etc/mainnet"
-kind = "indexer"
-capabilities = ["native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["history", "token-balance", "token-discovery", "token-history"]
 
 [[endpoints]]
 id = "ethereumclassic.explorer.tx"
 chain_id = "ethereum-classic"
-provider_id = "blockscout-web"
 endpoint = "https://blockscout.com/etc/mainnet/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Blockscout"
 
 [[endpoints]]
 id = "arbitrum.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "arbitrum"
-provider_id = "rpc"
 endpoint = "https://arbitrum-one-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "arbitrum.rpc.arb1"
+api = "evm-json-rpc"
 chain_id = "arbitrum"
-provider_id = "rpc"
 endpoint = "https://arb1.arbitrum.io/rpc"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "arbitrum.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "arbitrum"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/arb"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "arbitrum.explorer.tx"
 chain_id = "arbitrum"
-provider_id = "arbiscan"
 endpoint = "https://arbiscan.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Arbiscan"
 
 [[endpoints]]
 id = "optimism.rpc.mainnet"
+api = "evm-json-rpc"
 chain_id = "optimism"
-provider_id = "rpc"
 endpoint = "https://mainnet.optimism.io"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "optimism.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "optimism"
-provider_id = "rpc"
 endpoint = "https://optimism-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "optimism.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "optimism"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/op"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "optimism.explorer.tx"
 chain_id = "optimism"
-provider_id = "optimistic-etherscan"
 endpoint = "https://optimistic.etherscan.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Optimism Etherscan"
 
 [[endpoints]]
 id = "bnb.rpc.primary"
+api = "evm-json-rpc"
 chain_id = "bnb"
-provider_id = "rpc"
 endpoint = "https://bsc-dataseed.bnbchain.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.rpc.binance"
+api = "evm-json-rpc"
 chain_id = "bnb"
-provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.binance.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.rpc.defibit"
+api = "evm-json-rpc"
 chain_id = "bnb"
-provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.defibit.io"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.rpc.ninicoin"
+api = "evm-json-rpc"
 chain_id = "bnb"
-provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.ninicoin.io"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.explorer.tx"
 chain_id = "bnb"
-provider_id = "bscscan-web"
 endpoint = "https://bscscan.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In BscScan"
 
 [[endpoints]]
 id = "avalanche.rpc.primary"
+api = "evm-json-rpc"
 chain_id = "avalanche"
-provider_id = "rpc"
 endpoint = "https://api.avax.network/ext/bc/C/rpc"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "avalanche.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "avalanche"
-provider_id = "rpc"
 endpoint = "https://avalanche-c-chain-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "avalanche.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "avalanche"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/avax/c"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "avalanche.explorer.tx"
 chain_id = "avalanche"
-provider_id = "snowtrace-web"
 endpoint = "https://snowtrace.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Snowtrace"
 
 [[endpoints]]
 id = "hyperliquid.rpc.primary"
+api = "evm-json-rpc"
 chain_id = "hyperliquid"
-provider_id = "rpc"
 endpoint = "https://rpc.hyperliquid.xyz/evm"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "hyperliquid.rpc.onfinality"
+api = "evm-json-rpc"
 chain_id = "hyperliquid"
-provider_id = "rpc"
 endpoint = "https://hyperliquid.api.onfinality.io/evm/public"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "hyperliquid.explorer.web"
 chain_id = "hyperliquid"
-provider_id = "hyperevmscan"
 endpoint = "https://hyperevmscan.io"
-kind = "indexer"
-capabilities = ["native-history"]
+capabilities = []
 
 [[endpoints]]
 id = "hyperliquid.explorer.tx"
 chain_id = "hyperliquid"
-provider_id = "hyperliquid-web"
 endpoint = "https://app.hyperliquid.xyz/explorer/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Hyperliquid Explorer"
 
 [[endpoints]]
 id = "base.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "base"
-provider_id = "rpc"
 endpoint = "https://base-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "base.rpc.mainnet"
+api = "evm-json-rpc"
 chain_id = "base"
-provider_id = "rpc"
 endpoint = "https://mainnet.base.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "base.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "base"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/base"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "base.explorer.tx"
 chain_id = "base"
-provider_id = "basescan"
 endpoint = "https://basescan.org/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In BaseScan"
 
 [[endpoints]]
 id = "linea.rpc.linea-rpc"
+api = "evm-json-rpc"
 chain_id = "linea"
-provider_id = "rpc"
 endpoint = "https://linea-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "linea.rpc.rpc"
+api = "evm-json-rpc"
 chain_id = "linea"
-provider_id = "rpc"
 endpoint = "https://rpc.linea.build"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "linea.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "linea"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/linea"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "linea.explorer.tx"
 chain_id = "linea"
-provider_id = "lineascan"
 endpoint = "https://lineascan.build/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In LineaScan"
 
 [[endpoints]]
 id = "scroll.rpc.scroll-rpc"
+api = "evm-json-rpc"
 chain_id = "scroll"
-provider_id = "rpc"
 endpoint = "https://scroll-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "scroll.rpc.rpc"
+api = "evm-json-rpc"
 chain_id = "scroll"
-provider_id = "rpc"
 endpoint = "https://rpc.scroll.io"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "scroll.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "scroll"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/scroll"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "scroll.explorer.tx"
 chain_id = "scroll"
-provider_id = "scrollscan"
 endpoint = "https://scrollscan.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In ScrollScan"
 
 [[endpoints]]
 id = "blast.rpc.blast-rpc"
+api = "evm-json-rpc"
 chain_id = "blast"
-provider_id = "rpc"
 endpoint = "https://blast-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "blast.rpc.rpc"
+api = "evm-json-rpc"
 chain_id = "blast"
-provider_id = "rpc"
 endpoint = "https://rpc.blast.io"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "blast.explorer.tx"
 chain_id = "blast"
-provider_id = "blastscan"
 endpoint = "https://blastscan.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In BlastScan"
 
 [[endpoints]]
 id = "mantle.rpc.mantle-rpc"
+api = "evm-json-rpc"
 chain_id = "mantle"
-provider_id = "rpc"
 endpoint = "https://mantle-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "mantle.rpc.rpc"
+api = "evm-json-rpc"
 chain_id = "mantle"
-provider_id = "rpc"
 endpoint = "https://rpc.mantle.xyz"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "mantle.explorer.tx"
 chain_id = "mantle"
-provider_id = "mantlescan"
 endpoint = "https://mantlescan.xyz/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In MantleScan"
 
 [[endpoints]]
 id = "polygon.rpc.publicnode"
+api = "evm-json-rpc"
 chain_id = "polygon"
-provider_id = "rpc"
 endpoint = "https://polygon-bor-rpc.publicnode.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "polygon.rpc.1rpc"
+api = "evm-json-rpc"
 chain_id = "polygon"
-provider_id = "rpc"
 endpoint = "https://1rpc.io/matic"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "polygon.explorer.tx"
 chain_id = "polygon"
-provider_id = "polygonscan"
 endpoint = "https://polygonscan.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In PolygonScan"
 
 [[endpoints]]
 id = "zcash.mainnet.trezor_blockbook"
+api = "blockbook"
 chain_id = "zcash"
-provider_id = "trezor-blockbook"
 endpoint = "https://zec1.trezor.io"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://zec1.trezor.io/api/v2"
 
 [[endpoints]]
 id = "zcash.explorer.tx"
 chain_id = "zcash"
-provider_id = "zcashblockexplorer"
 endpoint = "https://zcashblockexplorer.com/transactions/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Zcash Block Explorer"
 
 [[endpoints]]
 id = "bitcoinGold.mainnet.trezor_blockbook"
+api = "blockbook"
 chain_id = "bitcoin-gold"
-provider_id = "trezor-blockbook"
 endpoint = "https://btg1.trezor.io"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://btg1.trezor.io/api/v2"
 
 [[endpoints]]
 id = "bitcoinGold.explorer.tx"
 chain_id = "bitcoin-gold"
-provider_id = "btgexplorer"
 endpoint = "https://explorer.bitcoingold.org/insight/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In BTG Explorer"
 
 [[endpoints]]
 id = "decred.mainnet.dcrdata"
+api = "insight"
 chain_id = "decred"
-provider_id = "dcrdata"
 endpoint = "https://dcrdata.decred.org/insight/api"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://dcrdata.decred.org/insight/api/status"
 
 [[endpoints]]
 id = "decred.explorer.tx"
 chain_id = "decred"
-provider_id = "dcrdata"
 endpoint = "https://dcrdata.decred.org/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In dcrdata"
 
 [[endpoints]]
 id = "kaspa.mainnet.kaspaorg"
+api = "kaspa-rest"
 chain_id = "kaspa"
-provider_id = "kaspaorg"
 endpoint = "https://api.kaspa.org"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.kaspa.org/info/network"
 
 [[endpoints]]
 id = "kaspa.explorer.tx"
 chain_id = "kaspa"
-provider_id = "explorer-kaspaorg"
 endpoint = "https://explorer.kaspa.org/txs/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Kaspa Explorer"
 
 [[endpoints]]
 id = "sei.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "sei"
-provider_id = "rpc"
 endpoint = "https://evm-rpc.sei-apis.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://evm-rpc.sei-apis.com"
 
 [[endpoints]]
 id = "sei.explorer.tx"
 chain_id = "sei"
-provider_id = "seitrace"
 endpoint = "https://seitrace.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Seitrace"
 
 [[endpoints]]
 id = "celo.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "celo"
-provider_id = "rpc"
 endpoint = "https://forno.celo.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://forno.celo.org"
 
 [[endpoints]]
 id = "celo.explorer.tx"
 chain_id = "celo"
-provider_id = "celoscan"
 endpoint = "https://celoscan.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In CeloScan"
 
 [[endpoints]]
 id = "cronos.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "cronos"
-provider_id = "rpc"
 endpoint = "https://evm.cronos.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://evm.cronos.org"
 
 [[endpoints]]
 id = "cronos.explorer.tx"
 chain_id = "cronos"
-provider_id = "cronoscan"
 endpoint = "https://cronoscan.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In CronoScan"
 
 [[endpoints]]
 id = "opBNB.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "opbnb"
-provider_id = "rpc"
 endpoint = "https://opbnb-mainnet-rpc.bnbchain.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://opbnb-mainnet-rpc.bnbchain.org"
 
 [[endpoints]]
 id = "opBNB.explorer.tx"
 chain_id = "opbnb"
-provider_id = "opbnbscan"
 endpoint = "https://opbnbscan.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In opBNBScan"
 
 [[endpoints]]
 id = "zkSyncEra.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "zksync-era"
-provider_id = "rpc"
 endpoint = "https://mainnet.era.zksync.io"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://mainnet.era.zksync.io"
 
 [[endpoints]]
 id = "zkSyncEra.explorer.tx"
 chain_id = "zksync-era"
-provider_id = "zksyncscan"
 endpoint = "https://explorer.zksync.io/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In zkSync Explorer"
 
 [[endpoints]]
 id = "sonic.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "sonic"
-provider_id = "rpc"
 endpoint = "https://rpc.soniclabs.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.soniclabs.com"
 
 [[endpoints]]
 id = "sonic.explorer.tx"
 chain_id = "sonic"
-provider_id = "sonicscan"
 endpoint = "https://sonicscan.org/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In SonicScan"
 
 [[endpoints]]
 id = "berachain.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "berachain"
-provider_id = "rpc"
 endpoint = "https://rpc.berachain.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.berachain.com"
 
 [[endpoints]]
 id = "berachain.explorer.tx"
 chain_id = "berachain"
-provider_id = "berascan"
 endpoint = "https://berascan.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In BeraScan"
 
 [[endpoints]]
 id = "unichain.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "unichain"
-provider_id = "rpc"
 endpoint = "https://mainnet.unichain.org"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://mainnet.unichain.org"
 
 [[endpoints]]
 id = "unichain.explorer.tx"
 chain_id = "unichain"
-provider_id = "uniscan"
 endpoint = "https://uniscan.xyz/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In UniScan"
 
 [[endpoints]]
 id = "ink.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "ink"
-provider_id = "rpc"
 endpoint = "https://rpc-gel.inkonchain.com"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc-gel.inkonchain.com"
 
 [[endpoints]]
 id = "ink.explorer.tx"
 chain_id = "ink"
-provider_id = "inkscan"
 endpoint = "https://explorer.inkonchain.com/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Ink Explorer"
 
 [[endpoints]]
 id = "dash.mainnet.trezor_blockbook"
+api = "blockbook"
 chain_id = "dash"
-provider_id = "trezor-blockbook"
 endpoint = "https://dash1.trezor.io"
-kind = "indexer"
-capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://dash1.trezor.io/api/v2"
 
 [[endpoints]]
 id = "dash.explorer.tx"
 chain_id = "dash"
-provider_id = "insight"
 endpoint = "https://insight.dash.org/insight/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Dash Insight"
 
 [[endpoints]]
 id = "xLayer.mainnet.evm"
+api = "evm-json-rpc"
 chain_id = "x-layer"
-provider_id = "rpc"
 endpoint = "https://rpc.xlayer.tech"
-kind = "rpc-node"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.xlayer.tech"
 
 [[endpoints]]
 id = "xLayer.explorer.tx"
 chain_id = "x-layer"
-provider_id = "okxscan"
 endpoint = "https://www.okx.com/web3/explorer/xlayer/tx/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In OKX X Layer Explorer"
 
 [[endpoints]]
 id = "bittensor.mainnet.opentensor"
+api = "substrate-json-rpc"
 chain_id = "bittensor"
-provider_id = "opentensor"
 endpoint = "https://entrypoint-finney.opentensor.ai"
-kind = "indexer"
 capabilities = ["balance", "fee", "broadcast"]
 probe_url = "https://entrypoint-finney.opentensor.ai"
 
 [[endpoints]]
 id = "bittensor.mainnet.taostats"
+api = "taostats"
 chain_id = "bittensor"
-provider_id = "taostats"
 endpoint = "https://api.taostats.io"
-kind = "indexer"
-capabilities = ["native-history", "verification"]
+capabilities = ["history", "verification"]
 probe_url = "https://api.taostats.io"
 
 [[endpoints]]
 id = "bittensor.explorer.tx"
 chain_id = "bittensor"
-provider_id = "taostats"
 endpoint = "https://taostats.io/extrinsic/"
-kind = "web-link"
 capabilities = []
 explorer_label = "Open In Taostats"

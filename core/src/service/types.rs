@@ -63,17 +63,37 @@ pub struct NativeBalanceSummary {
 
 /// What a send destination looks like, for the composer's recipient warning.
 ///
-/// Two booleans rather than a sentence. Swift held four chain arms that each
-/// built their own wording — three different templates for one verdict, two of
-/// them hardcoded English that never reached the locale files. The verdict is
-/// the chain question and belongs here; which words carry it is the front
-/// end's, because the strings live in its bundle.
+/// Core classifies activity; front ends supply localized wording.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum SendDestinationActivity {
+    Unused,
+    EmptyPreviouslyUsed,
+    Funded,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SendDestinationRisk {
-    /// The destination holds none of the asset being sent.
     pub balance_is_zero: bool,
-    /// The destination has been used on this chain before.
     pub has_history: bool,
+    pub activity: SendDestinationActivity,
+}
+
+impl SendDestinationRisk {
+    pub(crate) fn from_probe(balance_is_zero: bool, has_history: bool) -> Self {
+        let activity = if !balance_is_zero {
+            SendDestinationActivity::Funded
+        } else if has_history {
+            SendDestinationActivity::EmptyPreviouslyUsed
+        } else {
+            SendDestinationActivity::Unused
+        };
+        Self {
+            balance_is_zero,
+            has_history,
+            activity,
+        }
+    }
 }
 
 /// The address a send is actually going to, from what the user typed.
@@ -104,11 +124,11 @@ pub struct WalletSecretState {
 /// One endpoint and whether it answered.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EndpointProbe {
+    pub api: Option<crate::EndpointApi>,
     pub chain_id: String,
     pub chain_name: String,
     pub endpoint: String,
-    /// What the endpoint is: `rpc-node`, `indexer`, `web-link` or `backend`.
-    pub kind: String,
+    /// Operations the endpoint declares.
     pub capabilities: Vec<String>,
     /// False when nothing knows how to probe this endpoint. Not a pass.
     pub checked: bool,
@@ -180,3 +200,22 @@ pub struct ChainEndpoints {
 }
 
 // Per-chain send parameter records live in `super::send_params`.
+
+#[cfg(test)]
+mod destination_activity_tests {
+    use super::*;
+    #[test]
+    fn activity_distinguishes_an_unused_address_from_a_previously_emptied_one() {
+        for (balance, history, expected) in [
+            (true, false, SendDestinationActivity::Unused),
+            (true, true, SendDestinationActivity::EmptyPreviouslyUsed),
+            (false, false, SendDestinationActivity::Funded),
+            (false, true, SendDestinationActivity::Funded),
+        ] {
+            assert_eq!(
+                SendDestinationRisk::from_probe(balance, history).activity,
+                expected
+            );
+        }
+    }
+}

@@ -25,19 +25,15 @@
 
 pub mod aptos;
 pub mod bitcoin;
-pub mod bitcoin_cash;
-pub mod bitcoin_gold;
 pub mod bitcoin_sv;
 pub mod bittensor;
 pub mod blockbook;
 pub mod cardano;
-pub mod dash;
 pub mod decred;
 pub mod dogecoin;
 pub mod evm;
 pub mod icp;
 pub mod kaspa;
-pub mod litecoin;
 pub mod monero;
 pub mod near;
 pub mod polkadot;
@@ -47,7 +43,6 @@ pub mod sui;
 pub mod ton;
 pub mod tron;
 pub mod xrp;
-pub mod zcash;
 
 /// Encoding of the signed payload that a `*SendResult` carries. Lets
 /// generic broadcast / rebroadcast code know how to hand the payload back

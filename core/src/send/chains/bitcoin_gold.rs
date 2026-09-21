@@ -8,14 +8,14 @@
 
 use super::bitcoin_wire::{dsha256, varint};
 use crate::derivation::chains::bitcoin_gold::{btg_p2pkh_script, decode_btg_address};
-use crate::fetch::chains::bitcoin_gold::{BitcoinGoldClient, BtgSendResult};
+use crate::fetch::chains::blockbook::{BlockbookClient, BlockbookSendResult};
 
 const SIGHASH_ALL_FORKID_BYTE: u8 = 0x41;
 /// Preimage hash-type field: `(BTG fork id 79 << 8) | SIGHASH_ALL_FORKID`.
 const SIGHASH_PREIMAGE_HASH_TYPE: u32 = 0x0000_4F41;
 
-impl BitcoinGoldClient {
-    pub async fn sign_and_broadcast(
+impl BlockbookClient {
+    pub async fn sign_bitcoin_gold_and_broadcast(
         &self,
         from_address: &str,
         to_address: &str,
@@ -23,7 +23,8 @@ impl BitcoinGoldClient {
         fee_sat: u64,
         private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
-    ) -> Result<BtgSendResult, String> {
+    ) -> Result<BlockbookSendResult, String> {
+        self.require_chain(crate::registry::Chain::BitcoinGold)?;
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_btg_address(from_address)?;
         let from_script = btg_p2pkh_script(&from_hash);

@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::http::{with_fallback, HttpClient, RetryProfile};
+use crate::http::HttpClient;
 
 // ── Public result types
 
@@ -98,29 +98,17 @@ impl SolanaClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = std::sync::Arc::new(rpc(method, params));
-        with_fallback(&self.endpoints, |url| {
-            let client = self.client.clone();
-            let body = std::sync::Arc::clone(&body);
-            async move {
-                let resp: Value = client
-                    .post_json(&url, &*body, RetryProfile::ChainRead)
-                    .await?;
-                if let Some(err) = resp.get("error") {
-                    return Err(format!("rpc error: {err}"));
-                }
-                resp.get("result")
-                    .cloned()
-                    .ok_or_else(|| "missing result".to_string())
-            }
-        })
+        crate::fetch::json_rpc::call(
+            crate::EndpointApi::SolanaJsonRpc,
+            &self.client,
+            &self.endpoints,
+            method,
+            params,
+        )
         .await
     }
 }
 
-fn rpc(method: &str, params: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params })
-}
 // Solana fetch paths: native balance, SPL balances, recent blockhash,
 // unified history, account existence.
 

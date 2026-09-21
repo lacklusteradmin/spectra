@@ -351,21 +351,50 @@ impl Chain {
             && (lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1"))
     }
 
-    /// Which endpoint slot this chain's supplemental explorer endpoints are
-    /// registered under.
-    ///
-    /// For most chains they supplement the RPC list and go in `Explorer`. For
-    /// Polkadot and Internet Computer they are a working API — Subscan and the
-    /// ICP dashboard, which the send path queries — so they go in `Secondary`,
-    /// where `send.rs` looks for them.
-    ///
-    /// The front end held this as a fourteen-name table beside a two-name one.
-    /// Twelve of the fourteen named chains have no supplement at all, and
-    /// Hyperliquid, which has one, was not in either.
-    pub(crate) fn secondary_endpoint_ids(self) -> &'static [&'static str] {
-        match self {
-            Self::Ton => &["ton.api.v3"],
-            _ => &[],
+    /// Wire contract implemented by the client consuming this service slot.
+    /// Catalog URLs with a different API must never enter its fallback list.
+    pub fn endpoint_api(self, slot: EndpointSlot) -> Option<crate::EndpointApi> {
+        use crate::EndpointApi as Api;
+        let chain = self.mainnet_counterpart();
+        match slot {
+            EndpointSlot::Primary => Some(match chain {
+                c if c.is_evm() => Api::EvmJsonRpc,
+                Chain::Bitcoin => Api::Esplora,
+                Chain::BitcoinCash
+                | Chain::Litecoin
+                | Chain::Zcash
+                | Chain::BitcoinGold
+                | Chain::Dash => Api::Blockbook,
+                Chain::BitcoinSV => Api::Whatsonchain,
+                Chain::Dogecoin => Api::Blockcypher,
+                Chain::Solana => Api::SolanaJsonRpc,
+                Chain::Tron => Api::TronHttp,
+                Chain::Stellar => Api::Horizon,
+                Chain::Xrp => Api::XrplJsonRpc,
+                Chain::Cardano => Api::Koios,
+                Chain::Polkadot | Chain::Bittensor => Api::SubstrateJsonRpc,
+                Chain::Sui => Api::SuiJsonRpc,
+                Chain::Aptos => Api::AptosRest,
+                Chain::Ton => Api::ToncenterV2,
+                Chain::Near => Api::NearJsonRpc,
+                Chain::Icp => Api::IcpRosetta,
+                Chain::Monero => Api::MoneroWalletRpc,
+                Chain::Decred => Api::Insight,
+                Chain::Kaspa => Api::KaspaRest,
+                _ => return None,
+            }),
+            EndpointSlot::Secondary => match chain {
+                Chain::Ton => Some(Api::ToncenterV3),
+                Chain::Polkadot => Some(Api::Subscan),
+                Chain::Bittensor => Some(Api::Taostats),
+                _ => None,
+            },
+            EndpointSlot::Explorer => match chain {
+                Chain::Ethereum => Some(Api::Ethplorer),
+                Chain::Near => Some(Api::Nearblocks),
+                Chain::Xrp => Some(Api::Xrpscan),
+                _ => None,
+            },
         }
     }
 
@@ -782,19 +811,8 @@ impl Chain {
     /// Swift list, and forgetting the second probes a JSON-RPC node with a
     /// GET — which many of them answer 405, reported as unreachable.
     pub fn rpc_health_method(self) -> Option<&'static str> {
-        if self.is_evm() {
-            return Some("eth_chainId");
-        }
-        match self.mainnet_counterpart() {
-            Chain::Near => Some("status"),
-            Chain::Polkadot => Some("chain_getHeader"),
-            // Both speak JSON-RPC and both had a dead endpoint in the catalog
-            // that nothing could see, because a chain with no method here is
-            // never probed. Verified against the live endpoints.
-            Chain::Solana => Some("getHealth"),
-            Chain::Sui => Some("sui_getLatestCheckpointSequenceNumber"),
-            _ => None,
-        }
+        self.endpoint_api(EndpointSlot::Primary)?
+            .rpc_health_method()
     }
 
     /// Whether this chain's native send needs nothing beyond a destination, an

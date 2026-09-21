@@ -5,12 +5,12 @@
 
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
 use crate::derivation::chains::dash::{dash_p2pkh_script, decode_dash_address};
-use crate::fetch::chains::dash::{DashClient, DashSendResult};
+use crate::fetch::chains::blockbook::{BlockbookClient, BlockbookSendResult};
 
 const SIGHASH_ALL: u32 = 1;
 
-impl DashClient {
-    pub async fn sign_and_broadcast(
+impl BlockbookClient {
+    pub async fn sign_dash_and_broadcast(
         &self,
         from_address: &str,
         to_address: &str,
@@ -18,7 +18,8 @@ impl DashClient {
         fee_sat: u64,
         private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
-    ) -> Result<DashSendResult, String> {
+    ) -> Result<BlockbookSendResult, String> {
+        self.require_chain(crate::registry::Chain::Dash)?;
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_dash_address(from_address)?;
         let from_script = dash_p2pkh_script(&from_hash);

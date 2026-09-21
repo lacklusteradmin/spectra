@@ -57,9 +57,9 @@ impl WalletService {
             SendParams::Utxo(p) => sign_and_broadcast_shared_utxo(chain, p, endpoints).await,
             SendParams::Zcash(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
-                let client = ZcashClient::new(endpoints);
+                let client = BlockbookClient::new(endpoints, chain);
                 let r = client
-                    .sign_and_broadcast(
+                    .sign_zcash_and_broadcast(
                         &p.from,
                         &p.to,
                         p.amount_sat,
@@ -399,34 +399,34 @@ pub(super) async fn sign_and_broadcast_shared_utxo(
             ))
         }
         Chain::Litecoin => {
-            let client = LitecoinClient::new(endpoints);
+            let client = BlockbookClient::new(endpoints, chain);
             Ok(ProtocolSendResult::Blockbook(
                 client
-                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .sign_litecoin_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
             ))
         }
         Chain::BitcoinCash => {
-            let client = BitcoinCashClient::new(endpoints);
+            let client = BlockbookClient::new(endpoints, chain);
             Ok(ProtocolSendResult::Blockbook(
                 client
-                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .sign_bitcoin_cash_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
             ))
         }
         Chain::BitcoinGold => {
-            let client = BitcoinGoldClient::new(endpoints);
+            let client = BlockbookClient::new(endpoints, chain);
             Ok(ProtocolSendResult::Blockbook(
                 client
-                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .sign_bitcoin_gold_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
             ))
         }
         Chain::Dash => {
-            let client = DashClient::new(endpoints);
+            let client = BlockbookClient::new(endpoints, chain);
             Ok(ProtocolSendResult::Blockbook(
                 client
-                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .sign_dash_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
             ))
         }

@@ -218,7 +218,7 @@ pub enum SendPreview {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct SendPreviewDetailsCore {
     pub spendableBalance: Option<f64>,
     pub feeRateDescription: Option<String>,
@@ -228,8 +228,7 @@ pub struct SendPreviewDetailsCore {
     pub maxSendable: Option<f64>,
 }
 
-#[uniffi::export]
-pub fn compute_send_preview_details(
+pub(crate) fn compute_send_preview_details(
     preview: Option<SendPreview>,
     coin_amount: f64,
 ) -> Option<SendPreviewDetailsCore> {
@@ -1397,8 +1396,7 @@ mod validating_and_normalising_cannot_disagree {
 
 /// Only a quote for the selected asset can populate its amount field. Generic
 /// simple-chain previews quote the native gas asset even for token holdings.
-#[uniffi::export]
-pub fn quoted_send_amount(
+pub(crate) fn quoted_send_amount(
     preview: Option<SendPreview>,
     chain_name: String,
     is_native: bool,

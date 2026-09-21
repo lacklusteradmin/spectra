@@ -226,7 +226,11 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
         )
         .await
         .unwrap();
-    let Some(crate::send::flow::SendPreview::Solana { preview }) = result else {
+    let Some(crate::send::flow::SendPreview::Solana { preview }) = result.map(|quote| {
+        assert!(quote.shortcuts.contains_key(&100));
+        assert_eq!(quote.chain_id, "solana");
+        quote.preview
+    }) else {
         panic!("wrong preview")
     };
     assert_eq!(preview.maxSendable, 1.999995);
@@ -244,4 +248,55 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
         .await
         .is_err());
     assert_eq!(server.received_requests().await.unwrap().len(), count);
+}
+
+#[tokio::test]
+async fn one_blockbook_adapter_reads_each_network_and_keeps_bch_address_rules() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/address/holder"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"balance":"123456789"})))
+        .expect(5)
+        .mount(&server)
+        .await;
+    for chain in [
+        Chain::Litecoin,
+        Chain::BitcoinCashTestnet,
+        Chain::BitcoinGold,
+        Chain::Dash,
+        Chain::Zcash,
+    ] {
+        let address = if chain.mainnet_counterpart() == Chain::BitcoinCash {
+            "bitcoincash:holder"
+        } else {
+            "holder"
+        };
+        let balance = service(chain.str_id(), &server)
+            .fetch_native_balance_summary(chain.str_id().into(), address.into())
+            .await
+            .unwrap();
+        assert_eq!(balance.smallest_unit, "123456789");
+        assert_eq!(balance.amount_display, "1.23456789");
+    }
+    let client = BlockbookClient::new(Arc::new(vec![server.uri()]), Chain::Dash);
+    assert!(client
+        .sign_litecoin_and_broadcast("from", "to", 1, 1, &[], None)
+        .await
+        .unwrap_err()
+        .contains("network"));
+}
+
+#[tokio::test]
+async fn balance_summary_keeps_sub_micro_native_amounts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_partial_json(json!({"method":"eth_getBalance"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"result":"0x1"})))
+        .mount(&server)
+        .await;
+    let balance = service("ethereum", &server)
+        .fetch_native_balance_summary("ethereum".into(), "holder".into())
+        .await
+        .unwrap();
+    assert_eq!(balance.amount_display, "0.000000000000000001");
 }

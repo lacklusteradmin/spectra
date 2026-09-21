@@ -2,17 +2,9 @@
 //!
 //! ## Lifecycle
 //!
-//! Swift calls `tor_start(data_dir)` → returns immediately. A background
-//! tokio task bootstraps the Arti `TorClient` (10-30 s cold, ~3 s warm),
-//! then starts a SOCKS5 listener on `127.0.0.1:19050` and hot-swaps the
-//! shared reqwest client so all subsequent HTTP calls route through Tor.
-//!
-//! Swift polls `tor_status()` to drive the UI:
-//!   Stopped → Bootstrapping { percent } → Ready
-//!   any step → Error { message }
-//!
-//! `tor_stop()` tears down the proxy, resets the reqwest client to direct,
-//! and drops the Arti client.
+//! WalletService reconciles committed settings after runtime registration.
+//! Front ends provide a cache directory, render status and request reconnects.
+//! Superseded bootstrap completions cannot reinstall a stopped proxy.
 //!
 //! ## Stream isolation
 //!
@@ -34,7 +26,7 @@ use tor_rtcompat::PreferredRuntime;
 // ── Public FFI types ─────────────────────────────────────────────────────────
 
 /// Tor lifecycle status surfaced to Swift via UniFFI.
-#[derive(Debug, Clone, uniffi::Enum)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
 pub enum TorStatus {
     /// Tor is not running; HTTP goes direct.
     Stopped,
@@ -50,6 +42,7 @@ enum TorInternalState {
     Stopped,
     Bootstrapping {
         percent: Arc<AtomicU8>,
+        task: tokio::task::JoinHandle<()>,
     },
     Running {
         // Keep the client alive so the Tor circuits stay open.
@@ -98,6 +91,20 @@ pub(crate) fn kill_switch_engaged() -> bool {
         && kill_switch_verdict(true, TOR_WANTED.load(Ordering::Relaxed), &tor_status())
 }
 
+/// Keep routing policy and the HTTP client snapshot in the same critical
+/// section as transport switches. Otherwise a request can observe Ready,
+/// then clone the direct client installed by a concurrent stop.
+pub(crate) fn with_routing_guard<T>(read: impl FnOnce(bool) -> T) -> T {
+    let state = TOR_STATE.lock();
+    let blocked = KILL_SWITCH.load(Ordering::Relaxed)
+        && TOR_WANTED.load(Ordering::Relaxed)
+        && !matches!(
+            *state,
+            TorInternalState::Running { .. } | TorInternalState::CustomProxy
+        );
+    read(blocked)
+}
+
 /// The rule itself, over values rather than globals, so it can be asserted
 /// without engaging a process-wide switch other tests share.
 pub(crate) fn kill_switch_verdict(kill_switch: bool, tor_wanted: bool, status: &TorStatus) -> bool {
@@ -106,53 +113,58 @@ pub(crate) fn kill_switch_verdict(kill_switch: bool, tor_wanted: bool, status: &
 
 // ── FFI surface ──────────────────────────────────────────────────────────────
 
-/// Start Tor in the background. Returns immediately; poll `tor_status()` for
-/// progress. `data_dir` must be the app's writable cache directory so Arti
-/// can persist the Tor consensus across restarts (warm bootstrap ~3 s vs ~30 s
-/// cold). Calling `tor_start` when Tor is already running or bootstrapping is
-/// a no-op.
-#[uniffi::export(async_runtime = "tokio")]
-pub async fn tor_start(data_dir: String) -> Result<(), crate::SpectraBridgeError> {
-    {
-        let guard = TOR_STATE.lock();
-        match *guard {
-            TorInternalState::Running { .. } | TorInternalState::Bootstrapping { .. } => {
-                return Ok(());
-            }
-            _ => {}
+#[derive(Clone, PartialEq, Eq)]
+enum RuntimeConfiguration {
+    Off,
+    Embedded(String),
+    Proxy(String),
+}
+static CONFIGURATION: LazyLock<Mutex<Option<RuntimeConfiguration>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+/// Reconcile policy and transport atomically with respect to other reconciles.
+/// The service calls this only with committed settings, under its state writer.
+pub(crate) fn reconcile(
+    settings: &crate::store::state::AppSettings,
+    data_dir: &str,
+    restart: bool,
+) {
+    let desired = if !settings.tor_enabled {
+        RuntimeConfiguration::Off
+    } else if settings.tor_use_custom_proxy {
+        RuntimeConfiguration::Proxy(force_remote_dns(&settings.tor_custom_proxy_address))
+    } else {
+        RuntimeConfiguration::Embedded(data_dir.into())
+    };
+    let mut configuration = CONFIGURATION.lock();
+    apply_policy(settings.tor_enabled, settings.tor_kill_switch);
+    if !restart && configuration.as_ref() == Some(&desired) {
+        return;
+    }
+    let mut state = TOR_STATE.lock();
+    stop_runtime(&mut state);
+    match &desired {
+        RuntimeConfiguration::Off => {}
+        RuntimeConfiguration::Proxy(url) => {
+            crate::fetch::http::set_socks5_proxy(Some(url));
+            *state = TorInternalState::CustomProxy;
+        }
+        RuntimeConfiguration::Embedded(dir) => {
+            let percent = Arc::new(AtomicU8::new(0));
+            let task = tokio::spawn(bootstrap_tor(dir.clone(), percent.clone()));
+            *state = TorInternalState::Bootstrapping { percent, task };
         }
     }
-
-    let percent = Arc::new(AtomicU8::new(0));
-    {
-        let mut guard = TOR_STATE.lock();
-        *guard = TorInternalState::Bootstrapping {
-            percent: percent.clone(),
-        };
-    }
-
-    tokio::spawn(bootstrap_tor(data_dir, percent));
-    Ok(())
+    *configuration = Some(desired);
 }
 
-/// Activate a user-supplied SOCKS5 proxy without starting Arti.
-/// Useful for Orbot users (`socks5://127.0.0.1:9150`) or any external Tor.
-/// Returns an error if Arti is already bootstrapping or running — call
-/// `tor_stop()` first.
-#[uniffi::export]
-pub fn tor_activate_custom_proxy(socks5_url: String) -> Result<(), crate::SpectraBridgeError> {
-    {
-        let guard = TOR_STATE.lock();
-        match *guard {
-            TorInternalState::Running { .. } | TorInternalState::Bootstrapping { .. } => {
-                return Err("Call tor_stop() before switching to a custom proxy.".into());
-            }
-            _ => {}
-        }
+fn stop_runtime(state: &mut TorInternalState) {
+    match std::mem::replace(state, TorInternalState::Stopped) {
+        TorInternalState::Running { proxy_task, .. } => proxy_task.abort(),
+        TorInternalState::Bootstrapping { task, .. } => task.abort(),
+        _ => {}
     }
-    crate::fetch::http::set_socks5_proxy(Some(&force_remote_dns(&socks5_url)));
-    *TOR_STATE.lock() = TorInternalState::CustomProxy;
-    Ok(())
+    crate::fetch::http::set_socks5_proxy(None);
 }
 
 /// Force proxy-side ("remote") DNS resolution by upgrading a plain `socks5://`
@@ -168,25 +180,12 @@ fn force_remote_dns(socks5_url: &str) -> String {
     }
 }
 
-/// Stop Tor and restore direct HTTP routing. Safe to call when already stopped.
-#[uniffi::export]
-pub fn tor_stop() {
-    let old = {
-        let mut guard = TOR_STATE.lock();
-        std::mem::replace(&mut *guard, TorInternalState::Stopped)
-    };
-    if let TorInternalState::Running { proxy_task, .. } = old {
-        proxy_task.abort();
-    }
-    crate::fetch::http::set_socks5_proxy(None);
-}
-
 /// Poll the current Tor state. Cheap — just reads an atomic.
 #[uniffi::export]
 pub fn tor_status() -> TorStatus {
     match &*TOR_STATE.lock() {
         TorInternalState::Stopped => TorStatus::Stopped,
-        TorInternalState::Bootstrapping { percent } => TorStatus::Bootstrapping {
+        TorInternalState::Bootstrapping { percent, .. } => TorStatus::Bootstrapping {
             percent: percent.load(Ordering::Relaxed),
         },
         TorInternalState::Running { .. } | TorInternalState::CustomProxy => TorStatus::Ready,
@@ -198,36 +197,45 @@ pub fn tor_status() -> TorStatus {
 
 // ── Bootstrap task ───────────────────────────────────────────────────────────
 
+fn is_current_bootstrap(state: &TorInternalState, percent: &Arc<AtomicU8>) -> bool {
+    matches!(state, TorInternalState::Bootstrapping { percent: current, .. } if Arc::ptr_eq(current, percent))
+}
+
 async fn bootstrap_tor(data_dir: String, percent: Arc<AtomicU8>) {
-    match try_bootstrap(&data_dir, &percent).await {
-        Ok(client) => {
+    let result = async {
+        let client = try_bootstrap(&data_dir, &percent).await?;
+        // Bind before publishing Ready; use a free port to avoid collisions
+        // with another Spectra process or a previous listener being aborted.
+        let listener = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok::<_, String>((client, listener))
+    }
+    .await;
+    let mut state = TOR_STATE.lock();
+    if !is_current_bootstrap(&state, &percent) {
+        return;
+    }
+    match result {
+        Ok((client, listener)) => {
+            let port = match listener.local_addr() {
+                Ok(addr) => addr.port(),
+                Err(error) => {
+                    *state = TorInternalState::Error {
+                        message: error.to_string(),
+                    };
+                    return;
+                }
+            };
             let client = Arc::new(client);
-            let tor_for_proxy = client.clone();
-            let proxy_task = tokio::spawn(run_socks5_proxy(tor_for_proxy));
-
-            // The proxy goes on before the status says Ready, and not after.
-            // The kill switch reads the status: with the old order there was a
-            // window where `tor_status()` already answered Ready while the
-            // shared client still had no proxy, so a refresh landing in it went
-            // to the provider over a direct connection — the one thing the
-            // switch exists to prevent. This way the window fails the other
-            // way, and a request in it is blocked a moment longer than needed.
-            //
-            // socks5h:// → Tor resolves DNS; socks5:// would leak lookups locally.
-            crate::fetch::http::set_socks5_proxy(Some("socks5h://127.0.0.1:19050"));
-
-            {
-                let mut guard = TOR_STATE.lock();
-                *guard = TorInternalState::Running {
-                    _client: client,
-                    proxy_task,
-                };
-            }
+            let proxy_task = tokio::spawn(run_socks5_proxy(client.clone(), listener));
+            crate::fetch::http::set_socks5_proxy(Some(&format!("socks5h://127.0.0.1:{port}")));
+            *state = TorInternalState::Running {
+                _client: client,
+                proxy_task,
+            };
         }
-        Err(message) => {
-            let mut guard = TOR_STATE.lock();
-            *guard = TorInternalState::Error { message };
-        }
+        Err(message) => *state = TorInternalState::Error { message },
     }
 }
 
@@ -260,20 +268,7 @@ async fn try_bootstrap(
 // HTTPS targets; we parse the target address and open a Tor circuit to it,
 // then relay bytes bidirectionally.
 
-const SOCKS5_PORT: u16 = 19050;
-
-async fn run_socks5_proxy(tor: Arc<TorClient<PreferredRuntime>>) {
-    let listener = match TcpListener::bind(("127.0.0.1", SOCKS5_PORT)).await {
-        Ok(l) => l,
-        Err(e) => {
-            let mut guard = TOR_STATE.lock();
-            *guard = TorInternalState::Error {
-                message: format!("SOCKS5 bind failed: {e}"),
-            };
-            return;
-        }
-    };
-
+async fn run_socks5_proxy(tor: Arc<TorClient<PreferredRuntime>>, listener: TcpListener) {
     while let Ok((stream, _)) = listener.accept().await {
         let tor = tor.clone();
         tokio::spawn(async move {
@@ -370,6 +365,33 @@ async fn handle_socks5(
 #[cfg(test)]
 mod tests {
     use super::force_remote_dns;
+
+    #[tokio::test]
+    async fn stopped_or_replaced_bootstrap_cannot_publish_a_late_completion() {
+        use super::*;
+        let old = Arc::new(AtomicU8::new(0));
+        let task = tokio::spawn(std::future::pending());
+        let abort = task.abort_handle();
+        let mut state = TorInternalState::Bootstrapping {
+            percent: old.clone(),
+            task,
+        };
+        assert!(is_current_bootstrap(&state, &old));
+        stop_runtime(&mut state);
+        tokio::task::yield_now().await;
+        assert!(abort.is_finished());
+        assert!(!is_current_bootstrap(&state, &old));
+        state = TorInternalState::CustomProxy;
+        assert!(!is_current_bootstrap(&state, &old));
+        let new = Arc::new(AtomicU8::new(0));
+        state = TorInternalState::Bootstrapping {
+            percent: new.clone(),
+            task: tokio::spawn(std::future::pending()),
+        };
+        assert!(!is_current_bootstrap(&state, &old));
+        assert!(is_current_bootstrap(&state, &new));
+        stop_runtime(&mut state);
+    }
 
     #[test]
     fn upgrades_leaky_socks5_scheme() {

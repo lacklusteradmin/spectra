@@ -8,7 +8,7 @@ use spectra_core::registry::Chain;
 use spectra_core::store::state::{FiatCurrency, StateCommand};
 use std::collections::BTreeSet;
 
-use super::chain::{service_for_chain, ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_KIND_RPC_NODE};
+use super::chain::{service_for_chain, ENDPOINT_CAPABILITY_BALANCE};
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx};
 use crate::error::{CliError, CliResult};
@@ -326,13 +326,14 @@ pub(super) fn spot_price_usd(
         .collect();
     // Pricing needs no chain endpoints, and now no service either: the read
     // is a function over the coins asked about.
+    let _runtime = ctx.service()?;
     ctx.rt
         .block_on(spectra_core::service::fetch_prices(requests))
         .map_err(CliError::from)
 }
 
 fn native_balance(ctx: &Ctx, chain: Chain, address: &str) -> CliResult<f64> {
-    let service = service_for_chain(chain, ENDPOINT_CAPABILITY_BALANCE | ENDPOINT_KIND_RPC_NODE)?;
+    let service = service_for_chain(ctx, chain, ENDPOINT_CAPABILITY_BALANCE)?;
     let summary = ctx
         .rt
         .block_on(
@@ -351,6 +352,7 @@ fn fiat_conversion(ctx: &Ctx) -> CliResult<(f64, String)> {
     if code == "USD" {
         return Ok((1.0, code));
     }
+    let _runtime = ctx.service()?;
     let rates = ctx
         .rt
         .block_on(spectra_core::service::fetch_fiat_rates(vec![code.clone()]));

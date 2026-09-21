@@ -80,24 +80,13 @@ impl PolkadotClient {
     }
 
     pub(crate) async fn rpc_call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = std::sync::Arc::new(
-            json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}),
-        );
-        with_fallback(&self.rpc_endpoints, |url| {
-            let client = self.client.clone();
-            let body = std::sync::Arc::clone(&body);
-            async move {
-                let resp: Value = client
-                    .post_json(&url, &*body, RetryProfile::ChainRead)
-                    .await?;
-                if let Some(err) = resp.get("error") {
-                    return Err(format!("rpc error: {err}"));
-                }
-                resp.get("result")
-                    .cloned()
-                    .ok_or_else(|| "missing result".to_string())
-            }
-        })
+        crate::fetch::json_rpc::call(
+            crate::EndpointApi::SubstrateJsonRpc,
+            &self.client,
+            &self.rpc_endpoints,
+            method,
+            params,
+        )
         .await
     }
 

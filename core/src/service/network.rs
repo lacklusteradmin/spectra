@@ -45,12 +45,15 @@ impl WalletService {
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
-        let method = chain.rpc_health_method();
         let mut records = crate::filtered_endpoint_records_for_chain(chain_id.clone(), 0)
             .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
 
         // Custom endpoints use the same protocol probe as the catalog's node.
-        if let Some(template) = records.iter().find(|r| r.kind != "web-link").cloned() {
+        if let Some(template) = records
+            .iter()
+            .find(|r| r.api == chain.endpoint_api(EndpointSlot::Primary))
+            .cloned()
+        {
             for endpoint in self.endpoints_for(&chain_id).await.iter() {
                 if records.iter().any(|r| &r.endpoint == endpoint) {
                     continue;
@@ -67,27 +70,15 @@ impl WalletService {
         }
         let mut out = Vec::with_capacity(records.len());
         for record in records {
-            // The `rpc` role means "JSON-RPC node", and only that: Bitcoin's
-            // Esplora, Cardano's Koios and Stellar's Horizon are REST and
-            // correctly lack it. Ten EVM chains were missing it while being
-            // exactly that, so a role-gated probe GET a JSON-RPC endpoint and
-            // called it dead — on this command and on the app's diagnostics
-            // screen, which gates the same way through `diagnostics_checks`.
-            // The role is on those records now.
-            //
-            // A record with only the `explorer` role is a `/tx/` link for a
-            // person to tap, not an API. Nothing knows how to probe it, which
-            // is `checked: false` rather than a failure.
-            let is_rpc = record.kind == "rpc-node";
-            let is_link_only = record.kind == "web-link";
+            let is_link_only = record.api.is_none();
             let explicit_probe = record.probe_url.as_deref();
-            let rpc_method = is_rpc.then_some(method).flatten();
+            let rpc_method = record.api.and_then(crate::EndpointApi::rpc_health_method);
             if is_link_only && explicit_probe.is_none() {
                 out.push(EndpointProbe {
+                    api: record.api,
                     chain_id: chain_id.clone(),
                     chain_name: name.clone(),
                     endpoint: record.endpoint,
-                    kind: record.kind.clone(),
                     capabilities: record.capabilities.clone(),
                     checked: false,
                     reachable: false,
@@ -123,10 +114,10 @@ impl WalletService {
                 (None, None) => (false, false, "no probe for this endpoint".to_string()),
             };
             out.push(EndpointProbe {
+                api: record.api,
                 chain_id: chain_id.clone(),
                 chain_name: name.clone(),
                 endpoint: record.endpoint,
-                kind: record.kind.clone(),
                 capabilities: record.capabilities.clone(),
                 checked,
                 reachable,
@@ -175,51 +166,39 @@ impl WalletService {
                 "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let endpoints = self.endpoints_for(chain.str_id()).await;
-        let status: UtxoTxStatus = match chain.mainnet_counterpart() {
-            Chain::Bitcoin => {
+        let (api, endpoints) = self.fetch_endpoints(chain).await?;
+        use crate::EndpointApi as Api;
+        let status: UtxoTxStatus = match api {
+            Api::Esplora => {
                 let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 client.fetch_tx_status(&txid).await?
             }
-            Chain::Dogecoin => {
+            Api::Blockcypher => {
                 let client = DogecoinClient::new(endpoints);
                 client.fetch_tx_status(&txid).await?
             }
-            Chain::Litecoin => {
-                let client = LitecoinClient::new(endpoints);
+
+            Api::Blockbook => {
+                let client = BlockbookClient::new(endpoints, chain);
                 client.fetch_tx_status(&txid).await?
             }
-            Chain::BitcoinCash => {
-                let client = BitcoinCashClient::new(endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
-            Chain::BitcoinSV => {
+            Api::Whatsonchain => {
                 let client = BitcoinSvClient::new(endpoints);
                 client.fetch_tx_status(&txid).await?
             }
-            Chain::Zcash => {
-                let client = ZcashClient::new(endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
-            Chain::BitcoinGold => {
-                let client = BitcoinGoldClient::new(endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
-            Chain::Decred => {
+
+            Api::Insight => {
                 let client = DecredClient::new(endpoints);
                 client.fetch_tx_status(&txid).await?
             }
-            Chain::Kaspa => {
+            Api::KaspaRest => {
                 let client = KaspaClient::new(endpoints);
                 client.fetch_tx_status(&txid).await?
             }
-            Chain::Dash => {
-                let client = DashClient::new(endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
+
             c => {
                 return Err(SpectraBridgeError::from(format!(
-                    "fetch_utxo_tx_status: unsupported chain: {c:?}"
+                    "fetch_utxo_tx_status: unsupported API: {c:?}"
                 )))
             }
         };

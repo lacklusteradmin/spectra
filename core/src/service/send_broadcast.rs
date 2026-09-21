@@ -27,49 +27,46 @@ impl WalletService {
         let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
             SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
         })?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        match chain.mainnet_counterpart() {
-            Chain::Bitcoin => {
+        let (api, eps) = self.fetch_endpoints(chain).await?;
+        use crate::EndpointApi as Api;
+        match api {
+            Api::Esplora => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
                 let txid = client.broadcast_raw_tx(&payload).await?;
                 Ok(json!({ "txid": txid }).to_string())
             }
-            Chain::Dogecoin => {
+            Api::Blockcypher => {
                 let client = DogecoinClient::new(eps);
                 let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Litecoin => {
-                let client = LitecoinClient::new(eps);
+
+            Api::Blockbook => {
+                let client = BlockbookClient::new(eps, chain);
                 let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::BitcoinCash => {
-                let client = BitcoinCashClient::new(eps);
-                let res = client.broadcast_raw_tx(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Chain::BitcoinSV => {
+            Api::Whatsonchain => {
                 let client = BitcoinSvClient::new(eps);
                 let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Solana => {
+            Api::SolanaJsonRpc => {
                 let client = SolanaClient::new(eps);
                 let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Tron => {
+            Api::TronHttp => {
                 let client = TronClient::new(eps);
                 let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            c if c.is_evm() => {
+            Api::EvmJsonRpc => {
                 let client = EvmClient::new(eps, chain.evm_chain_id()?);
                 let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Xrp => {
+            Api::XrplJsonRpc => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let blob = val["tx_blob_hex"]
                     .as_str()
@@ -79,7 +76,7 @@ impl WalletService {
                 let res = client.submit_signed_blob(&blob).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Stellar => {
+            Api::Horizon => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let xdr = val["signed_xdr_b64"]
                     .as_str()
@@ -89,7 +86,7 @@ impl WalletService {
                 let res = client.submit_envelope_b64(&xdr).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Cardano => {
+            Api::Koios => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let cbor = val["cbor_hex"]
                     .as_str()
@@ -100,78 +97,7 @@ impl WalletService {
                 let res = client.submit_tx(&cbor).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Polkadot => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let ext_hex = val["extrinsic_hex"]
-                    .as_str()
-                    .ok_or("broadcast_raw polkadot: missing extrinsic_hex")?
-                    .to_string();
-                let subscan = self
-                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                    .await;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = PolkadotClient::new(eps, subscan, api_key);
-                let res = client.submit_extrinsic_hex(&ext_hex).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Chain::Sui => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let tx_bytes = val["tx_bytes_b64"]
-                    .as_str()
-                    .ok_or("broadcast_raw sui: missing tx_bytes_b64")?
-                    .to_string();
-                let sig = val["sig_b64"]
-                    .as_str()
-                    .ok_or("broadcast_raw sui: missing sig_b64")?
-                    .to_string();
-                let client = SuiClient::new(eps);
-                let res = client.execute_signed_tx(&tx_bytes, &sig).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Chain::Aptos => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let body_json = val["signed_body_json"]
-                    .as_str()
-                    .ok_or("broadcast_raw aptos: missing signed_body_json")?
-                    .to_string();
-                let client = AptosClient::new(eps);
-                let res = client.submit_signed_body(&body_json).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Chain::Ton => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let boc = val["boc_b64"]
-                    .as_str()
-                    .ok_or("broadcast_raw ton: missing boc_b64")?
-                    .to_string();
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = TonClient::new(eps, api_key);
-                let res = client.send_boc(&boc).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Chain::Near => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let tx_b64 = val["signed_tx_b64"]
-                    .as_str()
-                    .ok_or("broadcast_raw near: missing signed_tx_b64")?
-                    .to_string();
-                let client = NearClient::new(eps);
-                let res = client.broadcast_signed_tx_b64(&tx_b64).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Chain::Icp => {
-                let client = IcpClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.submit_signed_transaction(&payload).await?,
-                )?)
-            }
-            Chain::Monero => {
-                let client = MoneroClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.relay_prepared(&payload).await?,
-                )?)
-            }
-            Chain::Bittensor => {
+            Api::SubstrateJsonRpc if chain.mainnet_counterpart() == Chain::Bittensor => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let hex = val["extrinsic_hex"]
                     .as_str()
@@ -185,7 +111,79 @@ impl WalletService {
                     &client.submit_extrinsic_hex(hex).await?,
                 )?)
             }
-            Chain::Kaspa => {
+            Api::SubstrateJsonRpc => {
+                let val: serde_json::Value = serde_json::from_str(&payload)?;
+                let ext_hex = val["extrinsic_hex"]
+                    .as_str()
+                    .ok_or("broadcast_raw polkadot: missing extrinsic_hex")?
+                    .to_string();
+                let subscan = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
+                let api_key = self.api_key_for(chain.str_id()).await;
+                let client = PolkadotClient::new(eps, subscan, api_key);
+                let res = client.submit_extrinsic_hex(&ext_hex).await?;
+                Ok(serde_json::to_string(&res)?)
+            }
+            Api::SuiJsonRpc => {
+                let val: serde_json::Value = serde_json::from_str(&payload)?;
+                let tx_bytes = val["tx_bytes_b64"]
+                    .as_str()
+                    .ok_or("broadcast_raw sui: missing tx_bytes_b64")?
+                    .to_string();
+                let sig = val["sig_b64"]
+                    .as_str()
+                    .ok_or("broadcast_raw sui: missing sig_b64")?
+                    .to_string();
+                let client = SuiClient::new(eps);
+                let res = client.execute_signed_tx(&tx_bytes, &sig).await?;
+                Ok(serde_json::to_string(&res)?)
+            }
+            Api::AptosRest => {
+                let val: serde_json::Value = serde_json::from_str(&payload)?;
+                let body_json = val["signed_body_json"]
+                    .as_str()
+                    .ok_or("broadcast_raw aptos: missing signed_body_json")?
+                    .to_string();
+                let client = AptosClient::new(eps);
+                let res = client.submit_signed_body(&body_json).await?;
+                Ok(serde_json::to_string(&res)?)
+            }
+            Api::ToncenterV2 => {
+                let val: serde_json::Value = serde_json::from_str(&payload)?;
+                let boc = val["boc_b64"]
+                    .as_str()
+                    .ok_or("broadcast_raw ton: missing boc_b64")?
+                    .to_string();
+                let api_key = self.api_key_for(chain.str_id()).await;
+                let client = TonClient::new(eps, api_key);
+                let res = client.send_boc(&boc).await?;
+                Ok(serde_json::to_string(&res)?)
+            }
+            Api::NearJsonRpc => {
+                let val: serde_json::Value = serde_json::from_str(&payload)?;
+                let tx_b64 = val["signed_tx_b64"]
+                    .as_str()
+                    .ok_or("broadcast_raw near: missing signed_tx_b64")?
+                    .to_string();
+                let client = NearClient::new(eps);
+                let res = client.broadcast_signed_tx_b64(&tx_b64).await?;
+                Ok(serde_json::to_string(&res)?)
+            }
+            Api::IcpRosetta => {
+                let client = IcpClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.submit_signed_transaction(&payload).await?,
+                )?)
+            }
+            Api::MoneroWalletRpc => {
+                let client = MoneroClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.relay_prepared(&payload).await?,
+                )?)
+            }
+
+            Api::KaspaRest => {
                 let client = KaspaClient::new(eps);
                 Ok(serde_json::to_string(
                     &client
@@ -193,30 +191,13 @@ impl WalletService {
                         .await?,
                 )?)
             }
-            Chain::Decred => {
+            Api::Insight => {
                 let client = DecredClient::new(eps);
                 Ok(serde_json::to_string(
                     &client.broadcast_raw_tx(&payload).await?,
                 )?)
             }
-            Chain::Zcash => {
-                let client = ZcashClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.broadcast_raw_tx(&payload).await?,
-                )?)
-            }
-            Chain::BitcoinGold => {
-                let client = BitcoinGoldClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.broadcast_raw_tx(&payload).await?,
-                )?)
-            }
-            Chain::Dash => {
-                let client = DashClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.broadcast_raw_tx(&payload).await?,
-                )?)
-            }
+
             c => Err(SpectraBridgeError::from(format!(
                 "broadcast_raw: chain {c:?} not supported"
             ))),

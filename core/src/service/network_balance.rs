@@ -45,181 +45,131 @@ async fn fetch_native_balance_summary(
     chain: Chain,
     service: &WalletService,
 ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
-    let endpoints = service.endpoints_for(chain.str_id()).await;
-    let dispatch = chain.mainnet_counterpart();
-    match dispatch {
-        Chain::Bitcoin => {
-            let bal = BitcoinClient::new(HttpClient::shared(), endpoints)
+    let (api, endpoints) = service.fetch_endpoints(chain).await?;
+    use crate::EndpointApi as Api;
+    let api_key = service.api_key_for(chain.str_id()).await;
+    let mut utxo_count = 0;
+    let units = match api {
+        Api::Esplora => {
+            let balance = BitcoinClient::new(HttpClient::shared(), endpoints)
                 .fetch_balance(address)
                 .await?;
-            Ok(NativeBalanceSummary {
-                smallest_unit: bal.confirmed_sats.to_string(),
-                amount_display: format_smallest_unit_decimal(bal.confirmed_sats as u128, 8),
-                utxo_count: bal.utxo_count as u32,
-            })
+            utxo_count = balance.utxo_count as u32;
+            balance.confirmed_sats.to_string()
         }
-        Chain::BitcoinCash => {
-            let bal = BitcoinCashClient::new(endpoints)
+        Api::Blockbook => BlockbookClient::new(endpoints, chain)
+            .fetch_balance(address)
+            .await?
+            .balance_sat
+            .to_string(),
+        Api::Whatsonchain => BitcoinSvClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .balance_sat
+            .to_string(),
+        Api::Blockcypher => DogecoinClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .balance_koin
+            .to_string(),
+        Api::EvmJsonRpc => {
+            EvmClient::new(endpoints, chain.evm_chain_id()?)
                 .fetch_balance(address)
-                .await?;
-            Ok(summary_native(
-                bal.balance_sat.to_string(),
-                bal.balance_display,
-            ))
+                .await?
+                .balance_wei
         }
-        Chain::BitcoinSV => {
-            let bal = BitcoinSvClient::new(endpoints)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(
-                bal.balance_sat.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::Litecoin => {
-            let bal = LitecoinClient::new(endpoints)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(
-                bal.balance_sat.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::Dogecoin => {
-            let bal = DogecoinClient::new(endpoints)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(
-                bal.balance_koin.to_string(),
-                bal.balance_display,
-            ))
-        }
-        c if c.is_evm() => {
-            let bal = EvmClient::new(endpoints, chain.evm_chain_id()?)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(bal.balance_wei, bal.balance_display))
-        }
-        Chain::Solana => {
-            let bal = SolanaClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.lamports.to_string(), bal.sol_display))
-        }
-        Chain::Tron => {
-            let bal = TronClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.sun.to_string(), bal.trx_display))
-        }
-        Chain::Stellar => {
-            let bal = StellarClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.stroops.to_string(), bal.xlm_display))
-        }
-        Chain::Xrp => {
-            let bal = XrpClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.drops.to_string(), bal.xrp_display))
-        }
-        Chain::Cardano => {
-            let api_key = service
-                .api_key_for(chain.str_id())
-                .await
-                .unwrap_or_default();
-            let bal = CardanoClient::new(endpoints, api_key)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(bal.lovelace.to_string(), bal.ada_display))
-        }
-        Chain::Polkadot => {
-            let subscan = service
+        Api::SolanaJsonRpc => SolanaClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .lamports
+            .to_string(),
+        Api::TronHttp => TronClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .sun
+            .to_string(),
+        Api::Horizon => StellarClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .stroops
+            .to_string(),
+        Api::XrplJsonRpc => XrpClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .drops
+            .to_string(),
+        Api::Koios => CardanoClient::new(endpoints, api_key.unwrap_or_default())
+            .fetch_balance(address)
+            .await?
+            .lovelace
+            .to_string(),
+        Api::SubstrateJsonRpc => {
+            let indexer = service
                 .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                 .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            let bal = PolkadotClient::new(endpoints, subscan, api_key)
+            if chain.mainnet_counterpart() == Chain::Bittensor {
+                BittensorClient::new(endpoints, indexer, api_key)
+                    .fetch_balance(address)
+                    .await?
+                    .rao
+                    .to_string()
+            } else {
+                PolkadotClient::new(endpoints, indexer, api_key)
+                    .fetch_balance(address)
+                    .await?
+                    .planck
+                    .to_string()
+            }
+        }
+        Api::SuiJsonRpc => SuiClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .mist
+            .to_string(),
+        Api::AptosRest => AptosClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .octas
+            .to_string(),
+        Api::ToncenterV2 => TonClient::new(endpoints, api_key)
+            .fetch_balance(address)
+            .await?
+            .nanotons
+            .to_string(),
+        Api::NearJsonRpc => {
+            NearClient::new(endpoints)
                 .fetch_balance(address)
-                .await?;
-            Ok(summary_native(bal.planck.to_string(), bal.dot_display))
+                .await?
+                .yocto_near
         }
-        Chain::Sui => {
-            let bal = SuiClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.mist.to_string(), bal.sui_display))
-        }
-        Chain::Aptos => {
-            let bal = AptosClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.octas.to_string(), bal.apt_display))
-        }
-        Chain::Ton => {
-            let api_key = service.api_key_for(chain.str_id()).await;
-            let bal = TonClient::new(endpoints, api_key)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(bal.nanotons.to_string(), bal.ton_display))
-        }
-        Chain::Near => {
-            let bal = NearClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.yocto_near, bal.near_display))
-        }
-        Chain::Icp => {
-            let bal = IcpClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.e8s.to_string(), bal.icp_display))
-        }
-        Chain::Monero => {
-            let bal = MoneroClient::new(endpoints).fetch_balance(0).await?;
-            Ok(summary_native(bal.piconeros.to_string(), bal.xmr_display))
-        }
-        Chain::Zcash => {
-            let bal = ZcashClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(
-                bal.balance_sat.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::BitcoinGold => {
-            let bal = BitcoinGoldClient::new(endpoints)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(
-                bal.balance_sat.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::Decred => {
-            let bal = DecredClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(
-                bal.balance_atoms.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::Kaspa => {
-            let bal = KaspaClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(
-                bal.balance_sompi.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::Dash => {
-            let bal = DashClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(
-                bal.balance_sat.to_string(),
-                bal.balance_display,
-            ))
-        }
-        Chain::Bittensor => {
-            let taostats = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            let bal = BittensorClient::new(endpoints, taostats, api_key)
-                .fetch_balance(address)
-                .await?;
-            Ok(summary_native(bal.rao.to_string(), bal.tao_display))
-        }
-        c => Err(SpectraBridgeError::from(format!(
-            "unsupported chain: {c:?}"
-        ))),
-    }
-}
-
-fn summary_native(smallest_unit: String, amount_display: String) -> NativeBalanceSummary {
-    NativeBalanceSummary {
-        smallest_unit,
-        amount_display,
-        utxo_count: 0,
-    }
+        Api::IcpRosetta => IcpClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .e8s
+            .to_string(),
+        Api::MoneroWalletRpc => MoneroClient::new(endpoints)
+            .fetch_balance(0)
+            .await?
+            .piconeros
+            .to_string(),
+        Api::Insight => DecredClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .balance_atoms
+            .to_string(),
+        Api::KaspaRest => KaspaClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .balance_sompi
+            .to_string(),
+        api => return Err(format!("{} has no native balance adapter", api.as_str()).into()),
+    };
+    let amount = units
+        .parse::<u128>()
+        .map_err(|_| "native balance exceeds core precision")?;
+    Ok(NativeBalanceSummary {
+        amount_display: format_smallest_unit_decimal(amount, u32::from(chain.native_decimals())),
+        smallest_unit: units,
+        utxo_count,
+    })
 }

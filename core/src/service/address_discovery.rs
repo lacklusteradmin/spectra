@@ -359,8 +359,8 @@ impl WalletService {
         address: &str,
     ) -> Result<bool, SpectraBridgeError> {
         use crate::fetch::chains::{
-            bitcoin::BitcoinClient, bitcoin_cash::BitcoinCashClient, bitcoin_sv::BitcoinSvClient,
-            dogecoin::DogecoinClient, litecoin::LitecoinClient,
+            bitcoin::BitcoinClient, bitcoin_sv::BitcoinSvClient, blockbook::BlockbookClient,
+            dogecoin::DogecoinClient,
         };
         let endpoints = self.endpoints_for(chain.str_id()).await;
         let active = match chain.mainnet_counterpart() {
@@ -369,8 +369,8 @@ impl WalletService {
                     .has_activity(address)
                     .await?
             }
-            crate::registry::Chain::BitcoinCash => {
-                BitcoinCashClient::new(endpoints)
+            crate::registry::Chain::BitcoinCash | crate::registry::Chain::Litecoin => {
+                BlockbookClient::new(endpoints, chain)
                     .has_activity(address)
                     .await?
             }
@@ -378,9 +378,6 @@ impl WalletService {
                 BitcoinSvClient::new(endpoints)
                     .has_activity(address)
                     .await?
-            }
-            crate::registry::Chain::Litecoin => {
-                LitecoinClient::new(endpoints).has_activity(address).await?
             }
             crate::registry::Chain::Dogecoin => {
                 DogecoinClient::new(endpoints).has_activity(address).await?

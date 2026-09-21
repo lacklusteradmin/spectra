@@ -1,34 +1,9 @@
-//! Trezor Blockbook REST client, shared by every chain served by one.
-//!
-//! Blockbook exposes the same `/api/v2/...` surface for Litecoin, Bitcoin
-//! Cash, Bitcoin Gold, Zcash and Dash: balance, UTXOs, history, fee estimate,
-//! broadcast and tx status. Each chain had its own copy of it — five files
-//! that pairwise matched 76–91%, with the same six JSON shapes redeclared in
-//! each. The copies had drifted rather than diverged: `has_activity` existed
-//! on two of the five and `fetch_chain_tip_height` on one, for no reason but
-//! which file was edited when.
-//!
-//! What is genuinely per-chain is the marker type: it keeps the five clients
-//! distinct so each chain's signing code can hang its own `sign_and_broadcast`
-//! off its own client, and it carries the one behavioural difference — Bitcoin
-//! Cash accepts CashAddr and legacy forms of the same address, and normalizes
-//! before asking.
-
-use std::marker::PhantomData;
+//! Blockbook request/response handling shared by every supported network.
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
-
-/// A chain served by Blockbook.
-pub trait BlockbookNetwork: 'static {
-    /// The form of `address` this chain's Blockbook instance is asked about.
-    /// Only Bitcoin Cash rewrites anything.
-    fn normalize_address(address: &str) -> String {
-        address.to_string()
-    }
-}
 
 // ── Wire shapes ───────────────────────────────────────────────────────────
 
@@ -145,18 +120,33 @@ impl super::SignedSubmission for BlockbookSendResult {
 
 // ── Client ────────────────────────────────────────────────────────────────
 
-pub struct BlockbookClient<N: BlockbookNetwork> {
+pub struct BlockbookClient {
     pub(crate) endpoints: Arc<Vec<String>>,
     pub(crate) client: Arc<HttpClient>,
-    network: PhantomData<fn() -> N>,
+    chain: crate::registry::Chain,
 }
 
-impl<N: BlockbookNetwork> BlockbookClient<N> {
-    pub fn new(endpoints: Arc<Vec<String>>) -> Self {
+impl BlockbookClient {
+    pub(crate) fn require_chain(&self, expected: crate::registry::Chain) -> Result<(), String> {
+        if self.chain.mainnet_counterpart() != expected {
+            return Err("signer does not match the client's network".into());
+        }
+        Ok(())
+    }
+
+    fn normalize_address(&self, address: &str) -> String {
+        if self.chain.mainnet_counterpart() == crate::registry::Chain::BitcoinCash {
+            crate::derivation::chains::bitcoin_cash::normalize_bch_address(address)
+        } else {
+            address.to_string()
+        }
+    }
+
+    pub fn new(endpoints: Arc<Vec<String>>, chain: crate::registry::Chain) -> Self {
         Self {
             endpoints,
             client: HttpClient::shared(),
-            network: PhantomData,
+            chain,
         }
     }
 
@@ -164,19 +154,13 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
         &self,
         path: &str,
     ) -> Result<T, String> {
-        let path = path.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move { client.get_json(&url, RetryProfile::ChainRead).await }
-        })
-        .await
+        self.client.get_path(&self.endpoints, path).await
     }
 
     /// Has this address ever been used on chain? Blockbook's `details=basic`
     /// answers with counts, without transaction bodies.
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
-        let address = N::normalize_address(address);
+        let address = self.normalize_address(address);
         let info: BlockbookActivity = self
             .get(&format!("/api/v2/address/{address}?details=basic"))
             .await?;
@@ -184,7 +168,7 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
     }
 
     pub async fn fetch_balance(&self, address: &str) -> Result<BlockbookBalance, String> {
-        let address = N::normalize_address(address);
+        let address = self.normalize_address(address);
         let info: BlockbookAddress = self
             .get(&format!("/api/v2/address/{address}?details=basic"))
             .await?;
@@ -196,7 +180,7 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
     }
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<BlockbookUtxoEntry>, String> {
-        let address = N::normalize_address(address);
+        let address = self.normalize_address(address);
         let utxos: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
         utxos
             .into_iter()
@@ -230,7 +214,7 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
     /// negative = sent). Fee is the absolute tx fee; direction detection
     /// inspects the vin address lists.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<BlockbookHistoryEntry>, String> {
-        let normalized = N::normalize_address(address);
+        let normalized = self.normalize_address(address);
         let list: BlockbookTxList = self
             .get(&format!(
                 "/api/v2/address/{normalized}?details=txs&page=1&pageSize=50"
@@ -338,9 +322,6 @@ fn format_sats(sat: u64) -> String {
 mod tests {
     use super::*;
 
-    struct Plain;
-    impl BlockbookNetwork for Plain {}
-
     #[test]
     fn balances_render_with_trailing_zeros_trimmed() {
         assert_eq!(format_sats(0), "0");
@@ -352,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_client_without_endpoints_reports_rather_than_hangs() {
-        let client = BlockbookClient::<Plain>::new(Arc::new(vec![]));
+        let client = BlockbookClient::new(Arc::new(vec![]), crate::registry::Chain::Dash);
         assert!(client.fetch_balance("addr").await.is_err());
         assert!(client.fetch_utxos("addr").await.is_err());
         assert_eq!(client.fetch_fee_rate(6).await, 1, "fee estimate falls back");
@@ -371,7 +352,6 @@ fn parse_units(value: &str) -> Result<u64, String> {
 #[cfg(test)]
 mod strict_amount_tests {
     use super::*;
-    use crate::fetch::chains::litecoin::LitecoinClient;
     use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
     #[tokio::test]
     async fn malformed_balances_and_utxos_are_errors() {
@@ -400,7 +380,10 @@ mod strict_amount_tests {
                 })
                 .mount(&server)
                 .await;
-            let client = LitecoinClient::new(Arc::new(vec![server.uri()]));
+            let client = BlockbookClient::new(
+                Arc::new(vec![server.uri()]),
+                crate::registry::Chain::Litecoin,
+            );
             let valid = ["0", "18446744073709551615"].contains(&amount);
             assert_eq!(
                 client.fetch_balance("holder").await.is_ok(),

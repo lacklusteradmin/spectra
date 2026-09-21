@@ -57,7 +57,9 @@ impl WalletService {
                 .ok_or_else(|| SpectraBridgeError::InvalidInput {
                     message: format!("no holding {holding_key} on wallet {wallet_id}"),
                 })?;
-            destination_probe_asset(holding, &state.token_preferences)?
+            let (family, token) = destination_probe_asset(holding, &state.token_preferences)?;
+            let chain = super::send_execution::send_chain_for(&state, &wallet_id, family)?;
+            (chain, token)
         };
         let chain_id = chain.str_id().to_string();
         let address = self
@@ -66,27 +68,24 @@ impl WalletService {
             .address;
 
         let balance_read = async {
-            let display = match token {
+            let raw = match token {
                 Some(descriptor) => self
                     .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor])
                     .await?
                     .first()
                     .ok_or_else(|| SpectraBridgeError::from("token balance unavailable"))?
-                    .balance_display
+                    .balance_raw
                     .clone(),
                 None => {
                     self.fetch_native_balance_summary(chain_id.clone(), address.clone())
                         .await?
-                        .amount_display
+                        .smallest_unit
                 }
             };
-            let balance = display
-                .parse::<f64>()
-                .map_err(|_| SpectraBridgeError::from("invalid destination balance"))?;
-            if !balance.is_finite() || balance < 0.0 {
+            if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
                 return Err(SpectraBridgeError::from("invalid destination balance"));
             }
-            Ok::<_, SpectraBridgeError>(balance)
+            Ok::<_, SpectraBridgeError>(raw.bytes().all(|b| b == b'0'))
         };
         let history_read = async {
             // A positive nonce proves activity without an explorer lookup. Zero
@@ -107,12 +106,12 @@ impl WalletService {
                     > 0,
             )
         };
-        let (balance, has_history) = tokio::try_join!(balance_read, history_read)?;
+        let (balance_is_zero, has_history) = tokio::try_join!(balance_read, history_read)?;
 
-        Ok(SendDestinationRisk {
-            balance_is_zero: balance <= 0.0,
+        Ok(SendDestinationRisk::from_probe(
+            balance_is_zero,
             has_history,
-        })
+        ))
     }
 
     /// Always resolve afresh; no service-lifetime cache for payment destinations.

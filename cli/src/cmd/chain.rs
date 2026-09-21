@@ -1,7 +1,7 @@
 //! Commands that talk to a chain: the supported list, balances and history.
 //!
 //! Endpoint selection is core's — `filtered_endpoint_records_for_chain` picks
-//! them from the catalog by kind or capability. The CLI supplies the filter mask for what it
+//! them from the catalog by API and capability. The CLI supplies the filter mask for what it
 //! is about to do and nothing else.
 
 use clap::Args;
@@ -17,7 +17,7 @@ use crate::out::{self, Out};
 
 pub use spectra_core::{
     ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST, ENDPOINT_CAPABILITY_FEE,
-    ENDPOINT_CAPABILITY_NATIVE_HISTORY, ENDPOINT_CAPABILITY_UTXO, ENDPOINT_KIND_RPC_NODE,
+    ENDPOINT_CAPABILITY_HISTORY, ENDPOINT_CAPABILITY_UTXO,
 };
 
 #[derive(Args)]
@@ -54,26 +54,42 @@ pub struct HistoryArgs {
     endpoint: Option<String>,
 }
 
-/// A service bound to one chain's endpoints for the kinds or capabilities a command needs.
-pub fn service_for_chain(chain: Chain, filter_mask: u32) -> CliResult<Arc<WalletService>> {
+/// A service bound to one chain's endpoints for the capabilities a command needs.
+pub fn service_for_chain(
+    ctx: &Ctx,
+    chain: Chain,
+    filter_mask: u32,
+) -> CliResult<Arc<WalletService>> {
     let name = chain.chain_display_name().to_string();
+    let configured = spectra_core::service::catalog_endpoints()?
+        .into_iter()
+        .find(|row| row.chain_id == chain.str_id())
+        .map(|row| row.endpoints)
+        .unwrap_or_default();
     let endpoints: Vec<String> =
         spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), filter_mask)
             .map_err(CliError::from)?
             .into_iter()
+            .filter(|record| configured.contains(&record.endpoint))
             .map(|record| record.endpoint)
             .collect();
     if endpoints.is_empty() {
         return Err(CliError::failure(format!(
-            "no endpoints registered for {name}"
+            "no compatible {} endpoints registered for {name}",
+            chain
+                .endpoint_api(spectra_core::registry::EndpointSlot::Primary)
+                .map(|api| api.as_str())
+                .unwrap_or("API")
         )));
     }
-    WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::new(vec![ChainEndpoints {
         chain_id: chain.str_id().to_string(),
         endpoints,
         api_key: None,
     }])
-    .map_err(CliError::from)
+    .map_err(CliError::from)?;
+    ctx.prepare_transport(&service)?;
+    Ok(service)
 }
 
 pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
@@ -191,7 +207,11 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         out.text(|| {
             for record in &records {
                 println!("{}  {}", record.chain_id, record.endpoint);
-                println!("  {} · {}", record.kind, record.capabilities.join(" · "));
+                println!(
+                    "  {} · {}",
+                    record.api.map(|api| api.as_str()).unwrap_or("web link"),
+                    record.capabilities.join(" · ")
+                );
             }
         });
         out.emit(serde_json::json!({
@@ -203,10 +223,15 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 .map(|group| serde_json::json!({
                     "chainId": group.chain_id, "title": group.title, "endpoints": group.endpoints,
                 })).collect::<Vec<_>>(),
+            "configured": spectra_core::service::catalog_endpoints()?.into_iter()
+                .filter(|row| chains.iter().any(|chain| row.chain_id == chain.str_id()
+                    || row.chain_id.starts_with(&format!("{}:", chain.str_id()))))
+                .map(|row| serde_json::json!({"chainId": row.chain_id, "endpoints": row.endpoints}))
+                .collect::<Vec<_>>(),
             "total": records.len(),
             "endpoints": records.iter().map(|r| serde_json::json!({
                 "chainId": r.chain_id, "endpoint": r.endpoint,
-                "kind": r.kind, "capabilities": r.capabilities,
+                "api": r.api, "capabilities": r.capabilities,
             })).collect::<Vec<_>>(),
         }));
         return Ok(());
@@ -255,7 +280,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         "unchecked": unchecked,
         "endpoints": rows.iter().map(|r| serde_json::json!({
             "chainId": r.chain_id, "chain": r.chain_name, "endpoint": r.endpoint,
-            "kind": r.kind, "capabilities": r.capabilities,
+            "api": r.api, "capabilities": r.capabilities,
             "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
         })).collect::<Vec<_>>(),
     }));
@@ -265,7 +290,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
 pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
-    let service = service_for_chain(chain, ENDPOINT_CAPABILITY_BALANCE | ENDPOINT_KIND_RPC_NODE)?;
+    let service = service_for_chain(ctx, chain, ENDPOINT_CAPABILITY_BALANCE)?;
 
     let summary = ctx
         .rt
@@ -388,12 +413,12 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         .map_err(CliError::from)?
     } else {
         service_for_chain(
+            ctx,
             network,
-            ENDPOINT_CAPABILITY_NATIVE_HISTORY
-                | ENDPOINT_CAPABILITY_BALANCE
-                | ENDPOINT_KIND_RPC_NODE,
+            ENDPOINT_CAPABILITY_HISTORY | ENDPOINT_CAPABILITY_BALANCE,
         )?
     };
+    ctx.prepare_transport(&service)?;
     if args.save {
         return save_history(
             ctx, out, &service, chain, &wallet.id, args.pages, args.limit,

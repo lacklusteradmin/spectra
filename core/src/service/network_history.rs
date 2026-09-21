@@ -181,35 +181,31 @@ async fn fetch_history(
     _token: Option<&str>,
     service: &WalletService,
 ) -> Result<String, SpectraBridgeError> {
-    let endpoints = service.endpoints_for(chain.str_id()).await;
-    let dispatch = chain.mainnet_counterpart();
-    match dispatch {
-        Chain::Bitcoin => json_response(
+    let (api, endpoints) = service.fetch_endpoints(chain).await?;
+    use crate::EndpointApi as Api;
+    match api {
+        Api::Esplora => json_response(
             &BitcoinClient::new(HttpClient::shared(), endpoints)
                 .fetch_history(address, None)
                 .await?,
         ),
-        Chain::BitcoinCash => json_response(
-            &BitcoinCashClient::new(endpoints)
+        Api::Blockbook => json_response(
+            &BlockbookClient::new(endpoints, chain)
                 .fetch_history(address)
                 .await?,
         ),
-        Chain::BitcoinSV => json_response(
+        Api::Whatsonchain => json_response(
             &BitcoinSvClient::new(endpoints)
                 .fetch_history(address)
                 .await?,
         ),
-        Chain::Litecoin => json_response(
-            &LitecoinClient::new(endpoints)
-                .fetch_history(address)
-                .await?,
-        ),
-        Chain::Dogecoin => json_response(
+
+        Api::Blockcypher => json_response(
             &DogecoinClient::new(endpoints)
                 .fetch_history(address)
                 .await?,
         ),
-        c if c.is_evm() => {
+        Api::EvmJsonRpc => {
             let source = chain.evm_history_source();
             let api_key_owned = service.owned_etherscan_api_key().await;
             let api_key_str = if api_key_owned.is_empty() {
@@ -222,12 +218,12 @@ async fn fetch_history(
                 .await?;
             json_response(&h)
         }
-        Chain::Solana => json_response(
+        Api::SolanaJsonRpc => json_response(
             &SolanaClient::new(endpoints)
                 .fetch_unified_history(address, 50)
                 .await?,
         ),
-        Chain::Tron => {
+        Api::TronHttp => {
             let tronscan = service
                 .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
                 .await
@@ -240,11 +236,9 @@ async fn fetch_history(
                     .await?,
             )
         }
-        Chain::Stellar => {
-            json_response(&StellarClient::new(endpoints).fetch_history(address).await?)
-        }
-        Chain::Xrp => json_response(&XrpClient::new(endpoints).fetch_history(address).await?),
-        Chain::Cardano => {
+        Api::Horizon => json_response(&StellarClient::new(endpoints).fetch_history(address).await?),
+        Api::XrplJsonRpc => json_response(&XrpClient::new(endpoints).fetch_history(address).await?),
+        Api::Koios => {
             let api_key = service
                 .api_key_for(chain.str_id())
                 .await
@@ -255,7 +249,18 @@ async fn fetch_history(
                     .await?,
             )
         }
-        Chain::Polkadot => {
+        Api::SubstrateJsonRpc if chain.mainnet_counterpart() == Chain::Bittensor => {
+            let taostats = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
+            let api_key = service.api_key_for(chain.str_id()).await;
+            json_response(
+                &BittensorClient::new(endpoints, taostats, api_key)
+                    .fetch_history(address)
+                    .await?,
+            )
+        }
+        Api::SubstrateJsonRpc => {
             let subscan = service
                 .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                 .await;
@@ -266,9 +271,9 @@ async fn fetch_history(
                     .await?,
             )
         }
-        Chain::Sui => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
-        Chain::Aptos => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
-        Chain::Ton => {
+        Api::SuiJsonRpc => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
+        Api::AptosRest => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
+        Api::ToncenterV2 => {
             let api_key = service.api_key_for(chain.str_id()).await;
             json_response(
                 &TonClient::new(endpoints, api_key)
@@ -276,7 +281,7 @@ async fn fetch_history(
                     .await?,
             )
         }
-        Chain::Near => {
+        Api::NearJsonRpc => {
             let indexer = service
                 .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
                 .await
@@ -289,31 +294,15 @@ async fn fetch_history(
                     .await?,
             )
         }
-        Chain::Icp => json_response(&IcpClient::new(endpoints).fetch_history(address).await?),
-        Chain::Monero => json_response(&MoneroClient::new(endpoints).fetch_history(0).await?),
-        Chain::Zcash => json_response(&ZcashClient::new(endpoints).fetch_history(address).await?),
-        Chain::BitcoinGold => json_response(
-            &BitcoinGoldClient::new(endpoints)
-                .fetch_history(address)
-                .await?,
-        ),
-        Chain::Decred => json_response(&DecredClient::new(endpoints).fetch_history(address).await?),
-        Chain::Kaspa => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),
-        Chain::Dash => json_response(&DashClient::new(endpoints).fetch_history(address).await?),
-        Chain::Bittensor => {
-            let taostats = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &BittensorClient::new(endpoints, taostats, api_key)
-                    .fetch_history(address)
-                    .await?,
-            )
+        Api::IcpRosetta => json_response(&IcpClient::new(endpoints).fetch_history(address).await?),
+        Api::MoneroWalletRpc => {
+            json_response(&MoneroClient::new(endpoints).fetch_history(0).await?)
         }
-        c => Err(SpectraBridgeError::from(format!(
-            "unsupported chain: {c:?}"
-        ))),
+
+        Api::Insight => json_response(&DecredClient::new(endpoints).fetch_history(address).await?),
+        Api::KaspaRest => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),
+
+        c => Err(SpectraBridgeError::from(format!("unsupported API: {c:?}"))),
     }
 }
 

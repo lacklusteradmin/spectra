@@ -103,7 +103,7 @@ impl WalletService {
             service.keypool.write().await.load(keypool, by_chain);
             *service.wallet_state.write().await = state.clone();
             service.state_binding.bind(database).await;
-            crate::tor::apply_policy(state.settings.tor_enabled, state.settings.tor_kill_switch);
+            service.reconcile_transport(&state.settings, false);
             Ok(state)
         })
         .await
@@ -434,10 +434,7 @@ impl WalletService {
             *service.wallet_state.write().await = snapshot.clone();
             // The HTTP layer reads the Tor policy per request rather than the
             // store, so a change to either flag is pushed as it lands.
-            crate::tor::apply_policy(
-                snapshot.settings.tor_enabled,
-                snapshot.settings.tor_kill_switch,
-            );
+            service.reconcile_transport(&snapshot.settings, false);
             Ok(StateTransition {
                 state: snapshot,
                 events,

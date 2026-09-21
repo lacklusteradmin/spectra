@@ -15,8 +15,7 @@ use spectra_core::store::wallet_secrets;
 
 use super::chain::{
     service_for_chain, ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST,
-    ENDPOINT_CAPABILITY_FEE, ENDPOINT_CAPABILITY_NATIVE_HISTORY, ENDPOINT_CAPABILITY_UTXO,
-    ENDPOINT_KIND_RPC_NODE,
+    ENDPOINT_CAPABILITY_FEE, ENDPOINT_CAPABILITY_UTXO,
 };
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
@@ -657,13 +656,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
 
     // Both halves in one service: the holding and the token row come from the
     // opened state, the balance and history reads from the chain's endpoints.
-    let service = service_for_chain(
-        chain,
-        ENDPOINT_CAPABILITY_BALANCE | ENDPOINT_CAPABILITY_NATIVE_HISTORY | ENDPOINT_KIND_RPC_NODE,
-    )?;
-    ctx.rt
-        .block_on(service.open_state(ctx.db_path()))
-        .map_err(CliError::from)?;
+    let service = ctx.service()?;
 
     let holding_key = holding.deployment_id();
     let risk = ctx
@@ -692,6 +685,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         "chain": chain.chain_display_name(),
         "destination": args.to,
         "asset": holding.symbol,
+        "activity": risk.activity,
         "balanceIsZero": risk.balance_is_zero,
         "hasHistory": risk.has_history,
     }));
@@ -755,12 +749,9 @@ fn scan(out: Out, args: ScanArgs) -> CliResult<()> {
 
 fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    // Only the name lookup needs a node, and only the chain that registers
-    // names does one — everywhere else this is address validation, so binding
-    // endpoints would refuse chains that have no ENDPOINT_KIND_RPC_NODE role for a question that
-    // never asks a node anything.
+    // ENS needs the registry-selected EVM API; other chains validate locally.
     let service = if chain.resolves_ens_names() {
-        service_for_chain(chain, ENDPOINT_KIND_RPC_NODE)?
+        service_for_chain(ctx, chain, 0)?
     } else {
         WalletService::new(Vec::new()).map_err(CliError::from)?
     };
@@ -952,35 +943,21 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let chain = resolve_chain(name)?;
         // A maintenance request names the stored transaction network.
         let network = chain;
-        let records = spectra_core::filtered_endpoint_records_for_chain(
-            network.str_id().into(),
-            ENDPOINT_KIND_RPC_NODE | ENDPOINT_CAPABILITY_NATIVE_HISTORY | ENDPOINT_CAPABILITY_UTXO,
+        let service = WalletService::new(
+            spectra_core::service::catalog_endpoints()?
+                .into_iter()
+                .filter(|row| {
+                    row.chain_id == network.str_id()
+                        || row.chain_id
+                            == network.endpoint_str_id(network.supplemental_endpoint_slot())
+                })
+                .collect(),
         )
-        .map_err(CliError::from)?;
-        let service = WalletService::new(vec![
-            spectra_core::service::ChainEndpoints {
-                chain_id: network.str_id().into(),
-                endpoints: records
-                    .iter()
-                    .filter(|r| !r.supplements_rpc_list)
-                    .map(|r| r.endpoint.clone())
-                    .collect(),
-                api_key: None,
-            },
-            spectra_core::service::ChainEndpoints {
-                chain_id: network.endpoint_str_id(network.supplemental_endpoint_slot()),
-                endpoints: records
-                    .iter()
-                    .filter(|r| r.supplements_rpc_list)
-                    .map(|r| r.endpoint.clone())
-                    .collect(),
-                api_key: None,
-            },
-        ])
         .map_err(CliError::from)?;
         ctx.rt
             .block_on(service.open_state(ctx.db_path()))
             .map_err(CliError::from)?;
+        ctx.prepare_transport(&service)?;
         let changes = ctx
             .rt
             .block_on(service.poll_pending_transactions(chain.str_id().into()))
@@ -1185,9 +1162,9 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
 
     let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
     let service = service_for_chain(
+        ctx,
         chain,
         ENDPOINT_CAPABILITY_BALANCE
-            | ENDPOINT_KIND_RPC_NODE
             | ENDPOINT_CAPABILITY_BROADCAST
             | ENDPOINT_CAPABILITY_FEE
             | ENDPOINT_CAPABILITY_UTXO,

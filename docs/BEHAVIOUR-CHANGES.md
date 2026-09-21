@@ -16,6 +16,192 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+
+## 2026-09-21 — Remove endpoint kind and its duplicate selection rules
+
+- **Before:** Endpoint rows carried an overlapping `kind` classification alongside
+  API and capabilities. CLI selectors mixed categories with abilities, and pending
+  polling assembled a separate unfiltered primary/supplemental list.
+- **After:** Remove `kind` from TOML, core/FFI records, probes and CLI output.
+  Monero menu choices select `monero-light-wallet`. Browser links omit API and
+  declare no capabilities; explorer labels enable transaction buttons, while
+  unlabeled pages stay ordinary links. API rows reject link fields.
+  Existing transaction explorer buttons keep their URLs. Endpoint settings show
+  API names plus localized capabilities; browser rows show only their URL.
+  CLI reads/sends select compatible APIs and declared capabilities; ENS uses its
+  registry-selected primary API, and pending polling reuses the catalog's API
+  lists. Remove category mask constants, obsolete category tests and translations.
+- **Why:** The categories described different, overlapping properties. API,
+  abilities and existing browser-link metadata already express each actual need.
+- **CLI check:** `spectra --json endpoints --catalog` has no `kind` fields;
+  API records keep their wire contracts and browser records have null API and
+  empty capabilities. The offline acceptance suite checks compatible selection;
+  core tests check backend/link separation and reject malformed links or old kind.
+- **Verification:** `make verify` passed: formatting/clippy, workspace Rust
+  tests, 423 CLI acceptance checks (including dead-code/translation checks),
+  and 106 iOS simulator tests. Swift and Kotlin bindings regenerated.
+
+## 2026-09-20 — Replace chain fetch aliases with shared API dispatch
+
+- **Before:** API tags filtered URLs, but balance, history, transaction status
+  and rebroadcast still repeated chain-to-client matches. Five Blockbook marker
+  types/files existed only to attach different signers to the same REST client.
+  Each native balance branch also selected its own display formatter.
+- **After:** These operations select their adapter from the active endpoint's
+  API. Unknown custom URLs use the registry's existing default API. Remove the
+  five alias files and PhantomData/marker trait; one Blockbook client carries
+  the concrete network for address normalization. Chain-specific signing stays
+  in send modules, with an early network guard replacing the phantom-type
+  restriction. Nine REST readers share base-path GET and fallback handling.
+  API serde names use the common kebab-case convention instead of 35 repeated
+  rename attributes. Native summaries format smallest units once using registry
+  decimals, preserving tiny amounts formerly truncated by client display text.
+  Blockbook history normalization also covers Bitcoin Gold, Dash and Zcash;
+  previously their fetched entries were dropped by the chain-shape lookup.
+- **Why:** Replace repeated dispatch and protocol wrappers instead of adding
+  another table around them. Chain signing rules and indexer requirements remain
+  explicit; an API label does not manufacture missing protocol implementations.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_blockbook_history_is_shared_across_networks` reads Dash and
+  Zcash through the same local Blockbook fixture. Core mock tests exercise all
+  five networks, BCH testnet prefix normalization, wrong-network signer refusal
+  before requests, and a one-wei balance. Full CLI acceptance includes the new
+  history test.
+- **Verification:** `make verify` passed: formatting/clippy, workspace Rust
+  tests, 423 CLI acceptance checks and all 106 iOS simulator tests.
+
+## 2026-09-20 — Declare endpoint APIs and select compatible adapters
+
+- **Before:** Endpoint kinds described broad categories but not wire formats.
+  Primary fallback lists mixed incompatible APIs (for example Esplora with
+  Blockchain.info, Tron HTTP with JSON-RPC, and Blockbook clients with
+  Blockchair URLs). Bitcoin and TON also selected URLs by hard-coded row IDs.
+- **After:** Every API row declares a validated `api` enum; web links omit it.
+  Core selects each service slot by its client's API and selects primary bases
+  with balance capability, so operation-specific URL prefixes are not treated
+  as bases. Bitcoin Esplora and TON v3 selection use API types, not row IDs.
+  CLI catalog output includes `api` and the actual built-in `configured` lists.
+  Health checks choose JSON-RPC methods from the API, not the broad `kind`.
+  TronGrid HTTP explicitly declares balance, served by `/wallet/getaccount`.
+  Eight clients share JSON-RPC request/error/fallback handling, preserving
+  XRPL's envelope and Monero/NEAR's string request IDs. Null `error` values are
+  accepted when a result exists; malformed results still fail.
+- **Known gaps now explicit:** Litecoin and Bitcoin Cash currently have
+  Blockbook clients but no Blockbook catalog URLs; Monero has a wallet-RPC
+  client but only light-wallet catalog URLs. These primary lists are empty
+  instead of sending incompatible requests. Polkadot's Subscan web link is not
+  an API fallback. The HyperEVMScan homepage is corrected to a web link with no
+  history claim. No new provider or unsupported API adapter is implied.
+- **Custom configuration:** Known catalog URLs with incompatible APIs or
+  operation-only paths are rejected before storing/replacing configuration.
+  Unknown custom URLs are still interpreted using the selected service slot's
+  API contract; `api` is not inferred from a hostname.
+- **Why:** A capability says what can be done, not how to encode it. Explicit
+  API contracts prevent invalid fallbacks and allow shared transport code
+  without erasing chain-specific methods and response decoding.
+- **CLI check:** `spectra --json endpoints --catalog --chain Bitcoin` shows
+  `esplora` and only compatible configured bases. Repeat for TON to see v2/v3
+  separated, or Litecoin to see the missing compatible configuration. Offline
+  CLI acceptance checks these routes and the absence of API tags on web links;
+  mock HTTP tests cover RPC dialects, errors and fallback.
+- **Verification:** `make verify` passed: formatting, clippy, Rust tests, all
+  423 CLI acceptance checks and iPhone simulator tests.
+
+## 2026-09-20 — Finish the Swift shell boundary review
+
+- **Before:** The send-authentication toggle also disabled app unlock, wallet
+  deletion and data-reset authentication. Deletion/reset could proceed when
+  configured device authentication was unavailable.
+- **After:** Native authentication has explicit unlock, send, delete and reset
+  actions. The send toggle affects only sends/rebroadcasts. Other protected
+  actions require configured device authentication and fail closed if unavailable.
+- **Why:** A preference for one action must not disable unrelated protection.
+  LocalAuthentication and device-local preferences remain platform concerns.
+- **CLI check:** Native device authentication has no CLI equivalent;
+  `DeviceAuthenticationTests` covers the action-policy matrix. Core password
+  protection is independently exercised by `python3 scripts/cli-send.py target/debug/spectra`.
+
+- **Before:** Swift selected and started Tor transports; CLI commands could load
+  Tor settings without activating them. Switching embedded Tor to a custom proxy
+  failed, and a late bootstrap could reinstall a proxy after stop/switch.
+- **After:** Registering the platform cache directory starts a core-owned runtime.
+  Committed setting changes and settings reset reconcile that runtime. Reconnect
+  reads stored configuration. Bootstrap tasks are canceled and late completions
+  rejected; the embedded listener binds a free port before reporting ready.
+  HTTP client selection shares the transport-switch lock so a kill-switch check
+  cannot race with replacement by a direct client.
+  CLI network services initialize stored routing and await bootstrap (up to 120s).
+  Editing settings remains offline so a failed transport can be disabled.
+- **Why:** Transport configuration and execution need one owner across clients.
+- **CLI check:** `spectra --json tor [--reconnect]` initializes/reports configured
+  transport. `python3 scripts/cli-transport.py target/debug/spectra` proves a fresh
+  process routes through the saved local SOCKS proxy with remote DNS, and honors
+  disabling it. `cargo test -p spectra_core --test transport_runtime` checks live
+  setting changes/reset without shell callbacks; the bootstrap regression checks
+  cancellation and rejection of obsolete completions without public network.
+
+- **Before:** Swift sent previews and separately reconstructed asset metadata
+  back across FFI for shortcut amounts/details, and classified destination risk
+  from two booleans. Balance display rounding could classify one wei as zero.
+- **After:** An owned preview includes wallet/holding/network identity, display
+  details and core-derived 25/50/75/MAX amounts. Swift rejects mismatched quote
+  identities and never shares mainnet/testnet preview slots. A native-fee-only
+  preview for a token no longer labels the gas balance as token spendable/MAX. Core classifies
+  destination activity using validated raw smallest units on the wallet's network;
+  Swift only localizes the resulting enum.
+- **Why:** Presentation must not reconstruct asset identity or drive risk rules.
+- **CLI check:** `spectra --json send preview --wallet <wallet> --holding <deployment>
+  --amount 1` includes `shortcuts` and `details`; `spectra --json send probe
+  --wallet <wallet> --asset ETH --to <address>` includes `activity`.
+  `scripts/cli-send.py` verifies bound quote amounts; `scripts/cli-transport.py`
+  distinguishes zero balance with history from a funded address holding one wei.
+
+- **Before:** One wide FFI import-draft record modeled five UI modes, including
+  renaming and the backup quiz, duplicating the Swift form's structure.
+- **After:** Remove the draft enum/record/validator. Swift owns form completeness
+  and backup navigation; it reuses core mnemonic/private-key validators. A nonempty
+  watch-address form can submit and show core's validation outcome. Import/rename
+  operations continue to validate before persistence regardless of UI gating.
+- **Why:** Front-end form structure is not an authoritative domain model.
+- **CLI check:** `python3 scripts/cli-wallets.py target/debug/spectra` and
+  `scripts/cli-acceptance.sh` exercise imports, malformed secrets/addresses and
+  persisted renames without the removed draft API. Core validation/import tests
+  replace the deleted UI-draft tests.
+- **Verification:** `make verify IOS_TEST_DERIVED_DATA=/private/tmp/spectra-shell-boundary-derived
+  IOS_TEST_DEST='platform=iOS Simulator,id=E3D8C2FB-841F-45E5-9ED2-7E40EFA89FE5'`
+  passed: rustfmt/Clippy, 848 Rust unit tests plus the independent transport
+  integration test, 422 CLI acceptance checks and 106 iOS tests. The isolated
+  build directory avoids a concurrent build's database lock.
+
+
+## 2026-09-20 — Remove unused endpoint provider metadata
+
+- **Before:** Endpoint rows required `provider_id` and exported it as `providerID`
+  in JSON and `providerId` in Swift, mixing operator names and API types.
+- **After:** Remove the field from TOML, core records and generated bindings.
+  Endpoint identity, selection and request behavior are unchanged.
+- **Why:** No business logic consumed this inconsistent descriptive metadata.
+- **CLI check:** `spectra --json endpoints --catalog` no longer emits `providerID`.
+- **Verification:** `make verify` passed formatting, clippy, Rust tests and CLI
+  acceptance. iOS built successfully, but the 106-test suite reported two
+  assertions in `testTorDoesNotActivateOrStopForAnUncommittedToggle`
+  (`stopped` versus `ready`); the workspace also contains separate Tor lifecycle
+  edits. Full verification remains blocked by that test.
+
+## 2026-09-20 — Rename native-history to history
+
+- **Before:** Native-coin address history used the `native-history` capability.
+- **After:** The catalog, filters, CLI output and localization keys use `history`;
+  `native-history` is no longer accepted. `token-history` remains separate, and
+  `history` still means native-coin address history only.
+- **Why:** Use the shorter requested name without merging native and token
+  capabilities or changing which endpoints can serve them.
+- **CLI check:** `spectra --json endpoints --catalog --chain Bitcoin` exposes
+  `history`; `spectra --json endpoints --catalog` contains no `native-history`.
+  CLI acceptance also checks the native/token distinction for Ethereum and TON.
+- **Verification:** `make verify` passed: formatting, clippy, Rust tests, CLI
+  acceptance and iPhone simulator tests.
+
 ## 2026-09-20 — Remove the generic read capability
 
 - **Before:** 110 endpoint records declared `read`, a generic label shown in

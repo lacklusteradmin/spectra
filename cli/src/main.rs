@@ -36,6 +36,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Start the configured transport, await readiness and report its status.
+    Tor {
+        #[arg(long)]
+        reconnect: bool,
+    },
     /// Create, import and inspect wallets.
     #[command(subcommand)]
     Wallet(cmd::wallet::WalletCommand),
@@ -105,6 +110,15 @@ fn main() {
 
 fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
     match command {
+        Command::Tor { reconnect } => {
+            let service = ctx.service()?;
+            if reconnect {
+                ctx.rt.block_on(service.reconnect_tor());
+                ctx.rt.block_on(service.await_network_ready())?;
+            }
+            out.emit(serde_json::json!({"status": spectra_core::tor::tor_status()}));
+            Ok(())
+        }
         Command::Wallet(command) => cmd::wallet::run(ctx, out, command),
         Command::Address(command) => cmd::address::run(ctx, out, command),
         Command::Chains(args) => cmd::chain::chains(out, args),

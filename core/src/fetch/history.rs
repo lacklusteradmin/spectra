@@ -121,7 +121,12 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
         },
 
         // Blockbook: {txid, amount_sat, block_height, timestamp, is_incoming}
-        Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => HistoryShape {
+        Chain::Litecoin
+        | Chain::BitcoinCash
+        | Chain::BitcoinGold
+        | Chain::Dash
+        | Chain::Zcash
+        | Chain::BitcoinSV => HistoryShape {
             direction_fallback: AmountSign,
             status: ConfirmedWhenMined,
             block_height: Some("block_height"),

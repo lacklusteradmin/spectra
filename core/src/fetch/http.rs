@@ -87,6 +87,22 @@ fn build_blocked_client() -> Client {
 }
 
 impl HttpClient {
+    /// Read a REST resource using the same base-URL fallback policy everywhere.
+    pub(crate) async fn get_path<T: serde::de::DeserializeOwned>(
+        &self,
+        endpoints: &[String],
+        path: &str,
+    ) -> Result<T, String> {
+        with_fallback(endpoints, |base| async move {
+            self.get_json(
+                &format!("{}{}", base.trim_end_matches('/'), path),
+                RetryProfile::ChainRead,
+            )
+            .await
+        })
+        .await
+    }
+
     fn new(proxy_url: Option<&str>) -> Self {
         Self {
             inner: RwLock::new(build_reqwest_client(proxy_url)),
@@ -110,10 +126,13 @@ impl HttpClient {
         // The one choke point every request passes through, so a caller that
         // reaches for a client without checking the guards below still cannot
         // send in the clear.
-        if crate::tor::kill_switch_engaged() {
-            return BLOCKED_CLIENT.clone();
-        }
-        self.inner.read().clone()
+        crate::tor::with_routing_guard(|blocked| {
+            if blocked {
+                BLOCKED_CLIENT.clone()
+            } else {
+                self.inner.read().clone()
+            }
+        })
     }
 
     /// Access the underlying reqwest client for callers that need full control

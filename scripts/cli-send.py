@@ -147,6 +147,13 @@ class SendTests(unittest.TestCase):
                 assert quote['request']['chain_id']=='ethereum',quote
                 assert quote['request']['amount_str']=='1' and quote['request']['to_address']==addresses[1]
                 assert quote['preview'] is not None
+                preview=run('send','preview',*base,'--amount','1','--destination',addresses[1])['preview']
+                assert preview['holding_key']=='ethereum:native' and preview['chain_id']=='ethereum', preview
+                assert set(preview['shortcuts'])=={'25','50','75','100'}, preview
+                assert 0 < float(preview['shortcuts']['100']) < 10, preview
+                assert preview['details']['maxSendable'] < 10, preview
+                risk=run('send','probe','--wallet','Source','--asset','ETH','--to',addresses[1])
+                assert risk['activity']=='funded', risk
                 assert quote['requires_self_send_confirmation']
                 assert quote['request']['evm_overrides']['nonce'] == 7
                 run('send','owned-broadcast',*base,'--amount','1','--destination',addresses[1],'--yes',success=False)

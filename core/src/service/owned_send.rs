@@ -2,6 +2,63 @@
 use super::*;
 use crate::send::flow::SendPreview;
 
+/// A quote bound to the stored holding that produced it. Clients render these
+/// derived values; they never supply asset metadata to reinterpret a preview.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct OwnedSendPreview {
+    pub wallet_id: String,
+    pub holding_key: String,
+    pub chain_id: String,
+    pub preview: SendPreview,
+    pub details: Option<crate::send::flow::SendPreviewDetailsCore>,
+    pub shortcuts: HashMap<u32, String>,
+}
+
+fn owned_preview(
+    wallet_id: String,
+    holding_key: String,
+    chain: Chain,
+    is_native: bool,
+    decimals: Option<u32>,
+    balance: f64,
+    preview: SendPreview,
+) -> OwnedSendPreview {
+    let shortcuts = [25, 50, 75, 100]
+        .into_iter()
+        .filter_map(|percent| {
+            crate::send::flow::quoted_send_amount(
+                Some(preview.clone()),
+                chain.chain_display_name().into(),
+                is_native,
+                decimals,
+                percent,
+            )
+            .map(|amount| (percent, amount))
+        })
+        .collect();
+    let mut details =
+        crate::send::flow::compute_send_preview_details(Some(preview.clone()), balance);
+    if !is_native
+        && !matches!(
+            preview,
+            SendPreview::Ethereum { .. } | SendPreview::Tron { .. }
+        )
+    {
+        if let Some(details) = &mut details {
+            details.spendableBalance = None;
+            details.maxSendable = None;
+        }
+    }
+    OwnedSendPreview {
+        wallet_id,
+        holding_key,
+        chain_id: chain.str_id().into(),
+        preview,
+        details,
+        shortcuts,
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn preview_owned_send(
@@ -12,7 +69,7 @@ impl WalletService {
         destination: String,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
-    ) -> Result<Option<SendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<OwnedSendPreview>, SpectraBridgeError> {
         let state = self.app_state().await;
         let wallet = state
             .wallets
@@ -34,18 +91,30 @@ impl WalletService {
         if route.preview_kind.is_none() {
             return Ok(None);
         }
+        let token_decimals = token.as_ref().map(|t| u32::from(t.decimals));
+        let wrap = |preview| {
+            owned_preview(
+                wallet_id.clone(),
+                holding_key.clone(),
+                chain,
+                holding.is_native(),
+                token_decimals,
+                holding.amount,
+                preview,
+            )
+        };
         if chain.is_evm() {
             return Ok(self
                 .preview_owned_evm_send(
-                    wallet_id,
-                    holding_key,
+                    wallet_id.clone(),
+                    holding_key.clone(),
                     amount,
                     destination,
                     explicit_nonce,
                     custom_fees,
                 )
                 .await?
-                .map(|preview| SendPreview::Ethereum { preview }));
+                .map(|preview| wrap(SendPreview::Ethereum { preview })));
         }
         if explicit_nonce.is_some() || custom_fees.is_some() {
             return Err("EVM fee inputs require an EVM asset".into());
@@ -113,7 +182,7 @@ impl WalletService {
                     .into(),
             ),
         };
-        Ok(preview)
+        Ok(preview.map(wrap))
     }
 
     pub async fn self_send_confirmation(
@@ -278,7 +347,8 @@ impl WalletService {
                 overrides.as_ref().and_then(|o| o.nonce),
                 overrides.as_ref().and_then(|o| o.custom_fees.clone()),
             )
-            .await?;
+            .await?
+            .map(|quote| quote.preview);
         let shape = chain.send_execution_shape();
         let fee = preview
             .as_ref()
@@ -451,5 +521,33 @@ impl WalletService {
             max_fee_gwei: bump.max_fee_gwei,
             priority_fee_gwei: bump.priority_fee_gwei,
         })
+    }
+}
+
+#[cfg(test)]
+mod quote_projection_tests {
+    use super::*;
+    #[test]
+    fn a_native_fee_quote_does_not_claim_a_token_balance_or_maximum() {
+        let preview = SendPreview::Solana {
+            preview: crate::send::preview_types::SolanaSendPreview {
+                spendableBalance: 10.0,
+                maxSendable: 9.0,
+                ..Default::default()
+            },
+        };
+        let quote = owned_preview(
+            "w".into(),
+            "token".into(),
+            Chain::Solana,
+            false,
+            Some(6),
+            100.0,
+            preview,
+        );
+        assert!(quote.shortcuts.is_empty());
+        let details = quote.details.unwrap();
+        assert_eq!(details.spendableBalance, None);
+        assert_eq!(details.maxSendable, None);
     }
 }

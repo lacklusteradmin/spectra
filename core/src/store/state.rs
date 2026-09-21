@@ -1093,7 +1093,14 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
                 return false;
             };
             let value = trimmed(value);
-            if !valid_endpoint(crate::tokens::EndpointField::EvmRpc, &value) {
+            if !valid_endpoint(crate::tokens::EndpointField::EvmRpc, &value)
+                || crate::endpoint_api::validate_configured_endpoint(
+                    chain,
+                    crate::registry::EndpointSlot::Primary,
+                    &value,
+                )
+                .is_err()
+            {
                 return false;
             }
             if value.is_empty() {
