@@ -11,9 +11,8 @@ uniffi::setup_scaffolding!();
 /// Bridge error returned to Swift across UniFFI. Variants describe the broad
 /// failure category so Swift can branch on it (e.g. surface a "no internet"
 /// banner for `Network`, vs. an inline validation error for `InvalidInput`).
-/// `Failure` remains as a catch-all for legacy / un-categorised errors and is
-/// the target of the blanket `From<String>` / `From<&str>` impls so the 200+
-/// existing `.map_err(SpectraBridgeError::from)?` sites keep compiling.
+/// `Failure` represents uncategorized errors from string-based providers.
+/// `From<String>` and `From<&str>` map to that variant.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum SpectraBridgeError {
     /// Network / RPC failure — connectivity, timeout, TLS, HTTP non-2xx, etc.
@@ -28,7 +27,7 @@ pub enum SpectraBridgeError {
     /// chain ID, etc. UI surfaces these inline against the offending field.
     #[error("{message}")]
     InvalidInput { message: String },
-    /// Catch-all for legacy errors that haven't been categorised. New code
+    /// Catch-all for errors without a more specific category. New code
     /// should prefer the specific variants above.
     #[error("{message}")]
     Failure { message: String },

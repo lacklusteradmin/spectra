@@ -100,7 +100,7 @@ impl WalletService {
                 let config = TransactionStatusPollConfig::default();
                 let mut trackers = std::collections::HashMap::from([(
                     current.id.clone(),
-                    crate::store::plan_transaction_status_poll_success(
+                    crate::store::transaction_status_after_successful_poll(
                         None,
                         confirmed,
                         !confirmed,
@@ -116,7 +116,7 @@ impl WalletService {
                 } else {
                     crate::store::wallet_domain::CoreTransactionStatus::Pending
                 };
-                let decision = crate::store::plan_apply_resolved_pending_transaction_statuses(
+                let decision = crate::store::apply_resolved_pending_transaction_statuses(
                     vec![crate::store::ResolvedPendingTransactionInput {
                         id: current.id.clone(),
                         old_status: old_status.clone(),

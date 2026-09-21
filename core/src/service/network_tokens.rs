@@ -384,7 +384,7 @@ impl WalletService {
             // family it was in to pick the right one, which is exactly what
             // the chain id already says.
             c if c.is_evm() => {
-                let client = EvmClient::new(endpoints, c.evm_chain_id());
+                let client = EvmClient::new(endpoints, c.evm_chain_id()?);
                 let mut results = Vec::with_capacity(tokens.len());
                 for token in &tokens {
                     let contract = token.contract.to_lowercase();

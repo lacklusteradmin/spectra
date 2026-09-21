@@ -95,7 +95,7 @@ async fn fetch_native_balance_summary(
             ))
         }
         c if c.is_evm() => {
-            let bal = EvmClient::new(endpoints, chain.evm_chain_id())
+            let bal = EvmClient::new(endpoints, chain.evm_chain_id()?)
                 .fetch_balance(address)
                 .await?;
             Ok(summary_native(bal.balance_wei, bal.balance_display))

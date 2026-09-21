@@ -14,7 +14,7 @@
 #     backend     a Monero light-wallet server.
 #
 #   capabilities  what it is used *for*, and a claim that has to be true
-#     read balance native-history token-history token-discovery token-balance
+#     balance native-history token-history token-discovery token-balance
 #     utxo fee broadcast verification
 #
 # `balance` is native-coin balance; token balances have their own capability.
@@ -40,7 +40,7 @@ chain_id = "bitcoin"
 provider_id = "blockchain-info"
 endpoint = "https://blockchain.info/multiaddr"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history"]
+capabilities = ["balance", "native-history"]
 
 [[endpoints]]
 id = "bitcoin.blockchair.xpub"
@@ -48,7 +48,7 @@ chain_id = "bitcoin"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin/dashboards/xpub/"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history"]
+capabilities = ["balance", "native-history"]
 
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
@@ -56,9 +56,8 @@ chain_id = "bitcoin"
 provider_id = "esplora"
 endpoint = "https://blockstream.info/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://blockstream.info/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool"
@@ -66,9 +65,8 @@ chain_id = "bitcoin"
 provider_id = "esplora"
 endpoint = "https://mempool.space/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool_emzy"
@@ -76,9 +74,8 @@ chain_id = "bitcoin"
 provider_id = "esplora"
 endpoint = "https://mempool.emzy.de/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.emzy.de/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.mainnet.maestro"
@@ -86,9 +83,8 @@ chain_id = "bitcoin"
 provider_id = "maestro-esplora"
 endpoint = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.explorer.tx"
@@ -105,9 +101,8 @@ chain_id = "bitcoin-testnet"
 provider_id = "esplora"
 endpoint = "https://blockstream.info/testnet/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://blockstream.info/testnet/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.testnet.mempool"
@@ -115,9 +110,8 @@ chain_id = "bitcoin-testnet"
 provider_id = "esplora"
 endpoint = "https://mempool.space/testnet/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/testnet/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.testnet4.mempool"
@@ -125,9 +119,8 @@ chain_id = "bitcoin-testnet-4"
 provider_id = "esplora"
 endpoint = "https://mempool.space/testnet4/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/testnet4/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.signet.blockstream"
@@ -135,9 +128,8 @@ chain_id = "bitcoin-signet"
 provider_id = "esplora"
 endpoint = "https://blockstream.info/signet/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://blockstream.info/signet/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.signet.mempool"
@@ -145,9 +137,8 @@ chain_id = "bitcoin-signet"
 provider_id = "esplora"
 endpoint = "https://mempool.space/signet/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.space/signet/api"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoincash.blockchair.api"
@@ -155,9 +146,8 @@ chain_id = "bitcoin-cash"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "verification"]
 probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoincash.blockchair.push"
@@ -183,9 +173,8 @@ chain_id = "bitcoin-cash"
 provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "verification"]
+capabilities = ["balance", "native-history", "utxo", "verification"]
 probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoincash.actorforth.broadcast"
@@ -220,9 +209,8 @@ chain_id = "bitcoin-sv"
 provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "verification"]
+capabilities = ["balance", "native-history", "utxo", "verification"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.chaininfo"
@@ -257,9 +245,8 @@ chain_id = "bitcoin-sv"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "verification"]
 probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.push"
@@ -294,9 +281,8 @@ chain_id = "litecoin"
 provider_id = "litecoinspace"
 endpoint = "https://litecoinspace.org/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://litecoinspace.org/api"
-settings_visible = true
 
 [[endpoints]]
 id = "litecoin.blockcypher.api"
@@ -304,9 +290,8 @@ chain_id = "litecoin"
 provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/ltc/main"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/ltc/main"
-settings_visible = true
 
 [[endpoints]]
 id = "litecoin.sochain.api"
@@ -314,9 +299,8 @@ chain_id = "litecoin"
 provider_id = "sochain"
 endpoint = "https://sochain.com/api/v2"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "verification"]
+capabilities = ["balance", "native-history", "utxo", "verification"]
 probe_url = "https://sochain.com/api/v2"
-settings_visible = true
 
 [[endpoints]]
 id = "litecoin.explorer.tx"
@@ -333,9 +317,8 @@ chain_id = "dogecoin"
 provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/doge/main"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/doge/main"
-settings_visible = true
 
 [[endpoints]]
 id = "dogecoin.testnet.blockcypher"
@@ -343,9 +326,8 @@ chain_id = "dogecoin-testnet"
 provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/doge/test3"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/doge/test3"
-settings_visible = true
 
 [[endpoints]]
 id = "dogecoin.explorer.tx"
@@ -362,9 +344,8 @@ chain_id = "tron"
 provider_id = "tronscan"
 endpoint = "https://apilist.tronscanapi.com/api/accountv2"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://apilist.tronscanapi.com/api/system/status"
-settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.accounts.io"
@@ -372,9 +353,8 @@ chain_id = "tron"
 provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.io/v1/accounts"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
-settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.accounts.pro"
@@ -382,9 +362,8 @@ chain_id = "tron"
 provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.pro/v1/accounts"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
-settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.accounts.network"
@@ -392,9 +371,8 @@ chain_id = "tron"
 provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.network/v1/accounts"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
-settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.rpc.io"
@@ -404,7 +382,6 @@ endpoint = "https://api.trongrid.io"
 kind = "rpc-node"
 capabilities = ["fee", "broadcast", "verification", "token-balance"]
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
-settings_visible = true
 
 [[endpoints]]
 id = "tron.rpc.publicnode"
@@ -414,7 +391,6 @@ endpoint = "https://tron-rpc.publicnode.com"
 # Replaced api.trongrid.pro and .network, both unreachable.
 kind = "rpc-node"
 capabilities = ["fee", "broadcast", "verification", "token-balance"]
-settings_visible = true
 
 [[endpoints]]
 id = "tron.explorer.tx"
@@ -431,9 +407,8 @@ chain_id = "solana"
 provider_id = "solana-mainnet-beta"
 endpoint = "https://api.mainnet-beta.solana.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.mainnet-beta.solana.com"
-settings_visible = true
 
 [[endpoints]]
 id = "solana.rpc.publicnode"
@@ -441,9 +416,8 @@ chain_id = "solana"
 provider_id = "solana-publicnode"
 endpoint = "https://solana-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "fee", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://solana-rpc.publicnode.com"
-settings_visible = true
 
 [[endpoints]]
 id = "xrp.history.xrpscan_api"
@@ -451,8 +425,7 @@ chain_id = "xrp"
 provider_id = "xrpscan"
 endpoint = "https://api.xrpscan.com/api/v1/account"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history"]
-settings_visible = true
+capabilities = ["balance", "native-history"]
 
 [[endpoints]]
 id = "xrp.history.xrpscan"
@@ -460,8 +433,7 @@ chain_id = "xrp"
 provider_id = "xrpscan"
 endpoint = "https://xrpscan.com/api/v1/account"
 kind = "indexer"
-capabilities = ["read", "native-history"]
-settings_visible = true
+capabilities = ["native-history"]
 
 [[endpoints]]
 id = "xrp.rpc.s1"
@@ -469,9 +441,8 @@ chain_id = "xrp"
 provider_id = "ripple-s1"
 endpoint = "https://s1.ripple.com:51234/"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://s1.ripple.com:51234/"
-settings_visible = true
 
 [[endpoints]]
 id = "xrp.rpc.s2"
@@ -479,9 +450,8 @@ chain_id = "xrp"
 provider_id = "ripple-s2"
 endpoint = "https://s2.ripple.com:51234/"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://s2.ripple.com:51234/"
-settings_visible = true
 
 [[endpoints]]
 id = "xrp.rpc.cluster"
@@ -489,9 +459,8 @@ chain_id = "xrp"
 provider_id = "xrpl-cluster"
 endpoint = "https://xrplcluster.com/"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://xrplcluster.com/"
-settings_visible = true
 
 [[endpoints]]
 id = "xrp.explorer.tx"
@@ -508,9 +477,8 @@ chain_id = "cardano"
 provider_id = "koios"
 endpoint = "https://api.koios.rest/api/v1"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://api.koios.rest/api/v1/tip"
-settings_visible = true
 
 [[endpoints]]
 id = "cardano.koios.xray"
@@ -518,9 +486,8 @@ chain_id = "cardano"
 provider_id = "koios"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://graph.xray.app/output/services/koios/mainnet/api/v1/tip"
-settings_visible = true
 
 [[endpoints]]
 id = "cardano.koios.happystaking"
@@ -528,9 +495,8 @@ chain_id = "cardano"
 provider_id = "koios"
 endpoint = "https://koios.happystaking.io:8453/api/v1"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://koios.happystaking.io:8453/api/v1/tip"
-settings_visible = true
 
 [[endpoints]]
 id = "cardano.explorer.tx"
@@ -547,9 +513,8 @@ chain_id = "aptos"
 provider_id = "aptos-mainnet-rpc"
 endpoint = "https://api.mainnet.aptoslabs.com/v1"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://api.mainnet.aptoslabs.com/v1/spec"
-settings_visible = true
 
 [[endpoints]]
 id = "aptos.rpc.mainnet"
@@ -557,9 +522,8 @@ chain_id = "aptos"
 provider_id = "aptoslabs-mainnet"
 endpoint = "https://mainnet.aptoslabs.com/v1"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://mainnet.aptoslabs.com/v1/spec"
-settings_visible = true
 
 [[endpoints]]
 id = "aptos.explorer.tx"
@@ -577,9 +541,8 @@ chain_id = "ton"
 provider_id = "toncenter-v2"
 endpoint = "https://toncenter.com/api/v2"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "verification"]
 probe_url = "https://toncenter.com/api/v2/getMasterchainInfo"
-settings_visible = true
 
 [[endpoints]]
 id = "ton.api.v3"
@@ -587,9 +550,8 @@ chain_id = "ton"
 provider_id = "toncenter-v3"
 endpoint = "https://toncenter.com/api/v3"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["balance", "native-history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://toncenter.com/api/v3/jetton/wallets"
-settings_visible = true
 
 [[endpoints]]
 id = "ton.explorer.tx"
@@ -606,9 +568,8 @@ chain_id = "sui"
 provider_id = "sui-publicnode"
 endpoint = "https://sui-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://sui-rpc.publicnode.com"
-settings_visible = true
 
 [[endpoints]]
 id = "sui.rpc.blockvision"
@@ -616,9 +577,8 @@ chain_id = "sui"
 provider_id = "sui-blockvision"
 endpoint = "https://sui-mainnet-endpoint.blockvision.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://sui-mainnet-endpoint.blockvision.org"
-settings_visible = true
 
 [[endpoints]]
 id = "sui.rpc.blockpi"
@@ -626,9 +586,8 @@ chain_id = "sui"
 provider_id = "sui-blockpi"
 endpoint = "https://sui.blockpi.network/v1/rpc/public"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://sui.blockpi.network/v1/rpc/public"
-settings_visible = true
 
 [[endpoints]]
 id = "sui.rpc.suiscan"
@@ -636,9 +595,8 @@ chain_id = "sui"
 provider_id = "sui-suiscan"
 endpoint = "https://rpc-mainnet.suiscan.xyz"
 kind = "rpc-node"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
+capabilities = ["balance", "native-history", "fee", "broadcast", "token-balance", "token-discovery"]
 probe_url = "https://rpc-mainnet.suiscan.xyz"
-settings_visible = true
 
 [[endpoints]]
 id = "near.rpc.mainnet"
@@ -646,9 +604,8 @@ chain_id = "near"
 provider_id = "near-mainnet-rpc"
 endpoint = "https://rpc.mainnet.near.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.mainnet.near.org"
-settings_visible = true
 
 [[endpoints]]
 id = "near.rpc.fastnear"
@@ -656,9 +613,8 @@ chain_id = "near"
 provider_id = "fastnear-rpc"
 endpoint = "https://free.rpc.fastnear.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://free.rpc.fastnear.com"
-settings_visible = true
 
 [[endpoints]]
 id = "near.history.nearblocks"
@@ -666,9 +622,8 @@ chain_id = "near"
 provider_id = "nearblocks"
 endpoint = "https://api.nearblocks.io/v1"
 kind = "indexer"
-capabilities = ["read", "native-history"]
+capabilities = ["native-history"]
 probe_url = "https://api.nearblocks.io/v1/stats"
-settings_visible = true
 
 [[endpoints]]
 id = "near.explorer.tx"
@@ -685,9 +640,8 @@ chain_id = "polkadot"
 provider_id = "sidecar"
 endpoint = "https://polkadot-public-sidecar.parity-chains.parity.io"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://polkadot-public-sidecar.parity-chains.parity.io/transaction/material"
-settings_visible = true
 
 [[endpoints]]
 id = "polkadot.rpc.onfinality"
@@ -695,9 +649,8 @@ chain_id = "polkadot"
 provider_id = "rpc"
 endpoint = "https://polkadot.api.onfinality.io/public"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
+capabilities = ["balance", "fee", "broadcast"]
 probe_url = "https://polkadot.api.onfinality.io/public"
-settings_visible = true
 
 [[endpoints]]
 id = "polkadot.rpc.official"
@@ -707,8 +660,7 @@ endpoint = "https://rpc.polkadot.io"
 # The official node, which was not in this file while two of the three
 # listed for Polkadot were dead.
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "polkadot.explorer.tx"
@@ -725,9 +677,8 @@ chain_id = "stellar"
 provider_id = "horizon"
 endpoint = "https://horizon.stellar.org"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://horizon.stellar.org/fee_stats"
-settings_visible = true
 
 [[endpoints]]
 id = "stellar.horizon.lobstr"
@@ -735,9 +686,8 @@ chain_id = "stellar"
 provider_id = "horizon"
 endpoint = "https://horizon.stellar.lobstr.co"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://horizon.stellar.lobstr.co/fee_stats"
-settings_visible = true
 
 [[endpoints]]
 id = "stellar.explorer.tx"
@@ -754,8 +704,7 @@ chain_id = "monero"
 provider_id = "trusted-backend"
 endpoint = "https://monerolws1.edge.app"
 kind = "backend"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.backend.2"
@@ -763,8 +712,7 @@ chain_id = "monero"
 provider_id = "trusted-backend"
 endpoint = "https://monerolws2.edge.app"
 kind = "backend"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.backend.3"
@@ -772,8 +720,7 @@ chain_id = "monero"
 provider_id = "trusted-backend"
 endpoint = "https://monerolws3.edge.app"
 kind = "backend"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.explorer.tx"
@@ -790,9 +737,8 @@ chain_id = "internet-computer"
 provider_id = "rosetta"
 endpoint = "https://rosetta-api.internetcomputer.org"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "fee", "broadcast"]
+capabilities = ["balance", "native-history", "fee", "broadcast"]
 probe_url = "https://rosetta-api.internetcomputer.org/network/list"
-settings_visible = true
 
 [[endpoints]]
 id = "icp.explorer.tx"
@@ -809,8 +755,7 @@ chain_id = "ethereum"
 provider_id = "rpc"
 endpoint = "https://ethereum-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.rpc.cloudflare"
@@ -818,8 +763,7 @@ chain_id = "ethereum"
 provider_id = "rpc"
 endpoint = "https://cloudflare-eth.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.rpc.1rpc"
@@ -827,8 +771,7 @@ chain_id = "ethereum"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/eth"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.explorer.ethplorer"
@@ -838,9 +781,8 @@ endpoint = "https://api.ethplorer.io"
 # The one endpoint registered alongside an RPC list rather than instead
 # of it — see supplements_rpc_list.
 kind = "indexer"
-capabilities = ["read", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["native-history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://api.ethplorer.io/getAddressInfo/0x0000000000000000000000000000000000000000?apiKey=freekey"
-settings_visible = true
 supplements_rpc_list = true
 
 [[endpoints]]
@@ -850,7 +792,7 @@ provider_id = "blockscout"
 endpoint = "https://eth.blockscout.com"
 # Keyless. Etherscan-V1 request shape; 3/3 in the 2026-09 sweep.
 kind = "indexer"
-capabilities = ["read", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["native-history", "token-balance", "token-discovery", "token-history"]
 
 [[endpoints]]
 id = "ethereum.explorer.tx"
@@ -867,8 +809,7 @@ chain_id = "ethereum-sepolia"
 provider_id = "rpc"
 endpoint = "https://ethereum-sepolia-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereum.hoodi.rpc.publicnode"
@@ -876,8 +817,7 @@ chain_id = "ethereum-hoodi"
 provider_id = "rpc"
 endpoint = "https://ethereum-hoodi-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "ethereumclassic.rpc.etcdesktop"
@@ -887,8 +827,7 @@ endpoint = "https://etc.etcdesktop.com"
 # Replaced geth-at.etc-network.info, which stopped answering. Returns
 # chain id 0x3d.
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "ethereumclassic.explorer.blockscout"
@@ -896,7 +835,7 @@ chain_id = "ethereum-classic"
 provider_id = "blockscout"
 endpoint = "https://blockscout.com/etc/mainnet"
 kind = "indexer"
-capabilities = ["read", "native-history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["native-history", "token-balance", "token-discovery", "token-history"]
 
 [[endpoints]]
 id = "ethereumclassic.explorer.tx"
@@ -913,8 +852,7 @@ chain_id = "arbitrum"
 provider_id = "rpc"
 endpoint = "https://arbitrum-one-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "arbitrum.rpc.arb1"
@@ -922,8 +860,7 @@ chain_id = "arbitrum"
 provider_id = "rpc"
 endpoint = "https://arb1.arbitrum.io/rpc"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "arbitrum.rpc.1rpc"
@@ -931,8 +868,7 @@ chain_id = "arbitrum"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/arb"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "arbitrum.explorer.tx"
@@ -949,8 +885,7 @@ chain_id = "optimism"
 provider_id = "rpc"
 endpoint = "https://mainnet.optimism.io"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "optimism.rpc.publicnode"
@@ -958,8 +893,7 @@ chain_id = "optimism"
 provider_id = "rpc"
 endpoint = "https://optimism-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "optimism.rpc.1rpc"
@@ -967,8 +901,7 @@ chain_id = "optimism"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/op"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "optimism.explorer.tx"
@@ -985,8 +918,7 @@ chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed.bnbchain.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.rpc.binance"
@@ -994,8 +926,7 @@ chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.binance.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.rpc.defibit"
@@ -1003,8 +934,7 @@ chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.defibit.io"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.rpc.ninicoin"
@@ -1012,8 +942,7 @@ chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.ninicoin.io"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "bnb.explorer.tx"
@@ -1030,8 +959,7 @@ chain_id = "avalanche"
 provider_id = "rpc"
 endpoint = "https://api.avax.network/ext/bc/C/rpc"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "avalanche.rpc.publicnode"
@@ -1039,8 +967,7 @@ chain_id = "avalanche"
 provider_id = "rpc"
 endpoint = "https://avalanche-c-chain-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "avalanche.rpc.1rpc"
@@ -1048,8 +975,7 @@ chain_id = "avalanche"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/avax/c"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast"]
 
 [[endpoints]]
 id = "avalanche.explorer.tx"
@@ -1066,8 +992,7 @@ chain_id = "hyperliquid"
 provider_id = "rpc"
 endpoint = "https://rpc.hyperliquid.xyz/evm"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "hyperliquid.rpc.onfinality"
@@ -1075,8 +1000,7 @@ chain_id = "hyperliquid"
 provider_id = "rpc"
 endpoint = "https://hyperliquid.api.onfinality.io/evm/public"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "hyperliquid.explorer.web"
@@ -1084,7 +1008,7 @@ chain_id = "hyperliquid"
 provider_id = "hyperevmscan"
 endpoint = "https://hyperevmscan.io"
 kind = "indexer"
-capabilities = ["read", "native-history"]
+capabilities = ["native-history"]
 
 [[endpoints]]
 id = "hyperliquid.explorer.tx"
@@ -1101,8 +1025,7 @@ chain_id = "base"
 provider_id = "rpc"
 endpoint = "https://base-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "base.rpc.mainnet"
@@ -1110,8 +1033,7 @@ chain_id = "base"
 provider_id = "rpc"
 endpoint = "https://mainnet.base.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "base.rpc.1rpc"
@@ -1119,8 +1041,7 @@ chain_id = "base"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/base"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "base.explorer.tx"
@@ -1137,8 +1058,7 @@ chain_id = "linea"
 provider_id = "rpc"
 endpoint = "https://linea-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "linea.rpc.rpc"
@@ -1146,8 +1066,7 @@ chain_id = "linea"
 provider_id = "rpc"
 endpoint = "https://rpc.linea.build"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "linea.rpc.1rpc"
@@ -1155,8 +1074,7 @@ chain_id = "linea"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/linea"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "linea.explorer.tx"
@@ -1173,8 +1091,7 @@ chain_id = "scroll"
 provider_id = "rpc"
 endpoint = "https://scroll-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "scroll.rpc.rpc"
@@ -1182,8 +1099,7 @@ chain_id = "scroll"
 provider_id = "rpc"
 endpoint = "https://rpc.scroll.io"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "scroll.rpc.1rpc"
@@ -1191,8 +1107,7 @@ chain_id = "scroll"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/scroll"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "scroll.explorer.tx"
@@ -1209,8 +1124,7 @@ chain_id = "blast"
 provider_id = "rpc"
 endpoint = "https://blast-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "blast.rpc.rpc"
@@ -1218,8 +1132,7 @@ chain_id = "blast"
 provider_id = "rpc"
 endpoint = "https://rpc.blast.io"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "blast.explorer.tx"
@@ -1236,8 +1149,7 @@ chain_id = "mantle"
 provider_id = "rpc"
 endpoint = "https://mantle-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "mantle.rpc.rpc"
@@ -1245,8 +1157,7 @@ chain_id = "mantle"
 provider_id = "rpc"
 endpoint = "https://rpc.mantle.xyz"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "mantle.explorer.tx"
@@ -1263,8 +1174,7 @@ chain_id = "polygon"
 provider_id = "rpc"
 endpoint = "https://polygon-bor-rpc.publicnode.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "polygon.rpc.1rpc"
@@ -1272,8 +1182,7 @@ chain_id = "polygon"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/matic"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
-settings_visible = true
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 
 [[endpoints]]
 id = "polygon.explorer.tx"
@@ -1290,9 +1199,8 @@ chain_id = "zcash"
 provider_id = "trezor-blockbook"
 endpoint = "https://zec1.trezor.io"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://zec1.trezor.io/api/v2"
-settings_visible = true
 
 [[endpoints]]
 id = "zcash.explorer.tx"
@@ -1309,9 +1217,8 @@ chain_id = "bitcoin-gold"
 provider_id = "trezor-blockbook"
 endpoint = "https://btg1.trezor.io"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://btg1.trezor.io/api/v2"
-settings_visible = true
 
 [[endpoints]]
 id = "bitcoinGold.explorer.tx"
@@ -1328,9 +1235,8 @@ chain_id = "decred"
 provider_id = "dcrdata"
 endpoint = "https://dcrdata.decred.org/insight/api"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://dcrdata.decred.org/insight/api/status"
-settings_visible = true
 
 [[endpoints]]
 id = "decred.explorer.tx"
@@ -1347,9 +1253,8 @@ chain_id = "kaspa"
 provider_id = "kaspaorg"
 endpoint = "https://api.kaspa.org"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.kaspa.org/info/network"
-settings_visible = true
 
 [[endpoints]]
 id = "kaspa.explorer.tx"
@@ -1366,9 +1271,8 @@ chain_id = "sei"
 provider_id = "rpc"
 endpoint = "https://evm-rpc.sei-apis.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://evm-rpc.sei-apis.com"
-settings_visible = true
 
 [[endpoints]]
 id = "sei.explorer.tx"
@@ -1385,9 +1289,8 @@ chain_id = "celo"
 provider_id = "rpc"
 endpoint = "https://forno.celo.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://forno.celo.org"
-settings_visible = true
 
 [[endpoints]]
 id = "celo.explorer.tx"
@@ -1404,9 +1307,8 @@ chain_id = "cronos"
 provider_id = "rpc"
 endpoint = "https://evm.cronos.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://evm.cronos.org"
-settings_visible = true
 
 [[endpoints]]
 id = "cronos.explorer.tx"
@@ -1423,9 +1325,8 @@ chain_id = "opbnb"
 provider_id = "rpc"
 endpoint = "https://opbnb-mainnet-rpc.bnbchain.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://opbnb-mainnet-rpc.bnbchain.org"
-settings_visible = true
 
 [[endpoints]]
 id = "opBNB.explorer.tx"
@@ -1442,9 +1343,8 @@ chain_id = "zksync-era"
 provider_id = "rpc"
 endpoint = "https://mainnet.era.zksync.io"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://mainnet.era.zksync.io"
-settings_visible = true
 
 [[endpoints]]
 id = "zkSyncEra.explorer.tx"
@@ -1461,9 +1361,8 @@ chain_id = "sonic"
 provider_id = "rpc"
 endpoint = "https://rpc.soniclabs.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.soniclabs.com"
-settings_visible = true
 
 [[endpoints]]
 id = "sonic.explorer.tx"
@@ -1480,9 +1379,8 @@ chain_id = "berachain"
 provider_id = "rpc"
 endpoint = "https://rpc.berachain.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.berachain.com"
-settings_visible = true
 
 [[endpoints]]
 id = "berachain.explorer.tx"
@@ -1499,9 +1397,8 @@ chain_id = "unichain"
 provider_id = "rpc"
 endpoint = "https://mainnet.unichain.org"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://mainnet.unichain.org"
-settings_visible = true
 
 [[endpoints]]
 id = "unichain.explorer.tx"
@@ -1518,9 +1415,8 @@ chain_id = "ink"
 provider_id = "rpc"
 endpoint = "https://rpc-gel.inkonchain.com"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc-gel.inkonchain.com"
-settings_visible = true
 
 [[endpoints]]
 id = "ink.explorer.tx"
@@ -1537,9 +1433,8 @@ chain_id = "dash"
 provider_id = "trezor-blockbook"
 endpoint = "https://dash1.trezor.io"
 kind = "indexer"
-capabilities = ["read", "balance", "native-history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "native-history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://dash1.trezor.io/api/v2"
-settings_visible = true
 
 [[endpoints]]
 id = "dash.explorer.tx"
@@ -1556,9 +1451,8 @@ chain_id = "x-layer"
 provider_id = "rpc"
 endpoint = "https://rpc.xlayer.tech"
 kind = "rpc-node"
-capabilities = ["read", "balance", "fee", "broadcast", "token-balance"]
+capabilities = ["balance", "fee", "broadcast", "token-balance"]
 probe_url = "https://rpc.xlayer.tech"
-settings_visible = true
 
 [[endpoints]]
 id = "xLayer.explorer.tx"
@@ -1575,9 +1469,8 @@ chain_id = "bittensor"
 provider_id = "opentensor"
 endpoint = "https://entrypoint-finney.opentensor.ai"
 kind = "indexer"
-capabilities = ["read", "balance", "fee", "broadcast"]
+capabilities = ["balance", "fee", "broadcast"]
 probe_url = "https://entrypoint-finney.opentensor.ai"
-settings_visible = true
 
 [[endpoints]]
 id = "bittensor.mainnet.taostats"
@@ -1587,7 +1480,6 @@ endpoint = "https://api.taostats.io"
 kind = "indexer"
 capabilities = ["native-history", "verification"]
 probe_url = "https://api.taostats.io"
-settings_visible = true
 
 [[endpoints]]
 id = "bittensor.explorer.tx"

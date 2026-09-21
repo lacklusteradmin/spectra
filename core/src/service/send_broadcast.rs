@@ -65,7 +65,7 @@ impl WalletService {
                 Ok(serde_json::to_string(&res)?)
             }
             c if c.is_evm() => {
-                let client = EvmClient::new(eps, chain.evm_chain_id());
+                let client = EvmClient::new(eps, chain.evm_chain_id()?);
                 let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }

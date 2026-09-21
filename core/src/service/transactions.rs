@@ -200,10 +200,7 @@ impl WalletService {
         transaction_ids
             .into_iter()
             .filter(|id| {
-                crate::store::plan_transaction_status_should_poll(
-                    trackers.get(id).cloned(),
-                    now_unix,
-                )
+                crate::store::should_poll_transaction_status(trackers.get(id).cloned(), now_unix)
             })
             .collect()
     }
@@ -222,13 +219,13 @@ impl WalletService {
         let mut trackers = self.status_trackers.write().await;
         let previous = trackers.get(&transaction_id).cloned();
         let next = match outcome {
-            StatusPollOutcome::Failed => crate::store::plan_transaction_status_poll_failure(
+            StatusPollOutcome::Failed => crate::store::transaction_status_after_failed_poll(
                 previous,
                 now_unix,
                 TransactionStatusPollConfig::default(),
             ),
             StatusPollOutcome::Confirmed { confirmations } => {
-                crate::store::plan_transaction_status_poll_success(
+                crate::store::transaction_status_after_successful_poll(
                     previous,
                     true,
                     false,
@@ -237,7 +234,7 @@ impl WalletService {
                     TransactionStatusPollConfig::default(),
                 )
             }
-            StatusPollOutcome::Pending => crate::store::plan_transaction_status_poll_success(
+            StatusPollOutcome::Pending => crate::store::transaction_status_after_successful_poll(
                 previous,
                 false,
                 true,
@@ -245,14 +242,16 @@ impl WalletService {
                 now_unix,
                 TransactionStatusPollConfig::default(),
             ),
-            StatusPollOutcome::Unresolved => crate::store::plan_transaction_status_poll_success(
-                previous,
-                false,
-                false,
-                None,
-                now_unix,
-                TransactionStatusPollConfig::default(),
-            ),
+            StatusPollOutcome::Unresolved => {
+                crate::store::transaction_status_after_successful_poll(
+                    previous,
+                    false,
+                    false,
+                    None,
+                    now_unix,
+                    TransactionStatusPollConfig::default(),
+                )
+            }
         };
         trackers.insert(transaction_id, next);
     }
@@ -353,7 +352,7 @@ impl WalletService {
 
                 let now_unix = crate::store::wallet_db::now_secs() as f64;
                 let decisions = {
-                    crate::store::plan_apply_resolved_pending_transaction_statuses(
+                    crate::store::apply_resolved_pending_transaction_statuses(
                         inputs,
                         &mut next_trackers,
                         now_unix,
@@ -397,7 +396,7 @@ impl WalletService {
                         updated.receipt_network_fee = None;
                         updated.confirmation_count = None;
                         updated.confirmed_network_fee = None;
-                        let next = crate::store::plan_transaction_status_poll_success(
+                        let next = crate::store::transaction_status_after_successful_poll(
                             next_trackers.get(&updated.id).cloned(),
                             false,
                             true,
@@ -923,7 +922,7 @@ impl WalletService {
                     == crate::store::wallet_domain::CoreTransactionStatus::Pending,
             })
             .collect();
-        Ok(crate::store::plan_stale_pending_failure_ids(
+        Ok(crate::store::stale_pending_failure_ids(
             inputs,
             &failures,
             crate::store::wallet_db::now_secs() as f64,

@@ -1029,7 +1029,7 @@ fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
 
 /// Chain, then the catalog's own rows before the user's, then symbol.
 ///
-/// The same order `plan_merge_built_in_token_preferences` produces, so a list
+/// The same order `merge_built_in_token_preferences` produces, so a list
 /// that has just been added to still matches the one a reload builds. Swift
 /// re-sorted with its own copy of this comparator after every insert.
 fn sort_token_preferences(entries: &mut [crate::store::wallet_domain::CoreTokenPreferenceEntry]) {
@@ -1541,7 +1541,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             }
         }
         StateCommand::MergeBuiltInTokens => {
-            let merged = crate::store::plan_merge_built_in_token_preferences(
+            let merged = crate::store::merge_built_in_token_preferences(
                 crate::store::built_in_token_preferences(),
                 std::mem::take(&mut state.token_preferences),
             );

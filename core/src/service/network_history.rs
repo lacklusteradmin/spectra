@@ -67,10 +67,10 @@ impl WalletService {
         let chain = evm_network_for_id(&chain_id)?;
 
         let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
         let source = chain.evm_history_source();
-        let etherscan_chain_id = chain.evm_chain_id();
+        let etherscan_chain_id = chain.evm_chain_id()?;
         let api_key_owned = self.owned_etherscan_api_key().await;
         let api_key_str = if api_key_owned.is_empty() {
             None
@@ -217,8 +217,8 @@ async fn fetch_history(
             } else {
                 Some(api_key_owned.as_str())
             };
-            let h = EvmClient::new(endpoints, chain.evm_chain_id())
-                .fetch_history(address, source, api_key_str, chain.evm_chain_id(), 1, 50)
+            let h = EvmClient::new(endpoints, chain.evm_chain_id()?)
+                .fetch_history(address, source, api_key_str, chain.evm_chain_id()?, 1, 50)
                 .await?;
             json_response(&h)
         }

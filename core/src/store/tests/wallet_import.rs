@@ -47,7 +47,7 @@ async fn imported_wallets_land_in_core_state() {
         .expect("snapshot")
         .wallets;
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].selected_chain, "Solana");
+    assert_eq!(stored[0].family_name, "Solana");
     assert_eq!(
         stored[0].addresses.get("solana").map(String::as_str),
         Some(
@@ -146,7 +146,7 @@ async fn a_network_selection_applies_only_to_its_own_family() {
     let by_chain: std::collections::HashMap<_, _> = outcome
         .wallets
         .iter()
-        .map(|w| (w.selected_chain.as_str(), w))
+        .map(|w| (w.family_name.as_str(), w))
         .collect();
     assert_eq!(by_chain["Bitcoin"].chain_id, "bitcoin-testnet");
     // Choosing Bitcoin testnet must not drag the Solana wallet with it.

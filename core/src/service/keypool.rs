@@ -151,7 +151,7 @@ impl WalletService {
                 .await?;
             let key = keypool_key(&wallet_id, &chain_name);
             let mut tables = service.keypool.write().await;
-            let merged = crate::store::plan_chain_keypool_state(
+            let merged = crate::store::merge_chain_keypool_state(
                 baseline,
                 tables.state(&key).map(record_from_keypool),
             );
@@ -203,7 +203,7 @@ impl WalletService {
                 .await?;
             let key = keypool_key(&wallet_id, &chain_name);
             let mut tables = service.keypool.write().await;
-            let merged = crate::store::plan_chain_keypool_state(
+            let merged = crate::store::merge_chain_keypool_state(
                 baseline,
                 tables.state(&key).map(record_from_keypool),
             );
@@ -268,7 +268,7 @@ impl WalletService {
         let key = keypool_key(&wallet_id, &chain_name);
         let tables = self.keypool.read().await;
         Ok(keypool_from_record(
-            &crate::store::plan_chain_keypool_state(
+            &crate::store::merge_chain_keypool_state(
                 baseline,
                 tables.state(&key).map(record_from_keypool),
             ),
@@ -350,7 +350,7 @@ impl WalletService {
                     .and_then(|w| w.address_on(chain))
                     .is_some_and(|address| !address.trim().is_empty());
             }
-            return Ok(crate::store::plan_baseline_chain_keypool_state(input));
+            return Ok(crate::store::derive_chain_keypool_baseline(input));
         }
 
         if let Some(database) = self.state_binding.connection().await {
@@ -409,7 +409,7 @@ impl WalletService {
                 ));
             }
         }
-        Ok(crate::store::plan_baseline_chain_keypool_state(input))
+        Ok(crate::store::derive_chain_keypool_baseline(input))
     }
 }
 

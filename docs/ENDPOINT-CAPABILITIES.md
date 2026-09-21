@@ -10,7 +10,6 @@ and the localized Endpoints screen. `kind` describes the API surface separately.
 
 | Capability | Meaning |
 |---|---|
-| `read` | General chain data reads |
 | `balance` | Native-coin balance |
 | `native-history` | Address transaction history for the native coin |
 | `token-history` | Fungible-token transfer history for an address; excludes approvals and arbitrary contract activity |

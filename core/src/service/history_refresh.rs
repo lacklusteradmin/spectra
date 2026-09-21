@@ -418,7 +418,7 @@ impl WalletService {
                 });
             }
 
-            let planned = crate::fetch::history_decode::plan_evm_transaction_records(
+            let planned = crate::fetch::history_decode::build_evm_transaction_records(
                 crate::fetch::history_decode::EvmTransactionRecordRequest {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
@@ -463,7 +463,7 @@ impl WalletService {
 /// A planned EVM record as a stored one. The amount crosses as a decimal
 /// string and lands as the `f64` the store holds.
 fn evm_record(
-    planned: crate::fetch::history_decode::EvmPlannedTransactionRecord,
+    planned: crate::fetch::history_decode::EvmHistoryTransactionRecord,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
         deployment_id: planned.deployment_id,

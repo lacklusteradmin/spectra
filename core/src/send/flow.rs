@@ -509,7 +509,7 @@ pub struct HighRiskSendRequest {
     pub destination_address: String,
     pub destination_input: String,
     pub used_ens_resolution: bool,
-    pub wallet_selected_chain: String,
+    pub wallet_family_name: String,
     pub address_book_entries: Vec<HighRiskChainAddress>,
     pub tx_addresses: Vec<HighRiskChainAddress>,
 }
@@ -699,7 +699,7 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     }
 
     // 11. Wallet-chain context mismatch.
-    if !request.wallet_selected_chain.is_empty() && request.wallet_selected_chain != *chain_name {
+    if !request.wallet_family_name.is_empty() && request.wallet_family_name != *chain_name {
         warnings.push(HighRiskSendWarning::ChainMismatch);
     }
 
@@ -1238,7 +1238,7 @@ mod validating_and_normalising_cannot_disagree {
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_selected_chain: chain_name.to_string(),
+            wallet_family_name: chain_name.to_string(),
             address_book_entries: vec![],
             tx_addresses: vec![],
         })
@@ -1292,7 +1292,7 @@ mod validating_and_normalising_cannot_disagree {
                 destination_address: destination.to_string(),
                 destination_input: destination.to_string(),
                 used_ens_resolution: false,
-                wallet_selected_chain: "Solana".to_string(),
+                wallet_family_name: "Solana".to_string(),
                 address_book_entries: vec![HighRiskChainAddress {
                     chain_name: "Solana".to_string(),
                     address: known.to_string(),
@@ -1332,7 +1332,7 @@ mod validating_and_normalising_cannot_disagree {
             destination_address: typed.clone(),
             destination_input: typed,
             used_ens_resolution: false,
-            wallet_selected_chain: "Ethereum".to_string(),
+            wallet_family_name: "Ethereum".to_string(),
             address_book_entries: vec![HighRiskChainAddress {
                 chain_name: "Ethereum".to_string(),
                 address: stored.to_string(),
@@ -1564,7 +1564,7 @@ mod high_risk_warning_shape {
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_selected_chain: chain_name.to_string(),
+            wallet_family_name: chain_name.to_string(),
             address_book_entries: vec![],
             tx_addresses: vec![],
         })

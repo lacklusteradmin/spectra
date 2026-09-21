@@ -221,7 +221,7 @@ impl WalletService {
                     live_price: *p,
                 })
                 .collect();
-            let plan = crate::store::plan_price_alert_evaluation(
+            let evaluation = crate::store::evaluate_price_alerts(
                 state
                     .price_alerts
                     .iter()
@@ -233,13 +233,13 @@ impl WalletService {
                     .collect(),
                 prices,
             );
-            for update in &plan.updates {
+            for update in &evaluation.updates {
                 if let Some(alert) = state.price_alerts.iter_mut().find(|a| a.id == update.id) {
                     alert.has_triggered = update.has_triggered;
                 }
             }
-            *output.lock().expect("alert result lock") = plan.notifications;
-            if plan.updates.is_empty() {
+            *output.lock().expect("alert result lock") = evaluation.notifications;
+            if evaluation.updates.is_empty() {
                 Vec::new()
             } else {
                 vec![crate::store::state::StateEvent::PriceAlertsEvaluated]
@@ -270,10 +270,7 @@ impl WalletService {
 
     /// Everything the wallet list implies, rendered.
     ///
-    /// Replaces `core_plan_store_derived_state` + `core_plan_transfer_availability`,
-    /// which returned holding *indices* that the caller resolved back into
-    /// coins against its own copy of the wallets. Core holds the wallets, so it
-    /// resolves them itself.
+    /// Resolves holdings and transfer availability from core-owned wallets.
     ///
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {

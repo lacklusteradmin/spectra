@@ -16,6 +16,39 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-20 — Remove the generic read capability
+
+- **Before:** 110 endpoint records declared `read`, a generic label shown in
+  settings and diagnostics that no business operation used to select endpoints.
+- **After:** Remove `read` from the catalog, accepted capability vocabulary,
+  filter mapping and localized labels. Nine concrete capabilities remain.
+- **Why:** The label had no defined operation and duplicated more precise
+  capabilities such as balance and history.
+- **CLI check:** `spectra --json endpoints --catalog` lists only the remaining
+  capabilities; CLI acceptance checks the concrete capability lists for EVM,
+  Solana and TON endpoints.
+- **Verification:** `make verify` passed after clearing the project and Xcode
+  Rust build caches: formatting, clippy, Rust tests, CLI acceptance and iPhone
+  simulator tests.
+
+## 2026-09-20 — Show the complete endpoint catalog in settings
+
+- **Before:** `settings_visible` hid auxiliary APIs and transaction explorer
+  links. Bitcoin and EVM views applied further independent filters, and custom
+  Bitcoin or Monero endpoints could replace the displayed built-in list.
+- **After:** Remove the visibility flag and lookup argument. Settings renders
+  core's complete, deduplicated directory grouped by network, including web
+  links. Custom endpoint controls remain alongside the full catalog.
+  Transport selection still uses endpoint kinds and capabilities.
+- **Why:** Visibility has no independent domain rule; maintaining a second
+  catalog by hand makes the app's service directory incomplete.
+- **CLI check:** `spectra --json endpoints --catalog --chain bitcoin` now includes
+  `settingsGroups`, the same core projection rendered by Swift. CLI acceptance
+  checks that its URLs match every catalog record for Bitcoin, Ethereum,
+  Sepolia and Monero.
+- **Verification:** `make verify` passed: formatting, clippy, Rust tests, CLI
+  acceptance and iPhone simulator tests.
+
 ## 2026-09-20 — Unify domain names and remove obsolete naming layers
 
 - **Before:** Wallet projections/settings mixed `network_chain` with `chain`;
@@ -302,3 +335,38 @@ how to check it without the app:
   `make test-cli` checks the unchanged domain behavior. `make test-ios` verifies
   injection, deterministic delete/late-rename ordering and reopened persistence.
   Concurrent Xcode builds can use `make verify IOS_TEST_DERIVED_DATA=/tmp/spectra-test-audit-derived-data` to avoid sharing the build database.
+
+## 2026-09-20 — Explicit network identity and current domain names
+
+- **Before:** `Chain::evm_chain_id` returned Ethereum's `1` for every non-EVM
+  chain. **After:** it returns an error for non-EVM chains, propagated before
+  constructing an EVM client. The unused `EvmChain` wrapper was removed.
+  **Why:** unsupported networks must never acquire a plausible signing identity.
+  **CLI check:** `spectra send assemble --chain Bitcoin --from
+  0x1111111111111111111111111111111111111111 --to
+  0x1111111111111111111111111111111111111111 --amount 1` must refuse the request
+  (exit 3), as covered by the offline acceptance suite. The registry test
+  `non_evm_chains_have_no_eip155_identity` covers every registered non-EVM chain.
+- **Before:** `WalletView.selectedChain` named a family, while `chainId` named
+  the actual network. Conversion silently substituted a family mainnet for an
+  invalid/mismatched network. **After:** the field is `familyName`; conversion
+  refuses unknown networks, unknown families and family/network mismatches.
+  Its primary address is resolved from the actual network, and that network's
+  address slot sorts first when creating domain state.
+  **Why:** a display label must not silently change a wallet's network.
+  This directly changes the projection's serialized shape; no alias or migration
+  is retained. **CLI check:** the offline acceptance suite's "testnet derivation
+  identity" section imports on Testnet4, checks the stored path/address, reopens
+  the signer and switches back to mainnet. Core conversion tests additionally
+  cover invalid and mismatched identities.
+- **Naming and ownership cleanup:** polling, keypool merging, history record
+  construction, price-alert evaluation and send preflight validation now name
+  their actual operations instead of historical planner wrappers. Real import
+  and maintenance plans remain plans. `CoreReferenceTables` names the static
+  reference cache; selection-dependent network titles are separate from wallet
+  and transaction titles. Removed unused network query wrappers and the unused
+  wallet eligibility record. Send checks live in `send_preflight`, refresh
+  scheduling in `maintenance`, and signing/submission in `send_submission`.
+  Swift network writes live with the network flow; projection reloads name
+  their actual purpose. **Check:** `make verify`, including regenerated UniFFI
+  bindings and iOS network/title coverage.

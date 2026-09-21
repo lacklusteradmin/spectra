@@ -94,7 +94,7 @@ impl WalletService {
             if chain.is_evm() {
                 let client = EvmClient::new(
                     self.endpoints_for(chain.str_id()).await,
-                    chain.evm_chain_id(),
+                    chain.evm_chain_id()?,
                 );
                 if client.fetch_nonce(&address).await? > 0 {
                     return Ok(true);
@@ -153,7 +153,7 @@ pub(super) fn destination_probe_asset(
         return Ok((chain, None));
     }
     let identity =
-        super::maintenance::send_token_identity(holding, preferences).ok_or_else(|| {
+        super::send_preflight::send_token_identity(holding, preferences).ok_or_else(|| {
             SpectraBridgeError::InvalidInput {
                 message: format!(
                     "{} on {} is not a token this wallet tracks",

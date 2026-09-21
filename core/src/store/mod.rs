@@ -208,7 +208,7 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
 /// copies `is_enabled` from matching persisted built-ins,
 /// appends all non-built-in (custom) persisted entries, and returns the list
 /// sorted by (chain-label, built-in first, symbol).
-pub fn plan_merge_built_in_token_preferences(
+pub fn merge_built_in_token_preferences(
     built_ins: Vec<wallet_domain::CoreTokenPreferenceEntry>,
     persisted: Vec<wallet_domain::CoreTokenPreferenceEntry>,
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
@@ -252,18 +252,6 @@ pub struct WalletEarliestTransactionDate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletChainEligibilityInput {
-    pub wallet_id: String,
-    pub selected_chain: String,
-    pub has_seed_phrase: bool,
-    pub bitcoin_address: Option<String>,
-    pub bitcoin_address_is_valid: bool,
-    pub bitcoin_xpub: Option<String>,
-    pub resolved_address_for_chain: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
 pub struct CoreResetPlan {
     pub reset_wallets_and_secrets: bool,
     pub reset_history_and_cache: bool,
@@ -276,11 +264,8 @@ pub struct CoreResetPlan {
 
 /// Which sub-resets a set of user-chosen scopes implies.
 ///
-/// Kept as a calculation the caller applies, on purpose: the *rule* is domain
-/// — resetting wallets implies resetting history — but every action it
-/// dispatches is platform (Keychain deletes, `UserDefaults`, URL caches).
-/// There is no core-owned state behind it to move, which is why it is not a
-/// `plan_` any more.
+/// Core applies the domain resets; the returned scope expansion also tells
+/// the platform which local caches and preferences to clear.
 pub fn reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
     use state::ResetScope;
     let has = |scope: ResetScope| scopes.contains(&scope);
@@ -345,15 +330,15 @@ pub struct PriceAlertNotification {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct PriceAlertEvaluationPlan {
+pub struct PriceAlertEvaluation {
     pub updates: Vec<PriceAlertTriggerUpdate>,
     pub notifications: Vec<PriceAlertNotification>,
 }
 
-pub fn plan_price_alert_evaluation(
+pub fn evaluate_price_alerts(
     alerts: Vec<PriceAlertEvaluationAlert>,
     prices: Vec<PriceAlertEvaluationPrice>,
-) -> PriceAlertEvaluationPlan {
+) -> PriceAlertEvaluation {
     let price_by_key: HashMap<String, f64> = prices
         .into_iter()
         .map(|p| (p.holding_key, p.live_price))
@@ -392,7 +377,7 @@ pub fn plan_price_alert_evaluation(
             });
         }
     }
-    PriceAlertEvaluationPlan {
+    PriceAlertEvaluation {
         updates,
         notifications,
     }
@@ -558,8 +543,8 @@ impl Default for TransactionStatusPollConfig {
     }
 }
 
-/// Matches Swift `shouldPollTransactionStatus`.
-pub fn plan_transaction_status_should_poll(
+/// Whether this transaction is due for another status query.
+pub fn should_poll_transaction_status(
     tracker: Option<TransactionStatusTrackerState>,
     now_unix: f64,
 ) -> bool {
@@ -570,8 +555,8 @@ pub fn plan_transaction_status_should_poll(
     now_unix >= tracker.next_check_at_unix
 }
 
-/// Matches Swift `markTransactionStatusPollSuccess`.
-pub fn plan_transaction_status_poll_success(
+/// Advance a tracker after a successful status query.
+pub fn transaction_status_after_successful_poll(
     tracker: Option<TransactionStatusTrackerState>,
     resolved_status_confirmed: bool,
     resolved_status_pending: bool,
@@ -599,9 +584,9 @@ pub fn plan_transaction_status_poll_success(
     tracker
 }
 
-/// Matches Swift `markTransactionStatusPollFailure`. Exponential backoff capped at
+/// Advance a tracker after a failed query. Exponential backoff is capped at
 /// `config.backoff_max_seconds`.
-pub fn plan_transaction_status_poll_failure(
+pub fn transaction_status_after_failed_poll(
     tracker: Option<TransactionStatusTrackerState>,
     now_unix: f64,
     config: TransactionStatusPollConfig,
@@ -629,7 +614,7 @@ pub struct StalePendingFailureTransactionInput {
 /// Pending transactions that have been pending too long *and* have failed to
 /// resolve often enough to call it. `failures` is the caller's tracker table;
 /// a transaction missing from it has never failed a poll.
-pub(crate) fn plan_stale_pending_failure_ids(
+pub(crate) fn stale_pending_failure_ids(
     transactions: Vec<StalePendingFailureTransactionInput>,
     failures: &std::collections::HashMap<String, u32>,
     now_unix: f64,
@@ -691,9 +676,6 @@ pub struct ResolvedPendingTransactionDecision {
     pub reached_finality_confirmations: Option<u32>,
 }
 
-/// Matches Swift `applyResolvedPendingTransactionStatuses` decision logic. Swift keeps
-/// the `setTransactions` mutation and notification/event emission; Rust returns a
-/// per-transaction decision describing what changed.
 /// Stored in `failure_reason` when a pending transaction is given up on.
 ///
 /// A code rather than a sentence: the front end localizes it at render, so a
@@ -770,7 +752,7 @@ pub struct TransactionStatusChange {
     pub reached_finality_confirmations: Option<u32>,
 }
 
-pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
+pub(crate) fn apply_resolved_pending_transaction_statuses(
     inputs: Vec<ResolvedPendingTransactionInput>,
     trackers: &mut std::collections::HashMap<String, TransactionStatusTrackerState>,
     now_unix: f64,
@@ -843,10 +825,8 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
 
 // ─── N: Chain keypool state (baseline + merge with existing) ──────────────────
 //
-// Matches Swift `baselineChainKeypoolState` + `keypoolState`. Swift filters
-// transactions and owned addresses against its in-memory dictionaries and
-// supplies the max-index inputs; Rust owns the `+1`, `max(...)`, and
-// reserved-receive merge policy.
+// The owning keypool service supplies maxima from persisted transactions and
+// addresses. These calculations keep allocation indices monotonic.
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -867,9 +847,7 @@ pub struct ChainKeypoolBaselineInput {
     pub has_resolved_address: bool,
 }
 
-pub fn plan_baseline_chain_keypool_state(
-    input: ChainKeypoolBaselineInput,
-) -> ChainKeypoolStateRecord {
+pub fn derive_chain_keypool_baseline(input: ChainKeypoolBaselineInput) -> ChainKeypoolStateRecord {
     if input.supports_deep_utxo_discovery {
         let max_external = input.max_transaction_external_index.unwrap_or(-1);
         let max_change = input.max_transaction_change_index.unwrap_or(-1);
@@ -896,7 +874,7 @@ pub fn plan_baseline_chain_keypool_state(
     }
 }
 
-pub fn plan_chain_keypool_state(
+pub fn merge_chain_keypool_state(
     baseline: ChainKeypoolStateRecord,
     existing: Option<ChainKeypoolStateRecord>,
 ) -> ChainKeypoolStateRecord {
@@ -917,10 +895,8 @@ pub fn plan_chain_keypool_state(
 
 // ─── O: Wallet holdings merge from balance summary ────────────────────────────
 //
-// Matches Swift `holdingsAppliedFromSummary`. Rust owns the match-by-key
-// policy; Swift applies the actions to its `AssetHolding` array, preserving
-// visual properties (id, priceUsd) on updates and providing defaults on
-// inserts.
+// Core merges balance summaries by holding identity while retaining price
+// metadata and initializing newly discovered holdings.
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]

@@ -57,15 +57,12 @@ pub struct HistoryArgs {
 /// A service bound to one chain's endpoints for the kinds or capabilities a command needs.
 pub fn service_for_chain(chain: Chain, filter_mask: u32) -> CliResult<Arc<WalletService>> {
     let name = chain.chain_display_name().to_string();
-    let endpoints: Vec<String> = spectra_core::filtered_endpoint_records_for_chain(
-        chain.str_id().into(),
-        filter_mask,
-        false,
-    )
-    .map_err(CliError::from)?
-    .into_iter()
-    .map(|record| record.endpoint)
-    .collect();
+    let endpoints: Vec<String> =
+        spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), filter_mask)
+            .map_err(CliError::from)?
+            .into_iter()
+            .map(|record| record.endpoint)
+            .collect();
     if endpoints.is_empty() {
         return Err(CliError::failure(format!(
             "no endpoints registered for {name}"
@@ -185,11 +182,10 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     };
     if args.catalog {
         let mut records = Vec::new();
-        for chain in chains {
+        for chain in &chains {
             records.extend(spectra_core::filtered_endpoint_records_for_chain(
                 chain.str_id().into(),
                 0,
-                false,
             )?);
         }
         out.text(|| {
@@ -200,6 +196,13 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         });
         out.emit(serde_json::json!({
             "catalog": true,
+            "settingsGroups": spectra_core::chain_endpoints()?.into_iter()
+                .filter(|row| chains.iter().any(|chain| chain.str_id() == row.chain_id))
+                .flat_map(|row| row.grouped_settings)
+                .filter(|group| chains.iter().any(|chain| chain.str_id() == group.chain_id))
+                .map(|group| serde_json::json!({
+                    "chainId": group.chain_id, "title": group.title, "endpoints": group.endpoints,
+                })).collect::<Vec<_>>(),
             "total": records.len(),
             "endpoints": records.iter().map(|r| serde_json::json!({
                 "chainId": r.chain_id, "endpoint": r.endpoint,

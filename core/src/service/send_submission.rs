@@ -104,7 +104,7 @@ impl WalletService {
             }
             SendParams::Evm(p, overrides) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
-                let client = EvmClient::new(endpoints, chain.evm_chain_id());
+                let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
                 let r = client
                     .sign_and_broadcast_with_overrides(
                         &p.from,
@@ -447,7 +447,7 @@ pub(super) async fn sign_and_broadcast_token(
     match token {
         SendTokenParams::Evm(p, overrides) => {
             let priv_bytes = decode_private_key(&p.private_key_hex)?;
-            let client = EvmClient::new(endpoints, chain.evm_chain_id());
+            let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
             let r = client
                 .sign_and_broadcast_erc20_with_overrides(
                     &p.from,

@@ -46,7 +46,7 @@ impl WalletService {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
         let method = chain.rpc_health_method();
-        let mut records = crate::filtered_endpoint_records_for_chain(chain_id.clone(), 0, false)
+        let mut records = crate::filtered_endpoint_records_for_chain(chain_id.clone(), 0)
             .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
 
         // Custom endpoints use the same protocol probe as the catalog's node.
@@ -247,7 +247,7 @@ impl WalletService {
     ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let receipt = client
             .fetch_receipt(&tx_hash)
             .await
@@ -403,7 +403,7 @@ impl WalletService {
     ) -> Result<u64, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let client = EvmClient::new(eps, chain.evm_chain_id()?);
         client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
     }
 }
@@ -416,7 +416,7 @@ impl WalletService {
     ) -> Result<bool, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let code = client.fetch_code(&address).await?;
         Ok(crate::send::flow::evm_has_contract_code(code))
     }

@@ -955,7 +955,6 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let records = spectra_core::filtered_endpoint_records_for_chain(
             network.str_id().into(),
             ENDPOINT_KIND_RPC_NODE | ENDPOINT_CAPABILITY_NATIVE_HISTORY | ENDPOINT_CAPABILITY_UTXO,
-            false,
         )
         .map_err(CliError::from)?;
         let service = WalletService::new(vec![

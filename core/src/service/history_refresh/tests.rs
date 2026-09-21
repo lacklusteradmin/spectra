@@ -702,7 +702,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         }],
     };
     let fetched = evm_record(
-        plan_evm_transaction_records(EvmTransactionRecordRequest {
+        build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0x1111111111111111111111111111111111111111".into(),
             chain_name: Chain::EthereumSepolia.chain_display_name().into(),
@@ -798,7 +798,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         timestamp: 1.0,
     })
     .collect();
-    let rows = plan_evm_transaction_records(EvmTransactionRecordRequest {
+    let rows = build_evm_transaction_records(EvmTransactionRecordRequest {
         decoded_page: EvmHistoryPageDecoded {
             tokens,
             native: vec![],

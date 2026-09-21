@@ -449,7 +449,7 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
         .wallets
         .iter()
         .map(|wallet| wallet.to_wallet_state(true))
-        .collect();
+        .collect::<Result<_, _>>()?;
     let first = first_wallet(&outcome)?;
     out.text(|| {
         println!();
@@ -748,7 +748,8 @@ fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletState> {
         .wallets
         .first()
         .map(|wallet| wallet.to_wallet_state(is_watch_only))
-        .ok_or_else(|| CliError::failure("core planned the import but created no wallet"))
+        .ok_or_else(|| CliError::failure("import completed without creating a wallet"))?
+        .map_err(CliError::from)
 }
 
 // ─── Rendering ──────────────────────────────────────────────────────────────

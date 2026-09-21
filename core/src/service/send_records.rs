@@ -214,7 +214,7 @@ impl WalletService {
     ) -> Result<u64, SpectraBridgeError> {
         let client = EvmClient::new(
             self.endpoints_for(chain.str_id()).await,
-            chain.evm_chain_id(),
+            chain.evm_chain_id()?,
         );
         let mut next = client.fetch_nonce(source).await?;
         for row in self.fetch_all_history_records().await? {

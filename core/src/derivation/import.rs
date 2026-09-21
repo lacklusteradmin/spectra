@@ -480,7 +480,7 @@ pub(crate) fn wallets_for_import(
                 seed_derivation_preset: commit.seed_derivation_preset,
                 seed_derivation_paths: commit.seed_derivation_paths.clone(),
                 derivation_overrides: commit.derivation_overrides.clone(),
-                selected_chain: planned.chain_name.clone(),
+                family_name: planned.chain_name.clone(),
                 holdings: vec![network.native_holding_template()],
                 include_in_portfolio_total: true,
             })

@@ -93,11 +93,11 @@ pub(crate) fn decimal_string_from_wei(wei_str: &str) -> String {
 // Given a decoded page and the target wallets, emits one record per
 // (wallet × matching transfer) where "matching" means the transfer
 // touches the wallet's normalized address as sender or receiver.
-// Swift wraps each output in `TransactionRecord` with a fresh UUID.
+// The history service merges these records into core-owned transaction state.
 // ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct EvmPlannedTransactionRecord {
+pub struct EvmHistoryTransactionRecord {
     pub status: String,
     pub deployment_id: Option<String>,
     pub wallet_id: String,
@@ -133,15 +133,15 @@ pub struct EvmTransactionRecordRequest {
     pub unknown_timestamp_sentinel_unix: f64,
 }
 
-pub fn plan_evm_transaction_records(
+pub fn build_evm_transaction_records(
     request: EvmTransactionRecordRequest,
-) -> Vec<EvmPlannedTransactionRecord> {
+) -> Vec<EvmHistoryTransactionRecord> {
     let normalized = request.normalized_address;
     let token_source = request
         .token_source_used
         .unwrap_or_else(|| "none".to_string());
     let native_source = "etherscan".to_string();
-    let mut out: Vec<EvmPlannedTransactionRecord> = Vec::new();
+    let mut out: Vec<EvmHistoryTransactionRecord> = Vec::new();
 
     for wallet in &request.wallets {
         for transfer in &request.decoded_page.tokens {
@@ -160,7 +160,7 @@ pub fn plan_evm_transaction_records(
             } else {
                 request.unknown_timestamp_sentinel_unix
             };
-            out.push(EvmPlannedTransactionRecord {
+            out.push(EvmHistoryTransactionRecord {
                 status: "confirmed".into(),
                 deployment_id: crate::registry::Chain::from_display_name(&request.chain_name)
                     .and_then(|chain| {
@@ -197,7 +197,7 @@ pub fn plan_evm_transaction_records(
             } else {
                 request.unknown_timestamp_sentinel_unix
             };
-            out.push(EvmPlannedTransactionRecord {
+            out.push(EvmHistoryTransactionRecord {
                 status: transfer.status.clone(),
                 deployment_id: crate::registry::Chain::from_display_name(&request.chain_name)
                     .and_then(|chain| crate::tokens::history_deployment(chain, None)),
@@ -383,7 +383,7 @@ mod tests {
                 timestamp: 0.0,
             }],
         };
-        let out = plan_evm_transaction_records(EvmTransactionRecordRequest {
+        let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0xself".into(),
             chain_name: "Ethereum".into(),
@@ -426,7 +426,7 @@ mod tests {
             }],
             native: vec![],
         };
-        let out = plan_evm_transaction_records(EvmTransactionRecordRequest {
+        let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0xself".into(),
             chain_name: "Ethereum".into(),

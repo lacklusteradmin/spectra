@@ -207,7 +207,7 @@ pub(crate) async fn self_tests_run_evm_rpc(
         }];
     };
     let label = chain.chain_display_name();
-    let expected = chain.evm_chain_id();
+    let expected = chain.evm_chain_id().expect("EVM chain filtered above");
     let reported = fetch_eth_rpc_hex(&rpc_url, "eth_chainId", 1).await;
     let block = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber", 2).await;
     match (reported, block) {
@@ -293,7 +293,11 @@ mod fixtures_are_real_tests {
         ));
         // Every EVM chain has one, which is what the caller passes.
         for chain in crate::registry::Chain::all().filter(|c| c.is_evm()) {
-            assert!(chain.evm_chain_id() > 0, "{}", chain.chain_display_name());
+            assert!(
+                chain.evm_chain_id().is_ok_and(|id| id > 0),
+                "{}",
+                chain.chain_display_name()
+            );
         }
     }
 

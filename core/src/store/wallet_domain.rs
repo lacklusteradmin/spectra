@@ -310,7 +310,7 @@ pub struct WalletView {
     pub chain_id: String,
     /// `Chain::address_slot()` → address for this wallet.
     ///
-    /// A wallet belongs to one chain (`selected_chain`), so in practice this
+    /// A wallet belongs to one chain (`family_name`), so in practice this
     /// holds a single entry — two for Ethereum Classic, which occupies both the
     /// shared EVM slot and its own. It is a map rather than one `Option<String>`
     /// per chain so that adding a chain is a registry edit and not a schema
@@ -323,7 +323,7 @@ pub struct WalletView {
     pub seed_derivation_paths: CoreSeedDerivationPaths,
     #[serde(default)]
     pub derivation_overrides: CoreWalletDerivationOverrides,
-    pub selected_chain: String,
+    pub family_name: String,
     pub holdings: Vec<AssetHolding>,
     pub include_in_portfolio_total: bool,
 }
@@ -337,7 +337,7 @@ impl WalletView {
     /// The address for the wallet's own chain — what the UI shows and what
     /// balance/history calls query.
     pub fn primary_address(&self) -> Option<&str> {
-        crate::registry::Chain::from_display_name(&self.selected_chain)
+        crate::registry::Chain::from_str_id(&self.chain_id)
             .and_then(|chain| self.address_for(chain))
     }
 }
@@ -349,49 +349,40 @@ impl WalletView {
 // defaults are rebuilt from the catalog; only the wallet's actual path is stored.
 
 impl WalletView {
-    /// The chain this wallet is actually on, as a registry id.
-    ///
-    /// `selected_chain` names the family; this says which network of it. They
-    /// used to be a family name plus one of two mode enums, chosen by matching
-    /// the family name — so the answer lived in three places at once.
-    fn active_chain_id(&self) -> Option<String> {
-        use crate::registry::Chain;
-        let family = Chain::from_display_name(&self.selected_chain)?.mainnet_counterpart();
-        let selected = Chain::from_str_id(&self.chain_id)?;
-        // Scoped to the wallet's own family: a wallet on Solana reports no
-        // network even if a Bitcoin one was selected when it was imported.
-        (selected.mainnet_counterpart() == family).then(|| selected.str_id().to_string())
-    }
-
     /// Convert to the model core computes with.
     ///
-    /// `is_watch_only` cannot be read off this record — the app derives it from
-    /// whether the Keychain holds signing material — so the caller supplies it.
-    pub fn to_wallet_state(&self, is_watch_only: bool) -> crate::store::state::WalletState {
+    /// The import operation supplies signing capability. Network identity must
+    /// be valid and belong to the stated family before a state can be stored.
+    pub fn to_wallet_state(
+        &self,
+        is_watch_only: bool,
+    ) -> Result<crate::store::state::WalletState, crate::SpectraBridgeError> {
         use crate::registry::Chain;
         use crate::store::state::{WalletAddress, WalletState};
 
-        let chain = Chain::from_display_name(&self.selected_chain);
-        let active_chain = self
-            .active_chain_id()
-            .and_then(|id| Chain::from_str_id(&id))
-            .or(chain);
-        let derivation_path = active_chain.and_then(|chain| {
-            self.seed_derivation_paths
-                .path_for(chain)
-                .map(str::to_string)
-        });
+        let invalid = |message: String| crate::SpectraBridgeError::InvalidInput { message };
+        let chain = Chain::from_str_id(&self.chain_id)
+            .ok_or_else(|| invalid(format!("unknown wallet network: {}", self.chain_id)))?;
+        let family = Chain::from_display_name(&self.family_name)
+            .ok_or_else(|| invalid(format!("unknown wallet family: {}", self.family_name)))?;
+        if family != chain.mainnet_counterpart() {
+            return Err(invalid(format!(
+                "wallet family {} does not match network {}",
+                self.family_name, self.chain_id
+            )));
+        }
+        let derivation_path = self
+            .seed_derivation_paths
+            .path_for(chain)
+            .map(str::to_string);
 
-        WalletState {
+        Ok(WalletState {
             id: self.id.clone(),
             name: self.name.clone(),
             is_watch_only,
-            chain_name: self.selected_chain.clone(),
+            chain_name: self.family_name.clone(),
             include_in_portfolio_total: self.include_in_portfolio_total,
-            chain_id: self
-                .active_chain_id()
-                .or_else(|| chain.map(|c| c.str_id().into()))
-                .unwrap_or_default(),
+            chain_id: chain.str_id().to_string(),
             xpub: self.bitcoin_xpub.clone(),
             derivation_preset: self.seed_derivation_preset,
             derivation_path: derivation_path.clone(),
@@ -408,13 +399,13 @@ impl WalletView {
             // `HashMap`'s order would make that whichever network the iterator
             // happened to yield.
             addresses: {
-                let own_slot = chain.map(|chain| chain.address_slot());
+                let own_slot = chain.address_slot();
                 let mut slots: Vec<(&str, &String)> = self
                     .addresses
                     .iter()
                     .map(|(slot, address)| (slot.as_str(), address))
                     .collect();
-                slots.sort_by_key(|(slot, _)| (Some(*slot) != own_slot, *slot));
+                slots.sort_by_key(|(slot, _)| (*slot != own_slot, *slot));
                 slots
                     .into_iter()
                     .filter_map(|(slot, address)| {
@@ -432,7 +423,7 @@ impl WalletView {
                     })
                     .collect()
             },
-        }
+        })
     }
 }
 
@@ -477,7 +468,7 @@ impl crate::store::state::WalletState {
             seed_derivation_preset: self.derivation_preset,
             seed_derivation_paths,
             derivation_overrides: self.derivation_overrides.clone(),
-            selected_chain: self.chain_name.clone(),
+            family_name: self.chain_name.clone(),
             holdings: self
                 .holdings
                 .iter()

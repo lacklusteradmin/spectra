@@ -94,7 +94,8 @@ mutations still use the same writer rather than creating per-file owners.
 
 The send service is split into `send_execution` (stored identity and exact
 amount conversion), `send_destination` (fresh resolution and review binding),
-`send_preview` (quotes), `send_signing` (protocol dispatch) and `send_broadcast`
+`send_preflight` (eligibility and recipient warnings), `send_preview` (quotes),
+`send_submission` (protocol signing and submission) and `send_broadcast`
 (rebroadcast). Internal `send_params` are Rust records, not a second JSON API.
 Secrets use redacted, zeroizing storage; an Ed25519 seed is a distinct type
 rather than an unlabelled 32/64-byte array.

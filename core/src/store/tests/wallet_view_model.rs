@@ -43,7 +43,7 @@ fn summary() -> WalletState {
 fn the_view_model_carries_what_the_app_shows() {
     let view = summary().to_wallet_view(&defaults());
     assert_eq!(view.id, "w1");
-    assert_eq!(view.selected_chain, "Bitcoin");
+    assert_eq!(view.family_name, "Bitcoin");
     assert_eq!(view.bitcoin_xpub.as_deref(), Some("zpub123"));
     assert_eq!(view.address_for(Chain::Bitcoin), Some("bc1qexample"));
     assert_eq!(view.holdings.len(), 1);
@@ -97,6 +97,7 @@ fn summary_survives_a_round_trip_through_the_view_model() {
     let original = summary();
     let round_tripped = original
         .to_wallet_view(&defaults())
-        .to_wallet_state(original.is_watch_only);
+        .to_wallet_state(original.is_watch_only)
+        .unwrap();
     assert_eq!(round_tripped, original);
 }

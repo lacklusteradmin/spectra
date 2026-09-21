@@ -49,8 +49,6 @@ impl WalletService {
 
     /// Import wallets: plan them, build them, and store them.
     ///
-    /// Replaces the old `core_plan_wallet_import` round trip, where core
-    /// decided what to create and the caller constructed and stored it.
     /// Core stores secrets before atomically committing all wallets.
     pub async fn import_wallets(
         &self,
@@ -237,7 +235,7 @@ impl WalletService {
                 reduce_state_in_place(
                     &mut snapshot,
                     StateCommand::UpsertWallet {
-                        wallet: wallet.to_wallet_state(is_watch_only),
+                        wallet: wallet.to_wallet_state(is_watch_only)?,
                     },
                 );
             }

@@ -30,7 +30,7 @@ pub struct SendAssetRoutingInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct SendAssetRoutingPlan {
+pub struct SendAssetRoute {
     pub preview_kind: Option<String>,
     pub submit_kind: Option<String>,
     pub native_evm_symbol: Option<String>,
@@ -61,7 +61,7 @@ pub struct SendTokenIdentity {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct SendSubmitPreflightPlan {
+pub struct SendPreflight {
     pub submit_kind: String,
     pub preview_kind: Option<String>,
     pub normalized_destination_address: String,
@@ -293,7 +293,7 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     }
 }
 
-pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
+pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoute {
     let network = crate::registry::Chain::from_display_name(&input.chain_name);
     let native_name = network.map(|c| c.mainnet_counterpart().chain_display_name());
     let submit_kind = if network.is_some_and(|c| c.is_evm()) {
@@ -337,7 +337,7 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
     let native_evm_symbol = native_evm_symbol_for_chain(&input.chain_name);
     let is_native_evm_asset = native_evm_symbol.is_some() && input.is_native;
 
-    SendAssetRoutingPlan {
+    SendAssetRoute {
         preview_kind: submit_kind.clone(),
         submit_kind,
         native_evm_symbol,
@@ -346,9 +346,9 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
     }
 }
 
-pub fn plan_send_submit_preflight(
+pub fn validate_send_preflight(
     request: SendSubmitPreflightRequest,
-) -> Result<SendSubmitPreflightPlan, String> {
+) -> Result<SendPreflight, String> {
     let token = request.token.clone();
     if !request.wallet_found {
         return Err("Select a wallet".to_string());
@@ -398,7 +398,7 @@ pub fn plan_send_submit_preflight(
         .and(chain)
         .and_then(|chain| chain.token_send_gas_reserve());
 
-    Ok(SendSubmitPreflightPlan {
+    Ok(SendPreflight {
         submit_kind,
         preview_kind: route.preview_kind,
         normalized_destination_address,
@@ -430,7 +430,7 @@ fn native_evm_symbol_for_chain(chain_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput, SendExecutionRequest,
+        route_send_asset, validate_send_preflight, SendAssetRoutingInput, SendExecutionRequest,
         SendSubmitPreflightRequest, SendTokenIdentity,
     };
 
@@ -571,7 +571,7 @@ mod tests {
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_selected_chain: chain.chain_display_name().to_string(),
+            wallet_family_name: chain.chain_display_name().to_string(),
             address_book_entries: Vec::new(),
             tx_addresses: Vec::new(),
         };
@@ -827,7 +827,7 @@ mod tests {
 
     #[test]
     fn rejects_zero_amount_for_non_evm_native_sends() {
-        let error = plan_send_submit_preflight(SendSubmitPreflightRequest {
+        let error = validate_send_preflight(SendSubmitPreflightRequest {
             wallet_found: true,
             asset_found: true,
             destination_address: "bc1qdestination".to_string(),
@@ -850,7 +850,7 @@ mod tests {
 
     #[test]
     fn preserves_zero_amount_for_native_evm_preflight() {
-        let plan = plan_send_submit_preflight(SendSubmitPreflightRequest {
+        let plan = validate_send_preflight(SendSubmitPreflightRequest {
             wallet_found: true,
             asset_found: true,
             destination_address: "0xabc".to_string(),
@@ -880,7 +880,7 @@ mod tests {
     #[test]
     fn a_near_token_send_carries_the_chains_gas_floor() {
         let near = |symbol: &str, token: Option<SendTokenIdentity>| {
-            plan_send_submit_preflight(SendSubmitPreflightRequest {
+            validate_send_preflight(SendSubmitPreflightRequest {
                 wallet_found: true,
                 asset_found: true,
                 destination_address: "receiver.near".to_string(),
@@ -909,7 +909,7 @@ mod tests {
         assert_eq!(token.token_send_gas_reserve, Some(0.001));
         assert_eq!(near("NEAR", None).token_send_gas_reserve, None);
 
-        let tron = plan_send_submit_preflight(SendSubmitPreflightRequest {
+        let tron = validate_send_preflight(SendSubmitPreflightRequest {
             wallet_found: true,
             asset_found: true,
             destination_address: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".to_string(),

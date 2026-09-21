@@ -37,7 +37,7 @@ async fn defaults_to_usd_before_anything_is_stored() {
     );
     assert_eq!(
         state.token_preferences,
-        crate::store::plan_merge_built_in_token_preferences(
+        crate::store::merge_built_in_token_preferences(
             crate::store::built_in_token_preferences(),
             Vec::new()
         ),

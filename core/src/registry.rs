@@ -504,9 +504,9 @@ impl Chain {
         }
     }
 
-    /// EIP-155 chain id. Non-EVM chains return `1` (legacy fallback).
-    pub fn evm_chain_id(self) -> u64 {
-        match self {
+    /// EIP-155 chain id. Refuses chains outside the EVM family.
+    pub fn evm_chain_id(self) -> Result<u64, String> {
+        Ok(match self {
             Chain::Ethereum => 1,
             Chain::Arbitrum => 42161,
             Chain::Optimism => 10,
@@ -540,8 +540,8 @@ impl Chain {
             Chain::PolygonAmoy => 80002,
             Chain::HyperliquidTestnet => 998,
             Chain::EthereumClassicMordor => 63,
-            _ => 1,
-        }
+            _ => return Err(format!("{} is not an EVM chain", self.str_id())),
+        })
     }
 
     /// The explorer source for this EVM chain. Etherscan V2 requires an API key;
@@ -1432,19 +1432,6 @@ pub struct NetworkChoice {
     pub is_testnet: bool,
 }
 
-/// Newtype wrapper that proves the inner `Chain` is EVM-family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EvmChain(Chain);
-
-impl EvmChain {
-    pub fn chain(self) -> Chain {
-        self.0
-    }
-    pub fn chain_id(self) -> u64 {
-        self.0.evm_chain_id()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1460,14 +1447,21 @@ mod tests {
     fn evm_chains_carry_their_eip155_ids() {
         for chain in Chain::all().filter(|chain| chain.is_evm()) {
             assert!(
-                chain.evm_chain_id() > 0,
+                chain.evm_chain_id().unwrap() > 0,
                 "{} has no chain id",
                 chain.str_id()
             );
         }
-        assert_eq!(Chain::EthereumSepolia.evm_chain_id(), 11_155_111);
-        assert_eq!(Chain::EthereumHoodi.evm_chain_id(), 560_048);
-        assert_eq!(Chain::EthereumClassic.evm_chain_id(), 61);
+        assert_eq!(Chain::EthereumSepolia.evm_chain_id().unwrap(), 11_155_111);
+        assert_eq!(Chain::EthereumHoodi.evm_chain_id().unwrap(), 560_048);
+        assert_eq!(Chain::EthereumClassic.evm_chain_id().unwrap(), 61);
+    }
+
+    #[test]
+    fn non_evm_chains_have_no_eip155_identity() {
+        for chain in Chain::all().filter(|chain| !chain.is_evm()) {
+            assert!(chain.evm_chain_id().is_err(), "{}", chain.str_id());
+        }
     }
 
     /// The Etherscan key is asked for where history reads it. Ethereum's comes
@@ -1708,30 +1702,30 @@ mod tests {
     }
 
     #[test]
-    fn evm_chain_ids_match_legacy_table() {
-        assert_eq!(Chain::Ethereum.evm_chain_id(), 1);
-        assert_eq!(Chain::Arbitrum.evm_chain_id(), 42161);
-        assert_eq!(Chain::Optimism.evm_chain_id(), 10);
-        assert_eq!(Chain::Avalanche.evm_chain_id(), 43114);
-        assert_eq!(Chain::Base.evm_chain_id(), 8453);
-        assert_eq!(Chain::EthereumClassic.evm_chain_id(), 61);
-        assert_eq!(Chain::BnbChain.evm_chain_id(), 56);
-        assert_eq!(Chain::Hyperliquid.evm_chain_id(), 999);
-        assert_eq!(Chain::Polygon.evm_chain_id(), 137);
-        assert_eq!(Chain::Linea.evm_chain_id(), 59144);
-        assert_eq!(Chain::Scroll.evm_chain_id(), 534352);
-        assert_eq!(Chain::Blast.evm_chain_id(), 81457);
-        assert_eq!(Chain::Mantle.evm_chain_id(), 5000);
-        assert_eq!(Chain::Sei.evm_chain_id(), 1329);
-        assert_eq!(Chain::Celo.evm_chain_id(), 42220);
-        assert_eq!(Chain::Cronos.evm_chain_id(), 25);
-        assert_eq!(Chain::OpBnb.evm_chain_id(), 204);
-        assert_eq!(Chain::ZkSyncEra.evm_chain_id(), 324);
-        assert_eq!(Chain::Sonic.evm_chain_id(), 146);
-        assert_eq!(Chain::Berachain.evm_chain_id(), 80094);
-        assert_eq!(Chain::Unichain.evm_chain_id(), 130);
-        assert_eq!(Chain::Ink.evm_chain_id(), 57073);
-        assert_eq!(Chain::XLayer.evm_chain_id(), 196);
+    fn evm_mainnet_chain_ids_match_eip155() {
+        assert_eq!(Chain::Ethereum.evm_chain_id().unwrap(), 1);
+        assert_eq!(Chain::Arbitrum.evm_chain_id().unwrap(), 42161);
+        assert_eq!(Chain::Optimism.evm_chain_id().unwrap(), 10);
+        assert_eq!(Chain::Avalanche.evm_chain_id().unwrap(), 43114);
+        assert_eq!(Chain::Base.evm_chain_id().unwrap(), 8453);
+        assert_eq!(Chain::EthereumClassic.evm_chain_id().unwrap(), 61);
+        assert_eq!(Chain::BnbChain.evm_chain_id().unwrap(), 56);
+        assert_eq!(Chain::Hyperliquid.evm_chain_id().unwrap(), 999);
+        assert_eq!(Chain::Polygon.evm_chain_id().unwrap(), 137);
+        assert_eq!(Chain::Linea.evm_chain_id().unwrap(), 59144);
+        assert_eq!(Chain::Scroll.evm_chain_id().unwrap(), 534352);
+        assert_eq!(Chain::Blast.evm_chain_id().unwrap(), 81457);
+        assert_eq!(Chain::Mantle.evm_chain_id().unwrap(), 5000);
+        assert_eq!(Chain::Sei.evm_chain_id().unwrap(), 1329);
+        assert_eq!(Chain::Celo.evm_chain_id().unwrap(), 42220);
+        assert_eq!(Chain::Cronos.evm_chain_id().unwrap(), 25);
+        assert_eq!(Chain::OpBnb.evm_chain_id().unwrap(), 204);
+        assert_eq!(Chain::ZkSyncEra.evm_chain_id().unwrap(), 324);
+        assert_eq!(Chain::Sonic.evm_chain_id().unwrap(), 146);
+        assert_eq!(Chain::Berachain.evm_chain_id().unwrap(), 80094);
+        assert_eq!(Chain::Unichain.evm_chain_id().unwrap(), 130);
+        assert_eq!(Chain::Ink.evm_chain_id().unwrap(), 57073);
+        assert_eq!(Chain::XLayer.evm_chain_id().unwrap(), 196);
     }
 
     #[test]

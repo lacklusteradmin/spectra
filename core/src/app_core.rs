@@ -4,7 +4,6 @@ use std::sync::OnceLock;
 
 const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml");
 
-const ENDPOINT_CAPABILITY_READ: u32 = 1 << 0;
 pub const ENDPOINT_CAPABILITY_BALANCE: u32 = 1 << 1;
 pub const ENDPOINT_CAPABILITY_NATIVE_HISTORY: u32 = 1 << 2;
 pub const ENDPOINT_CAPABILITY_UTXO: u32 = 1 << 3;
@@ -29,8 +28,7 @@ const ENDPOINT_CAPABILITY_TOKEN_HISTORY: u32 = 1 << 11;
 const ENDPOINT_CAPABILITY_TOKEN_DISCOVERY: u32 = 1 << 12;
 const ENDPOINT_CAPABILITY_TOKEN_BALANCE: u32 = 1 << 13;
 
-const ENDPOINT_CAPABILITIES: [&str; 10] = [
-    "read",
+const ENDPOINT_CAPABILITIES: [&str; 9] = [
     "balance",
     "native-history",
     "token-history",
@@ -84,8 +82,6 @@ struct TomlEndpoint {
     #[serde(default)]
     probe_url: Option<String>,
     #[serde(default)]
-    settings_visible: bool,
-    #[serde(default)]
     supplements_rpc_list: bool,
     #[serde(default)]
     explorer_label: Option<String>,
@@ -107,7 +103,6 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
             kind: e.kind,
             capabilities: e.capabilities,
             probe_url: e.probe_url,
-            settings_visible: e.settings_visible,
             supplements_rpc_list: e.supplements_rpc_list,
             explorer_label: e.explorer_label,
             tx_suffix: e.tx_suffix,
@@ -137,7 +132,6 @@ pub struct AppCoreEndpointRecord {
     pub capabilities: Vec<String>,
     #[serde(rename = "probeURL")]
     pub probe_url: Option<String>,
-    pub settings_visible: bool,
     /// Registered alongside the chain's RPC list rather than instead of it.
     ///
     /// Was inferred from an `explorer` tag that four records carried — three
@@ -229,17 +223,11 @@ pub fn derivation_paths_for_preset(
 pub fn filtered_endpoint_records_for_chain(
     chain_id: String,
     filter_mask: u32,
-    settings_visible_only: bool,
 ) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
     crate::registry::Chain::from_str_id(&chain_id)
         .ok_or_else(|| format!("Unknown endpoint chain_id: {chain_id}"))?;
     let catalog = endpoint_catalog()?;
-    Ok(endpoint_records_for_chain(
-        catalog,
-        &chain_id,
-        filter_mask,
-        settings_visible_only,
-    ))
+    Ok(endpoint_records_for_chain(catalog, &chain_id, filter_mask))
 }
 
 /// Everything the endpoint catalog holds for one chain.
@@ -248,6 +236,10 @@ pub struct AppCoreChainEndpoints {
     pub chain_id: String,
     /// RPC endpoints, for the EVM family.
     pub evm_rpc: Vec<String>,
+    /// Machine-facing services for this concrete network, excluding web links.
+    pub service_endpoints: Vec<String>,
+    /// Light-wallet backends eligible for the backend selector.
+    pub backends: Vec<String>,
     /// Explorer endpoints that supplement the RPC list.
     pub explorer_supplemental: Vec<String>,
     /// What the settings screen shows, grouped by network.
@@ -265,20 +257,21 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
         .map(|chain| {
             let id = chain.str_id().to_string();
             AppCoreChainEndpoints {
-                evm_rpc: endpoint_records_for_chain(catalog, &id, ENDPOINT_KIND_RPC_NODE, false)
+                service_endpoints: endpoint_records_for_chain(catalog, &id, 0)
+                    .into_iter()
+                    .filter(|r| r.kind != "web-link")
+                    .map(|r| r.endpoint)
+                    .collect(),
+                backends: endpoint_records_for_chain(catalog, &id, ENDPOINT_KIND_BACKEND)
                     .into_iter()
                     .map(|r| r.endpoint)
                     .collect(),
-                // Settings-visible indexers: the address-indexed APIs a user
-                // can see and switch, registered alongside the RPC list.
-                //
-                // This filtered on an `explorer` tag that four records carried
-                // and others just as much deserved — XRP's `xrpscan` and
-                // NEAR's `nearblocks` are the same kind of thing and were not
-                // tagged. Three of the four were Etherscan V1 endpoints that
-                // have since been shut down, so the tag was down to one member
-                // and was not describing anything. The kind does.
-                explorer_supplemental: endpoint_records_for_chain(catalog, &id, 0, false)
+                evm_rpc: endpoint_records_for_chain(catalog, &id, ENDPOINT_KIND_RPC_NODE)
+                    .into_iter()
+                    .map(|r| r.endpoint)
+                    .collect(),
+                // Supplemental APIs registered alongside the RPC list.
+                explorer_supplemental: endpoint_records_for_chain(catalog, &id, 0)
                     .into_iter()
                     .filter(|r| r.supplements_rpc_list)
                     .map(|r| r.endpoint)
@@ -364,7 +357,6 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
 
 pub(crate) fn endpoint_filter_bit(role: &str) -> u32 {
     match role {
-        "read" => ENDPOINT_CAPABILITY_READ,
         "balance" => ENDPOINT_CAPABILITY_BALANCE,
         "native-history" => ENDPOINT_CAPABILITY_NATIVE_HISTORY,
         "token-history" => ENDPOINT_CAPABILITY_TOKEN_HISTORY,
@@ -388,13 +380,11 @@ fn endpoint_records_for_chain(
     catalog: &AppCoreCatalog,
     chain_id: &str,
     filter_mask: u32,
-    settings_visible_only: bool,
 ) -> Vec<AppCoreEndpointRecord> {
     records_from(
         catalog,
         catalog.endpoint_records_by_chain.get(chain_id),
         filter_mask,
-        settings_visible_only,
     )
 }
 
@@ -402,7 +392,6 @@ fn records_from(
     catalog: &AppCoreCatalog,
     indices: Option<&Vec<usize>>,
     filter_mask: u32,
-    settings_visible_only: bool,
 ) -> Vec<AppCoreEndpointRecord> {
     let Some(indices) = indices else {
         return Vec::new();
@@ -411,9 +400,6 @@ fn records_from(
         .iter()
         .filter_map(|&idx| {
             let record = &catalog.endpoint_records[idx];
-            if settings_visible_only && !record.settings_visible {
-                return None;
-            }
             if filter_mask != 0 && catalog.endpoint_filter_masks[idx] & filter_mask == 0 {
                 return None;
             }
@@ -432,7 +418,7 @@ fn grouped_settings_entries(
         })
         .filter_map(|network| {
             let mut endpoints = Vec::new();
-            for record in endpoint_records_for_chain(catalog, network.str_id(), 0, true) {
+            for record in endpoint_records_for_chain(catalog, network.str_id(), 0) {
                 if !endpoints.contains(&record.endpoint) {
                     endpoints.push(record.endpoint);
                 }
@@ -451,7 +437,7 @@ fn transaction_explorer_entry(
     chain_id: &str,
 ) -> Option<AppCoreExplorerEntry> {
     // A `/tx/` link for a person to open, which is exactly `web-link`.
-    endpoint_records_for_chain(catalog, chain_id, ENDPOINT_KIND_WEB_LINK, false)
+    endpoint_records_for_chain(catalog, chain_id, ENDPOINT_KIND_WEB_LINK)
         .into_iter()
         .find_map(|record| {
             record.explorer_label.map(|label| AppCoreExplorerEntry {
@@ -860,10 +846,24 @@ mod endpoint_network_index_tests {
     }
 
     #[test]
+    fn showing_explorer_links_does_not_make_them_backend_choices() {
+        let monero = chain_endpoints()
+            .unwrap()
+            .into_iter()
+            .find(|row| row.chain_id == "monero")
+            .unwrap();
+        let explorer = monero.transaction_explorer.unwrap().endpoint;
+        assert!(monero.grouped_settings[0].endpoints.contains(&explorer));
+        assert!(!monero.backends.is_empty());
+        assert!(!monero.backends.contains(&explorer));
+        assert!(!monero.service_endpoints.contains(&explorer));
+    }
+
+    #[test]
     fn every_record_belongs_to_exactly_its_network() {
         let catalog = endpoint_catalog().expect("catalog");
         for chain in crate::registry::Chain::all() {
-            let rows = endpoint_records_for_chain(catalog, chain.str_id(), 0, false);
+            let rows = endpoint_records_for_chain(catalog, chain.str_id(), 0);
             let expected: Vec<_> = catalog
                 .endpoint_records
                 .iter()
@@ -907,7 +907,7 @@ capabilities = []"#;
                     .is_err()
             );
         }
-        assert!(filtered_endpoint_records_for_chain("Ethereum".into(), 0, false).is_err());
+        assert!(filtered_endpoint_records_for_chain("Ethereum".into(), 0).is_err());
     }
 }
 
@@ -1114,12 +1114,11 @@ mod an_endpoints_kind_is_not_its_capabilities {
         // The two vocabularies of `data/endpoints.toml`, pinned against the
         // data by `every_record_has_a_kind_the_readers_understand` and
         // `the_two_vocabularies_do_not_overlap` above.
-        const FILTER_CRITERIA: [&str; 14] = [
+        const FILTER_CRITERIA: [&str; 13] = [
             "rpc-node",
             "indexer",
             "web-link",
             "backend",
-            "read",
             "balance",
             "native-history",
             "token-history",
@@ -1157,7 +1156,6 @@ mod an_endpoints_kind_is_not_its_capabilities {
             super::filtered_endpoint_records_for_chain(
                 chain.into(),
                 super::endpoint_filter_bit(capability),
-                false,
             )
             .unwrap()
             .into_iter()

@@ -312,6 +312,17 @@ contains "a multi-address watch import creates one wallet each" '"count":2' \
     --address bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --name "Watch Pair"
 
 section "a chain with no derivation path"
+# Settings exposes the complete catalog, including auxiliary APIs and web links.
+check "settings includes every Bitcoin endpoint" 0 python3 - "$BIN" "$DATA_DIR" <<'PYSETTINGS'
+import json, subprocess, sys
+for chain in ("bitcoin", "ethereum", "ethereum-sepolia", "monero"):
+    data = json.loads(subprocess.check_output([
+        sys.argv[1], "--data-dir", sys.argv[2], "--json", "endpoints", "--catalog", "--chain", chain
+    ]))
+    group = next(g for g in data["settingsGroups"] if g["chainId"] == chain)
+    assert group["endpoints"] == list(dict.fromkeys(r["endpoint"] for r in data["endpoints"]))
+PYSETTINGS
+
 # Monero's spend and view keys come from the seed, so its catalog row carries
 # `derivation_path = []`. "No default path" used to be an error rather than an
 # answer, and every caller read it as a broken catalog: this command exited
@@ -343,7 +354,7 @@ section "endpoint kinds and capabilities"
 # EVM node can serve, because `eth_getTransactionsByAddress` is not a method.
 contains "an EVM node is an rpc-node"        '"kind":"rpc-node"' \
     spectra --json endpoints --catalog --chain Ethereum
-contains "and does not claim address history" '"capabilities":["read","balance","fee","broadcast","token-balance"]' \
+contains "and does not claim address history" '"capabilities":["balance","fee","broadcast","token-balance"]' \
     spectra --json endpoints --catalog --chain Ethereum
 
 lacks "the ambiguous history capability is gone" '"history"' \
@@ -352,13 +363,13 @@ contains "Bitcoin exposes native history" '"native-history"' \
     spectra --json endpoints --catalog --chain Bitcoin
 lacks "Bitcoin does not claim token balances" '"token-balance"' \
     spectra --json endpoints --catalog --chain Bitcoin
-contains "an indexer separates token history and holdings" '"capabilities":["read","native-history","token-balance","token-discovery","token-history"]' \
+contains "an indexer separates token history and holdings" '"capabilities":["native-history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain Ethereum
-contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["read","balance","native-history","fee","broadcast","token-balance","token-discovery","token-history"]' \
+contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","native-history","fee","broadcast","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain Solana
-contains "TON v2 only claims native history" '"capabilities":["read","balance","native-history","fee","broadcast","verification"]' \
+contains "TON v2 only claims native history" '"capabilities":["balance","native-history","fee","broadcast","verification"]' \
     spectra --json endpoints --catalog --chain TON
-contains "TON v3 exposes jetton balances and transfers" '"capabilities":["read","balance","native-history","token-balance","token-discovery","token-history"]' \
+contains "TON v3 exposes jetton balances and transfers" '"capabilities":["balance","native-history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain TON
 
 section "endpoint network identity"

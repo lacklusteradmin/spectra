@@ -10,8 +10,9 @@
 //! | [`state`] | resident `CoreAppState` projections and serialized persistence |
 //! | [`network`] | endpoint health and transaction status |
 //! | `network_balance`, `network_tokens`, `network_history`, `network_hd`, `network_prices` | chain reads grouped by responsibility |
+//! | [`send_preflight`] | send eligibility, routing and recipient warnings |
 //! | [`send_preview`] | fee estimates and send previews |
-//! | [`send_signing`] | protocol signing and submission dispatch |
+//! | [`send_submission`] | protocol signing and submission dispatch |
 //! | [`send_broadcast`] | rebroadcast of signed payloads |
 //! | [`send_destination`] | resolution and review verification |
 //! | [`helpers`] | parsing, scaling and SQLite plumbing the three share |
@@ -111,10 +112,11 @@ mod send_destination;
 mod send_execution;
 mod send_identity;
 mod send_params;
+mod send_preflight;
 mod send_preview;
 mod send_records;
 mod send_result;
-mod send_signing;
+mod send_submission;
 mod staking;
 mod standalone;
 pub use movement::PortfolioMovementBaseline;
@@ -326,7 +328,6 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
                 crate::app_core::ENDPOINT_KIND_RPC_NODE
                     | crate::app_core::ENDPOINT_CAPABILITY_BALANCE
                     | crate::app_core::ENDPOINT_KIND_BACKEND,
-                false,
             )?
             .into_iter()
             .map(|r| r.endpoint)
