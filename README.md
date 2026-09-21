@@ -29,7 +29,7 @@ SwiftUI iOS app, and an Android skeleton. The iOS app predates the core; work is
 underway to finish moving domain state and decisions into Rust.
 
 - [AGENTS.md](AGENTS.md): the rules for working in this repository. Read first.
-- [PLAN.md](PLAN.md): Rule 0, current stages and remaining work.
+- [PLAN.md](docs/PLAN.md): Rule 0, current stages and remaining work.
 - [Behaviour changes](docs/BEHAVIOUR-CHANGES.md): what changed on purpose, and why.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
 - [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31 and Swift 6 integration.

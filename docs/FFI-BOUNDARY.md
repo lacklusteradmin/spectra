@@ -1,7 +1,7 @@
 # FFI boundary
 
 Integration rules for **UniFFI 0.31.2 + Swift 6**. See
-[architecture](ARCHITECTURE.md) for ownership and [PLAN.md](../PLAN.md) for the
+[architecture](ARCHITECTURE.md) for ownership and [PLAN.md](PLAN.md) for the
 work to reduce the boundary.
 
 ## Export shapes
@@ -64,7 +64,7 @@ still said it was exported. All three scripts run in `scripts/cli-acceptance.sh`
 An export used only by the app may have no Rust coverage. Add a CLI entry point
 for domain rules: `spectra send assemble` exercises EVM assembly without keys
 or network. Offline assembly does not prove broadcasting works; the remaining
-coverage gaps are listed in [PLAN.md](../PLAN.md#known-open-items).
+coverage gaps are listed in [PLAN.md](PLAN.md#known-open-items).
 
 ## Regenerating bindings
 

@@ -29,7 +29,7 @@
 > What this does **not** license:
 >
 > - **Silence.** Every behaviour change goes in
->   [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md): what it was, what it
+>   [docs/BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md): what it was, what it
 >   is, why that side, and how to check it without the app. A change nobody can
 >   find is not reversible.
 > - **Guessing at the safe side.** Where a split concerns funds, keys or
@@ -43,8 +43,8 @@
 > yourself writing "preserved exactly", "ported verbatim", or a test that asserts
 > today's oddity, stop and fix the oddity instead.
 
-This is the plan of record. [Architecture](docs/ARCHITECTURE.md) explains the
-ownership model; [FFI boundary](docs/FFI-BOUNDARY.md) covers integration traps.
+This is the plan of record. [Architecture](ARCHITECTURE.md) explains the
+ownership model; [FFI boundary](FFI-BOUNDARY.md) covers integration traps.
 
 ## The target
 
@@ -165,7 +165,7 @@ Swift async export, and offline assembly cannot verify a broadcast.
     before replacing Swift orchestration, regenerate UniFFI bindings, exercise
     the new UI, and pass all three required suites. Record implemented
     before/after behaviour and concrete CLI checks in
-    [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md).
+    [docs/BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md).
 - [ ] **The CLI cannot show the endpoint table it is about to use.** Every
   `spectra` command builds its service through `WalletService::new_catalog()` →
   `catalog_endpoints()`, but nothing prints the result. `spectra endpoints`

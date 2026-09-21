@@ -1,7 +1,7 @@
 # Architecture decisions
 
 Spectra is one application with a shared Rust core and native front ends.
-[PLAN.md](../PLAN.md) tracks implementation status; [FFI-BOUNDARY.md](FFI-BOUNDARY.md)
+[PLAN.md](PLAN.md) tracks implementation status; [FFI-BOUNDARY.md](FFI-BOUNDARY.md)
 covers binding mechanics.
 
 ## Workspace
@@ -88,8 +88,6 @@ example `derivation/bitcoin.rs`, `fetch/bitcoin.rs` and `send/bitcoin.rs`.
 Keep differences that carry protocol meaning; share cryptographic primitives
 and wrappers that differ only in a chain name. Tests over the registry should
 assert complete capability coverage, rather than only test named examples.
-
-See [Naming](NAMING.md) for identifiers, function names and endpoint terminology.
 
 ## Boundary design
 

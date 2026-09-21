@@ -13,7 +13,7 @@
 # `history` is address history for the native coin; `token-history` is
 # fungible-token transfers, not approvals or arbitrary contract activity.
 # `token-discovery` enumerates holdings without a caller-supplied token list;
-# `token-balance` answers about a specified token. See docs/ENDPOINT-CAPABILITIES.md.
+# `token-balance` answers about a specified token.
 #
 # Address history is the part that needs care. An EVM node cannot serve it — there is
 # no `eth_getTransactionsByAddress`, because a node indexes transactions by
