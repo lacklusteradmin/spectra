@@ -30,6 +30,7 @@ async fn defaults_to_usd_before_anything_is_stored() {
     // leaving a caller to remember the merge.
     assert_eq!(
         CoreAppState {
+            revision: 0,
             token_preferences: Vec::new(),
             ..state.clone()
         },

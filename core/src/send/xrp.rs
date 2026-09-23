@@ -7,48 +7,6 @@ use crate::derivation::xrp::decode_xrp_address;
 use crate::fetch::xrp::{XrpClient, XrpSendResult};
 
 impl XrpClient {
-    /// Sign and submit an XRP Payment transaction.
-    pub async fn sign_and_submit(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        drops: u64,
-        private_key_bytes: &[u8],
-        public_key_hex: &str,
-    ) -> Result<XrpSendResult, String> {
-        let sequence = self.fetch_sequence(from_address).await?;
-        let fee = self.fetch_fee().await?;
-
-        let tx_blob = build_signed_payment(
-            from_address,
-            to_address,
-            drops,
-            fee,
-            sequence,
-            private_key_bytes,
-            public_key_hex,
-        )?;
-
-        crate::send::payload::before_submission(
-            serde_json::json!({"tx_blob_hex":tx_blob}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
-        let result = self.call("submit", json!({"tx_blob": tx_blob})).await?;
-        let txid = result
-            .get("tx_json")
-            .and_then(|t| t.get("hash"))
-            .and_then(|v| v.as_str())
-            .ok_or("submit: missing hash")?
-            .to_string();
-        Ok(XrpSendResult {
-            txid,
-            tx_blob_hex: tx_blob,
-        })
-    }
-
     /// Submit a pre-signed transaction blob (for rebroadcast).
     pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, String> {
         let result = self.call("submit", json!({"tx_blob": tx_blob_hex})).await?;

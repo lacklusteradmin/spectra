@@ -525,7 +525,7 @@ pub struct HighRiskSendRequest {
 ///
 /// The serialized form keeps `code` beside each variant's fields, which is
 /// what `spectra send quote` prints.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, uniffi::Enum)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum HighRiskSendWarning {
     /// The destination does not parse as an address on `chain`.

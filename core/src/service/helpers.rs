@@ -68,10 +68,25 @@ pub(super) fn decode_private_key(
 /// was shown comes from.
 ///
 /// Three tables used to answer this question: a literal per signing arm, a
-/// second literal per arm of `build_send_params`, and the registry. Litecoin
+/// second literal per arm of the former parameter dispatcher, and the registry. Litecoin
 /// and Bitcoin Cash disagreed across them.
-pub(super) fn fee_or_static(chain: crate::registry::Chain, fee: Option<u64>) -> u64 {
-    fee.unwrap_or_else(|| chain.static_fee_units().unwrap_or_default() as u64)
+pub(super) fn fee_or_static(
+    chain: crate::registry::Chain,
+    fee: Option<u64>,
+) -> Result<u64, SpectraBridgeError> {
+    let fee = match fee {
+        Some(fee) => fee,
+        None => u64::try_from(
+            chain
+                .static_fee_units()
+                .ok_or("No fee available for this chain")?,
+        )
+        .map_err(|_| "Fee exceeds protocol range")?,
+    };
+    if fee == 0 {
+        return Err("Fee must be positive".into());
+    }
+    Ok(fee)
 }
 
 // ── Decimal scaling ───────────────────────────────────────────────────────

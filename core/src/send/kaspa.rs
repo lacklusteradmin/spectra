@@ -25,8 +25,8 @@
 
 use serde::Serialize;
 
-use crate::derivation::kaspa::{decode_kaspa_address, encode_kaspa_schnorr};
-use crate::fetch::kaspa::{KasSendResult, KaspaClient};
+use crate::derivation::kaspa::decode_kaspa_address;
+use crate::fetch::kaspa::KaspaClient;
 
 const TX_VERSION: u16 = 0;
 const SIGHASH_ALL: u8 = 1;
@@ -34,22 +34,15 @@ const SIG_OP_COUNT_DEFAULT: u8 = 1;
 const KASPA_SIGHASH_KEY: &[u8] = b"TransactionSigningHash";
 
 impl KaspaClient {
-    pub async fn sign_and_broadcast(
+    pub(crate) async fn prepare_transfer(
         &self,
         from_address: &str,
         to_address: &str,
         amount_sompi: u64,
         fee_sompi: u64,
-        private_key_bytes: &[u8],
         min_fee_sompi: Option<u64>,
         dust_threshold_sompi: Option<u64>,
-    ) -> Result<KasSendResult, String> {
-        let secret =
-            secp256k1::SecretKey::from_slice(private_key_bytes).map_err(|e| e.to_string())?;
-        let public = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
-        if encode_kaspa_schnorr(&public.x_only_public_key().0.serialize()) != from_address {
-            return Err("kaspa sender does not match signing key".into());
-        }
+    ) -> Result<PreparedKaspaTransaction, String> {
         if amount_sompi == 0 {
             return Err("kaspa amount must be positive".into());
         }
@@ -118,12 +111,33 @@ impl KaspaClient {
             })
             .collect::<Result<_, _>>()?;
 
-        let signed = sign_kaspa_inputs(&inputs, &outputs, private_key_bytes)?;
-        let body = build_broadcast_body(&inputs, &outputs, &signed);
-        self.broadcast_tx_body(body).await
+        Ok(PreparedKaspaTransaction { inputs, outputs })
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedKaspaTransaction {
+    inputs: Vec<KaspaInputBuild>,
+    outputs: Vec<KaspaOutputBuild>,
+}
+impl PreparedKaspaTransaction {
+    pub fn sign(&self, key: &[u8]) -> Result<serde_json::Value, String> {
+        let signatures = sign_kaspa_inputs(&self.inputs, &self.outputs, key)?;
+        Ok(build_broadcast_body(
+            &self.inputs,
+            &self.outputs,
+            &signatures,
+        ))
+    }
+    pub fn resources(&self) -> Vec<String> {
+        self.inputs
+            .iter()
+            .map(|i| format!("kaspa:utxo:{}:{}", i.txid, i.vout))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct KaspaInputBuild {
     txid: String,
     vout: u32,
@@ -134,6 +148,7 @@ struct KaspaInputBuild {
     script_version: u16,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct KaspaOutputBuild {
     amount: u64,
     script_pubkey: Vec<u8>,

@@ -78,7 +78,7 @@ impl WalletService {
                 tokio::task::spawn_blocking(move || changes.save(&database))
                     .await
                     .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
-                *service.wallet_state.write().await = state;
+                service.publish_state(state).await;
             }
             Ok(result)
         })

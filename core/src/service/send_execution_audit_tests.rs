@@ -27,6 +27,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             let path=request.url.path();
             let result = match body["method"].as_str().unwrap_or(path) {
                 "getAccountInfo" => json!({"value":{"owner":if token2022 {"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"} else {"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":6,"extensions":[]}}}}}),
+                "isBlockhashValid" => json!({"value":true}),
                 "getLatestBlockhash" => json!({"value":{"blockhash":v["solana"]["blockhash"]}}),
                 "sendTransaction" => {
                     let tx=STANDARD.decode(body["params"][0].as_str().unwrap()).unwrap();
@@ -149,33 +150,55 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             monero_priority: None,
             sign_only: false,
         };
-        let result = service
-            .execute_send(request)
+        let prepared = service.build_send(request).await.unwrap();
+        let signed = service
+            .sign_send(prepared.id.clone(), prepared.review_digest, None)
             .await
-            .unwrap_or_else(|e| panic!("{chain:?} token={token}: {e}"));
-        assert!(!result.transaction_hash.is_empty(), "{chain:?}");
-        let rows = service.fetch_all_history_records().await.unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(
-            rows[0].id.len(),
-            36,
-            "native front ends parse the stored transaction ID as UUID"
-        );
-        assert_eq!(rows[0].id.chars().filter(|c| *c == '-').count(), 4);
-        assert_eq!(
-            rows[0].payload.transaction_hash.as_deref(),
-            Some(result.transaction_hash.as_str())
-        );
-        assert!(rows[0].payload.signed_transaction_payload.is_some());
+            .unwrap_or_else(|e| panic!("{chain:?}: {e}"));
+        assert!(server.received_requests().await.unwrap().iter().all(|r| {
+            let text = String::from_utf8_lossy(&r.body);
+            !text.contains("sendTransaction")
+                && !text.contains("executeTransactionBlock")
+                && !r.url.path().ends_with("/transactions")
+                && !r.url.path().contains("broadcasttransaction")
+        }));
+        if chain == Chain::Aptos {
+            let result = service
+                .broadcast_send(signed.id.clone(), vec![server.uri()])
+                .await
+                .unwrap();
+            assert_eq!(
+                result.attempts[0].outcome,
+                crate::send::stages::SubmissionOutcome::Accepted
+            );
+            assert_eq!(service.fetch_all_history_records().await.unwrap().len(), 1);
+        } else {
+            // An unregistered custom node cannot prove these network identities.
+            // Still exercise the protocol wire adapter with locally verified signatures.
+            assert!(service
+                .broadcast_send(signed.id.clone(), vec![server.uri()])
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("cannot be verified"));
+            service
+                .broadcast_at(
+                    chain,
+                    chain.endpoint_api(EndpointSlot::Primary).unwrap(),
+                    Arc::new(vec![server.uri()]),
+                    signed.signed_payload.clone().unwrap(),
+                )
+                .await
+                .unwrap();
+        }
         let reopened = WalletService::new(vec![]).unwrap();
         reopened
             .open_state(db.to_string_lossy().into())
             .await
             .unwrap();
-        assert_eq!(
-            reopened.fetch_all_history_records().await.unwrap()[0].payload,
-            rows[0].payload
-        );
+        let restored = reopened.inspect_send(signed.id).await.unwrap();
+        assert_eq!(restored.signed_payload, signed.signed_payload);
+        assert_eq!(restored.review_digest, signed.review_digest);
         let requests = server.received_requests().await.unwrap();
         assert!(!requests
             .iter()
@@ -228,6 +251,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
         .respond_with(move |r: &Request| {
             let body: Value = r.body_json().unwrap();
             let result = match body["method"].as_str().unwrap() {
+                "eth_chainId" => json!("0x1"),
                 "eth_getTransactionCount" => {
                     assert_eq!(body["params"][1], "pending");
                     json!("0x7") // A stale provider never advances: the journal must reserve nonces.
@@ -265,7 +289,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
         })
         .mount(&server)
         .await;
-    let mut request = super::tests::build_send_params_tests::req("ethereum", "Ethereum");
+    let mut request = super::tests::request_fixture::req("ethereum", "Ethereum");
     request.to_address = "0x1111111111111111111111111111111111111111".into();
     request.evm_overrides = Some(EvmSendOverridesInput {
         gas_limit: Some(21_000),
@@ -325,7 +349,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
     );
     assert_eq!(reopened.transactions().await.unwrap().len(), 4);
     let mut old = first.clone();
-    old.created_at = 0.0;
+    old.created_at_unix = 0.0;
     reopened
         .apply_transaction_command(TransactionCommand::Upsert { records: vec![old] })
         .await

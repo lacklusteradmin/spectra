@@ -225,7 +225,7 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
                     .collect(),
                 backends: endpoint_records_for_chain(catalog, &id, 0)
                     .into_iter()
-                    .filter(|r| r.api == Some(EndpointApi::MoneroLightWallet))
+                    .filter(|r| r.api == Some(EndpointApi::MoneroDaemonRpc))
                     .map(|r| r.endpoint)
                     .collect(),
                 evm_rpc: endpoint_records_for_chain(catalog, &id, 0)

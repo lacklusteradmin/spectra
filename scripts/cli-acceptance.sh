@@ -42,6 +42,9 @@ with_password() { local password="$1"; shift; SPECTRA_PASSWORD="$password" "$@";
 # Shared assertions check both the command's exit status and its output.
 source "$(dirname "$0")/cli-assertions.sh"
 
+check "transparent transaction stages" 0 python3 "$(dirname "$0")/cli-send-stages.py" "$BIN"
+
+
 # Fee-adjusted shortcuts are floored in core, not multiplied as Swift Doubles.
 contains "MAX stays below its quoted budget" '0.99998999' spectra send shortcut --maximum 0.99999 --decimals 8
 contains "half is a plain decimal within precision" '0.49999999' spectra send shortcut --maximum 1 --decimals 8 --percentage 50
@@ -92,7 +95,7 @@ contains "resolves a network by name"  '"nativeSymbol":"BTC"' \
 contains "hides testnets by default"   '"chains":[]' \
     spectra --json chains --filter "bitcoin testnet"
 # The network card's sentence: one variant per behaviour, not one string per chain.
-contains "Monero sends are prepared by the backend" '"sendBroadcastMode":"preparesWithBackend"' \
+contains "Monero signs on device" '"sendBroadcastMode":"signsAndBroadcasts"' \
     spectra --json chains --filter monero
 contains "Bittensor claims in-app signing like its peers" '"sendBroadcastMode":"signsAndBroadcasts"' \
     spectra --json chains --filter bittensor
@@ -379,7 +382,8 @@ assert not any(r["api"] in ("taostats", "subscan", "ethplorer") for r in records
 # Existing clients have no matching catalog API for these chains.
 assert configured["litecoin"] == []
 assert configured["bitcoin-cash"] == []
-assert configured["monero"] == []
+assert configured["monero"]
+assert all(any(r["endpoint"] == url and r["api"] == "monero-daemon-rpc" for r in records) for url in configured["monero"])
 PYAPI
 lacks "endpoint catalog omits unused provider metadata" '"providerID"' \
     spectra --json endpoints --catalog
@@ -788,15 +792,10 @@ check "refuses a token the chain does not have"    $REJECTED \
 #
 # The send path's last unproven step is the broadcast itself. `--sign-only`
 # runs everything before it — stored identity, amount, fees, live nonce, the
-# built and signed payload — and stops, so the path can be exercised without
-# moving funds. Signing needs the network, so what is checked here is the
-# refusal: a chain whose builder cannot stop before broadcasting must say so
-# rather than broadcast a caller's dry run.
-
+# built and signed payload and stops. The loopback staged-send suite and
+# multi-protocol core audit cover signing without any submission.
 section "sign without broadcasting"
-contains_exit 3 "and says which chain" "Solana" \
-    spectra send broadcast --from "Multi 3" --to "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
-    --amount 0.001 --sign-only
+contains "Solana exposes separate signing capability" '"supportsSeparateSigning":true' spectra --json chains --filter solana
 # A broadcast still takes --yes; signing does not, because it moves nothing.
 check "a broadcast without --yes is refused" $USAGE \
     spectra send broadcast --from "Multi 1" --to bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --amount 0.001
@@ -1325,7 +1324,7 @@ contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not fou
     spectra --json send rebroadcast missing --yes
 
 section "Offline integration suites"
-for domain in wallets portfolio history send diagnostics transport; do
+for domain in wallets portfolio history send send-icp-zcash send-monero diagnostics transport; do
     check "$domain integration checks" $OK \
         python3 "$(dirname "$0")/cli-$domain.py" "$BIN"
 done

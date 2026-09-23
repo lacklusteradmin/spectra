@@ -74,6 +74,82 @@ pub struct TxsArgs {
 /// irreversible half of this tool should take a word that says so.
 #[derive(Subcommand)]
 pub enum SendCommand {
+    /// Inspect durable local Monero scan progress without contacting a node.
+    MoneroStatus {
+        #[arg(long)]
+        from: String,
+    },
+    /// Scan Monero locally. No view or spend key is sent to the daemon.
+    SyncMonero {
+        #[command(flatten)]
+        identity: IdentityArgs,
+        /// Only valid before the first scan; earlier transfers will not be discovered.
+        #[arg(long)]
+        restore_height: Option<u64>,
+        /// Scan one durable batch instead of continuing to the chain tip.
+        #[arg(long)]
+        once: bool,
+    },
+    /// Build and persist the exact transaction for review, without signing.
+    Build {
+        #[arg(long)]
+        from: String,
+        #[arg(long)]
+        to: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long)]
+        endpoint: Option<String>,
+        #[arg(long)]
+        contract: Option<String>,
+        #[arg(long)]
+        decimals: Option<u32>,
+        #[arg(long)]
+        nonce: Option<i64>,
+        #[arg(long)]
+        gas_limit: Option<i64>,
+        #[arg(long, requires = "priority_fee_gwei")]
+        max_fee_gwei: Option<f64>,
+        #[arg(long, requires = "max_fee_gwei")]
+        priority_fee_gwei: Option<f64>,
+    },
+    /// Build a tracked holding from user edits, persisting its risk review.
+    BuildOwned {
+        #[arg(long)]
+        wallet: String,
+        #[arg(long)]
+        holding: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long)]
+        destination: String,
+    },
+    /// List prepared and signed transactions that survive app restarts.
+    List,
+    /// Inspect a persisted prepared or signed transaction.
+    Inspect { transaction_id: String },
+    /// Sign exactly the reviewed transaction and persist it without broadcasting.
+    Sign {
+        transaction_id: String,
+        #[arg(long)]
+        review_digest: String,
+        #[arg(long)]
+        endpoint: Option<String>,
+        #[arg(long)]
+        password_file: Option<String>,
+        #[arg(long, default_value = "SPECTRA_PASSWORD")]
+        password_env: Option<String>,
+    },
+    /// Broadcast the same saved signed payload to explicitly selected endpoints.
+    BroadcastSigned {
+        transaction_id: String,
+        #[arg(long, required = true)]
+        endpoint: Vec<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Show the actual configured endpoint table offline, in service order.
+    ConfiguredEndpoints { chain: String },
     /// Review stored-asset routing and submit preflight offline; never signs.
     Review {
         #[arg(long)]
@@ -175,6 +251,130 @@ pub enum SendCommand {
 
 pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
+        SendCommand::Build {
+            from,
+            to,
+            amount,
+            endpoint,
+            contract,
+            decimals,
+            nonce,
+            gas_limit,
+            max_fee_gwei,
+            priority_fee_gwei,
+        } => {
+            let wallet = ctx.find_wallet(&from)?;
+            let chain = wallet
+                .chain()
+                .ok_or_else(|| CliError::usage("Invalid wallet network"))?;
+            let service = staged_service(ctx, chain.str_id(), endpoint.into_iter().collect())?;
+            let artifact =
+                ctx.rt.block_on(
+                    service.build_send(SendExecutionRequest {
+                        chain_id: chain.str_id().into(),
+                        wallet_id: wallet.id,
+                        password: None,
+                        to_address: to,
+                        amount_str: amount,
+                        contract_address: contract,
+                        token_decimals: decimals,
+                        fee_rate_svb: None,
+                        fee_sat: None,
+                        gas_budget: None,
+                        fee_amount: None,
+                        evm_overrides: (nonce.is_some()
+                            || gas_limit.is_some()
+                            || max_fee_gwei.is_some())
+                        .then_some(EvmSendOverridesInput {
+                            nonce,
+                            gas_limit,
+                            custom_fees: max_fee_gwei.zip(priority_fee_gwei).map(
+                                |(max_fee_per_gas_gwei, max_priority_fee_per_gas_gwei)| {
+                                    spectra_core::send::ethereum::EvmCustomFeeConfiguration {
+                                        max_fee_per_gas_gwei,
+                                        max_priority_fee_per_gas_gwei,
+                                    }
+                                },
+                            ),
+                            ..Default::default()
+                        }),
+                        monero_priority: None,
+                        sign_only: false,
+                    }),
+                )?;
+            emit_artifact(out, &artifact);
+            Ok(())
+        }
+        SendCommand::List => {
+            let artifacts = ctx.rt.block_on(ctx.service()?.list_sends())?;
+            out.text(|| {
+                for artifact in &artifacts {
+                    println!(
+                        "{} {:?} {} {}",
+                        artifact.id, artifact.stage, artifact.chain_id, artifact.amount
+                    );
+                }
+            });
+            out.emit(serde_json::json!({"artifacts":artifacts}));
+            Ok(())
+        }
+        SendCommand::Inspect { transaction_id } => {
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.inspect_send(transaction_id))?;
+            emit_artifact(out, &artifact);
+            Ok(())
+        }
+        SendCommand::Sign {
+            transaction_id,
+            review_digest,
+            endpoint,
+            password_file,
+            password_env,
+        } => {
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
+            let password = signing_password(ctx, &artifact.wallet_id, password_file, password_env)?;
+            let service = staged_service(ctx, &artifact.chain_id, endpoint.into_iter().collect())?;
+            let artifact =
+                ctx.rt
+                    .block_on(service.sign_send(transaction_id, review_digest, password))?;
+            emit_artifact(out, &artifact);
+            Ok(())
+        }
+        SendCommand::BroadcastSigned {
+            transaction_id,
+            endpoint,
+            yes,
+        } => {
+            if !yes {
+                return Err(CliError::usage("broadcast-signed requires --yes"));
+            }
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
+            let service = staged_service(ctx, &artifact.chain_id, endpoint.clone())?;
+            let artifact = ctx
+                .rt
+                .block_on(service.broadcast_send(transaction_id, endpoint))?;
+            emit_artifact(out, &artifact);
+            Ok(())
+        }
+        SendCommand::ConfiguredEndpoints { chain } => {
+            let chain = resolve_chain(&chain)?;
+            let endpoints = ctx
+                .rt
+                .block_on(ctx.service()?.send_endpoints(chain.str_id().into()))?;
+            out.text(|| {
+                for (index, endpoint) in endpoints.iter().enumerate() {
+                    println!("{} {}", index + 1, endpoint);
+                }
+            });
+            out.emit(serde_json::json!({"chain":chain.str_id(),"endpoints":endpoints}));
+            Ok(())
+        }
+
         SendCommand::Review {
             wallet,
             holding,
@@ -252,6 +452,25 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             out.emit(serde_json::json!({"transactionHash": result.transaction_hash}));
             Ok(())
         }
+        SendCommand::BuildOwned {
+            wallet,
+            holding,
+            amount,
+            destination,
+        } => {
+            let wallet = ctx.find_wallet(&wallet)?;
+            let artifact = ctx.rt.block_on(ctx.service()?.build_owned_send(
+                spectra_core::service::send_review::SendReviewInput {
+                    wallet_id: wallet.id,
+                    holding_key: holding,
+                    amount,
+                    destination,
+                    overrides: None,
+                },
+            ))?;
+            out.emit(serde_json::json!({"artifact":artifact}));
+            Ok(())
+        }
         SendCommand::Quote {
             wallet,
             holding,
@@ -300,6 +519,50 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 .block_on(ctx.service()?.rebroadcast_transaction(transaction_id))
                 .map_err(CliError::from)?;
             out.emit(serde_json::json!({"ok": true, "transactionHash": hash}));
+            Ok(())
+        }
+        SendCommand::MoneroStatus { from } => {
+            let wallet = ctx.find_wallet(&from)?;
+            let service = ctx.service()?;
+            service.set_secret_store(ctx.secrets.clone());
+            let status = ctx
+                .rt
+                .block_on(service.monero_sync_status(wallet.id.clone()))?;
+            out.emit(serde_json::json!({"sync": status}));
+            Ok(())
+        }
+        SendCommand::SyncMonero {
+            identity: args,
+            mut restore_height,
+            once,
+        } => {
+            let wallet = ctx.find_wallet(&args.from)?;
+            if let Some(chain) = args.chain.as_deref() {
+                if resolve_chain(chain)?.str_id() != wallet.chain_id {
+                    return Err(CliError::usage(
+                        "Monero sync must use the wallet's selected network",
+                    ));
+                }
+            }
+            let password =
+                signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
+            let service = ctx.service()?;
+            service.set_secret_store(ctx.secrets.clone());
+            loop {
+                let status = ctx.rt.block_on(service.sync_monero_wallet(
+                    wallet.id.clone(),
+                    password.clone(),
+                    restore_height.take(),
+                ))?;
+                if once || status.complete {
+                    out.emit(serde_json::json!({"sync":status}));
+                    break;
+                }
+                eprintln!(
+                    "Monero scan: {} / {}",
+                    status.scanned_height, status.target_height
+                );
+            }
             Ok(())
         }
         SendCommand::Identity(args) => identity(ctx, out, args),
@@ -860,7 +1123,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
     if let Some(id) = args.record {
         let record = ctx.rt.block_on(ctx.service()?.transaction(id))?;
         out.text(|| println!("{record:?}"));
-        out.emit(serde_json::json!({"ok":true,"record":record}));
+        out.emit(serde_json::json!({"ok":true,"actions":record.as_ref().map(|r| &r.actions),"record":record}));
         return Ok(());
     }
     if args.page {
@@ -884,7 +1147,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             limit: args.limit,
         }))?;
         out.text(|| println!("{page:?}"));
-        out.emit(serde_json::json!({"ok":true,"page":page}));
+        out.emit(serde_json::json!({"ok":true,"actions":page.records.iter().map(|r| (&r.id, &r.actions)).collect::<std::collections::BTreeMap<_, _>>(),"page":page}));
         return Ok(());
     }
 
@@ -1319,4 +1582,30 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
         "data": assembly.data_hex,
     }));
     Ok(())
+}
+
+fn staged_service(
+    ctx: &Ctx,
+    chain_id: &str,
+    endpoints: Vec<String>,
+) -> CliResult<std::sync::Arc<WalletService>> {
+    if endpoints.is_empty() {
+        return ctx.service();
+    }
+    let service = WalletService::new(vec![spectra_core::service::ChainEndpoints {
+        chain_id: chain_id.into(),
+        endpoints,
+    }])?;
+    service.set_secret_store(ctx.secrets.clone());
+    ctx.rt.block_on(service.open_state(ctx.db_path()))?;
+    Ok(service)
+}
+fn emit_artifact(out: Out, artifact: &spectra_core::send::stages::SendArtifact) {
+    out.text(|| {
+        println!(
+            "{} {:?}\n{}\n{}",
+            artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
+        );
+    });
+    out.emit(serde_json::json!({"artifact":artifact}));
 }

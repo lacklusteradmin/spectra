@@ -38,12 +38,15 @@ returning and no-op commands emit no events or writes. UI projections have one
 writer. Derived domain data is computed from core's store and adopted by the UI,
 not computed by sending the projection back to core. Portfolio snapshots derive
 wallets, quotes, grouping, pins and valuation from one state and carry a session
-revision; front ends must reject older results. History pages are bounded queries,
+revision; front ends must reject older results. Every resident-state response also
+carries a core-assigned committed-state revision; failed requests never advance
+it. History pages are bounded queries,
 while recent/pending activity and indexed aggregates arrive in a separate summary.
 A summary is not the entire history; details and actions resolve stored IDs.
 
 Import forms and backup-quiz navigation are platform view state. Core exposes
-secret/address validators and enforces validation again on import; it does not
+secret/address validators and enforces validation again on import. Watch-only
+inputs name chains rather than internal address slots. Core does not
 model the front end's pages or rename-form completeness. Device authentication
 uses explicit action policies so the send preference cannot disable unlock,
 delete or reset protection. Native authentication remains a platform operation.
@@ -111,8 +114,9 @@ mutations still use the same writer rather than creating per-file owners.
 The send service is split into `send_execution` (stored identity and exact
 amount conversion), `send_destination` (fresh resolution and review binding),
 `send_preflight` (eligibility and recipient warnings), `send_preview` (quotes),
-`send_submission` (protocol signing and submission) and `send_broadcast`
-(rebroadcast). Internal `send_params` are Rust records, not a second JSON API.
+`send_stages` (durable build/sign/broadcast) and `send_broadcast`
+(rebroadcast). Protocol preparation lives in `send_stage_protocols` and
+`send_stage_utxo`; prepared content is typed Rust data, not caller-owned JSON.
 Secrets use redacted, zeroizing storage; an Ed25519 seed is a distinct type
 rather than an unlabelled 32/64-byte array.
 
@@ -157,3 +161,30 @@ exception to the depth rule: it groups the store's many domain regressions.
   wallets, state and teardown. `state` and `teardown` keep their cross-table
   transactions; splitting files does not split commits. `store/tests/` groups
   regressions by domain.
+
+### Persistent send stages
+
+`WalletService.build_send`, `sign_send` and `broadcast_send` own immutable
+prepared content, signed bytes, and per-endpoint submission attempts.
+`execute_send` composes these operations. SQLite stores secret-free typed
+artifacts with revision checks and atomic nonce/input reservations; wallet
+removal also removes its artifacts. A reviewed digest commits to the exact
+prepared content. Signing may validate freshness but never changes that content;
+broadcast never rebuilds or signs. Unknown submission outcomes retain the same
+payload for inspection and explicit retry. On-chain status remains history's
+responsibility. Swift displays these records and forwards explicit actions;
+its selected checkboxes and navigation are view state.
+
+The CLI exposes `send build`, `sign`, `inspect`, `list`, `broadcast-signed` and
+`configured-endpoints`. Unsupported protocol stages are refused according to
+registry capabilities; see the dated send-stage entry in
+[BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md) for the deliberate restrictions.
+
+Build-time send advisories are stored with each artifact and covered by its
+review digest. `build_owned_send` accepts user edits and owns quote/build
+coordination; Swift does not round-trip a quote's transaction request. Native
+`SendSession` owns only workflow identity, in-flight state and displayed results.
+Obsolete callbacks cannot update another session or start signing after native
+authentication. Core operations already dispatched remain durable after closing.
+Amount display utilities are optional presentation policy; signing review always
+renders the exact artifact amount and exposes the prepared transaction details.

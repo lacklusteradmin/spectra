@@ -9,44 +9,12 @@
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{dsha256, varint};
 use crate::derivation::bitcoin_gold::decode_btg_address;
-use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 
 const SIGHASH_ALL_FORKID_BYTE: u8 = 0x41;
 /// Preimage hash-type field: `(BTG fork id 79 << 8) | SIGHASH_ALL_FORKID`.
 const SIGHASH_PREIMAGE_HASH_TYPE: u32 = 0x0000_4F41;
 
-impl BlockbookClient {
-    pub async fn sign_bitcoin_gold_and_broadcast(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        amount_sat: u64,
-        fee_sat: u64,
-        private_key_bytes: &[u8],
-        dust_threshold: Option<u64>,
-    ) -> Result<BlockbookSendResult, String> {
-        self.require_chain(crate::registry::Chain::BitcoinGold)?;
-        let utxos = self.fetch_utxos(from_address).await?;
-        let from_hash = decode_btg_address(from_address)?;
-        let from_script = p2pkh_script(&from_hash);
-        let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
-            .iter()
-            .map(|u| (u.txid.clone(), u.vout, u.value_sat, from_script.clone()))
-            .collect();
-        let raw = sign_btg_tx(
-            &utxo_tuples,
-            to_address,
-            amount_sat,
-            fee_sat,
-            from_address,
-            private_key_bytes,
-            dust_threshold,
-        )?;
-        self.broadcast_raw_tx(&hex::encode(&raw)).await
-    }
-}
-
-fn sign_btg_tx(
+pub(crate) fn sign_btg_tx(
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
     amount_sat: u64,

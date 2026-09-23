@@ -51,7 +51,10 @@ async fn concurrent_commands_and_events_match_reopened_database() {
         result.unwrap();
     }
     let reopened = service();
-    assert_eq!(reopened.open_state(db).await.unwrap(), s.app_state().await);
+    assert_eq!(
+        serde_json::to_value(reopened.open_state(db).await.unwrap()).unwrap(),
+        serde_json::to_value(s.app_state().await).unwrap()
+    );
     let events = s.operational_events("Bitcoin".into()).await;
     assert_eq!(events.len(), 40);
     assert_eq!(
@@ -70,12 +73,18 @@ async fn failed_state_commit_does_not_publish_and_retry_persists() {
     assert!(s.apply_state_command(currency("EUR")).await.is_err());
     assert_eq!(s.app_state().await, before);
     assert_eq!(
-        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap(),
-        before
+        serde_json::to_value(
+            crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(before).unwrap()
     );
     sql(&db, "DROP TRIGGER reject_meta;");
     s.apply_state_command(currency("EUR")).await.unwrap();
-    assert_eq!(service().open_state(db).await.unwrap(), s.app_state().await);
+    assert_eq!(
+        serde_json::to_value(service().open_state(db).await.unwrap()).unwrap(),
+        serde_json::to_value(s.app_state().await).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -180,8 +189,11 @@ async fn cancelling_caller_does_not_interrupt_an_admitted_commit() {
         crate::store::state::FiatCurrency::Eur
     );
     assert_eq!(
-        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap(),
-        s.app_state().await
+        serde_json::to_value(
+            crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(s.app_state().await).unwrap()
     );
 }
 
@@ -261,7 +273,10 @@ async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
         .map(Result::unwrap)
         .collect();
     assert_eq!(names.len(), 1, "{names:?}");
-    assert_eq!(service().open_state(db).await.unwrap(), s.app_state().await);
+    assert_eq!(
+        serde_json::to_value(service().open_state(db).await.unwrap()).unwrap(),
+        serde_json::to_value(s.app_state().await).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -688,7 +703,10 @@ async fn failed_open_does_not_publish_and_can_retry_seeding() {
         sql(&path, "DROP TRIGGER reject_seed");
         let opened = s.open_state(path.clone()).await.unwrap();
         assert!(!opened.token_preferences.is_empty());
-        assert_eq!(opened, crate::wallet_db::app_state_load(&db).unwrap());
+        assert_eq!(
+            serde_json::to_value(&opened).unwrap(),
+            serde_json::to_value(crate::wallet_db::app_state_load(&db).unwrap()).unwrap()
+        );
         assert_eq!(opened, s.open_state(path).await.unwrap());
     }
 }
@@ -736,4 +754,27 @@ async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
         );
     }
     mutations.await.unwrap();
+}
+
+#[tokio::test]
+async fn committed_versions_order_reads_and_failed_writes_do_not_advance_them() {
+    let s = service();
+    let db = database();
+    let initial = s.open_state(db.clone()).await.unwrap();
+    let first = s.apply_state_command(currency("EUR")).await.unwrap().state;
+    assert!(first.revision > initial.revision);
+    let noop = s.apply_state_command(currency("EUR")).await.unwrap();
+    assert!(noop.events.is_empty());
+    assert_eq!(noop.state.revision, first.revision);
+    sql(&db, "CREATE TRIGGER reject_revision BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
+    assert!(s.apply_state_command(currency("JPY")).await.is_err());
+    assert_eq!(s.app_state().await.revision, first.revision);
+    assert_eq!(
+        s.portfolio_snapshot().await.unwrap().state.revision,
+        first.revision
+    );
+    sql(&db, "DROP TRIGGER reject_revision");
+    let next = s.apply_state_command(currency("JPY")).await.unwrap().state;
+    assert!(next.revision > first.revision);
+    assert_eq!(s.open_state(db).await.unwrap().revision, next.revision);
 }

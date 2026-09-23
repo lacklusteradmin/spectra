@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 
-/// Seconds between Unix time and the transaction payload epoch (2001-01-01).
-pub(crate) const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CorePersistedTransactionRecord {
+    /// Read-time projection; never persisted or trusted on writes.
+    #[serde(skip)]
+    pub actions: crate::service::TransactionActions,
     /// Known for local sends; provider history may omit protocol identity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_id: Option<String>,
@@ -70,8 +70,8 @@ pub struct CorePersistedTransactionRecord {
     pub failure_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_history_source: Option<String>,
-    /// Seconds since Swift reference date (2001-01-01T00:00:00Z).
-    pub created_at: f64,
+    /// Unix seconds (1970-01-01T00:00:00Z), including fractional seconds.
+    pub created_at_unix: f64,
 }
 
 #[cfg(test)]
@@ -81,14 +81,14 @@ mod tests {
     #[test]
     fn transaction_record_roundtrip_omits_none_fields() {
         // Minimal encoded shape for a received record: no null fields, and
-        // createdAt as seconds since 2001-01-01 UTC. `status` is one of the
+        // createdAtUnix as seconds since 1970-01-01 UTC. `status` is one of the
         // required fields — it was optional, and absence meant "decide by
         // kind at the read site", which the app and core decided differently.
-        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAt":745200000.0}"#;
+        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAtUnix":745200000.0}"#;
         let decoded: CorePersistedTransactionRecord = serde_json::from_str(json).unwrap();
         assert_eq!(decoded.kind, CoreTransactionKind::Receive);
         assert_eq!(decoded.status, CoreTransactionStatus::Pending);
-        assert_eq!(decoded.created_at, 745200000.0);
+        assert_eq!(decoded.created_at_unix, 745200000.0);
         let reencoded = serde_json::to_string(&decoded).unwrap();
         assert_eq!(reencoded, json);
     }
@@ -99,6 +99,7 @@ mod tests {
     /// not a wall of `None`s.
     fn minimal_record() -> CorePersistedTransactionRecord {
         CorePersistedTransactionRecord {
+            actions: Default::default(),
             deployment_id: None,
             id: "11111111-2222-3333-4444-555555555555".to_string(),
             wallet_id: None,
@@ -130,7 +131,7 @@ mod tests {
             signed_transaction_payload_format: None,
             failure_reason: None,
             transaction_history_source: None,
-            created_at: 0.0,
+            created_at_unix: 0.0,
         }
     }
 
@@ -155,7 +156,7 @@ mod tests {
             confirmation_count: Some(12),
             used_change_output: Some(true),
             transaction_history_source: Some("rpc".to_string()),
-            created_at: 750000000.5,
+            created_at_unix: 750000000.5,
             ..minimal_record()
         };
         let json = serde_json::to_string(&original).unwrap();

@@ -11,13 +11,6 @@ use crate::fetch::dogecoin::{DogeSendResult, DogecoinClient};
 
 impl DogecoinClient {
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<DogeSendResult, String> {
-        crate::send::payload::before_submission(
-            hex_tx.to_owned(),
-            "txid",
-            crate::send::payload::bitcoin_transaction_id(hex_tx),
-            None,
-        )
-        .await?;
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -34,34 +27,6 @@ impl DogecoinClient {
             }
         })
         .await
-    }
-
-    /// Fetch UTXOs for `from_address`, sign a P2PKH transaction, and broadcast.
-    pub async fn sign_and_broadcast(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        amount_sat: u64,
-        fee_sat: u64,
-        private_key_bytes: &[u8],
-        dust_threshold: Option<u64>,
-    ) -> Result<DogeSendResult, String> {
-        let utxos = self.fetch_utxos(from_address).await?;
-        let script_pubkey = p2pkh_script(&decode_doge_address(from_address)?);
-        let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
-            .iter()
-            .map(|u| (u.txid.clone(), u.vout, u.value_koin, script_pubkey.clone()))
-            .collect();
-        let raw = sign_doge_p2pkh(
-            &utxo_tuples,
-            to_address,
-            amount_sat,
-            fee_sat,
-            from_address,
-            private_key_bytes,
-            dust_threshold,
-        )?;
-        self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
 }
 

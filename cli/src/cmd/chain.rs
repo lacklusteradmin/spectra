@@ -145,6 +145,8 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // And the staking tab's, which was a seven-case Swift enum and
                 // two match arms in `StakingService` before it was a column.
                 "staking": chain.supports_staking(),
+                "supportsSeparateSigning": chain.supports_sign_only(),
+                "sendUnavailableReason": chain.transparent_send_unavailable_reason(),
                 // The setup picker's short list, which was eight ids typed
                 // into the Swift view — a rank, so the order comes with it.
                 "popularRank": chain.entry().popular_rank,

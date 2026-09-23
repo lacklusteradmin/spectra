@@ -580,6 +580,9 @@ impl Default for AppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoreAppState {
+    /// Session-local committed-state version. Never persisted or supplied by a client.
+    #[serde(skip)]
+    pub revision: u64,
     pub movement_baseline: Option<crate::service::PortfolioMovementBaseline>,
     pub quotes: crate::service::QuoteRefreshState,
     pub diagnostics: crate::service::DiagnosticState,
@@ -609,6 +612,7 @@ pub(crate) const APP_STATE_SCHEMA_VERSION: u32 = 2;
 impl Default for CoreAppState {
     fn default() -> Self {
         Self {
+            revision: 0,
             movement_baseline: None,
             quotes: Default::default(),
             schema_version: APP_STATE_SCHEMA_VERSION,

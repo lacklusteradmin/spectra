@@ -39,21 +39,21 @@ impl WalletImportAddresses {
     }
 }
 
-/// Watch-only address lists, keyed by [`Chain::address_slot`]. A watch-only
+/// Watch-only address lists, keyed by concrete chain id (or family id for the selected network). A watch-only
 /// import can supply several addresses per chain; each becomes one wallet.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportWatchOnlyEntries {
-    /// `Chain::address_slot()` → addresses, in the order the user entered them.
-    pub by_slot: HashMap<String, Vec<String>>,
+    /// `Chain::str_id()` → addresses, in the order the user entered them.
+    pub by_chain_id: HashMap<String, Vec<String>>,
     pub bitcoin_xpub: Option<String>,
 }
 
 impl WalletImportWatchOnlyEntries {
     /// Addresses entered for `chain`, or an empty slice when none were.
     pub fn addresses_for(&self, chain: Chain) -> &[String] {
-        self.by_slot
-            .get(chain.address_slot())
+        self.by_chain_id
+            .get(chain.str_id())
             .map(Vec::as_slice)
             .unwrap_or(&[])
     }
@@ -430,14 +430,30 @@ pub(crate) fn validated_watch_only_entries(
 ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
     let mut kept: HashMap<String, Vec<String>> = HashMap::new();
     let mut rejected = Vec::new();
-    for (slot, addresses) in &entries.by_slot {
+    for (chain_id, addresses) in &entries.by_chain_id {
         for address in addresses {
             let trimmed = address.trim();
             if trimmed.is_empty() {
                 continue;
             }
-            match validated_address_in_slot(slot, trimmed, networks) {
-                Ok(normalized) => kept.entry(slot.clone()).or_default().push(normalized),
+            let normalized = Chain::from_str_id(chain_id)
+                .filter(|chain| chain.supports_watch_only_import())
+                .ok_or(())
+                .and_then(|chain| {
+                    let selected = networks.selected(chain);
+                    let result = validate_address(AddressValidationRequest {
+                        kind: selected.address_validation_kind().to_string(),
+                        value: trimmed.to_string(),
+                    });
+                    if !result.is_valid {
+                        return Err(());
+                    }
+                    Ok(result
+                        .normalized_value
+                        .unwrap_or_else(|| trimmed.to_string()))
+                });
+            match normalized {
+                Ok(normalized) => kept.entry(chain_id.clone()).or_default().push(normalized),
                 Err(()) => rejected.push(trimmed.to_string()),
             }
         }
@@ -447,7 +463,7 @@ pub(crate) fn validated_watch_only_entries(
     rejected.extend(refused_xpub);
     (
         WalletImportWatchOnlyEntries {
-            by_slot: kept,
+            by_chain_id: kept,
             bitcoin_xpub,
         },
         rejected,
@@ -901,7 +917,7 @@ mod tests {
             has_wallet_password: false,
             resolved_addresses: WalletImportAddresses::empty(),
             watch_only_entries: WalletImportWatchOnlyEntries {
-                by_slot: HashMap::new(),
+                by_chain_id: HashMap::new(),
                 bitcoin_xpub: Some("xpub123".to_string()),
             },
         })
@@ -928,7 +944,7 @@ mod tests {
             has_wallet_password: false,
             resolved_addresses: WalletImportAddresses::empty(),
             watch_only_entries: WalletImportWatchOnlyEntries {
-                by_slot: HashMap::from([(
+                by_chain_id: HashMap::from([(
                     "solana".to_string(),
                     vec!["addr1".to_string(), "addr2".to_string()],
                 )]),
@@ -968,7 +984,7 @@ mod tests {
             has_wallet_password: false,
             resolved_addresses: WalletImportAddresses::empty(),
             watch_only_entries: WalletImportWatchOnlyEntries {
-                by_slot: HashMap::from([("monero".to_string(), vec!["4addr".to_string()])]),
+                by_chain_id: HashMap::from([("monero".to_string(), vec!["4addr".to_string()])]),
                 bitcoin_xpub: None,
             },
         });

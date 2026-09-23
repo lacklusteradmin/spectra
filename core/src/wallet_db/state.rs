@@ -128,6 +128,12 @@ impl AppStateChanges {
             let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
             let updated_at = now_secs();
             if self.replace {
+                tx.execute("DELETE FROM monero_wallets", [])
+                    .map_err(|e| e.to_string())?;
+                tx.execute("DELETE FROM send_reservations", [])
+                    .map_err(|e| e.to_string())?;
+                tx.execute("DELETE FROM send_artifacts", [])
+                    .map_err(|e| e.to_string())?;
                 tx.execute("DELETE FROM wallets", [])
                     .map_err(|e| e.to_string())?;
                 tx.execute("DELETE FROM address_book", [])
@@ -143,6 +149,15 @@ impl AppStateChanges {
                 }
             }
             for id in self.removed_wallets {
+                tx.execute("DELETE FROM monero_wallets WHERE wallet_id=?1", params![id])
+                    .map_err(|e| e.to_string())?;
+                tx.execute("DELETE FROM send_reservations WHERE artifact_id IN (SELECT id FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1)", params![id]).map_err(|e| e.to_string())?;
+                tx.execute(
+                    "DELETE FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+
                 for table in ["wallet_keypool", "wallet_owned_addresses"] {
                     tx.execute(
                         &format!("DELETE FROM {table} WHERE wallet_id = ?1"),

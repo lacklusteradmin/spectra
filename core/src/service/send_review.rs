@@ -344,6 +344,7 @@ mod tests {
                 .respond_with(move |r: &Request| {
                     let body: Value = r.body_json().unwrap();
                     let result = match body["method"].as_str().unwrap() {
+                        "eth_chainId" => json!("0x1"),
                         "eth_getTransactionCount" => {
                             json!(format!("0x{:x}", observed_nonce.load(Ordering::SeqCst)))
                         }

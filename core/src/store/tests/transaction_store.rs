@@ -32,7 +32,7 @@ fn record(id: &str, wallet: &str, status: &str) -> CorePersistedTransactionRecor
         "amount": 1.0,
         "address": "bc1qexample",
         "transactionHash": format!("hash-{id}"),
-        "createdAt": 0.0,
+        "createdAtUnix": 0.0,
     }))
     .expect("fixture must match CorePersistedTransactionRecord")
 }
@@ -196,10 +196,9 @@ async fn commands_require_an_opened_store() {
     );
 }
 
-/// `created_at` is Swift reference time in the record and Unix time in the
-/// indexed column. Getting that wrong misorders history by 31 years.
+/// Payload and index use the same Unix timestamp.
 #[tokio::test]
-async fn created_at_is_converted_to_unix_time_for_the_index() {
+async fn created_at_uses_unix_time_in_payload_and_index() {
     let (service, db) = opened("epoch").await;
     service
         .apply_transaction_command(TransactionCommand::Upsert {
@@ -210,10 +209,10 @@ async fn created_at_is_converted_to_unix_time_for_the_index() {
 
     let rows = crate::wallet_db::history_fetch_all(&crate::wallet_db::WalletDatabase::new(&db))
         .expect("rows");
-    // createdAt 0.0 in Swift reference time is 2001-01-01 UTC.
-    assert_eq!(rows[0].created_at, 978_307_200.0);
-    // The record itself keeps the reference-time value it was given.
-    assert_eq!(rows[0].payload.created_at, 0.0);
+    // Unix zero remains zero in both representations.
+    assert_eq!(rows[0].created_at, 0.0);
+    // The payload preserves the same timestamp.
+    assert_eq!(rows[0].payload.created_at_unix, 0.0);
 
     let _ = std::fs::remove_file(&db);
 }

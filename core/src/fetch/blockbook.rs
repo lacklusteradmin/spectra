@@ -62,12 +62,14 @@ struct BlockbookVin {
 /// `/api/v2` reports the backend's chain tip.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg(test)]
 struct BlockbookStatus {
     backend: BlockbookBackend,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg(test)]
 struct BlockbookBackend {
     blocks: u64,
 }
@@ -123,10 +125,11 @@ impl super::SignedSubmission for BlockbookSendResult {
 pub struct BlockbookClient {
     pub(crate) endpoints: Arc<Vec<String>>,
     pub(crate) client: Arc<HttpClient>,
-    chain: crate::registry::Chain,
+    pub(crate) chain: crate::registry::Chain,
 }
 
 impl BlockbookClient {
+    #[cfg(test)]
     pub(crate) fn require_chain(&self, expected: crate::registry::Chain) -> Result<(), String> {
         if self.chain.mainnet_counterpart() != expected {
             return Err("signer does not match the client's network".into());
@@ -273,6 +276,7 @@ impl BlockbookClient {
 
     /// The backend's current chain tip. Zcash's V5 builder needs it to pick an
     /// `nExpiryHeight` (`tip + 40`, the zcashd default).
+    #[cfg(test)]
     pub async fn fetch_chain_tip_height(&self) -> Result<u64, String> {
         let status: BlockbookStatus = self.get("/api/v2").await?;
         Ok(status.backend.blocks)
@@ -280,13 +284,6 @@ impl BlockbookClient {
 
     /// Submit a signed transaction. Blockbook answers with the txid.
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BlockbookSendResult, String> {
-        crate::send::payload::before_submission(
-            hex_tx.to_owned(),
-            "txid",
-            crate::send::payload::bitcoin_transaction_id(hex_tx),
-            None,
-        )
-        .await?;
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -294,11 +291,19 @@ impl BlockbookClient {
             let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
             async move {
                 let raw_tx_hex = hex.clone();
-                let txid: String = client
+                let response = client
                     .post_text(&url, hex, RetryProfile::ChainWrite)
                     .await?;
+                let body: serde_json::Value = serde_json::from_str(&response)
+                    .map_err(|e| format!("Invalid Blockbook submission response: {e}"))?;
+                let txid = body["result"]
+                    .as_str()
+                    .ok_or("Blockbook submission response is missing result")?;
+                if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err("Invalid Blockbook transaction hash".into());
+                }
                 Ok(BlockbookSendResult {
-                    txid: txid.trim().to_string(),
+                    txid: txid.to_lowercase(),
                     raw_tx_hex,
                 })
             }

@@ -36,7 +36,9 @@ pub(crate) fn decode_zcash_testnet_address(address: &str) -> Result<[u8; 20], St
         .with_check(None)
         .into_vec()
         .map_err(|e| format!("invalid zcash testnet address: {e}"))?;
-    if decoded.len() != 22 || [decoded[0], decoded[1]] != ZCASH_TESTNET_VERSION {
+    if decoded.len() != 22
+        || ![ZCASH_TESTNET_VERSION, [0x1c, 0xba]].contains(&[decoded[0], decoded[1]])
+    {
         return Err("not a zcash testnet transparent address".to_string());
     }
     let mut hash = [0u8; 20];

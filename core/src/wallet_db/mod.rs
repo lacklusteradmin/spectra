@@ -23,3 +23,9 @@ pub use teardown::*;
 pub use wallets::*;
 #[cfg(test)]
 mod tests;
+
+mod sends;
+pub(crate) use sends::*;
+
+mod monero;
+pub(crate) use monero::{monero_load, monero_save};

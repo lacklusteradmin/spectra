@@ -111,7 +111,7 @@ impl WalletService {
             }
             // Publish only after every fallible initialization step succeeds.
             service.keypool.write().await.load(keypool, by_chain);
-            *service.wallet_state.write().await = state.clone();
+            let state = service.publish_state(state).await;
             service.state_binding.bind(database).await;
             service.reconcile_transport(&state.settings, false);
             Ok(state)
@@ -441,7 +441,7 @@ impl WalletService {
                     .history_pagination
                     .reset_chain(crate::registry::Chain::Bitcoin.str_id());
             }
-            *service.wallet_state.write().await = snapshot.clone();
+            let snapshot = service.publish_state(snapshot).await;
             // The HTTP layer reads the Tor policy per request rather than the
             // store, so a change to either flag is pushed as it lands.
             service.reconcile_transport(&snapshot.settings, false);
@@ -451,6 +451,14 @@ impl WalletService {
             })
         })
         .await
+    }
+
+    /// Publish only after persistence succeeds, while holding the state writer.
+    pub(super) async fn publish_state(&self, mut state: CoreAppState) -> CoreAppState {
+        let mut current = self.wallet_state.write().await;
+        state.revision = current.revision + 1;
+        *current = state.clone();
+        state
     }
 
     /// Once submitted, a persistent mutation finishes even if the caller cancels.

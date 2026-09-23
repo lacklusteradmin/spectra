@@ -18,17 +18,10 @@ use zeroize::Zeroize;
 
 use crate::fetch::http::{with_fallback, RetryProfile};
 
-use crate::fetch::bitcoin::{BitcoinClient, BitcoinSendResult, EsploraUtxo, FeeRate};
+use crate::fetch::bitcoin::{BitcoinClient, EsploraUtxo, FeeRate};
 
 impl BitcoinClient {
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
-        crate::send::payload::before_submission(
-            raw_tx_hex.to_owned(),
-            "txid",
-            crate::send::payload::bitcoin_transaction_id(raw_tx_hex),
-            None,
-        )
-        .await?;
         let raw = raw_tx_hex.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
@@ -344,7 +337,23 @@ fn build_unsigned_spend(
 ) -> Result<UnsignedSpend, String> {
     // Build extra outputs before coin selection so their amounts are
     // included in the funding target and change calculation.
-    let extra = build_extra_outputs(&params.extra_outputs, identity.network)?;
+    build_unsigned_layout(
+        params,
+        &identity.from,
+        &identity.to,
+        identity.network,
+        sizing,
+    )
+}
+
+fn build_unsigned_layout(
+    params: &BitcoinSendParams,
+    from: &Address,
+    to: &Address,
+    network: bitcoin::Network,
+    sizing: SpendSizing,
+) -> Result<UnsignedSpend, String> {
+    let extra = build_extra_outputs(&params.extra_outputs, network)?;
     let spend_sats = extra
         .iter()
         .try_fold(params.amount_sats, |total, out| {
@@ -395,12 +404,12 @@ fn build_unsigned_spend(
 
     let mut output = vec![TxOut {
         value: Amount::from_sat(params.amount_sats),
-        script_pubkey: identity.to.script_pubkey(),
+        script_pubkey: to.script_pubkey(),
     }];
     if change_sats > params.dust_threshold.unwrap_or(546) {
         output.push(TxOut {
             value: Amount::from_sat(change_sats),
-            script_pubkey: identity.spent_script(),
+            script_pubkey: from.script_pubkey(),
         });
     }
     output.extend(extra);
@@ -603,63 +612,6 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
     }
 
     Ok(serialized(tx_ref.clone()))
-}
-/// High-level send: auto-detect the from-address script type, sign,
-/// and broadcast (unless `params.sign_only` is set).
-pub async fn sign_and_broadcast(
-    client: &BitcoinClient,
-    mut params: BitcoinSendParams,
-) -> Result<BitcoinSendResult, String> {
-    // Fetch UTXOs when auto-selection is active and none were pre-supplied.
-    if params.pinned_utxos.is_none() && params.available_utxos.is_empty() {
-        params.available_utxos = client.fetch_utxos(&params.from_address).await?;
-    }
-
-    // Detect script type from the from-address prefix.
-    let raw_hex = if params.from_address.starts_with("bc1p")
-        || params.from_address.starts_with("tb1p")
-        || params.from_address.starts_with("bcrt1p")
-    {
-        let (_, hex) = sign_p2tr(&mut params)?;
-        hex
-    } else if params.from_address.starts_with("bc1q")
-        || params.from_address.starts_with("tb1q")
-        || params.from_address.starts_with("bcrt1q")
-    {
-        let (_, hex) = sign_p2wpkh(&mut params)?;
-        hex
-    } else if Address::from_str(&params.from_address)
-        .ok()
-        .and_then(|addr| {
-            addr.require_network(
-                crate::registry::Chain::from_str_id(&params.chain_id)
-                    .unwrap_or(crate::registry::Chain::Bitcoin)
-                    .bitcoin_network(),
-            )
-            .ok()
-        })
-        .is_some_and(|addr| addr.script_pubkey().is_p2sh())
-    {
-        let (_, hex) = sign_p2sh_p2wpkh(&mut params)?;
-        hex
-    } else {
-        let (_, hex) = sign_p2pkh(&mut params)?;
-        hex
-    };
-
-    if params.sign_only {
-        return Ok(BitcoinSendResult {
-            txid: String::new(),
-            raw_tx_hex: raw_hex,
-        });
-    }
-
-    let txid = client.broadcast_raw_tx(&raw_hex).await?;
-
-    Ok(BitcoinSendResult {
-        txid,
-        raw_tx_hex: raw_hex,
-    })
 }
 
 #[cfg(test)]
@@ -988,5 +940,130 @@ mod tests {
         p.enable_rbf = false;
         let (tx, _) = sign_p2wpkh(&mut p).unwrap();
         assert_eq!(tx.input[0].sequence, Sequence::MAX);
+    }
+}
+
+/// Frozen inputs and outputs for all four supported Bitcoin address scripts.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedBitcoinTransaction {
+    pub chain_id: String,
+    pub from: String,
+    pub to: String,
+    pub amount: u64,
+    pub fee_rate: f64,
+    pub inputs: Vec<EsploraUtxo>,
+    pub unsigned_hex: String,
+    pub fee_sats: u64,
+}
+impl PreparedBitcoinTransaction {
+    fn params(&self, key: String) -> BitcoinSendParams {
+        BitcoinSendParams {
+            chain_id: self.chain_id.clone(),
+            from_address: self.from.clone(),
+            to_address: self.to.clone(),
+            amount_sats: self.amount,
+            private_key_hex: key.into(),
+            fee_rate: FeeRate {
+                sats_per_vbyte: self.fee_rate,
+            },
+            available_utxos: Vec::new(),
+            pinned_utxos: Some(self.inputs.clone()),
+            enable_rbf: true,
+            dust_threshold: None,
+            extra_outputs: Vec::new(),
+            coin_selection: CoinSelectionStrategy::LargestFirst,
+            sign_only: true,
+        }
+    }
+    pub fn prepare(
+        chain: crate::registry::Chain,
+        from: &str,
+        to: &str,
+        amount: u64,
+        fee_rate: f64,
+        inputs: Vec<EsploraUtxo>,
+    ) -> Result<Self, String> {
+        if !fee_rate.is_finite() || fee_rate <= 0.0 {
+            return Err("Invalid Bitcoin fee rate".into());
+        }
+        let mut result = Self {
+            chain_id: chain.str_id().into(),
+            from: from.into(),
+            to: to.into(),
+            amount,
+            fee_rate,
+            inputs,
+            unsigned_hex: String::new(),
+            fee_sats: 0,
+        };
+        let mut params = result.params(String::new());
+        params.available_utxos = result.inputs.clone();
+        params.pinned_utxos = None;
+        let from = Address::from_str(from)
+            .map_err(|e| e.to_string())?
+            .require_network(chain.bitcoin_network())
+            .map_err(|e| e.to_string())?;
+        let to = Address::from_str(to)
+            .map_err(|e| e.to_string())?
+            .require_network(chain.bitcoin_network())
+            .map_err(|e| e.to_string())?;
+        let script = from.script_pubkey();
+        let sizing = if script.is_p2tr() {
+            SpendSizing::P2TR
+        } else if script.is_p2wpkh() {
+            SpendSizing::P2WPKH
+        } else if script.is_p2sh() {
+            SpendSizing::P2SH_P2WPKH
+        } else if script.is_p2pkh() {
+            SpendSizing::P2PKH
+        } else {
+            return Err("Unsupported Bitcoin sender script".into());
+        };
+        let spend = build_unsigned_layout(&params, &from, &to, chain.bitcoin_network(), sizing)?;
+        result.inputs = spend
+            .tx
+            .input
+            .iter()
+            .map(|i| {
+                result
+                    .inputs
+                    .iter()
+                    .find(|u| {
+                        u.txid == i.previous_output.txid.to_string()
+                            && u.vout == i.previous_output.vout
+                    })
+                    .cloned()
+                    .ok_or("Missing selected input")
+            })
+            .collect::<Result<_, _>>()?;
+        result.fee_sats = total_value(&result.inputs)?
+            .checked_sub(spend.tx.output.iter().map(|o| o.value.to_sat()).sum())
+            .ok_or("Invalid Bitcoin fee")?;
+        result.unsigned_hex = bitcoin::consensus::encode::serialize_hex(&spend.tx);
+        Ok(result)
+    }
+    pub fn sign(&self, key: String) -> Result<String, String> {
+        let mut params = self.params(key);
+        let script = Address::from_str(&self.from)
+            .map_err(|e| e.to_string())?
+            .assume_checked()
+            .script_pubkey();
+        let (mut tx, hex) = if script.is_p2tr() {
+            sign_p2tr(&mut params)?
+        } else if script.is_p2wpkh() {
+            sign_p2wpkh(&mut params)?
+        } else if script.is_p2sh() {
+            sign_p2sh_p2wpkh(&mut params)?
+        } else {
+            sign_p2pkh(&mut params)?
+        };
+        for input in &mut tx.input {
+            input.script_sig = ScriptBuf::new();
+            input.witness = Witness::new();
+        }
+        if bitcoin::consensus::encode::serialize_hex(&tx) != self.unsigned_hex {
+            return Err("Signed transaction differs from reviewed Bitcoin transaction".into());
+        }
+        Ok(hex)
     }
 }

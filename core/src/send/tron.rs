@@ -25,10 +25,11 @@ pub(crate) struct BlockReference {
     pub timestamp_ms: u64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedTronTransfer {
     owner: [u8; 21],
-    raw: Vec<u8>,
-    body: Value,
+    pub(crate) raw: Vec<u8>,
+    pub(crate) body: Value,
 }
 
 fn address(value: &str) -> Result<[u8; 21], String> {
@@ -172,7 +173,7 @@ impl PreparedTronTransfer {
 }
 
 impl TronClient {
-    async fn transfer_reference(&self) -> Result<BlockReference, String> {
+    pub(crate) async fn transfer_reference(&self) -> Result<BlockReference, String> {
         let block = self.post("/wallet/getnowblock", &json!({})).await?;
         let number = block
             .pointer("/block_header/raw_data/number")
@@ -194,51 +195,7 @@ impl TronClient {
             timestamp_ms,
         })
     }
-    pub async fn sign_and_broadcast(
-        &self,
-        from: &str,
-        to: &str,
-        amount: u64,
-        key: &[u8],
-    ) -> Result<TronSendResult, String> {
-        address(from)?;
-        address(to)?;
-        positive_i64(amount)?;
-        let prepared = prepare_transfer(
-            from,
-            Transfer::Native { to, amount },
-            self.transfer_reference().await?,
-        )?;
-        self.broadcast_raw(&prepared.sign(key)?).await
-    }
-    pub async fn sign_and_broadcast_trc20(
-        &self,
-        from: &str,
-        contract: &str,
-        to: &str,
-        amount: u128,
-        fee_limit: u64,
-        key: &[u8],
-    ) -> Result<TronSendResult, String> {
-        address(from)?;
-        address(contract)?;
-        address(to)?;
-        positive_i64(fee_limit)?;
-        if amount == 0 {
-            return Err("Tron token amount must be positive".into());
-        }
-        let prepared = prepare_transfer(
-            from,
-            Transfer::Token {
-                contract,
-                to,
-                amount,
-                fee_limit,
-            },
-            self.transfer_reference().await?,
-        )?;
-        self.broadcast_raw(&prepared.sign(key)?).await
-    }
+
     pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<TronSendResult, String> {
         let body: Value = serde_json::from_str(signed_tx_json)
             .map_err(|e| format!("invalid signed Tron transaction: {e}"))?;
@@ -252,13 +209,6 @@ impl TronClient {
         if body["txID"].as_str() != Some(txid.as_str()) {
             return Err("Tron transaction hash mismatch".into());
         }
-        crate::send::payload::before_submission(
-            signed_tx_json.into(),
-            "txid",
-            Some(txid.clone()),
-            None,
-        )
-        .await?;
         let result = self.post("/wallet/broadcasttransaction", &body).await?;
         if result["result"].as_bool() != Some(true) {
             return Err(format!("Tron broadcast refused: {result}"));

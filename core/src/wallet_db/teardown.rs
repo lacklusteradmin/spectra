@@ -9,6 +9,18 @@ pub fn delete_wallet_data(database: &WalletDatabase, wallet_id: &str) -> Result<
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| format!("delete_wallet_data begin: {e}"))?;
+
+        tx.execute(
+            "DELETE FROM monero_wallets WHERE wallet_id=?1",
+            params![wallet_id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM send_reservations WHERE artifact_id IN (SELECT id FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1)", params![wallet_id]).map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1",
+            params![wallet_id],
+        )
+        .map_err(|e| e.to_string())?;
         for (table, column) in [
             ("wallets", "id"),
             ("wallet_keypool", "wallet_id"),

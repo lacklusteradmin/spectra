@@ -60,11 +60,11 @@ class HistoryTests(unittest.TestCase):
             with sqlite3.connect(dbpath) as db:
                 wid = db.execute('SELECT id FROM wallets').fetchone()[0]
                 for i in range(55):
-                    row = dict(id=f'tx-{i:03}', walletId=wid, walletName='Éther 测试', kind='receive', status='confirmed', chainName='Ethereum', symbol='ETH', assetDisplayName='Ether', deploymentId='ethereum:native', amount=1, address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAt=i)
-                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'Ethereum',row['transactionHash'],978307200+i,json.dumps(row)))
+                    row = dict(id=f'tx-{i:03}', walletId=wid, walletName='Éther 测试', kind='receive', status='confirmed', chainName='Ethereum', symbol='ETH', assetDisplayName='Ether', deploymentId='ethereum:native', amount=1, address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAtUnix=i)
+                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'Ethereum',row['transactionHash'],i,json.dumps(row)))
                 # A duplicate provider record must not consume a page slot or hide the confirmed row.
                 row.update(id='duplicate', status='pending')
-                db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'Ethereum',row['transactionHash'],978307999,json.dumps(row)))
+                db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'Ethereum',row['transactionHash'],799,json.dumps(row)))
             pages = [run('txs','--page','--offset',str(offset))['page'] for offset in (0,20,40)]
             ids = [r['id'] for page in pages for r in page['records']]
             assert len(ids)==55 and len(set(ids))==55 and 'duplicate' not in ids, ids
@@ -76,15 +76,15 @@ class HistoryTests(unittest.TestCase):
             summary = run('txs','--summary')['summary']
             assert summary['totalCount'] == 56
             assert len(summary['recentAndPending']) <= 51
-            assert summary['earliest'][0]['earliestCreatedAtUnix'] == 978307200
+            assert summary['earliest'][0]['earliestCreatedAtUnix'] == 0
             assert run('txs','--record','tx-000')['record']['id'] == 'tx-000'
             assert run('txs','--record','missing')['record'] is None
             run('wallet','watch','--chain','solana','--address','11111111111111111111111111111111','--name','IdentityCases')
             with sqlite3.connect(dbpath) as db:
                 solana_id = db.execute("SELECT id FROM wallets WHERE name='IdentityCases'").fetchone()[0]
                 for identity, txhash, deployment in [('case-upper','A'*88,'solana:native'), ('case-lower','a'*88,'solana:native'), ('unknown-one','B'*88,None), ('unknown-two','B'*88,None)]:
-                    record = dict(id=identity, walletId=solana_id, walletName='IdentityCases', kind='receive', status='confirmed', chainName='Solana', symbol='SOL', assetDisplayName='Solana', deploymentId=deployment, amount=1, address='11111111111111111111111111111111', transactionHash=txhash, createdAt=1)
-                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (identity,solana_id,'Solana',txhash.lower(),978307201,json.dumps(record)))
+                    record = dict(id=identity, walletId=solana_id, walletName='IdentityCases', kind='receive', status='confirmed', chainName='Solana', symbol='SOL', assetDisplayName='Solana', deploymentId=deployment, amount=1, address='11111111111111111111111111111111', transactionHash=txhash, createdAtUnix=1)
+                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (identity,solana_id,'Solana',txhash.lower(),1,json.dumps(record)))
             distinct = run('txs','--page','--wallet','IdentityCases')['page']['records']
             assert {row['id'] for row in distinct} == {'case-upper','case-lower','unknown-one','unknown-two'}, distinct
 
@@ -184,14 +184,46 @@ class HistoryTests(unittest.TestCase):
                     tx_hash = f'{index:02x}' * 32
                     row = dict(id=source, walletId='wallet', walletName='Fixture', kind='receive', status='confirmed',
                                chainName='Dogecoin', symbol='DOGE', assetDisplayName='Dogecoin', amount=1,
-                               address='sender', transactionHash=tx_hash, createdAt=1234,
+                               address='sender', transactionHash=tx_hash, createdAtUnix=1234,
                                transactionHistorySource=source)
                     db.execute('INSERT INTO history_records (id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                               (source, 'wallet', 'Dogecoin', tx_hash, 978308434 + index, json.dumps(row)))
+                               (source, 'wallet', 'Dogecoin', tx_hash, 1234 + index, json.dumps(row)))
             by_hash = {t['hash']: t.get('historySource') for t in run('txs')['transactions']}
             for index, (source, named) in enumerate(expected.items()):
                 got = by_hash[f'{index:02x}' * 32]
                 assert got == named, f'{source}: expected {named!r}, got {got!r}'
+
+    def test_action_projection_and_unix_timestamp(self):
+        with tempfile.TemporaryDirectory(prefix='spectra-actions-') as directory:
+            def run(*args):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
+                assert result.returncode == 0, result.stdout + result.stderr
+                return json.loads(result.stdout)
+            run('wallet','watch','--chain','ethereum','--address','0x'+'11'*20)
+            path = pathlib.Path(directory)/'spectra.sqlite'
+            with sqlite3.connect(path) as db:
+                wid = db.execute('SELECT id FROM wallets').fetchone()[0]
+                for identity, chain, status, fmt, payload, txhash in [
+                    ('evm', 'Ethereum', 'pending', 'evm.raw_hex', '0x1234', '0x'+'ab'*32),
+                    ('bad-format', 'Ethereum', 'pending', 'solana.rust_json', 'anything', '0x'+'ab'*32),
+                    ('confirmed', 'Ethereum', 'confirmed', 'evm.raw_hex', '0x1234', '0x'+'cd'*32),
+                    ('utxo', 'Bitcoin', 'failed', None, None, 'ef'*32),
+                    ('bad-hash', 'Bitcoin', 'pending', None, None, 'invalid')]:
+                    row = dict(id=identity, walletId=wid, walletName='Fixture', kind='send', status=status,
+                        chainName=chain, symbol='COIN', assetDisplayName=chain, amount=1, address='recipient',
+                        transactionHash=txhash, createdAtUnix=1700000000.125,
+                        signedTransactionPayload=payload, signedTransactionPayloadFormat=fmt)
+                    db.execute('INSERT INTO history_records(id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES(?,?,?,?,?,?)',
+                        (identity,wid,chain,txhash,row['createdAtUnix'],json.dumps(row)))
+            for identity, recheck, rebroadcast in [('evm',False,True),('bad-format',False,False),('confirmed',False,False),('utxo',True,False),('bad-hash',False,False)]:
+                output = run('txs','--record',identity)
+                actions = output['actions']
+                assert (actions['recheckUnavailableReason'] is None) == recheck, output
+                assert (actions['rebroadcastUnavailableReason'] is None) == rebroadcast, output
+                assert output['record']['createdAtUnix'] == 1700000000.125
+            page = run('txs','--page')
+            assert page['actions']['utxo']['recheckUnavailableReason'] is None
+            assert run('txs','--summary')['summary']['earliest'][0]['earliestCreatedAtUnix'] == 1700000000.125
 
     def test_status_recheck(self):
         """Recheck only the target transaction; failed reads preserve stored state."""
@@ -225,9 +257,9 @@ class HistoryTests(unittest.TestCase):
                 for key, status, tx_hash in [('target', 'failed', 'ab'*32), ('other', 'pending', 'cd'*32)]:
                     row = dict(id=key, walletId='wallet', walletName='Fixture', kind='send', status=status,
                                chainName='Bitcoin Testnet4', symbol='BTC', assetDisplayName='Bitcoin', amount=1,
-                               address='recipient', transactionHash=tx_hash, createdAt=1234, failureReason='old failure')
+                               address='recipient', transactionHash=tx_hash, createdAtUnix=1234, failureReason='old failure')
                     db.execute('INSERT INTO history_records (id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                               (key,'wallet',row['chainName'],tx_hash,978308434,json.dumps(row)))
+                               (key,'wallet',row['chainName'],tx_hash,1234,json.dumps(row)))
             server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
             worker = threading.Thread(target=server.serve_forever, daemon=True)
             worker.start()

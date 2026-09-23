@@ -14,6 +14,7 @@ pub enum EndpointApi {
     SubstrateJsonRpc,
     TronJsonRpc,
     MoneroWalletRpc,
+    MoneroDaemonRpc,
     Esplora,
     Blockbook,
     Blockchair,
@@ -50,6 +51,7 @@ impl EndpointApi {
             Self::XrplJsonRpc => "xrpl-json-rpc",
             Self::SubstrateJsonRpc => "substrate-json-rpc",
             Self::TronJsonRpc => "tron-json-rpc",
+            Self::MoneroDaemonRpc => "monero-daemon-rpc",
             Self::MoneroWalletRpc => "monero-wallet-rpc",
             Self::Esplora => "esplora",
             Self::Blockbook => "blockbook",
@@ -82,6 +84,7 @@ impl EndpointApi {
         match self {
             Self::EvmJsonRpc | Self::TronJsonRpc => Some("eth_chainId"),
             Self::SolanaJsonRpc => Some("getHealth"),
+            Self::MoneroDaemonRpc => Some("get_info"),
             Self::SuiJsonRpc => Some("sui_getLatestCheckpointSequenceNumber"),
             Self::NearJsonRpc => Some("status"),
             Self::SubstrateJsonRpc => Some("chain_getHeader"),
@@ -151,7 +154,7 @@ mod tests {
         assert!(validate_configured_endpoint(
             Chain::Monero,
             EndpointSlot::Primary,
-            "https://monerolws1.edge.app"
+            "https://blockstream.info/api"
         )
         .is_err());
     }

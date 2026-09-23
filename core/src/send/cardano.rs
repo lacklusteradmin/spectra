@@ -3,60 +3,11 @@
 
 use crate::fetch::http::{http_request, with_fallback, HttpHeader, HttpRetryProfile};
 
-use crate::derivation::cardano::decode_cardano_addr_bytes;
 use crate::fetch::cardano::{CardanoClient, CardanoSendResult};
 
 impl CardanoClient {
-    /// Fetch UTXOs, sign an ADA-only P2PKH-equivalent Shelley transaction, and submit.
-    ///
-    /// `to_address` and `from_address` must be Shelley bech32 or Byron base58 addresses.
-    /// `fee_lovelace` is caller-supplied (reviewed fee estimate).
-    pub async fn sign_and_broadcast(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        amount_lovelace: u64,
-        fee_lovelace: u64,
-        signing_key_bytes: &[u8; 64],
-        verification_key_bytes: &[u8; 32],
-        ttl_slots: Option<u64>,
-        min_change_lovelace: Option<u64>,
-    ) -> Result<CardanoSendResult, String> {
-        let utxos = self.fetch_utxos(from_address).await?;
-        let slot = self.fetch_latest_slot().await?;
-        let ttl = slot + ttl_slots.unwrap_or(7200);
-
-        let to_addr_bytes = decode_cardano_addr_bytes(to_address)?;
-        let change_addr_bytes = decode_cardano_addr_bytes(from_address)?;
-
-        let utxo_tuples: Vec<(String, u32, u64)> = utxos
-            .iter()
-            .map(|u| (u.tx_hash.clone(), u.tx_index, u.lovelace))
-            .collect();
-
-        let cbor_hex = build_signed_ada_tx(
-            &utxo_tuples,
-            &to_addr_bytes,
-            amount_lovelace,
-            fee_lovelace,
-            &change_addr_bytes,
-            signing_key_bytes,
-            verification_key_bytes,
-            ttl,
-            min_change_lovelace,
-        )?;
-        self.submit_tx(&cbor_hex).await
-    }
-
     /// Submit a CBOR-encoded signed transaction.
     pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, String> {
-        crate::send::payload::before_submission(
-            serde_json::json!({"cbor_hex":cbor_hex}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
         let cbor_hex_owned = cbor_hex.to_string();
         let cbor_bytes = hex::decode(cbor_hex).map_err(|e| format!("hex decode: {e}"))?;
         with_fallback(&self.endpoints, |base| {

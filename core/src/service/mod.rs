@@ -12,7 +12,7 @@
 //! | `network_balance`, `network_tokens`, `network_history`, `network_hd`, `network_prices` | chain reads grouped by responsibility |
 //! | [`send_preflight`] | send eligibility, routing and recipient warnings |
 //! | [`send_preview`] | fee estimates and send previews |
-//! | [`send_submission`] | protocol signing and submission dispatch |
+//! | [`send_stages`] | prepared/signed artifacts and explicit submission |
 //! | [`send_broadcast`] | rebroadcast of signed payloads |
 //! | [`send_destination`] | resolution and review verification |
 //! | [`helpers`] | parsing, scaling and SQLite plumbing the three share |
@@ -41,9 +41,6 @@ pub(crate) use crate::fetch::{
     xrp::XrpClient,
 };
 pub(crate) use crate::registry::{Chain, EndpointSlot};
-pub(crate) use crate::send::bitcoin::{
-    sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams,
-};
 pub(crate) use crate::store::secret_store::SecretStore;
 pub(crate) use crate::store::state::{
     reduce_state_in_place, CoreAppState, StateCommand, StateTransition,
@@ -108,18 +105,17 @@ mod send_broadcast;
 mod send_destination;
 mod send_execution;
 mod send_identity;
-mod send_params;
 mod send_preflight;
 mod send_preview;
 mod send_records;
-mod send_result;
-mod send_submission;
 mod staking;
 mod standalone;
 pub use movement::PortfolioMovementBaseline;
 pub use reset::ResetOutcome;
 mod state;
+mod transaction_actions;
 mod transaction_recheck;
+pub use transaction_actions::TransactionActions;
 mod transactions;
 mod transport;
 mod types;
@@ -173,6 +169,7 @@ pub struct WalletService {
     pub(crate) send_reviews: Arc<tokio::sync::Mutex<HashMap<String, send_review::ReviewedSend>>>,
     pub(crate) projection_sequence: Arc<std::sync::atomic::AtomicU64>,
     app_refresh_lock: Arc<tokio::sync::Mutex<()>>,
+    send_execute_lock: Arc<tokio::sync::Mutex<()>>,
     quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     balance_refreshes: Arc<balance_refresh::BalanceRefreshes>,
     pub(crate) trc20_metadata: Arc<crate::fetch::tron_metadata_cache::MetadataCache>,
@@ -241,6 +238,7 @@ impl WalletService {
             trc20_metadata: Arc::new(crate::fetch::tron_metadata_cache::MetadataCache::default()),
             send_reviews: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             app_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
+            send_execute_lock: Arc::new(tokio::sync::Mutex::new(())),
             quote_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             balance_refreshes: Arc::new(balance_refresh::BalanceRefreshes::default()),
             projection_sequence: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -428,6 +426,9 @@ impl WalletService {
 pub mod app_refresh;
 mod owned_send;
 pub mod send_review;
+mod send_stage_protocols;
+mod send_stage_utxo;
+mod send_stages;
 
 pub use owned_send::{OwnedReplacementDraft, OwnedSendPreview, OwnedSendQuote};
 
@@ -440,3 +441,6 @@ impl WalletService {
             .ok_or_else(|| SpectraBridgeError::from("secret store not registered".to_string()))
     }
 }
+
+mod monero_wallet;
+pub use monero_wallet::MoneroSyncStatus;

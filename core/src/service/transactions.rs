@@ -509,7 +509,7 @@ mod audit_fix5_tests {
             let barrier = barrier.clone();
             tasks.push(tokio::spawn(async move {
                 let record: crate::store::persistence_models::CorePersistedTransactionRecord = serde_json::from_value(json!({
-                    "id":crate::store::new_transaction_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainName":"Ethereum", "transactionHash":"0xshared", "amount":1.0, "symbol":"ETH", "assetDisplayName":"Ether", "address":"0xrecipient", "createdAt":1000.0
+                    "id":crate::store::new_transaction_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainName":"Ethereum", "transactionHash":"0xshared", "amount":1.0, "symbol":"ETH", "assetDisplayName":"Ether", "address":"0xrecipient", "createdAtUnix":1000.0
                 })).unwrap();
                 barrier.wait().await;
                 service.apply_transaction_command(TransactionCommand::Merge { incoming:vec![record.into()], chain_name:"Ethereum".into(), preserve_created_at_sentinel_unix:None }).await.unwrap()
@@ -529,15 +529,13 @@ mod audit_fix5_tests {
 #[cfg(test)]
 mod status_commit_regressions {
     use super::*;
-    use crate::store::persistence_models::{
-        CorePersistedTransactionRecord, SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
-    };
+    use crate::store::persistence_models::CorePersistedTransactionRecord;
 
     fn record(id: &str, time: f64) -> CorePersistedTransactionRecord {
         serde_json::from_value(json!({
             "id":id, "walletId":"W", "walletName":"Before", "kind":"send", "status":"pending",
             "chainName":"Bitcoin", "transactionHash":format!("hash-{id}"), "amount":1.0,
-            "symbol":"BTC", "assetDisplayName":"Bitcoin", "address":"recipient", "createdAt":time
+            "symbol":"BTC", "assetDisplayName":"Bitcoin", "address":"recipient", "createdAtUnix":time
         }))
         .unwrap()
     }
@@ -582,10 +580,7 @@ mod status_commit_regressions {
             rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             vec!["new", "old"]
         );
-        assert_eq!(
-            rows[0].created_at,
-            800000000.0 + SWIFT_REFERENCE_EPOCH_OFFSET_SECS
-        );
+        assert_eq!(rows[0].created_at, 800000000.0);
         assert_eq!(
             service
                 .transactions_for_wallet("W".into())
@@ -916,8 +911,7 @@ impl WalletService {
             })
             .map(|t| crate::store::StalePendingFailureTransactionInput {
                 id: t.id,
-                created_at_unix: t.created_at
-                    + crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+                created_at_unix: t.created_at_unix,
                 status_is_pending: t.status
                     == crate::store::wallet_domain::CoreTransactionStatus::Pending,
             })

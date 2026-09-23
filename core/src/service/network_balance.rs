@@ -45,6 +45,26 @@ async fn fetch_native_balance_summary(
     chain: Chain,
     service: &WalletService,
 ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
+    if chain.mainnet_counterpart() == Chain::Monero {
+        let state = service.app_state().await;
+        let owner = state
+            .wallets
+            .iter()
+            .find(|w| w.chain_id == chain.str_id() && w.address_on(chain) == Some(address))
+            .ok_or("Monero balance requires an owned local wallet")?;
+        let status = service
+            .monero_sync_status(owner.id.clone())
+            .await?
+            .ok_or("Monero local wallet unavailable")?;
+        if !status.complete {
+            return Err("Sync the local Monero wallet before refreshing its balance".into());
+        }
+        return Ok(NativeBalanceSummary {
+            smallest_unit: status.unlocked_piconeros.to_string(),
+            amount_display: format_smallest_unit_decimal(status.unlocked_piconeros as u128, 12),
+            utxo_count: 0,
+        });
+    }
     let (api, endpoints) = service.fetch_endpoints(chain).await?;
     use crate::EndpointApi as Api;
     let mut utxo_count = 0;

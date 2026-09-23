@@ -4,21 +4,8 @@ use std::collections::HashMap;
 
 /// Wire/merge form of a transaction record.
 ///
-/// Distinct from [`crate::store::persistence_models::CorePersistedTransactionRecord`]
-/// in two specific ways — they look almost identical but the differences are
-/// load-bearing:
-///   1. **Timestamps**: this type uses unix-epoch seconds (`created_at_unix`)
-///      because merge ordering compares against incoming RPC payloads that
-///      carry unix timestamps. The persisted form uses *Swift reference time*
-///      (seconds since 2001-01-01), matching the persisted `created_at` field.
-///   2. **Enum typing**: `kind` and `status` are plain strings so inbound
-///      records that carry unfamiliar values don't fail to deserialize before
-///      the merge logic can decide what to do with them. The persisted form
-///      uses strongly-typed `CoreTransactionKind` / `CoreTransactionStatus`
-///      enums so storage rejects malformed data at write time.
-///
-/// The `From` conversions in this module translate the time base and tighten
-/// the stored enum types. Swift receives the resulting core projection.
+/// Incoming kind/status strings are normalized into the strongly typed stored
+/// enums. Both representations use Unix seconds, including fractional seconds.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreTransactionRecord {
@@ -137,14 +124,10 @@ pub struct TransactionMergeRequest {
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
 
-// Wire/storage conversion: kind and status strings become enums, and
-// Unix timestamps become Swift reference timestamps.
+// Wire/storage conversion normalizes kind/status; Unix timestamps are unchanged.
 
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
-
-/// Seconds between the Unix epoch and Swift's reference date (2001-01-01 UTC).
-use crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS;
 
 fn kind_from_raw(raw: &str) -> CoreTransactionKind {
     match raw {
@@ -204,7 +187,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             signed_transaction_payload_format: stored.signed_transaction_payload_format,
             failure_reason: stored.failure_reason,
             transaction_history_source: stored.transaction_history_source,
-            created_at_unix: stored.created_at + SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+            created_at_unix: stored.created_at_unix,
         }
     }
 }
@@ -212,6 +195,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
 impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
     fn from(wire: CoreTransactionRecord) -> Self {
         Self {
+            actions: Default::default(),
             deployment_id: wire.deployment_id,
             id: wire.id,
             wallet_id: wire.wallet_id,
@@ -243,7 +227,7 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             signed_transaction_payload_format: wire.signed_transaction_payload_format,
             failure_reason: wire.failure_reason,
             transaction_history_source: wire.transaction_history_source,
-            created_at: wire.created_at_unix - SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+            created_at_unix: wire.created_at_unix,
         }
     }
 }
@@ -899,10 +883,10 @@ mod wire_persisted_conversion {
     }
 
     #[test]
-    fn the_timestamp_changes_epoch_and_returns() {
+    fn the_unix_timestamp_is_unchanged() {
         let stored: CorePersistedTransactionRecord = populated_wire().into();
-        // Same instant, expressed from 2001-01-01 instead of 1970-01-01.
-        assert_eq!(stored.created_at, 1_700_000_000.0 - 978_307_200.0);
+        // Identical Unix seconds in storage, FFI, and provider records.
+        assert_eq!(stored.created_at_unix, 1_700_000_000.0);
         let back: CoreTransactionRecord = stored.into();
         assert_eq!(back.created_at_unix, 1_700_000_000.0);
     }

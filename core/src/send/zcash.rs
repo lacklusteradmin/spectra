@@ -5,25 +5,29 @@
 //! Orchard bundles). Signing follows ZIP-244 (txid digest = personalised
 //! BLAKE2b over header / transparent / sapling / orchard sub-digests).
 //!
-//! Network upgrade: NU5 mainnet — version_group_id `0x26A7270A`,
-//! consensus_branch_id `0xC2D6D0B4`. We hardcode NU5 because the next
-//! upgrade (NU6) requires a fresh sighash table and a code update anyway.
+//! Consensus branch is read from the backend, checked against the registry,
+//! and frozen in the reviewed artifact. See https://zips.z.cash/zip-0244.
+
+pub(crate) use super::zcash_stages::PreparedZcashTransaction;
 
 use super::bitcoin_wire::{decode_txid_le, p2pkh_script, varint};
+#[cfg(test)]
 use crate::derivation::zcash::decode_zcash_address;
+#[cfg(test)]
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 
 // ── Network upgrade descriptor ────────────────────────────────────────────
 
 /// Zcash consensus rule set for V5 transaction construction.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ZcashNetworkUpgrade {
     pub version_group_id: u32,
     pub consensus_branch_id: u32,
 }
 
 impl ZcashNetworkUpgrade {
-    /// NU5 mainnet (ZIP-225). Next upgrade requires a fresh sighash table anyway.
+    /// NU5 fixture; production obtains the branch from verified backend status.
+    #[cfg(test)]
     pub const NU5: Self = Self {
         version_group_id: 0x26A7_270A,
         consensus_branch_id: 0xC2D6_D0B4,
@@ -42,8 +46,10 @@ const BLAKE2B_PERSONALIZED_LEN: usize = 32;
 
 // ── Public broadcast + signing entrypoint ─────────────────────────────────
 
+#[cfg(test)]
 impl BlockbookClient {
     /// Fetch UTXOs + chain tip, sign a V5 transparent transaction, broadcast.
+    #[cfg(test)]
     pub async fn sign_zcash_and_broadcast(
         &self,
         from_address: &str,
@@ -114,7 +120,8 @@ const PERSONAL_TX_SIG_DIGEST: &[u8] = b"Zcash___TxInHash";
 // ── ZIP-244 / ZIP-244-revised sighash construction (NU5 transparent-only).
 
 #[allow(clippy::too_many_arguments)]
-fn sign_zcash_v5_p2pkh(
+#[cfg(test)]
+pub(crate) fn sign_zcash_v5_p2pkh(
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
     amount_sat: u64,
@@ -125,39 +132,50 @@ fn sign_zcash_v5_p2pkh(
     network_upgrade: ZcashNetworkUpgrade,
     dust_threshold_zats: u64,
 ) -> Result<Vec<u8>, String> {
-    use secp256k1::{Message, Secp256k1, SecretKey};
-
-    let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
-    let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
-
-    let change = super::accounting::checked_change(
-        utxos.iter().map(|(_, _, v, _)| *v),
-        amount_sat,
-        fee_sat,
-    )?;
-
-    let mut outputs: Vec<(Vec<u8>, u64)> =
-        vec![(p2pkh_script(&decode_zcash_address(to_address)?), amount_sat)];
+    let change = super::accounting::checked_change(utxos.iter().map(|u| u.2), amount_sat, fee_sat)?;
+    let mut outputs = vec![(p2pkh_script(&decode_zcash_address(to_address)?), amount_sat)];
     if change > dust_threshold_zats {
         outputs.push((p2pkh_script(&decode_zcash_address(change_address)?), change));
     }
+    sign_transaction(
+        utxos,
+        &outputs,
+        expiry_height,
+        private_key_bytes,
+        network_upgrade,
+    )
+    .map(|r| r.0)
+}
 
+pub(crate) fn sign_transaction(
+    utxos: &[(String, u32, u64, Vec<u8>)],
+    outputs: &[(Vec<u8>, u64)],
+    expiry_height: u32,
+    private_key_bytes: &[u8],
+    network_upgrade: ZcashNetworkUpgrade,
+) -> Result<(Vec<u8>, String), String> {
+    use secp256k1::{Message, Secp256k1, SecretKey};
+    let secp = Secp256k1::new();
+    let key = SecretKey::from_slice(private_key_bytes).map_err(|e| e.to_string())?;
+    let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &key).serialize();
+    let expected_script = p2pkh_script(&crate::derivation::bitcoin::hash160(&pubkey_bytes));
+    if utxos.is_empty() || utxos.iter().any(|u| u.3 != expected_script) {
+        return Err("Zcash input does not belong to the signing key".into());
+    }
+    let secret_key = key;
     // Per-tx digests that are constant across all inputs.
     let prevouts_digest = compute_prevouts_digest(utxos)?;
     let amounts_digest = compute_amounts_digest(utxos);
     let scripts_digest = compute_scripts_digest(utxos);
     let sequence_digest = compute_sequence_digest(utxos.len());
-    let outputs_digest = compute_outputs_digest(&outputs);
+    let outputs_digest = compute_outputs_digest(outputs);
     let header_digest = compute_header_digest(expiry_height, network_upgrade);
     let sapling_digest = compute_empty_sapling_digest();
     let orchard_digest = compute_empty_orchard_digest();
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::with_capacity(utxos.len());
-    for (input_index, (txid, vout, value, script_pubkey)) in utxos.iter().enumerate() {
-        let txin_sig_digest =
-            compute_txin_sig_digest(txid, *vout, *value, script_pubkey, input_index as u32)?;
+    for (txid, vout, value, script_pubkey) in utxos {
+        let txin_sig_digest = compute_txin_sig_digest(txid, *vout, *value, script_pubkey)?;
         let transparent_digest = compute_transparent_sig_digest(
             &prevouts_digest,
             &amounts_digest,
@@ -210,7 +228,7 @@ fn sign_zcash_v5_p2pkh(
         raw.extend_from_slice(inp);
     }
     raw.extend_from_slice(&varint(outputs.len()));
-    for (s, val) in &outputs {
+    for (s, val) in outputs {
         raw.extend_from_slice(&val.to_le_bytes());
         raw.extend_from_slice(&varint(s.len()));
         raw.extend_from_slice(s);
@@ -223,7 +241,20 @@ fn sign_zcash_v5_p2pkh(
     // Empty Orchard bundle: 0 actions.
     raw.push(0x00);
 
-    Ok(raw)
+    let mut transparent = Vec::new();
+    transparent.extend(prevouts_digest);
+    transparent.extend(sequence_digest);
+    transparent.extend(outputs_digest);
+    let transparent = blake2b_personalized(PERSONAL_TX_TRANSPARENT, &transparent);
+    let mut txid = compute_zip244_txid_digest(
+        &header_digest,
+        &transparent,
+        &sapling_digest,
+        &orchard_digest,
+        network_upgrade,
+    );
+    txid.reverse();
+    Ok((raw, hex::encode(txid)))
 }
 
 // ── Sub-digests ───────────────────────────────────────────────────────────
@@ -288,11 +319,10 @@ fn compute_txin_sig_digest(
     vout: u32,
     value: u64,
     script_pubkey: &[u8],
-    input_index: u32,
 ) -> Result<[u8; 32], String> {
     // ZIP-244 txin_sig_digest preimage:
     //   prevout (36) || value (8) || script_pubkey (with varint length) ||
-    //   nSequence (4) || input_index (4) || hash_type (4)
+    //   nSequence (4). Hash type belongs only in transparent_sig_digest.
     let mut buf = Vec::new();
     buf.extend_from_slice(&decode_txid_le(txid)?);
     buf.extend_from_slice(&vout.to_le_bytes());
@@ -300,8 +330,6 @@ fn compute_txin_sig_digest(
     buf.extend_from_slice(&varint(script_pubkey.len()));
     buf.extend_from_slice(script_pubkey);
     buf.extend_from_slice(&0xffff_ffffu32.to_le_bytes()); // nSequence
-    buf.extend_from_slice(&input_index.to_le_bytes());
-    buf.extend_from_slice(&SIGHASH_ALL.to_le_bytes());
     Ok(blake2b_personalized(PERSONAL_TX_SIG_DIGEST, &buf))
 }
 
@@ -314,8 +342,8 @@ fn compute_transparent_sig_digest(
     outputs_digest: &[u8; 32],
     txin_sig_digest: &[u8; 32],
 ) -> [u8; 32] {
-    let mut combined = Vec::with_capacity(7 * 32 + 4);
-    combined.extend_from_slice(&[SIGHASH_ALL as u8, 0, 0, 0]);
+    let mut combined = Vec::with_capacity(6 * 32 + 1);
+    combined.push(SIGHASH_ALL as u8);
     combined.extend_from_slice(prevouts_digest);
     combined.extend_from_slice(amounts_digest);
     combined.extend_from_slice(scripts_digest);
@@ -354,7 +382,7 @@ fn compute_zip244_txid_digest(
     blake2b_personalized(&personal, &buf)
 }
 
-fn expiry_height(tip: u64) -> Result<u32, String> {
+pub(crate) fn expiry_height(tip: u64) -> Result<u32, String> {
     let height = tip.checked_add(40).ok_or("expiry height overflow")?;
     u32::try_from(height).map_err(|_| "expiry height out of range".into())
 }
@@ -403,5 +431,61 @@ mod expiry_tests {
             .unwrap()
             .iter()
             .all(|r| !r.url.path().contains("sendtx")));
+    }
+}
+
+#[cfg(test)]
+mod zip244_tests {
+    use super::*;
+    #[test]
+    fn transparent_signature_and_txid_match_official_python_reference() {
+        // Generated with zcash/zcash-test-vectors zip_0244.py signature_digest
+        // and txid_digest (NU6.2), not with the Rust implementation under test.
+        let mut key = [0; 32];
+        key[31] = 1;
+        let script = hex::decode("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac").unwrap();
+        let inputs = vec![("11".repeat(32), 2, 1_000_000, script.clone())];
+        let outputs = vec![(script.clone(), 100_000), (script, 890_000)];
+        let (raw, txid) = sign_transaction(
+            &inputs,
+            &outputs,
+            3_400_040,
+            &key,
+            ZcashNetworkUpgrade {
+                version_group_id: 0x26a7_270a,
+                consensus_branch_id: 0x5437_f330,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            txid,
+            "3fabcec39a66c0be46b8b0232a1065d9fbafcd2186afd67428b97fd88c2e316a"
+        );
+        // Header 20, input count 1, outpoint 36, script length 1, signature push 1.
+        let sig_len = usize::from(raw[58]);
+        assert_eq!(raw[59 + sig_len - 1], 1);
+        let sig = secp256k1::ecdsa::Signature::from_der(&raw[59..59 + sig_len - 1]).unwrap();
+        let digest =
+            hex::decode("d011c516e0ae1972bf7ba228d4fb783ab71c72008b2080afec2e661babe6d479")
+                .unwrap();
+        let secp = secp256k1::Secp256k1::new();
+        let public = secp256k1::PublicKey::from_secret_key(
+            &secp,
+            &secp256k1::SecretKey::from_slice(&key).unwrap(),
+        );
+        secp.verify_ecdsa(
+            &secp256k1::Message::from_digest_slice(&digest).unwrap(),
+            &sig,
+            &public,
+        )
+        .unwrap();
+        assert!(sign_transaction(
+            &inputs,
+            &outputs,
+            3_400_040,
+            &[2; 32],
+            ZcashNetworkUpgrade::NU5
+        )
+        .is_err());
     }
 }

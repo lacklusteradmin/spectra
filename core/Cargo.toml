@@ -46,6 +46,8 @@ alloy-rlp = { version = "0.3", features = ["derive"] }
 # secp256k1 has neither. Its lib name is `secp256k1zkp`, hence the rename.
 bitcoin = { version = "0.32", features = ["rand-std"] }
 blake3 = "1"
+monero-wallet = "0.2"
+monero-daemon-rpc = "0.2"
 secp256k1zkp = { package = "grin_secp256k1zkp", version = "0.7" }
 
 # ─── Secrets at rest ────────────────────────────────────────────────
@@ -56,6 +58,7 @@ zeroize = { version = "1", features = ["alloc", "derive"] }
 # ─── FFI + serialization ────────────────────────────────────────────
 uniffi = { version = "0.31.2", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
+serde_cbor = "0.11"
 # Persisted f64 values must decode to the same bits when state is reopened.
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"

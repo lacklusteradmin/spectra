@@ -213,25 +213,7 @@ impl WalletService {
             .resolve_send_destination(chain.str_id().into(), destination)
             .await?
             .address;
-        let mut owned = Vec::new();
-        for wallet in &state.wallets {
-            if let Some(address) = wallet.address_on(chain) {
-                owned.push(address.to_string());
-            }
-            owned.extend(
-                self.owned_addresses_for_wallet(
-                    wallet.id.clone(),
-                    Some(chain.chain_display_name().into()),
-                )
-                .await,
-            );
-            if chain.supports_deep_utxo_discovery() && wallet.chain() == Some(chain) {
-                owned.extend(
-                    self.known_utxo_addresses(wallet.id.clone(), chain.str_id().into())
-                        .await?,
-                );
-            }
-        }
+        let owned = self.send_owned_addresses(chain).await?;
         Ok(crate::store::self_send_confirmation(
             crate::store::SelfSendConfirmationRequest {
                 pending_confirmation: pending,
@@ -521,6 +503,34 @@ impl WalletService {
             max_fee_gwei: bump.max_fee_gwei,
             priority_fee_gwei: bump.priority_fee_gwei,
         })
+    }
+}
+
+impl WalletService {
+    pub(super) async fn send_owned_addresses(
+        &self,
+        chain: Chain,
+    ) -> Result<Vec<String>, SpectraBridgeError> {
+        let mut owned = Vec::new();
+        for wallet in &self.app_state().await.wallets {
+            if let Some(address) = wallet.address_on(chain) {
+                owned.push(address.to_string());
+            }
+            owned.extend(
+                self.owned_addresses_for_wallet(
+                    wallet.id.clone(),
+                    Some(chain.chain_display_name().into()),
+                )
+                .await,
+            );
+            if chain.supports_deep_utxo_discovery() && wallet.chain() == Some(chain) {
+                owned.extend(
+                    self.known_utxo_addresses(wallet.id.clone(), chain.str_id().into())
+                        .await?,
+                );
+            }
+        }
+        Ok(owned)
     }
 }
 

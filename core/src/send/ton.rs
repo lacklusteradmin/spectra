@@ -4,50 +4,15 @@ use serde_json::{json, Value};
 
 use crate::fetch::http::{with_fallback, RetryProfile};
 
-use crate::derivation::ton::{parse_ton_address, v4r2_state_init};
+#[cfg(test)]
+use crate::derivation::ton::parse_ton_address;
+use crate::derivation::ton::v4r2_state_init;
 use crate::derivation::ton_cell::Cell;
 use crate::fetch::ton::{TonClient, TonSendResult};
 
 impl TonClient {
-    /// Send a TON transfer via TonCenter sendBoc.
-    pub async fn sign_and_send(
-        &self,
-        to_address: &str,
-        nanotons: u64,
-        seqno: u32,
-        comment: Option<&str>,
-        private_key_bytes: &[u8; 32],
-        public_key_bytes: &[u8; 32],
-        subwallet_id: Option<u32>,
-        expiry_seconds: Option<u32>,
-        send_mode: Option<u8>,
-    ) -> Result<TonSendResult, String> {
-        let boc = build_wallet_v4r2_transfer(
-            to_address,
-            nanotons,
-            seqno,
-            comment,
-            private_key_bytes,
-            public_key_bytes,
-            subwallet_id,
-            expiry_seconds,
-            send_mode,
-        )?;
-
-        use base64::Engine;
-        self.send_boc(&base64::engine::general_purpose::STANDARD.encode(&boc))
-            .await
-    }
-
     /// Send a pre-built BOC (for rebroadcast).
     pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, String> {
-        crate::send::payload::before_submission(
-            serde_json::json!({"boc_b64":boc_b64}).to_string(),
-            "message_hash",
-            None,
-            None,
-        )
-        .await?;
         let body = json!({"boc": boc_b64});
         let boc_b64 = boc_b64.to_string();
         with_fallback(&self.endpoints, |base| {
@@ -90,42 +55,8 @@ impl TonClient {
     }
 }
 
-/// Complete V4R2 external message. The signing hash is the cell representation
-/// hash, and seqno zero includes StateInit so a funded undeployed wallet can send.
-pub fn build_wallet_v4r2_transfer(
-    to_address: &str,
-    nanotons: u64,
-    seqno: u32,
-    comment: Option<&str>,
-    private_key: &[u8; 32],
-    public_key: &[u8; 32],
-    subwallet_id: Option<u32>,
-    expiry_seconds: Option<u32>,
-    send_mode: Option<u8>,
-) -> Result<Vec<u8>, String> {
-    let expiry = expiry_seconds.unwrap_or(60);
-    if expiry == 0 {
-        return Err("TON: expiry must be positive".into());
-    }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| "TON: invalid system clock")?
-        .as_secs();
-    let valid_until = u32::try_from(now + u64::from(expiry)).map_err(|_| "TON: expiry overflow")?;
-    build_transfer_at(
-        to_address,
-        nanotons,
-        seqno,
-        comment,
-        private_key,
-        public_key,
-        subwallet_id.unwrap_or(698_983_191),
-        valid_until,
-        send_mode.unwrap_or(3),
-    )
-}
-
-fn build_transfer_at(
+#[cfg(test)]
+pub(crate) fn build_transfer_at(
     to_address: &str,
     nanotons: u64,
     seqno: u32,
@@ -136,8 +67,31 @@ fn build_transfer_at(
     valid_until: u32,
     send_mode: u8,
 ) -> Result<Vec<u8>, String> {
+    build_transfer_for_address(
+        parse_ton_address(to_address)?.for_network(false)?,
+        nanotons,
+        seqno,
+        comment,
+        private_key,
+        public_key,
+        wallet_id,
+        valid_until,
+        send_mode,
+    )
+}
+
+pub(crate) fn build_transfer_for_address(
+    to: crate::derivation::ton::TonAddress,
+    nanotons: u64,
+    seqno: u32,
+    comment: Option<&str>,
+    private_key: &[u8; 32],
+    public_key: &[u8; 32],
+    wallet_id: u32,
+    valid_until: u32,
+    send_mode: u8,
+) -> Result<Vec<u8>, String> {
     use ed25519_dalek::{Signer, SigningKey};
-    let to = parse_ton_address(to_address)?.for_network(false)?;
     if nanotons == 0 {
         return Err("TON: amount must be positive".into());
     }

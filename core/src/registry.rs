@@ -5,8 +5,6 @@
 //! `Chain::from_str_id()` parses one back. The numeric discriminants were
 //! removed in favour of string-keyed lookups throughout the codebase.
 
-use crate::send::payload::SendChain;
-
 /// Every chain Spectra knows about.
 ///
 /// This crosses the FFI boundary as the one chain type every front end uses.
@@ -372,7 +370,7 @@ impl Chain {
                 Chain::Ton => Api::ToncenterV2,
                 Chain::Near => Api::NearJsonRpc,
                 Chain::Icp => Api::IcpRosetta,
-                Chain::Monero => Api::MoneroWalletRpc,
+                Chain::Monero => Api::MoneroDaemonRpc,
                 Chain::Decred => Api::Insight,
                 Chain::Kaspa => Api::KaspaRest,
                 _ => return None,
@@ -403,29 +401,15 @@ impl Chain {
     /// [`Chain::has_send_preview`] is true; that is the gate on the card this
     /// answers for.
     pub fn send_broadcast_mode(self) -> SendBroadcastMode {
-        match self.mainnet_counterpart() {
-            Chain::Monero => SendBroadcastMode::PreparesWithBackend,
-            _ => SendBroadcastMode::SignsAndBroadcasts,
-        }
+        SendBroadcastMode::SignsAndBroadcasts
     }
 
     /// This chain's send builder can sign a transaction and stop, without
     /// putting it on the chain.
     ///
-    /// Two families can: the EVM builder returns the signed RLP and the
-    /// Bitcoin builder the signed raw transaction. Asking any other chain to
-    /// sign-only is refused rather than quietly broadcast — a caller that
-    /// wanted a dry run and got a real transfer is the worst way to find out
-    /// the flag was ignored.
+    /// Capabilities follow the staged builder; unsupported protocols refuse early.
     pub fn supports_sign_only(self) -> bool {
-        self.is_evm()
-            || matches!(
-                self,
-                Chain::Bitcoin
-                    | Chain::BitcoinTestnet
-                    | Chain::BitcoinTestnet4
-                    | Chain::BitcoinSignet
-            )
+        self.has_send_preview() && self.transparent_send_unavailable_reason().is_none()
     }
 
     pub fn supports_staking(self) -> bool {
@@ -500,6 +484,74 @@ impl Chain {
                 | Chain::HyperliquidTestnet
                 | Chain::EthereumClassicMordor
         )
+    }
+
+    /// Why the current protocol adapter cannot safely expose separate stages.
+    pub fn transparent_send_unavailable_reason(self) -> Option<&'static str> {
+        None
+    }
+
+    /// Minimum retained change for the fixed-fee P2PKH send adapters.
+    pub(crate) fn legacy_change_dust(self) -> Result<u64, String> {
+        match self.mainnet_counterpart() {
+            Self::BitcoinCash
+            | Self::BitcoinSV
+            | Self::BitcoinGold
+            | Self::Dogecoin
+            | Self::Litecoin
+            | Self::Dash => Ok(546),
+            _ => Err("Not a fixed-fee P2PKH send protocol".into()),
+        }
+    }
+
+    pub(crate) fn monero_network_name(self) -> Result<&'static str, String> {
+        match self {
+            Self::Monero => Ok("mainnet"),
+            Self::MoneroStagenet => Ok("stagenet"),
+            _ => Err("Not a Monero network".into()),
+        }
+    }
+
+    pub(crate) fn icp_ledger_id(self) -> Result<&'static str, String> {
+        match self {
+            Self::Icp => Ok("00000000000000020101"),
+            _ => Err("Not the ICP ledger network".into()),
+        }
+    }
+
+    /// Source: zcash/zcash src/chainparams.cpp and consensus/upgrades.cpp.
+    pub(crate) fn zcash_consensus_branch(self, height: u32) -> Result<u32, String> {
+        let activations = match self {
+            Self::Zcash => [1_687_104, 2_726_400, 3_146_400, 3_364_600],
+            Self::ZcashTestnet => [1_842_420, 2_976_000, 3_536_500, 4_052_000],
+            _ => return Err("Not a Zcash network".into()),
+        };
+        let branches = [0xc2d6_d0b4, 0xc8e7_1055, 0x4dec_4df0, 0x5437_f330];
+        activations
+            .into_iter()
+            .zip(branches)
+            .rev()
+            .find(|(activation, _)| height >= *activation)
+            .map(|(_, branch)| branch)
+            .ok_or("Zcash V5 is not active".into())
+    }
+
+    pub(crate) fn zcash_genesis(self) -> Result<&'static str, String> {
+        match self {
+            Self::Zcash => Ok("00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08"),
+            Self::ZcashTestnet => {
+                Ok("05a60a92d99d85997cce3b87616c089f6124d7342af37106edc76126334a2c38")
+            }
+            _ => Err("Not a Zcash network".into()),
+        }
+    }
+
+    pub fn stellar_network_passphrase(self) -> Result<&'static str, String> {
+        match self {
+            Self::Stellar => Ok("Public Global Stellar Network ; September 2015"),
+            Self::StellarTestnet => Ok("Test SDF Network ; September 2015"),
+            _ => Err("Not a Stellar network".into()),
+        }
     }
 
     /// Aptos network identity bound into each locally constructed transaction.
@@ -586,90 +638,6 @@ impl Chain {
 
             // No verified keyless source is configured for the remaining chains.
             _ => EvmHistorySource::Unavailable,
-        }
-    }
-
-    /// Map to the `SendChain` discriminant used by send-payload classification.
-    pub fn send_chain(self) -> SendChain {
-        match self {
-            Chain::Bitcoin => SendChain::Bitcoin,
-            Chain::BitcoinCash => SendChain::BitcoinCash,
-            Chain::BitcoinSV => SendChain::BitcoinSV,
-            Chain::Litecoin => SendChain::Litecoin,
-            Chain::Dogecoin => SendChain::Dogecoin,
-            Chain::Zcash => SendChain::Zcash,
-            Chain::BitcoinGold => SendChain::BitcoinGold,
-            Chain::Decred => SendChain::Decred,
-            Chain::Kaspa => SendChain::Kaspa,
-            Chain::Dash => SendChain::Dash,
-            Chain::Bittensor => SendChain::Bittensor,
-            Chain::Ethereum
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Avalanche
-            | Chain::Base
-            | Chain::EthereumClassic
-            | Chain::BnbChain
-            | Chain::Hyperliquid
-            | Chain::Polygon
-            | Chain::Linea
-            | Chain::Scroll
-            | Chain::Blast
-            | Chain::Mantle
-            | Chain::Sei
-            | Chain::Celo
-            | Chain::Cronos
-            | Chain::OpBnb
-            | Chain::ZkSyncEra
-            | Chain::Sonic
-            | Chain::Berachain
-            | Chain::Unichain
-            | Chain::Ink
-            | Chain::XLayer => SendChain::Ethereum,
-            Chain::Tron => SendChain::Tron,
-            Chain::Solana => SendChain::Solana,
-            Chain::Xrp => SendChain::Xrp,
-            Chain::Stellar => SendChain::Stellar,
-            Chain::Monero => SendChain::Monero,
-            Chain::Cardano => SendChain::Cardano,
-            Chain::Sui => SendChain::Sui,
-            Chain::Aptos => SendChain::Aptos,
-            Chain::Ton => SendChain::Ton,
-            Chain::Icp => SendChain::Icp,
-            Chain::Near => SendChain::Near,
-            Chain::Polkadot => SendChain::Polkadot,
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => {
-                SendChain::Bitcoin
-            }
-            Chain::LitecoinTestnet => SendChain::Litecoin,
-            Chain::BitcoinCashTestnet => SendChain::BitcoinCash,
-            Chain::BitcoinSVTestnet => SendChain::BitcoinSV,
-            Chain::DogecoinTestnet => SendChain::Dogecoin,
-            Chain::ZcashTestnet => SendChain::Zcash,
-            Chain::DecredTestnet => SendChain::Decred,
-            Chain::KaspaTestnet => SendChain::Kaspa,
-            Chain::DashTestnet => SendChain::Dash,
-            Chain::EthereumSepolia
-            | Chain::EthereumHoodi
-            | Chain::ArbitrumSepolia
-            | Chain::OptimismSepolia
-            | Chain::BaseSepolia
-            | Chain::BnbChainTestnet
-            | Chain::AvalancheFuji
-            | Chain::PolygonAmoy
-            | Chain::HyperliquidTestnet
-            | Chain::EthereumClassicMordor => SendChain::Ethereum,
-            Chain::TronNile => SendChain::Tron,
-            Chain::SolanaDevnet => SendChain::Solana,
-            Chain::XrpTestnet => SendChain::Xrp,
-            Chain::StellarTestnet => SendChain::Stellar,
-            Chain::CardanoPreprod => SendChain::Cardano,
-            Chain::SuiTestnet => SendChain::Sui,
-            Chain::AptosTestnet => SendChain::Aptos,
-            Chain::TonTestnet => SendChain::Ton,
-            Chain::NearTestnet => SendChain::Near,
-            Chain::PolkadotWestend => SendChain::Polkadot,
-            Chain::MoneroStagenet => SendChain::Monero,
         }
     }
 
@@ -1249,13 +1217,10 @@ impl Chain {
             Chain::Sui => Some(1_000),
             Chain::Ton => Some(7_000_000),
             Chain::Icp => Some(10_000),
+            Chain::Zcash | Chain::ZcashTestnet => Some(10_000),
             Chain::Monero => Some(500_000_000),
             Chain::Dogecoin => Some(1_000_000),
-            Chain::Litecoin
-            | Chain::Zcash
-            | Chain::BitcoinSV
-            | Chain::BitcoinGold
-            | Chain::Kaspa => Some(1_000),
+            Chain::Litecoin | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Kaspa => Some(1_000),
             Chain::BitcoinCash | Chain::Decred | Chain::Dash => Some(2_000),
             Chain::SolanaDevnet => Some(5_000),
             Chain::TronNile => Some(1_000_000),
@@ -1265,10 +1230,7 @@ impl Chain {
             Chain::TonTestnet => Some(7_000_000),
             Chain::MoneroStagenet => Some(500_000_000),
             Chain::DogecoinTestnet => Some(1_000_000),
-            Chain::LitecoinTestnet
-            | Chain::ZcashTestnet
-            | Chain::BitcoinSVTestnet
-            | Chain::KaspaTestnet => Some(1_000),
+            Chain::LitecoinTestnet | Chain::BitcoinSVTestnet | Chain::KaspaTestnet => Some(1_000),
             Chain::BitcoinCashTestnet | Chain::DecredTestnet | Chain::DashTestnet => Some(2_000),
             Chain::Bitcoin | Chain::Xrp | Chain::Stellar | Chain::Aptos => None,
             Chain::BitcoinTestnet
@@ -1450,14 +1412,12 @@ mod tests {
     }
 
     #[test]
-    fn only_monero_sends_are_prepared_by_a_backend() {
+    fn sends_are_signed_on_device() {
         for chain in Chain::all().filter(|c| c.has_send_preview()) {
-            let expected = if chain.mainnet_counterpart() == Chain::Monero {
-                SendBroadcastMode::PreparesWithBackend
-            } else {
+            assert_eq!(
+                chain.send_broadcast_mode(),
                 SendBroadcastMode::SignsAndBroadcasts
-            };
-            assert_eq!(chain.send_broadcast_mode(), expected, "{}", chain.str_id());
+            );
         }
     }
 

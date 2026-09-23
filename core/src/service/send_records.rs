@@ -46,7 +46,7 @@ impl WalletService {
             "chainName": chain.chain_display_name(), "amount": request.amount_str.parse::<f64>().map_err(|_| "invalid amount")?,
             "address": request.to_address, "sourceAddress": source,
             "failureReason": "Submission outcome unknown; check network status before sending again.",
-            "createdAt": crate::store::now_unix() - crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS
+            "createdAtUnix": crate::store::now_unix()
         }))?;
         // This is only a draft. Signing failures must not leave pending rows.
         Ok(record)
@@ -102,6 +102,31 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<String, SpectraBridgeError> {
+        let db = self.bound_database().await?;
+        let id = transaction_id.clone();
+        if tokio::task::spawn_blocking(move || crate::wallet_db::send_exists(&db, &id))
+            .await
+            .map_err(|e| e.to_string())??
+        {
+            let stored = self.load_send_artifact(transaction_id.clone()).await?;
+            if stored.view.selected_endpoints.is_empty() {
+                return Err(
+                    "Select broadcast endpoints before submitting a signed transaction".into(),
+                );
+            }
+            let previous = stored.view.attempts.len();
+            let artifact = self
+                .broadcast_send(transaction_id, stored.view.selected_endpoints)
+                .await?;
+            return artifact.attempts[previous..]
+                .iter()
+                .find(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
+                .and_then(|a| a.transaction_hash.clone())
+                .ok_or_else(|| {
+                    "Submission was not accepted; inspect per-endpoint results before retrying"
+                        .into()
+                });
+        }
         let mut record = self
             .fetch_all_history_records()
             .await?
@@ -109,49 +134,7 @@ impl WalletService {
             .find(|r| r.id.eq_ignore_ascii_case(&transaction_id))
             .ok_or("transaction not found")?
             .payload;
-        if record.kind != CoreTransactionKind::Send {
-            return Err("only sends can be rebroadcast".into());
-        }
-        if record.status == CoreTransactionStatus::Confirmed {
-            return Err("transaction already confirmed".into());
-        }
-        let chain =
-            Chain::from_display_name(&record.chain_name).ok_or("unknown transaction chain")?;
-        let payload = record
-            .signed_transaction_payload
-            .as_ref()
-            .ok_or("signed payload was not saved")?;
-        let format = record
-            .signed_transaction_payload_format
-            .as_deref()
-            .ok_or("signed payload format missing")?;
-        let (payload, field) = if format == "core.submission_json" {
-            let prepared: crate::send::payload::PreparedSubmission = serde_json::from_str(payload)?;
-            (prepared.payload, prepared.result_field)
-        } else if chain.is_evm() {
-            if !["evm.raw_hex", "evm.rust_json", "ethereum.rust_json"].contains(&format) {
-                return Err("payload does not match transaction chain".into());
-            }
-            let raw = if format != "evm.raw_hex" {
-                crate::send::preview_decode::extract_json_string_field(
-                    payload.clone(),
-                    "raw_tx_hex".into(),
-                )
-            } else {
-                payload.clone()
-            };
-            if raw.is_empty() {
-                return Err("empty signed payload".into());
-            }
-            (raw, "txid".to_string())
-        } else {
-            let prepared =
-                crate::send::flow::rebroadcast_prepare_payload(format.into(), payload.clone())?;
-            if Chain::from_str_id(&prepared.chain_id) != Some(chain.mainnet_counterpart()) {
-                return Err("payload does not match transaction chain".into());
-            }
-            (prepared.broadcast_payload, prepared.result_field)
-        };
+        let (chain, payload, field) = rebroadcast_input(&record)?;
         // Store an uncertain outcome before network I/O; errors never pretend a send happened.
         record.failure_reason =
             Some("Rebroadcast outcome unknown; check network status before retrying.".into());
@@ -168,6 +151,57 @@ impl WalletService {
         self.save_send_record(record).await?;
         Ok(hash)
     }
+}
+
+pub(super) fn rebroadcast_input(
+    record: &CorePersistedTransactionRecord,
+) -> Result<(Chain, String, String), SpectraBridgeError> {
+    if record.kind != CoreTransactionKind::Send {
+        return Err("only sends can be rebroadcast".into());
+    }
+    if record.status == CoreTransactionStatus::Confirmed {
+        return Err("transaction already confirmed".into());
+    }
+    let chain = Chain::from_display_name(&record.chain_name).ok_or("unknown transaction chain")?;
+    let payload = record
+        .signed_transaction_payload
+        .as_ref()
+        .ok_or("signed payload was not saved")?;
+    let format = record
+        .signed_transaction_payload_format
+        .as_deref()
+        .ok_or("signed payload format missing")?;
+    let (payload, field) = if format == "core.submission_json" {
+        let prepared: crate::send::payload::PreparedSubmission = serde_json::from_str(payload)?;
+        (prepared.payload, prepared.result_field)
+    } else if chain.is_evm() {
+        if !["evm.raw_hex", "evm.rust_json", "ethereum.rust_json"].contains(&format) {
+            return Err("payload does not match transaction chain".into());
+        }
+        let raw = if format != "evm.raw_hex" {
+            crate::send::preview_decode::extract_json_string_field(
+                payload.clone(),
+                "raw_tx_hex".into(),
+            )
+        } else {
+            payload.clone()
+        };
+        if raw.is_empty() {
+            return Err("empty signed payload".into());
+        }
+        (raw, "txid".to_string())
+    } else {
+        let prepared =
+            crate::send::flow::rebroadcast_prepare_payload(format.into(), payload.clone())?;
+        if Chain::from_str_id(&prepared.chain_id) != Some(chain.mainnet_counterpart()) {
+            return Err("payload does not match transaction chain".into());
+        }
+        (prepared.broadcast_payload, prepared.result_field)
+    };
+    if payload.trim().is_empty() || field.trim().is_empty() {
+        return Err("empty signed payload or result field".into());
+    }
+    Ok((chain, payload, field))
 }
 
 // Share a lock even across service instances using the same database. Weak entries
@@ -232,6 +266,20 @@ impl WalletService {
                 }
             }
         }
+        let db = self.bound_database().await?;
+        let artifacts = tokio::task::spawn_blocking(move || crate::wallet_db::send_list(&db))
+            .await
+            .map_err(|e| e.to_string())??;
+        for artifact in artifacts {
+            if artifact.view.chain_id == chain.str_id()
+                && artifact.view.sender.eq_ignore_ascii_case(source)
+                && artifact.view.stage == crate::send::stages::SendStage::Signed
+            {
+                if let crate::send::stages::PreparedPayload::Evm(p) = artifact.prepared {
+                    next = next.max(p.nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
+                }
+            }
+        }
         Ok(next)
     }
 }
@@ -274,7 +322,7 @@ mod tests {
             .await
             .unwrap();
         let mut record: CorePersistedTransactionRecord = serde_json::from_value(json!({
-            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainName": "Ethereum Sepolia", "amount": 1.0, "address": "0x2222222222222222222222222222222222222222", "createdAt": 1000.0,
+            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainName": "Ethereum Sepolia", "amount": 1.0, "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0,
             "signedTransactionPayload": "0xdeadbeef", "signedTransactionPayloadFormat": "evm.raw_hex"
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();

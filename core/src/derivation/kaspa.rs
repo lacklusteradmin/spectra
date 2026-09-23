@@ -115,6 +115,7 @@ fn encode_kaspa_address(version: u8, payload: &[u8], hrp: &str) -> Result<String
 
 /// Encode a Schnorr-pubkey Kaspa address (`kaspa:qrXXXX…`). The pubkey is
 /// the 32-byte x-only secp256k1 public key.
+#[cfg(test)]
 pub(crate) fn encode_kaspa_schnorr(pubkey_x_only: &[u8; 32]) -> String {
     encode_kaspa_address(KASPA_VERSION_SCHNORR, pubkey_x_only, KASPA_HRP)
         .expect("schnorr payload is always valid")

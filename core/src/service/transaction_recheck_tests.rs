@@ -8,7 +8,7 @@ fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecor
     serde_json::from_value(json!({
         "id":id, "walletId":"wallet", "walletName":"Original", "kind":"send",
         "chainName":chain.chain_display_name(), "symbol":chain.coin_symbol(), "assetDisplayName":"Coin",
-        "status":status, "amount":1, "address":"recipient", "createdAt":1234.0,
+        "status":status, "amount":1, "address":"recipient", "createdAtUnix":1234.0,
         "transactionHash":"ab".repeat(32), "failureReason":"old failure",
         "receiptBlockNumber":90, "confirmationCount":99
     }))
@@ -76,7 +76,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         let target = rows.iter().find(|r| r.id == "target").unwrap();
         assert_eq!(target.payload.receipt_block_number, Some(123));
         assert_eq!(target.payload.failure_reason, None);
-        assert_eq!(target.created_at, 1234.0 + 978307200.0);
+        assert_eq!(target.created_at, 1234.0);
         assert_eq!(
             rows.iter()
                 .find(|r| r.id == "unrelated")

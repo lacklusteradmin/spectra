@@ -129,7 +129,7 @@ mod watch_only {
 
     fn entries(slot: &str, addresses: &[&str]) -> WalletImportWatchOnlyEntries {
         WalletImportWatchOnlyEntries {
-            by_slot: HashMap::from([(
+            by_chain_id: HashMap::from([(
                 slot.to_string(),
                 addresses.iter().map(|a| a.to_string()).collect(),
             )]),
@@ -140,7 +140,7 @@ mod watch_only {
     #[test]
     fn a_malformed_watch_address_is_refused() {
         let (kept, rejected) = validated_watch_only_entries(&entries("solana", &["garbage"]));
-        assert!(kept.by_slot.is_empty(), "kept: {:?}", kept.by_slot);
+        assert!(kept.by_chain_id.is_empty(), "kept: {:?}", kept.by_chain_id);
         assert_eq!(rejected, vec!["garbage".to_string()]);
     }
 
@@ -151,7 +151,7 @@ mod watch_only {
             &["0X742D35CC6634C0532925A3B844BC454E4438F44E"],
         ));
         assert!(rejected.is_empty());
-        let stored = kept.by_slot.get("ethereum").expect("kept");
+        let stored = kept.by_chain_id.get("ethereum").expect("kept");
         assert_eq!(stored.len(), 1);
         assert!(stored[0].starts_with("0x"));
     }
@@ -173,7 +173,7 @@ mod watch_only {
             let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
             assert!(rejected.is_empty(), "{slot}: rejected {typed}");
             assert_eq!(
-                kept.by_slot.get(slot).map(Vec::as_slice),
+                kept.by_chain_id.get(slot).map(Vec::as_slice),
                 Some([expected.to_string()].as_slice()),
                 "{slot} did not normalise"
             );
@@ -222,7 +222,7 @@ mod watch_only {
             let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
             assert!(rejected.is_empty(), "{chain_name}: rejected {typed}");
             let imported = kept
-                .by_slot
+                .by_chain_id
                 .get(slot)
                 .and_then(|list| list.first())
                 .unwrap();
@@ -242,7 +242,7 @@ mod watch_only {
         ));
         assert!(rejected.is_empty());
         assert_eq!(
-            kept.by_slot.get("ethereum").map(Vec::as_slice),
+            kept.by_chain_id.get("ethereum").map(Vec::as_slice),
             Some(["0x742d35cc6634c0532925a3b844bc454e4438f44e".to_string()].as_slice())
         );
     }
@@ -268,7 +268,7 @@ mod watch_only {
             },
         );
         assert!(rejected.is_empty(), "testnet address refused: {rejected:?}");
-        assert_eq!(kept.by_slot.get("bitcoin").map(Vec::len), Some(1));
+        assert_eq!(kept.by_chain_id.get("bitcoin").map(Vec::len), Some(1));
     }
 
     #[test]
@@ -276,7 +276,7 @@ mod watch_only {
         let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
         let (kept, rejected) = validated_watch_only_entries(&entries("bitcoin", &[typed]));
         assert_eq!(rejected, vec![typed.to_string()]);
-        assert!(kept.by_slot.is_empty());
+        assert!(kept.by_chain_id.is_empty());
     }
 
     #[test]
@@ -289,7 +289,26 @@ mod watch_only {
                 "0x0000000000000000000000000000000000000001",
             ],
         ));
-        assert_eq!(kept.by_slot.get("ethereum").expect("kept").len(), 2);
+        assert_eq!(kept.by_chain_id.get("ethereum").expect("kept").len(), 2);
         assert_eq!(rejected, vec!["0xnothex".to_string()]);
     }
+}
+
+#[test]
+fn watch_only_chain_identity_is_not_an_evm_storage_slot() {
+    use crate::derivation::import::{validated_watch_only_entries, WalletImportWatchOnlyEntries};
+    let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e".to_string();
+    let entries = WalletImportWatchOnlyEntries {
+        by_chain_id: std::collections::HashMap::from([
+            ("arbitrum".into(), vec![address.clone()]),
+            ("ethereum".into(), vec![address.clone()]),
+            ("unknown".into(), vec![address]),
+        ]),
+        bitcoin_xpub: None,
+    };
+    let (valid, rejected) = validated_watch_only_entries(&entries, &Default::default());
+    assert_eq!(valid.by_chain_id.len(), 2);
+    assert_eq!(valid.by_chain_id["arbitrum"].len(), 1);
+    assert_eq!(valid.by_chain_id["ethereum"].len(), 1);
+    assert_eq!(rejected.len(), 1);
 }

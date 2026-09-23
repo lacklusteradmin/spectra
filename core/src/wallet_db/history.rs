@@ -20,20 +20,7 @@ pub struct HistoryRecord {
 
 // ── History record CRUD ───────────────────────────────────────────────────────
 
-/// Seconds between the Unix epoch and Swift's reference date (2001-01-01 UTC).
-///
-/// `CorePersistedTransactionRecord::created_at` is in Swift reference time
-/// because that is what the persisted shape has always used; the
-/// `history_records.created_at` column is Unix, because that is what every
-/// other table and every chain API uses. The conversion lives here so no
-/// front end has to remember which side of the boundary it is on — getting it
-/// wrong silently misorders history by 31 years.
-use crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS;
-
-/// Build the indexed row for a transaction from the record itself.
-///
-/// The id / wallet id / tx hash are lowercased so lookups are case-insensitive
-/// without every query having to say so.
+/// Index the same Unix timestamp carried by the stored payload.
 pub fn history_record_from_payload(
     payload: crate::store::persistence_models::CorePersistedTransactionRecord,
 ) -> HistoryRecord {
@@ -42,7 +29,7 @@ pub fn history_record_from_payload(
         wallet_id: payload.wallet_id.as_deref().map(str::to_lowercase),
         chain_name: payload.chain_name.clone(),
         tx_hash: payload.transaction_hash.as_deref().map(str::to_lowercase),
-        created_at: payload.created_at + SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+        created_at: payload.created_at_unix,
         payload,
     }
 }

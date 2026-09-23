@@ -287,7 +287,7 @@ impl WalletService {
                 )
                 .into());
             }
-            *service.wallet_state.write().await = snapshot;
+            service.publish_state(snapshot).await;
             Ok(crate::derivation::import::WalletImportOutcome {
                 secret_kind: plan.secret_kind,
                 wallets,

@@ -431,7 +431,7 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     let mut request = request_for(&[chain], &name);
     request.is_watch_only_import = true;
     request.watch_only_entries = WalletImportWatchOnlyEntries {
-        by_slot: [(chain.address_slot().to_string(), args.address.clone())]
+        by_chain_id: [(chain.str_id().to_string(), args.address.clone())]
             .into_iter()
             .collect(),
         bitcoin_xpub: None,

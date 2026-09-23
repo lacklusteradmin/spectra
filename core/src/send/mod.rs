@@ -7,11 +7,12 @@ pub mod keys;
 pub mod payload;
 pub mod preview_decode;
 pub mod preview_types;
+pub mod stages;
 pub mod transfer;
 pub mod verification;
 
 // Per-chain write-path: build / sign / broadcast transaction methods.
-mod accounting;
+pub(crate) mod accounting;
 pub mod aptos;
 #[cfg(test)]
 mod audit_tests;
@@ -20,7 +21,7 @@ pub mod bitcoin;
 pub mod bitcoin_cash;
 pub mod bitcoin_gold;
 pub mod bitcoin_sv;
-mod bitcoin_wire;
+pub(crate) mod bitcoin_wire;
 pub mod bittensor;
 pub mod cardano;
 pub mod dash;
@@ -28,9 +29,11 @@ pub mod decred;
 pub mod dogecoin;
 pub mod evm;
 pub mod icp;
+mod icp_stages;
 pub mod kaspa;
 pub mod litecoin;
 pub mod monero;
+pub(crate) mod monero_local;
 pub mod mweb;
 pub mod near;
 pub mod polkadot;
@@ -42,6 +45,7 @@ pub mod ton;
 pub mod tron;
 pub mod xrp;
 pub mod zcash;
+mod zcash_stages;
 
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
@@ -129,7 +133,7 @@ pub struct SendPreflight {
 }
 
 /// Unified request for `WalletService::execute_send`.
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct SendExecutionRequest {
     /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
     pub chain_id: String,

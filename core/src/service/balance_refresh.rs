@@ -178,7 +178,9 @@ impl WalletService {
                     .await
                     .map_err(|e| e.to_string())??;
                 }
-                service.wallet_state.write().await.wallets[index] = wallet.clone();
+                let mut state = service.wallet_state.write().await;
+                state.wallets[index] = wallet.clone();
+                state.revision += 1;
             }
             Ok(wallet)
         })

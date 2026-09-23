@@ -6,10 +6,10 @@ impl WalletService {
     // `fetch_history` lives in the plain-impl block below (JSON shuttle —
     // kept internal, not exported to Swift).
 
-    // `execute_protocol_send` lives in the plain `impl WalletService` block
-    // in `service/send.rs`. UniFFI exports every method of a `#[uniffi::export]`
+    // `broadcast_at` lives in the plain `impl WalletService` block
+    // in `service/send_broadcast.rs`. UniFFI exports every method of a `#[uniffi::export]`
     // impl block regardless of `pub(crate)` visibility, so chain-dispatch
-    // helpers consumed only by `execute_send` must be outside this block.
+    // internal protocol helpers must be outside this block.
 
     // `execute_send` lives in `service/send_execution.rs`.
 

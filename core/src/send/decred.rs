@@ -14,7 +14,7 @@
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, varint};
 use crate::derivation::decred::{blake256, decode_dcr_address};
-use crate::fetch::decred::{DcrSendResult, DecredClient};
+use crate::fetch::decred::DecredClient;
 
 /// Decred wire `version | serType` 32-bit header, encoded little-endian. The
 /// low 16 bits hold the tx version (1 for standard transfers); the high 16
@@ -30,15 +30,14 @@ const SIGHASH_ALL: u32 = 1;
 const TX_TREE_REGULAR: u8 = 0;
 
 impl DecredClient {
-    pub async fn sign_and_broadcast(
+    pub(crate) async fn prepare_transfer(
         &self,
         from_address: &str,
         to_address: &str,
         amount_atoms: u64,
         fee_atoms: u64,
-        private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
-    ) -> Result<DcrSendResult, String> {
+    ) -> Result<PreparedDecredTransaction, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_dcr_address(from_address)?;
         let from_script = p2pkh_script(&from_hash);
@@ -75,11 +74,28 @@ impl DecredClient {
             })
             .collect::<Result<_, String>>()?;
 
-        let raw = sign_dcr_tx(&inputs, &outputs, private_key_bytes)?;
-        self.broadcast_raw_tx(&hex::encode(&raw)).await
+        Ok(PreparedDecredTransaction { inputs, outputs })
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedDecredTransaction {
+    inputs: Vec<DcrInputBuild>,
+    outputs: Vec<(Vec<u8>, u64)>,
+}
+impl PreparedDecredTransaction {
+    pub fn sign(&self, key: &[u8]) -> Result<String, String> {
+        Ok(hex::encode(sign_dcr_tx(&self.inputs, &self.outputs, key)?))
+    }
+    pub fn resources(&self) -> Vec<String> {
+        self.inputs
+            .iter()
+            .map(|i| format!("decred:utxo:{}:{}", hex::encode(&i.outpoint_txid), i.vout))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct DcrInputBuild {
     /// The outpoint txid in wire (little-endian) order.
     outpoint_txid: Vec<u8>,

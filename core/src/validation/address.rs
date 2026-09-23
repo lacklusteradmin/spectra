@@ -423,11 +423,10 @@ fn validate_ton_address(value: &str, testnet: bool) -> AddressValidationResult {
 }
 
 fn validate_icp_address(value: &str) -> AddressValidationResult {
-    let normalized = value.to_lowercase();
-    if normalized.len() == 64 && is_lower_hex(&normalized) {
-        return make_result(normalized);
+    match crate::derivation::icp::validate_account(value) {
+        Ok(bytes) => make_result(hex::encode(bytes)),
+        Err(_) => invalid_result(),
     }
-    invalid_result()
 }
 
 fn validate_near_address(value: &str) -> AddressValidationResult {

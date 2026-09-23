@@ -22,67 +22,8 @@ use crate::send::substrate::POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE;
 const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
 impl PolkadotClient {
-    /// Sign and submit a Balances.transfer_keep_alive extrinsic.
-    pub async fn sign_and_submit(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        planck: u128,
-        private_key_bytes: &[u8; 32],
-        public_key_bytes: &[u8; 32],
-        era: Option<Vec<u8>>,
-        tip: Option<u128>,
-    ) -> Result<DotSendResult, String> {
-        let _ = from_address;
-        let nonce = self.fetch_nonce(from_address).await?;
-        let (spec_version, tx_version) = self.fetch_runtime_version().await?;
-        let genesis_hash = self.fetch_genesis_hash().await?;
-        let block_hash = self.fetch_block_hash_latest().await?;
-
-        let extrinsic = build_signed_transfer(
-            to_address,
-            planck,
-            nonce,
-            spec_version,
-            tx_version,
-            &genesis_hash,
-            &block_hash,
-            private_key_bytes,
-            public_key_bytes,
-            era,
-            tip,
-        )?;
-
-        let hex = format!("0x{}", hex::encode(&extrinsic));
-        crate::send::payload::before_submission(
-            serde_json::json!({"extrinsic_hex":hex}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
-        let result = self
-            .rpc_call("author_submitExtrinsic", json!([hex]))
-            .await?;
-        let txid = result
-            .as_str()
-            .ok_or("author_submitExtrinsic: expected string")?
-            .to_string();
-        Ok(DotSendResult {
-            txid,
-            extrinsic_hex: hex,
-        })
-    }
-
     /// Submit a pre-signed extrinsic hex (for rebroadcast).
     pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<DotSendResult, String> {
-        crate::send::payload::before_submission(
-            serde_json::json!({"extrinsic_hex":hex}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;

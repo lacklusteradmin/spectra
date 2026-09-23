@@ -109,20 +109,6 @@ impl MoneroClient {
         })
     }
 
-    pub async fn fetch_address(&self, account_index: u32) -> Result<String, String> {
-        let result = self
-            .call(
-                "get_address",
-                json!({"account_index": account_index, "address_index": [0]}),
-            )
-            .await?;
-        result
-            .get("address")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| "get_address: missing address".to_string())
-    }
-
     pub async fn fetch_history(
         &self,
         account_index: u32,

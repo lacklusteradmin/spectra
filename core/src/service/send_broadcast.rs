@@ -28,6 +28,16 @@ impl WalletService {
             SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
         })?;
         let (api, eps) = self.fetch_endpoints(chain).await?;
+        self.broadcast_at(chain, api, eps, payload).await
+    }
+
+    pub(super) async fn broadcast_at(
+        &self,
+        chain: Chain,
+        api: crate::EndpointApi,
+        eps: Arc<Vec<String>>,
+        payload: String,
+    ) -> Result<String, SpectraBridgeError> {
         use crate::EndpointApi as Api;
         match api {
             Api::Esplora => {
@@ -165,6 +175,23 @@ impl WalletService {
                 Ok(serde_json::to_string(
                     &client.submit_signed_transaction(&payload).await?,
                 )?)
+            }
+            Api::MoneroDaemonRpc => {
+                use ::monero_wallet::interface::PublishTransaction;
+                let bytes = hex::decode(&payload).map_err(|e| e.to_string())?;
+                let mut reader = bytes.as_slice();
+                let tx = ::monero_wallet::transaction::Transaction::read(&mut reader)
+                    .map_err(|e| e.to_string())?;
+                if !reader.is_empty() {
+                    return Err("Trailing data in Monero transaction".into());
+                }
+                let endpoint = eps.first().ok_or("Missing Monero broadcast endpoint")?;
+                let daemon = crate::send::monero_local::daemon(endpoint, chain).await?;
+                daemon
+                    .publish_transaction(&tx)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(json!({"txid":hex::encode(tx.hash())}).to_string())
             }
             Api::MoneroWalletRpc => {
                 let client = MoneroClient::new(eps);

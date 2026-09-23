@@ -20,65 +20,6 @@ pub(crate) fn dogecoin_fee(rate: f64) -> Result<u64, crate::SpectraBridgeError> 
     Ok((u128::from(raw_per_kb) * 350).div_ceil(1000) as u64)
 }
 
-// --- Broadcast-result classification ---
-
-#[derive(Debug, Clone, Copy, uniffi::Enum)]
-pub enum SendChain {
-    Bitcoin,
-    BitcoinCash,
-    BitcoinSV,
-    Litecoin,
-    Dogecoin,
-    Ethereum,
-    Tron,
-    Solana,
-    Xrp,
-    Stellar,
-    Monero,
-    Cardano,
-    Sui,
-    Aptos,
-    Ton,
-    Icp,
-    Near,
-    Polkadot,
-    Zcash,
-    BitcoinGold,
-    Decred,
-    Kaspa,
-    Dash,
-    Bittensor,
-}
-
-pub(crate) fn format_key_for(chain: SendChain) -> &'static str {
-    match chain {
-        SendChain::Bitcoin => "bitcoin.rust_json",
-        SendChain::BitcoinCash => "bitcoin_cash.rust_json",
-        SendChain::BitcoinSV => "bitcoin_sv.rust_json",
-        SendChain::Litecoin => "litecoin.rust_json",
-        SendChain::Dogecoin => "dogecoin.rust_json",
-        SendChain::Ethereum => "ethereum.rust_json",
-        SendChain::Tron => "tron.rust_json",
-        SendChain::Solana => "solana.rust_json",
-        SendChain::Xrp => "xrp.rust_json",
-        SendChain::Stellar => "stellar.rust_json",
-        SendChain::Monero => "monero.rust_json",
-        SendChain::Cardano => "cardano.rust_json",
-        SendChain::Sui => "sui.rust_json",
-        SendChain::Aptos => "aptos.rust_json",
-        SendChain::Ton => "ton.rust_json",
-        SendChain::Icp => "icp.rust_json",
-        SendChain::Near => "near.rust_json",
-        SendChain::Polkadot => "polkadot.rust_json",
-        SendChain::Zcash => "zcash.rust_json",
-        SendChain::BitcoinGold => "bitcoin_gold.rust_json",
-        SendChain::Decred => "decred.rust_json",
-        SendChain::Kaspa => "kaspa.rust_json",
-        SendChain::Dash => "dash.rust_json",
-        SendChain::Bittensor => "bittensor.rust_json",
-    }
-}
-
 #[cfg(test)]
 mod fee_tests {
     use super::*;
@@ -112,36 +53,6 @@ pub(crate) struct PreparedSubmission {
     pub result_field: String,
     pub transaction_hash: Option<String>,
     pub nonce: Option<u64>,
-}
-
-type SubmissionFuture =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>;
-pub(crate) type SubmissionJournal =
-    std::sync::Arc<dyn Fn(PreparedSubmission) -> SubmissionFuture + Send + Sync>;
-
-tokio::task_local! {
-    /// Each owned send has its own journal, including when two sends run concurrently.
-    pub(crate) static SUBMISSION_JOURNAL: SubmissionJournal;
-}
-
-/// Every protocol awaits this after signing and before its first submission.
-/// The service installs a durable journal; standalone protocol callers have no store.
-pub(crate) async fn before_submission(
-    payload: String,
-    result_field: &str,
-    transaction_hash: Option<String>,
-    nonce: Option<u64>,
-) -> Result<(), String> {
-    if let Ok(journal) = SUBMISSION_JOURNAL.try_with(Clone::clone) {
-        journal(PreparedSubmission {
-            payload,
-            result_field: result_field.into(),
-            transaction_hash,
-            nonce,
-        })
-        .await?;
-    }
-    Ok(())
 }
 
 pub(crate) fn bitcoin_transaction_id(raw: &str) -> Option<String> {

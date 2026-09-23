@@ -1,8 +1,7 @@
 //! The records and enums `WalletService` hands across the FFI.
 //!
-//! A type belongs here when it is the *shape of an answer*; the per-chain send
-//! parameter records — the shape of a *request* — live in
-//! [`super::send_params`].
+//! Shared answer snapshots live here. Durable transaction artifacts and their
+//! typed protocol content live in [`crate::send::stages`].
 
 use super::*;
 
@@ -197,7 +196,7 @@ pub struct ChainEndpoints {
     pub endpoints: Vec<String>,
 }
 
-// Per-chain send parameter records live in `super::send_params`.
+// Durable transaction lifecycle records live in `crate::send::stages`.
 
 #[cfg(test)]
 mod destination_activity_tests {

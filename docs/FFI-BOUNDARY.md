@@ -28,11 +28,13 @@ record: scrub its owned strings on the receiving call path.
   Exercise the affected path in the app as well.
 - **Short-lived callers:** spawned work can outlive a CLI process. Provide an
   awaited operation, as `refresh_now` does alongside `trigger_immediate`.
-- **Timestamps:** `CoreTransactionRecord.created_at_unix` and indexed
-  `HistoryRecord.created_at` use Unix seconds. The persisted transaction
-  payload uses Swift reference seconds (2001-01-01 UTC). The conversion lives
-  in `core/src/fetch/transactions.rs`; both representations are `f64`, so the
-  compiler cannot catch an epoch mix-up.
+- **Timestamps:** transaction payload/FFI `created_at_unix` and the indexed
+  `HistoryRecord.created_at` all use Unix seconds, including fractional seconds.
+  Swift renders with `Date(timeIntervalSince1970:)`; there is no epoch conversion.
+- **Versions:** `CoreAppState.revision` orders successful state publications within
+  one service session. Failed and no-op commands do not advance it; it is not
+  persisted. Snapshot sequence numbers order projections; their contained state
+  revision must also pass the front end's committed-state check.
 - **Secrets:** core owns layout and encryption; `SecretStore` supplies Keychain,
   file or in-memory storage. A new secret operation must work through that
   abstraction so the CLI can exercise it.

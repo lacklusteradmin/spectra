@@ -1,5 +1,5 @@
 //! Checked input/output accounting shared by fixed-fee UTXO signers.
-pub(super) fn checked_change(
+pub(crate) fn checked_change(
     values: impl IntoIterator<Item = u64>,
     amount: u64,
     fee: u64,

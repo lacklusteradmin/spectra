@@ -16,7 +16,7 @@ fn pending_send(id: &str, chain: &str) -> CorePersistedTransactionRecord {
         "id": id, "walletId": "w1", "kind": "send", "status": "pending",
         "walletName": "W", "assetDisplayName": chain, "symbol": "BTC",
         "chainName": chain, "amount": 1.0, "address": "bc1qexample",
-        "transactionHash": format!("hash-{id}"), "createdAt": 0.0,
+        "transactionHash": format!("hash-{id}"), "createdAtUnix": 0.0,
     }))
     .expect("fixture must match CorePersistedTransactionRecord")
 }

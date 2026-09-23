@@ -77,7 +77,7 @@ Navigation, editing and rendering caches remain platform view state.
 | 0 — Prove ownership on display currency | Done | `open_state` and state commands bind, update and persist core-owned state |
 | 1 — Move domain collections | Done | Wallets and address book are core-owned; history has its own queryable store; Swift renders projections |
 | 2 — Replace planners with intents | Done | No `core_plan_*` exports remain; some pure helpers only needed renaming |
-| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions owned by core; transport lifecycle and destination activity closed in the follow-up review; UI draft abstraction removed |
+| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions owned by core; transport lifecycle and destination activity closed in the follow-up review; UI draft abstraction removed; durable review and native session isolation covered by the 2026-09-22 follow-up |
 | C1 — Reshape core | Done | Shared chain catalog, service modules split by responsibility, duplicate modules and derivation primitives consolidated |
 | C2 — Reduce the FFI surface | Done | Owned operations and coherent snapshots replace caller-assembled decisions |
 | 4 — Android | Not started beyond skeleton | Implement against the shared core once the boundary is ready |
@@ -129,7 +129,16 @@ Swift async export, and offline assembly cannot verify a broadcast.
 
 ## Known open items
 
-- [ ] **Transparent send stages: build, sign, broadcast (core, CLI and Swift).**
+- [x] **Transparent send stages: build, sign, broadcast (core, CLI and Swift).**
+  Completed 2026-09-22: durable core artifacts, separate CLI and Swift actions,
+  explicit node selection, immutable-payload retries, and restart recovery.
+  `make verify` passes; iOS coverage includes the async bridge and a real-window
+  rendering check. Monero, ICP and Zcash now also construct and sign locally;
+  Monero adds device-local scanning and encrypted, network-scoped progress.
+  Zcash supports transparent sends, and Monero supports primary-address RingCT
+  outputs under HF16. Custom endpoints require the adapter's network/API checks.
+  See the dated [behaviour changes](BEHAVIOUR-CHANGES.md) for protocol limits and
+  the endpoint availability item below for external provider failures.
   Split the current combined signing/submission path into explicit core-owned
   operations with typed prepared transactions, signed transactions and
   broadcast results. Keep `execute_send` as a convenience that composes these
@@ -166,13 +175,18 @@ Swift async export, and offline assembly cannot verify a broadcast.
     the new UI, and pass all three required suites. Record implemented
     before/after behaviour and concrete CLI checks in
     [docs/BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md).
-- [ ] **The CLI cannot show the endpoint table it is about to use.** Every
-  `spectra` command builds its service through `WalletService::new_catalog()` →
-  `catalog_endpoints()`, but nothing prints the result. `spectra endpoints`
-  probes the catalog's rows for a chain, which is a different list — it answers
-  "which registered endpoints are up", not "which ones will this command try,
-  in what order". Add an offline subcommand that prints the configured table
-  per chain, in order, and cover it in `scripts/cli-acceptance.sh`.
+- [x] **Configured send endpoints are inspectable offline.**
+  `spectra --json send configured-endpoints <chain>` prints the service's actual
+  configured destinations in order, including saved settings. This is distinct
+  from endpoint health probes and is covered by offline CLI acceptance.
+- [x] **Re-enable independently verifiable sends for Monero, ICP and Zcash.**
+  Completed 2026-09-22: Monero uses local scan/decoy/signing with no wallet RPC;
+  ICP constructs and signs ledger envelopes locally; Zcash validates genesis,
+  branch, inputs and expiry and signs ZIP-244 transactions locally. Official
+  monerod accepted an offline regtest signature; ICP/Zcash have independent
+  reference vectors and offline CLI integration. `make verify` passed with
+  827 core tests, the transport test, 443 CLI checks and 113 iOS tests.
+  These checks do not claim live-chain inclusion or fix unavailable providers.
 - [ ] **Detect FFI record fields with no production writer.** A syntactic scan
   cannot reliably distinguish unwritten fields from serde or multi-line writes.
   A useful gate needs type-aware analysis before it can reject unused fields.

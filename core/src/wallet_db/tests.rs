@@ -359,7 +359,7 @@ fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryReco
         "chainName": chain_name,
         "amount": 1.0,
         "address": "bc1qexample",
-        "createdAt": 0.0,
+        "createdAtUnix": 0.0,
     }))
     .expect("history payload fixture must match CorePersistedTransactionRecord");
     HistoryRecord {
@@ -429,6 +429,7 @@ fn persisted_floats_round_trip_without_changing_bits() {
 fn app_state_round_trips() {
     let db = tmp_db();
     let state = CoreAppState {
+        revision: 0,
         movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
@@ -468,6 +469,7 @@ fn app_state_save_preserves_wallet_order() {
         wallet("mm", "Sui"),
     ];
     let state = CoreAppState {
+        revision: 0,
         movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
@@ -688,4 +690,25 @@ fn unknown_metadata_and_schema_versions_are_refused() {
         .unwrap();
         assert!(app_state_load(&db).is_err());
     }
+}
+
+#[test]
+fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
+    let db = tmp_db();
+    monero_save(&db, "wallet", "monero", None, "encrypted-mainnet").unwrap();
+    monero_save(&db, "wallet", "monero-stagenet", None, "encrypted-stagenet").unwrap();
+    assert_eq!(
+        monero_load(&db, "wallet", "monero").unwrap().unwrap().1,
+        "encrypted-mainnet"
+    );
+    monero_save(&db, "wallet", "monero", Some(0), "next-batch").unwrap();
+    assert!(monero_save(&db, "wallet", "monero", Some(0), "stale").is_err());
+    assert_eq!(
+        monero_load(&db, "wallet", "monero").unwrap(),
+        Some((1, "next-batch".into()))
+    );
+    assert_eq!(
+        monero_load(&db, "wallet", "monero-stagenet").unwrap(),
+        Some((0, "encrypted-stagenet".into()))
+    );
 }

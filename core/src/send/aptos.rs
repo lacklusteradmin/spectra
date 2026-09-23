@@ -5,10 +5,11 @@ use crate::send::keys::Ed25519Seed;
 use serde_json::{json, Value};
 use sha3::{Digest, Sha3_256};
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedAptosTransfer {
     sender: [u8; 32],
-    message: Vec<u8>,
-    body: Value,
+    pub(crate) message: Vec<u8>,
+    pub(crate) body: Value,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -71,55 +72,9 @@ impl PreparedAptosTransfer {
     }
 }
 impl AptosClient {
-    pub async fn sign_and_submit(
-        &self,
-        from: &str,
-        to: &str,
-        octas: u64,
-        key: &Ed25519Seed,
-        public: &[u8; 32],
-        expected_chain_id: u8,
-    ) -> Result<AptosSendResult, String> {
-        key.require_public_key(public)?;
-        bcs::address(from)?;
-        bcs::address(to)?;
-        if octas == 0 {
-            return Err("Aptos amount must be positive".into());
-        }
-        let (sequence, _) = self.fetch_account_info(from).await?;
-        let (chain_id, _) = self.fetch_ledger_info().await?;
-        if chain_id != u64::from(expected_chain_id) {
-            return Err("Aptos endpoint network does not match the requested chain".into());
-        }
-        let gas_price = self.fetch_gas_price().await?;
-        let expiration = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| "clock before epoch")?
-            .as_secs()
-            .checked_add(600)
-            .ok_or("expiration overflow")?;
-        let prepared = prepare_transfer(
-            from,
-            to,
-            octas,
-            sequence,
-            gas_price,
-            10_000,
-            expiration,
-            expected_chain_id,
-        )?;
-        self.submit_signed_body(&prepared.sign(key)?).await
-    }
     pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
         let body: Value = serde_json::from_str(signed_json)
             .map_err(|e| format!("invalid Aptos transaction: {e}"))?;
-        crate::send::payload::before_submission(
-            serde_json::json!({"signed_body_json":signed_json}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
         let response = self.post_val("/transactions", &body).await?;
         let txid = response["hash"]
             .as_str()

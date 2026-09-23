@@ -121,18 +121,6 @@ struct InsightBroadcastResponse {
     txid: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct InsightStatus {
-    #[serde(default)]
-    info: InsightStatusInfo,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct InsightStatusInfo {
-    #[serde(default)]
-    blocks: u64,
-}
-
 pub struct DecredClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
@@ -269,13 +257,7 @@ impl DecredClient {
         .await
     }
 
-    pub async fn fetch_chain_tip_height(&self) -> Result<u64, String> {
-        let status: InsightStatus = self.get("/status?q=getInfo").await?;
-        Ok(status.info.blocks)
-    }
-
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<DcrSendResult, String> {
-        crate::send::payload::before_submission(raw_tx_hex.to_owned(), "txid", None, None).await?;
         let raw_hex = raw_tx_hex.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();

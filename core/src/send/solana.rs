@@ -2,93 +2,14 @@
 //! create). Ed25519 signing + sendTransaction RPC broadcast.
 
 use crate::send::keys::Ed25519Seed;
-use base64::Engine as _;
 use serde_json::json;
 
 use crate::derivation::solana::decode_b58_32;
 use crate::fetch::solana::{SolanaClient, SolanaSendResult};
 
 impl SolanaClient {
-    /// Sign and broadcast a native SOL transfer.
-    pub async fn sign_and_broadcast(
-        &self,
-        from_pubkey_bytes: &[u8; 32],
-        to_address: &str,
-        lamports: u64,
-        private_key_bytes: &Ed25519Seed,
-    ) -> Result<SolanaSendResult, String> {
-        let blockhash = self.fetch_recent_blockhash().await?;
-        let to_pubkey = bs58::decode(to_address)
-            .into_vec()
-            .map_err(|e| format!("invalid to address: {e}"))?;
-        if to_pubkey.len() != 32 {
-            return Err(format!("invalid to pubkey length: {}", to_pubkey.len()));
-        }
-        let to_pubkey: [u8; 32] = to_pubkey.try_into().unwrap();
-
-        let raw_tx = build_sol_transfer(
-            from_pubkey_bytes,
-            &to_pubkey,
-            lamports,
-            &blockhash,
-            private_key_bytes,
-        )?;
-
-        self.broadcast_raw(&base64::engine::general_purpose::STANDARD.encode(&raw_tx))
-            .await
-    }
-
-    /// Sign and broadcast an SPL token transfer. Derives the source and
-    /// destination associated token accounts; if the destination ATA does
-    /// not exist yet the transaction prepends a Create-Idempotent
-    /// instruction so it is materialized in the same atomic tx.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn sign_and_broadcast_spl(
-        &self,
-        from_owner_pubkey: &[u8; 32],
-        to_owner_b58: &str,
-        mint_b58: &str,
-        amount_raw: u64,
-        decimals: u8,
-        private_key_bytes: &Ed25519Seed,
-    ) -> Result<SolanaSendResult, String> {
-        let to_owner = decode_b58_32(to_owner_b58)?;
-        let mint = decode_b58_32(mint_b58)?;
-
-        let (program, mint_decimals) = self.fetch_transfer_mint(mint_b58).await?;
-        if decimals != mint_decimals {
-            return Err("SPL: supplied decimals do not match mint".into());
-        }
-        let source_ata = derive_associated_token_account(from_owner_pubkey, &mint, &program)?;
-        let dest_ata = derive_associated_token_account(&to_owner, &mint, &program)?;
-
-        let blockhash = self.fetch_recent_blockhash().await?;
-        let raw_tx = build_spl_transfer_checked(
-            from_owner_pubkey,
-            &to_owner,
-            &mint,
-            &source_ata,
-            &dest_ata,
-            &program,
-            amount_raw,
-            decimals,
-            &blockhash,
-            private_key_bytes,
-        )?;
-
-        self.broadcast_raw(&base64::engine::general_purpose::STANDARD.encode(&raw_tx))
-            .await
-    }
-
     /// Broadcast an already-signed transaction given as a base64 string.
     pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
-        let hash = base64::engine::general_purpose::STANDARD
-            .decode(signed_tx_base64)
-            .ok()
-            .filter(|raw| raw.first() == Some(&1))
-            .and_then(|raw| raw.get(1..65).map(|sig| bs58::encode(sig).into_string()));
-        crate::send::payload::before_submission(signed_tx_base64.into(), "signature", hash, None)
-            .await?;
         let result = self
             .call(
                 "sendTransaction",
@@ -116,6 +37,7 @@ impl SolanaClient {
 /// Message:
 ///   [header: 3 bytes] [compact_u16(num_accounts)] [accounts..] [blockhash: 32]
 ///   [compact_u16(num_instructions)] [instruction: program_id_idx | compact_u16(accounts) | compact_u16(data)]
+#[cfg(test)]
 pub fn build_sol_transfer(
     from: &[u8; 32],
     to: &[u8; 32],
@@ -185,6 +107,7 @@ fn is_off_curve(bytes: &[u8; 32]) -> bool {
 ///      so the destination ATA is materialized if needed,
 ///   2. Issues an SPL Token `TransferChecked` instruction for the transfer.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub fn build_spl_transfer_checked(
     from_owner: &[u8; 32],
     to_owner: &[u8; 32],
@@ -224,6 +147,7 @@ pub fn build_spl_transfer_checked(
 /// Compile account identities once across all instructions. Aliases merge
 /// writable privileges, then every instruction is remapped to the unique keys.
 /// These transfer instructions have exactly one signer: the fee payer.
+#[cfg(test)]
 fn compile_and_sign(
     payer: &[u8; 32],
     account_metas: &[([u8; 32], bool)],
@@ -231,7 +155,94 @@ fn compile_and_sign(
     blockhash: &str,
     key: &Ed25519Seed,
 ) -> Result<Vec<u8>, String> {
-    key.require_public_key(payer)?;
+    PreparedSolanaTransaction {
+        payer: *payer,
+        blockhash: blockhash.into(),
+        message: compile_message(payer, account_metas, instructions, blockhash)?,
+    }
+    .sign(key)
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedSolanaTransaction {
+    pub payer: [u8; 32],
+    pub blockhash: String,
+    pub message: Vec<u8>,
+}
+impl PreparedSolanaTransaction {
+    pub fn sign(&self, key: &Ed25519Seed) -> Result<Vec<u8>, String> {
+        key.require_public_key(&self.payer)?;
+        let mut tx = vec![1];
+        tx.extend(key.sign(&self.message));
+        tx.extend(&self.message);
+        Ok(tx)
+    }
+}
+
+impl SolanaClient {
+    pub(crate) async fn prepare_transfer(
+        &self,
+        from: &str,
+        to: &str,
+        amount: u64,
+        token: Option<(&str, u8)>,
+    ) -> Result<PreparedSolanaTransaction, String> {
+        let payer = decode_b58_32(from)?;
+        let recipient = decode_b58_32(to)?;
+        let blockhash = self.fetch_recent_blockhash().await?;
+        let message = if let Some((mint, decimals)) = token {
+            let (program, actual_decimals) = self.fetch_transfer_mint(mint).await?;
+            if decimals != actual_decimals {
+                return Err("SPL decimals changed; review again".into());
+            }
+            let mint = decode_b58_32(mint)?;
+            let source = derive_associated_token_account(&payer, &mint, &program)?;
+            let destination = derive_associated_token_account(&recipient, &mint, &program)?;
+            let mut data = vec![12];
+            data.extend(amount.to_le_bytes());
+            data.push(decimals);
+            compile_message(
+                &payer,
+                &[
+                    (payer, true),
+                    (destination, true),
+                    (source, true),
+                    (recipient, false),
+                    (mint, false),
+                    ([0; 32], false),
+                    (program, false),
+                    (ASSOCIATED_TOKEN_PROGRAM_ID, false),
+                ],
+                &[
+                    (7, vec![0, 1, 3, 4, 5, 6], vec![1]),
+                    (6, vec![2, 4, 1, 0], data),
+                ],
+                &blockhash,
+            )?
+        } else {
+            let mut data = 2u32.to_le_bytes().to_vec();
+            data.extend(amount.to_le_bytes());
+            compile_message(
+                &payer,
+                &[(payer, true), (recipient, true), ([0; 32], false)],
+                &[(2, vec![0, 1], data)],
+                &blockhash,
+            )?
+        };
+        Ok(PreparedSolanaTransaction {
+            payer,
+            blockhash,
+            message,
+        })
+    }
+}
+
+fn compile_message(
+    payer: &[u8; 32],
+    account_metas: &[([u8; 32], bool)],
+    instructions: &[(usize, Vec<usize>, Vec<u8>)],
+    blockhash: &str,
+) -> Result<Vec<u8>, String> {
     let blockhash = decode_b58_32(blockhash)?;
     let mut accounts = vec![(*payer, true)];
     for (pubkey, writable) in account_metas {
@@ -264,10 +275,7 @@ fn compile_and_sign(
         msg.extend(compact_u16(data.len()));
         msg.extend(data);
     }
-    let mut tx = vec![1];
-    tx.extend(key.sign(&msg));
-    tx.extend(msg);
-    Ok(tx)
+    Ok(msg)
 }
 
 /// Solana compact-u16 encoding.

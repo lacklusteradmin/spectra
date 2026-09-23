@@ -1,12 +1,16 @@
-//! ICP send: Rosetta construction flow (preprocess → metadata → payloads →
-//! sign → combine → submit).
+pub(crate) use super::icp_stages::PreparedIcpTransaction;
+// ICP send: Rosetta construction flow (preprocess → metadata → payloads →
+// sign → combine → submit).
 
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 
 use crate::fetch::icp::{IcpClient, IcpSendResult};
 
 impl IcpClient {
     /// Submit an ICP transfer via the Rosetta construction API.
+    #[cfg(test)]
     pub async fn sign_and_submit(
         &self,
         from_address: &str,
@@ -118,7 +122,6 @@ impl IcpClient {
             .ok_or("combine: missing signed_transaction")?;
 
         let payload = json!({"network_identifier": network, "signed_transaction": signed_tx});
-        crate::send::payload::before_submission(payload.to_string(), "txid", None, None).await?;
         self.submit_signed_transaction(&payload.to_string()).await
     }
 
@@ -141,6 +144,7 @@ impl IcpClient {
     }
 }
 
+#[cfg(test)]
 fn build_transfer_ops(from: &str, to: &str, e8s: u64) -> Value {
     json!([
         {
@@ -164,6 +168,7 @@ fn build_transfer_ops(from: &str, to: &str, e8s: u64) -> Value {
     ])
 }
 
+#[cfg(test)]
 fn sign_icp_payload(hash_bytes: &[u8], private_key_bytes: &[u8]) -> Result<String, String> {
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();

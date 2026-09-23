@@ -35,6 +35,10 @@ class SendTests(unittest.TestCase):
                     method = call['method']; seen.append(method)
                     if method == 'eth_sendRawTransaction':
                         submitted.append(call['params'][0])
+                        with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
+                            artifacts = [json.loads(row[0]) for row in db.execute('SELECT payload FROM send_artifacts')]
+                        artifact = next(a for a in artifacts if a['submission'] and a['submission']['payload'] == call['params'][0])
+                        return {'jsonrpc':'2.0', 'id':call['id'], 'result':artifact['view']['transaction_hash']}
                     values = {'eth_chainId': chain_id, 'eth_blockNumber': '0x123',
                               'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
                               'eth_getCode': '0x', 'eth_getTransactionCount': '0x7',
@@ -74,7 +78,7 @@ class SendTests(unittest.TestCase):
                     run(*args,success=False,env={'SPECTRA_PASSWORD':wrong})
                     assert 'eth_sendRawTransaction' not in seen,seen
                 sent=run(*args,env={'SPECTRA_PASSWORD':password})
-                assert sent['transactionHash']=='0x'+'11'*32,sent
+                assert sent['transactionHash'].startswith('0x') and len(sent['transactionHash']) == 66,sent
                 assert seen.count('eth_sendRawTransaction')==1,seen
                 assert len(submitted) == 1 and submitted[0].startswith('0x'), submitted
                 assert len(bytes.fromhex(submitted[0][2:])) > 65, submitted
@@ -101,7 +105,7 @@ class SendTests(unittest.TestCase):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 def answer(call):
                     method = call['method']; requests.append(method)
-                    values = {'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
+                    values = {'eth_chainId': '0x1', 'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
                               'eth_getCode': '0x', 'eth_getTransactionCount': '0x7', 'eth_getTransactionByHash': {'nonce':'0x7'},
                               'eth_feeHistory': {'baseFeePerGas':['0x3b9aca00'], 'reward':[['0x77359400']]}}
                     assert method in values, method
@@ -155,6 +159,12 @@ class SendTests(unittest.TestCase):
                 risk=run('send','probe','--wallet','Source','--asset','ETH','--to',addresses[1])
                 assert risk['activity']=='funded', risk
                 assert quote['requires_self_send_confirmation']
+                artifact=run('send','build-owned',*base,'--amount','1','--destination',addresses[1])['artifact']
+                assert artifact['review']['requires_self_send_confirmation']
+                assert artifact['review']['warnings']==quote['warnings']
+                assert artifact['review']['recipient_warnings']==quote['recipient_warnings']
+                assert run('send','inspect',artifact['id'])['artifact']==artifact
+
                 assert quote['request']['evm_overrides']['nonce'] == 7
                 run('send','owned-broadcast',*base,'--amount','1','--destination',addresses[1],'--yes',success=False)
                 run('send','quote',*base,'--amount','10','--destination',addresses[1],success=False)
@@ -162,9 +172,9 @@ class SendTests(unittest.TestCase):
                     wid=db.execute("SELECT id FROM wallets WHERE name='Source'").fetchone()[0]
                     row=dict(id='pending',walletId=wid,walletName='Source',kind='send',status='pending',
                         chainName='Ethereum',symbol='ETH',assetDisplayName='Ethereum',deploymentId='ethereum:native',
-                        amount=0.123456789012,address=addresses[1],transactionHash='0x'+'aa'*32,createdAt=1234)
+                        amount=0.123456789012,address=addresses[1],transactionHash='0x'+'aa'*32,createdAtUnix=1234)
                     db.execute('INSERT INTO history_records (id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                        ('pending',wid,'Ethereum',row['transactionHash'],978308434,json.dumps(row)))
+                        ('pending',wid,'Ethereum',row['transactionHash'],1234,json.dumps(row)))
                 draft=run('send','replacement','pending')['draft']; assert draft['amount']=='0.123456789012',draft
                 draft=run('send','replacement','pending','--cancel')['draft']
                 assert draft['amount']=='0' and draft['destination']==addresses[0]

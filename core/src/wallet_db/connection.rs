@@ -73,6 +73,16 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA temp_store = MEMORY;
+         CREATE TABLE IF NOT EXISTS monero_wallets (wallet_id TEXT NOT NULL, chain_id TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(wallet_id, chain_id));
+         CREATE TABLE IF NOT EXISTS send_artifacts (
+             id TEXT PRIMARY KEY NOT NULL,
+             revision INTEGER NOT NULL,
+             payload TEXT NOT NULL CHECK(json_valid(payload))
+         );
+         CREATE TABLE IF NOT EXISTS send_reservations (
+             resource TEXT PRIMARY KEY NOT NULL,
+             artifact_id TEXT NOT NULL REFERENCES send_artifacts(id)
+         );
          CREATE TABLE IF NOT EXISTS wallet_keypool (
              wallet_id              TEXT    NOT NULL,
              chain_name             TEXT    NOT NULL,

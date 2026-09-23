@@ -38,6 +38,9 @@ impl WalletService {
         address: String,
     ) -> Result<String, SpectraBridgeError> {
         let chain = chain_for_id(chain_id)?;
+        if chain.mainnet_counterpart() == Chain::Monero {
+            return self.monero_history(chain, &address).await;
+        }
         fetch_history(&address, chain, None, self).await
     }
 

@@ -3,14 +3,22 @@
 
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
-use crate::derivation::litecoin::{decode_ltc_address, is_mweb_address, parse_mweb_address};
+use crate::derivation::litecoin::decode_ltc_address;
+#[cfg(test)]
+use crate::derivation::litecoin::is_mweb_address;
+#[cfg(test)]
+use crate::derivation::litecoin::parse_mweb_address;
+#[cfg(test)]
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
+#[cfg(test)]
 use crate::send::mweb::{build_peg_in_extension, MWEB_PEGIN_OVERHEAD_BYTES};
 
+#[cfg(test)]
 impl BlockbookClient {
     /// Fetch UTXOs, sign a legacy P2PKH LTC transaction, and broadcast.
     /// Automatically routes to the MWEB peg-in path when `to_address` is
     /// an `ltcmweb1` or `tmweb1` stealth address.
+    #[cfg(test)]
     pub async fn sign_litecoin_and_broadcast(
         &self,
         from_address: &str,
@@ -60,6 +68,7 @@ impl BlockbookClient {
     ///
     /// `fee_sat` is applied as-is; the MWEB overhead (~1017 extra bytes) should
     /// already be factored in by the caller's fee estimation.
+    #[cfg(test)]
     async fn sign_and_broadcast_mweb_peg_in(
         &self,
         from_address: &str,
@@ -110,7 +119,7 @@ impl BlockbookClient {
 /// `to_script` is the full scriptPubKey for the primary output (recipient).
 /// For ordinary sends it is a P2PKH script; for MWEB peg-ins it is the HogEx
 /// witness-v8 script produced by `build_peg_in_extension`.
-fn sign_ltc_with_output_script(
+pub(crate) fn sign_ltc_with_output_script(
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_script: &[u8],
     amount_sat: u64,

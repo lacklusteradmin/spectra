@@ -77,6 +77,7 @@ pub fn formatting_asset_amount_display(amount: f64, asset_decimals: u32) -> Asse
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FiatAmountRules {
+    pub currency: crate::store::state::FiatCurrency,
     /// The ISO 4217 code a currency formatter and a rate table take.
     pub code: String,
     pub decimals: u32,
@@ -87,12 +88,14 @@ pub fn fiat_amount_rules(currency: crate::store::state::FiatCurrency) -> FiatAmo
     let code = currency.code().to_string();
     if currency == crate::store::state::FiatCurrency::Jpy {
         FiatAmountRules {
+            currency,
             code,
             decimals: 0,
             minimum_visible: 1.0,
         }
     } else {
         FiatAmountRules {
+            currency,
             code,
             decimals: 2,
             minimum_visible: 0.01,
@@ -101,10 +104,11 @@ pub fn fiat_amount_rules(currency: crate::store::state::FiatCurrency) -> FiatAmo
 }
 
 #[uniffi::export]
-pub fn formatting_fiat_amount_rules(
-    currency: crate::store::state::FiatCurrency,
-) -> FiatAmountRules {
-    fiat_amount_rules(currency)
+pub fn fiat_currency_catalog() -> Vec<FiatAmountRules> {
+    crate::store::state::FiatCurrency::ALL
+        .into_iter()
+        .map(fiat_amount_rules)
+        .collect()
 }
 
 #[cfg(test)]

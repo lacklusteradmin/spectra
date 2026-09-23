@@ -308,6 +308,105 @@ fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenHostingChain)
     chain.token_standard()
 }
 
+impl WalletService {
+    /// Direct CLI builds get the same durable advisories even without a tracked holding.
+    pub(super) async fn staged_send_review(
+        &self,
+        request: &crate::send::SendExecutionRequest,
+    ) -> Result<crate::send::stages::SendArtifactReview, SpectraBridgeError> {
+        use crate::send::flow::{HighRiskChainAddress, HighRiskSendRequest};
+        let chain = super::chain_for_id(&request.chain_id)?;
+        let state = self.app_state().await;
+        let wallet = state
+            .wallets
+            .iter()
+            .find(|w| w.id == request.wallet_id)
+            .ok_or("Wallet removed")?;
+        let normalize_contract = |value: Option<String>| {
+            crate::tokens::normalize_token_identifier(value, chain.chain_display_name().into())
+        };
+        let holding = wallet.holdings.iter().find(|h| {
+            h.chain() == Some(chain)
+                && normalize_contract(h.contract_address.clone())
+                    == normalize_contract(request.contract_address.clone())
+        });
+        let symbol = holding.map(|h| h.symbol.clone()).unwrap_or_else(|| {
+            request
+                .contract_address
+                .clone()
+                .unwrap_or_else(|| chain.coin_symbol().into())
+        });
+        let warnings = crate::send::flow::evaluate_high_risk_send_reasons(HighRiskSendRequest {
+            chain_name: chain.chain_display_name().into(),
+            symbol: symbol.clone(),
+            amount: request.amount_str.parse().map_err(|_| "Invalid amount")?,
+            holding_amount: holding.map(|h| h.amount).unwrap_or(0.0),
+            destination_address: request.to_address.clone(),
+            destination_input: request.to_address.clone(),
+            used_ens_resolution: false,
+            wallet_family_name: wallet.chain_name.clone(),
+            address_book_entries: state
+                .address_book
+                .iter()
+                .map(|e| HighRiskChainAddress {
+                    chain_name: e.chain_name.clone(),
+                    address: e.address.clone(),
+                })
+                .collect(),
+            tx_addresses: self
+                .fetch_all_history_records()
+                .await?
+                .into_iter()
+                .map(|r| HighRiskChainAddress {
+                    chain_name: r.payload.chain_name,
+                    address: r.payload.address,
+                })
+                .collect(),
+        });
+        let recipient_warnings = if chain.is_evm() {
+            let recipient_has_code = self
+                .fetch_evm_has_contract_code(request.chain_id.clone(), request.to_address.clone())
+                .await
+                .ok();
+            let token_has_code = if let Some(contract) = &request.contract_address {
+                self.fetch_evm_has_contract_code(request.chain_id.clone(), contract.clone())
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+            crate::store::evm_recipient_preflight_warnings(
+                crate::store::EvmRecipientPreflightRequest {
+                    chain_name: chain.chain_display_name().into(),
+                    holding_symbol: symbol.clone(),
+                    token_symbol: request.contract_address.as_ref().map(|_| symbol),
+                    recipient_has_code,
+                    token_has_code,
+                },
+            )
+        } else {
+            Vec::new()
+        };
+        let normalize = |address: &str| {
+            crate::send::flow::normalized_send_address(
+                chain.chain_display_name().into(),
+                address.into(),
+            )
+        };
+        let destination = normalize(&request.to_address);
+        let requires_self_send_confirmation = self
+            .send_owned_addresses(chain)
+            .await?
+            .iter()
+            .any(|a| normalize(a) == destination);
+        Ok(crate::send::stages::SendArtifactReview {
+            warnings,
+            recipient_warnings,
+            requires_self_send_confirmation,
+        })
+    }
+}
+
 #[cfg(test)]
 mod preflight_tests {
     use super::*;

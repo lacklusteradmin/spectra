@@ -67,6 +67,14 @@ impl WalletService {
         tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))
             .await
             .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+            .map(|mut page| {
+                page.records = page
+                    .records
+                    .into_iter()
+                    .map(CorePersistedTransactionRecord::with_actions)
+                    .collect();
+                page
+            })
             .map_err(Into::into)
     }
     pub async fn transaction_snapshot(&self) -> Result<TransactionSnapshot, SpectraBridgeError> {
@@ -77,6 +85,14 @@ impl WalletService {
         })
         .await
         .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+        .map(|mut snapshot| {
+            snapshot.recent_and_pending = snapshot
+                .recent_and_pending
+                .into_iter()
+                .map(CorePersistedTransactionRecord::with_actions)
+                .collect();
+            snapshot
+        })
         .map_err(Into::into)
     }
     pub async fn transaction(
@@ -87,6 +103,7 @@ impl WalletService {
         tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
             .await
             .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+            .map(|record| record.map(CorePersistedTransactionRecord::with_actions))
             .map_err(Into::into)
     }
 }

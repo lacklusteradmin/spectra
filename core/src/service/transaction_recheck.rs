@@ -5,7 +5,9 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 use crate::SpectraBridgeError;
 
-fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<(Chain, bool), String> {
+pub(super) fn recheck_chain(
+    record: &CorePersistedTransactionRecord,
+) -> Result<(Chain, bool), String> {
     let chain = Chain::from_display_name(&record.chain_name)
         .ok_or("Status recheck is not available for this transaction.")?;
     let PendingStatusPoll::Utxo {

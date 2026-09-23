@@ -382,7 +382,7 @@ mod tests {
             "amount": 1.0,
             "address": "counterparty",
             "transactionHash": "0xabc",
-            "createdAt": 745_200_000.0,
+            "createdAtUnix": 745_200_000.0,
         });
         for (key, patch) in overrides.as_object().expect("overrides object") {
             if patch.is_null() {

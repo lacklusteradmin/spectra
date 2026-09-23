@@ -65,14 +65,6 @@ capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"
 probe_url = "https://mempool.emzy.de/api"
 
 [[endpoints]]
-id = "bitcoin.mainnet.maestro"
-api = "esplora"
-chain_id = "bitcoin"
-endpoint = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
-
-[[endpoints]]
 id = "bitcoin.explorer.tx"
 chain_id = "bitcoin"
 endpoint = "https://mempool.space/tx/"
@@ -290,14 +282,6 @@ chain_id = "dogecoin"
 endpoint = "https://dogechain.info/tx/"
 capabilities = []
 explorer_label = "Open In Dogechain"
-
-[[endpoints]]
-id = "tron.tronscan.account"
-api = "tronscan"
-chain_id = "tron"
-endpoint = "https://apilist.tronscanapi.com/api/accountv2"
-capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
-probe_url = "https://apilist.tronscanapi.com/api/system/status"
 
 [[endpoints]]
 id = "tron.trongrid.accounts.io"
@@ -604,25 +588,18 @@ capabilities = []
 explorer_label = "Open In Stellar Expert"
 
 [[endpoints]]
-id = "monero.backend.1"
-api = "monero-light-wallet"
+id = "monero.daemon.cake"
+api = "monero-daemon-rpc"
 chain_id = "monero"
-endpoint = "https://monerolws1.edge.app"
-capabilities = ["balance", "history", "fee", "broadcast"]
+endpoint = "http://xmr-node.cakewallet.com:18081"
+capabilities = ["fee", "broadcast"]
 
 [[endpoints]]
-id = "monero.backend.2"
-api = "monero-light-wallet"
-chain_id = "monero"
-endpoint = "https://monerolws2.edge.app"
-capabilities = ["balance", "history", "fee", "broadcast"]
-
-[[endpoints]]
-id = "monero.backend.3"
-api = "monero-light-wallet"
-chain_id = "monero"
-endpoint = "https://monerolws3.edge.app"
-capabilities = ["balance", "history", "fee", "broadcast"]
+id = "monero-stagenet.daemon"
+api = "monero-daemon-rpc"
+chain_id = "monero-stagenet"
+endpoint = "http://monero-stagenet.exan.tech:38081"
+capabilities = ["fee", "broadcast"]
 
 [[endpoints]]
 id = "monero.explorer.tx"

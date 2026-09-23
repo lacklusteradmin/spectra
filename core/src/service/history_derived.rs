@@ -119,7 +119,7 @@ mod tests {
         let json = format!(
             r#"{{"id":"{id}","walletId":"{wallet}","kind":"receive","status":"pending","walletName":"W",
                  "assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"{chain}","amount":0.5,
-                 "address":"bc1qreceive","createdAt":{created_at_swift}}}"#
+                 "address":"bc1qreceive","createdAtUnix":{created_at_swift}}}"#
         );
         serde_json::from_str(&json).expect("a persisted record")
     }
@@ -139,7 +139,7 @@ mod tests {
                 "B1B2C3D4-E5F6-7890-ABCD-EF1234567890",
                 "w1",
                 "Bitcoin",
-                745_200_000.0,
+                1_723_507_200.25,
             ))])
             .await
             .expect("upsert");
@@ -159,12 +159,7 @@ mod tests {
         );
     }
 
-    /// The derived views read the store's timestamp, not the payload's.
-    ///
-    /// `HistoryRecord::created_at` is Unix; the payload's `created_at` is in
-    /// Swift reference time. They differ by thirty-one years, and both are in
-    /// scope at the point this code reads one — the wrong one dates every
-    /// history entry to 1970 and orders the list by it.
+    /// Every history projection uses the same Unix timestamp.
     #[tokio::test]
     async fn derived_views_use_the_rows_unix_timestamp() {
         let service = WalletService::new(Vec::new()).expect("service");
@@ -174,7 +169,7 @@ mod tests {
             "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
             "w1",
             "Bitcoin",
-            745_200_000.0,
+            1_723_507_200.25,
         );
         service
             .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(payload)])
@@ -183,13 +178,7 @@ mod tests {
 
         let earliest = service.transaction_snapshot().await.unwrap().earliest;
         assert_eq!(earliest.len(), 1);
-        // 745200000 Swift-reference seconds is 2024-08-12 in Unix terms. Read
-        // as Unix it would be 1993.
-        assert!(
-            earliest[0].earliest_created_at_unix > 1_700_000_000.0,
-            "read the payload's Swift-reference timestamp as Unix: got {}",
-            earliest[0].earliest_created_at_unix
-        );
+        assert_eq!(earliest[0].earliest_created_at_unix, 1_723_507_200.25);
     }
 }
 
@@ -222,7 +211,7 @@ mod replaceable_tests {
             "amount": 1.5,
             "address": "0x1111111111111111111111111111111111111111",
             "transactionHash": "0xabc",
-            "createdAt": 745_200_000.0,
+            "createdAtUnix": 1_723_507_200.25,
         });
         for (key, patch) in overrides.as_object().expect("overrides object") {
             match patch {
@@ -317,19 +306,19 @@ mod replaceable_tests {
                         "11111111-1111-1111-1111-111111111111",
                         "Base",
                         "ETH",
-                        json!({"createdAt": 1.0}),
+                        json!({"createdAtUnix": 1.0}),
                     ),
                     record(
                         "22222222-2222-2222-2222-222222222222",
                         "Optimism",
                         "ETH",
-                        json!({"createdAt": 2.0}),
+                        json!({"createdAtUnix": 2.0}),
                     ),
                     record(
                         "33333333-3333-3333-3333-333333333333",
                         "Bitcoin",
                         "BTC",
-                        json!({"createdAt": 3.0}),
+                        json!({"createdAtUnix": 3.0}),
                     ),
                     record(
                         "44444444-4444-4444-4444-444444444444",

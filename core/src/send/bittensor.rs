@@ -23,61 +23,7 @@ use crate::send::substrate::BITTENSOR_BALANCES_TRANSFER_KEEP_ALIVE;
 const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
 impl BittensorClient {
-    pub async fn sign_and_submit(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        rao: u128,
-        private_key_bytes: &[u8; 32],
-        public_key_bytes: &[u8; 32],
-    ) -> Result<TaoSendResult, String> {
-        let _ = from_address;
-        let nonce = self.fetch_nonce(from_address).await?;
-        let (spec_version, tx_version) = self.fetch_runtime_version().await?;
-        let genesis_hash = self.fetch_genesis_hash().await?;
-        let block_hash = self.fetch_block_hash_latest().await?;
-
-        let extrinsic = build_signed_transfer(
-            to_address,
-            rao,
-            nonce,
-            spec_version,
-            tx_version,
-            &genesis_hash,
-            &block_hash,
-            private_key_bytes,
-            public_key_bytes,
-        )?;
-
-        let hex = format!("0x{}", hex::encode(&extrinsic));
-        crate::send::payload::before_submission(
-            serde_json::json!({"extrinsic_hex":hex}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
-        let result = self
-            .rpc_call("author_submitExtrinsic", json!([hex]))
-            .await?;
-        let txid = result
-            .as_str()
-            .ok_or("author_submitExtrinsic: expected string")?
-            .to_string();
-        Ok(TaoSendResult {
-            txid,
-            extrinsic_hex: hex,
-        })
-    }
-
     pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<TaoSendResult, String> {
-        crate::send::payload::before_submission(
-            serde_json::json!({"extrinsic_hex":hex}).to_string(),
-            "txid",
-            None,
-            None,
-        )
-        .await?;
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;

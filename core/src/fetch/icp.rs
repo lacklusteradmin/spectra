@@ -1,15 +1,5 @@
-//! Internet Computer Protocol (ICP) chain client.
-//!
-//! Uses the IC management canister and Rosetta API for balance and history.
-//! ICP ledger interactions use CBOR-encoded Candid messages.
-//! Keys are derived with secp256k1 (BIP32); identity is verified via
-//! self-authenticating principals (SHA-224 of the DER-encoded public key).
-//!
-//! For production send, the full Ingress message flow is:
-//!   1. Build a `call` envelope (CBOR)
-//!   2. Sign with the private key (ECDSA/secp256k1)
-//!   3. POST to /api/v2/canister/{canister_id}/call
-//!   4. Query with /api/v2/canister/{canister_id}/read_state
+//! ICP ledger reads and signed-envelope submission through Rosetta.
+//! Ed25519 identity, ledger arguments and ingress signatures are constructed locally.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -78,6 +68,7 @@ impl IcpClient {
         path: &str,
         body: &Value,
     ) -> Result<T, String> {
+        let is_submit = path == "/construction/submit";
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
         with_fallback(&self.rosetta_endpoints, |base| {
@@ -86,7 +77,15 @@ impl IcpClient {
             let body = std::sync::Arc::clone(&body);
             async move {
                 client
-                    .post_json(&url, &*body, RetryProfile::ChainRead)
+                    .post_json(
+                        &url,
+                        &*body,
+                        if is_submit {
+                            RetryProfile::ChainWrite
+                        } else {
+                            RetryProfile::ChainRead
+                        },
+                    )
                     .await
             }
         })

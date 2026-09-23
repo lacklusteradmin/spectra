@@ -5,15 +5,18 @@ use crate::send::keys::Ed25519Seed;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GasCoin {
     pub id: [u8; 32],
     pub version: u64,
     pub digest: [u8; 32],
     pub balance: u64,
 }
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedSuiTransfer {
     sender: [u8; 32],
-    bytes: Vec<u8>,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) objects: Vec<GasCoin>,
 }
 
 pub(crate) fn prepare_transfer(
@@ -63,7 +66,11 @@ pub(crate) fn prepare_transfer(
     bytes.extend_from_slice(&gas_price.to_le_bytes());
     bytes.extend_from_slice(&gas_budget.to_le_bytes());
     bytes.push(0); // TransactionExpiration::None
-    Ok(PreparedSuiTransfer { sender, bytes })
+    Ok(PreparedSuiTransfer {
+        sender,
+        bytes,
+        objects: coins.to_vec(),
+    })
 }
 impl PreparedSuiTransfer {
     pub(crate) fn sign(self, key: &Ed25519Seed) -> Result<(String, String), String> {
@@ -90,16 +97,13 @@ impl PreparedSuiTransfer {
     }
 }
 impl SuiClient {
-    pub async fn sign_and_send(
+    pub(crate) async fn prepare_native_transfer(
         &self,
         from: &str,
         to: &str,
         mist: u64,
         gas_budget: u64,
-        key: &Ed25519Seed,
-        public: &[u8; 32],
-    ) -> Result<SuiSendResult, String> {
-        key.require_public_key(public)?;
+    ) -> Result<PreparedSuiTransfer, String> {
         bcs::address(from)?;
         bcs::address(to)?;
         if mist == 0 || gas_budget == 0 {
@@ -164,22 +168,13 @@ impl SuiClient {
                 return Err("repeated Sui coin cursor".into());
             }
         }
-        let prepared = prepare_transfer(from, to, mist, gas_budget, gas_price, &coins)?;
-        let (bytes, signature) = prepared.sign(key)?;
-        self.execute_signed_tx(&bytes, &signature).await
+        prepare_transfer(from, to, mist, gas_budget, gas_price, &coins)
     }
     pub async fn execute_signed_tx(
         &self,
         tx_bytes_b64: &str,
         sig_b64: &str,
     ) -> Result<SuiSendResult, String> {
-        crate::send::payload::before_submission(
-            serde_json::json!({"tx_bytes_b64":tx_bytes_b64,"sig_b64":sig_b64}).to_string(),
-            "digest",
-            None,
-            None,
-        )
-        .await?;
         let result = self
             .call(
                 "sui_executeTransactionBlock",

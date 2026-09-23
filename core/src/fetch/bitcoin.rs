@@ -27,7 +27,7 @@ use crate::fetch::http::HttpClient;
 
 // ── Esplora API types
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EsploraUtxo {
     pub txid: String,
     pub vout: u32,
@@ -35,7 +35,7 @@ pub struct EsploraUtxo {
     pub value: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EsploraUtxoStatus {
     pub confirmed: bool,
     pub block_height: Option<u64>,
