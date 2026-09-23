@@ -185,10 +185,7 @@ impl WalletService {
 
     // ── Operational events ────────────────────────────────────────────────
 
-    /// The dashboard's asset rows: holdings grouped across chains, ordered,
-    /// with the pinned ones first.
-    ///
-    /// Holdings, quotes, pins and selected networks are all owned here.
+    /// Pin candidates, with pinned assets first and each group ordered by symbol.
     pub async fn dashboard_pin_options(
         &self,
     ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
@@ -504,35 +501,6 @@ impl WalletService {
 
 #[cfg(test)]
 mod pruning_reads_cores_own_tables {
-    use crate::registry::{Chain, PendingStatusPoll};
-
-    /// A chain that stops at the first confirmation must not keep a tracker for
-    /// a confirmed transaction.
-    ///
-    /// The filter this replaced lived in Swift and kept `pending` **or**
-    /// `confirmed` for every chain, without asking the chain's poll shape — so
-    /// on the chains that stop at one confirmation, every confirmed send held a
-    /// tracker nothing would ever poll again.
-    #[test]
-    fn only_chains_that_count_depth_keep_confirmed_transactions() {
-        let keeps_confirmed = |chain: Chain| {
-            matches!(
-                chain.pending_status_poll(),
-                PendingStatusPoll::Utxo {
-                    tracks_finality: true,
-                    ..
-                }
-            )
-        };
-        assert!(keeps_confirmed(Chain::Dogecoin), "Dogecoin shows a depth");
-        assert!(!keeps_confirmed(Chain::Litecoin));
-        assert!(!keeps_confirmed(Chain::Bitcoin));
-
-        // And a chain with no UTXO poll at all keeps nothing.
-        assert!(!keeps_confirmed(Chain::Ethereum));
-        assert!(!keeps_confirmed(Chain::Solana));
-    }
-
     /// Pruning takes the stricter side when it cannot see the transactions.
     #[tokio::test]
     async fn pruning_refuses_rather_than_guessing() {
@@ -816,12 +784,19 @@ fn dashboard_pin_options_from(
                 } else {
                     coin.chain().unwrap().chain_display_name().to_string()
                 },
-                artwork_name: Some(crate::store::holding_artwork_name(coin.clone())),
+                artwork_name: Some(crate::store::deployment_artwork_name(Some(
+                    coin.deployment_id(),
+                ))),
                 is_pinned: pinned.contains(&token_id),
             });
     }
     let mut options: Vec<_> = options.into_values().collect();
-    options.sort_by(|a, b| a.symbol.cmp(&b.symbol).then(a.token_id.cmp(&b.token_id)));
+    options.sort_by(|a, b| {
+        b.is_pinned
+            .cmp(&a.is_pinned)
+            .then(a.symbol.cmp(&b.symbol))
+            .then(a.token_id.cmp(&b.token_id))
+    });
     Ok(options)
 }
 
@@ -1036,6 +1011,7 @@ pub struct PortfolioSnapshot {
     pub groups: Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>,
     pub pin_options: Vec<crate::store::wallet_domain::CoreDashboardPinOption>,
     pub valuation: super::valuation::PortfolioValuation,
+    pub asset_precision: crate::formatting::AssetPrecisionCatalog,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -1054,6 +1030,7 @@ impl WalletService {
             groups: dashboard_groups_from(&state, &derived)?,
             pin_options: dashboard_pin_options_from(&state)?,
             valuation: valuation::portfolio_valuation(&state),
+            asset_precision: crate::formatting::asset_precision_catalog(&state),
             derived,
             state,
         })

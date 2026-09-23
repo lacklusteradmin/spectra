@@ -36,8 +36,9 @@ pub struct TxsArgs {
     page: bool,
     #[arg(long, default_value_t = 20)]
     limit: u32,
-    #[arg(long, default_value_t = 0)]
-    offset: u64,
+    /// Continue with the nextCursor returned by the preceding page.
+    #[arg(long, requires = "page")]
+    cursor: Option<String>,
     #[arg(long, default_value = "")]
     search: String,
     #[arg(long)]
@@ -1143,7 +1144,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             },
             search: args.search,
             oldest_first: args.oldest_first,
-            offset: args.offset,
+            cursor: args.cursor,
             limit: args.limit,
         }))?;
         out.text(|| println!("{page:?}"));

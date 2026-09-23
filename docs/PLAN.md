@@ -77,7 +77,7 @@ Navigation, editing and rendering caches remain platform view state.
 | 0 — Prove ownership on display currency | Done | `open_state` and state commands bind, update and persist core-owned state |
 | 1 — Move domain collections | Done | Wallets and address book are core-owned; history has its own queryable store; Swift renders projections |
 | 2 — Replace planners with intents | Done | No `core_plan_*` exports remain; some pure helpers only needed renaming |
-| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions owned by core; transport lifecycle and destination activity closed in the follow-up review; UI draft abstraction removed; durable review and native session isolation covered by the 2026-09-22 follow-up |
+| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions owned by core; transport lifecycle and destination activity closed in the follow-up review; UI draft abstraction removed; durable review covered by the 2026-09-22 follow-up; native flow ownership, import session isolation and core precision projections completed in the 2026-09-23 follow-up; completion/summary consumers, redundant refresh reads and native presentation coupling corrected in the shell boundary review |
 | C1 — Reshape core | Done | Shared chain catalog, service modules split by responsibility, duplicate modules and derivation primitives consolidated |
 | C2 — Reduce the FFI surface | Done | Owned operations and coherent snapshots replace caller-assembled decisions |
 | 4 — Android | Not started beyond skeleton | Implement against the shared core once the boundary is ready |
@@ -194,14 +194,16 @@ Swift async export, and offline assembly cannot verify a broadcast.
   A useful gate needs type-aware analysis before it can reject unused fields.
 - [ ] **Staking transaction execution.** The app currently provides information
   and validator queries. Transaction execution remains future work.
-- **Endpoint availability and redundancy:** ICP's Rosetta POST probe and the
-  skipped Bitcoin SV explicit probe are fixed. Zcash's registered Trezor API
-  still returns HTTP 403; Bitcoin SV's Blockchair provider remains unavailable
-  in the live check. Single-provider chains still need independent supported
-  providers. A successful health probe does not prove every capability works.
-  The user explicitly retained these as external dependencies on 2026-09-12.
+- **Endpoint availability and redundancy:** the 2026-09-23 live audit removed
+  failed built-in providers instead of retaining broken fallbacks. Zcash,
+  Bitcoin Gold, Dash, Dogecoin testnet and Monero stagenet now have no built-in
+  API; supported custom nodes remain configurable. Tron PublicNode uses its
+  verified `/jsonrpc` path. Diagnostics probe actual read methods on the selected
+  endpoint, including testnets and catalogued EVM history sources. Passing these
+  checks does not prove every advertised capability or transaction broadcast.
 - **EVM history availability:** only verified keyless indexers are configured.
-  BNB Chain, Sonic, opBNB, Sei, Linea and Hyperliquid have no history source;
+  BNB Chain, Sonic, opBNB, Sei, Linea, Hyperliquid, Cronos, X Layer and
+  Berachain have no built-in history source;
   Etherscan V2 and its API-key setting were removed by user request.
 
 - **Keyless provider policy:** API-key configuration and authenticated provider

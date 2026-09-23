@@ -251,7 +251,14 @@ impl WalletService {
             chain.evm_chain_id()?,
         );
         let mut next = client.fetch_nonce(source).await?;
-        for row in self.fetch_all_history_records().await? {
+        let db = self.bound_database().await?;
+        let sender = source.to_owned();
+        let rows = tokio::task::spawn_blocking(move || {
+            crate::wallet_db::history_pending_for_sender(&db, chain.chain_display_name(), &sender)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        for row in rows {
             let r = row.payload;
             if r.chain_name == chain.chain_display_name()
                 && r.source_address
@@ -267,9 +274,12 @@ impl WalletService {
             }
         }
         let db = self.bound_database().await?;
-        let artifacts = tokio::task::spawn_blocking(move || crate::wallet_db::send_list(&db))
-            .await
-            .map_err(|e| e.to_string())??;
+        let sender = source.to_owned();
+        let artifacts = tokio::task::spawn_blocking(move || {
+            crate::wallet_db::signed_sends_for_sender(&db, chain.str_id(), &sender)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         for artifact in artifacts {
             if artifact.view.chain_id == chain.str_id()
                 && artifact.view.sender.eq_ignore_ascii_case(source)

@@ -39,6 +39,7 @@ api = "blockchair"
 chain_id = "bitcoin"
 endpoint = "https://api.blockchair.com/bitcoin/dashboards/xpub/"
 capabilities = ["balance", "history"]
+probe_url = "https://api.blockchair.com/bitcoin/stats"
 
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
@@ -46,7 +47,7 @@ api = "esplora"
 chain_id = "bitcoin"
 endpoint = "https://blockstream.info/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://blockstream.info/api"
+probe_url = "https://blockstream.info/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool"
@@ -54,7 +55,7 @@ api = "esplora"
 chain_id = "bitcoin"
 endpoint = "https://mempool.space/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://mempool.space/api"
+probe_url = "https://mempool.space/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool_emzy"
@@ -62,7 +63,7 @@ api = "esplora"
 chain_id = "bitcoin"
 endpoint = "https://mempool.emzy.de/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://mempool.emzy.de/api"
+probe_url = "https://mempool.emzy.de/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.explorer.tx"
@@ -77,7 +78,7 @@ api = "esplora"
 chain_id = "bitcoin-testnet"
 endpoint = "https://blockstream.info/testnet/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://blockstream.info/testnet/api"
+probe_url = "https://blockstream.info/testnet/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.testnet.mempool"
@@ -85,7 +86,7 @@ api = "esplora"
 chain_id = "bitcoin-testnet"
 endpoint = "https://mempool.space/testnet/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://mempool.space/testnet/api"
+probe_url = "https://mempool.space/testnet/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.testnet4.mempool"
@@ -93,7 +94,7 @@ api = "esplora"
 chain_id = "bitcoin-testnet-4"
 endpoint = "https://mempool.space/testnet4/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://mempool.space/testnet4/api"
+probe_url = "https://mempool.space/testnet4/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.signet.blockstream"
@@ -101,7 +102,7 @@ api = "esplora"
 chain_id = "bitcoin-signet"
 endpoint = "https://blockstream.info/signet/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://blockstream.info/signet/api"
+probe_url = "https://blockstream.info/signet/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoin.signet.mempool"
@@ -109,7 +110,7 @@ api = "esplora"
 chain_id = "bitcoin-signet"
 endpoint = "https://mempool.space/signet/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://mempool.space/signet/api"
+probe_url = "https://mempool.space/signet/api/blocks/tip/height"
 
 [[endpoints]]
 id = "bitcoincash.blockchair.api"
@@ -175,30 +176,6 @@ capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
-id = "bitcoinsv.blockchair.api"
-api = "blockchair"
-chain_id = "bitcoin-sv"
-endpoint = "https://api.blockchair.com/bitcoin-sv"
-capabilities = ["balance", "history", "utxo", "fee", "verification"]
-probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
-
-[[endpoints]]
-id = "bitcoinsv.blockchair.push"
-api = "blockchair"
-chain_id = "bitcoin-sv"
-endpoint = "https://api.blockchair.com/bitcoin-sv/push/transaction"
-capabilities = ["broadcast"]
-probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
-
-[[endpoints]]
-id = "bitcoinsv.blockchair.txprefix"
-api = "blockchair"
-chain_id = "bitcoin-sv"
-endpoint = "https://api.blockchair.com/bitcoin-sv/dashboards/transaction/"
-capabilities = ["verification"]
-probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
-
-[[endpoints]]
 id = "bitcoinsv.explorer.tx"
 chain_id = "bitcoin-sv"
 endpoint = "https://whatsonchain.com/tx/"
@@ -211,7 +188,7 @@ api = "esplora"
 chain_id = "litecoin"
 endpoint = "https://litecoinspace.org/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://litecoinspace.org/api"
+probe_url = "https://litecoinspace.org/api/blocks/tip/height"
 
 [[endpoints]]
 id = "litecoin.blockcypher.api"
@@ -220,14 +197,6 @@ chain_id = "litecoin"
 endpoint = "https://api.blockcypher.com/v1/ltc/main"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/ltc/main"
-
-[[endpoints]]
-id = "litecoin.sochain.api"
-api = "sochain-v2"
-chain_id = "litecoin"
-endpoint = "https://sochain.com/api/v2"
-capabilities = ["balance", "history", "utxo", "verification"]
-probe_url = "https://sochain.com/api/v2"
 
 [[endpoints]]
 id = "litecoin.explorer.tx"
@@ -245,14 +214,6 @@ capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"
 probe_url = "https://api.blockcypher.com/v1/doge/main"
 
 [[endpoints]]
-id = "dogecoin.testnet.blockcypher"
-api = "blockcypher"
-chain_id = "dogecoin-testnet"
-endpoint = "https://api.blockcypher.com/v1/doge/test3"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://api.blockcypher.com/v1/doge/test3"
-
-[[endpoints]]
 id = "dogecoin.explorer.tx"
 chain_id = "dogecoin"
 endpoint = "https://dogechain.info/tx/"
@@ -268,22 +229,6 @@ capabilities = ["balance", "history", "token-balance", "token-discovery", "token
 probe_url = "https://api.trongrid.io/wallet/getnowblock"
 
 [[endpoints]]
-id = "tron.trongrid.accounts.pro"
-api = "trongrid-v1"
-chain_id = "tron"
-endpoint = "https://api.trongrid.pro/v1/accounts"
-capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
-probe_url = "https://api.trongrid.io/wallet/getnowblock"
-
-[[endpoints]]
-id = "tron.trongrid.accounts.network"
-api = "trongrid-v1"
-chain_id = "tron"
-endpoint = "https://api.trongrid.network/v1/accounts"
-capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
-probe_url = "https://api.trongrid.io/wallet/getnowblock"
-
-[[endpoints]]
 id = "tron.trongrid.rpc.io"
 api = "tron-http"
 chain_id = "tron"
@@ -295,8 +240,7 @@ probe_url = "https://api.trongrid.io/wallet/getnowblock"
 id = "tron.rpc.publicnode"
 api = "tron-json-rpc"
 chain_id = "tron"
-endpoint = "https://tron-rpc.publicnode.com"
-# Replaced api.trongrid.pro and .network, both unreachable.
+endpoint = "https://tron-rpc.publicnode.com/jsonrpc"
 capabilities = ["fee", "broadcast", "verification", "token-balance"]
 
 [[endpoints]]
@@ -382,14 +326,6 @@ chain_id = "cardano"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
 capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
 probe_url = "https://graph.xray.app/output/services/koios/mainnet/api/v1/tip"
-
-[[endpoints]]
-id = "cardano.koios.happystaking"
-api = "koios"
-chain_id = "cardano"
-endpoint = "https://koios.happystaking.io:8453/api/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
-probe_url = "https://koios.happystaking.io:8453/api/v1/tip"
 
 [[endpoints]]
 id = "cardano.explorer.tx"
@@ -571,13 +507,6 @@ endpoint = "http://xmr-node.cakewallet.com:18081"
 capabilities = ["fee", "broadcast"]
 
 [[endpoints]]
-id = "monero-stagenet.daemon"
-api = "monero-daemon-rpc"
-chain_id = "monero-stagenet"
-endpoint = "http://monero-stagenet.exan.tech:38081"
-capabilities = ["fee", "broadcast"]
-
-[[endpoints]]
 id = "monero.explorer.tx"
 chain_id = "monero"
 endpoint = "https://xmrchain.net/tx/"
@@ -607,13 +536,6 @@ endpoint = "https://ethereum-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
-id = "ethereum.rpc.cloudflare"
-api = "evm-json-rpc"
-chain_id = "ethereum"
-endpoint = "https://cloudflare-eth.com"
-capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
 id = "ethereum.rpc.1rpc"
 api = "evm-json-rpc"
 chain_id = "ethereum"
@@ -626,7 +548,7 @@ api = "blockscout"
 chain_id = "ethereum"
 endpoint = "https://eth.blockscout.com"
 # Keyless. Etherscan-V1 request shape; 3/3 in the 2026-09 sweep.
-capabilities = ["history", "token-balance", "token-discovery", "token-history"]
+capabilities = ["history", "token-history"]
 
 [[endpoints]]
 id = "ethereum.explorer.tx"
@@ -662,8 +584,8 @@ capabilities = ["balance", "fee", "broadcast", "verification"]
 id = "ethereumclassic.explorer.blockscout"
 api = "blockscout"
 chain_id = "ethereum-classic"
-endpoint = "https://blockscout.com/etc/mainnet"
-capabilities = ["history", "token-balance", "token-discovery", "token-history"]
+endpoint = "https://etc.blockscout.com"
+capabilities = ["history", "token-history"]
 
 [[endpoints]]
 id = "ethereumclassic.explorer.tx"
@@ -796,13 +718,6 @@ id = "hyperliquid.rpc.primary"
 api = "evm-json-rpc"
 chain_id = "hyperliquid"
 endpoint = "https://rpc.hyperliquid.xyz/evm"
-capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "hyperliquid.rpc.onfinality"
-api = "evm-json-rpc"
-chain_id = "hyperliquid"
-endpoint = "https://hyperliquid.api.onfinality.io/evm/public"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -966,27 +881,11 @@ capabilities = []
 explorer_label = "Open In PolygonScan"
 
 [[endpoints]]
-id = "zcash.mainnet.trezor_blockbook"
-api = "blockbook"
-chain_id = "zcash"
-endpoint = "https://zec1.trezor.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://zec1.trezor.io/api/v2"
-
-[[endpoints]]
 id = "zcash.explorer.tx"
 chain_id = "zcash"
 endpoint = "https://zcashblockexplorer.com/transactions/"
 capabilities = []
 explorer_label = "Open In Zcash Block Explorer"
-
-[[endpoints]]
-id = "bitcoinGold.mainnet.trezor_blockbook"
-api = "blockbook"
-chain_id = "bitcoin-gold"
-endpoint = "https://btg1.trezor.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://btg1.trezor.io/api/v2"
 
 [[endpoints]]
 id = "bitcoinGold.explorer.tx"
@@ -1161,14 +1060,6 @@ capabilities = []
 explorer_label = "Open In Ink Explorer"
 
 [[endpoints]]
-id = "dash.mainnet.trezor_blockbook"
-api = "blockbook"
-chain_id = "dash"
-endpoint = "https://dash1.trezor.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
-probe_url = "https://dash1.trezor.io/api/v2"
-
-[[endpoints]]
 id = "dash.explorer.tx"
 chain_id = "dash"
 endpoint = "https://insight.dash.org/insight/tx/"
@@ -1204,3 +1095,89 @@ chain_id = "bittensor"
 endpoint = "https://taostats.io/extrinsic/"
 capabilities = []
 explorer_label = "Open In Taostats"
+
+# Verified keyless address-history services; shared by routing and diagnostics.
+
+[[endpoints]]
+id = "base.history.keyless"
+api = "blockscout"
+chain_id = "base"
+endpoint = "https://base.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "arbitrum.history.keyless"
+api = "blockscout"
+chain_id = "arbitrum"
+endpoint = "https://arbitrum.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "optimism.history.keyless"
+api = "blockscout"
+chain_id = "optimism"
+endpoint = "https://explorer.optimism.io"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "polygon.history.keyless"
+api = "blockscout"
+chain_id = "polygon"
+endpoint = "https://polygon.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "scroll.history.keyless"
+api = "blockscout"
+chain_id = "scroll"
+endpoint = "https://scroll.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "celo.history.keyless"
+api = "blockscout"
+chain_id = "celo"
+endpoint = "https://celo.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "zksync-era.history.keyless"
+api = "blockscout"
+chain_id = "zksync-era"
+endpoint = "https://zksync.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "unichain.history.keyless"
+api = "blockscout"
+chain_id = "unichain"
+endpoint = "https://unichain.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "ink.history.keyless"
+api = "blockscout"
+chain_id = "ink"
+endpoint = "https://explorer.inkonchain.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "avalanche.history.keyless"
+api = "blockscout"
+chain_id = "avalanche"
+endpoint = "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "blast.history.keyless"
+api = "blockscout"
+chain_id = "blast"
+endpoint = "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "mantle.history.keyless"
+api = "blockscout"
+chain_id = "mantle"
+endpoint = "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan"
+capabilities = ["history", "token-history"]

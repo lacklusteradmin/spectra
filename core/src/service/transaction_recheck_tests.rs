@@ -59,12 +59,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         )
         .await;
         service
-            .record_status_poll(
-                "TARGET".into(),
-                StatusPollOutcome::Confirmed {
-                    confirmations: Some(99),
-                },
-            )
+            .record_status_poll("TARGET".into(), StatusPollOutcome::Confirmed)
             .await;
         let change = service
             .recheck_transaction_status("target".into())
@@ -93,7 +88,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
 }
 
 #[tokio::test]
-async fn explicit_recheck_reopens_finality_and_clears_reorg_metadata() {
+async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
     let server = MockServer::start().await;
     let (service, _) = service(Chain::Dogecoin, &server).await;
     Mock::given(any())
@@ -108,12 +103,7 @@ async fn explicit_recheck_reopens_finality_and_clears_reorg_metadata() {
     row.confirmed_network_fee = Some(1.0);
     save(&service, row).await;
     service
-        .record_status_poll(
-            "target".into(),
-            StatusPollOutcome::Confirmed {
-                confirmations: Some(99),
-            },
-        )
+        .record_status_poll("target".into(), StatusPollOutcome::Confirmed)
         .await;
     let change = service
         .recheck_transaction_status("target".into())
@@ -124,7 +114,11 @@ async fn explicit_recheck_reopens_finality_and_clears_reorg_metadata() {
     assert_eq!(row.receipt_block_number, None);
     assert_eq!(row.confirmation_count, Some(0));
     assert_eq!(row.confirmed_network_fee, None);
-    assert!(!service.status_trackers.read().await["target"].reached_finality);
+    assert!(!service.status_trackers.read().await["target"].polling_complete);
+    assert_eq!(
+        service.pending_maintenance_chains().await.unwrap(),
+        vec!["dogecoin"]
+    );
     server.verify().await;
 }
 
@@ -258,4 +252,85 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
         }
         server.verify().await;
     }
+}
+
+#[tokio::test]
+async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_rechecked() {
+    let server = MockServer::start().await;
+    let (service, path) = service(Chain::Dogecoin, &server).await;
+    let mut row = record("target", Chain::Dogecoin, "pending");
+    row.confirmation_count = None;
+    row.receipt_block_number = None;
+    save(&service, row).await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hash":"ab".repeat(32), "block_height":100, "confirmations":1
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let changes = service
+        .poll_pending_transactions("dogecoin".into())
+        .await
+        .unwrap();
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].new_status, CoreTransactionStatus::Confirmed);
+    assert_eq!(
+        service.transactions().await.unwrap()[0].confirmation_count,
+        Some(1)
+    );
+    assert!(service
+        .pending_maintenance_chains()
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(service
+        .poll_pending_transactions("dogecoin".into())
+        .await
+        .unwrap()
+        .is_empty());
+    let reopened = WalletService::new(vec![ChainEndpoints {
+        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+            .map(String::from)
+            .to_vec(),
+        chain_id: "dogecoin".into(),
+        endpoints: vec![server.uri()],
+    }])
+    .unwrap();
+    reopened.open_state(path).await.unwrap();
+    assert!(reopened
+        .refresh_pending_transactions()
+        .await
+        .unwrap()
+        .chains
+        .is_empty());
+    assert!(reopened
+        .poll_pending_transactions("dogecoin".into())
+        .await
+        .unwrap()
+        .is_empty());
+    server.verify().await; // No second request, even after a new service starts.
+    server.reset().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hash":"ab".repeat(32), "block_height":100, "confirmations":100001
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let change = reopened
+        .recheck_transaction_status("target".into())
+        .await
+        .unwrap();
+    assert!(!change.status_changed);
+    assert_eq!(
+        reopened.transactions().await.unwrap()[0].confirmation_count,
+        Some(100001)
+    );
+    assert!(reopened
+        .pending_maintenance_chains()
+        .await
+        .unwrap()
+        .is_empty());
+    server.verify().await;
 }

@@ -1,3 +1,6 @@
+//! Optional shared number presentation, not transaction amount validation.
+//! Front ends may choose another display style. Signing uses exact artifact amounts.
+
 use serde::{Deserialize, Serialize};
 
 /// How to render one amount of one asset.
@@ -24,9 +27,8 @@ const SIGNIFICANT_DIGITS: u32 = 6;
 
 /// Ceiling on rendered decimal places, whatever the asset supports.
 ///
-/// An 18-decimal token can hold amounts no interface should print in full; past
-/// eight places the number is dust, and `below_threshold` says so in one glyph
-/// rather than eighteen digits.
+/// Compact portfolio rows stop at eight places and mark smaller positive amounts.
+/// Detail and signing views may show full precision; this is not a protocol limit.
 const MAX_DISPLAY_PLACES: u32 = 8;
 
 /// How many decimal places to show for `amount` of an asset with
@@ -176,5 +178,33 @@ mod tests {
         let usd = fiat_amount_rules(crate::store::state::FiatCurrency::Usd);
         assert_eq!(usd.decimals, 2);
         assert!((usd.minimum_visible - 0.01).abs() < 1e-9);
+    }
+}
+
+/// Effective precision by concrete deployment, derived from core-owned preferences.
+/// Unknown historical assets use a display fallback, never an assumed native identity.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetPrecisionCatalog {
+    pub by_deployment_id: std::collections::HashMap<String, u32>,
+    pub unknown_decimals: u32,
+}
+
+pub(crate) fn asset_precision_catalog(
+    state: &crate::store::state::CoreAppState,
+) -> AssetPrecisionCatalog {
+    let by_deployment_id = crate::tokens::catalog()
+        .iter()
+        .map(|entry| (entry.deployment_id.clone(), entry.decimals))
+        .chain(state.token_preferences.iter().map(|entry| {
+            let id = entry.token.deployment_id.clone();
+            let decimals =
+                crate::tokens::token_display_decimals(Some(id.clone()), Some(entry.token.decimals));
+            (id, decimals)
+        }))
+        .collect();
+    AssetPrecisionCatalog {
+        by_deployment_id,
+        unknown_decimals: crate::tokens::token_display_decimals(None, None),
     }
 }

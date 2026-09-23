@@ -1,6 +1,6 @@
 //! Polling a chain's pending transactions for a final status.
 //!
-//! How a chain reaches finality is a registry fact, and the three shapes it
+//! How a chain resolves pending transactions is a registry fact, and the three shapes it
 //! takes — a UTXO status endpoint, an address history that names confirmed
 //! txids, an EVM receipt — were three loops on the front end's side of the
 //! boundary. Each one selected the records to poll from its own projection of
@@ -17,8 +17,8 @@ use crate::SpectraBridgeError;
 
 /// The stored records this chain's poll shape tracks.
 ///
-/// A receive confirms on its own where `require_send_kind` says so, and a
-/// chain that counts confirmations keeps polling after the first one.
+/// A receive confirms on its own where `require_send_kind` says so.
+/// Confirmed records never need automatic status polling.
 fn tracked(
     records: &[crate::store::persistence_models::CorePersistedTransactionRecord],
     chain: Chain,
@@ -40,17 +40,14 @@ pub(super) fn needs_status_poll(
     poll: PendingStatusPoll,
 ) -> bool {
     use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
-    let (finality, sends_only) = match poll {
-        PendingStatusPoll::Utxo {
-            tracks_finality,
-            require_send_kind,
-        } => (tracks_finality, require_send_kind),
-        PendingStatusPoll::EvmReceipt | PendingStatusPoll::HistoryTxids => (false, true),
+    let sends_only = match poll {
+        PendingStatusPoll::Utxo { require_send_kind } => require_send_kind,
+        PendingStatusPoll::EvmReceipt | PendingStatusPoll::HistoryTxids => true,
         PendingStatusPoll::None => return false,
     };
     hash.is_some_and(|h| !h.trim().is_empty())
         && (!sends_only || kind == K::Send)
-        && (status == S::Pending || (finality && status == S::Confirmed))
+        && status == S::Pending
 }
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
@@ -167,26 +164,33 @@ impl WalletService {
 
         let mut resolutions = Vec::new();
         match poll {
-            PendingStatusPoll::Utxo {
-                tracks_finality, ..
-            } => {
+            PendingStatusPoll::Utxo { .. } => {
                 for record in records.iter().filter(|r| due.contains(&r.id)) {
                     let Some(hash) = record.transaction_hash.clone() else {
                         continue;
                     };
                     match self.fetch_utxo_tx_status(chain_id.clone(), hash).await {
                         Ok(status) => {
-                            let confirmations: Option<u32> = tracks_finality
-                                .then(|| {
-                                    status.confirmations.map(|count| count as u32).or_else(|| {
-                                        record.confirmation_count.map(|count| count.max(0) as u32)
-                                    })
-                                })
-                                .flatten();
+                            // Confirmation depth is provider metadata, not a polling threshold.
+                            let confirmations = if status.confirmed {
+                                match status.confirmations.map(u32::try_from).transpose() {
+                                    Ok(count) => count,
+                                    Err(_) => {
+                                        self.record_status_poll(
+                                            record.id.clone(),
+                                            crate::service::StatusPollOutcome::Failed,
+                                        )
+                                        .await;
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                None
+                            };
                             self.record_status_poll(
                                 record.id.clone(),
                                 if status.confirmed {
-                                    crate::service::StatusPollOutcome::Confirmed { confirmations }
+                                    crate::service::StatusPollOutcome::Confirmed
                                 } else {
                                     crate::service::StatusPollOutcome::Pending
                                 },
@@ -251,9 +255,7 @@ impl WalletService {
                             };
                             self.record_status_poll(
                                 record.id.clone(),
-                                crate::service::StatusPollOutcome::Confirmed {
-                                    confirmations: None,
-                                },
+                                crate::service::StatusPollOutcome::Confirmed,
                             )
                             .await;
                             resolutions.push(ResolvedPendingStatus {
@@ -327,9 +329,7 @@ impl WalletService {
                         self.record_status_poll(
                             record.id.clone(),
                             if is_confirmed {
-                                crate::service::StatusPollOutcome::Confirmed {
-                                    confirmations: None,
-                                }
+                                crate::service::StatusPollOutcome::Confirmed
                             } else {
                                 crate::service::StatusPollOutcome::Pending
                             },
@@ -429,29 +429,16 @@ mod tests {
             &all,
             Chain::Bitcoin,
             PendingStatusPoll::Utxo {
-                tracks_finality: false,
                 require_send_kind: true,
             },
         );
         assert_eq!(ids(&plain), vec!["pending-send"]);
-
-        // Counting confirmations means polling past the first one.
-        let finality = tracked(
-            &all,
-            Chain::Bitcoin,
-            PendingStatusPoll::Utxo {
-                tracks_finality: true,
-                require_send_kind: true,
-            },
-        );
-        assert_eq!(ids(&finality), vec!["pending-send", "confirmed-send"]);
 
         // A chain that tracks receives too.
         let receives = tracked(
             &all,
             Chain::Bitcoin,
             PendingStatusPoll::Utxo {
-                tracks_finality: false,
                 require_send_kind: false,
             },
         );
@@ -489,7 +476,7 @@ mod tests {
             .is_err());
     }
     #[tokio::test]
-    async fn maintenance_scope_uses_registry_finality_and_ignores_empty_hashes() {
+    async fn maintenance_skips_confirmed_records_after_reopening_and_ignores_empty_hashes() {
         let (service, path) = stored_service().await;
         use crate::store::state::{StateCommand, WalletState};
         service
@@ -523,16 +510,18 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(
-            service.pending_maintenance_chains().await.unwrap(),
-            vec!["dogecoin"]
-        );
+        assert!(service
+            .pending_maintenance_chains()
+            .await
+            .unwrap()
+            .is_empty());
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path).await.unwrap();
-        assert_eq!(
-            reopened.pending_maintenance_chains().await.unwrap(),
-            vec!["dogecoin"]
-        );
+        assert!(reopened
+            .pending_maintenance_chains()
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     async fn stored_service() -> (std::sync::Arc<WalletService>, String) {

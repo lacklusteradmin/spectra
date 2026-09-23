@@ -3,7 +3,7 @@ use super::*;
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum HistoryQueryFilter {
     #[default]
@@ -20,7 +20,7 @@ pub struct HistoryQuery {
     pub filter: HistoryQueryFilter,
     pub search: String,
     pub oldest_first: bool,
-    pub offset: u64,
+    pub cursor: Option<String>,
     pub limit: u32,
 }
 impl Default for HistoryQuery {
@@ -30,7 +30,7 @@ impl Default for HistoryQuery {
             filter: HistoryQueryFilter::All,
             search: String::new(),
             oldest_first: false,
-            offset: 0,
+            cursor: None,
             limit: 20,
         }
     }
@@ -40,7 +40,7 @@ impl Default for HistoryQuery {
 pub struct HistoryPage {
     pub records: Vec<CorePersistedTransactionRecord>,
     pub has_more: bool,
-    pub next_offset: u64,
+    pub next_cursor: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -58,10 +58,8 @@ impl WalletService {
         &self,
         query: HistoryQuery,
     ) -> Result<HistoryPage, SpectraBridgeError> {
-        if query.limit == 0 || query.limit > 200 || query.offset > i64::MAX as u64 {
-            return Err(
-                "history query limit must be 1...200 and offset must fit an integer".into(),
-            );
+        if query.limit == 0 || query.limit > 200 {
+            return Err("history query limit must be 1...200".into());
         }
         let database = self.bound_database().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))

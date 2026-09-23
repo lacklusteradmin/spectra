@@ -94,6 +94,45 @@ pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, St
     })
 }
 
+/// Only decode and validate signed artifacts belonging to this sender or wallet.
+pub(crate) fn signed_sends_for_sender(
+    database: &WalletDatabase,
+    chain: &str,
+    sender: &str,
+) -> Result<Vec<StoredSend>, String> {
+    signed_sends_where(database, "json_extract(payload, '$.view.chain_id') = ?1 AND lower(json_extract(payload, '$.view.sender')) = lower(?2)", chain, sender)
+}
+
+pub(crate) fn signed_sends_for_wallet(
+    database: &WalletDatabase,
+    chain: &str,
+    wallet: &str,
+) -> Result<Vec<StoredSend>, String> {
+    signed_sends_where(database, "json_extract(payload, '$.view.chain_id') = ?1 AND json_extract(payload, '$.view.wallet_id') = ?2", chain, wallet)
+}
+
+fn signed_sends_where(
+    database: &WalletDatabase,
+    predicate: &str,
+    chain: &str,
+    owner: &str,
+) -> Result<Vec<StoredSend>, String> {
+    with_conn(database, |conn| {
+        let mut stmt = conn.prepare(&format!("SELECT payload FROM send_artifacts WHERE {predicate} AND json_extract(payload, '$.view.stage') = 'Signed'"))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![chain, owner], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.map(|row| {
+            let stored: StoredSend = serde_json::from_str(&row.map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            stored.validate()?;
+            Ok(stored)
+        })
+        .collect()
+    })
+}
+
 pub(crate) fn send_exists(database: &WalletDatabase, id: &str) -> Result<bool, String> {
     with_conn(database, |conn| {
         conn.query_row(
@@ -132,4 +171,49 @@ fn permits_evm_replacement(next: &StoredSend, prior: &StoredSend) -> bool {
             next_tx.max_priority_fee_per_gas,
             prior_tx.max_priority_fee_per_gas,
         )
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+
+    #[test]
+    fn signed_queries_skip_unrelated_artifacts_but_refuse_invalid_selected_artifacts() {
+        let db = WalletDatabase::new(":memory:");
+        with_conn(&db, |conn| {
+            for (id, chain, sender, wallet, stage) in [
+                ("other-chain", "base", "0xabc", "w", "Signed"),
+                ("other-owner", "ethereum", "0xdef", "other", "Signed"),
+                ("unsigned", "ethereum", "0xabc", "w", "Prepared"),
+            ] {
+                // Valid JSON but deliberately not a valid StoredSend: irrelevant
+                // artifacts must not be deserialized or validated by a scoped read.
+                let payload = serde_json::json!({"view": {
+                    "chain_id": chain, "sender": sender, "wallet_id": wallet, "stage": stage,
+                }}).to_string();
+                conn.execute("INSERT INTO send_artifacts VALUES (?1, 0, ?2)", params![id, payload]).unwrap();
+            }
+            for (predicate, index) in [
+                ("json_extract(payload, '$.view.chain_id') = 'ethereum' AND lower(json_extract(payload, '$.view.sender')) = '0xabc'", "idx_send_sender"),
+                ("json_extract(payload, '$.view.wallet_id') = 'w' AND json_extract(payload, '$.view.chain_id') = 'ethereum'", "idx_send_wallet"),
+            ] {
+                let plan: Vec<String> = conn.prepare(&format!("EXPLAIN QUERY PLAN SELECT payload FROM send_artifacts WHERE {predicate} AND json_extract(payload, '$.view.stage') = 'Signed'"))
+                    .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
+                assert!(plan.iter().any(|line| line.contains(index)), "{plan:?}");
+            }
+            Ok(())
+        }).unwrap();
+        assert!(signed_sends_for_sender(&db, "ethereum", "0xABC")
+            .unwrap()
+            .is_empty());
+        assert!(signed_sends_for_wallet(&db, "ethereum", "w")
+            .unwrap()
+            .is_empty());
+        with_conn(&db, |conn| {
+            conn.execute("UPDATE send_artifacts SET payload = json_set(payload, '$.view.stage', 'Signed') WHERE id = 'unsigned'", []).unwrap();
+            Ok(())
+        }).unwrap();
+        assert!(signed_sends_for_sender(&db, "ethereum", "0xABC").is_err());
+        assert!(signed_sends_for_wallet(&db, "ethereum", "w").is_err());
+    }
 }

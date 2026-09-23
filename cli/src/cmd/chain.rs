@@ -173,18 +173,12 @@ pub struct EndpointsArgs {
     source: Option<String>,
 }
 
-/// Call every registered endpoint and report which ones answer.
-///
-/// The catalog is static JSON: an endpoint that dies stays in it, and every
-/// call that reaches it pays a full timeout plus `with_fallback`'s 180 ms
-/// before moving on. Eleven were dead when this command was written, and
-/// finding them meant opening the diagnostics screen for one chain at a time.
+/// Check read methods for every API, including testnets and history indexers.
+/// Missing providers and unchecked APIs are reported separately from web links.
 pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     let chains: Vec<Chain> = match &args.chain {
         Some(name) => vec![super::resolve_chain(name)?],
-        None => Chain::all()
-            .filter(|c| c.mainnet_counterpart() == *c)
-            .collect(),
+        None => Chain::all().collect(),
     };
     if let Some(url) = args.add {
         let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
@@ -272,16 +266,23 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     let service = ctx.service()?;
 
     let mut rows = Vec::new();
+    let mut networks_without_apis = Vec::new();
     for chain in chains {
         let probes = ctx
             .rt
-            .block_on(service.probe_chain_endpoints(chain.str_id().to_string()))
-            .unwrap_or_default();
+            .block_on(service.probe_chain_endpoints(chain.str_id().to_string()))?;
+        if !probes.iter().any(|probe| probe.api.is_some()) {
+            networks_without_apis.push(chain.str_id());
+        }
         rows.extend(probes);
     }
 
     let unreachable = rows.iter().filter(|r| r.checked && !r.reachable).count();
     let unchecked = rows.iter().filter(|r| !r.checked).count();
+    let unchecked_apis = rows
+        .iter()
+        .filter(|r| r.api.is_some() && !r.checked)
+        .count();
 
     out.text(|| {
         println!();
@@ -298,6 +299,9 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 println!("       {}", out::hint(&r.detail));
             }
         }
+        for chain in &networks_without_apis {
+            println!("  {chain}: no configured API endpoints");
+        }
         println!();
         println!(
             "  {} reachable, {} unreachable, {} with no probe",
@@ -307,7 +311,9 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         );
     });
     out.emit(serde_json::json!({
-        "ok": unreachable == 0,
+        "ok": unreachable == 0 && unchecked_apis == 0 && rows.len() > unchecked,
+        "networksWithoutApis": networks_without_apis,
+        "uncheckedApis": unchecked_apis,
         "total": rows.len(),
         "unreachable": unreachable,
         "unchecked": unchecked,

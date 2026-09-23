@@ -93,6 +93,7 @@ mod network_history;
 mod network_prices;
 pub use network_prices::{fetch_fiat_rates, fetch_prices, QuoteRefreshState};
 mod endpoint_directory;
+mod endpoint_health;
 mod network_tokens;
 pub use endpoint_directory::{CustomEndpoint, EndpointDirectoryEntry};
 mod operational_events;

@@ -712,3 +712,117 @@ fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
         Some((0, "encrypted-stagenet".into()))
     );
 }
+
+#[test]
+fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
+    let db = tmp_db();
+    let original = history_record_on("original", "w1", "Bitcoin");
+    history_upsert_batch(&db, std::slice::from_ref(&original)).unwrap();
+    with_conn(&db, |conn| {
+        conn.execute_batch("CREATE TRIGGER reject_history BEFORE INSERT ON history_records WHEN NEW.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())
+    }).unwrap();
+    let batch = [
+        history_record_on("new", "w1", "Bitcoin"),
+        history_record_on("reject", "w1", "Bitcoin"),
+    ];
+    for replace in [false, true] {
+        let result = if replace {
+            history_replace_all(&db, &batch)
+        } else {
+            history_upsert_batch(&db, &batch)
+        };
+        assert!(result.is_err());
+        let rows = history_fetch_all(&db).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "original");
+    }
+    with_conn(&db, |conn| {
+        conn.execute_batch("DROP TRIGGER reject_history")
+            .map_err(|e| e.to_string())
+    })
+    .unwrap();
+    history_upsert_batch(&db, &batch).unwrap();
+    assert_eq!(history_fetch_all(&db).unwrap().len(), 3);
+    with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_delete BEFORE DELETE ON history_records WHEN OLD.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())).unwrap();
+    assert!(history_delete(&db, &["new".into(), "reject".into()]).is_err());
+    assert_eq!(history_fetch_all(&db).unwrap().len(), 3);
+    with_conn(&db, |conn| {
+        conn.execute_batch("DROP TRIGGER reject_delete")
+            .map_err(|e| e.to_string())
+    })
+    .unwrap();
+    history_delete(&db, &["new".into(), "reject".into()]).unwrap();
+    assert_eq!(history_fetch_all(&db).unwrap().len(), 1);
+}
+
+#[test]
+fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
+    let db = tmp_db();
+    let mut pending = history_record_on("pending", "w1", "Ethereum");
+    pending.payload.kind = crate::store::wallet_domain::CoreTransactionKind::Send;
+    pending.payload.status = crate::store::wallet_domain::CoreTransactionStatus::Pending;
+    pending.payload.source_address = Some("0xAbC".into());
+    pending.payload.nonce = Some(7);
+    let mut confirmed = pending.clone();
+    confirmed.id = "confirmed".into();
+    confirmed.payload.id = confirmed.id.clone();
+    confirmed.payload.status = crate::store::wallet_domain::CoreTransactionStatus::Confirmed;
+    let mut other = pending.clone();
+    other.id = "other".into();
+    other.payload.id = other.id.clone();
+    other.payload.source_address = Some("0xdef".into());
+    history_upsert_batch(&db, &[pending, confirmed, other]).unwrap();
+    let rows = history_pending_for_sender(&db, "Ethereum", "0xabc").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].payload.nonce, Some(7));
+    assert!(history_pending_for_sender(&db, "Base", "0xabc")
+        .unwrap()
+        .is_empty());
+    with_conn(&db, |conn| {
+        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_name = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'")
+            .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
+        assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
+        Ok(())
+    }).unwrap();
+}
+
+#[test]
+fn failed_history_commit_rolls_back_and_allows_retry() {
+    let db = tmp_db();
+    let row = history_record_on("commit", "w1", "Bitcoin");
+    with_conn(&db, |conn| {
+        conn.execute_batch("PRAGMA foreign_keys = ON;
+            CREATE TABLE commit_parent (id INTEGER PRIMARY KEY);
+            CREATE TABLE commit_child (parent INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);
+            CREATE TRIGGER fail_history_commit AFTER INSERT ON history_records BEGIN INSERT INTO commit_child VALUES (1); END;")
+            .map_err(|e| e.to_string())
+    }).unwrap();
+    for replace in [false, true] {
+        let result = if replace {
+            history_replace_all(&db, std::slice::from_ref(&row))
+        } else {
+            history_upsert_batch(&db, std::slice::from_ref(&row))
+        };
+        assert!(result.is_err());
+        assert!(history_fetch_all(&db).unwrap().is_empty());
+        with_conn(&db, |conn| {
+            assert!(
+                conn.is_autocommit(),
+                "failed commit must not strand an open transaction"
+            );
+            let count: i64 = conn
+                .query_row("SELECT count(*) FROM commit_child", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(count, 0);
+            Ok(())
+        })
+        .unwrap();
+    }
+    with_conn(&db, |conn| {
+        conn.execute_batch("INSERT INTO commit_parent VALUES (1)")
+            .map_err(|e| e.to_string())
+    })
+    .unwrap();
+    history_upsert_batch(&db, &[row]).unwrap();
+    assert_eq!(history_fetch_all(&db).unwrap().len(), 1);
+}

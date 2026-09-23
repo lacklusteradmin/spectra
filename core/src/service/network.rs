@@ -27,18 +27,8 @@ impl WalletService {
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
     // wrappers below call into those internal helpers.
 
-    /// Call every registered endpoint and report which ones answer.
-    ///
-    /// The catalog is static JSON, so an endpoint that dies stays in the list
-    /// and costs a full timeout plus the 180 ms `with_fallback` pause on every
-    /// call that reaches it. Eleven were dead when this was written, and the
-    /// only way anyone would have found out was opening the diagnostics screen
-    /// for each chain in turn.
-    ///
-    /// A chain with no `rpc_health_method` and no `probe_url` reports
-    /// `checked: false` rather than a pass — Aptos and Tron are REST rather
-    /// than JSON-RPC, and calling them a success because nothing asked is how
-    /// a dead endpoint hides.
+    /// Run read-only protocol checks for every API on this concrete network.
+    /// Explorer links remain unchecked; a pass never promises broadcast support.
     pub async fn probe_chain_endpoints(
         &self,
         chain_id: String,
@@ -79,49 +69,7 @@ impl WalletService {
         }
         let mut out = Vec::with_capacity(records.len());
         for record in records {
-            let is_link_only = record.api.is_none();
-            let explicit_probe = record.probe_url.as_deref();
-            let rpc_method = record.api.and_then(crate::EndpointApi::rpc_health_method);
-            if is_link_only && explicit_probe.is_none() {
-                out.push(EndpointProbe {
-                    api: record.api,
-                    chain_id: chain_id.clone(),
-                    chain_name: name.clone(),
-                    endpoint: record.endpoint,
-                    capabilities: record.capabilities.clone(),
-                    checked: false,
-                    reachable: false,
-                    detail: "an explorer link, not an API".to_string(),
-                });
-                continue;
-            }
-            let (checked, reachable, detail) = match (rpc_method, &explicit_probe) {
-                (Some(method), _) => {
-                    // Confirmed before it accuses. Sweeping every chain fires
-                    // well over a hundred requests, and a burst produces
-                    // transport errors that have nothing to do with the
-                    // endpoint — the first version of this command reported
-                    // four BNB seeds, Polygon, Hyperliquid and Ethereum
-                    // Classic as dead, and all of them answered when asked
-                    // again on their own. A probe that cries wolf is worse
-                    // than no probe, because it is the one people learn to
-                    // scroll past.
-                    let mut verdict = probe_json_rpc(&record.endpoint, method).await;
-                    if verdict.is_err() {
-                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-                        verdict = probe_json_rpc(&record.endpoint, method).await;
-                    }
-                    match verdict {
-                        Ok(()) => (true, true, method.to_string()),
-                        Err(e) => (true, false, e),
-                    }
-                }
-                (None, Some(url)) => {
-                    let (ok, detail) = probe_http_endpoint(chain, url).await;
-                    (true, ok, detail)
-                }
-                (None, None) => (false, false, "no probe for this endpoint".to_string()),
-            };
+            let (checked, reachable, detail) = super::endpoint_health::probe(chain, &record).await;
             out.push(EndpointProbe {
                 api: record.api,
                 chain_id: chain_id.clone(),
@@ -261,127 +209,6 @@ impl WalletService {
     // ── EVM paginated history (native + ERC-20 token transfers)
 }
 
-/// One JSON-RPC health call. `Err` carries what went wrong, transport or
-/// protocol; a JSON-RPC `error` object counts as a failure because an endpoint
-/// that answers "you need an API key" is not one this app can use.
-async fn probe_json_rpc(endpoint: &str, method: &str) -> Result<(), String> {
-    let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": [] });
-    let value = crate::fetch::http::HttpClient::shared()
-        .post_json::<serde_json::Value, serde_json::Value>(
-            endpoint,
-            &body,
-            crate::fetch::http::RetryProfile::Diagnostics,
-        )
-        .await?;
-    match value.get("error") {
-        Some(err) => Err(err.to_string()),
-        None => Ok(()),
-    }
-}
-
-// ── Fetch dispatch ────────────────────────────────────────────────────────
-// Three free functions replace the old ChainClient enum. Each builds the
-// right client inline and runs the fetch — no enum intermediary.
-// Adding a chain means one new arm per function.
-
-#[cfg(test)]
-mod history_page_failures {
-    use super::*;
-    #[tokio::test]
-    async fn history_page_without_a_configured_source_is_an_error() {
-        let service = WalletService::new(vec![]).unwrap();
-        // BSC has no configured keyless history source. This fails offline,
-        // before HTTP, and must not masquerade as an empty successful page.
-        let result = service
-            .fetch_evm_history_page(Chain::BnbChain.str_id().into(), "from".into(), vec![], 2, 7)
-            .await;
-        assert!(result.unwrap_err().to_string().contains("no explorer"));
-    }
-}
-
-async fn probe_http_endpoint(chain: Chain, url: &str) -> (bool, String) {
-    use crate::fetch::http::{http_request, HttpHeader, HttpRetryProfile};
-    let body = chain.http_health_post_body();
-    let method = if body.is_some() { "POST" } else { "GET" };
-    let response = http_request(
-        method.into(),
-        url.into(),
-        if body.is_some() {
-            vec![HttpHeader {
-                name: "Content-Type".into(),
-                value: "application/json".into(),
-            }]
-        } else {
-            vec![]
-        },
-        body.map(|s| s.as_bytes().to_vec()),
-        HttpRetryProfile::Diagnostics,
-    )
-    .await;
-    match response {
-        Ok(response) => {
-            let success = (200..300).contains(&response.status_code);
-            let valid = body.is_none()
-                || serde_json::from_slice::<serde_json::Value>(&response.body)
-                    .ok()
-                    .and_then(|v| {
-                        v.get("network_identifiers")
-                            .and_then(|v| v.as_array())
-                            .map(|a| !a.is_empty())
-                    })
-                    .unwrap_or(false);
-            (
-                success && valid,
-                format!(
-                    "{method} HTTP {}{}",
-                    response.status_code,
-                    if success && !valid {
-                        " (missing Rosetta networks)"
-                    } else {
-                        ""
-                    }
-                ),
-            )
-        }
-        Err(error) => (false, format!("{method}: {error}")),
-    }
-}
-
-#[cfg(test)]
-mod http_probe_regressions {
-    use super::*;
-    use wiremock::matchers::{body_json, method};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-    #[tokio::test]
-    async fn rosetta_posts_metadata_and_requires_a_network() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST")).and(body_json(serde_json::json!({"metadata":{}})))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"network_identifiers":[{"blockchain":"Internet Computer","network":"test"}]})))
-            .expect(1).mount(&server).await;
-        assert!(probe_http_endpoint(Chain::Icp, &server.uri()).await.0);
-        server.reset().await;
-        Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"network_identifiers":[]})),
-            )
-            .mount(&server)
-            .await;
-        assert!(!probe_http_endpoint(Chain::Icp, &server.uri()).await.0);
-    }
-    #[tokio::test]
-    async fn http_denials_are_reported_with_status() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(403))
-            .mount(&server)
-            .await;
-        let (ok, detail) = probe_http_endpoint(Chain::Zcash, &server.uri()).await;
-        assert!(!ok);
-        assert!(detail.contains("403"), "{detail}");
-    }
-}
-
 impl WalletService {
     /// Read the live nonce for a core-owned replacement draft.
     pub async fn fetch_evm_tx_nonce(
@@ -407,5 +234,20 @@ impl WalletService {
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let code = client.fetch_code(&address).await?;
         Ok(crate::send::flow::evm_has_contract_code(code))
+    }
+}
+
+#[cfg(test)]
+mod history_page_failures {
+    use super::*;
+    #[tokio::test]
+    async fn history_page_without_a_configured_source_is_an_error() {
+        let service = WalletService::new(vec![]).unwrap();
+        // BSC has no configured keyless history source. This fails offline,
+        // before HTTP, and must not masquerade as an empty successful page.
+        let result = service
+            .fetch_evm_history_page(Chain::BnbChain.str_id().into(), "from".into(), vec![], 2, 7)
+            .await;
+        assert!(result.unwrap_err().to_string().contains("no explorer"));
     }
 }

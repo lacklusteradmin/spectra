@@ -128,11 +128,7 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<crate::send::verification::SendVerificationNotice, SpectraBridgeError> {
-        let record = self
-            .transactions()
-            .await?
-            .into_iter()
-            .find(|record| record.id.eq_ignore_ascii_case(&transaction_id));
+        let record = self.transaction(transaction_id).await?;
         Ok(
             crate::send::verification::verification_notice_for_last_sent(
                 record
@@ -224,21 +220,15 @@ impl WalletService {
                 now_unix,
                 TransactionStatusPollConfig::default(),
             ),
-            StatusPollOutcome::Confirmed { confirmations } => {
-                crate::store::transaction_status_after_successful_poll(
-                    previous,
-                    true,
-                    false,
-                    confirmations,
-                    now_unix,
-                    TransactionStatusPollConfig::default(),
-                )
-            }
+            StatusPollOutcome::Confirmed => crate::store::transaction_status_after_successful_poll(
+                previous,
+                true,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
             StatusPollOutcome::Pending => crate::store::transaction_status_after_successful_poll(
                 previous,
                 false,
-                true,
-                None,
                 now_unix,
                 TransactionStatusPollConfig::default(),
             ),
@@ -246,8 +236,6 @@ impl WalletService {
                 crate::store::transaction_status_after_successful_poll(
                     previous,
                     false,
-                    false,
-                    None,
                     now_unix,
                     TransactionStatusPollConfig::default(),
                 )
@@ -337,11 +325,9 @@ impl WalletService {
                         id: t.id.clone(),
                         old_status: status_string(t.status),
                         old_failure_reason: t.failure_reason.clone(),
-                        old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
                         resolution: by_id.get(&t.id).map(|r| {
                             crate::store::ResolvedPendingStatusInput {
                                 status: r.status.clone(),
-                                confirmations: r.confirmations,
                             }
                         }),
                         is_stale_failure: stale.contains(&t.id)
@@ -399,8 +385,6 @@ impl WalletService {
                         let next = crate::store::transaction_status_after_successful_poll(
                             next_trackers.get(&updated.id).cloned(),
                             false,
-                            true,
-                            None,
                             now_unix,
                             TransactionStatusPollConfig::default(),
                         );
@@ -430,7 +414,6 @@ impl WalletService {
                         old_status: old.status,
                         new_status,
                         status_changed: decision.status_changed,
-                        reached_finality_confirmations: decision.reached_finality_confirmations,
                     });
                     writes.push(crate::wallet_db::history_record_from_payload(updated));
                 }
@@ -472,7 +455,7 @@ impl WalletService {
 #[derive(Debug, Clone, Copy, uniffi::Enum)]
 pub enum StatusPollOutcome {
     /// The provider reported the transaction confirmed.
-    Confirmed { confirmations: Option<u32> },
+    Confirmed,
     /// The provider reported it still pending.
     Pending,
     /// The provider answered without resolving it either way.
@@ -675,7 +658,7 @@ mod status_commit_regressions {
             .apply_resolved_pending_statuses("Bitcoin".into(), vec![resolution("tx", "confirmed")])
             .await
             .unwrap();
-        assert!(service.status_trackers.read().await["tx"].reached_finality);
+        assert!(service.status_trackers.read().await["tx"].polling_complete);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

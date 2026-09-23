@@ -5,16 +5,10 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 use crate::SpectraBridgeError;
 
-pub(super) fn recheck_chain(
-    record: &CorePersistedTransactionRecord,
-) -> Result<(Chain, bool), String> {
+pub(super) fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<Chain, String> {
     let chain = Chain::from_display_name(&record.chain_name)
         .ok_or("Status recheck is not available for this transaction.")?;
-    let PendingStatusPoll::Utxo {
-        tracks_finality,
-        require_send_kind,
-    } = chain.pending_status_poll()
-    else {
+    let PendingStatusPoll::Utxo { require_send_kind } = chain.pending_status_poll() else {
         return Err("Status recheck is not available for this transaction.".into());
     };
     if require_send_kind && record.kind != crate::store::wallet_domain::CoreTransactionKind::Send {
@@ -27,7 +21,7 @@ pub(super) fn recheck_chain(
     if hash.len() != 64 || !hash.bytes().all(|c| c.is_ascii_hexdigit()) {
         return Err("This transaction has no valid hash to recheck.".into());
     }
-    Ok((chain, tracks_finality))
+    Ok(chain)
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -47,7 +41,7 @@ impl WalletService {
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
                 message: "Transaction not found.".into(),
             })?;
-        let (chain, tracks_finality) = recheck_chain(&expected)
+        let chain = recheck_chain(&expected)
             .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
         let status = self
             .fetch_utxo_tx_status(
@@ -63,15 +57,14 @@ impl WalletService {
                 "Provider returned a different transaction hash.",
             ));
         }
-        let confirmations = if tracks_finality {
-            Some(if status.confirmed {
-                u32::try_from(status.confirmations.unwrap_or(0))
-                    .map_err(|_| SpectraBridgeError::from("Confirmation count is out of range."))?
-            } else {
-                0
-            })
+        let confirmations = if status.confirmed {
+            status
+                .confirmations
+                .map(u32::try_from)
+                .transpose()
+                .map_err(|_| SpectraBridgeError::from("Confirmation count is out of range."))?
         } else {
-            None
+            Some(0)
         };
         let block = if status.confirmed {
             status
@@ -103,12 +96,7 @@ impl WalletService {
                 let mut trackers = std::collections::HashMap::from([(
                     current.id.clone(),
                     crate::store::transaction_status_after_successful_poll(
-                        None,
-                        confirmed,
-                        !confirmed,
-                        confirmations,
-                        now,
-                        config,
+                        None, confirmed, now, config,
                     ),
                 )]);
                 let current_status = current.status;
@@ -123,12 +111,8 @@ impl WalletService {
                         id: current.id.clone(),
                         old_status: old_status.clone(),
                         old_failure_reason: current.failure_reason.clone(),
-                        old_confirmations: current
-                            .confirmation_count
-                            .and_then(|v| u32::try_from(v).ok()),
                         resolution: Some(crate::store::ResolvedPendingStatusInput {
                             status: new_status.as_raw().to_string(),
-                            confirmations,
                         }),
                         is_stale_failure: false,
                     }],
@@ -151,7 +135,6 @@ impl WalletService {
                     old_status: current_status,
                     new_status,
                     status_changed: decision.status_changed,
-                    reached_finality_confirmations: decision.reached_finality_confirmations,
                 };
                 let tracker = trackers.remove(&current.id).unwrap();
                 // Keep the indexed timestamp and unrelated metadata from the latest row.

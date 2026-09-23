@@ -165,6 +165,18 @@ mod tests {
         let service = WalletService::new(Vec::new()).expect("service");
         let db = temp_db("timestamps");
         service.open_state(db.clone()).await.expect("open");
+        crate::wallet_db::wallet_upsert(
+            &service.bound_database().await.unwrap(),
+            &crate::store::state::WalletState::single_address(
+                "w1",
+                "W",
+                "Bitcoin",
+                "bc1qreceive",
+                None,
+                true,
+            ),
+        )
+        .unwrap();
         let payload = record(
             "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
             "w1",
@@ -299,6 +311,18 @@ mod replaceable_tests {
         let service = Arc::new(WalletService::new(vec![]).unwrap());
         let db = database();
         service.open_state(db.clone()).await.unwrap();
+        crate::wallet_db::wallet_upsert(
+            &service.bound_database().await.unwrap(),
+            &crate::store::state::WalletState::single_address(
+                "wallet-1",
+                "W",
+                "Ethereum",
+                "0x1111111111111111111111111111111111111111",
+                None,
+                true,
+            ),
+        )
+        .unwrap();
         service
             .apply_transaction_command(TransactionCommand::Upsert {
                 records: vec![

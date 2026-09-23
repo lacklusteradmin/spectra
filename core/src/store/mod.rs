@@ -10,9 +10,7 @@ pub mod state;
 pub mod wallet_domain;
 pub mod wallet_secrets;
 
-pub use artwork::{
-    chain_artwork_name, deployment_artwork_name, holding_artwork_name, token_artwork_name,
-};
+pub use artwork::{chain_artwork_name, deployment_artwork_name, token_artwork_name};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -490,7 +488,7 @@ pub struct TransactionStatusTrackerState {
     pub last_checked_at_unix: Option<f64>,
     pub next_check_at_unix: f64,
     pub consecutive_failures: u32,
-    pub reached_finality: bool,
+    pub polling_complete: bool,
 }
 
 impl TransactionStatusTrackerState {
@@ -499,7 +497,7 @@ impl TransactionStatusTrackerState {
             last_checked_at_unix: None,
             next_check_at_unix: now_unix,
             consecutive_failures: 0,
-            reached_finality: false,
+            polling_complete: false,
         }
     }
 }
@@ -515,9 +513,7 @@ impl TransactionStatusTrackerState {
 #[serde(rename_all = "camelCase")]
 pub struct TransactionStatusPollConfig {
     pub pending_poll_seconds: f64,
-    pub confirmed_poll_seconds: f64,
     pub backoff_max_seconds: f64,
-    pub finality_confirmations: u32,
     pub pending_failure_timeout_seconds: f64,
     pub pending_failure_min_failures: u32,
 }
@@ -526,9 +522,7 @@ impl Default for TransactionStatusPollConfig {
     fn default() -> Self {
         Self {
             pending_poll_seconds: 20.0,
-            confirmed_poll_seconds: 300.0,
             backoff_max_seconds: 600.0,
-            finality_confirmations: 12,
             pending_failure_timeout_seconds: 60.0 * 60.0,
             pending_failure_min_failures: 6,
         }
@@ -541,7 +535,7 @@ pub fn should_poll_transaction_status(
     now_unix: f64,
 ) -> bool {
     let tracker = tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
-    if tracker.reached_finality {
+    if tracker.polling_complete {
         return false;
     }
     now_unix >= tracker.next_check_at_unix
@@ -551,28 +545,14 @@ pub fn should_poll_transaction_status(
 pub fn transaction_status_after_successful_poll(
     tracker: Option<TransactionStatusTrackerState>,
     resolved_status_confirmed: bool,
-    resolved_status_pending: bool,
-    reported_confirmations: Option<u32>,
     now_unix: f64,
     config: TransactionStatusPollConfig,
 ) -> TransactionStatusTrackerState {
     let mut tracker = tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
     tracker.last_checked_at_unix = Some(now_unix);
     tracker.consecutive_failures = 0;
-    let reached_finality = if resolved_status_pending {
-        false
-    } else {
-        reported_confirmations.unwrap_or(config.finality_confirmations)
-            >= config.finality_confirmations
-    };
-    if reached_finality {
-        tracker.reached_finality = true;
-        tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
-    } else if resolved_status_confirmed {
-        tracker.next_check_at_unix = now_unix + config.confirmed_poll_seconds;
-    } else {
-        tracker.next_check_at_unix = now_unix + config.pending_poll_seconds;
-    }
+    tracker.polling_complete = resolved_status_confirmed;
+    tracker.next_check_at_unix = now_unix + config.pending_poll_seconds;
     tracker
 }
 
@@ -633,7 +613,6 @@ pub(crate) fn stale_pending_failure_ids(
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedPendingStatusInput {
     pub status: String,
-    pub confirmations: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -642,7 +621,6 @@ pub struct ResolvedPendingTransactionInput {
     pub id: String,
     pub old_status: String,
     pub old_failure_reason: Option<String>,
-    pub old_confirmations: Option<u32>,
     pub resolution: Option<ResolvedPendingStatusInput>,
     pub is_stale_failure: bool,
 }
@@ -662,10 +640,6 @@ pub struct ResolvedPendingTransactionDecision {
     pub new_status: String,
     pub status_changed: bool,
     pub failure_reason_disposition: FailureReasonDisposition,
-    /// When set, emit a chain-event indicating the transaction newly reached the
-    /// finality threshold this poll cycle. Independent of `status_changed` so it
-    /// fires when `confirmed→confirmed` but confirmations crossed the threshold.
-    pub reached_finality_confirmations: Option<u32>,
 }
 
 /// Stored in `failure_reason` when a pending transaction is given up on.
@@ -741,7 +715,6 @@ pub struct TransactionStatusChange {
     pub old_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub new_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub status_changed: bool,
-    pub reached_finality_confirmations: Option<u32>,
 }
 
 pub(crate) fn apply_resolved_pending_transaction_statuses(
@@ -755,14 +728,11 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
         let decision = if let Some(resolution) = input.resolution {
             let new_status = resolution.status.clone();
             let status_changed = input.old_status != new_status;
-            let new_confirmations = resolution.confirmations;
             if new_status != "pending" {
                 let tracker = trackers
                     .entry(input.id.clone())
                     .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));
-                tracker.reached_finality = new_confirmations
-                    .unwrap_or(config.finality_confirmations)
-                    >= config.finality_confirmations;
+                tracker.polling_complete = true;
                 tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
             }
             let failure_reason_disposition = if new_status == "failed" {
@@ -774,23 +744,11 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
             } else {
                 FailureReasonDisposition::None
             };
-            let reached_finality_confirmations = match (new_confirmations, input.old_confirmations)
-            {
-                (Some(new_count), old)
-                    if new_status == "confirmed"
-                        && new_count >= config.finality_confirmations
-                        && old.unwrap_or(0) < config.finality_confirmations =>
-                {
-                    Some(new_count)
-                }
-                _ => None,
-            };
             Some(ResolvedPendingTransactionDecision {
                 id: input.id,
                 new_status,
                 status_changed,
                 failure_reason_disposition,
-                reached_finality_confirmations,
             })
         } else if input.is_stale_failure {
             let new_status = "failed".to_string();
@@ -805,7 +763,6 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
                 new_status,
                 status_changed,
                 failure_reason_disposition,
-                reached_finality_confirmations: None,
             })
         } else {
             None

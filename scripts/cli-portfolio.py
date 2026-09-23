@@ -19,6 +19,70 @@ binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
 
 
 class PortfolioTests(unittest.TestCase):
+    def test_core_owned_asset_precision(self):
+        """Precision follows persisted deployment identity, including disabled tokens."""
+        with tempfile.TemporaryDirectory(prefix='spectra-precision-') as directory:
+            def run(*args):
+                result = subprocess.run(
+                    [binary, '--data-dir', directory, '--json', *args],
+                    capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return json.loads(result.stdout)
+
+            contract = '0x1111111111111111111111111111111111111111'
+            for chain, decimals in [('ethereum', '6'), ('base', '9')]:
+                run('token', 'add', '--chain', chain, '--symbol', 'SAME',
+                    '--name', 'Same Symbol', '--contract', contract, '--decimals', decimals)
+            def precision():
+                return run('portfolio', '--stored')['assetPrecision']
+            first = precision()
+            ethereum = 'ethereum:erc-20:' + contract
+            base = 'base:erc-20:' + contract
+            self.assertEqual(first['byDeploymentId'][ethereum], 6)
+            self.assertEqual(first['byDeploymentId'][base], 9)
+            self.assertEqual(first['byDeploymentId']['ethereum:native'], 18)
+            self.assertEqual(first['byDeploymentId']['bitcoin:native'], 8)
+            self.assertEqual(first['unknownDecimals'], 18)
+            run('token', 'untrack', '--chain', 'ethereum', 'SAME')
+            self.assertEqual(precision()['byDeploymentId'][ethereum], 6)
+            run('token', 'decimals', '--chain', 'ethereum', '--contract', contract, '--decimals', '4')
+            self.assertEqual(precision()['byDeploymentId'][ethereum], 4)
+            self.assertEqual(precision()['byDeploymentId'][base], 9)
+            run('token', 'remove', '--chain', 'ethereum', '--contract', contract)
+            self.assertNotIn(ethereum, precision()['byDeploymentId'])
+            self.assertEqual(precision()['byDeploymentId'][base], 9)
+
+    def test_pin_options_put_pinned_assets_first(self):
+        """Pins stay easy to find after toggling, reopening and resetting."""
+        with tempfile.TemporaryDirectory(prefix='spectra-pin-order-') as directory:
+            def run(*args):
+                result = subprocess.run(
+                    [binary, '--data-dir', directory, '--json', *args],
+                    capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return json.loads(result.stdout)
+
+            def options_with_pins(expected, *args):
+                options = run('portfolio', *args, '--pin-options')['options']
+                self.assertEqual(
+                    {option['token_id'] for option in options if option['is_pinned']},
+                    expected)
+                # The first N rows must contain every pin, even when an
+                # unpinned symbol sorts alphabetically before those pins.
+                self.assertEqual({option['token_id'] for option in options[:len(expected)]}, expected)
+                for group in (options[:len(expected)], options[len(expected):]):
+                    identities = [(option['symbol'], option['token_id']) for option in group]
+                    self.assertEqual(identities, sorted(identities))
+
+            defaults = {'bitcoin', 'ethereum', 'tether', 'usd-coin'}
+            options_with_pins(defaults)
+            options_with_pins({'tether', 'ethereum'}, '--pin-token', 'tether', '--pin-token', 'ethereum')
+            options_with_pins({'tether'}, '--unpin-token', 'ethereum')
+            options_with_pins({'tether'})
+            options_with_pins(set(), '--unpin-token', 'tether')
+            run('settings', 'reset', '--scope', 'dashboardCustomization', '--yes')
+            options_with_pins(defaults)
+
     def test_movement_notifications(self):
         """Persist movement baselines; do not repeat or fabricate notifications."""
         with tempfile.TemporaryDirectory(prefix='spectra-wallets-') as directory:

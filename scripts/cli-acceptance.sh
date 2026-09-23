@@ -402,7 +402,7 @@ contains "Bitcoin exposes native history" '"history"' \
     spectra --json endpoints --catalog --chain Bitcoin
 lacks "Bitcoin does not claim token balances" '"token-balance"' \
     spectra --json endpoints --catalog --chain Bitcoin
-contains "an indexer separates token history and holdings" '"capabilities":["history","token-balance","token-discovery","token-history"]' \
+contains "an indexer only claims implemented history capabilities" '"capabilities":["history","token-history"]' \
     spectra --json endpoints --catalog --chain Ethereum
 contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","history","fee","broadcast","token-balance","token-discovery","token-history","verification","staking"]' \
     spectra --json endpoints --catalog --chain Solana

@@ -841,8 +841,10 @@ tags = []
 }
 
 /// Display precision resolved by deployment; unknown history has no native assumption.
-#[uniffi::export]
-pub fn token_display_decimals(deployment_id: Option<String>, custom_decimals: Option<u32>) -> u32 {
+pub(crate) fn token_display_decimals(
+    deployment_id: Option<String>,
+    custom_decimals: Option<u32>,
+) -> u32 {
     deployment_id
         .as_deref()
         .and_then(deployment)

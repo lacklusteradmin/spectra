@@ -517,10 +517,7 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
                 })?;
             entry.decimals
         }
-        None => spectra_core::tokens::token_display_decimals(
-            Some(chain.entry().native_deployment_id.clone()),
-            None,
-        ),
+        None => u32::from(chain.native_decimals()),
     };
     let display = spectra_core::formatting::asset_amount_display(args.amount, asset_decimals);
     let rendered = if display.below_threshold {

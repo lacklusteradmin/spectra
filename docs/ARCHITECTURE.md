@@ -188,3 +188,38 @@ Obsolete callbacks cannot update another session or start signing after native
 authentication. Core operations already dispatched remain durable after closing.
 Amount display utilities are optional presentation policy; signing review always
 renders the exact artifact amount and exposes the prepared transaction details.
+
+### Native flow lifetimes and display precision
+
+`AppState` composes `SendFlowState`, `ReceiveFlowState` and
+`WalletImportSession`. These objects own form inputs, loading/error state,
+request identities and reset behavior. Domain calls remain thin adapters on
+`AppState`; no forwarding copies of the flow fields live there. Import and
+rename completions may update only the session that submitted them. Dismissal
+invalidates the session and clears secret inputs; a core commit still refreshes
+the domain projection even when its form is gone.
+
+`PortfolioSnapshot.asset_precision` supplies effective precision keyed by
+concrete deployment, including disabled custom tokens needed by history views.
+The snapshot owns the unknown-history display fallback too. Swift does not
+round-trip token preference data through a precision helper. Until the first
+snapshot arrives, amounts needing that metadata show an unavailable placeholder.
+The compact six-significant-digit/eight-decimal style is an optional shared
+presentation utility, not domain validation or a requirement for detail views.
+Signing review continues to render exact artifact amounts.
+
+### Native completion and presentation boundaries
+
+A closed send composer rejects stale form updates but still returns successful
+broadcast results to application handling. Post-send work resolves the completed
+transaction ID, not the current composer. Recent/pending history is a summary;
+Live Activities and resumed send details query the stored ID and distinguish
+missing records from read failures.
+
+Refresh completes alert/movement evaluation before adopting the final portfolio
+and history projections once. Notification delivery does not rebuild projections.
+`AmountPresentation` renders explicit projection values without AppState or
+storage. Its native formatter cache is presentation-only. `AssetPresentationCatalog`
+indexes core's immutable artwork and caches core-derived holding identities by
+network, token standard and contract; balances and display labels do not identify
+assets. Neither cache can authorize a domain mutation.

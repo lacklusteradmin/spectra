@@ -14,11 +14,6 @@ pub fn chain_artwork_name(chain_id: String) -> String {
         .unwrap_or_default()
 }
 #[uniffi::export]
-pub fn holding_artwork_name(holding: crate::store::wallet_domain::AssetHolding) -> String {
-    deployment_artwork_name(Some(holding.deployment_id()))
-}
-
-#[uniffi::export]
 pub fn deployment_artwork_name(deployment_id: Option<String>) -> String {
     deployment_id
         .and_then(|id| {
@@ -41,7 +36,7 @@ mod tests {
                 token.artwork_name
             );
             assert_eq!(
-                holding_artwork_name(token.holding_template()),
+                deployment_artwork_name(Some(token.holding_template().deployment_id())),
                 token.artwork_name,
                 "{}",
                 token.deployment_id
@@ -53,7 +48,7 @@ mod tests {
             .unwrap()
             .holding_template();
         impostor.contract_address = Some("unknown-contract".into());
-        assert_eq!(holding_artwork_name(impostor), "");
+        assert_eq!(deployment_artwork_name(Some(impostor.deployment_id())), "");
         assert_eq!(token_artwork_name("USDC".into()), "");
         assert_eq!(chain_artwork_name("base".into()), "base");
     }

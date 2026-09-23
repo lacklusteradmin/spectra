@@ -34,8 +34,17 @@ impl CustomEndpoint {
             .iter()
             .filter(|r| r.chain_id == chain.str_id())
             .filter_map(|r| r.api)
+            .chain(
+                [
+                    EndpointSlot::Primary,
+                    EndpointSlot::Secondary,
+                    EndpointSlot::Explorer,
+                ]
+                .into_iter()
+                .filter_map(|slot| chain.endpoint_api(slot)),
+            )
             .find(|value| value.as_str() == api)
-            .ok_or("API type is not in this network's endpoint directory")?;
+            .ok_or("API type is not supported by this network")?;
         let supported = crate::endpoint_api::endpoint_capability_options(chain_id.clone(), api);
         if capabilities.is_empty() || capabilities.iter().any(|c| !supported.contains(c)) {
             return Err("Select at least one capability supported by this adapter".into());

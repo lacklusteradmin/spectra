@@ -79,6 +79,10 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
              revision INTEGER NOT NULL,
              payload TEXT NOT NULL CHECK(json_valid(payload))
          );
+         CREATE INDEX IF NOT EXISTS idx_send_sender ON send_artifacts
+             (json_extract(payload, '$.view.chain_id'), lower(json_extract(payload, '$.view.sender')), json_extract(payload, '$.view.stage'));
+         CREATE INDEX IF NOT EXISTS idx_send_wallet ON send_artifacts
+             (json_extract(payload, '$.view.wallet_id'), json_extract(payload, '$.view.chain_id'), json_extract(payload, '$.view.stage'));
          CREATE TABLE IF NOT EXISTS send_reservations (
              resource TEXT PRIMARY KEY NOT NULL,
              artifact_id TEXT NOT NULL REFERENCES send_artifacts(id)
@@ -130,6 +134,9 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
              (wallet_id, chain_name, asset_key, hash_key, status_rank DESC, created_at DESC, id ASC);
          CREATE INDEX IF NOT EXISTS idx_hr_status_date ON history_records
              (json_extract(payload, '$.status'), created_at DESC, id);
+         CREATE INDEX IF NOT EXISTS idx_hr_pending_sender ON history_records
+             (chain_name, lower(json_extract(payload, '$.sourceAddress')))
+             WHERE json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending';
          CREATE INDEX IF NOT EXISTS idx_hr_source_path ON history_records
              (wallet_id, chain_name, json_extract(payload, '$.sourceDerivationPath'));
          CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records

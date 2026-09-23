@@ -610,40 +610,17 @@ impl Chain {
 
     /// The keyless explorer source for this EVM chain, if configured.
     pub fn evm_history_source(self) -> EvmHistorySource<'static> {
-        match self.mainnet_counterpart() {
-            // Blockscout, from its own instance directory at
-            // `chains.blockscout.com/api/chains`.
-            Chain::Ethereum => EvmHistorySource::Open("https://eth.blockscout.com"),
-            Chain::Base => EvmHistorySource::Open("https://base.blockscout.com"),
-            Chain::Arbitrum => EvmHistorySource::Open("https://arbitrum.blockscout.com"),
-            Chain::Optimism => EvmHistorySource::Open("https://explorer.optimism.io"),
-            Chain::EthereumClassic => EvmHistorySource::Open("https://etc.blockscout.com"),
-            Chain::Polygon => EvmHistorySource::Open("https://polygon.blockscout.com"),
-            Chain::Scroll => EvmHistorySource::Open("https://scroll.blockscout.com"),
-            Chain::Celo => EvmHistorySource::Open("https://celo.blockscout.com"),
-            Chain::ZkSyncEra => EvmHistorySource::Open("https://zksync.blockscout.com"),
-            Chain::Unichain => EvmHistorySource::Open("https://unichain.blockscout.com"),
-            Chain::Ink => EvmHistorySource::Open("https://explorer.inkonchain.com"),
-
-            // Routescan serves several chains Blockscout does not, in the same
-            // Etherscan-V1 request shape, with the chain id in the path rather
-            // than in a query parameter.
-            Chain::Avalanche => EvmHistorySource::Open(
-                "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
-            ),
-            Chain::Berachain => EvmHistorySource::Open(
-                "https://api.routescan.io/v2/network/mainnet/evm/80094/etherscan",
-            ),
-            Chain::Blast => EvmHistorySource::Open(
-                "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan",
-            ),
-            Chain::Mantle => EvmHistorySource::Open(
-                "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
-            ),
-
-            // No verified keyless source is configured for the remaining chains.
-            _ => EvmHistorySource::Unavailable,
-        }
+        crate::app_core::endpoint_catalog()
+            .ok()
+            .and_then(|catalog| {
+                catalog.endpoint_records.iter().find(|record| {
+                    record.chain_id == self.str_id()
+                        && record.api == Some(crate::EndpointApi::Blockscout)
+                        && record.capabilities.iter().any(|cap| cap == "history")
+                })
+            })
+            .map(|record| EvmHistorySource::Open(record.endpoint.as_str()))
+            .unwrap_or(EvmHistorySource::Unavailable)
     }
 
     /// Endpoint-table key for a given logical slot.
@@ -724,14 +701,6 @@ impl Chain {
             Chain::BitcoinTestnet4 => bitcoin::Network::Testnet4,
             Chain::BitcoinSignet => bitcoin::Network::Signet,
             _ => bitcoin::Network::Bitcoin,
-        }
-    }
-
-    /// Rosetta health is a POST, not JSON-RPC and not a GET.
-    pub(crate) fn http_health_post_body(self) -> Option<&'static str> {
-        match self.mainnet_counterpart() {
-            Chain::Icp => Some(r#"{"metadata":{}}"#),
-            _ => None,
         }
     }
 
@@ -886,19 +855,13 @@ impl Chain {
             // Litecoin tracks receives too: its explorer confirms them on a
             // different cadence than the send path assumes.
             Chain::Litecoin => PendingStatusPoll::Utxo {
-                tracks_finality: false,
                 require_send_kind: false,
             },
-            // Dogecoin keeps counting after confirmation — the UI shows a
-            // confirmation depth for it.
-            Chain::Dogecoin => PendingStatusPoll::Utxo {
-                tracks_finality: true,
-                require_send_kind: true,
-            },
-            Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => PendingStatusPoll::Utxo {
-                tracks_finality: false,
-                require_send_kind: true,
-            },
+            Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV | Chain::Dogecoin => {
+                PendingStatusPoll::Utxo {
+                    require_send_kind: true,
+                }
+            }
             Chain::Tron
             | Chain::Solana
             | Chain::Cardano
@@ -1361,8 +1324,6 @@ pub struct SendExecutionShape {
 pub enum PendingStatusPoll {
     /// Ask the chain's own status endpoint for a txid.
     Utxo {
-        /// Keep polling after confirmation to count confirmations.
-        tracks_finality: bool,
         /// Only sends are tracked; receives confirm on their own.
         require_send_kind: bool,
     },

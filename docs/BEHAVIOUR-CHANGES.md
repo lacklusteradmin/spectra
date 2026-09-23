@@ -16,6 +16,158 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-23 — Remove failed providers and probe actual endpoint reads
+
+- **Before:** the directory retained 14 failed provider records, Tron PublicNode
+  used the wrong path, and health checks could test a different host or only an
+  EVM chain ID. Monero and Blockstream suffered false failures. The default CLI
+  sweep omitted testnets and swallowed probe errors. EVM history metadata named
+  sources outside the directory used by actual reads, including unsupported
+  Berachain Routescan, and testnets inherited mainnet metadata.
+- **After:** remove Blockchair BSV's three records, SoChain LTC, BlockCypher DOGE
+  testnet, TronGrid `.pro`/`.network`, HappyStaking Koios, Monero stagenet Exan,
+  Cloudflare Ethereum, OnFinality Hyperliquid, and Trezor ZEC/BTG/DASH. Tron
+  PublicNode uses `/jsonrpc`. Networks without providers have empty configured
+  lists and explicit CLI diagnostics; supported custom APIs remain addable even
+  without a built-in provider. Verified EVM history sources are in the shared
+  directory, with only implemented history capabilities; Berachain has none.
+  Routescan requests use its actual `/etherscan` path, and testnets never inherit
+  mainnet history. Read probes validate JSON/API responses, EVM identity plus
+  block/balance reads, history errors, and the Monero/Esplora protocol paths.
+  All built-in APIs have probes; browser links are explicitly excluded. The
+  default CLI checks every concrete network and propagates internal errors.
+- **Why:** an unavailable feature is preferable to a known-broken fallback or a
+  misleading green health indicator. Routing, metadata and diagnostics must use
+  one directory, and removal must not prohibit a valid user-provided replacement.
+- **CLI check:** `spectra --json endpoints`; `spectra --json endpoints --chain
+  zcash` reports no configured API; `spectra --json send configured-endpoints
+  dash` returns an empty list. `python3 scripts/cli-endpoints.py target/debug/spectra`
+  checks empty defaults, custom replacements, testnet coverage and a loopback
+  node whose chain ID succeeds but block reads fail. `spectra --json endpoints
+  --catalog --chain base` includes the same history source used by requests.
+- **Verification:** the `make verify` Rust/CLI gates passed: rustfmt, Clippy
+  with `-D warnings`, 844 core tests plus the transport test, and 442 CLI checks.
+  After correcting the corresponding old iOS capability assertions, the full
+  `make test-ios` rerun passed all 133 tests, including endpoint screen rendering
+  and Ethereum testnet contexts. The updated CLI live sweep covered 78 networks
+  at 2026-09-23 15:46 UTC: all 111 remaining API records passed their read checks,
+  with zero unreachable or unchecked APIs. This does not claim broadcast success.
+  Verification used temporary stores; no transaction was broadcast.
+
+## 2026-09-23 — Finish native shell ownership and presentation boundaries
+
+- **Before:** dismissing a composer discarded successful broadcast completions
+  before application projections and post-send refresh ran. Live Activities and
+  resumed send details treated the recent/pending summary as complete history.
+  One refresh reread history twice and alert adoption queued another portfolio
+  read. Row artwork serialized holdings into Rust on each render, and number
+  presentation required the whole AppState.
+- **After:** successful broadcasts return their committed result even after the
+  originating form closes; application handling uses that result's transaction
+  ID without replacing a newer form. Activities and send details resolve stored
+  IDs directly; read failures preserve activities for retry. Refresh evaluates
+  alerts/movement first and then adopts each final projection once. Native
+  presentation receives explicit projection values, owns its formatter cache,
+  and uses cached core-derived identities and immutable catalog artwork. The
+  redundant whole-holding artwork export is removed. Exact signing review is
+  unchanged and still renders the durable artifact's amount.
+- **Why:** transient UI lifetime must not discard a committed operation. A bounded
+  summary is not a database. Rendering should neither require application services
+  nor repeatedly serialize domain records merely to look up static metadata.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_stored_pages` proves an old confirmed record absent from the
+  50-row summary remains queryable after reopening. `spectra --json token artwork
+  --deployment-id base:native` checks identity-based artwork. Existing staged-send
+  CLI coverage proves durable broadcast results and immutable-payload retries.
+  Native dismissal, ActivityKit reconciliation and formatter ownership have no
+  CLI lifecycle equivalent; SendSessionTests, ShellBoundaryTests,
+  AmountPresentationTests and CoinBadgeArtworkTests cover those boundaries.
+- **Verification:** `make verify` passed: rustfmt, Clippy with `-D warnings`,
+  838 core tests plus the transport test, 442 CLI acceptance checks and 133 iOS
+  simulator tests, including the real-window signed-send rendering check. Xcode
+  regenerated UniFFI bindings. Design-token, project-file and diff checks passed;
+  the callable FFI surface is 138 with zero unreachable export candidates.
+  Local mock servers required running verification outside the network sandbox.
+
+## 2026-09-23 — Show pinned assets first in the pin picker
+
+- **Before:** Pinned Assets mixed pinned and unpinned assets in symbol order,
+  making existing pins hard to find when turning them off.
+- **After:** core returns pinned assets first, then unpinned assets; each group
+  remains ordered by symbol and token identity. The existing Swift picker and
+  its search results use this order, refreshed after pin, unpin and reset.
+- **Why:** managing existing pins should not require searching the full catalog.
+  Keeping the ordering in the shared projection gives CLI and app the same list.
+- **CLI check:** `spectra --json portfolio --pin-options`; automated coverage:
+  `python3 scripts/cli-portfolio.py target/debug/spectra
+  PortfolioTests.test_pin_options_put_pinned_assets_first` covers defaults,
+  selected pins, unpinning, reopening, no pins and reset.
+- **Verification:** the focused CLI regression, 442 CLI acceptance checks and
+  123 iOS simulator tests passed. Clippy (`-D warnings`), rustfmt and scoped diff
+  checks passed. Full Rust tests ran with 832 passing and two failures in
+  `service::history_derived` (`derived_views_use_the_rows_unix_timestamp` and
+  `the_store_answers_and_a_reopened_service_answers_the_same`) while separate
+  history changes were in progress in the shared workspace. No interactive
+  visual check was performed.
+
+## 2026-09-23 — Stop DOGE polling at confirmation
+
+- **Before:** DOGE alone automatically re-polled confirmed sends up to a shared
+  12-confirmation threshold, with a five-minute interval and a finality event.
+  Its in-memory stop flag was lost on restart, so old confirmed sends became
+  eligible again and their cumulative confirmation counts were refreshed.
+- **After:** automatic status maintenance selects only pending transactions on
+  every chain. DOGE stops at the first reported confirmation, including after
+  reopening storage. The depth flag, threshold, confirmed polling interval and
+  finality event/binding/localizations are removed. Provider-reported counts
+  remain optional metadata on status reads for UTXO chains; they do not control
+  polling. Explicit Recheck still works for eligible failed/confirmed records
+  and resumes pending polling if the provider reports a reorg. Unresolved reads
+  schedule another pending check instead of being treated as complete.
+- **Why:** a display-driven DOGE exception is not a cross-chain finality policy.
+  Persisted transaction status already determines whether maintenance is needed;
+  a confirmation count must not imply guaranteed finality.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_confirmed_doge_never_needs_automatic_polling` seeds counts of
+  1, 12 and 100001, checks `txs --maintenance` and `txs --refresh-pending` in new
+  processes without network access, retains Recheck availability and verifies
+  pending records remain eligible. Core mock-node tests cover first confirmation,
+  restart, manual recheck and reorg recovery.
+- **Verification:** `make verify` passed: rustfmt, Clippy with `-D warnings`,
+  834 core tests plus the transport test, 442 CLI acceptance checks and 122 iOS
+  simulator tests. The Xcode build regenerated the Swift bindings. Design-token,
+  runtime-catalog JSON and diff checks also passed.
+
+## 2026-09-23 — Keep transaction history rows focused on status
+
+- **Before:** history rows displayed the stored confirmation count without a
+  limit and a standalone Recheck button for every eligible transaction, even
+  though Recheck was also available in the row's context menu.
+- **After:** history rows omit confirmation counts and the standalone button.
+  The status badge, confirmation count in transaction details and core-authorized
+  Recheck in the context menu remain available on all supported chains.
+- **Why:** a cumulative confirmation count adds noise to the history summary;
+  occasional status recovery does not warrant a repeated primary-sized control.
+- **CLI check:** no CLI behavior changes; this is presentation only. Inspect
+  `spectra txs --record ID --json` for the retained confirmation count and
+  `actions`. Swift parsing and the design-token check cover the edited UI;
+  inspect History and its long-press menu in the app for the visual change.
+- **Initial DOGE assessment (implemented in the entry above):** retire the DOGE-only
+  post-confirmation polling policy in a separate core change. The registry
+  explicitly motivates it by displaying confirmation depth. It marks a send
+  confirmed on its first inclusion, then polls every 300 seconds until the
+  shared threshold of 12, producing a finality log. It can notice a reorg during
+  that interval, but is not a consistent cross-chain finality policy. Its stop
+  tracker is in memory; a new service queries confirmed DOGE sends again and
+  can store a much larger current count. Keep pending-transaction polling,
+  explicit status rechecks and observed confirmation data. If confirmation-depth
+  monitoring is a product requirement, give it an explicit per-chain policy
+  and restart-stable stopping behavior rather than retaining this display-driven
+  exception. Removing the exception needs core/CLI reorg and restart coverage.
+- **Verification:** iOS simulator Debug build, Swift parsing, design-token and
+  diff checks passed. Full suites were not run for this localized UI removal;
+  no core, storage or FFI changes. No interactive visual check was performed.
+
 ## 2026-09-23 — Enter the large movement dollar threshold directly
 
 - **Before:** the USD minimum used a stepper with $5 increments.
@@ -717,3 +869,87 @@ rendering in a real window.
   interior fill differences against the original artwork for both icons.
   Inspected 512-pixel macOS Quick Look previews after cleanup. No iOS simulator
   test was run for this resource-only change.
+
+
+## 2026-09-23 — Canonical history projections and cursor pagination
+
+- **Before:** history pages selected one winner per wallet/chain/deployment/hash,
+  but the pending snapshot, replacement list, count and earliest dates used raw
+  rows. A superseded pending provider row could reappear beside its confirmed
+  transaction, and rows without a current wallet could enter the summary.
+- **After:** all these projections use the same current-wallet and identity-winner
+  predicate. Counts describe visible transactions; superseded and orphan pending
+  rows cannot offer replacement actions. Direct record lookup remains available.
+- **Before:** stored pages accepted an integer offset. Inserts/deletes before that
+  position could shift subsequent pages, and deep pages scanned preceding rows.
+- **After:** `txs --page --cursor <nextCursor>` and the FFI use a core-produced
+  cursor over indexed `(created_at, id)`. Cursor timestamps come from the SQL
+  ordering columns, not the JSON payload. Equal timestamps retain ID order in
+  both directions; deleting the anchor does not invalidate the continuation.
+  Cursors are bound to wallet, filter, search and direction; changing those inputs
+  requires a fresh first page. Limit may change between pages. The final page
+  returns `nextCursor: null`. The old offset interface is removed directly.
+  Pages read current data, not a frozen cross-request snapshot: new rows before
+  the cursor appear on refresh; edits that move rows across the cursor require
+  refresh. Swift restarts paging on its existing history/wallet revision signal.
+- **Why:** one transaction must have one visible status; indexed continuation
+  avoids position shifts without keeping database transactions open across UI
+  requests.
+- **CLI checks:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_stored_pages HistoryTests.test_cursor_changes_and_ties`
+  covers duplicate pending/confirmed rows, counts, both sort directions, ties,
+  anchor deletion, insertion and invalid/mismatched cursors across CLI restarts.
+
+## 2026-09-23 — Scoped send preparation and atomic history batches
+
+- **Before:** EVM nonce preparation loaded every history row and send artifact;
+  Monero input selection loaded every artifact and repeatedly scanned outputs.
+- **After:** indexed SQL selects pending history for the chain/sender and signed
+  artifacts for the chain/sender or chain/wallet. Every selected artifact still
+  passes full validation. Monero performs blocking artifact reads off the async
+  executor and checks reserved key images with one set lookup per output.
+  An unrelated undecodable artifact no longer blocks another sender's preparation;
+  a selected invalid artifact still refuses the operation.
+- **Before:** history batches repeatedly prepared SQL, with manual transaction
+  cleanup that did not cover commit failure.
+- **After:** each batch reuses a prepared statement and an immediate RAII
+  transaction. Failed inserts, deletes and commits roll back; replacement still
+  rejects duplicate IDs. No intended successful-write semantics change.
+- **Checks:** `cargo test -p spectra_core --lib wallet_db` covers scoped indexes,
+  invalid selected artifacts and partial-batch rollback/retry. Offline CLI paths:
+  `python3 scripts/cli-send-stages.py target/debug/spectra` and
+  `python3 scripts/cli-send-monero.py target/debug/spectra` exercise real preparation,
+  signing, reservations and immutable-payload retries against local mock nodes.
+
+## 2026-09-23 — Native flow isolation and core-owned precision projections
+
+- **Before:** AppState held send, receive and import form fields directly.
+  An import or rename returning after dismissal could reset a newer form,
+  overwrite its error, close its navigation or clear its busy flag.
+- **After:** dedicated native flow objects own these fields and reset behavior.
+  Import/rename success, failure and cleanup are bound to a session identity.
+  Navigation dismissal clears sensitive draft inputs and invalidates callbacks.
+  Send/receive navigation bindings also invalidate their pending native work.
+  Completed core writes still refresh wallet projections after dismissal.
+- **Before:** Swift read cached custom-token decimals and returned them to an
+  exported core helper to resolve display precision.
+- **After:** the coherent portfolio snapshot supplies a precision catalog from
+  core's stored preferences, keyed by concrete deployment. Disabled tokens keep
+  their precision for history; removing a custom token removes its precision
+  entry. Unknown history retains the core-provided 18-place display fallback.
+  Before the first snapshot, dependent amount labels show `—`. The caller-fed
+  precision FFI helper is removed. Compact number formatting remains an optional
+  shared presentation utility; exact signing review amounts are unchanged.
+- **Why:** native session lifetime belongs with the native form; persisted token
+  metadata belongs with core. Neither change moves navigation into Rust.
+- **CLI check:** `python3 scripts/cli-portfolio.py target/debug/spectra
+  PortfolioTests.test_core_owned_asset_precision` checks native/custom precision,
+  identical token identifiers on different networks, disabled tokens, edits,
+  deletion and reopening. `WalletImportSessionTests` exercises delayed success,
+  delayed failure, busy cleanup and dismissal; `AssetPrecisionBridgeTests`
+  verifies the async FFI projection and rejects stale precision snapshots.
+- **Verification:** all required gates passed after fixing the unused-string
+  check and SwiftUI sub-object bindings: rustfmt/clippy, 838 core tests plus the
+  transport test, 442 offline CLI checks and 127 iPhone simulator tests. The
+  simulator suite includes the exact-amount send rendering check and
+  `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.

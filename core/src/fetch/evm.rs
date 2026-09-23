@@ -134,7 +134,16 @@ pub struct EvmHistoryEntry {
 /// Build a query for a configured keyless explorer, refusing unavailable history.
 pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<String, String> {
     match source {
-        EvmHistorySource::Open(base) => Ok(format!("{base}/api?{params}")),
+        EvmHistorySource::Open(base) => {
+            let base = base.trim_end_matches('/');
+            // Routescan exposes the same wire contract at /etherscan.
+            let suffix = if base.ends_with("/etherscan") || base.ends_with("/api") {
+                ""
+            } else {
+                "/api"
+            };
+            Ok(format!("{base}{suffix}?{params}"))
+        }
         EvmHistorySource::Unavailable => {
             Err("no explorer serves this chain's transaction history".to_string())
         }
@@ -930,30 +939,38 @@ mod every_evm_chain_says_where_its_history_comes_from {
             Chain::Hyperliquid,
             Chain::Cronos,
             Chain::XLayer,
+            Chain::Berachain,
         ] {
             assert_eq!(chain.evm_history_source(), EvmHistorySource::Unavailable);
             assert!(explorer_query_url(chain.evm_history_source(), "module=account").is_err());
         }
     }
 
-    /// Every EVM chain answers, and a testnet answers as its mainnet does.
     #[test]
-    fn the_table_covers_the_family_and_testnets_follow_their_mainnet() {
-        let evm: Vec<Chain> = Chain::all().filter(|c| c.is_evm()).collect();
-        assert!(evm.len() > 23, "mainnets and testnets");
-        for chain in &evm {
+    fn history_sources_match_the_concrete_network_directory() {
+        let catalog = crate::app_core::endpoint_catalog().unwrap();
+        for chain in Chain::all().filter(|chain| chain.is_evm()) {
+            if let EvmHistorySource::Open(url) = chain.evm_history_source() {
+                assert!(catalog.endpoint_records.iter().any(|record| {
+                    record.chain_id == chain.str_id()
+                        && record.endpoint == url
+                        && record.capabilities.iter().any(|cap| cap == "history")
+                }));
+            }
+            if chain != chain.mainnet_counterpart() {
+                assert_eq!(chain.evm_history_source(), EvmHistorySource::Unavailable);
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_history_api_paths_are_not_extended() {
+        for base in ["https://example.org/api", "https://example.org/etherscan/"] {
             assert_eq!(
-                chain.evm_history_source(),
-                chain.mainnet_counterpart().evm_history_source(),
-                "{chain:?} must not diverge from its mainnet"
+                explorer_query_url(EvmHistorySource::Open(base), "action=txlist").unwrap(),
+                format!("{}?action=txlist", base.trim_end_matches('/'))
             );
         }
-        let keyless = evm
-            .iter()
-            .filter(|c| c.mainnet_counterpart() == **c)
-            .filter(|c| matches!(c.evm_history_source(), EvmHistorySource::Open(_)))
-            .count();
-        assert_eq!(keyless, 15, "fifteen mainnets need no API key");
     }
 }
 

@@ -242,17 +242,26 @@ impl WalletService {
         let _guard = self.lock_sender(chain, &initial.sender).await?;
         let (_, mut wallet, key) = self.load_monero(&request.wallet_id).await?;
         let db = self.bound_database().await?;
-        for saved in crate::wallet_db::send_list(&db)? {
-            if saved.view.wallet_id == request.wallet_id
-                && saved.view.stage == crate::send::stages::SendStage::Signed
-            {
+        let wallet_id = request.wallet_id.clone();
+        let saved_sends = tokio::task::spawn_blocking(move || {
+            crate::wallet_db::signed_sends_for_wallet(&db, chain.str_id(), &wallet_id)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let reserved: std::collections::HashSet<_> = saved_sends
+            .into_iter()
+            .filter_map(|saved| {
                 if let crate::send::stages::PreparedPayload::Monero(p) = saved.prepared {
-                    for output in &mut wallet.outputs {
-                        if p.input_key_images.contains(&output.key_image) {
-                            output.spent = true;
-                        }
-                    }
+                    Some(p.input_key_images)
+                } else {
+                    None
                 }
+            })
+            .flatten()
+            .collect();
+        for output in &mut wallet.outputs {
+            if reserved.contains(&output.key_image) {
+                output.spent = true;
             }
         }
         let view = Zeroizing::new(

@@ -146,20 +146,12 @@ pub fn history_upsert_batch(
         return Ok(());
     }
     with_conn(database, |conn| {
-        conn.execute_batch("BEGIN IMMEDIATE")
-            .map_err(|e| format!("history_upsert_batch begin: {e}"))?;
-        let result = history_upsert_on_conn(conn, records);
-        match result {
-            Ok(()) => {
-                conn.execute_batch("COMMIT")
-                    .map_err(|e| format!("history_upsert_batch commit: {e}"))?;
-                Ok(())
-            }
-            Err(e) => {
-                let _ = conn.execute_batch("ROLLBACK");
-                Err(e)
-            }
-        }
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("history_upsert_batch begin: {e}"))?;
+        history_upsert_on_conn(&tx, records)?;
+        tx.commit()
+            .map_err(|e| format!("history_upsert_batch commit: {e}"))
     })
 }
 
@@ -167,10 +159,8 @@ fn history_upsert_on_conn(
     conn: &rusqlite::Connection,
     records: &[HistoryRecord],
 ) -> Result<(), String> {
-    for rec in records {
-        let payload_json = serde_json::to_string(&rec.payload)
-            .map_err(|e| format!("history_upsert_batch encode payload: {e}"))?;
-        conn.execute(
+    let mut statement = conn
+        .prepare_cached(
             "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(id) DO UPDATE SET
@@ -179,16 +169,21 @@ fn history_upsert_on_conn(
                          tx_hash    = excluded.tx_hash,
                          created_at = excluded.created_at,
                          payload    = excluded.payload",
-            params![
+        )
+        .map_err(|e| format!("history_upsert_batch prepare: {e}"))?;
+    for rec in records {
+        let payload_json = serde_json::to_string(&rec.payload)
+            .map_err(|e| format!("history_upsert_batch encode payload: {e}"))?;
+        statement
+            .execute(params![
                 rec.id,
                 rec.wallet_id,
                 rec.chain_name,
                 rec.tx_hash,
                 rec.created_at,
                 payload_json
-            ],
-        )
-        .map_err(|e| format!("history_upsert_batch row: {e}"))?;
+            ])
+            .map_err(|e| format!("history_upsert_batch row: {e}"))?;
     }
     Ok(())
 }
@@ -284,26 +279,21 @@ pub fn history_delete(database: &WalletDatabase, ids: &[String]) -> Result<(), S
         return Ok(());
     }
     with_conn(database, |conn| {
-        conn.execute_batch("BEGIN IMMEDIATE")
-            .map_err(|e| format!("history_delete begin: {e}"))?;
-        let result = (|| -> Result<(), String> {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("history_delete begin: {e}"))?;
+        {
+            let mut statement = tx
+                .prepare_cached("DELETE FROM history_records WHERE id = ?1")
+                .map_err(|e| format!("history_delete prepare: {e}"))?;
             for id in ids {
-                conn.execute("DELETE FROM history_records WHERE id = ?1", params![id])
+                statement
+                    .execute(params![id])
                     .map_err(|e| format!("history_delete row: {e}"))?;
             }
-            Ok(())
-        })();
-        match result {
-            Ok(()) => {
-                conn.execute_batch("COMMIT")
-                    .map_err(|e| format!("history_delete commit: {e}"))?;
-                Ok(())
-            }
-            Err(e) => {
-                let _ = conn.execute_batch("ROLLBACK");
-                Err(e)
-            }
         }
+        tx.commit()
+            .map_err(|e| format!("history_delete commit: {e}"))
     })
 }
 
@@ -313,33 +303,33 @@ pub fn history_replace_all(
     records: &[HistoryRecord],
 ) -> Result<(), String> {
     with_conn(database, |conn| {
-        conn.execute_batch("BEGIN IMMEDIATE")
-            .map_err(|e| format!("history_replace_all begin: {e}"))?;
-        let result = (|| -> Result<(), String> {
-            conn.execute("DELETE FROM history_records", [])
-                .map_err(|e| format!("history_replace_all delete: {e}"))?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("history_replace_all begin: {e}"))?;
+        tx.execute("DELETE FROM history_records", [])
+            .map_err(|e| format!("history_replace_all delete: {e}"))?;
+        {
+            let mut statement = tx.prepare_cached(
+                "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+            ).map_err(|e| format!("history_replace_all prepare: {e}"))?;
             for rec in records {
                 let payload_json = serde_json::to_string(&rec.payload)
                     .map_err(|e| format!("history_replace_all encode payload: {e}"))?;
-                conn.execute(
-                    "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, payload_json],
-                ).map_err(|e| format!("history_replace_all insert: {e}"))?;
-            }
-            Ok(())
-        })();
-        match result {
-            Ok(()) => {
-                conn.execute_batch("COMMIT")
-                    .map_err(|e| format!("history_replace_all commit: {e}"))?;
-                Ok(())
-            }
-            Err(e) => {
-                let _ = conn.execute_batch("ROLLBACK");
-                Err(e)
+                statement
+                    .execute(params![
+                        rec.id,
+                        rec.wallet_id,
+                        rec.chain_name,
+                        rec.tx_hash,
+                        rec.created_at,
+                        payload_json
+                    ])
+                    .map_err(|e| format!("history_replace_all insert: {e}"))?;
             }
         }
+        tx.commit()
+            .map_err(|e| format!("history_replace_all commit: {e}"))
     })
 }
 
@@ -446,4 +436,15 @@ pub(crate) fn history_save_send_progress(
         tx.execute("INSERT INTO history_records(id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET tx_hash=excluded.tx_hash,payload=excluded.payload", params![record.id, record.wallet_id, record.chain_name, record.tx_hash, record.created_at, json]).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
     })
+}
+
+/// Indexed pending sends for nonce reservation; validate nonces in the owning service.
+pub(crate) fn history_pending_for_sender(
+    database: &WalletDatabase,
+    chain: &str,
+    sender: &str,
+) -> Result<Vec<HistoryRecord>, String> {
+    history_fetch_where(database,
+        "chain_name = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'",
+        params![chain, sender])
 }

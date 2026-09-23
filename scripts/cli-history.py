@@ -123,9 +123,11 @@ class HistoryTests(unittest.TestCase):
                     row = dict(id=f'tx-{i:03}', walletId=wid, walletName='Éther 测试', kind='receive', status='confirmed', chainName='Ethereum', symbol='ETH', assetDisplayName='Ether', deploymentId='ethereum:native', amount=1, address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAtUnix=i)
                     db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'Ethereum',row['transactionHash'],i,json.dumps(row)))
                 # A duplicate provider record must not consume a page slot or hide the confirmed row.
-                row.update(id='duplicate', status='pending')
+                row.update(id='duplicate', kind='send', status='pending')
                 db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'Ethereum',row['transactionHash'],799,json.dumps(row)))
-            pages = [run('txs','--page','--offset',str(offset))['page'] for offset in (0,20,40)]
+            pages = [run('txs', '--page')['page']]
+            while pages[-1]['hasMore']:
+                pages.append(run('txs', '--page', '--cursor', pages[-1]['nextCursor'])['page'])
             ids = [r['id'] for page in pages for r in page['records']]
             assert len(ids)==55 and len(set(ids))==55 and 'duplicate' not in ids, ids
             assert [p['hasMore'] for p in pages] == [True,True,False], pages
@@ -134,10 +136,14 @@ class HistoryTests(unittest.TestCase):
             assert run('txs','--page','--search','no-such-address')['page']['records']==[]
             assert run('txs','--page','--oldest-first','--limit','1')['page']['records'][0]['id']=='tx-000'
             summary = run('txs','--summary')['summary']
-            assert summary['totalCount'] == 56
-            assert len(summary['recentAndPending']) <= 51
+            assert summary['totalCount'] == 55
+            assert len(summary['recentAndPending']) == 50
+            assert 'duplicate' not in {r['id'] for r in summary['recentAndPending']}
+            assert summary['replaceable'] == []
             assert summary['earliest'][0]['earliestCreatedAtUnix'] == 0
-            assert run('txs','--record','tx-000')['record']['id'] == 'tx-000'
+            assert 'tx-000' not in {r['id'] for r in summary['recentAndPending']}
+            old_record = run('txs','--record','tx-000')['record']
+            assert old_record['id'] == 'tx-000' and old_record['status'] == 'confirmed', old_record
             assert run('txs','--record','missing')['record'] is None
             run('wallet','watch','--chain','solana','--address','11111111111111111111111111111111','--name','IdentityCases')
             with sqlite3.connect(dbpath) as db:
@@ -147,6 +153,41 @@ class HistoryTests(unittest.TestCase):
                     db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (identity,solana_id,'Solana',txhash.lower(),1,json.dumps(record)))
             distinct = run('txs','--page','--wallet','IdentityCases')['page']['records']
             assert {row['id'] for row in distinct} == {'case-upper','case-lower','unknown-one','unknown-two'}, distinct
+
+    def test_cursor_changes_and_ties(self):
+        """Cursor survives anchor deletion and inserts; ties work in both directions."""
+        with tempfile.TemporaryDirectory(prefix='spectra-history-cursor-') as directory:
+            def run(*args, ok=True):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
+                assert (result.returncode == 0) == ok, (args, result.stdout, result.stderr)
+                return json.loads(result.stdout) if ok else None
+            run('wallet', 'watch', '--chain', 'ethereum', '--address', '0x'+'11'*20, '--name', 'Cursor')
+            dbpath = pathlib.Path(directory)/'spectra.sqlite'
+            with sqlite3.connect(dbpath) as db:
+                wid = db.execute('SELECT id FROM wallets').fetchone()[0]
+                def insert(identity, timestamp):
+                    row = dict(id=identity, walletId=wid, walletName='Cursor', kind='receive', status='confirmed', chainName='Ethereum', symbol='ETH', assetDisplayName='Ether', deploymentId='ethereum:native', amount=1, address='0x'+'22'*20, transactionHash=identity, createdAtUnix=timestamp)
+                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (identity,wid,'Ethereum',identity,timestamp,json.dumps(row)))
+                for i in range(9): insert(f'tie-{i}', i//3)
+            for flags in [(), ('--oldest-first',)]:
+                page = run('txs', '--page', '--limit', '2', *flags)['page']
+                ids = [r['id'] for r in page['records']]
+                while page['hasMore']:
+                    page = run('txs', '--page', '--limit', '2', *flags, '--cursor', page['nextCursor'])['page']
+                    ids += [r['id'] for r in page['records']]
+                expected = list(range(9)) if flags else [6,7,8,3,4,5,0,1,2]
+                assert ids == [f'tie-{i}' for i in expected], ids
+                assert page['nextCursor'] is None
+            first = run('txs', '--page', '--limit', '2')['page']
+            with sqlite3.connect(dbpath) as db:
+                db.execute("DELETE FROM history_records WHERE id = 'tie-7'")
+                insert('newest', 10)
+            second = run('txs', '--page', '--limit', '2', '--cursor', first['nextCursor'])['page']
+            assert [r['id'] for r in second['records']] == ['tie-8', 'tie-3'], second
+            assert run('txs', '--page')['page']['records'][0]['id'] == 'newest'
+            for changed in [('--oldest-first',), ('--filter','pending'), ('--search','Cursor')]:
+                run('txs', '--page', '--cursor', first['nextCursor'], *changed, ok=False)
+            run('txs', '--page', '--cursor', 'broken', ok=False)
 
     def test_bitcoin_pagination(self):
         """Fetch and persist every transaction across provider pages."""
@@ -284,6 +325,37 @@ class HistoryTests(unittest.TestCase):
             page = run('txs','--page')
             assert page['actions']['utxo']['recheckUnavailableReason'] is None
             assert run('txs','--summary')['summary']['earliest'][0]['earliestCreatedAtUnix'] == 1700000000.125
+
+    def test_confirmed_doge_never_needs_automatic_polling(self):
+        """Persisted status, not an in-memory depth threshold, stops polling."""
+        with tempfile.TemporaryDirectory(prefix='spectra-doge-polling-') as directory:
+            def run(*args):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                        capture_output=True, text=True, timeout=60)
+                assert result.returncode == 0, result.stdout + result.stderr
+                return json.loads(result.stdout)
+            run('txs')
+            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                for count in (1, 12, 100001):
+                    key = f'doge-{count}'
+                    row = dict(id=key, walletId='wallet', walletName='Fixture', kind='send',
+                               status='confirmed', chainName='Dogecoin', symbol='DOGE',
+                               assetDisplayName='Dogecoin', amount=1, address='recipient',
+                               transactionHash='ab'*32, createdAtUnix=1234, confirmationCount=count)
+                    db.execute('INSERT INTO history_records (id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
+                               (key, 'wallet', 'Dogecoin', row['transactionHash'], 1234, json.dumps(row)))
+            # Each invocation starts a fresh core service. These must not use the network.
+            assert run('txs', '--maintenance')['chains'] == []
+            assert run('txs', '--refresh-pending')['maintenance']['chains'] == []
+            for count in (1, 12, 100001):
+                result = run('txs', '--record', f'doge-{count}')
+                assert result['actions']['recheckUnavailableReason'] is None, result
+            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                payload = json.loads(db.execute('SELECT payload FROM history_records WHERE id=?', ('doge-1',)).fetchone()[0])
+                payload['status'] = 'pending'
+                payload['confirmationCount'] = 0
+                db.execute('UPDATE history_records SET payload=? WHERE id=?', (json.dumps(payload), 'doge-1'))
+            assert run('txs', '--maintenance')['chains'] == ['dogecoin']
 
     def test_status_recheck(self):
         """Recheck only the target transaction; failed reads preserve stored state."""
