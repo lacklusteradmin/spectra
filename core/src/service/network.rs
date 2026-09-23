@@ -45,8 +45,13 @@ impl WalletService {
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
-        let mut records = crate::filtered_endpoint_records_for_chain(chain_id.clone(), 0)
-            .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
+        let mut records: Vec<_> = self
+            .endpoint_directory()
+            .await?
+            .into_iter()
+            .filter(|entry| entry.record.chain_id == chain_id)
+            .map(|entry| entry.record)
+            .collect();
 
         // Custom endpoints use the same protocol probe as the catalog's node.
         if let Some(template) = records

@@ -125,10 +125,6 @@ impl TronClient {
         }
     }
 
-    pub(crate) async fn get_val(&self, path: &str) -> Result<Value, String> {
-        self.client.get_path(&self.endpoints, path).await
-    }
-
     pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<Value, String> {
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
@@ -391,8 +387,17 @@ impl TronClient {
     pub async fn fetch_all_trc20_balances(
         &self,
         address: &str,
+        account_endpoints: &[String],
     ) -> Result<Vec<super::HeldToken>, String> {
-        let resp = self.get_val(&format!("/v1/accounts/{address}")).await?;
+        let resp: Value = with_fallback(account_endpoints, |endpoint| async move {
+            self.client
+                .get_json(
+                    &format!("{}/{address}", endpoint.trim_end_matches('/')),
+                    RetryProfile::ChainRead,
+                )
+                .await
+        })
+        .await?;
         let mut held: Vec<(String, u128)> = Vec::new();
         for entry in resp
             .pointer("/data/0/trc20")

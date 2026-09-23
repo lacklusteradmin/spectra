@@ -359,8 +359,8 @@ impl WalletService {
                     .map(|w| w.id.clone())
                     .collect();
                 let reset_chains = crate::wallet_db::changed_selected_chains(&before, &state);
-                let esplora_changed = before.settings.bitcoin_esplora_endpoints
-                    != state.settings.bitcoin_esplora_endpoints;
+                let esplora_changed =
+                    before.settings.custom_endpoints != state.settings.custom_endpoints;
                 (
                     state,
                     events,

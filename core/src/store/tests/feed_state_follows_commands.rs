@@ -92,8 +92,10 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
     service.advance_history_cursor("bitcoin".into(), "w".into(), None);
     service
         .apply_state_command(StateCommand::SetAppSetting {
-            update: AppSettingUpdate::BitcoinEsploraEndpoints {
-                value: "https://blockstream.info/api".into(),
+            update: AppSettingUpdate::AddCustomEndpoint {
+                chain_id: "bitcoin".into(),
+                api: "esplora".into(),
+                endpoint: "https://custom.example/api".into(),
             },
         })
         .await

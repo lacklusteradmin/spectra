@@ -269,9 +269,13 @@ mod configured_tests {
         for chain in ["Ethereum", "Ethereum Sepolia"] {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
-                    update: crate::store::state::AppSettingUpdate::RpcEndpoint {
-                        chain: chain.into(),
-                        value: server.uri(),
+                    update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                        chain_id: crate::registry::Chain::from_display_name(chain)
+                            .unwrap()
+                            .str_id()
+                            .into(),
+                        api: "evm-json-rpc".into(),
+                        endpoint: server.uri(),
                     },
                 })
                 .await

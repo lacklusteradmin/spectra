@@ -132,7 +132,7 @@ pub struct EvmHistoryEntry {
 }
 
 /// Build a query for a configured keyless explorer, refusing unavailable history.
-pub fn explorer_query_url(source: EvmHistorySource, params: &str) -> Result<String, String> {
+pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<String, String> {
     match source {
         EvmHistorySource::Open(base) => Ok(format!("{base}/api?{params}")),
         EvmHistorySource::Unavailable => {
@@ -563,7 +563,7 @@ impl EvmClient {
     pub async fn fetch_history(
         &self,
         address: &str,
-        source: EvmHistorySource,
+        source: EvmHistorySource<'_>,
         page: u32,
         page_size: u32,
     ) -> Result<Vec<EvmHistoryEntry>, String> {
@@ -642,7 +642,7 @@ impl EvmClient {
     pub async fn fetch_token_transfers(
         &self,
         address: &str,
-        source: EvmHistorySource,
+        source: EvmHistorySource<'_>,
         page: u32,
         page_size: u32,
     ) -> Result<Vec<EvmTokenTransferEntry>, String> {

@@ -88,9 +88,10 @@ mod tests {
         for url in ["http://127.0.0.1:13001", "http://127.0.0.1:13002"] {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
-                    update: crate::store::state::AppSettingUpdate::RpcEndpoint {
-                        chain: "Solana".into(),
-                        value: url.into(),
+                    update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                        chain_id: "solana".into(),
+                        api: "solana-json-rpc".into(),
+                        endpoint: url.into(),
                     },
                 })
                 .await

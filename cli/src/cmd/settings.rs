@@ -90,24 +90,9 @@ fn parse_f64(raw: &str) -> Result<f64, &'static str> {
 
 const FIELDS: &[Field] = &[
     Field {
-        key: "monero-backend-url",
-        read: |s| s.monero_backend_base_url.clone(),
-        update: |v| Ok(AppSettingUpdate::MoneroBackendBaseUrl { value: v.into() }),
-    },
-    Field {
-        key: "bitcoin-esplora-endpoints",
-        read: |s| s.bitcoin_esplora_endpoints.clone(),
-        update: |v| Ok(AppSettingUpdate::BitcoinEsploraEndpoints { value: v.into() }),
-    },
-    Field {
         key: "bitcoin-stop-gap",
         read: |s| s.bitcoin_stop_gap.to_string(),
         update: |v| parse_u32(v).map(|value| AppSettingUpdate::BitcoinStopGap { value }),
-    },
-    Field {
-        key: "strict-rpc-only",
-        read: |s| s.use_strict_rpc_only.to_string(),
-        update: |v| parse_bool(v).map(|value| AppSettingUpdate::UseStrictRpcOnly { value }),
     },
     Field {
         key: "background-sync-profile",
@@ -186,41 +171,25 @@ struct ChainKeyedField {
     stored: fn(&AppSettings) -> Vec<String>,
 }
 
-const CHAIN_KEYED: &[ChainKeyedField] = &[
-    ChainKeyedField {
-        prefix: "fee-priority.",
-        read: |s, chain| {
-            s.fee_priority_by_chain
-                .get(chain)
-                .copied()
-                .unwrap_or(FeePriority::Normal)
-                .as_raw()
-                .to_string()
-        },
-        // Which values exist is core's, and so is reading one written as text:
-        // a priority no send path spends stores as the default rather than
-        // under a name that says a fee was chosen.
-        update: |chain, value| AppSettingUpdate::FeePriority {
-            chain: chain.to_string(),
-            value: spectra_core::store::state::parse_fee_priority(value.to_string()),
-        },
-        stored: |s| s.fee_priority_by_chain.keys().cloned().collect(),
+const CHAIN_KEYED: &[ChainKeyedField] = &[ChainKeyedField {
+    prefix: "fee-priority.",
+    read: |s, chain| {
+        s.fee_priority_by_chain
+            .get(chain)
+            .copied()
+            .unwrap_or(FeePriority::Normal)
+            .as_raw()
+            .to_string()
     },
-    ChainKeyedField {
-        prefix: "rpc-endpoint.",
-        read: |s, chain| {
-            s.rpc_endpoint_by_chain
-                .get(chain)
-                .cloned()
-                .unwrap_or_default()
-        },
-        update: |chain, value| AppSettingUpdate::RpcEndpoint {
-            chain: chain.to_string(),
-            value: value.to_string(),
-        },
-        stored: |s| s.rpc_endpoint_by_chain.keys().cloned().collect(),
+    // Which values exist is core's, and so is reading one written as text:
+    // a priority no send path spends stores as the default rather than
+    // under a name that says a fee was chosen.
+    update: |chain, value| AppSettingUpdate::FeePriority {
+        chain: chain.to_string(),
+        value: spectra_core::store::state::parse_fee_priority(value.to_string()),
     },
-];
+    stored: |s| s.fee_priority_by_chain.keys().cloned().collect(),
+}];
 
 /// A setting a caller can name: one of the fixed rows, or one chain's value
 /// under one of the keyed families.

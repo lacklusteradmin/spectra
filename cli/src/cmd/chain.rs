@@ -60,34 +60,16 @@ pub fn service_for_chain(
     chain: Chain,
     filter_mask: u32,
 ) -> CliResult<Arc<WalletService>> {
-    let name = chain.chain_display_name().to_string();
-    let configured = spectra_core::service::catalog_endpoints()?
-        .into_iter()
-        .find(|row| row.chain_id == chain.str_id())
-        .map(|row| row.endpoints)
-        .unwrap_or_default();
-    let endpoints: Vec<String> =
-        spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), filter_mask)
-            .map_err(CliError::from)?
-            .into_iter()
-            .filter(|record| configured.contains(&record.endpoint))
-            .map(|record| record.endpoint)
-            .collect();
-    if endpoints.is_empty() {
+    let service = ctx.service()?;
+    let records =
+        spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), filter_mask)?;
+    let api = chain.endpoint_api(spectra_core::registry::EndpointSlot::Primary);
+    if !records.iter().any(|row| row.api == api) {
         return Err(CliError::failure(format!(
-            "no compatible {} endpoints registered for {name}",
-            chain
-                .endpoint_api(spectra_core::registry::EndpointSlot::Primary)
-                .map(|api| api.as_str())
-                .unwrap_or("API")
+            "no compatible endpoints registered for {}",
+            chain.chain_display_name()
         )));
     }
-    let service = WalletService::new(vec![ChainEndpoints {
-        chain_id: chain.str_id().to_string(),
-        endpoints,
-    }])
-    .map_err(CliError::from)?;
-    ctx.prepare_transport(&service)?;
     Ok(service)
 }
 
@@ -177,6 +159,15 @@ pub struct EndpointsArgs {
     /// List registered endpoints and capabilities offline, without health probes.
     #[arg(long)]
     catalog: bool,
+    /// Save a custom endpoint offline. Requires --chain and --api.
+    #[arg(long, requires_all = ["chain", "api"], conflicts_with = "catalog")]
+    add: Option<String>,
+    /// API contract, using the api value from endpoints.toml.
+    #[arg(long, requires = "add")]
+    api: Option<String>,
+    /// Restrict offline listing to built-in or custom endpoints.
+    #[arg(long, requires = "catalog", value_parser = ["built-in", "custom"])]
+    source: Option<String>,
 }
 
 /// Call every registered endpoint and report which ones answer.
@@ -192,21 +183,62 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             .filter(|c| c.mainnet_counterpart() == *c)
             .collect(),
     };
-    if args.catalog {
-        let mut records = Vec::new();
-        for chain in &chains {
-            records.extend(spectra_core::filtered_endpoint_records_for_chain(
-                chain.str_id().into(),
-                0,
-            )?);
+    if let Some(url) = args.add {
+        let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
+            update: spectra_core::store::state::AppSettingUpdate::AddCustomEndpoint {
+                chain_id: chains[0].str_id().into(),
+                api: args.api.unwrap(),
+                endpoint: url,
+            },
+        })?;
+        if transition
+            .events
+            .contains(&spectra_core::store::state::StateEvent::AppSettingRejected)
+        {
+            return Err(CliError::rejected(
+                "Invalid or duplicate endpoint for this network and API",
+            ));
         }
+        out.emit(serde_json::json!({"ok":true,"customEndpoints":transition.state.settings.custom_endpoints}));
+        return Ok(());
+    }
+    if args.catalog {
+        let service = WalletService::new_catalog()?;
+        ctx.rt.block_on(service.open_state(ctx.db_path()))?;
+        let entries = ctx.rt.block_on(service.endpoint_directory())?;
+        let records: Vec<_> = entries
+            .into_iter()
+            .filter(|entry| {
+                (args.chain.is_none()
+                    || chains
+                        .iter()
+                        .any(|chain| chain.str_id() == entry.record.chain_id))
+                    && args
+                        .source
+                        .as_deref()
+                        .is_none_or(|source| entry.is_built_in == (source == "built-in"))
+            })
+            .collect();
         out.text(|| {
             for record in &records {
-                println!("{}  {}", record.chain_id, record.endpoint);
+                println!(
+                    "{}  {}  {}",
+                    record.record.chain_id,
+                    record.record.endpoint,
+                    if record.is_built_in {
+                        "built-in"
+                    } else {
+                        "custom"
+                    }
+                );
                 println!(
                     "  {} · {}",
-                    record.api.map(|api| api.as_str()).unwrap_or("web link"),
-                    record.capabilities.join(" · ")
+                    record
+                        .record
+                        .api
+                        .map(|api| api.as_str())
+                        .unwrap_or("web link"),
+                    record.record.capabilities.join(" · ")
                 );
             }
         });
@@ -219,15 +251,15 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 .map(|group| serde_json::json!({
                     "chainId": group.chain_id, "title": group.title, "endpoints": group.endpoints,
                 })).collect::<Vec<_>>(),
-            "configured": spectra_core::service::catalog_endpoints()?.into_iter()
+            "configured": ctx.rt.block_on(service.configured_endpoints()).into_iter()
                 .filter(|row| chains.iter().any(|chain| row.chain_id == chain.str_id()
                     || row.chain_id.starts_with(&format!("{}:", chain.str_id()))))
                 .map(|row| serde_json::json!({"chainId": row.chain_id, "endpoints": row.endpoints}))
                 .collect::<Vec<_>>(),
             "total": records.len(),
             "endpoints": records.iter().map(|r| serde_json::json!({
-                "chainId": r.chain_id, "endpoint": r.endpoint,
-                "api": r.api, "capabilities": r.capabilities,
+                "chainId": r.record.chain_id, "endpoint": r.record.endpoint,
+                "api": r.record.api, "capabilities": r.record.capabilities, "isBuiltIn": r.is_built_in,
             })).collect::<Vec<_>>(),
         }));
         return Ok(());

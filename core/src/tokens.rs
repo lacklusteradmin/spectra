@@ -479,90 +479,6 @@ pub fn normalize_token_identifier(
     }
 }
 
-// ---- Bitcoin Esplora endpoint parsing / validation ----
-
-/// The custom Esplora bases a setting value names, in order.
-///
-/// Exported because the app split the same value itself, twice — once per
-/// settings screen — with its own separators and trimming beside the
-/// validation core already ran on it.
-#[uniffi::export]
-pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
-    raw.split([',', '\n', ';'])
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
-
-/// Endpoint setting identity. Determines URL parsing (single or
-/// comma-separated) and the validation message.
-#[derive(Debug, Clone, Copy, uniffi::Enum)]
-pub enum EndpointField {
-    /// A comma, semicolon or newline separated list.
-    BitcoinEsploraList,
-    /// Any EVM chain's custom RPC. The rule is "a valid http(s) URL" and was
-    /// never Ethereum-specific; the name was.
-    EvmRpc,
-    MoneroBackend,
-}
-
-/// `None` when the value is usable, otherwise the message to show under it.
-#[uniffi::export]
-pub fn endpoint_validation_error(field: EndpointField, raw: String) -> Option<String> {
-    let invalid = match field {
-        EndpointField::BitcoinEsploraList => parse_bitcoin_esplora_endpoints(raw)
-            .iter()
-            .any(|endpoint| !is_valid_http_url(endpoint)),
-        EndpointField::EvmRpc | EndpointField::MoneroBackend => {
-            let trimmed = raw.trim();
-            !trimmed.is_empty() && !is_valid_http_url(trimmed)
-        }
-    };
-    if !invalid {
-        return None;
-    }
-    Some(
-        match field {
-            EndpointField::BitcoinEsploraList => {
-                "Bitcoin Esplora endpoints must be valid http(s) URLs separated by commas."
-            }
-            EndpointField::EvmRpc => "Enter a valid http or https RPC URL.",
-            EndpointField::MoneroBackend => "Enter a valid http or https Monero backend URL.",
-        }
-        .to_string(),
-    )
-}
-
-fn is_valid_http_url(s: &str) -> bool {
-    // Minimal-but-correct parser matching the semantics the Swift code needed:
-    // scheme in {http, https} and a non-empty host.
-    let Some(scheme_end) = s.find("://") else {
-        return false;
-    };
-    let scheme = &s[..scheme_end].to_ascii_lowercase();
-    if scheme != "http" && scheme != "https" {
-        return false;
-    }
-    let after = &s[scheme_end + 3..];
-    if after.is_empty() {
-        return false;
-    }
-    // Host ends at '/', '?', '#', or end. Strip any userinfo ('@').
-    let host_end = after.find(['/', '?', '#']).unwrap_or(after.len());
-    let authority = &after[..host_end];
-    let host_part = match authority.rsplit_once('@') {
-        Some((_, h)) => h,
-        None => authority,
-    };
-    // Strip port if present.
-    let host = match host_part.rsplit_once(':') {
-        Some((h, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => h,
-        Some(_) => return false,
-        None => host_part,
-    };
-    !host.is_empty()
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -645,44 +561,6 @@ mod tests {
         assert_eq!(
             normalize_sui_token_identifier("plaintext".into()),
             "plaintext"
-        );
-    }
-
-    #[test]
-    fn parse_endpoints_splits_and_trims() {
-        assert_eq!(
-            parse_bitcoin_esplora_endpoints("a, b ;c\nd,,".into()),
-            vec!["a", "b", "c", "d"]
-        );
-    }
-
-    /// The field decides how the value is parsed and which message names it.
-    #[test]
-    fn endpoint_validation_is_per_field() {
-        use EndpointField::*;
-        assert_eq!(
-            endpoint_validation_error(
-                BitcoinEsploraList,
-                "https://x.example,https://y.example".into()
-            ),
-            None
-        );
-        assert!(endpoint_validation_error(BitcoinEsploraList, "notaurl".into()).is_some());
-        // An empty single-URL field is unset, not invalid; an empty list is too.
-        assert_eq!(endpoint_validation_error(EvmRpc, "".into()), None);
-        assert_eq!(
-            endpoint_validation_error(BitcoinEsploraList, "".into()),
-            None
-        );
-        assert!(endpoint_validation_error(EvmRpc, "ftp://x".into()).is_some());
-        assert_eq!(
-            endpoint_validation_error(EvmRpc, "https://rpc.example/abc".into()),
-            None
-        );
-        // Same check, different name in the message.
-        assert_ne!(
-            endpoint_validation_error(EvmRpc, "ftp://x".into()),
-            endpoint_validation_error(MoneroBackend, "ftp://x".into())
         );
     }
 

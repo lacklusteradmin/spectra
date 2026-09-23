@@ -203,10 +203,10 @@ const ALL_CHAINS: &[Chain] = &[
 ///
 /// Only keyless explorer sources are configured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EvmHistorySource {
+pub enum EvmHistorySource<'a> {
     /// A keyless endpoint. The base already identifies the chain, so no
     /// `chainid` is sent.
-    Open(&'static str),
+    Open(&'a str),
     /// No keyless indexer is configured. Asking is an error, not an empty list.
     Unavailable,
 }
@@ -604,7 +604,7 @@ impl Chain {
     }
 
     /// The keyless explorer source for this EVM chain, if configured.
-    pub fn evm_history_source(self) -> EvmHistorySource {
+    pub fn evm_history_source(self) -> EvmHistorySource<'static> {
         match self.mainnet_counterpart() {
             // Blockscout, from its own instance directory at
             // `chains.blockscout.com/api/chains`.

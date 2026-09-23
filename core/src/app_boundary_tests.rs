@@ -63,11 +63,16 @@ fn applying_a_setting_is_the_reducers_rule() {
     let defaults = app_settings_defaults();
     let trimmed = app_settings_applying(
         defaults.clone(),
-        AppSettingUpdate::MoneroBackendBaseUrl {
-            value: "  https://wallet.example \n".into(),
+        AppSettingUpdate::AddCustomEndpoint {
+            chain_id: "monero".into(),
+            api: "monero-daemon-rpc".into(),
+            endpoint: "  https://wallet.example \n".into(),
         },
     );
-    assert_eq!(trimmed.monero_backend_base_url, "https://wallet.example");
+    assert_eq!(
+        trimmed.custom_endpoints[0].endpoint,
+        "https://wallet.example"
+    );
     let bounded = app_settings_applying(
         defaults.clone(),
         AppSettingUpdate::BitcoinStopGap { value: 0 },

@@ -72,24 +72,39 @@ impl WalletService {
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
-        let source = chain.evm_history_source();
-
-        // Fetch native and token transfers concurrently.
-        let (native_result, token_result) = tokio::join!(
-            client.fetch_history(&address, source, page, page_size),
-            async {
-                if tokens.is_empty() {
-                    Ok(Vec::new())
-                } else {
-                    client
-                        .fetch_token_transfers(&address, source, page, page_size)
-                        .await
-                }
+        let mut sources = self
+            .custom_api_endpoints(chain, crate::EndpointApi::Blockscout)
+            .await;
+        if let crate::registry::EvmHistorySource::Open(base) = chain.evm_history_source() {
+            if !sources.iter().any(|url| url == base) {
+                sources.push(base.into());
             }
-        );
-
-        let native_entries = native_result?;
-        let raw_tokens = token_result?;
+        }
+        if sources.is_empty() {
+            return Err("no explorer configured for this chain".into());
+        }
+        let (native_entries, raw_tokens) = crate::fetch::http::with_fallback(&sources, |base| {
+            let client = &client;
+            let address = &address;
+            let tokens = &tokens;
+            async move {
+                let source = crate::registry::EvmHistorySource::Open(&base);
+                let (native, token) = tokio::join!(
+                    client.fetch_history(address, source, page, page_size),
+                    async {
+                        if tokens.is_empty() {
+                            Ok(Vec::new())
+                        } else {
+                            client
+                                .fetch_token_transfers(address, source, page, page_size)
+                                .await
+                        }
+                    }
+                );
+                Ok((native?, token?))
+            }
+        })
+        .await?;
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
@@ -188,11 +203,27 @@ async fn fetch_history(
                 .await?,
         ),
         Api::EvmJsonRpc => {
-            let source = chain.evm_history_source();
-
-            let h = EvmClient::new(endpoints, chain.evm_chain_id()?)
-                .fetch_history(address, source, 1, 50)
-                .await?;
+            let mut sources = service.custom_api_endpoints(chain, Api::Blockscout).await;
+            if let crate::registry::EvmHistorySource::Open(base) = chain.evm_history_source() {
+                if !sources.iter().any(|url| url == base) {
+                    sources.push(base.into());
+                }
+            }
+            let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
+            let h = crate::fetch::http::with_fallback(&sources, |base| {
+                let client = &client;
+                async move {
+                    client
+                        .fetch_history(
+                            address,
+                            crate::registry::EvmHistorySource::Open(&base),
+                            1,
+                            50,
+                        )
+                        .await
+                }
+            })
+            .await?;
             json_response(&h)
         }
         Api::SolanaJsonRpc => json_response(

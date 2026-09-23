@@ -633,9 +633,10 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .is_empty());
     service
         .apply_state_command(StateCommand::SetAppSetting {
-            update: crate::store::state::AppSettingUpdate::RpcEndpoint {
-                chain: "Ethereum".into(),
-                value: "http://127.0.0.1:8545".into(),
+            update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                chain_id: "ethereum".into(),
+                api: "evm-json-rpc".into(),
+                endpoint: "http://127.0.0.1:8545".into(),
             },
         })
         .await

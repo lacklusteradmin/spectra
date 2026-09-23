@@ -58,7 +58,7 @@ try:
             assert (result.returncode==0)==success,(args,result.stdout,result.stderr)
             return json.loads(result.stdout)
         run('wallet','import','--chain','ethereum','--name','Stages')
-        run('settings','set','rpc-endpoint.Ethereum',urls[0])
+        run('endpoints','--chain','ethereum','--api','evm-json-rpc','--add',urls[0])
         def build():
             return run('send','build','--from','Stages','--to','0x'+'22'*20,'--amount','0.01','--endpoint',urls[0])['artifact']
         exact=run('send','build','--from','Stages','--to','0x'+'22'*20,

@@ -57,7 +57,7 @@ class DiagnosticsTests(unittest.TestCase):
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 endpoint=f'http://127.0.0.1:{server.server_port}'
-                run('settings','set','rpc-endpoint.Solana',endpoint)
+                run('endpoints','--chain','solana','--api','solana-json-rpc','--add',endpoint)
                 assert run('staking','endpoints','--chain','solana')['endpoints'][0]==endpoint
                 assert len(run('staking','validators','--chain','solana')['validators'])==1
                 assert seen==['getVoteAccounts'],seen
@@ -93,8 +93,8 @@ class DiagnosticsTests(unittest.TestCase):
             worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
             try:
                 endpoint=f'http://127.0.0.1:{server.server_port}'
-                run('settings','set','rpc-endpoint.Ethereum',endpoint)
-                run('settings','set','rpc-endpoint.Ethereum Sepolia',endpoint)
+                run('endpoints','--chain','ethereum','--api','evm-json-rpc','--add',endpoint)
+                run('endpoints','--chain','ethereum-sepolia','--api','evm-json-rpc','--add',endpoint)
                 run('network','set','ethereum-sepolia')
                 report=run('diagnostics','configured','--chain','ethereum')['report']
                 assert report['chain_id']=='ethereum-sepolia' and report['rpc_endpoint']==endpoint, report

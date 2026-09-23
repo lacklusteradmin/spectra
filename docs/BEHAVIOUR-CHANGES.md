@@ -16,6 +16,99 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-23 — One typed custom endpoint directory
+
+- **Before:** Endpoints embedded separate EVM RPC, Bitcoin Esplora and Monero
+  backend editors. Their settings had different storage shapes; the Esplora
+  and Monero values were displayed without being used by the service's node
+  selection. Diagnostics offered another set of these editors.
+- **After:** a top-right plus opens Network / Type / URL. Types use the exact
+  `api` names from `endpoints.toml` for that network. The existing network
+  groups and endpoint details remain, with Built-In / Custom labels and a
+  source filter. Diagnostics links to this directory instead of maintaining
+  separate editors. Core stores typed custom endpoints, rejects invalid and
+  duplicate URLs, and supplies them to the existing matching API clients and
+  health probes. Newer custom URLs are tried before older custom URLs and
+  built-in nodes; concrete networks remain isolated. Blockscout history also
+  accepts custom sources; TronGrid token discovery uses its own typed account
+  URLs. This does not add implementations for operations
+  an API's existing adapter does not implement.
+- **Why:** one persisted directory and the same API adapter for custom and
+  built-in URLs, instead of three inconsistent, partly ineffective settings.
+  The old fields and CLI settings are removed directly, without migration.
+- **CLI check:** `spectra endpoints --chain solana --api solana-json-rpc
+  --add https://node.example`; `spectra --json endpoints --catalog --source
+  custom`; `spectra --json send configured-endpoints solana`. Offline acceptance
+  checks every catalog network/API pair, reopens storage, rejects duplicates
+  and incompatible types, and verifies source filtering and network isolation.
+- **Verification:** formatting/clippy, 829 core tests and the transport test
+  passed. All 122 iOS tests passed, including endpoint binding and real-window
+  rendering tests; exported screenshots were visually inspected. CLI acceptance
+  passed 441 checks, including all 67 catalog network/API pairs, with its sole
+  failure being the pre-existing unused `Provider Notes` translation from a
+  separate Pricing edit. Therefore `make verify` is not fully green; iOS was
+  run separately because that CLI gate stops the aggregate command. Swift and
+  Kotlin bindings were regenerated (optional `ktlint` is unavailable). Mock
+  tests cover persisted Solana/WhatsOnChain reads and separate Blockscout and
+  TronGrid indexer requests. JSON parsing and `git diff --check` passed.
+
+## 2026-09-23 — Remove the Report a Problem introduction
+
+- **Before:** Report a Problem opened with explanatory placeholder text.
+- **After:** the page starts with Support Link; the introductory section,
+  catalog field and all three translations are removed.
+- **Why:** remove the unwanted introduction at the user's request.
+- **CLI check:** no domain behaviour changed. Confirm `reportProblemDescription`
+  has no references in `swift` or `resources/strings`.
+- **Verification:** localized JSON parsing, reference scan and diff checks
+  passed; no full suite for this localized copy removal.
+
+## 2026-09-23 — Remove the unused Strict RPC Only setting
+
+- **Before:** Advanced settings offered “Strict RPC Only (Disable Ledger
+  Fallback)”. Core persisted the flag and CLI exposed `strict-rpc-only`, but
+  no balance or networking operation consumed it.
+- **After:** remove the toggle, explanatory translations, stored field, update
+  variant, CLI mapping and generated binding wiring. No compatibility shim;
+  balance and networking behaviour is unchanged.
+- **Why:** remove an ineffective setting that promised a policy it did not enforce.
+- **CLI check:** `spectra settings get strict-rpc-only` and
+  `spectra settings set strict-rpc-only true` reject the unknown setting;
+  `spectra --json settings list` omits the removed setting.
+  The existing invalid-boolean acceptance check now uses `price-alerts`.
+- **Verification:** Swift and Kotlin bindings regenerated; formatting/clippy,
+  829 core tests plus the transport test, and `make test-ios` passed. CLI
+  acceptance passed 443 checks but failed its unused-string gate on the
+  pre-existing `Provider Notes` translation left by a separate Pricing edit,
+  so `make verify` is not fully green. Direct CLI get/set rejection and list
+  omission checks passed; runtime translation JSON and `git diff --check`
+  passed. Kotlin generation succeeded without optional `ktlint` formatting.
+
+## 2026-09-23 — Restore the Send recipient icon
+
+- **Before:** the recipient page header and composer step referenced the missing
+  SF Symbol `person.crop.circle.badge.arrow.forward.fill`, leaving no icon.
+- **After:** both use `person.crop.circle.fill`.
+- **Why:** use an available system symbol so the recipient icon renders.
+- **CLI check:** no domain behaviour changed. A local Swift/AppKit symbol lookup
+  returned nil for the old name and an image for the replacement.
+- **Verification:** symbol lookup and diff checks only; no full suite or iOS
+  simulator run for this localized presentation fix.
+
+## 2026-09-23 — Remove Pricing and Endpoints explanatory copy
+
+- **Before:** Pricing displayed a pricing introduction and a Provider Notes
+  section; Endpoints displayed an introductory paragraph.
+- **After:** those three explanations and their localized catalog fields are
+  removed. Pricing starts with Display Currency; Endpoints starts with its
+  endpoint list unless a loading error needs to be shown.
+- **Why:** remove explanatory text at the user's request and avoid empty sections.
+- **CLI check:** no domain behaviour changed; inspect the Swift view diff and
+  confirm removed catalog keys have no references with
+  `rg 'pricingIntro|publicProviderNote|copy\.intro' swift resources/strings`.
+- **Verification:** JSON parsing and diff checks only; `make verify` skipped at
+  the user's request.
+
 ## 2026-09-23 — Toggle token discovery directly from the list
 
 - **Before:** changing discovery required opening the token detail.

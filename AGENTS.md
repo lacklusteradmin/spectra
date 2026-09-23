@@ -30,7 +30,11 @@ backward-compatibility shims.
 
 ## Verification
 
-All three suites must pass before calling a change done:
+Match verification to the scope and risk of the change. Small, localized edits
+(such as copy, styling, resources or documentation) need only relevant targeted
+checks; do not run the full suite by default. Run the full suite for major
+changes, such as broad refactors, core domain behaviour, persistence, funds/key
+handling or cross-platform/FFI integration changes, unless the user says otherwise:
 
 ```sh
 make verify
@@ -39,7 +43,7 @@ make verify
 That is `make lint test test-cli test-ios` — `cargo fmt --check` and
 `cargo clippy -- -D warnings`, then `cargo test --workspace`,
 `scripts/cli-acceptance.sh`, and `xcodebuild test` on an iPhone simulator. Run
-a single one by name when iterating; run `make verify` before calling it done.
+a single one by name when iterating. Report which checks actually ran.
 CI runs everything but `test-ios`, which needs Xcode and a simulator.
 
 The workspace is clippy-clean at `-D warnings` and rustfmt-clean; `make fmt`

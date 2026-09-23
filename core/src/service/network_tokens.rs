@@ -94,14 +94,31 @@ impl WalletService {
                     symbol: None,
                 })
                 .collect(),
-            Chain::Tron | Chain::TronNile => TronClient::with_metadata_cache(
-                endpoints,
-                chain.str_id(),
-                self.trc20_metadata.clone(),
-            )
-            .fetch_all_trc20_balances(&address)
-            .await
-            .map_err(SpectraBridgeError::from)?,
+            Chain::Tron | Chain::TronNile => {
+                let mut accounts = if self
+                    .uses_catalog_endpoints
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    self.api_endpoints(chain, crate::EndpointApi::TrongridV1)
+                        .await?
+                } else {
+                    Vec::new()
+                };
+                if accounts.is_empty() {
+                    accounts = endpoints
+                        .iter()
+                        .map(|url| format!("{}/v1/accounts", url.trim_end_matches('/')))
+                        .collect();
+                }
+                TronClient::with_metadata_cache(
+                    endpoints,
+                    chain.str_id(),
+                    self.trc20_metadata.clone(),
+                )
+                .fetch_all_trc20_balances(&address, &accounts)
+                .await
+                .map_err(SpectraBridgeError::from)?
+            }
             Chain::Sui | Chain::SuiTestnet => SuiClient::new(endpoints)
                 .fetch_all_coin_balances(&address)
                 .await

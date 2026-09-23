@@ -92,7 +92,9 @@ mod network_hd;
 mod network_history;
 mod network_prices;
 pub use network_prices::{fetch_fiat_rates, fetch_prices, QuoteRefreshState};
+mod endpoint_directory;
 mod network_tokens;
+pub use endpoint_directory::{CustomEndpoint, EndpointDirectoryEntry};
 mod operational_events;
 mod pending_status;
 pub use pending_status::{PendingMaintenanceFailure, PendingMaintenanceResult};
@@ -315,19 +317,22 @@ impl WalletService {
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
         {
-            if let Some(chain) = Chain::from_str_id(chain_id) {
-                let custom = self
-                    .wallet_state
-                    .read()
-                    .await
-                    .settings
-                    .rpc_endpoint_by_chain
-                    .get(chain.chain_display_name())
-                    .cloned();
-                if let Some(custom) = custom.filter(|v| !v.trim().is_empty()) {
-                    let mut endpoints = vec![custom.clone()];
-                    endpoints.extend(base.iter().filter(|v| **v != custom).cloned());
-                    return Arc::new(endpoints);
+            let (network_id, slot) = match chain_id.split_once(':') {
+                Some((network, "secondary")) => (network, EndpointSlot::Secondary),
+                Some((network, "explorer")) => (network, EndpointSlot::Explorer),
+                _ => (chain_id, EndpointSlot::Primary),
+            };
+            if let Some(chain) = Chain::from_str_id(network_id) {
+                if let Some(api) = chain.endpoint_api(slot) {
+                    let mut custom = self.custom_api_endpoints(chain, api).await;
+                    if !custom.is_empty() {
+                        for url in base.iter() {
+                            if !custom.contains(url) {
+                                custom.push(url.clone());
+                            }
+                        }
+                        return Arc::new(custom);
+                    }
                 }
             }
         }

@@ -113,7 +113,9 @@ Use reproducible checks rather than retaining per-session counts:
   debt. Line counts are diagnostic, not a reason to relocate code artificially
   or keep dead views. An export that removes a Swift rule can be worthwhile.
 
-Run the full verification gate before calling a change done:
+Match verification to scope and risk, as described in [AGENTS.md](../AGENTS.md).
+Small, localized changes need relevant targeted checks only. Run the full
+verification gate for major changes unless the user says otherwise:
 
 ```sh
 make verify

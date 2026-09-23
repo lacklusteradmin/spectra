@@ -60,7 +60,7 @@ class SendTests(unittest.TestCase):
             worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
             try:
                 endpoint=f'http://127.0.0.1:{server.server_port}'
-                run('settings','set','rpc-endpoint.Ethereum',endpoint)
+                run('endpoints','--chain','ethereum','--api','evm-json-rpc','--add',endpoint)
 
                 password='fixture-wallet-password'
                 run('wallet','import','--chain','ethereum','--name','Sealed',env={
@@ -146,7 +146,7 @@ class SendTests(unittest.TestCase):
             server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
             worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
             try:
-                run('settings','set','rpc-endpoint.Ethereum',f'http://127.0.0.1:{server.server_port}')
+                run('endpoints','--chain','ethereum','--api','evm-json-rpc','--add',f'http://127.0.0.1:{server.server_port}')
                 quote=run('send','quote',*base,'--amount','1','--destination',addresses[1])['quote']
                 assert quote['request']['chain_id']=='ethereum',quote
                 assert quote['request']['amount_str']=='1' and quote['request']['to_address']==addresses[1]

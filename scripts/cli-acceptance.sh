@@ -1066,10 +1066,10 @@ check "Etherscan key setting is removed" $REJECTED spectra settings set ethersca
 check "lists the settings core owns"        $OK spectra settings list
 check "automatic refresh has no manual interval setting" $REJECTED \
     spectra settings set refresh-frequency-minutes 30
-check "sets one"                            $OK \
-    spectra settings set monero-backend-url https://wallet.example
-contains "and a second process reads it back" '"value":"https://wallet.example"' \
-    spectra --json settings get monero-backend-url
+check "adds a typed custom endpoint" $OK \
+    spectra endpoints --chain monero --api monero-daemon-rpc --add https://wallet.example
+contains "a second process reads the custom endpoint" '"endpoint":"https://wallet.example"' \
+    spectra --json endpoints --catalog --source custom --chain monero
 # Fee priority is keyed by chain rather than global: two chains had a settings
 # field each and the other seventy-six shared a dictionary iOS persisted
 # itself, so the CLI could set exactly two of the seventy-eight.
@@ -1089,24 +1089,15 @@ check "refuses a chain the registry does not know" $REJECTED \
 # to. It was one `ethereum_rpc_endpoint` string, read through an accessor that
 # was `chainName == "Ethereum" ? … : nil`, so twenty-two EVM mainnets could not
 # be pointed at a private node from any front end.
-check "points a second EVM chain at a private node" $OK \
-    spectra settings set rpc-endpoint.Base https://base.internal.example
-contains "and reads it back"                '"value":"https://base.internal.example"' \
-    spectra --json settings get rpc-endpoint.Base
-contains "a chain never set falls back to the catalog" '"value":""' \
-    spectra --json settings get rpc-endpoint.Polygon
-contains "an empty value clears the override" '"value":""' \
-    spectra --json settings set rpc-endpoint.Base ""
-check "refuses a chain the registry does not know" $REJECTED \
-    spectra settings set rpc-endpoint.Nonsuch https://x.example
-# The URL rule was a red caption under an iOS text field; the text itself was
-# stored, and every node request read it back. Core refuses it now.
-check "refuses an endpoint that is not a URL" $REJECTED \
-    spectra settings set rpc-endpoint.Base base.internal.example
-check "refuses an Esplora list with one bad entry" $REJECTED \
-    spectra settings set bitcoin-esplora-endpoints "https://a.example,nope"
-# Resetting was iOS-only, and it reset settings by assigning each mirror a
-# literal it believed was the default — nineteen of them across two files, none
+check "adds an EVM endpoint" $OK \
+    spectra endpoints --chain base --api evm-json-rpc --add https://base.internal.example
+check "rejects an incompatible API" $REJECTED \
+    spectra endpoints --chain base --api esplora --add https://wrong.example
+check "rejects a malformed endpoint" $REJECTED \
+    spectra endpoints --chain bitcoin --api esplora --add "https://a.example,nope"
+check "rejects a duplicate endpoint" $REJECTED \
+    spectra endpoints --chain base --api evm-json-rpc --add https://base.internal.example
+
 # checkable against `AppSettings::default()`. It is a command now.
 check "refuses to reset without --yes"      $USAGE \
     spectra settings reset
@@ -1114,19 +1105,19 @@ check "resets every setting"                $OK \
     spectra settings reset --yes
 contains "a changed number is back at its default" '"value":"10"' \
     spectra --json settings get bitcoin-stop-gap
-contains "and a per-chain override is gone" '"value":""' \
-    spectra --json settings get rpc-endpoint.Base
+contains "custom endpoints are reset" '"total":0' \
+    spectra --json endpoints --catalog --source custom
 # The bound is core's. A stop gap of zero finds no addresses, and this used to
 # be clamped only in an iOS `didSet` — reachable from nowhere else.
 check "bounds a number instead of storing it" $OK \
     spectra settings set bitcoin-stop-gap 9999
 contains "clamped to the top of the range"  '"value":"200"' \
     spectra --json settings get bitcoin-stop-gap
-contains "trims a pasted value"             '"value":"https://wallet.example"' \
-    spectra --json settings set monero-backend-url "  https://wallet.example  "
+contains "trims a pasted endpoint" '"endpoint":"https://wallet.example"' \
+    spectra --json endpoints --chain monero --api monero-daemon-rpc --add "  https://wallet.example  "
 check "refuses a setting that does not exist" $REJECTED spectra settings set nope 1
 check "refuses a value of the wrong kind"   $REJECTED \
-    spectra settings set strict-rpc-only maybe
+    spectra settings set price-alerts maybe
 
 # ── Tor routing ─────────────────────────────────────────────────────────────
 #
@@ -1325,7 +1316,7 @@ contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not fou
     spectra --json send rebroadcast missing --yes
 
 section "Offline integration suites"
-for domain in wallets portfolio history send send-icp-zcash send-monero diagnostics transport; do
+for domain in wallets portfolio history send send-icp-zcash send-monero diagnostics transport endpoints; do
     check "$domain integration checks" $OK \
         python3 "$(dirname "$0")/cli-$domain.py" "$BIN"
 done

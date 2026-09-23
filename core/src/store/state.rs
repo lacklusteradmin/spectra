@@ -224,6 +224,7 @@ pub struct CoreTokenPreferenceKey {
 /// fetched, what a send costs and when an alert fires, and the CLI had no way
 /// to read or set any of them.
 pub struct AppSettings {
+    pub custom_endpoints: Vec<crate::service::CustomEndpoint>,
     /// The currency amounts are displayed in.
     pub fiat_currency: FiatCurrency,
     /// Token IDs pinned in display order. An empty list means no pins.
@@ -242,18 +243,6 @@ pub struct AppSettings {
     /// Which price source to quote from.
     /// Which source to take fiat cross-rates from.
 
-    // ── Endpoints and credentials ─────────────────────────────────────────
-    /// Custom RPC per chain, as `chain display name -> url`. Absent means the
-    /// catalog's list.
-    //
-    /// One field rather than one per chain: this was `ethereum_rpc_endpoint`,
-    /// a single String, and the Swift accessor that read it was
-    /// `chainName == "Ethereum" ? … : nil` — so twenty-two of the twenty-three
-    /// EVM mainnets could not be pointed at a private node at all.
-    pub rpc_endpoint_by_chain: std::collections::HashMap<String, String>,
-    pub monero_backend_base_url: String,
-    /// Custom Esplora bases, comma/semicolon/newline separated, or empty.
-    pub bitcoin_esplora_endpoints: String,
     /// How far past the last used address HD discovery keeps looking.
     pub bitcoin_stop_gap: u32,
 
@@ -269,8 +258,6 @@ pub struct AppSettings {
     pub fee_priority_by_chain: std::collections::HashMap<String, FeePriority>,
 
     // ── Network and refresh policy ────────────────────────────────────────
-    /// Refuse endpoints the user has not vetted.
-    pub use_strict_rpc_only: bool,
     pub background_sync_profile: BackgroundSyncProfile,
 
     // Tor routing preference. The platform manages the client lifecycle
@@ -558,12 +545,9 @@ impl Default for AppSettings {
             fiat_currency: FiatCurrency::Usd,
             pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
             selected_chain_by_family: std::collections::HashMap::new(),
-            rpc_endpoint_by_chain: std::collections::HashMap::new(),
-            monero_backend_base_url: String::new(),
-            bitcoin_esplora_endpoints: String::new(),
+            custom_endpoints: Vec::new(),
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
             fee_priority_by_chain: std::collections::HashMap::new(),
-            use_strict_rpc_only: false,
             background_sync_profile: BackgroundSyncProfile::Balanced,
             use_price_alerts: default_true(),
             use_transaction_status_notifications: default_true(),
@@ -638,17 +622,10 @@ pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "field", rename_all = "camelCase")]
 pub enum AppSettingUpdate {
-    /// `chain` is a registry display name; an unknown one is refused. An empty
-    /// value clears the override and falls back to the catalog.
-    RpcEndpoint {
-        chain: String,
-        value: String,
-    },
-    MoneroBackendBaseUrl {
-        value: String,
-    },
-    BitcoinEsploraEndpoints {
-        value: String,
+    AddCustomEndpoint {
+        chain_id: String,
+        api: String,
+        endpoint: String,
     },
     BitcoinStopGap {
         value: u32,
@@ -658,9 +635,6 @@ pub enum AppSettingUpdate {
     FeePriority {
         chain: String,
         value: FeePriority,
-    },
-    UseStrictRpcOnly {
-        value: bool,
     },
     BackgroundSyncProfile {
         value: BackgroundSyncProfile,
@@ -1033,9 +1007,6 @@ pub fn app_settings_applying(settings: AppSettings, update: AppSettingUpdate) ->
 /// Unknown chains and invalid SOCKS5 URLs leave state unchanged;
 /// `false` tells the caller to emit a refusal event.
 fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bool {
-    fn trimmed(value: String) -> String {
-        value.trim().to_string()
-    }
     fn clamp<T: PartialOrd>(value: T, range: std::ops::RangeInclusive<T>) -> T {
         let (low, high) = range.into_inner();
         if value < low {
@@ -1046,52 +1017,24 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
             value
         }
     }
-    // An endpoint the app would fail to reach is refused rather than stored:
-    // every read of it would otherwise have to re-check, and a front end that
-    // shows the error while the user types needs nothing but this rule.
-    fn valid_endpoint(field: crate::tokens::EndpointField, value: &str) -> bool {
-        crate::tokens::endpoint_validation_error(field, value.to_string()).is_none()
-    }
     match update {
-        AppSettingUpdate::RpcEndpoint { chain, value } => {
-            let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
+        AppSettingUpdate::AddCustomEndpoint {
+            chain_id,
+            api,
+            endpoint,
+        } => {
+            let Ok(endpoint) = crate::service::CustomEndpoint::validated(chain_id, api, endpoint)
+            else {
                 return false;
             };
-            let value = trimmed(value);
-            if !valid_endpoint(crate::tokens::EndpointField::EvmRpc, &value)
-                || crate::endpoint_api::validate_configured_endpoint(
-                    chain,
-                    crate::registry::EndpointSlot::Primary,
-                    &value,
-                )
-                .is_err()
-            {
+            if settings.custom_endpoints.iter().any(|saved| {
+                saved.chain_id == endpoint.chain_id
+                    && saved.api == endpoint.api
+                    && saved.endpoint == endpoint.endpoint
+            }) {
                 return false;
             }
-            if value.is_empty() {
-                settings
-                    .rpc_endpoint_by_chain
-                    .remove(chain.chain_display_name());
-            } else {
-                settings
-                    .rpc_endpoint_by_chain
-                    .insert(chain.chain_display_name().to_string(), value);
-            }
-        }
-        AppSettingUpdate::MoneroBackendBaseUrl { value } => {
-            let value = trimmed(value);
-            if !valid_endpoint(crate::tokens::EndpointField::MoneroBackend, &value) {
-                return false;
-            }
-            settings.monero_backend_base_url = value
-        }
-        // Not trimmed as a whole: this is a separated list, and the parser
-        // trims each entry. Trimming the list would only drop its outer edges.
-        AppSettingUpdate::BitcoinEsploraEndpoints { value } => {
-            if !valid_endpoint(crate::tokens::EndpointField::BitcoinEsploraList, &value) {
-                return false;
-            }
-            settings.bitcoin_esplora_endpoints = value
+            settings.custom_endpoints.insert(0, endpoint);
         }
         AppSettingUpdate::BitcoinStopGap { value } => {
             settings.bitcoin_stop_gap = clamp(value, BITCOIN_STOP_GAP_RANGE)
@@ -1110,7 +1053,6 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
                     .insert(chain.chain_display_name().to_string(), value);
             }
         }
-        AppSettingUpdate::UseStrictRpcOnly { value } => settings.use_strict_rpc_only = value,
         AppSettingUpdate::BackgroundSyncProfile { value } => {
             settings.background_sync_profile = value
         }
@@ -1668,47 +1610,6 @@ mod fee_priority_tests {
             "\"priority\""
         );
         assert_eq!(FeePriority::Economy.as_raw(), "economy");
-    }
-
-    #[test]
-    fn an_endpoint_that_is_not_a_url_is_refused_not_stored() {
-        let mut settings = AppSettings::default();
-        let refused = [
-            AppSettingUpdate::RpcEndpoint {
-                chain: "Base".into(),
-                value: "base.internal".into(),
-            },
-            AppSettingUpdate::MoneroBackendBaseUrl {
-                value: "ftp://node.example".into(),
-            },
-            AppSettingUpdate::BitcoinEsploraEndpoints {
-                value: "https://a.example, not a url".into(),
-            },
-        ];
-        for update in refused {
-            assert!(!apply_app_setting(&mut settings, update));
-        }
-        assert_eq!(settings, AppSettings::default());
-
-        // Clearing is always allowed: empty means "use the catalog".
-        assert!(apply_app_setting(
-            &mut settings,
-            AppSettingUpdate::RpcEndpoint {
-                chain: "Base".into(),
-                value: " https://base.internal ".into(),
-            }
-        ));
-        assert!(apply_app_setting(
-            &mut settings,
-            AppSettingUpdate::MoneroBackendBaseUrl { value: "".into() }
-        ));
-        assert_eq!(
-            settings
-                .rpc_endpoint_by_chain
-                .get("Base")
-                .map(String::as_str),
-            Some("https://base.internal")
-        );
     }
 
     #[test]

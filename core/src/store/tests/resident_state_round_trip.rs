@@ -93,22 +93,26 @@ fn resetting_settings_restores_every_default() {
     let defaults = state.settings.clone();
 
     for update in [
-        U::RpcEndpoint {
-            chain: "Base".into(),
-            value: "https://x.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "base".into(),
+            api: "evm-json-rpc".into(),
+            endpoint: "https://x.example".into(),
         },
-        U::MoneroBackendBaseUrl {
-            value: "https://xmr.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "monero".into(),
+            api: "monero-daemon-rpc".into(),
+            endpoint: "https://xmr.example".into(),
         },
-        U::BitcoinEsploraEndpoints {
-            value: "https://a.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "bitcoin".into(),
+            api: "esplora".into(),
+            endpoint: "https://a.example".into(),
         },
         U::BitcoinStopGap { value: 42 },
         U::FeePriority {
             chain: "Dogecoin".into(),
             value: FeePriority::Economy,
         },
-        U::UseStrictRpcOnly { value: true },
         U::BackgroundSyncProfile {
             value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
@@ -156,21 +160,27 @@ fn every_settings_field_round_trips() {
     let db = tmp_db();
     let mut state = CoreAppState::default();
     let updates = vec![
-        U::RpcEndpoint {
-            chain: "Ethereum".into(),
-            value: "https://rpc.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "ethereum".into(),
+            api: "evm-json-rpc".into(),
+            endpoint: "https://rpc.example".into(),
         },
         // The second one is the point: this was a single String, so a
         // second chain's override had nowhere to go.
-        U::RpcEndpoint {
-            chain: "Base".into(),
-            value: "https://base.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "base".into(),
+            api: "evm-json-rpc".into(),
+            endpoint: "https://base.example".into(),
         },
-        U::MoneroBackendBaseUrl {
-            value: "https://xmr.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "monero".into(),
+            api: "monero-daemon-rpc".into(),
+            endpoint: "https://xmr.example".into(),
         },
-        U::BitcoinEsploraEndpoints {
-            value: "https://a.example,https://b.example".into(),
+        U::AddCustomEndpoint {
+            chain_id: "bitcoin".into(),
+            api: "esplora".into(),
+            endpoint: "https://a.example".into(),
         },
         U::BitcoinStopGap { value: 42 },
         U::FeePriority {
@@ -181,7 +191,6 @@ fn every_settings_field_round_trips() {
             chain: "Dogecoin".into(),
             value: FeePriority::Economy,
         },
-        U::UseStrictRpcOnly { value: true },
         U::BackgroundSyncProfile {
             value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
@@ -247,12 +256,14 @@ fn a_setting_outside_its_range_is_bounded() {
     // Trimmed, so a pasted URL with a stray newline is the same URL.
     set(
         &mut state,
-        U::MoneroBackendBaseUrl {
-            value: "  https://wallet.example\n".into(),
+        U::AddCustomEndpoint {
+            chain_id: "monero".into(),
+            api: "monero-daemon-rpc".into(),
+            endpoint: "  https://wallet.example\n".into(),
         },
     );
     assert_eq!(
-        state.settings.monero_backend_base_url,
+        state.settings.custom_endpoints.last().unwrap().endpoint,
         "https://wallet.example"
     );
 }

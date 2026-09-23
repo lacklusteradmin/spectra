@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix='spectra-monero-regtest-') as directory:
                 assert (result.returncode == 0) == success, (words, result.stdout, result.stderr)
                 return json.loads(result.stdout)
             run('wallet', 'import', '--chain', 'monero', '--name', 'LocalXmr')
-            run('settings', 'set', 'rpc-endpoint.Monero', endpoint)
+            run('endpoints','--chain','monero','--api','monero-daemon-rpc','--add', endpoint)
             address = run('send', 'identity', '--from', 'LocalXmr')['address']
             rpc('generateblocks', {'wallet_address': address, 'amount_of_blocks': 180})
             synced = run('send', 'sync-monero', '--from', 'LocalXmr')['sync']
