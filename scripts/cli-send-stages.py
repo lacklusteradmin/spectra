@@ -58,7 +58,9 @@ try:
             assert (result.returncode==0)==success,(args,result.stdout,result.stderr)
             return json.loads(result.stdout)
         run('wallet','import','--chain','ethereum','--name','Stages')
-        run('endpoints','--chain','ethereum','--api','evm-json-rpc','--add',urls[0])
+        run('endpoints','--chain','ethereum','--api','evm-json-rpc','--capabilities','balance,fee,broadcast,verification,token-balance','--add',urls[0])
+        for url in urls[1:]:
+            run('endpoints','--chain','ethereum','--api','evm-json-rpc','--capabilities','broadcast','--add',url)
         def build():
             return run('send','build','--from','Stages','--to','0x'+'22'*20,'--amount','0.01','--endpoint',urls[0])['artifact']
         exact=run('send','build','--from','Stages','--to','0x'+'22'*20,

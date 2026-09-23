@@ -623,10 +623,10 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     let service = WalletService::new_catalog().unwrap();
     let path = database();
     service.open_state(path.clone()).await.unwrap();
-    let original = service.endpoints_for("ethereum").await;
+    let original = service.configured_endpoint_urls("ethereum").await;
     assert!(!original.is_empty());
     assert!(!service
-        .endpoints_for(
+        .configured_endpoint_urls(
             &crate::registry::Chain::Ton.endpoint_str_id(crate::registry::EndpointSlot::Secondary)
         )
         .await
@@ -634,6 +634,10 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                capabilities: crate::endpoint_capability_options(
+                    "ethereum".into(),
+                    crate::EndpointApi::EvmJsonRpc,
+                ),
                 chain_id: "ethereum".into(),
                 api: "evm-json-rpc".into(),
                 endpoint: "http://127.0.0.1:8545".into(),
@@ -642,31 +646,34 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .await
         .unwrap();
     assert_eq!(
-        service.endpoints_for("ethereum").await[0],
+        service.configured_endpoint_urls("ethereum").await[0],
         "http://127.0.0.1:8545"
     );
     let reopened = WalletService::new_catalog().unwrap();
     reopened.open_state(path.clone()).await.unwrap();
     assert_eq!(
-        reopened.endpoints_for("ethereum").await[0],
+        reopened.configured_endpoint_urls("ethereum").await[0],
         "http://127.0.0.1:8545"
     );
     reopened
         .update_endpoints(vec![crate::service::ChainEndpoints {
+            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+                .map(String::from)
+                .to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec!["http://127.0.0.1:9545".into()],
         }])
         .await
         .unwrap();
     assert_eq!(
-        &*reopened.endpoints_for("ethereum").await,
+        &*reopened.configured_endpoint_urls("ethereum").await,
         &["http://127.0.0.1:9545"]
     );
     service
         .reset_data(vec![crate::store::state::ResetScope::SettingsAndEndpoints])
         .await
         .unwrap();
-    assert_eq!(service.endpoints_for("ethereum").await, original);
+    assert_eq!(service.configured_endpoint_urls("ethereum").await, original);
     let _ = std::fs::remove_file(path);
 }
 

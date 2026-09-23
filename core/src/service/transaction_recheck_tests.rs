@@ -16,6 +16,9 @@ fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecor
 }
 async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletService>, String) {
     let service = WalletService::new(vec![ChainEndpoints {
+        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+            .map(String::from)
+            .to_vec(),
         chain_id: chain.str_id().into(),
         endpoints: vec![server.uri()],
     }])

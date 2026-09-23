@@ -69,42 +69,51 @@ impl WalletService {
         // Only EVM chains are supported.
         let chain = evm_network_for_id(&chain_id)?;
 
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id()?);
-
-        let mut sources = self
-            .custom_api_endpoints(chain, crate::EndpointApi::Blockscout)
-            .await;
-        if let crate::registry::EvmHistorySource::Open(base) = chain.evm_history_source() {
-            if !sources.iter().any(|url| url == base) {
-                sources.push(base.into());
-            }
-        }
+        // History is served by indexers, independently for native and token transfers.
+        let client = EvmClient::new(Arc::new(vec![]), chain.evm_chain_id()?);
+        let sources = self
+            .api_endpoints(chain, crate::EndpointApi::Blockscout, &["history"])
+            .await?;
         if sources.is_empty() {
             return Err("no explorer configured for this chain".into());
         }
-        let (native_entries, raw_tokens) = crate::fetch::http::with_fallback(&sources, |base| {
+        let native_entries = crate::fetch::http::with_fallback(&sources, |base| {
             let client = &client;
             let address = &address;
-            let tokens = &tokens;
             async move {
-                let source = crate::registry::EvmHistorySource::Open(&base);
-                let (native, token) = tokio::join!(
-                    client.fetch_history(address, source, page, page_size),
-                    async {
-                        if tokens.is_empty() {
-                            Ok(Vec::new())
-                        } else {
-                            client
-                                .fetch_token_transfers(address, source, page, page_size)
-                                .await
-                        }
-                    }
-                );
-                Ok((native?, token?))
+                client
+                    .fetch_history(
+                        address,
+                        crate::registry::EvmHistorySource::Open(&base),
+                        page,
+                        page_size,
+                    )
+                    .await
             }
         })
         .await?;
+        let raw_tokens = if tokens.is_empty() {
+            vec![]
+        } else {
+            let sources = self
+                .api_endpoints(chain, crate::EndpointApi::Blockscout, &["token-history"])
+                .await?;
+            crate::fetch::http::with_fallback(&sources, |base| {
+                let client = &client;
+                let address = &address;
+                async move {
+                    client
+                        .fetch_token_transfers(
+                            address,
+                            crate::registry::EvmHistorySource::Open(&base),
+                            page,
+                            page_size,
+                        )
+                        .await
+                }
+            })
+            .await?
+        };
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
@@ -178,7 +187,12 @@ async fn fetch_history(
     _token: Option<&str>,
     service: &WalletService,
 ) -> Result<String, SpectraBridgeError> {
-    let (api, endpoints) = service.fetch_endpoints(chain).await?;
+    let requirements: &[&str] = if chain.mainnet_counterpart() == Chain::Solana {
+        &["history", "token-history"]
+    } else {
+        &["history"]
+    };
+    let (api, endpoints) = service.fetch_endpoints(chain, requirements).await?;
     use crate::EndpointApi as Api;
     match api {
         Api::Esplora => json_response(
@@ -203,12 +217,9 @@ async fn fetch_history(
                 .await?,
         ),
         Api::EvmJsonRpc => {
-            let mut sources = service.custom_api_endpoints(chain, Api::Blockscout).await;
-            if let crate::registry::EvmHistorySource::Open(base) = chain.evm_history_source() {
-                if !sources.iter().any(|url| url == base) {
-                    sources.push(base.into());
-                }
-            }
+            let sources = service
+                .api_endpoints(chain, Api::Blockscout, &["history"])
+                .await?;
             let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
             let h = crate::fetch::http::with_fallback(&sources, |base| {
                 let client = &client;
@@ -233,14 +244,23 @@ async fn fetch_history(
         ),
         Api::TronHttp => {
             let tronscan = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer), &["history"])
                 .await
                 .first()
                 .cloned()
-                .unwrap_or_else(|| "https://apilist.tronscan.org".to_string());
+                .ok_or("No Tron history indexer configured")?;
+            let tokens = service
+                .endpoints_for(
+                    &chain.endpoint_str_id(EndpointSlot::Explorer),
+                    &["token-history"],
+                )
+                .await;
+            let tokens = tokens
+                .first()
+                .ok_or("No Tron token history indexer configured")?;
             json_response(
                 &TronClient::new(endpoints)
-                    .fetch_unified_history(address, &tronscan, 50)
+                    .fetch_unified_history(address, &tronscan, tokens, 50)
                     .await?,
             )
         }
@@ -262,11 +282,11 @@ async fn fetch_history(
         Api::ToncenterV2 => json_response(&TonClient::new(endpoints).fetch_history(address).await?),
         Api::NearJsonRpc => {
             let indexer = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer), &["history"])
                 .await
                 .first()
                 .cloned()
-                .unwrap_or_else(|| "https://api.kitwallet.app".to_string());
+                .ok_or("No NEAR history indexer configured")?;
             json_response(
                 &NearClient::new(endpoints)
                     .fetch_history(address, &indexer)

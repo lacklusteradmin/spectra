@@ -16,6 +16,60 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-23 — Enter the large movement dollar threshold directly
+
+- **Before:** the USD minimum used a stepper with $5 increments.
+- **After:** a labeled numeric field accepts a directly entered USD amount,
+  with a decimal keyboard and Done action. The percentage keeps its stepper;
+  there are no amount presets. Core still owns persistence and the existing
+  $1–$100,000 bounds.
+- **Why:** large portfolio thresholds should not require repeated $5 taps.
+- **CLI check:** in a temporary data directory, `spectra settings set
+  large-movement-usd 12345.67` followed by `spectra settings get
+  large-movement-usd` retains 12345.67 across processes. Also checked 5000,
+  zero (bounded to 1) and 100001 (bounded to 100000).
+- **Verification:** Swift parsing, design-token and diff checks passed.
+  Runtime catalog check reports only the existing unused `Provider Notes` key.
+  iOS simulator Debug build and JSON catalog checks passed. Full suites were
+  not run for this localized control change.
+
+## 2026-09-23 — Remove the large movement footer
+
+- **Before:** Large Movement Alerts ended with a paragraph explaining that
+  controls tune notifications during portfolio balance refreshes.
+- **After:** the paragraph and its containing section are removed, along with
+  all three runtime translations.
+- **Why:** remove the unwanted footer at the user's request.
+- **CLI check:** no domain behaviour changes; inspect the Swift view and runtime
+  catalogs to confirm the footer string is absent.
+- **Verification:** targeted Swift parsing, JSON parsing and `git diff --check`;
+  full suites are not required for this copy-only change.
+
+## 2026-09-23 — Remove the large movement toggle description
+
+- **Before:** Large Portfolio Movement Alerts showed an explanatory sentence
+  when enabled and an off-status sentence when disabled beneath its toggle.
+- **After:** neither sentence appears; their translations are removed from
+  all three runtime catalogs.
+- **Why:** remove the unwanted toggle description at the user's request.
+- **CLI check:** no domain behaviour changes; inspect the Swift view and runtime
+  catalogs to confirm both strings are absent.
+- **Verification:** targeted Swift parsing, JSON parsing and `git diff --check`;
+  full suites are not required for this copy-only change.
+
+## 2026-09-23 — Remove Price Alerts explanatory copy
+
+- **Before:** Price Alerts opened with a long introduction and displayed a
+  paragraph below Enable Price Alerts.
+- **After:** the page starts with Notifications and its toggle, with both
+  explanatory paragraphs and their English/Simplified Chinese/Traditional
+  Chinese translations removed.
+- **Why:** simplify the page at the user's request.
+- **CLI check:** no domain behaviour changes; check the Swift view and runtime
+  catalogs for absence of the two removed strings.
+- **Verification:** targeted Swift parsing, JSON parsing and `git diff --check`;
+  full suites are not required for this copy-only change.
+
 ## 2026-09-23 — One typed custom endpoint directory
 
 - **Before:** Endpoints embedded separate EVM RPC, Bitcoin Esplora and Monero
@@ -476,3 +530,190 @@ how to check it without the app:
 - **Verification:** `make verify` passed: Rust formatting/Clippy and workspace
   tests, all 444 offline CLI checks, and iPhone simulator tests. Removed the
   nine obsolete localization keys identified by the unused-string gate.
+
+## 2026-09-23 — Flatten ETHFI icon artwork
+
+- **Before:** ETHFI kept source-size paths, a transformed clipping definition,
+  nested scaling and a duplicate translucent white path. The center artwork was
+  reported partially clipped in the iOS asset rendering.
+- **After:** One compound path and explicitly scaled gradient coordinates draw
+  directly in the 64×64 viewBox, without clipping or transforms. The white
+  overlay is folded into the gradient stops; the background now fills the
+  required radius-32 disc, with the existing inset gradient ring retained.
+- **Why:** Remove unnecessary SVG coordinate and clipping dependencies while
+  preserving the recognizable geometry and gradient treatment.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/ethfi.svg swift/Assets.xcassets/crypto/ethfi.imageset/ethfi.svg`.
+  Normalization and export passed; macOS Quick Look renders the complete mark.
+  iOS simulator rendering has not been checked for this resource-only change.
+
+## 2026-09-23 — Use a purple circle for INK artwork
+
+- **Before:** A white background circle sat behind a purple compound path whose
+  outer contour duplicated the circle and whose inner contour cut out the mark.
+- **After:** A purple radius-32 circle and a white path draw the same artwork;
+  the internal contour is unchanged. No visible behavior change is intended.
+- **Why:** Express the background directly and remove the redundant circle
+  contour and even-odd cutout dependency.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/ink.svg swift/Assets.xcassets/crypto/ink.imageset/ink.svg`
+  passed after normalization and export.
+
+## 2026-09-23 — Enlarge LEO's central artwork
+
+- **Before:** LEO's eight central paths used source coordinates and scale(.128)
+  transforms, leaving a relatively small mark inside the background disc.
+- **After:** The mark is 20% larger about the disc center. Path and gradient
+  coordinates are written directly in the 64×64 coordinate system, with no
+  transforms; the background disc is unchanged.
+- **Why:** Improve the mark's prominence while keeping the SVG geometry explicit.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/leo.svg swift/Assets.xcassets/crypto/leo.imageset/leo.svg`
+  passed. macOS Quick Look confirms a complete mark with space around it;
+  iOS simulator rendering was not run for this resource-only change.
+
+## 2026-09-23 — Give ONDO artwork more padding
+
+- **Before:** ONDO's black mark extended almost to the white background edge.
+- **After:** All three artwork paths are 10% smaller about (32, 32), leaving
+  approximately 3.2 points of padding. The white circle is unchanged, and the
+  final SVG contains direct path coordinates without transforms.
+- **Why:** Give the central mark slightly more breathing room.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/ondo.svg swift/Assets.xcassets/crypto/ondo.imageset/ondo.svg`
+  passed after normalization and export. XML inspection confirmed no transforms
+  remain and the background circle is unchanged. No iOS simulator test was run.
+
+## 2026-09-23 — Custom endpoint capabilities are explicit and enforced
+
+**Before:** Adding a custom endpoint stored only its network, API and URL. The
+UI copied the first matching built-in provider's entire record, including its
+capabilities and probe metadata. Requests generally shared a slot's unfiltered
+URL list; the broadcast capability guard inspected only built-in providers.
+
+**After:** Every custom endpoint stores its own nonempty, canonical capability
+set. Swift provides unchecked capability toggles with descriptions; CLI additions
+require `--capabilities`. Core rejects unknown capabilities and operations for
+which the selected adapter has no implementation. Adapter options describe what
+Spectra can call, not what an individual provider supports. Unsupported catalog
+reference APIs can still be inspected but cannot be added as usable custom APIs.
+The add form lists only network/API combinations with implemented operations.
+Custom directory records no longer inherit any provider metadata. Health probes
+report reachability separately and never grant capabilities.
+
+All service request selection now requires operation capabilities. Balance,
+fees, token reads, history, UTXOs, verification and staking select eligible
+providers; fallbacks keep the same requirements. EVM previews and builds split
+balance, fee, nonce and token metadata reads; native/token indexer history selects
+its respective sources independently. Protocol operations that internally need
+several capabilities require their intersection, never their union. Signing
+rechecks select UTXO/context providers. Built-in providers that were already used
+for context verification, staking, Cardano UTXOs and TON token metadata now declare
+those purposes explicitly. `staking` is a separate capability, not an implicit
+permission granted by an unrelated read operation. Staking options also obey the
+chain registry; ICP's static neuron directory needs no endpoint declaration.
+WhatsOnChain's built-in API record now declares broadcast on its base URL;
+redundant operation-path records are removed so the adapter does not append
+`/tx/raw` twice after capability filtering. Automatic Bitcoin fee preview
+failures no longer fabricate a 5 sat/vB quote.
+
+Broadcast candidates require a broadcast declaration; the core checks it again
+before network verification and submission. Explicit submissions cannot bypass a
+saved endpoint's restriction or introduce an undeclared URL. Selected nodes still
+must pass existing network/API checks; unsupported custom network verification
+remains a refusal. Legacy stored-transaction rebroadcast validates each eligible
+fallback target before sending. EVM builds validate the provider actually used
+without probing every fallback in advance. Explicit transport configuration now
+carries capability declarations for URLs absent from the directory; it cannot
+widen known endpoint declarations. The endpoint settings screen refreshes when
+committed custom endpoints change.
+
+**Rationale:** An API protocol does not establish a provider's enabled operations.
+The declaration must live with the endpoint and govern requests, not merely tags.
+This directly changes the prelaunch storage/FFI shape: old custom endpoint records
+without capabilities must be recreated; no compatibility shim or data deletion
+was added.
+
+**CLI checks:** Use a throwaway data directory and run:
+
+```sh
+spectra --data-dir /tmp/spectra-endpoint-check endpoints --chain ethereum \
+  --api evm-json-rpc --add https://balance.example --capabilities balance
+spectra --data-dir /tmp/spectra-endpoint-check endpoints --chain ethereum \
+  --api evm-json-rpc --add https://broadcast.example --capabilities broadcast
+spectra --data-dir /tmp/spectra-endpoint-check --json endpoints --catalog --source custom
+spectra --data-dir /tmp/spectra-endpoint-check --json send configured-endpoints ethereum
+```
+
+The two custom rows retain different capability sets across processes; only the
+broadcast URL is a send destination. Empty/unknown capabilities and EVM RPC
+`history` declarations are rejected. `scripts/cli-endpoints.py` covers supported
+adapter options, persistence, source filters and these restrictions. Core mock
+regressions verify distinct providers for EVM balance/fee/context, actual
+balance/broadcast request isolation, capability-preserving fallback, refusal
+without requests when no eligible endpoint exists, and explicit-override guards.
+Swift bridge tests cover the new field, empty-selection rejection and both screens
+rendering in a real window.
+
+## 2026-09-23 — Adjust Polkadot and Polygon mark sizes
+
+- **Before:** Polkadot's white ellipses occupied more of the disc than desired;
+  Polygon's white mark needed a small increase.
+- **After:** Polkadot's mark is 8% smaller and Polygon's is 5% larger about
+  (32, 32). Background discs are unchanged. Polkadot's rotated ellipses are
+  expressed as elliptical arc paths; both SVGs have direct coordinates and no
+  transforms.
+- **Why:** Refine icon padding with restrained size changes.
+- **CLI check:** `scripts/normalize-icons.sh --check` passed. XML and byte
+  comparisons confirmed unchanged background circles, no transforms, and exact
+  matches with the exported Swift assets. No iOS simulator test was run.
+
+## 2026-09-23 — Separate SEI, Sonic and Wrapped Bitcoin backgrounds
+
+- **Before:** SEI and Sonic placed colored negative-space paths over white
+  circles; Wrapped Bitcoin's dark outer border was a compound cutout path.
+- **After:** SEI has a red circle and explicit white artwork; Sonic has a black
+  circle and explicit white artwork. Wrapped Bitcoin has a dark circle and a
+  white inner contour, retaining its orange Bitcoin mark and gray decoration.
+  No visible redesign is intended; all background discs use radius 32 and no
+  transforms are used.
+- **Why:** Represent background colors directly, as with the INK cleanup.
+- **CLI check:** `scripts/normalize-icons.sh --check` passed and byte comparisons
+  verified all three Swift exports. Boolean path differences for SEI and Sonic
+  matched the original white regions at 16,384 sampled points each before
+  normalization. macOS Quick Look previews confirmed the complete artwork.
+  iOS simulator tests were not run for this resource-only change.
+
+## 2026-09-23 — Remove ETHFI's outer gradient ring
+
+- **Before:** ETHFI had an inset gradient stroke around its background disc.
+- **After:** The stroke and its unused gradient are removed. The background
+  gradient and central artwork remain unchanged.
+- **Why:** Use the requested borderless appearance.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/ethfi.svg swift/Assets.xcassets/crypto/ethfi.imageset/ethfi.svg`
+  passed after normalization and export. No iOS simulator test was run.
+
+## 2026-09-23 — Use a solid ETHFI background
+
+- **Before:** ETHFI's disc used a subtle dark-purple gradient.
+- **After:** The disc uses solid #302a92, the original gradient's first color.
+  The central artwork retains its gradient.
+- **Why:** Remove the background gradient as requested.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/ethfi.svg swift/Assets.xcassets/crypto/ethfi.imageset/ethfi.svg`
+  passed after normalization and export. No iOS simulator test was run.
+
+## 2026-09-23 — Remove residual white rims on SEI and Sonic
+
+- **Before:** Converting negative-space artwork with a circle difference also
+  retained thin white gaps between the original approximate perimeter and the
+  standard background circle. These appeared as unwanted rim fragments.
+- **After:** White wave/fan boundaries end at the background disc; obsolete
+  perimeter detours are removed. Background colors and interior marks remain.
+- **Why:** Fix artifacts missed during the previous conversion's visual review.
+- **CLI check:** `scripts/normalize-icons.sh --check` and byte comparisons with
+  both Swift exports passed. A 256×256 point grid within radius 30.5 found zero
+  interior fill differences against the original artwork for both icons.
+  Inspected 512-pixel macOS Quick Look previews after cleanup. No iOS simulator
+  test was run for this resource-only change.

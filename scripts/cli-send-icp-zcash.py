@@ -38,7 +38,7 @@ try:
         return json.loads(r.stdout)
     for chain,display,name in [('internet-computer','Internet Computer','IcpStages'),('zcash','Zcash','ZecStages')]:
         run('wallet','import','--chain',chain,'--name',name)
-        run('endpoints','--chain',chain,'--api','icp-rosetta' if chain == 'internet-computer' else 'blockbook','--add',url)
+        run('endpoints','--chain',chain,'--api','icp-rosetta' if chain == 'internet-computer' else 'blockbook','--capabilities','balance,history,fee,broadcast,verification' + (',utxo' if chain != 'internet-computer' else ''),'--add',url)
         # Sending back to the derived account is a protocol fixture, no real network.
         identity=run('send','identity','--from',name)
         destination=identity['address']

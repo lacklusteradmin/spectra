@@ -159,3 +159,108 @@ mod tests {
         .is_err());
     }
 }
+
+/// Operations implemented by Spectra's adapter. This is an editing constraint,
+/// never a claim that any particular provider enables those operations.
+#[uniffi::export]
+pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<String> {
+    use EndpointApi::*;
+    let Some(chain) = crate::registry::Chain::from_str_id(&chain_id) else {
+        return vec![];
+    };
+    let values: &[&str] = match api {
+        EvmJsonRpc => &[
+            "balance",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+        ],
+        SolanaJsonRpc => &[
+            "balance",
+            "history",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+            "token-discovery",
+            "token-history",
+            "staking",
+        ],
+        SuiJsonRpc | AptosRest => &[
+            "balance",
+            "history",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+            "token-discovery",
+            "staking",
+        ],
+        NearJsonRpc => &[
+            "balance",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+            "staking",
+        ],
+        XrplJsonRpc => &["balance", "history", "fee", "broadcast", "verification"],
+        TronHttp => &[
+            "balance",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+        ],
+        MoneroDaemonRpc => &["fee", "broadcast", "verification"],
+        Esplora | Blockbook | Blockcypher | Whatsonchain | Insight => &[
+            "balance",
+            "history",
+            "utxo",
+            "fee",
+            "broadcast",
+            "verification",
+        ],
+        KaspaRest => &[
+            "balance",
+            "history",
+            "utxo",
+            "fee",
+            "broadcast",
+            "verification",
+        ],
+        Blockscout => &["history", "token-history"],
+        ToncenterV2 => &[
+            "balance",
+            "history",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+        ],
+        ToncenterV3 => &["token-balance", "token-discovery"],
+        Koios => &[
+            "balance",
+            "history",
+            "utxo",
+            "fee",
+            "broadcast",
+            "verification",
+        ],
+        Horizon => &["balance", "history", "fee", "broadcast", "verification"],
+        IcpRosetta => &["balance", "history", "fee", "broadcast", "verification"],
+        TrongridV1 => &["token-discovery"],
+        Tronscan => &["history", "token-history"],
+        Nearblocks => &["history"],
+        SubstrateJsonRpc => &["fee", "broadcast", "verification", "staking"],
+        // Catalog reference APIs without a production request adapter.
+        TronJsonRpc | MoneroWalletRpc | MoneroLightWallet | Blockchair | BlockchainInfo
+        | BchRestV2 | SochainV2 | Xrpscan | SubstrateSidecar => &[],
+    };
+    values
+        .iter()
+        .filter(|value| **value != "staking" || chain.staking_uses_endpoint())
+        .map(|s| (*s).to_owned())
+        .collect()
+}

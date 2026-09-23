@@ -247,7 +247,7 @@ impl WalletService {
         source: &str,
     ) -> Result<u64, SpectraBridgeError> {
         let client = EvmClient::new(
-            self.endpoints_for(chain.str_id()).await,
+            self.endpoints_for(chain.str_id(), &["verification"]).await,
             chain.evm_chain_id()?,
         );
         let mut next = client.fetch_nonce(source).await?;
@@ -296,6 +296,9 @@ mod tests {
     async fn stored_rebroadcast_uses_recorded_network_and_requires_node_identifier() {
         let server = MockServer::start().await;
         let service = WalletService::new(vec![ChainEndpoints {
+            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+                .map(String::from)
+                .to_vec(),
             chain_id: "ethereum-sepolia".into(),
             endpoints: vec![server.uri()],
         }])
@@ -326,6 +329,15 @@ mod tests {
             "signedTransactionPayload": "0xdeadbeef", "signedTransactionPayloadFormat": "evm.raw_hex"
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({"method":"eth_chainId"})))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":"0xaa36a7"})),
+            )
+            .mount(&server)
+            .await;
+
         Mock::given(method("POST"))
             .and(body_partial_json(
                 json!({"method":"eth_sendRawTransaction","params":["0xdeadbeef"]}),

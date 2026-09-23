@@ -93,6 +93,10 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: AppSettingUpdate::AddCustomEndpoint {
+                capabilities: crate::endpoint_capability_options(
+                    "bitcoin".into(),
+                    crate::EndpointApi::Esplora,
+                ),
                 chain_id: "bitcoin".into(),
                 api: "esplora".into(),
                 endpoint: "https://custom.example/api".into(),

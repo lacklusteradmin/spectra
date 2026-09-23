@@ -214,7 +214,7 @@ impl WalletService {
         };
         let client = std::sync::Arc::new(crate::fetch::bitcoin::BitcoinClient::new(
             crate::fetch::http::HttpClient::shared(),
-            self.endpoints_for(network.str_id()).await,
+            self.endpoints_for(network.str_id(), &["history"]).await,
         ));
         let page = crate::fetch::bitcoin_history::page(
             network.str_id(),

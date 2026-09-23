@@ -17,7 +17,7 @@ impl WalletService {
     ) -> Result<crate::derivation::xpub_walker::HdXpubBalance, SpectraBridgeError> {
         // The network's endpoints, not Bitcoin's: an xpub on Testnet4 is
         // walked against Testnet4.
-        let endpoints = self.endpoints_for(chain_id).await;
+        let endpoints = self.endpoints_for(chain_id, &["balance"]).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         Ok(crate::derivation::xpub_walker::fetch_xpub_balance(
             &client,

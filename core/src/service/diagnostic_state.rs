@@ -223,7 +223,7 @@ impl WalletService {
         };
         let mut results = self_tests_run_chain(chain.chain_display_name().into());
         let rpc_endpoint = if chain.is_evm() {
-            let endpoints = self.endpoints_for(chain.str_id()).await;
+            let endpoints = self.configured_endpoint_urls(chain.str_id()).await;
             let rpc = endpoints
                 .first()
                 .ok_or("No RPC configured for this network")?
@@ -270,6 +270,12 @@ mod configured_tests {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                        capabilities: vec![
+                            "balance".into(),
+                            "fee".into(),
+                            "broadcast".into(),
+                            "verification".into(),
+                        ],
                         chain_id: crate::registry::Chain::from_display_name(chain)
                             .unwrap()
                             .str_id()

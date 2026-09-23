@@ -121,7 +121,7 @@ impl WalletService {
                     cache_key(&wallet_id, &secret[32..]),
                 )
             };
-        let endpoint = self.monero_endpoint(chain).await?;
+        let endpoint = self.monero_endpoint(chain, &["verification"]).await?;
         let rpc = monero_local::daemon(&endpoint, chain).await?;
         monero_local::scan(&mut cached, &rpc, &signer.private_key_hex, 500).await?;
         self.save_monero(revision, &cached, &key).await?;
@@ -153,8 +153,12 @@ impl WalletService {
         }
         Ok(serde_json::to_string(&wallet.transfers)?)
     }
-    pub(super) async fn monero_endpoint(&self, chain: Chain) -> Result<String, SpectraBridgeError> {
-        self.endpoints_for(chain.str_id())
+    pub(super) async fn monero_endpoint(
+        &self,
+        chain: Chain,
+        required: &[&str],
+    ) -> Result<String, SpectraBridgeError> {
+        self.endpoints_for(chain.str_id(), required)
             .await
             .first()
             .cloned()
@@ -270,7 +274,13 @@ impl WalletService {
             MoneroAddress::from_str(network, &wallet.sender).map_err(|e| e.to_string())?;
         let pair =
             ViewPair::new(address.spend(), Zeroizing::new(scalar)).map_err(|e| e.to_string())?;
-        let rpc = monero_local::daemon(&self.monero_endpoint(chain).await?, chain).await?;
+        let rpc = monero_local::daemon(
+            &self
+                .monero_endpoint(chain, &["verification", "fee"])
+                .await?,
+            chain,
+        )
+        .await?;
         Ok(monero_local::prepare(
             &wallet,
             &rpc,
@@ -291,7 +301,11 @@ impl WalletService {
     ) -> Result<(String, String), SpectraBridgeError> {
         let (revision, mut wallet, key) = self.load_monero(wallet_id).await?;
         let chain = chain_for_id(&wallet.chain_id)?;
-        let rpc = monero_local::daemon(&self.monero_endpoint(chain).await?, chain).await?;
+        let rpc = monero_local::daemon(
+            &self.monero_endpoint(chain, &["verification"]).await?,
+            chain,
+        )
+        .await?;
         monero_local::scan(&mut wallet, &rpc, private, 500).await?;
         self.save_monero(Some(revision), &wallet, &key).await?;
         if wallet.next_height < wallet.target_height {

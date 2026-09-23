@@ -412,6 +412,11 @@ impl Chain {
         self.has_send_preview() && self.transparent_send_unavailable_reason().is_none()
     }
 
+    /// ICP currently presents a static neuron directory; it performs no endpoint query.
+    pub fn staking_uses_endpoint(self) -> bool {
+        self.supports_staking() && self != Self::Icp
+    }
+
     pub fn supports_staking(self) -> bool {
         matches!(
             self,

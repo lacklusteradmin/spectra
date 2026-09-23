@@ -92,7 +92,7 @@ impl WalletService {
             // alone cannot rule out incoming transfers; ask history in that case.
             if chain.is_evm() {
                 let client = EvmClient::new(
-                    self.endpoints_for(chain.str_id()).await,
+                    self.endpoints_for(chain.str_id(), &["verification"]).await,
                     chain.evm_chain_id()?,
                 );
                 if client.fetch_nonce(&address).await? > 0 {

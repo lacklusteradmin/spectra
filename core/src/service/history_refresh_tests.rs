@@ -380,6 +380,9 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .await;
 
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+            .map(String::from)
+            .to_vec(),
         chain_id: Chain::Litecoin.str_id().into(),
         endpoints: vec![server.uri()],
     }])

@@ -8,7 +8,7 @@ impl WalletService {
         sender: &str,
     ) -> Result<Vec<Input>, SpectraBridgeError> {
         use crate::derivation::*;
-        let eps = self.endpoints_for(chain.str_id()).await;
+        let eps = self.endpoints_for(chain.str_id(), &["utxo"]).await;
         let hash = match chain.mainnet_counterpart() {
             Chain::Dogecoin => dogecoin::decode_doge_address(sender)?,
             Chain::BitcoinSV => bitcoin_sv::decode_bsv_address(sender)?.0,

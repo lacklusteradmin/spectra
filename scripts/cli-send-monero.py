@@ -23,7 +23,7 @@ try:
             assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
             return json.loads(result.stdout)
         run('wallet', 'import', '--chain', 'monero', '--name', 'LocalXmr')
-        run('endpoints','--chain','monero','--api','monero-daemon-rpc','--add', f'http://127.0.0.1:{server.server_port}')
+        run('endpoints','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification','--add', f'http://127.0.0.1:{server.server_port}')
         initial = run('send', 'monero-status', '--from', 'LocalXmr')['sync']
         assert not initial['complete'] and initial['scanned_height'] == 0 and not requests
         run('send', 'sync-monero', '--from', 'LocalXmr', password='wrong', success=False)

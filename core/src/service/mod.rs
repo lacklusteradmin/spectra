@@ -136,12 +136,20 @@ pub use types::*;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct EndpointIndex {
+    capabilities: std::collections::HashMap<String, Vec<String>>,
     endpoints: std::collections::HashMap<String, Arc<Vec<String>>>,
 }
 
 impl EndpointIndex {
     fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
         for row in &list {
+            if row
+                .capabilities
+                .iter()
+                .any(|c| !crate::app_core::ENDPOINT_CAPABILITIES.contains(&c.as_str()))
+            {
+                return Err("Unknown endpoint capability".into());
+            }
             let (chain_id, slot) = match row.chain_id.split_once(':') {
                 Some((chain_id, "secondary")) => (chain_id, EndpointSlot::Secondary),
                 Some((chain_id, "explorer")) => (chain_id, EndpointSlot::Explorer),
@@ -155,10 +163,15 @@ impl EndpointIndex {
         }
 
         let mut endpoints = std::collections::HashMap::with_capacity(list.len());
+        let mut capabilities = std::collections::HashMap::new();
         for entry in list {
+            capabilities.insert(entry.chain_id.clone(), entry.capabilities);
             endpoints.insert(entry.chain_id.clone(), Arc::new(entry.endpoints));
         }
-        Ok(Self { endpoints })
+        Ok(Self {
+            endpoints,
+            capabilities,
+        })
     }
 }
 
@@ -287,8 +300,9 @@ impl WalletService {
     pub(crate) async fn fetch_endpoints(
         &self,
         chain: Chain,
+        required: &[&str],
     ) -> Result<(crate::EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
-        let urls = self.endpoints_for(chain.str_id()).await;
+        let urls = self.endpoints_for(chain.str_id(), required).await;
         let catalog = crate::app_core::endpoint_catalog()?;
         let api = urls
             .iter()
@@ -304,7 +318,7 @@ impl WalletService {
         Ok((api, urls))
     }
 
-    pub(crate) async fn endpoints_for(&self, chain_id: &str) -> Arc<Vec<String>> {
+    pub(crate) async fn configured_endpoint_urls(&self, chain_id: &str) -> Arc<Vec<String>> {
         let base = self
             .endpoints
             .read()
@@ -324,7 +338,7 @@ impl WalletService {
             };
             if let Some(chain) = Chain::from_str_id(network_id) {
                 if let Some(api) = chain.endpoint_api(slot) {
-                    let mut custom = self.custom_api_endpoints(chain, api).await;
+                    let mut custom = self.custom_api_endpoints(chain, api, &[]).await;
                     if !custom.is_empty() {
                         for url in base.iter() {
                             if !custom.contains(url) {
@@ -354,6 +368,7 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
                 continue;
             };
             endpoints.push(ChainEndpoints {
+                capabilities: vec![],
                 chain_id: chain.endpoint_str_id(slot),
                 endpoints: records
                     .iter()

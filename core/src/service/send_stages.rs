@@ -78,7 +78,7 @@ impl WalletService {
         let (submission, resources) = match &stored.prepared {
             PreparedPayload::Evm(p) => {
                 let client = EvmClient::new(
-                    self.endpoints_for(chain.str_id()).await,
+                    self.endpoints_for(chain.str_id(), &["verification"]).await,
                     chain.evm_chain_id()?,
                 );
                 let nonce = if stored
@@ -144,7 +144,11 @@ impl WalletService {
         chain_id: String,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let chain = chain_for_id(&chain_id)?;
-        Ok(self.endpoints_for(chain.str_id()).await.as_ref().clone())
+        Ok(self
+            .endpoints_for(chain.str_id(), &["broadcast"])
+            .await
+            .as_ref()
+            .clone())
     }
 
     pub async fn broadcast_send(
@@ -355,11 +359,7 @@ impl WalletService {
             return Err("Invalid destination for selected network".into());
         }
         let prepared = if chain.is_evm() {
-            let endpoints = self.endpoints_for(chain.str_id()).await;
-            for endpoint in endpoints.iter() {
-                self.validate_broadcast_endpoint(chain, endpoint).await?;
-            }
-            let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
+            let endpoints = self.endpoints_for(chain.str_id(), &["fee"]).await;
             let mut overrides = request
                 .evm_overrides
                 .clone()
@@ -369,7 +369,12 @@ impl WalletService {
                 overrides.nonce = Some(self.next_send_nonce(chain, &sender).await?);
             }
             let (to, value, data) = if let Some(contract) = &request.contract_address {
-                let metadata = client.fetch_erc20_metadata(contract).await?;
+                let metadata = EvmClient::new(
+                    self.endpoints_for(chain.str_id(), &["token-balance"]).await,
+                    chain.evm_chain_id()?,
+                )
+                .fetch_erc20_metadata(contract)
+                .await?;
                 if request
                     .token_decimals
                     .is_some_and(|d| d != u32::from(metadata.decimals))
@@ -394,9 +399,21 @@ impl WalletService {
                 )
             };
             PreparedPayload::Evm(
-                client
-                    .prepare_transfer(&sender, &to, value, &data, &overrides)
-                    .await?,
+                crate::fetch::http::with_fallback(&endpoints, |endpoint| {
+                    let sender = &sender;
+                    let to = &to;
+                    let data = &data;
+                    let overrides = &overrides;
+                    async move {
+                        self.validate_endpoint_network(chain, &endpoint)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        EvmClient::new(Arc::new(vec![endpoint]), chain.evm_chain_id()?)
+                            .prepare_transfer(sender, to, value, data, overrides)
+                            .await
+                    }
+                })
+                .await?,
             )
         } else {
             self.prepare_staged_protocol(chain, &mut request, &sender)

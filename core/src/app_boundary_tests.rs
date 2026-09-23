@@ -64,6 +64,10 @@ fn applying_a_setting_is_the_reducers_rule() {
     let trimmed = app_settings_applying(
         defaults.clone(),
         AppSettingUpdate::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "monero".into(),
+                crate::EndpointApi::MoneroDaemonRpc,
+            ),
             chain_id: "monero".into(),
             api: "monero-daemon-rpc".into(),
             endpoint: "  https://wallet.example \n".into(),

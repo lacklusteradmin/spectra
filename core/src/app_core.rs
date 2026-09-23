@@ -15,7 +15,7 @@ const ENDPOINT_CAPABILITY_TOKEN_HISTORY: u32 = 1 << 11;
 const ENDPOINT_CAPABILITY_TOKEN_DISCOVERY: u32 = 1 << 12;
 const ENDPOINT_CAPABILITY_TOKEN_BALANCE: u32 = 1 << 13;
 
-const ENDPOINT_CAPABILITIES: [&str; 9] = [
+pub(crate) const ENDPOINT_CAPABILITIES: [&str; 10] = [
     "balance",
     "history",
     "token-history",
@@ -25,6 +25,7 @@ const ENDPOINT_CAPABILITIES: [&str; 9] = [
     "fee",
     "broadcast",
     "verification",
+    "staking",
 ];
 
 #[derive(Debug, Clone)]
@@ -302,6 +303,7 @@ pub(crate) fn endpoint_filter_bit(role: &str) -> u32 {
         "fee" => ENDPOINT_CAPABILITY_FEE,
         "broadcast" => ENDPOINT_CAPABILITY_BROADCAST,
         "verification" => ENDPOINT_CAPABILITY_VERIFICATION,
+        "staking" => 1 << 14,
         _ => 0,
     }
 }
@@ -929,10 +931,15 @@ mod endpoint_capabilities {
             assert!(!rows.contains(&"ethereum.rpc.publicnode".into()));
         }
         // Jetton indexing lives on v3, independently of v2's native history.
-        for capability in ["token-balance", "token-discovery", "token-history"] {
+        for capability in ["token-discovery", "token-history"] {
             assert_eq!(selected("ton", capability), ["ton.api.v3"]);
             assert!(selected("bitcoin", capability).is_empty());
         }
+        // v2 reads the metadata required to interpret v3 token balances.
+        assert_eq!(
+            selected("ton", "token-balance"),
+            ["ton.api.v2", "ton.api.v3"]
+        );
         assert!(selected("ton", "history").contains(&"ton.api.v2".into()));
         assert!(selected("solana", "token-discovery").contains(&"solana.rpc.mainnet".into()));
         assert!(selected("near", "token-discovery").is_empty());

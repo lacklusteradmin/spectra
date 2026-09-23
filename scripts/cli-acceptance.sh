@@ -393,7 +393,7 @@ lacks "endpoint catalog omits unused provider metadata" '"providerID"' \
 # EVM node can serve, because `eth_getTransactionsByAddress` is not a method.
 contains "an EVM node declares its API"        '"api":"evm-json-rpc"' \
     spectra --json endpoints --catalog --chain Ethereum
-contains "and does not claim address history" '"capabilities":["balance","fee","broadcast","token-balance"]' \
+contains "and does not claim address history" '"capabilities":["balance","fee","broadcast","token-balance","verification"]' \
     spectra --json endpoints --catalog --chain Ethereum
 
 lacks "the old native-history capability is gone" '"native-history"' \
@@ -404,9 +404,9 @@ lacks "Bitcoin does not claim token balances" '"token-balance"' \
     spectra --json endpoints --catalog --chain Bitcoin
 contains "an indexer separates token history and holdings" '"capabilities":["history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain Ethereum
-contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","history","fee","broadcast","token-balance","token-discovery","token-history"]' \
+contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","history","fee","broadcast","token-balance","token-discovery","token-history","verification","staking"]' \
     spectra --json endpoints --catalog --chain Solana
-contains "TON v2 only claims native history" '"capabilities":["balance","history","fee","broadcast","verification"]' \
+contains "TON v2 only claims native history" '"capabilities":["balance","history","fee","broadcast","verification","token-balance"]' \
     spectra --json endpoints --catalog --chain TON
 contains "TON v3 exposes jetton balances and transfers" '"capabilities":["balance","history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain TON
@@ -1067,7 +1067,7 @@ check "lists the settings core owns"        $OK spectra settings list
 check "automatic refresh has no manual interval setting" $REJECTED \
     spectra settings set refresh-frequency-minutes 30
 check "adds a typed custom endpoint" $OK \
-    spectra endpoints --chain monero --api monero-daemon-rpc --add https://wallet.example
+    spectra endpoints --chain monero --api monero-daemon-rpc --capabilities fee,broadcast,verification --add https://wallet.example
 contains "a second process reads the custom endpoint" '"endpoint":"https://wallet.example"' \
     spectra --json endpoints --catalog --source custom --chain monero
 # Fee priority is keyed by chain rather than global: two chains had a settings
@@ -1090,13 +1090,13 @@ check "refuses a chain the registry does not know" $REJECTED \
 # was `chainName == "Ethereum" ? … : nil`, so twenty-two EVM mainnets could not
 # be pointed at a private node from any front end.
 check "adds an EVM endpoint" $OK \
-    spectra endpoints --chain base --api evm-json-rpc --add https://base.internal.example
+    spectra endpoints --chain base --api evm-json-rpc --capabilities balance,fee,broadcast,verification,token-balance --add https://base.internal.example
 check "rejects an incompatible API" $REJECTED \
-    spectra endpoints --chain base --api esplora --add https://wrong.example
+    spectra endpoints --chain base --api esplora --capabilities balance,utxo,fee,broadcast,verification --add https://wrong.example
 check "rejects a malformed endpoint" $REJECTED \
-    spectra endpoints --chain bitcoin --api esplora --add "https://a.example,nope"
+    spectra endpoints --chain bitcoin --api esplora --capabilities balance,utxo,fee,broadcast,verification --add "https://a.example,nope"
 check "rejects a duplicate endpoint" $REJECTED \
-    spectra endpoints --chain base --api evm-json-rpc --add https://base.internal.example
+    spectra endpoints --chain base --api evm-json-rpc --capabilities balance,fee,broadcast,verification,token-balance --add https://base.internal.example
 
 # checkable against `AppSettings::default()`. It is a command now.
 check "refuses to reset without --yes"      $USAGE \
@@ -1114,7 +1114,7 @@ check "bounds a number instead of storing it" $OK \
 contains "clamped to the top of the range"  '"value":"200"' \
     spectra --json settings get bitcoin-stop-gap
 contains "trims a pasted endpoint" '"endpoint":"https://wallet.example"' \
-    spectra --json endpoints --chain monero --api monero-daemon-rpc --add "  https://wallet.example  "
+    spectra --json endpoints --chain monero --api monero-daemon-rpc --capabilities fee,broadcast,verification --add "  https://wallet.example  "
 check "refuses a setting that does not exist" $REJECTED spectra settings set nope 1
 check "refuses a value of the wrong kind"   $REJECTED \
     spectra settings set price-alerts maybe

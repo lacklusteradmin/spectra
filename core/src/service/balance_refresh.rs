@@ -465,6 +465,9 @@ mod concurrency_tests {
             }
         });
         let service = WalletService::new(vec![ChainEndpoints {
+            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+                .map(String::from)
+                .to_vec(),
             chain_id: "stellar".into(),
             endpoints: vec![endpoint],
         }])

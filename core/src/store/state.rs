@@ -623,6 +623,7 @@ pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 #[serde(tag = "field", rename_all = "camelCase")]
 pub enum AppSettingUpdate {
     AddCustomEndpoint {
+        capabilities: Vec<String>,
         chain_id: String,
         api: String,
         endpoint: String,
@@ -1019,11 +1020,13 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
     }
     match update {
         AppSettingUpdate::AddCustomEndpoint {
+            capabilities,
             chain_id,
             api,
             endpoint,
         } => {
-            let Ok(endpoint) = crate::service::CustomEndpoint::validated(chain_id, api, endpoint)
+            let Ok(endpoint) =
+                crate::service::CustomEndpoint::validated(chain_id, api, endpoint, capabilities)
             else {
                 return false;
             };

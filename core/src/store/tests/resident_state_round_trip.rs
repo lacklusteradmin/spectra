@@ -94,16 +94,28 @@ fn resetting_settings_restores_every_default() {
 
     for update in [
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "base".into(),
+                crate::EndpointApi::EvmJsonRpc,
+            ),
             chain_id: "base".into(),
             api: "evm-json-rpc".into(),
             endpoint: "https://x.example".into(),
         },
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "monero".into(),
+                crate::EndpointApi::MoneroDaemonRpc,
+            ),
             chain_id: "monero".into(),
             api: "monero-daemon-rpc".into(),
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "bitcoin".into(),
+                crate::EndpointApi::Esplora,
+            ),
             chain_id: "bitcoin".into(),
             api: "esplora".into(),
             endpoint: "https://a.example".into(),
@@ -161,6 +173,10 @@ fn every_settings_field_round_trips() {
     let mut state = CoreAppState::default();
     let updates = vec![
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "ethereum".into(),
+                crate::EndpointApi::EvmJsonRpc,
+            ),
             chain_id: "ethereum".into(),
             api: "evm-json-rpc".into(),
             endpoint: "https://rpc.example".into(),
@@ -168,16 +184,28 @@ fn every_settings_field_round_trips() {
         // The second one is the point: this was a single String, so a
         // second chain's override had nowhere to go.
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "base".into(),
+                crate::EndpointApi::EvmJsonRpc,
+            ),
             chain_id: "base".into(),
             api: "evm-json-rpc".into(),
             endpoint: "https://base.example".into(),
         },
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "monero".into(),
+                crate::EndpointApi::MoneroDaemonRpc,
+            ),
             chain_id: "monero".into(),
             api: "monero-daemon-rpc".into(),
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "bitcoin".into(),
+                crate::EndpointApi::Esplora,
+            ),
             chain_id: "bitcoin".into(),
             api: "esplora".into(),
             endpoint: "https://a.example".into(),
@@ -257,6 +285,10 @@ fn a_setting_outside_its_range_is_bounded() {
     set(
         &mut state,
         U::AddCustomEndpoint {
+            capabilities: crate::endpoint_capability_options(
+                "monero".into(),
+                crate::EndpointApi::MoneroDaemonRpc,
+            ),
             chain_id: "monero".into(),
             api: "monero-daemon-rpc".into(),
             endpoint: "  https://wallet.example\n".into(),

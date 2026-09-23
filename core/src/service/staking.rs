@@ -30,11 +30,23 @@ impl WalletService {
                 ),
             });
         }
-        let endpoints = self.endpoints_for(chain.str_id()).await.as_ref().clone();
+        if !chain.staking_uses_endpoint() {
+            return Ok(ChainEndpoints {
+                capabilities: vec![],
+                chain_id,
+                endpoints: vec![],
+            });
+        }
+        let endpoints = self
+            .endpoints_for(chain.str_id(), &["staking"])
+            .await
+            .as_ref()
+            .clone();
         if endpoints.is_empty() {
             return Err("No staking endpoints configured".into());
         }
         Ok(ChainEndpoints {
+            capabilities: vec!["staking".into()],
             chain_id,
             endpoints,
         })
@@ -89,6 +101,10 @@ mod tests {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                        capabilities: crate::endpoint_capability_options(
+                            "solana".into(),
+                            crate::EndpointApi::SolanaJsonRpc,
+                        ),
                         chain_id: "solana".into(),
                         api: "solana-json-rpc".into(),
                         endpoint: url.into(),
@@ -112,6 +128,7 @@ mod tests {
                 .is_err());
         }
         let explicit = WalletService::new(vec![ChainEndpoints {
+            capabilities: vec!["staking".into()],
             chain_id: "solana".into(),
             endpoints: vec!["http://127.0.0.1:13003".into()],
         }])

@@ -91,7 +91,7 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<crate::fetch::bitcoin::FeeRate, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(chain.str_id()).await;
+        let endpoints = self.endpoints_for(chain.str_id(), &["fee"]).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         Ok(client.fetch_fee_rate(6).await?)
     }
@@ -105,7 +105,7 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<NativeFeeEstimate, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(chain.str_id()).await;
+        let endpoints = self.endpoints_for(chain.str_id(), &["fee"]).await;
         let native = |raw: u128, source: &'static str| NativeFeeEstimate {
             raw: raw.to_string(),
             display: format_decimals(raw, chain.native_decimals()),
@@ -154,7 +154,7 @@ impl WalletService {
                 "fetch_utxo_fee_preview_json: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let eps = self.endpoints_for(chain.str_id()).await;
+        let eps = self.endpoints_for(chain.str_id(), &["utxo"]).await;
         match chain.mainnet_counterpart() {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
@@ -162,11 +162,13 @@ impl WalletService {
                 let rate = if fee_rate_svb > 0 {
                     fee_rate_svb
                 } else {
-                    client
-                        .fetch_fee_rate(3)
-                        .await
-                        .map(|r| r.sats_per_vbyte.ceil() as u64)
-                        .unwrap_or(5)
+                    BitcoinClient::new(
+                        HttpClient::shared(),
+                        self.endpoints_for(chain.str_id(), &["fee"]).await,
+                    )
+                    .fetch_fee_rate(3)
+                    .await
+                    .map(|r| r.sats_per_vbyte.ceil() as u64)?
                 };
                 let values: Vec<u64> = utxos.into_iter().map(|u| u.value).collect();
                 Ok(utxo_fee_preview_json(values, rate))
@@ -184,7 +186,11 @@ impl WalletService {
                 let rate = if fee_rate_svb > 0 {
                     fee_rate_svb
                 } else {
-                    client.fetch_fee_rate(3).await
+                    let fees = self.endpoints_for(chain.str_id(), &["fee"]).await;
+                    if fees.is_empty() {
+                        return Err("No fee endpoint configured".into());
+                    }
+                    BlockbookClient::new(fees, chain).fetch_fee_rate(3).await
                 };
                 let values: Vec<u64> = utxos.into_iter().map(|u| u.value_sat).collect();
                 Ok(utxo_fee_preview_json(values, rate))
@@ -228,7 +234,7 @@ impl WalletService {
         data_hex: String,
     ) -> Result<String, SpectraBridgeError> {
         let chain = evm_network_for_id(chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
+        let eps = self.endpoints_for(chain.str_id(), &["fee"]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
         if value_wei.is_empty() || !value_wei.bytes().all(|b| b.is_ascii_digit()) {
@@ -250,14 +256,26 @@ impl WalletService {
             .filter(|data| crate::fetch::evm::is_erc20_transfer(data))
             .map(|_| to.as_str());
 
+        let verification = EvmClient::new(
+            self.endpoints_for(chain.str_id(), &["verification"]).await,
+            chain.evm_chain_id()?,
+        );
+        let balances = EvmClient::new(
+            self.endpoints_for(chain.str_id(), &["balance"]).await,
+            chain.evm_chain_id()?,
+        );
+        let tokens = EvmClient::new(
+            self.endpoints_for(chain.str_id(), &["token-balance"]).await,
+            chain.evm_chain_id()?,
+        );
         let (nonce_res, fee_res, gas_res, bal_res, token_res) = tokio::join!(
-            client.fetch_nonce(&from),
+            verification.fetch_nonce(&from),
             client.fetch_fee_estimate(),
             client.estimate_gas(&from, &to, value_u128, data_opt),
-            client.fetch_balance(&from),
+            balances.fetch_balance(&from),
             async {
                 match token_contract {
-                    Some(contract) => Some(client.fetch_erc20_balance(contract, &from).await),
+                    Some(contract) => Some(tokens.fetch_erc20_balance(contract, &from).await),
                     None => None,
                 }
             }
@@ -312,7 +330,16 @@ impl WalletService {
         symbol: String,
         contract_address: String,
     ) -> Result<String, SpectraBridgeError> {
-        let eps = self.endpoints_for("tron").await;
+        let eps = self
+            .endpoints_for(
+                "tron",
+                if contract_address.is_empty() {
+                    &["balance"]
+                } else {
+                    &["token-balance"]
+                },
+            )
+            .await;
         let client = TronClient::new(eps);
 
         // The native asset, by the catalog's gas token rather than the string

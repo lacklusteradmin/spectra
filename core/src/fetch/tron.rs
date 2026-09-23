@@ -169,6 +169,7 @@ impl TronClient {
         &self,
         address: &str,
         api_base: &str,
+        token_api_base: &str,
         limit: usize,
     ) -> Result<Vec<TronTransfer>, String> {
         let limit = limit.min(50);
@@ -240,7 +241,7 @@ impl TronClient {
         // --- TRC-20 token transfers ---
         let trc20_url = format!(
             "{}/api/token_trc20/transfers?limit={}&start=0&sort=-timestamp&address={}",
-            api_base.trim_end_matches('/'),
+            token_api_base.trim_end_matches('/'),
             limit,
             address
         );

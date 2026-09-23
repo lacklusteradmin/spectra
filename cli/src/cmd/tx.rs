@@ -1161,12 +1161,27 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 .find(|row| row.id.eq_ignore_ascii_case(&id))
                 .ok_or_else(|| CliError::rejected("Transaction not found."))?;
             let chain = resolve_chain(&transaction.chain_name)?;
-            ctx.rt.block_on(service.update_endpoints(vec![
-                spectra_core::service::ChainEndpoints {
+            ctx.rt.block_on(service.update_endpoints(
+                vec![spectra_core::service::ChainEndpoints {
+                    capabilities: vec![
+                        "balance",
+                        "history",
+                        "utxo",
+                        "fee",
+                        "broadcast",
+                        "verification",
+                        "token-balance",
+                        "token-discovery",
+                        "token-history",
+                        "staking",
+                    ]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
                     chain_id: chain.str_id().into(),
                     endpoints: vec![endpoint],
-                },
-            ]))?;
+                }],
+            ))?;
         }
         let change = ctx.rt.block_on(service.recheck_transaction_status(id))?;
         out.text(|| println!("{}: {}", change.id, change.new_status.as_raw()));
@@ -1593,6 +1608,21 @@ fn staged_service(
         return ctx.service();
     }
     let service = WalletService::new(vec![spectra_core::service::ChainEndpoints {
+        capabilities: vec![
+            "balance",
+            "history",
+            "utxo",
+            "fee",
+            "broadcast",
+            "verification",
+            "token-balance",
+            "token-discovery",
+            "token-history",
+            "staking",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
         chain_id: chain_id.into(),
         endpoints,
     }])?;

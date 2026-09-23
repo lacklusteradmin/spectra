@@ -192,6 +192,8 @@ pub enum TransactionCommand {
 /// rebuilt via `update_endpoints`.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ChainEndpoints {
+    /// Declared operations for explicit URLs absent from the directory.
+    pub capabilities: Vec<String>,
     pub chain_id: String,
     pub endpoints: Vec<String>,
 }

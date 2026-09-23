@@ -58,7 +58,7 @@ class TransportTests(unittest.TestCase):
                 return json.loads(result.stdout)
             address = '0x' + '11' * 20
             run('wallet', 'watch', '--chain', 'Ethereum', '--address', address, '--name', 'Proxy')
-            run('endpoints','--chain','ethereum','--api','evm-json-rpc','--add', 'http://spectra.invalid:8545')
+            run('endpoints','--chain','ethereum','--api','evm-json-rpc','--capabilities','balance,fee,broadcast,verification,token-balance','--add', 'http://spectra.invalid:8545')
             with socketserver.ThreadingTCPServer(('127.0.0.1', 0), Proxy) as proxy:
                 worker = threading.Thread(target=proxy.serve_forever, daemon=True); worker.start()
                 try:

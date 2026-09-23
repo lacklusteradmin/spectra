@@ -53,24 +53,28 @@ impl WalletService {
             .map(|entry| entry.record)
             .collect();
 
-        // Custom endpoints use the same protocol probe as the catalog's node.
-        if let Some(template) = records
-            .iter()
-            .find(|r| r.api == chain.endpoint_api(EndpointSlot::Primary))
-            .cloned()
-        {
-            for endpoint in self.endpoints_for(&chain_id).await.iter() {
+        if let Some(api) = chain.endpoint_api(EndpointSlot::Primary) {
+            for endpoint in self.configured_endpoint_urls(&chain_id).await.iter() {
                 if records.iter().any(|r| &r.endpoint == endpoint) {
                     continue;
                 }
-                let mut custom = template.clone();
-                custom.id = format!("configured:{endpoint}");
-                custom.probe_url = template
-                    .probe_url
-                    .as_ref()
-                    .map(|url| url.replacen(&template.endpoint, endpoint, 1));
-                custom.endpoint = endpoint.clone();
-                records.push(custom);
+                records.push(crate::AppCoreEndpointRecord {
+                    id: format!("configured:{endpoint}"),
+                    api: Some(api),
+                    chain_id: chain_id.clone(),
+                    endpoint: endpoint.clone(),
+                    capabilities: self
+                        .endpoints
+                        .read()
+                        .await
+                        .capabilities
+                        .get(&chain_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                    probe_url: None,
+                    explorer_label: None,
+                    tx_suffix: String::new(),
+                });
             }
         }
         let mut out = Vec::with_capacity(records.len());
@@ -148,7 +152,7 @@ impl WalletService {
         &self,
         name: String,
     ) -> Result<Option<String>, SpectraBridgeError> {
-        let eps = self.endpoints_for("ethereum").await;
+        let eps = self.endpoints_for("ethereum", &["verification"]).await;
         let client = EvmClient::new(eps, 1);
         let address = client.resolve_ens(&name).await?;
         Ok(address.filter(|a| !a.is_empty()))
@@ -171,7 +175,7 @@ impl WalletService {
                 "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let (api, endpoints) = self.fetch_endpoints(chain).await?;
+        let (api, endpoints) = self.fetch_endpoints(chain, &["verification"]).await?;
         use crate::EndpointApi as Api;
         let status: UtxoTxStatus = match api {
             Api::Esplora => {
@@ -230,7 +234,7 @@ impl WalletService {
         tx_hash: String,
     ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
+        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let receipt = client
             .fetch_receipt(&tx_hash)
@@ -386,7 +390,7 @@ impl WalletService {
         tx_hash: String,
     ) -> Result<u64, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
+        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
     }
@@ -399,7 +403,7 @@ impl WalletService {
         address: String,
     ) -> Result<bool, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
+        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let code = client.fetch_code(&address).await?;
         Ok(crate::send::flow::evm_has_contract_code(code))

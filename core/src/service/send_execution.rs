@@ -225,7 +225,7 @@ impl WalletService {
         chain: Chain,
         contract: &str,
     ) -> Result<Option<u32>, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(chain.str_id()).await;
+        let endpoints = self.endpoints_for(chain.str_id(), &["token-balance"]).await;
         if chain.is_evm() {
             let client = crate::fetch::evm::EvmClient::new(endpoints, chain.evm_chain_id()?);
             return Ok(Some(u32::from(

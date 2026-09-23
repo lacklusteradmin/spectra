@@ -160,11 +160,14 @@ pub struct EndpointsArgs {
     #[arg(long)]
     catalog: bool,
     /// Save a custom endpoint offline. Requires --chain and --api.
-    #[arg(long, requires_all = ["chain", "api"], conflicts_with = "catalog")]
+    #[arg(long, requires_all = ["chain", "api", "capabilities"], conflicts_with = "catalog")]
     add: Option<String>,
     /// API contract, using the api value from endpoints.toml.
     #[arg(long, requires = "add")]
     api: Option<String>,
+    /// Capabilities enabled on this endpoint (comma separated).
+    #[arg(long, requires = "add", value_delimiter = ',')]
+    capabilities: Vec<String>,
     /// Restrict offline listing to built-in or custom endpoints.
     #[arg(long, requires = "catalog", value_parser = ["built-in", "custom"])]
     source: Option<String>,
@@ -189,6 +192,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 chain_id: chains[0].str_id().into(),
                 api: args.api.unwrap(),
                 endpoint: url,
+                capabilities: args.capabilities,
             },
         })?;
         if transition
@@ -196,7 +200,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             .contains(&spectra_core::store::state::StateEvent::AppSettingRejected)
         {
             return Err(CliError::rejected(
-                "Invalid or duplicate endpoint for this network and API",
+                "Invalid or duplicate endpoint, or unsupported/empty capabilities for this adapter",
             ));
         }
         out.emit(serde_json::json!({"ok":true,"customEndpoints":transition.state.settings.custom_endpoints}));
@@ -260,6 +264,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             "endpoints": records.iter().map(|r| serde_json::json!({
                 "chainId": r.record.chain_id, "endpoint": r.record.endpoint,
                 "api": r.record.api, "capabilities": r.record.capabilities, "isBuiltIn": r.is_built_in,
+                "supportedCapabilities": r.record.api.map(|api| spectra_core::endpoint_capability_options(r.record.chain_id.clone(), api)).unwrap_or_default(),
             })).collect::<Vec<_>>(),
         }));
         return Ok(());
@@ -434,6 +439,21 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let network = wallet.chain().unwrap_or(chain);
     let service = if let Some(endpoint) = args.endpoint {
         WalletService::new(vec![ChainEndpoints {
+            capabilities: vec![
+                "balance",
+                "history",
+                "utxo",
+                "fee",
+                "broadcast",
+                "verification",
+                "token-balance",
+                "token-discovery",
+                "token-history",
+                "staking",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
             chain_id: network.str_id().into(),
             endpoints: vec![endpoint],
         }])

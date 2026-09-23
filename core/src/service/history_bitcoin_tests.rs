@@ -60,10 +60,16 @@ async fn stored_testnet_hd_history_uses_its_network_script_and_all_pages() {
         .await;
     let service = WalletService::new(vec![
         ChainEndpoints {
+            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+                .map(String::from)
+                .to_vec(),
             chain_id: Chain::BitcoinTestnet4.str_id().into(),
             endpoints: vec![server.uri()],
         },
         ChainEndpoints {
+            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+                .map(String::from)
+                .to_vec(),
             chain_id: "bitcoin".into(),
             endpoints: vec![format!("{}/WRONG-NETWORK", server.uri())],
         },

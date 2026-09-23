@@ -65,7 +65,7 @@ async fn fetch_native_balance_summary(
             utxo_count: 0,
         });
     }
-    let (api, endpoints) = service.fetch_endpoints(chain).await?;
+    let (api, endpoints) = service.fetch_endpoints(chain, &["balance"]).await?;
     use crate::EndpointApi as Api;
     let mut utxo_count = 0;
     let units = match api {
