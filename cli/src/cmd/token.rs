@@ -27,6 +27,8 @@ pub enum TokenCommand {
     Untrack(TrackArgs),
     /// Teach the wallet a token the catalog does not ship.
     Add(AddArgs),
+    /// Edit a custom token without changing its network or identifier.
+    Edit(AddArgs),
     /// Forget a custom token.
     Remove(RemoveArgs),
     /// Change a custom token's display precision.
@@ -105,6 +107,9 @@ pub struct AddArgs {
     /// CoinGecko id, when the token has a quoted price.
     #[arg(long, default_value = "")]
     coingecko_id: String,
+    /// CoinPaprika id, independently optional.
+    #[arg(long, default_value = "")]
+    coinpaprika_id: String,
 }
 
 #[derive(Args)]
@@ -155,6 +160,7 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
         TokenCommand::Track(args) => set_tracked(ctx, out, args, true),
         TokenCommand::Untrack(args) => set_tracked(ctx, out, args, false),
         TokenCommand::Add(args) => add(ctx, out, args),
+        TokenCommand::Edit(args) => edit(ctx, out, args),
         TokenCommand::Remove(args) => remove(ctx, out, args),
         TokenCommand::Decimals(args) => decimals(ctx, out, args),
         TokenCommand::Reset(args) => reset(ctx, out, args),
@@ -196,6 +202,7 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
                 "token_id": token.token_id,
                 "kind": token.kind,
                 "coingecko_id": token.coingecko_id,
+                "coinpaprika_id": token.coinpaprika_id,
                 "symbol": token.symbol,
                 "name": token.name,
                 "contract": token.contract,
@@ -230,8 +237,13 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
         "tokens": tracked
             .iter()
             .map(|entry| serde_json::json!({
-                "id": entry.id(),
                 "id": entry.token.deployment_id,
+                "token_id": entry.token.token_id,
+                "chain_id": entry.token.chain_id,
+                "isEnabled": entry.is_enabled,
+                "isBuiltIn": entry.is_built_in,
+                "coingecko_id": entry.token.coingecko_id,
+                "coinpaprika_id": entry.token.coinpaprika_id,
                 "symbol": entry.token.symbol,
                 "name": entry.token.name,
                 "contract": entry.token.contract,
@@ -309,6 +321,21 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
 /// the contract is judged by the hosting chain's own validator, a duplicate is
 /// refused and the list comes back sorted. The composer held all four and this
 /// command held none of them.
+fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
+    let transition = ctx.apply(StateCommand::UpdateCustomToken {
+        chain_name: resolve_chain(&args.chain)?.chain_display_name().to_string(),
+        contract: args.contract,
+        symbol: args.symbol,
+        name: args.name,
+        coingecko_id: args.coingecko_id,
+        coinpaprika_id: args.coinpaprika_id,
+        decimals: args.decimals,
+    })?;
+    reject_on_event(&transition)?;
+    out.emit(serde_json::json!({"ok": true}));
+    Ok(())
+}
+
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
     let transition = ctx.apply(StateCommand::AddCustomToken {
@@ -317,6 +344,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         name: args.name,
         contract: args.contract.clone(),
         coingecko_id: args.coingecko_id,
+        coinpaprika_id: args.coinpaprika_id,
         decimals: args.decimals,
     })?;
     reject_on_event(&transition)?;
@@ -407,6 +435,7 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
             R::UnknownChain => "that chain does not host tokens",
             R::EmptySymbol => "a token needs a symbol",
             R::SymbolTooLong => "that symbol is too long to be one",
+            R::InvalidPriceId => "use a provider ID, not a URL or name",
             R::EmptyName => "a token needs a name",
             R::EmptyContract => "a token needs a contract",
             R::InvalidContract => "that is not a valid contract for the chain",

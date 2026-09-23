@@ -20,6 +20,66 @@ binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
 
 
 class HistoryTests(unittest.TestCase):
+    def test_solana_token_history_labels(self):
+        """RPC mint addresses resolve to tickers before storage and survive reopening."""
+        owner = '11111111111111111111111111111111'
+        mints = ['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+                 'So11111111111111111111111111111111111111113']
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                if request['method'] == 'getSignaturesForAddress':
+                    result = [{'signature': 'A' * 88}]
+                elif request['method'] == 'getTransaction':
+                    result = {'slot': 42, 'blockTime': 1700000000,
+                              'transaction': {'message': {'accountKeys': [owner]}},
+                              'meta': {'fee': 0, 'preBalances': [100], 'postBalances': [100],
+                                       'preTokenBalances': [], 'postTokenBalances': [
+                                           {'owner': owner, 'mint': mint, 'accountIndex': i,
+                                            'uiTokenAmount': {'amount': '42500000', 'decimals': 6}}
+                                           for i, mint in enumerate(mints)]}}
+                else:
+                    raise AssertionError(request)
+                body = json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': result}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-spl-labels-') as directory:
+                def run(*args):
+                    result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                            capture_output=True, text=True, timeout=60)
+                    assert result.returncode == 0, (args, result.stdout, result.stderr)
+                    return json.loads(result.stdout)
+                run('wallet', 'watch', '--chain', 'solana', '--address', owner, '--name', 'SPL')
+                endpoint = f'http://127.0.0.1:{server.server_port}'
+                expected = {'USDC', 'USDT', mints[2]}
+                live = run('history', 'SPL', '--endpoint', endpoint)['transactions']
+                assert {row['symbol'] for row in live} == expected, live
+                run('history', 'SPL', '--save', '--endpoint', endpoint)
+                rows = run('txs', '--page', '--wallet', 'SPL')['page']['records']
+                assert {row['symbol'] for row in rows} == expected, rows
+                assert all(row['amount'] == 42.5 for row in rows), rows
+                usdc = next(row for row in rows if row['symbol'] == 'USDC')
+                assert usdc['assetDisplayName'] == 'USD Coin', usdc
+                assert usdc['deploymentId'] == f'solana:spl:{mints[0]}', usdc
+                # Refresh must repair an address label without duplicating the transfer.
+                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                    db.execute("UPDATE history_records SET payload = json_set(payload, '$.symbol', ?, '$.assetDisplayName', ?) WHERE id = ?",
+                               (mints[0], mints[0], usdc['id']))
+                run('history', 'SPL', '--save', '--endpoint', endpoint)
+                refreshed = run('txs', '--page', '--wallet', 'SPL')['page']['records']
+                assert len(refreshed) == 3, refreshed
+                assert {row['symbol'] for row in refreshed} == expected, refreshed
+                searched = run('txs', '--page', '--search', 'USDC')['page']['records']
+                assert len(searched) == 1 and searched[0]['id'] == usdc['id'], searched
+                assert run('txs', '--record', usdc['id'])['record']['symbol'] == 'USDC'
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
     def test_blockbook_history_is_shared_across_networks(self):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args): pass

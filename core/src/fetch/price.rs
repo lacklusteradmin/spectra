@@ -78,8 +78,7 @@ impl FiatRateProvider {
 // ── Inputs / outputs
 
 /// One coin the caller wants priced. `holding_key` is the caller's own
-/// identifier, returned in the quote map; `coingecko_id` is the catalog id
-/// every provider is resolved from.
+/// identifier, returned in the quote map. Each provider has its own explicit id.
 ///
 /// It also carried the ticker symbol, for providers to match on when the id
 /// missed. Nothing matches on symbol any more, so a front end no longer sends
@@ -89,6 +88,7 @@ impl FiatRateProvider {
 pub struct PriceRequestCoin {
     pub holding_key: String,
     pub coingecko_id: String,
+    pub coinpaprika_id: String,
 }
 
 /// Keyed by `holding_key`. Value is USD price.
@@ -260,21 +260,30 @@ struct PaprikaTicker {
 }
 
 async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
-    let mut resolved = PriceQuoteMap::new();
+    let resolved = PriceQuoteMap::new();
 
+    if coins
+        .iter()
+        .all(|coin| coin.coinpaprika_id.trim().is_empty())
+    {
+        return Ok(resolved);
+    }
     let tickers: Vec<PaprikaTicker> = HttpClient::shared()
         .get_json(COINPAPRIKA_TICKERS_URL, RetryProfile::ChainRead)
         .await?;
 
+    Ok(resolve_paprika_quotes(coins, &tickers))
+}
+
+fn resolve_paprika_quotes(coins: &[PriceRequestCoin], tickers: &[PaprikaTicker]) -> PriceQuoteMap {
+    let mut resolved = PriceQuoteMap::new();
     let by_id: HashMap<&str, &PaprikaTicker> = tickers.iter().map(|t| (t.id.as_str(), t)).collect();
 
     for coin in coins {
         if resolved.contains_key(&coin.holding_key) {
             continue;
         }
-        let Some(id) = paprika_id_for(&coin.coingecko_id) else {
-            continue;
-        };
+        let id = coin.coinpaprika_id.trim();
         let Some(ticker) = by_id.get(id) else {
             continue;
         };
@@ -285,53 +294,7 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
         }
     }
 
-    Ok(resolved)
-}
-
-/// One asset's ids at the market-data providers, as the catalogs state them.
-///
-/// Kept off `ChainEntry` and `TokenDeploymentEntry`: no front end prices anything, so a
-/// column there would only be bytes crossing the FFI on every catalog call.
-#[derive(Debug, Clone)]
-pub(crate) struct AssetMarketIds {
-    pub coingecko_id: String,
-    /// CoinPaprika's own slug, or empty where it lists nothing the catalog
-    /// could identify. Not derivable: Aave is `aave-new` and Cronos is
-    /// `cro-cryptocom-chain`.
-    pub coinpaprika_id: String,
-}
-
-/// The catalogs' market-data ids, indexed by CoinGecko id.
-///
-/// That is the key because a price request identifies its asset by that id and
-/// nothing else. Chains and tokens that share one agree on the rest of the
-/// row, which `market_ids_agree_on_shared_gecko_ids` holds them to.
-fn market_ids_for(gecko_id: &str) -> Option<&'static AssetMarketIds> {
-    static BY_GECKO_ID: std::sync::LazyLock<HashMap<&'static str, &'static AssetMarketIds>> =
-        std::sync::LazyLock::new(|| {
-            crate::tokens::market_ids()
-                .iter()
-                .filter(|m| !m.coingecko_id.is_empty())
-                .map(|m| (m.coingecko_id.as_str(), m))
-                .collect()
-        });
-
-    let gecko = gecko_id.trim();
-    if gecko.is_empty() {
-        return None;
-    }
-    // Catalog ids are lowercase, so only lowercase when the caller's is not.
-    if gecko.bytes().any(|b| b.is_ascii_uppercase()) {
-        BY_GECKO_ID.get(gecko.to_lowercase().as_str()).copied()
-    } else {
-        BY_GECKO_ID.get(gecko).copied()
-    }
-}
-
-/// The asset's catalog CoinPaprika id, or `None` when no verified id is listed.
-fn paprika_id_for(gecko_id: &str) -> Option<&'static str> {
-    let ids = market_ids_for(gecko_id)?;
-    (!ids.coinpaprika_id.is_empty()).then_some(ids.coinpaprika_id.as_str())
+    resolved
 }
 
 // ── Fiat rates
@@ -524,96 +487,34 @@ mod merging_beats_choosing {
 }
 
 #[cfg(test)]
-mod market_id_tests {
+mod explicit_provider_tests {
     use super::*;
-    use std::collections::HashSet;
-
-    fn all_rows() -> Vec<&'static AssetMarketIds> {
-        crate::tokens::market_ids().iter().collect()
-    }
-
-    /// Ten chains share ETH and the CRO token shares Cronos's coin, so one
-    /// CoinGecko id appears on several catalog rows. They are one asset, so
-    /// they must name one listing — `market_ids_for` keys on the gecko id and
-    /// would otherwise answer whichever row it indexed last.
     #[test]
-    fn market_ids_agree_on_shared_gecko_ids() {
-        let mut seen: HashMap<&str, &AssetMarketIds> = HashMap::new();
-        for row in all_rows() {
-            if let Some(first) = seen.insert(row.coingecko_id.as_str(), row) {
-                assert_eq!(
-                    first.coinpaprika_id, row.coinpaprika_id,
-                    "catalog rows for {} disagree about where it is listed",
-                    row.coingecko_id
-                );
-            }
-        }
-    }
-
-    /// The other direction: two different assets pinned to one listing means
-    /// one of them is priced as the other. XAUT and XAUT0 are separate
-    /// listings, and a copied line is how they would stop being.
-    #[test]
-    fn no_two_assets_claim_one_listing() {
-        let mut owner: HashMap<&str, &str> = HashMap::new();
-        for row in all_rows() {
-            let id = row.coinpaprika_id.as_str();
-            if id.is_empty() {
-                continue;
-            }
-            let claimant = owner.entry(id).or_insert(&row.coingecko_id);
-            assert_eq!(
-                *claimant, row.coingecko_id,
-                "coinpaprika listing {id} is claimed by both {claimant} and {}",
-                row.coingecko_id
-            );
-        }
-    }
-
-    /// Ids go to the provider as written, and both index theirs in lowercase.
-    #[test]
-    fn catalog_ids_are_lowercase_and_trimmed() {
-        for row in all_rows() {
-            for id in [&row.coingecko_id, &row.coinpaprika_id] {
-                assert_eq!(id.trim().to_lowercase(), *id, "{id} is not a plain id");
-            }
-        }
-    }
-
-    /// A token added without deciding where it is listed used to price as
-    /// whatever else shared its ticker. Blank is now a decision, and this is
-    /// the list of assets it has been made for.
-    #[test]
-    fn only_deliberately_unlisted_assets_have_no_paprika_id() {
-        let blank: HashSet<&str> = all_rows()
-            .iter()
-            .filter(|r| r.coinpaprika_id.is_empty())
-            .map(|r| r.coingecko_id.as_str())
-            .collect();
-        // honey-3 is Bera USD. CoinPaprika's BUSD is Binance USD, a different
-        // token, and it has no listing for ours — so it prices this nowhere
-        // rather than pricing it as something else.
-        assert_eq!(blank, HashSet::from(["honey-3"]));
-    }
-
-    /// The ids the old hand-written table got wrong (`aave-aave`,
-    /// `cro-cronos`, `leo-unus-sed-leo` resolve to nothing at CoinPaprika) and
-    /// the ones no table would have guessed.
-    #[test]
-    fn paprika_ids_come_from_the_catalog() {
-        assert_eq!(paprika_id_for("aave"), Some("aave-new"));
-        assert_eq!(
-            paprika_id_for("crypto-com-chain"),
-            Some("cro-cryptocom-chain")
-        );
-        assert_eq!(paprika_id_for("leo-token"), Some("leo-leo-token"));
-        assert_eq!(paprika_id_for("bittorrent"), Some("bttc-bittorrent-chain"));
-        assert_eq!(paprika_id_for("usa"), Some("usat"));
-        // A caller's id is not required to be normalized; a catalog's is.
-        assert_eq!(paprika_id_for("  Bitcoin "), Some("btc-bitcoin"));
-        // Unlisted, unknown and absent all mean the same thing: ask nobody.
-        assert_eq!(paprika_id_for("honey-3"), None);
-        assert_eq!(paprika_id_for("not-a-coin"), None);
-        assert_eq!(paprika_id_for(""), None);
+    fn paprika_uses_its_own_id_even_without_gecko_or_with_a_conflicting_gecko_id() {
+        let tickers: Vec<PaprikaTicker> = serde_json::from_str(
+            r#"[
+            {"id":"custom-coin","quotes":{"USD":{"price":2.5}}},
+            {"id":"btc-bitcoin","quotes":{"USD":{"price":90000}}}
+        ]"#,
+        )
+        .unwrap();
+        let coins = ["", "bitcoin"]
+            .into_iter()
+            .enumerate()
+            .map(|(i, gecko)| PriceRequestCoin {
+                holding_key: i.to_string(),
+                coingecko_id: gecko.into(),
+                coinpaprika_id: "custom-coin".into(),
+            })
+            .chain(std::iter::once(PriceRequestCoin {
+                holding_key: "no-paprika".into(),
+                coingecko_id: "bitcoin".into(),
+                coinpaprika_id: String::new(),
+            }))
+            .collect::<Vec<_>>();
+        let prices = resolve_paprika_quotes(&coins, &tickers);
+        assert_eq!(prices.get("0"), Some(&2.5));
+        assert_eq!(prices.get("1"), Some(&2.5));
+        assert!(!prices.contains_key("no-paprika"));
     }
 }

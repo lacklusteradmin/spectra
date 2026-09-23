@@ -114,6 +114,7 @@ async fn seed_probe_holding(
                 token_standard: String::new(),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
+                coinpaprika_id: String::new(),
                 decimals,
                 tags: Vec::new(),
                 color: None,

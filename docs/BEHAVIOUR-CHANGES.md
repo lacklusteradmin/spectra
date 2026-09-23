@@ -16,6 +16,102 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-23 — Toggle token discovery directly from the list
+
+- **Before:** changing discovery required opening the token detail.
+- **After:** each Known Tokens row has its discovery switch beside the detail
+  link. The detail no longer repeats the switch. Failures are visible on the
+  list, and the accessible switch label identifies the token and its global
+  network scope. Network/source filters do not narrow the switch's effect.
+- **Why:** common token management should not require entering a detail page.
+- **CLI check:** `python3 scripts/cli-token-preferences.py target/debug/spectra`
+  verifies the unchanged core-wide toggle. Placement is covered by the existing
+  iOS real-window screen rendering check in `make verify`.
+
+## 2026-09-23 — Known Tokens filters move into the toolbar
+
+- **Before:** a permanent Filters section occupied the top of the token list.
+- **After:** the top-right filter button opens the network/source pickers and
+  Clear Filters action. Its filled icon indicates an active filter; the list
+  starts with tokens. New Token remains available beside it.
+- **Why:** keep filtering accessible without taking space from the token list.
+- **CLI check:** none for toolbar placement; this is Swift-only presentation.
+  `make verify` includes the existing real-window token screen rendering check.
+
+## 2026-09-23 — Remove the obsolete provider lookup from core tests
+
+- **Before:** production pricing used independent provider IDs, but test-only
+  types, an extra catalog projection and a CoinGecko-keyed CoinPaprika lookup
+  still reproduced the deleted inference path and documented it as current.
+- **After:** those helpers and comments are deleted. Catalog checks now inspect
+  token identities and each provider's own IDs directly, including uniqueness
+  for both providers and CoinPaprika agreement across deployments. The pricing
+  regression still proves that a blank or conflicting CoinGecko ID cannot
+  determine the CoinPaprika quote. Runtime behaviour is unchanged.
+- **CLI check:** `python3 scripts/cli-token-preferences.py target/debug/spectra`
+  still verifies independent provider configuration; `cargo test -p spectra_core
+  provider_identity_tests` checks the catalog without a provider-to-provider map.
+
+## 2026-09-23 — Token-wide discovery and complete token management
+
+- **Before:** tracking was per deployment, and a Swift group toggle depended on
+  callers enumerating networks. New deployments could reset a saved choice.
+  Known Tokens used `Contract / Mint` everywhere and exposed only CoinGecko.
+  Custom tokens could only change precision; CoinPaprika quotes were inferred
+  through the built-in CoinGecko mapping.
+- **After:** toggling any deployment applies to every known deployment with the
+  same token ID. Catalog refresh carries that choice to new networks. A custom
+  token keeps its own identity: matching names, symbols or provider IDs never
+  link it to another token. This enables discovery on supported wallet networks;
+  it does not create wallets or invent unknown token deployments.
+- **After:** the list shows names, symbols, networks and custom provenance. The
+  detail has one discovery switch, read-only network deployments, and both price
+  sources. The custom form adds/edits names, symbols, precision and independent,
+  optional CoinGecko/CoinPaprika IDs. Network and identifier cannot be edited.
+  Provider IDs are validated before storage; URLs are refused. Changing metadata
+  clears that deployment's cached price. Built-ins stay read-only.
+- **Why:** discovery is a token choice, not a per-network setting. Provider IDs
+  identify quotes, not assets; both providers must work independently for custom
+  tokens. Swift renders and forwards core's decisions.
+- **CLI check:** `python3 scripts/cli-token-preferences.py target/debug/spectra`
+  exercises cross-network toggles, reopening, independent custom identity,
+  editing/clearing both provider IDs, invalid-ID refusal and deletion offline.
+  `spectra token edit` accepts the same fields as `token add`, including
+  `--coinpaprika-id`; `spectra --json token list` exposes the identities, choices
+  and both provider IDs. Core tests cover new-network choice inheritance and
+  CoinPaprika-only quote resolution without CoinGecko inference.
+
+## 2026-09-22 — Resolve token history labels from deployment identity
+
+- **Before:** Solana RPC history used the SPL mint address as its symbol, and
+  normalization preserved that address as both ticker and asset name.
+- **After:** history normalization resolves catalog token names and tickers by
+  network and mint/contract identity. Unknown contracts retain their address;
+  a matching ticker or an address on another network cannot borrow a catalog
+  asset's name. Existing provider records receive corrected labels on refresh.
+- **Why:** display metadata must follow the actual token deployment, and the
+  same core result must serve history rows, details and searchable storage.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_solana_token_history_labels` exercises a loopback Solana RPC,
+  USDC/USDT/unknown mints, persistence, refresh without duplicates and ticker
+  search. Rust coverage also checks case-sensitive mints and devnet isolation.
+- **Verification:** `make verify` passed (formatting, Clippy, workspace Rust
+  tests, CLI acceptance including the new history regression, and iPhone
+  simulator tests).
+
+## 2026-09-22 — Endpoint history label matches the catalog
+
+- **Before:** endpoint capability labels displayed “Native history” (and the
+  equivalent native-coin qualifier in Chinese).
+- **After:** the English label is “History”; simplified and traditional Chinese
+  use “交易历史” and “交易歷史”.
+- **Why:** the label should match the `History` capability in `endpoints.toml`.
+- **CLI check:** no CLI behavior changes; inspect the `endpointCapability.history`
+  values with `rg 'endpointCapability.history' resources/strings/RuntimeStrings.*.json`.
+- **Verification:** `make verify` passed (formatting, Clippy, workspace Rust
+  tests, CLI acceptance and iPhone simulator tests). Run outside the sandbox
+  so mock servers could bind local ports and Xcode could access the simulator.
+
 ## 2026-09-22 — Durable send review and native session isolation
 
 - **Before:** Swift composed temporary warning strings from a quote, then passed
@@ -267,3 +363,23 @@ how to check it without the app:
   official monerod. The default Monero daemon responded as synchronized mainnet;
   Zcash's default Trezor endpoint still returned HTTP 403 and remains the
   separately tracked external dependency. No real funds were sent.
+
+## 2026-09-23 — Put maintenance actions beside chain diagnostics
+
+- **Before:** Advanced listed a refresh button for every mainnet, all-endpoint
+  checks and diagnostics bundle tools. Each chain's diagnostics split actions
+  between the top of the page and a separate lower Chain Actions section.
+- **After:** Each chain's top Actions section includes balance/history refresh,
+  history diagnostics, endpoint checks, self-tests and supported rescans. Labels
+  omit the chain name already shown in the network-aware page title. Diagnostics
+  overview owns all-endpoint checks and bundle import/export, sharing and past
+  exports. Advanced retains security, global refresh and global status.
+- **Why:** Keep chain operations beside their results and prevent Advanced from
+  growing with the chain catalog. Existing core operations and scope are reused.
+- **CLI check:** Run `scripts/cli-acceptance.sh` for offline refresh refusal and
+  diagnostics coverage, or `spectra diagnostics self-test --chain Bitcoin` and
+  `spectra diagnostics show --chain Bitcoin`. Navigation is native-only; inspect
+  Advanced, Diagnostics overview and a chain diagnostics page in the simulator.
+- **Verification:** `make verify` passed: Rust formatting/Clippy and workspace
+  tests, all 444 offline CLI checks, and iPhone simulator tests. Removed the
+  nine obsolete localization keys identified by the unused-string gate.

@@ -684,6 +684,7 @@ contains "Aptos test coins display tAPT" '"symbol":"tAPT"' \
     spectra --json token catalog --chain aptos-testnet
 
 section "tracked tokens"
+check "token-wide discovery and editable price sources" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"
 # Tracking is `is_enabled` on a row core already holds — opening the store seeds
 # the catalog — not a row the caller assembles and writes back. Both front ends
 # used to do the latter, with duplicate rules that disagreed: the composer

@@ -823,6 +823,7 @@ mod roundtrip_tests {
                 token_standard: "BEP-20".to_string(),
                 contract: "0x55d39897".to_string(),
                 coingecko_id: "tether".to_string(),
+                coinpaprika_id: String::new(),
                 decimals: 18,
                 tags: vec!["stablecoin".to_string()],
                 color: Some(crate::chains::CatalogColor::Green),

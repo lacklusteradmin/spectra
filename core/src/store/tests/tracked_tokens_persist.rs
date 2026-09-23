@@ -24,6 +24,7 @@ fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
         name: symbol.to_string(),
         contract: "0x0000000000000000000000000000000000000001".to_string(),
         coingecko_id: symbol.to_lowercase(),
+        coinpaprika_id: String::new(),
         decimals,
     }
 }
@@ -63,4 +64,40 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
     let reloaded =
         wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
     assert_eq!(reloaded.token_preferences, state.token_preferences);
+}
+
+#[test]
+fn new_network_deployments_inherit_the_tokens_saved_choice() {
+    use crate::store::state::{reduce_state_in_place, CoreTokenPreferenceKey};
+    let mut state = CoreAppState::default();
+    reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+    let token = state
+        .token_preferences
+        .iter()
+        .find(|e| e.token.symbol == "USDC" && e.token.chain_id == "ethereum")
+        .unwrap()
+        .token
+        .clone();
+    reduce_state_in_place(
+        &mut state,
+        StateCommand::SetTokenPreferencesEnabled {
+            tokens: vec![CoreTokenPreferenceKey {
+                chain_name: "Ethereum".into(),
+                contract: token.contract,
+            }],
+            is_enabled: false,
+        },
+    );
+    // A later catalog introduces deployments absent from the saved preferences.
+    state
+        .token_preferences
+        .retain(|e| e.token.token_id != token.token_id || e.token.chain_id == "ethereum");
+    reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+    let deployments: Vec<_> = state
+        .token_preferences
+        .iter()
+        .filter(|e| e.token.token_id == token.token_id)
+        .collect();
+    assert!(deployments.len() > 2);
+    assert!(deployments.iter().all(|e| !e.is_enabled));
 }

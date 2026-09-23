@@ -290,11 +290,27 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
                 }
             };
 
+            let contract = entry
+                .get("mint")
+                .or_else(|| entry.get("contract"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty());
+            let token_deployment = contract
+                .and_then(|contract| crate::tokens::history_deployment(chain, Some(contract)));
+            let catalog_token = token_deployment
+                .as_deref()
+                .and_then(crate::tokens::deployment);
             let (entry_asset, entry_symbol) = match shape.symbol_override {
                 SymbolOverride::None => (asset_display_name, symbol),
                 SymbolOverride::RowNamesAsset => {
                     let found = entry["symbol"].as_str().unwrap_or(symbol);
-                    if found == symbol {
+                    if let Some(token) = catalog_token {
+                        (token.name.as_str(), token.symbol.as_str())
+                    } else if let Some(contract) = contract {
+                        // An unregistered contract cannot borrow another asset's
+                        // name from a matching ticker (or from another network).
+                        (contract, contract)
+                    } else if found == symbol {
                         (asset_display_name, found)
                     } else {
                         let named = crate::tokens::token_name_on_chain(chain.str_id(), found);
@@ -319,13 +335,8 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
             };
 
             Some(ChainHistoryEntry {
-                deployment_id: match entry
-                    .get("mint")
-                    .or_else(|| entry.get("contract"))
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                {
-                    Some(contract) => crate::tokens::history_deployment(chain, Some(contract)),
+                deployment_id: match contract {
+                    Some(_) => token_deployment,
                     None if entry_symbol == symbol => {
                         crate::tokens::history_deployment(chain, None)
                     }
@@ -483,6 +494,38 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[cfg(test)]
 mod normalize_chain_history_tests {
     use super::*;
+
+    #[test]
+    fn spl_history_labels_resolve_by_network_and_case_sensitive_mint() {
+        let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let normalize = |chain: &str, mint: &str, symbol: &str| {
+            normalize_chain_history(
+                chain,
+                &serde_json::json!([{
+                    "signature": "transfer", "mint": mint, "symbol": symbol,
+                    "amount_display": "42.5", "is_incoming": true,
+                    "timestamp": 1700000012, "from": "sender", "to": "owner"
+                }])
+                .to_string(),
+            )
+            .remove(0)
+        };
+        for supplied_symbol in [mint, "FAKE"] {
+            let row = normalize("solana", mint, supplied_symbol);
+            assert_eq!(row.symbol, "USDC");
+            assert_eq!(row.asset_display_name, "USD Coin");
+            assert_eq!(row.deployment_id, Some(format!("solana:spl:{mint}")));
+            assert_eq!(row.amount, 42.5);
+        }
+        for (chain, identifier) in [
+            ("solana-devnet", mint.to_string()),
+            ("solana", mint.to_lowercase()),
+        ] {
+            let row = normalize(chain, &identifier, "USDC");
+            assert_eq!(row.symbol, identifier);
+            assert_eq!(row.asset_display_name, identifier);
+        }
+    }
 
     /// One populated entry per chain shape, in the JSON that chain's client
     /// serializes, against the row it must normalize to. Field names, units

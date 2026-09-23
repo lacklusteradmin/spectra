@@ -183,6 +183,7 @@ pub enum TokenPreferenceRejection {
     /// Longer than a symbol is ever spelled; almost always a pasted name.
     SymbolTooLong,
     EmptyName,
+    InvalidPriceId,
     EmptyContract,
     /// Not a well-formed contract for the chain that would host it.
     InvalidContract,
@@ -778,6 +779,16 @@ pub enum StateCommand {
         name: String,
         contract: String,
         coingecko_id: String,
+        coinpaprika_id: String,
+        decimals: u32,
+    },
+    UpdateCustomToken {
+        chain_name: String,
+        contract: String,
+        symbol: String,
+        name: String,
+        coingecko_id: String,
+        coinpaprika_id: String,
         decimals: u32,
     },
     /// Forget a custom token. A built-in is the catalog's, not the user's.
@@ -792,8 +803,7 @@ pub enum StateCommand {
         contract: String,
         decimals: u32,
     },
-    /// Turn tokens on or off for balance reads and display. Takes a list
-    /// because the registry screen toggles a whole group at once.
+    /// Turn every deployment of each selected token identity on or off.
     SetTokenPreferencesEnabled {
         tokens: Vec<CoreTokenPreferenceKey>,
         is_enabled: bool,
@@ -969,6 +979,13 @@ fn token_preference_row(
             .as_deref()
                 == Some(needle.as_str())
     })
+}
+
+fn valid_price_id(value: &str) -> bool {
+    value
+        .trim()
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
@@ -1335,6 +1352,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             name,
             contract,
             coingecko_id,
+            coinpaprika_id,
             decimals,
         } => {
             let symbol = symbol.trim().to_uppercase();
@@ -1354,6 +1372,9 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     Some(TokenPreferenceRejection::SymbolTooLong)
                 }
                 Some(_) if name.is_empty() => Some(TokenPreferenceRejection::EmptyName),
+                Some(_) if !valid_price_id(&coingecko_id) || !valid_price_id(&coinpaprika_id) => {
+                    Some(TokenPreferenceRejection::InvalidPriceId)
+                }
                 Some(_) if contract.is_empty() => Some(TokenPreferenceRejection::EmptyContract),
                 Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => {
                     Some(TokenPreferenceRejection::TooManyDecimals)
@@ -1415,7 +1436,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                 symbol: symbol.clone(),
                                 token_standard: hosting.token_standard().to_string(),
                                 contract,
-                                coingecko_id: coingecko_id.trim().to_string(),
+                                coingecko_id: coingecko_id.trim().to_lowercase(),
+                                coinpaprika_id: coinpaprika_id.trim().to_lowercase(),
                                 decimals,
                                 tags: Vec::new(),
                                 color: None,
@@ -1430,6 +1452,53 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     });
                 }
                 (None, None) => unreachable!("an unknown chain is rejected above"),
+            }
+        }
+        StateCommand::UpdateCustomToken {
+            chain_name,
+            contract,
+            symbol,
+            name,
+            coingecko_id,
+            coinpaprika_id,
+            decimals,
+        } => {
+            let symbol = symbol.trim().to_uppercase();
+            let name = name.trim().to_string();
+            let index = token_preference_index(state, &chain_name, &contract);
+            let rejection = match index {
+                None => Some(TokenPreferenceRejection::UnknownToken),
+                Some(i) if state.token_preferences[i].is_built_in => {
+                    Some(TokenPreferenceRejection::BuiltInToken)
+                }
+                Some(_) if symbol.is_empty() => Some(TokenPreferenceRejection::EmptySymbol),
+                Some(_) if symbol.chars().count() > MAX_TOKEN_SYMBOL_CHARS => {
+                    Some(TokenPreferenceRejection::SymbolTooLong)
+                }
+                Some(_) if name.is_empty() => Some(TokenPreferenceRejection::EmptyName),
+                Some(_) if !valid_price_id(&coingecko_id) || !valid_price_id(&coinpaprika_id) => {
+                    Some(TokenPreferenceRejection::InvalidPriceId)
+                }
+                Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => {
+                    Some(TokenPreferenceRejection::TooManyDecimals)
+                }
+                Some(_) => None,
+            };
+            if let Some(reason) = rejection {
+                events.push(token_preference_rejected(reason));
+            } else if let Some(index) = index {
+                let token = &mut state.token_preferences[index].token;
+                token.name = name;
+                token.symbol = symbol.clone();
+                token.coingecko_id = coingecko_id.trim().to_lowercase();
+                token.coinpaprika_id = coinpaprika_id.trim().to_lowercase();
+                token.decimals = decimals;
+                state.quotes.prices.remove(&token.deployment_id);
+                state.quotes.prices_attempt_at = None;
+                sort_token_preferences(&mut state.token_preferences);
+                events.push(StateEvent::TokenPreferencesChanged {
+                    symbol: Some(symbol),
+                });
             }
         }
         StateCommand::RemoveCustomToken {
@@ -1473,17 +1542,23 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             }
         },
         StateCommand::SetTokenPreferencesEnabled { tokens, is_enabled } => {
+            let token_ids: Option<std::collections::HashSet<_>> = tokens
+                .iter()
+                .map(|key| {
+                    token_preference_index(state, &key.chain_name, &key.contract)
+                        .map(|index| state.token_preferences[index].token.token_id.clone())
+                })
+                .collect();
+            let Some(token_ids) = token_ids else {
+                events.push(token_preference_rejected(
+                    TokenPreferenceRejection::UnknownToken,
+                ));
+                return events;
+            };
             let mut changed = false;
-            for key in tokens {
-                let Some(index) = token_preference_index(state, &key.chain_name, &key.contract)
-                else {
-                    events.push(token_preference_rejected(
-                        TokenPreferenceRejection::UnknownToken,
-                    ));
-                    continue;
-                };
-                if state.token_preferences[index].is_enabled != is_enabled {
-                    state.token_preferences[index].is_enabled = is_enabled;
+            for entry in &mut state.token_preferences {
+                if token_ids.contains(&entry.token.token_id) && entry.is_enabled != is_enabled {
+                    entry.is_enabled = is_enabled;
                     changed = true;
                 }
             }
@@ -1702,6 +1777,7 @@ mod tests {
             name: "A Token".to_string(),
             contract: contract.to_string(),
             coingecko_id: String::new(),
+            coinpaprika_id: String::new(),
             decimals,
         }
     }
@@ -1877,10 +1953,20 @@ mod tests {
             .collect();
         assert_eq!(keys.len(), 3, "the catalog ships enabled tokens");
 
-        let disabled_before = state
+        let selected_ids: std::collections::HashSet<_> = keys
+            .iter()
+            .map(|key| {
+                state.token_preferences
+                    [token_preference_index(&state, &key.chain_name, &key.contract).unwrap()]
+                .token
+                .token_id
+                .clone()
+            })
+            .collect();
+        let expected_disabled = state
             .token_preferences
             .iter()
-            .filter(|entry| !entry.is_enabled)
+            .filter(|entry| !entry.is_enabled || selected_ids.contains(&entry.token.token_id))
             .count();
 
         let off = reduce_state(
@@ -1901,7 +1987,7 @@ mod tests {
                 .iter()
                 .filter(|entry| !entry.is_enabled)
                 .count(),
-            disabled_before + keys.len(),
+            expected_disabled,
             "the whole group moved"
         );
         assert_eq!(

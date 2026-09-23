@@ -161,18 +161,6 @@ pub fn self_send_confirmation(request: SelfSendConfirmationRequest) -> SelfSendC
     }
 }
 
-/// Normalize a token contract address for identity matching.
-fn normalize_known_token_identifier(
-    chain: wallet_domain::CoreTokenHostingChain,
-    contract_address: &str,
-) -> String {
-    crate::tokens::normalize_token_identifier(
-        Some(contract_address.to_string()),
-        chain.chain_name().to_string(),
-    )
-    .unwrap_or_default()
-}
-
 /// The built-in token catalog, as preference entries.
 ///
 /// Built from `tokens.toml` — the same catalog `list_all_builtin_token_deployments`
@@ -184,7 +172,7 @@ fn normalize_known_token_identifier(
 /// built-in's identity *is* its contract, and the old ids were regenerated on
 /// every launch anyway.
 pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
-    crate::tokens::catalog()
+    let mut entries: Vec<_> = crate::tokens::catalog()
         .iter()
         .filter(|token| !token.is_native())
         .filter_map(|token| {
@@ -200,7 +188,20 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
                 token: token.clone(),
             })
         })
-        .collect()
+        .collect();
+    unify_token_choices(&mut entries);
+    entries
+}
+
+fn unify_token_choices(entries: &mut [wallet_domain::CoreTokenPreferenceEntry]) {
+    let enabled: std::collections::HashSet<_> = entries
+        .iter()
+        .filter(|e| e.is_enabled)
+        .map(|e| e.token.token_id.clone())
+        .collect();
+    for entry in entries {
+        entry.is_enabled = enabled.contains(&entry.token.token_id);
+    }
 }
 
 /// Merge built-in token registry entries with persisted user preferences:
@@ -213,21 +214,13 @@ pub fn merge_built_in_token_preferences(
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     let mut merged: Vec<wallet_domain::CoreTokenPreferenceEntry> = Vec::new();
     for built_in in built_ins.into_iter() {
-        let Some(built_in_chain) = built_in.hosting_chain() else {
-            continue;
-        };
-        let built_in_key =
-            normalize_known_token_identifier(built_in_chain, &built_in.token.contract);
-        let existing = persisted.iter().find(|entry| {
-            entry.is_built_in
-                && entry.token.chain_id == built_in.token.chain_id
-                && entry.hosting_chain().is_some_and(|c| {
-                    normalize_known_token_identifier(c, &entry.token.contract) == built_in_key
-                })
-        });
+        let choices: Vec<_> = persisted
+            .iter()
+            .filter(|entry| entry.is_built_in && entry.token.token_id == built_in.token.token_id)
+            .collect();
         let mut updated = built_in;
-        if let Some(existing) = existing {
-            updated.is_enabled = existing.is_enabled;
+        if !choices.is_empty() {
+            updated.is_enabled = choices.iter().any(|entry| entry.is_enabled);
         }
         merged.push(updated);
     }

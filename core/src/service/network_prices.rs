@@ -111,29 +111,40 @@ impl WalletService {
                 continue;
             };
             let network = chain;
-            if network.is_testnet() || coin.coingecko_id.trim().is_empty() {
+            if network.is_testnet() {
                 continue;
             }
-            let key = coin.deployment_id();
-            requests.insert(
-                key.clone(),
-                crate::fetch::price::PriceRequestCoin {
-                    holding_key: key,
-                    coingecko_id: coin
-                        .catalog_token()
-                        .map(|t| t.coingecko_id.clone())
-                        .unwrap_or_default(),
-                },
-            );
+            let token = coin.catalog_token().or_else(|| {
+                state
+                    .token_preferences
+                    .iter()
+                    .find(|entry| entry.token.matches_holding(&coin))
+                    .map(|entry| &entry.token)
+            });
+            if let Some(token) = token {
+                if token.coingecko_id.is_empty() && token.coinpaprika_id.is_empty() {
+                    continue;
+                }
+                let key = coin.deployment_id();
+                requests.insert(
+                    key.clone(),
+                    crate::fetch::price::PriceRequestCoin {
+                        holding_key: key,
+                        coingecko_id: token.coingecko_id.clone(),
+                        coinpaprika_id: token.coinpaprika_id.clone(),
+                    },
+                );
+            }
         }
         for alert in state.price_alerts.iter().filter(|a| a.is_enabled) {
-            if let Some(token) =
-                crate::tokens::deployment(&alert.holding_key).filter(|t| !t.coingecko_id.is_empty())
+            if let Some(token) = crate::tokens::deployment(&alert.holding_key)
+                .filter(|t| !t.coingecko_id.is_empty() || !t.coinpaprika_id.is_empty())
             {
                 requests.entry(token.deployment_id.clone()).or_insert(
                     crate::fetch::price::PriceRequestCoin {
                         holding_key: token.deployment_id.clone(),
                         coingecko_id: token.coingecko_id.clone(),
+                        coinpaprika_id: token.coinpaprika_id.clone(),
                     },
                 );
             }

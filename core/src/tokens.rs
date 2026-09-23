@@ -106,6 +106,7 @@ pub struct TokenDeploymentEntry {
     pub token_standard: String,
     pub contract: String,
     pub coingecko_id: String,
+    pub coinpaprika_id: String,
     pub decimals: u32,
     pub tags: Vec<String>,
     /// `None` for a token the user added: the catalog has no colour for it.
@@ -282,6 +283,7 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
                 },
                 contract: d.contract.clone(),
                 coingecko_id: t.coingecko_id.clone(),
+                coinpaprika_id: t.coinpaprika_id.clone(),
                 decimals: d.decimals,
                 tags: t.tags.clone(),
                 color: Some(t.color),
@@ -332,28 +334,6 @@ pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'stat
         .filter(|t| t.chain_id == chain_id && t.symbol.eq_ignore_ascii_case(symbol));
     let token = matches.next()?;
     matches.next().is_none().then_some(token.name.as_str())
-}
-
-/// Each token's ids at the market-data providers, one row per token.
-///
-/// Kept out of [`TokenDeploymentEntry`] the way the chain catalog keeps them out of
-/// `ChainEntry`: no front end prices anything, so these would cross the FFI on
-/// every `list_token_deployments` call for a caller that never reads them.
-pub(crate) fn market_ids() -> &'static [crate::fetch::price::AssetMarketIds] {
-    static IDS: LazyLock<Vec<crate::fetch::price::AssetMarketIds>> = LazyLock::new(|| {
-        // Only mainnet identities have market prices; testnet identities are
-        // checked by the catalog loader and never reach this provider list.
-        embedded_token_file(TOKENS_TOML, "tokens.toml")
-            .tokens
-            .iter()
-            .filter(|t| !t.coingecko_id.is_empty())
-            .map(|t| crate::fetch::price::AssetMarketIds {
-                coingecko_id: t.coingecko_id.clone(),
-                coinpaprika_id: t.coinpaprika_id.clone(),
-            })
-            .collect()
-    });
-    &IDS
 }
 
 // ── Token-id + endpoint URL normalization helpers ─────────────────
@@ -898,6 +878,11 @@ tags = []
             for (field, a, b) in [
                 ("name", &first.name, &entry.name),
                 ("coingecko_id", &first.coingecko_id, &entry.coingecko_id),
+                (
+                    "coinpaprika_id",
+                    &first.coinpaprika_id,
+                    &entry.coinpaprika_id,
+                ),
                 ("artwork_name", &first.artwork_name, &entry.artwork_name),
             ] {
                 assert_eq!(
@@ -1010,6 +995,76 @@ pub(crate) fn history_deployment(
                         id
                     )
                 })
+        }
+    }
+}
+
+#[cfg(test)]
+mod provider_identity_tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn each_provider_listing_belongs_to_one_catalog_token() {
+        let catalog = parse_token_file(TOKENS_TOML).unwrap();
+        for provider in ["CoinGecko", "CoinPaprika"] {
+            let mut owners = HashMap::new();
+            for token in &catalog.tokens {
+                let id = match provider {
+                    "CoinGecko" => &token.coingecko_id,
+                    _ => &token.coinpaprika_id,
+                };
+                if !id.is_empty() {
+                    assert!(
+                        owners.insert(id, &token.id).is_none(),
+                        "{provider} listing {id} is claimed by multiple token identities"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn both_provider_ids_are_lowercase_and_trimmed() {
+        for file in [TOKENS_TOML, TESTNET_TOKENS_TOML] {
+            for token in parse_token_file(file).unwrap().tokens {
+                for id in [token.coingecko_id, token.coinpaprika_id] {
+                    assert_eq!(id.trim().to_lowercase(), id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn deliberately_unlisted_tokens_have_no_paprika_id() {
+        let catalog = parse_token_file(TOKENS_TOML).unwrap();
+        let unlisted: HashSet<_> = catalog
+            .tokens
+            .iter()
+            .filter(|token| token.coinpaprika_id.is_empty())
+            .map(|token| token.id.as_str())
+            .collect();
+        // Bera USD is not Binance USD; the latter's listing cannot price it.
+        assert_eq!(unlisted, HashSet::from(["honey-3"]));
+    }
+
+    #[test]
+    fn catalog_tokens_carry_explicit_paprika_listings() {
+        let catalog = parse_token_file(TOKENS_TOML).unwrap();
+        for (token_id, expected) in [
+            ("aave", "aave-new"),
+            ("crypto-com-chain", "cro-cryptocom-chain"),
+            ("leo-token", "leo-leo-token"),
+            ("bittorrent", "bttc-bittorrent-chain"),
+            ("usa", "usat"),
+            ("bitcoin", "btc-bitcoin"),
+        ] {
+            let token = catalog
+                .tokens
+                .iter()
+                .find(|token| token.id == token_id)
+                .unwrap();
+            assert_eq!(token.coinpaprika_id, expected);
         }
     }
 }

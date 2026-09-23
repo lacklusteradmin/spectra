@@ -322,6 +322,9 @@ pub(super) fn spot_price_usd(
         .map(|chain| PriceRequestCoin {
             holding_key: chain.entry().native_deployment_id.clone(),
             coingecko_id: chain.coingecko_id().to_string(),
+            coinpaprika_id: spectra_core::tokens::deployment(&chain.entry().native_deployment_id)
+                .map(|token| token.coinpaprika_id.clone())
+                .unwrap_or_default(),
         })
         .collect();
     // Pricing needs no chain endpoints, and now no service either: the read

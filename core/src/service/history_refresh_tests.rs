@@ -222,6 +222,7 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
                 token_standard: "erc20".to_string(),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
+                coinpaprika_id: String::new(),
                 decimals: 6,
                 tags: Vec::new(),
                 color: None,
