@@ -138,7 +138,7 @@ pub struct DiagnosticsBundlePayload {
     pub schema_version: i32,
     pub generated_at: f64,
     pub environment: DiagnosticsEnvironmentMetadata,
-    pub chain_degraded_messages: HashMap<String, String>,
+    pub chain_degraded: HashMap<String, crate::service::ChainDegradation>,
     /// `Chain::str_id()` → that chain's diagnostics JSON blob (`"{}"` when the
     /// chain has no data). Keyed rather than one field per chain: the bundle is
     /// written for human inspection and nothing reads individual chains, so a
@@ -150,9 +150,19 @@ pub struct DiagnosticsBundlePayload {
 /// only on the extremely unlikely serialization failure path.
 #[uniffi::export]
 pub fn diagnostics_bundle_to_json(payload: DiagnosticsBundlePayload) -> Option<String> {
-    let bytes = serde_json::to_vec_pretty(&payload).ok()?;
-    let s = String::from_utf8(bytes).ok()?;
-    Some(sanitize_diagnostics_string(&s))
+    // Redact inside each string value rather than over the rendered text: a
+    // redaction that ran across quotes could consume JSON structure.
+    fn sanitize(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::String(s) => *s = sanitize_diagnostics_string(s),
+            serde_json::Value::Array(items) => items.iter_mut().for_each(sanitize),
+            serde_json::Value::Object(map) => map.values_mut().for_each(sanitize),
+            _ => {}
+        }
+    }
+    let mut value = serde_json::to_value(&payload).ok()?;
+    sanitize(&mut value);
+    serde_json::to_string_pretty(&value).ok()
 }
 
 /// Parse a bundle JSON string back into a `DiagnosticsBundlePayload`. Returns
@@ -226,7 +236,7 @@ mod tests {
 /// endpoint health results.
 #[uniffi::export]
 pub fn diagnostics_json(
-    chain_name: String,
+    chain_id: String,
     endpoints: Vec<EndpointHealthRow>,
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
@@ -236,8 +246,8 @@ pub fn diagnostics_json(
 
     // No shape to dispatch on: every chain records the same row, so the
     // document is the same document.
-    crate::registry::Chain::from_display_name(&chain_name)?;
-    let history: Vec<HistoryDiagnostics> = reg::diagnostics_all(chain_name).into_values().collect();
+    crate::registry::Chain::from_str_id(&chain_id)?;
+    let history: Vec<HistoryDiagnostics> = reg::diagnostics_all(chain_id).into_values().collect();
     diagnostics_build_history_json(
         history,
         endpoints,
@@ -259,17 +269,11 @@ mod one_builder_tests {
     #[test]
     fn every_chain_produces_a_document() {
         for chain in Chain::all().filter(|c| !c.is_testnet()) {
-            let json = diagnostics_json(
-                chain.chain_display_name().to_string(),
-                Vec::new(),
-                None,
-                None,
-                None,
-            );
+            let json = diagnostics_json(chain.str_id().to_string(), Vec::new(), None, None, None);
             assert!(
                 json.is_some(),
                 "{} produced no diagnostics document",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }

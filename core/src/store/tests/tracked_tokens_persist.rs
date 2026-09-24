@@ -1,5 +1,4 @@
 use crate::store::state::{CoreAppState, StateCommand};
-use crate::store::wallet_domain::CoreTokenHostingChain;
 use crate::wallet_db;
 
 /// One database per test. Keyed by thread id as well as pid: two tests in
@@ -19,7 +18,7 @@ fn tmp_db() -> String {
 
 fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
     StateCommand::AddCustomToken {
-        chain_name: CoreTokenHostingChain::Ethereum.chain_name().to_string(),
+        chain_id: crate::registry::Chain::Ethereum.str_id().to_string(),
         symbol: symbol.to_string(),
         name: symbol.to_string(),
         contract: "0x0000000000000000000000000000000000000001".to_string(),
@@ -82,7 +81,7 @@ fn new_network_deployments_inherit_the_tokens_saved_choice() {
         &mut state,
         StateCommand::SetTokenPreferencesEnabled {
             tokens: vec![CoreTokenPreferenceKey {
-                chain_name: "Ethereum".into(),
+                chain_id: "ethereum".into(),
                 contract: token.contract,
             }],
             is_enabled: false,

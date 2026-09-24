@@ -143,11 +143,10 @@ pub(super) fn destination_probe_asset(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Result<(Chain, Option<TokenDescriptor>), SpectraBridgeError> {
-    let chain = Chain::from_display_name(&holding.chain_name).ok_or_else(|| {
-        SpectraBridgeError::InvalidInput {
-            message: format!("unknown chain: {}", holding.chain_name),
-        }
-    })?;
+    let chain =
+        Chain::from_str_id(&holding.chain_id).ok_or_else(|| SpectraBridgeError::InvalidInput {
+            message: format!("unknown chain: {}", holding.chain_id),
+        })?;
     if holding.is_native() {
         return Ok((chain, None));
     }
@@ -156,7 +155,7 @@ pub(super) fn destination_probe_asset(
             SpectraBridgeError::InvalidInput {
                 message: format!(
                     "{} on {} is not a token this wallet tracks",
-                    holding.symbol, holding.chain_name
+                    holding.symbol, holding.chain_id
                 ),
             }
         })?;
@@ -167,7 +166,7 @@ pub(super) fn destination_probe_asset(
         u8::try_from(identity.decimals).map_err(|_| SpectraBridgeError::InvalidInput {
             message: format!(
                 "{} on {} declares {} decimals",
-                holding.symbol, holding.chain_name, identity.decimals
+                holding.symbol, holding.chain_id, identity.decimals
             ),
         })?;
     Ok((
@@ -190,27 +189,30 @@ where
     F: FnOnce(String) -> Fut,
     Fut: std::future::Future<Output = Result<Option<String>, SpectraBridgeError>>,
 {
-    let name = chain.chain_display_name();
+    let id = chain.str_id();
     let typed = input.trim().to_string();
-    if crate::send::flow::is_valid_send_address(name.into(), typed.clone()) {
+    if crate::send::flow::is_valid_send_address(id.into(), typed.clone()) {
         return Ok(SendDestinationResolution {
-            address: crate::send::flow::normalized_send_address(name.into(), typed),
+            address: crate::send::flow::normalized_send_address(id.into(), typed),
             used_ens: false,
         });
     }
     if !chain.resolves_ens_names() || !crate::send::flow::is_ens_name_candidate(&typed) {
         return Err(SpectraBridgeError::InvalidInput {
-            message: format!("enter a valid {name} destination address"),
+            message: format!(
+                "enter a valid {} destination address",
+                chain.chain_display_name()
+            ),
         });
     }
     let address = lookup(typed.clone())
         .await?
-        .filter(|a| crate::send::flow::is_valid_send_address(name.into(), a.clone()))
+        .filter(|a| crate::send::flow::is_valid_send_address(id.into(), a.clone()))
         .ok_or_else(|| SpectraBridgeError::InvalidInput {
             message: format!("unable to resolve ENS name '{typed}'"),
         })?;
     Ok(SendDestinationResolution {
-        address: crate::send::flow::normalized_send_address(name.into(), address),
+        address: crate::send::flow::normalized_send_address(id.into(), address),
         used_ens: true,
     })
 }
@@ -220,11 +222,9 @@ pub(super) fn verify_reviewed_destination(
     resolved: SendDestinationResolution,
     expected: &str,
 ) -> Result<SendDestinationResolution, SpectraBridgeError> {
-    if !crate::send::flow::is_valid_send_address(chain.chain_display_name().into(), expected.into())
-        || crate::send::flow::normalized_send_address(
-            chain.chain_display_name().into(),
-            expected.into(),
-        ) != resolved.address
+    if !crate::send::flow::is_valid_send_address(chain.str_id().into(), expected.into())
+        || crate::send::flow::normalized_send_address(chain.str_id().into(), expected.into())
+            != resolved.address
     {
         return Err(SpectraBridgeError::InvalidInput {
             message: format!(

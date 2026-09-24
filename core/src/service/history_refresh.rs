@@ -62,7 +62,7 @@ fn targets(state: &CoreAppState, chain: Chain, wallet_ids: &[String]) -> Vec<Tar
     state
         .wallets
         .iter()
-        .filter(|wallet| wallet.chain_name == chain.chain_display_name())
+        .filter(|wallet| wallet.family() == Some(chain))
         .filter(|wallet| {
             wallet_ids.is_empty()
                 || wallet_ids
@@ -122,8 +122,8 @@ fn record_for(
         wallet_name: target.wallet_name.clone(),
         asset_display_name: entry.asset_display_name,
         symbol: entry.symbol,
-        chain_name: target.network.chain_display_name().to_string(),
-        amount: entry.amount,
+        chain_id: target.network.str_id().to_string(),
+        amount: crate::decimal::amount_from_f64(entry.amount),
         address: entry.counterparty,
         transaction_hash: Some(entry.tx_hash).filter(|hash| !hash.is_empty()),
         nonce: None,
@@ -131,7 +131,6 @@ fn record_for(
         receipt_gas_used: None,
         receipt_effective_gas_price_gwei: None,
         receipt_network_fee: None,
-        fee_priority_raw: None,
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,
@@ -266,22 +265,18 @@ const MAX_EVM_PAGE_SIZE: u32 = 500;
 /// of them, normalise each contract and build the descriptor list to hand
 /// back.
 fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::TokenDescriptor> {
-    let Some(hosting) = crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
-        chain.chain_display_name(),
-    ) else {
+    let hosting = chain.mainnet_counterpart();
+    if !hosting.hosts_tokens() {
         return Vec::new();
-    };
+    }
     state
         .token_preferences
         .iter()
-        // `hosting_chain()` reads the entry's own `chain` key, which is the
-        // catalog's spelling — `"bnb"` for BNB Chain — rather than a display
-        // name, so the comparison is between variants and not strings.
         .filter(|entry| entry.is_enabled && entry.hosting_chain() == Some(hosting))
         .filter_map(|entry| {
             let contract = crate::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),
-                chain.chain_display_name().to_string(),
+                chain.str_id().to_string(),
             )?;
             Some(crate::service::TokenDescriptor {
                 contract,
@@ -333,13 +328,12 @@ impl WalletService {
         let page_size = page_size
             .unwrap_or(DEFAULT_EVM_PAGE_SIZE)
             .clamp(MIN_EVM_PAGE_SIZE, MAX_EVM_PAGE_SIZE);
-        let native = crate::fetch::history_decode::history_evm_native_asset(
-            chain.chain_display_name().to_string(),
-        )
-        .unwrap_or(crate::fetch::history_decode::EvmNativeAsset {
-            asset_display_name: "Ether".to_string(),
-            symbol: "ETH".to_string(),
-        });
+        let native =
+            crate::fetch::history_decode::history_evm_native_asset(chain.str_id().to_string())
+                .unwrap_or(crate::fetch::history_decode::EvmNativeAsset {
+                    asset_display_name: "Ether".to_string(),
+                    symbol: "ETH".to_string(),
+                });
 
         let mut incoming = Vec::new();
         let mut diagnostics = Vec::new();
@@ -422,7 +416,7 @@ impl WalletService {
                 crate::fetch::history_decode::EvmTransactionRecordRequest {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
-                    chain_name: network.chain_display_name().to_string(),
+                    chain_id: network.str_id().to_string(),
                     token_source_used: Some("rust/etherscan".to_string()),
                     native_asset_display_name: native.asset_display_name.clone(),
                     native_asset_symbol: native.symbol.clone(),
@@ -474,8 +468,8 @@ fn evm_record(
         wallet_name: planned.wallet_name,
         asset_display_name: planned.asset_display_name,
         symbol: planned.symbol,
-        chain_name: planned.chain_name,
-        amount: planned.amount_decimal.parse().unwrap_or(0.0),
+        chain_id: planned.chain_id,
+        amount: crate::decimal::canonical(&planned.amount_decimal).unwrap_or_else(|| "0".into()),
         address: planned.counterparty,
         transaction_hash: Some(planned.transaction_hash).filter(|hash| !hash.is_empty()),
         nonce: None,
@@ -483,7 +477,6 @@ fn evm_record(
         receipt_gas_used: None,
         receipt_effective_gas_price_gwei: None,
         receipt_network_fee: None,
-        fee_priority_raw: None,
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,
@@ -649,8 +642,8 @@ fn aggregated_record(
         wallet_name: wallet_name.to_string(),
         asset_display_name: chain.chain_display_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
-        chain_name: chain.chain_display_name().to_string(),
-        amount: aggregate.amount,
+        chain_id: chain.str_id().to_string(),
+        amount: crate::decimal::amount_from_f64(aggregate.amount),
         address: aggregate.counterparty,
         transaction_hash: Some(aggregate.hash).filter(|hash| !hash.is_empty()),
         nonce: None,
@@ -658,7 +651,6 @@ fn aggregated_record(
         receipt_gas_used: None,
         receipt_effective_gas_price_gwei: None,
         receipt_network_fee: None,
-        fee_priority_raw: None,
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,

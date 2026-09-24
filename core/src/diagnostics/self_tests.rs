@@ -51,9 +51,9 @@ fn validate(kind: &str, value: &str) -> bool {
     .is_valid
 }
 
-fn derive_one(chain_name: &str, path: &str) -> Option<String> {
-    crate::derivation::dispatch::derive_for_chain_name(
-        chain_name,
+fn derive_one(chain_id: &str, path: &str) -> Option<String> {
+    crate::derivation::dispatch::derive_for_chain_id(
+        chain_id,
         CANONICAL_MNEMONIC,
         path,
         None,
@@ -91,8 +91,8 @@ fn result(
     }
 }
 
-fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
-    let Some(chain) = crate::registry::Chain::from_display_name(chain_key) else {
+fn run_for_chain(chain_id: &str) -> Vec<ChainSelfTestResult> {
+    let Some(chain) = crate::registry::Chain::from_str_id(chain_id) else {
         return Vec::new();
     };
     let kind = chain.address_validation_kind();
@@ -104,8 +104,8 @@ fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
         return results;
     }
     // Derive for the exact network, using its own path and address format.
-    let derivation_chain = chain.chain_display_name().to_string();
-    let Ok(path) = crate::app_core::default_path_from_catalog(chain.chain_display_name()) else {
+    let derivation_chain = chain.str_id().to_string();
+    let Ok(path) = crate::app_core::default_path_from_catalog(chain.str_id()) else {
         return results;
     };
     let Some(address) = derive_one(&derivation_chain, &path) else {
@@ -153,7 +153,7 @@ fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
             value: address.clone(),
         })
         .normalized_value
-        .map(|v| v == crate::send::flow::normalize_address(chain.chain_display_name(), &address))
+        .map(|v| v == crate::send::flow::normalize_address(chain.str_id(), &address))
         .unwrap_or(false);
         results.push(result(
             chain,
@@ -253,19 +253,14 @@ pub(crate) async fn self_tests_run_evm_rpc(
     }
 }
 
-pub fn self_tests_run_chain(chain_key: String) -> Vec<ChainSelfTestResult> {
-    run_for_chain(&chain_key)
+pub fn self_tests_run_chain(chain_id: String) -> Vec<ChainSelfTestResult> {
+    run_for_chain(&chain_id)
 }
 
 #[uniffi::export]
 pub fn self_tests_run_all() -> HashMap<String, Vec<ChainSelfTestResult>> {
     crate::registry::Chain::all()
-        .map(|chain| {
-            (
-                chain.chain_display_name().to_string(),
-                run_for_chain(chain.chain_display_name()),
-            )
-        })
+        .map(|chain| (chain.str_id().to_string(), run_for_chain(chain.str_id())))
         .filter(|(_, results)| !results.is_empty())
         .collect()
 }
@@ -296,7 +291,7 @@ mod fixtures_are_real_tests {
             assert!(
                 chain.evm_chain_id().is_ok_and(|id| id > 0),
                 "{}",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }
@@ -314,17 +309,17 @@ mod fixtures_are_real_tests {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
                 continue;
             }
-            if crate::app_core::default_path_from_catalog(chain.chain_display_name()).is_err() {
+            if crate::app_core::default_path_from_catalog(chain.str_id()).is_err() {
                 continue;
             }
-            let names: Vec<String> = run_for_chain(chain.chain_display_name())
+            let names: Vec<String> = run_for_chain(chain.str_id())
                 .into_iter()
                 .map(|r| r.name)
                 .collect();
             assert!(
                 names.iter().any(|n| n.ends_with("Seed Derivation")),
                 "{} derives and has no derivation self-test; it has {names:?}",
-                chain.chain_display_name()
+                chain.str_id()
             );
             assert!(names.iter().any(|n| n.ends_with("Address Rejects Invalid")));
         }
@@ -357,11 +352,10 @@ mod fixtures_are_real_tests {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
                 continue;
             }
-            let Ok(path) = crate::app_core::default_path_from_catalog(chain.chain_display_name())
-            else {
+            let Ok(path) = crate::app_core::default_path_from_catalog(chain.str_id()) else {
                 continue;
             };
-            let Some(address) = derive_one(chain.chain_display_name(), &path) else {
+            let Some(address) = derive_one(chain.str_id(), &path) else {
                 continue;
             };
             assert!(
@@ -371,7 +365,7 @@ mod fixtures_are_real_tests {
                 })
                 .is_valid,
                 "{} derives {address} and its own validator refuses it",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }
@@ -387,7 +381,7 @@ mod fixtures_are_real_tests {
     fn every_self_test_suite_is_keyed_by_a_name_the_registry_knows() {
         for chain_key in self_tests_run_all().keys() {
             assert!(
-                crate::registry::Chain::from_display_name(chain_key).is_some(),
+                crate::registry::Chain::from_str_id(chain_key).is_some(),
                 "{chain_key} keys a self-test suite and is not a chain the registry knows, \
                  so nothing can ask for it"
             );

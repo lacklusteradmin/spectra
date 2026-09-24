@@ -8,7 +8,6 @@ use super::*;
 /// Everything the wallet list implies, with holdings already resolved.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct WalletDerivedState {
-    pub resolved_addresses_by_wallet_id: HashMap<String, HashMap<String, String>>,
     pub included_portfolio_holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub unique_price_request_coins: Vec<crate::store::wallet_domain::AssetHolding>,
     /// One entry per asset, amounts summed across wallets.
@@ -17,7 +16,6 @@ pub struct WalletDerivedState {
     pub receive_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
     pub send_enabled_wallet_ids: Vec<String>,
     pub receive_enabled_wallet_ids: Vec<String>,
-    pub refreshable_chain_names: Vec<String>,
 }
 
 /// Token descriptor passed across UniFFI without JSON-shuttle marshalling.
@@ -109,15 +107,19 @@ pub struct SendDestinationResolution {
     pub used_ens: bool,
 }
 
-/// What signing material a wallet has, and whether a password guards it.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct WalletSecretState {
-    /// A seed phrase or a private key is stored.
-    pub has_signing_material: bool,
-    /// The material is a raw private key rather than a phrase.
-    pub has_private_key: bool,
-    /// The material is encrypted under a password, which reads and writes need.
-    pub is_sealed: bool,
+/// The answer to a seed-phrase reveal.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SeedPhraseReveal {
+    Phrase {
+        phrase: String,
+    },
+    /// The wallet stores no phrase: watch-only, or a private key.
+    NotStored,
+    /// The phrase is sealed and no password was given.
+    PasswordRequired,
+    IncorrectPassword,
+    /// A password was given for a phrase that has none.
+    PasswordNotRequired,
 }
 
 /// One endpoint and whether it answered.
@@ -125,7 +127,6 @@ pub struct WalletSecretState {
 pub struct EndpointProbe {
     pub api: Option<crate::EndpointApi>,
     pub chain_id: String,
-    pub chain_name: String,
     pub endpoint: String,
     /// Operations the endpoint declares.
     pub capabilities: Vec<String>,
@@ -176,7 +177,7 @@ pub enum TransactionCommand {
     /// chain could be wired to the wrong one.
     Merge {
         incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
-        chain_name: String,
+        chain_id: String,
         preserve_created_at_sentinel_unix: Option<f64>,
     },
     Remove {

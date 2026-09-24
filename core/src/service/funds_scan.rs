@@ -150,7 +150,6 @@ mod scan_tests {
             candidates: (1..=3)
                 .map(|n| FundsFinderCandidate {
                     chain_id: "ethereum".into(),
-                    chain_name: "Ethereum".into(),
                     derivation_path: "fixture".into(),
                     path_label: "fixture".into(),
                     address: format!("0x{n:040x}"),

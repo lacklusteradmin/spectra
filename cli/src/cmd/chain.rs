@@ -91,8 +91,8 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
         for chain in &listed {
             println!(
                 "  {}  {:<22} {:<8} {}",
-                out::tint("●", chain.chain_display_name()).bold(),
-                out::tint(chain.chain_display_name(), chain.chain_display_name()),
+                out::tint("●", chain.str_id()).bold(),
+                out::tint(chain.chain_display_name(), chain.str_id()),
                 chain.coin_symbol(),
                 out::hint(chain.str_id()),
             );
@@ -294,7 +294,11 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             } else {
                 "✗".red().to_string()
             };
-            println!("  {mark}  {:<18} {}", r.chain_name, r.endpoint);
+            println!(
+                "  {mark}  {:<18} {}",
+                super::chain_name(&r.chain_id),
+                r.endpoint
+            );
             if r.checked && !r.reachable {
                 println!("       {}", out::hint(&r.detail));
             }
@@ -318,7 +322,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         "unreachable": unreachable,
         "unchecked": unchecked,
         "endpoints": rows.iter().map(|r| serde_json::json!({
-            "chainId": r.chain_id, "chain": r.chain_name, "endpoint": r.endpoint,
+            "chainId": r.chain_id, "chain": r.chain_id, "endpoint": r.endpoint,
             "api": r.api, "capabilities": r.capabilities,
             "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
         })).collect::<Vec<_>>(),
@@ -328,7 +332,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
 
 pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_name)?;
+    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
     let service = service_for_chain(ctx, chain, ENDPOINT_CAPABILITY_BALANCE)?;
 
     let summary = ctx
@@ -343,9 +347,9 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
         println!();
         println!(
             "  {}  {} {}",
-            out::wallet_dot(&wallet.chain_name, wallet.is_watch_only),
+            out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
             summary.amount_display.bold(),
-            out::tint(chain.coin_symbol(), &wallet.chain_name).bold(),
+            out::tint(chain.coin_symbol(), &wallet.chain_id).bold(),
         );
         out::field("raw", &out::hint(&summary.smallest_unit).to_string());
         if summary.utxo_count > 0 {
@@ -355,7 +359,7 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     out.emit(serde_json::json!({
         "ok": true,
         "wallet": wallet.id,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "nativeSymbol": chain.coin_symbol(),
                 "nativeDeploymentId": chain.entry().native_deployment_id,
                 "family": chain.entry().family,
@@ -441,7 +445,7 @@ fn save_history(
 
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_name)?;
+    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
     let network = wallet.chain().unwrap_or(chain);
     let service = if let Some(endpoint) = args.endpoint {
         WalletService::new(vec![ChainEndpoints {
@@ -518,7 +522,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
                     mark.truecolor(255, 110, 130).bold()
                 },
                 amount.bold(),
-                out::tint(&entry.symbol, &wallet.chain_name),
+                out::tint(&entry.symbol, &wallet.chain_id),
                 out::info(&entry.counterparty),
                 out::hint(&out::relative_time(entry.timestamp as i64)),
             );

@@ -21,11 +21,9 @@ fn observe(state: &CoreAppState) -> Option<PortfolioMovementBaseline> {
             if chain.is_testnet() {
                 continue;
             }
-            if !holding.amount.is_finite() || holding.amount < 0.0 {
-                return None;
-            }
+            crate::decimal::canonical(&holding.amount)?;
             composition.push(serde_json::to_string(&(&wallet.id, holding.deployment_id())).ok()?);
-            if holding.amount == 0.0 {
+            if crate::decimal::is_zero(&holding.amount) {
                 continue;
             }
             total_usd += super::valuation::value(state, holding)?;
@@ -52,12 +50,16 @@ fn evaluate(state: &mut CoreAppState, app_is_active: bool) -> Option<LargeMoveme
     if app_is_active || previous.composition != current.composition {
         return None;
     }
-    let result = evaluate_large_movement(
+    let mut result = evaluate_large_movement(
         previous.total_usd,
         current.total_usd,
         state.settings.large_movement_alert_usd_threshold,
         state.settings.large_movement_alert_percent_threshold,
     );
+    if let Some(delta) = super::valuation::to_display(state, result.absolute_delta) {
+        result.absolute_delta = delta;
+        result.currency = state.settings.fiat_currency;
+    }
     result.should_alert.then_some(result)
 }
 
@@ -94,8 +96,7 @@ mod tests {
         s.wallets.push(crate::store::state::WalletState {
             id: "wallet-a".into(),
             name: "A".into(),
-            is_watch_only: true,
-            chain_name: "Ethereum".into(),
+            signing: crate::store::state::WalletSigning::WatchOnly,
             chain_id: "ethereum".into(),
             include_in_portfolio_total: true,
             xpub: None,
@@ -104,14 +105,14 @@ mod tests {
             derivation_overrides: Default::default(),
             addresses: vec![],
             holdings: vec![crate::store::wallet_domain::AssetHolding {
+                id: String::new(),
                 name: "Ethereum".into(),
                 symbol: "ETH".into(),
-                chain_name: "Ethereum".into(),
+                chain_id: "ethereum".into(),
                 coingecko_id: "ethereum".into(),
                 token_standard: "Native".into(),
                 contract_address: None,
-                amount: 1.0,
-                price_usd: 0.0,
+                amount: "1".into(),
             }],
         });
         s.quotes.prices.insert("ethereum:native".into(), 1000.0);

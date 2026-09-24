@@ -69,7 +69,7 @@ impl WalletService {
                 password.as_ref().map(|p| p.as_str()),
             )
             .await?;
-        if crate::send::flow::normalize_address(chain.chain_display_name(), &stored.view.sender)
+        if crate::send::flow::normalize_address(chain.str_id(), &stored.view.sender)
             != signer.from_address
         {
             return Err("Signer changed; build and review again".into());
@@ -353,7 +353,7 @@ impl WalletService {
             .ok_or("Wallet has no address on this network")?
             .to_string();
         if !crate::send::flow::is_valid_send_address(
-            chain.chain_display_name().into(),
+            chain.str_id().into(),
             request.to_address.clone(),
         ) {
             return Err("Invalid destination for selected network".into());

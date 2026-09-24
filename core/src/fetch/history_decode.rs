@@ -14,7 +14,7 @@ pub struct NormalizedHistoryItem {
     pub status: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub amount: f64,
     pub counterparty: String,
     pub tx_hash: String,
@@ -105,7 +105,7 @@ pub struct EvmHistoryTransactionRecord {
     pub kind: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub amount_decimal: String,
     pub counterparty: String,
     pub transaction_hash: String,
@@ -125,7 +125,7 @@ pub struct EvmTransactionRecordWalletInput {
 pub struct EvmTransactionRecordRequest {
     pub decoded_page: EvmHistoryPageDecoded,
     pub normalized_address: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub token_source_used: Option<String>,
     pub native_asset_display_name: String,
     pub native_asset_symbol: String,
@@ -162,16 +162,17 @@ pub fn build_evm_transaction_records(
             };
             out.push(EvmHistoryTransactionRecord {
                 status: "confirmed".into(),
-                deployment_id: crate::registry::Chain::from_display_name(&request.chain_name)
-                    .and_then(|chain| {
+                deployment_id: crate::registry::Chain::from_str_id(&request.chain_id).and_then(
+                    |chain| {
                         crate::tokens::history_deployment(chain, Some(&transfer.contract_address))
-                    }),
+                    },
+                ),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
                 asset_display_name: transfer.token_name.clone(),
                 symbol: transfer.symbol.clone(),
-                chain_name: request.chain_name.clone(),
+                chain_id: request.chain_id.clone(),
                 amount_decimal: transfer.amount_decimal.clone(),
                 counterparty,
                 transaction_hash: transfer.transaction_hash.clone(),
@@ -199,14 +200,14 @@ pub fn build_evm_transaction_records(
             };
             out.push(EvmHistoryTransactionRecord {
                 status: transfer.status.clone(),
-                deployment_id: crate::registry::Chain::from_display_name(&request.chain_name)
+                deployment_id: crate::registry::Chain::from_str_id(&request.chain_id)
                     .and_then(|chain| crate::tokens::history_deployment(chain, None)),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
                 asset_display_name: request.native_asset_display_name.clone(),
                 symbol: request.native_asset_symbol.clone(),
-                chain_name: request.chain_name.clone(),
+                chain_id: request.chain_id.clone(),
                 amount_decimal: transfer.amount_decimal.clone(),
                 counterparty,
                 transaction_hash: transfer.transaction_hash.clone(),
@@ -337,13 +338,13 @@ pub struct EvmNativeAsset {
     pub symbol: String,
 }
 
-/// Native asset name/symbol for an EVM `chain_name`. Returns `None` when
+/// Native asset name/symbol for an EVM `chain_id`. Returns `None` when
 /// the chain name is not a known EVM chain.
-pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
+pub fn history_evm_native_asset(chain_id: String) -> Option<EvmNativeAsset> {
     // Both halves are catalog columns. Nine names were written out here and the
     // other twenty-four EVM networks returned `None`, so a history row on Base,
     // Polygon, Linea and the rest had no asset to name.
-    let chain = crate::registry::Chain::from_display_name(&chain_name)?;
+    let chain = crate::registry::Chain::from_str_id(&chain_id)?;
     if !chain.is_evm() {
         return None;
     }
@@ -386,7 +387,7 @@ mod tests {
         let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0xself".into(),
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             token_source_used: Some("rust/etherscan".into()),
             native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
@@ -429,7 +430,7 @@ mod tests {
         let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0xself".into(),
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             token_source_used: None,
             native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
@@ -458,7 +459,7 @@ mod tests {
                 status: status.into(),
                 asset_display_name: "Dogecoin".into(),
                 symbol: "DOGE".into(),
-                chain_name: "Dogecoin".into(),
+                chain_id: "dogecoin".into(),
                 amount,
                 counterparty: counterparty.into(),
                 tx_hash: "tx1".into(),
@@ -481,11 +482,11 @@ mod tests {
 
     #[test]
     fn evm_native_asset_lookup() {
-        let eth = history_evm_native_asset("Ethereum".into()).unwrap();
+        let eth = history_evm_native_asset("ethereum".into()).unwrap();
         assert_eq!(eth.symbol, "ETH");
-        let bnb = history_evm_native_asset("BNB Chain".into()).unwrap();
+        let bnb = history_evm_native_asset("bnb".into()).unwrap();
         assert_eq!(bnb.asset_display_name, "BNB");
-        assert!(history_evm_native_asset("Bitcoin".into()).is_none());
+        assert!(history_evm_native_asset("bitcoin".into()).is_none());
     }
 
     /// Every chain the registry knows can be paged, and iOS's "load more"
@@ -501,19 +502,19 @@ mod tests {
     fn every_chain_can_be_paged() {
         use crate::registry::Chain;
 
-        // The export this used to call was `Chain::from_display_name(name)
+        // The export this used to call was `Chain::from_str_id(name)
         // .map(str_id)` and nothing else — the caller already had that lookup.
         // What is worth asserting is the lookup itself round-trips for every
         // chain, which is what the paging needs.
         for chain in Chain::all() {
             assert_eq!(
-                Chain::from_display_name(chain.chain_display_name()).map(|c| c.str_id()),
+                Chain::from_str_id(chain.str_id()).map(|c| c.str_id()),
                 Some(chain.str_id()),
                 "{} cannot be paged",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
-        assert!(Chain::from_display_name("Nope").is_none());
+        assert!(Chain::from_str_id("Nope").is_none());
     }
 }
 
@@ -536,7 +537,7 @@ mod aggregation_is_not_chain_specific {
             status: "confirmed".to_string(),
             asset_display_name: "Litecoin".to_string(),
             symbol: "LTC".to_string(),
-            chain_name: "Litecoin".to_string(),
+            chain_id: "litecoin".to_string(),
             amount,
             counterparty: addr.to_string(),
             tx_hash: "abc".to_string(),

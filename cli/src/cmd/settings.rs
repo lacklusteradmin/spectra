@@ -226,12 +226,10 @@ fn field(key: &str) -> CliResult<Setting> {
         let Some(name) = key.strip_prefix(keyed.prefix) else {
             continue;
         };
-        let chain = spectra_core::registry::Chain::from_display_name(name)
-            .ok_or_else(|| CliError::rejected(format!("no chain named {name}")))?;
-        return Ok(Setting::ChainKeyed(
-            keyed,
-            chain.chain_display_name().to_string(),
-        ));
+        // Keyed by chain id, as core stores it; a display name is accepted too.
+        let chain = super::resolve_chain(name)
+            .map_err(|_| CliError::rejected(format!("no chain named {name}")))?;
+        return Ok(Setting::ChainKeyed(keyed, chain.str_id().to_string()));
     }
     FIELDS
         .iter()

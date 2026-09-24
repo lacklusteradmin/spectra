@@ -19,13 +19,13 @@ pub struct EvmReceiptClassification {
 ///
 /// Thin wrapper over [`Chain::address_validation_kind`]; the mapping itself
 /// lives in the registry.
-pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
-    Chain::from_display_name(chain_name).map(Chain::address_validation_kind)
+pub(crate) fn chain_kind(chain_id: &str) -> Option<&'static str> {
+    Chain::from_str_id(chain_id).map(Chain::address_validation_kind)
 }
 
 #[uniffi::export]
-pub fn is_valid_send_address(chain_name: String, address: String) -> bool {
-    let Some(kind) = chain_kind(&chain_name) else {
+pub fn is_valid_send_address(chain_id: String, address: String) -> bool {
+    let Some(kind) = chain_kind(&chain_id) else {
         return false;
     };
     // Normalized first, because the authoritative path already does.
@@ -39,19 +39,39 @@ pub fn is_valid_send_address(chain_name: String, address: String) -> bool {
     // construction, and it is the form that gets stored and sent either way.
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
-        value: normalize_address(&chain_name, &address),
+        value: normalize_address(&chain_id, &address),
     })
     .is_valid
 }
 
-pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
+pub(crate) fn normalize_address(chain_id: &str, address: &str) -> String {
     use crate::registry::AddressNormalization;
     let t = address.trim();
-    let Some(chain) = crate::registry::Chain::from_display_name(chain_name) else {
+    let Some(chain) = crate::registry::Chain::from_str_id(chain_id) else {
         return t.to_string();
     };
     match chain.address_normalization() {
-        AddressNormalization::None => t.to_string(),
+        // Bech32 and CashAddr are case-insensitive but written in one case;
+        // an all-uppercase form (a QR code's) is the same address, and its
+        // lowercase is the canonical spelling. Base58 is case-sensitive, and
+        // lowercasing one never yields a valid address, so the check below
+        // leaves those untouched.
+        AddressNormalization::None => {
+            let lower = t.to_ascii_lowercase();
+            let all_upper = !t.bytes().any(|b| b.is_ascii_lowercase());
+            if all_upper
+                && lower != t
+                && validate_address(AddressValidationRequest {
+                    kind: chain.address_validation_kind().to_string(),
+                    value: lower.clone(),
+                })
+                .is_valid
+            {
+                lower
+            } else {
+                t.to_string()
+            }
+        }
         AddressNormalization::Lowercase => t.to_lowercase(),
         AddressNormalization::LowercaseHexPrefixed => {
             let l = t.to_lowercase();
@@ -65,11 +85,11 @@ pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
 }
 
 #[uniffi::export]
-pub fn normalized_send_address(chain_name: String, address: String) -> String {
-    normalize_address(&chain_name, &address)
+pub fn normalized_send_address(chain_id: String, address: String) -> String {
+    normalize_address(&chain_id, &address)
 }
 
-/// The address a scanned payment payload yields on `chain_name`, or `None`.
+/// The address a scanned payment payload yields on `chain_id`, or `None`.
 ///
 /// A QR code is rarely a bare address. Wallets encode BIP-21 and its
 /// descendants — `bitcoin:bc1q…?amount=0.1`, `ethereum:0x…@1/transfer`,
@@ -83,11 +103,11 @@ pub fn normalized_send_address(chain_name: String, address: String) -> String {
 /// selected — putting an unchecked string from a camera straight into the send
 /// field. There is no address without a chain to judge it against.
 #[uniffi::export]
-pub fn scanned_send_address(chain_name: String, payload: String) -> Option<String> {
-    let kind = chain_kind(&chain_name)?;
+pub fn scanned_send_address(chain_id: String, payload: String) -> Option<String> {
+    let kind = chain_kind(&chain_id)?;
     scanned_address_candidates(&payload)
         .into_iter()
-        .map(|candidate| normalize_address(&chain_name, &candidate))
+        .map(|candidate| normalize_address(&chain_id, &candidate))
         .find(|normalized| {
             validate_address(AddressValidationRequest {
                 kind: kind.to_string(),
@@ -218,7 +238,7 @@ pub enum SendPreview {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SendPreviewDetailsCore {
     pub spendableBalance: Option<f64>,
     pub feeRateDescription: Option<String>,
@@ -491,24 +511,26 @@ mod tests {
 
 // ── FFI: high-risk send evaluation ──────────────────────────────────────────
 
-/// A chain_name + address pair used in the high-risk send evaluation.
+/// A chain_id + address pair used in the high-risk send evaluation.
 #[derive(Debug, Clone)]
 pub struct HighRiskChainAddress {
-    pub chain_name: String,
+    pub chain_id: String,
     pub address: String,
 }
 
 /// Typed input for high-risk send evaluation.
 #[derive(Debug, Clone)]
 pub struct HighRiskSendRequest {
-    pub chain_name: String,
+    pub chain_id: String,
     pub symbol: String,
     pub amount: f64,
     pub holding_amount: f64,
     pub destination_address: String,
     pub destination_input: String,
     pub used_ens_resolution: bool,
-    pub wallet_family_name: String,
+    /// The network of the wallet sending, which a send on another network
+    /// contradicts.
+    pub wallet_chain_id: String,
     pub address_book_entries: Vec<HighRiskChainAddress>,
     pub tx_addresses: Vec<HighRiskChainAddress>,
 }
@@ -573,7 +595,7 @@ impl HighRiskSendWarning {
 /// Not exported: `WalletService::high_risk_send_reasons` is the entry point,
 /// because the address book and the send history this reads are core's.
 pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<HighRiskSendWarning> {
-    let chain_name = &request.chain_name;
+    let chain_id = &request.chain_id;
     let mut warnings: Vec<HighRiskSendWarning> = Vec::new();
 
     // 1. Address format validation.
@@ -585,9 +607,9 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     // `AddressNormalization::LowercaseHexPrefixed` has added the prefix, so
     // the composer accepted it, the store accepted it, and this stood beside
     // them calling it `invalid_format`. One question, one form, one answer.
-    if !is_valid_send_address(chain_name.clone(), request.destination_address.clone()) {
+    if !is_valid_send_address(chain_id.clone(), request.destination_address.clone()) {
         warnings.push(HighRiskSendWarning::InvalidFormat {
-            chain: chain_name.clone(),
+            chain: chain_id.clone(),
         });
     }
 
@@ -600,15 +622,17 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     // together let a lookalike of an address in the book pass as one already
     // seen, and the `new_address` warning — the one that catches a swapped
     // destination — did not fire.
-    let norm_dest = normalize_address(chain_name, &request.destination_address);
+    let norm_dest = normalize_address(chain_id, &request.destination_address);
 
     // 2. New address detection.
-    let has_address_book = request.address_book_entries.iter().any(|e| {
-        e.chain_name == *chain_name && normalize_address(chain_name, &e.address) == norm_dest
-    });
-    let has_tx_history = request.tx_addresses.iter().any(|e| {
-        e.chain_name == *chain_name && normalize_address(chain_name, &e.address) == norm_dest
-    });
+    let has_address_book = request
+        .address_book_entries
+        .iter()
+        .any(|e| e.chain_id == *chain_id && normalize_address(chain_id, &e.address) == norm_dest);
+    let has_tx_history = request
+        .tx_addresses
+        .iter()
+        .any(|e| e.chain_id == *chain_id && normalize_address(chain_id, &e.address) == norm_dest);
     if !has_address_book && !has_tx_history {
         warnings.push(HighRiskSendWarning::NewAddress);
     }
@@ -635,7 +659,7 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
 
     // 5-10. Cross-chain prefix mismatch checks.
     let lowered = request.destination_input.to_lowercase();
-    let chain = crate::registry::Chain::from_display_name(chain_name);
+    let chain = crate::registry::Chain::from_str_id(chain_id);
     // Membership is the registry's. Seven of the twenty-three EVM mainnets were
     // named here, and this gate decides whether the EVM destination checks run
     // at all — a name list here silently means "no warning" for whichever
@@ -657,48 +681,48 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
             || lowered.starts_with('a');
         if looks_non_evm {
             warnings.push(HighRiskSendWarning::NonEvmOnEvm {
-                chain: chain_name.clone(),
+                chain: chain_id.clone(),
             });
         }
         if is_ens_foreign_chain && is_ens_candidate {
             warnings.push(HighRiskSendWarning::EnsOffEthereum {
-                chain: chain_name.clone(),
+                chain: chain_id.clone(),
             });
         }
-    } else if crate::registry::Chain::from_display_name(chain_name)
+    } else if crate::registry::Chain::from_str_id(chain_id)
         .is_some_and(|c| c.flags_evm_address_as_wrong_chain())
     {
         if lowered.starts_with("0x") || is_ens_candidate {
             warnings.push(HighRiskSendWarning::EthOnUtxo {
-                chain: chain_name.clone(),
+                chain: chain_id.clone(),
             });
         }
     } else {
-        let foreign = match chain_name.as_str() {
-            "Tron" => lowered.starts_with("0x") || lowered.starts_with("bc1"),
-            "Solana" => {
+        let foreign = match chain_id.as_str() {
+            "tron" => lowered.starts_with("0x") || lowered.starts_with("bc1"),
+            "solana" => {
                 lowered.starts_with("0x")
                     || lowered.starts_with("bc1")
                     || lowered.starts_with("ltc1")
                     || lowered.starts_with('t')
             }
-            "XRP Ledger" => {
+            "xrp" => {
                 lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('t')
             }
-            "Monero" => {
+            "monero" => {
                 lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('r')
             }
             _ => false,
         };
         if foreign {
             warnings.push(HighRiskSendWarning::ForeignAddressFormat {
-                chain: chain_name.clone(),
+                chain: chain_id.clone(),
             });
         }
     }
 
     // 11. Wallet-chain context mismatch.
-    if !request.wallet_family_name.is_empty() && request.wallet_family_name != *chain_name {
+    if !request.wallet_chain_id.is_empty() && request.wallet_chain_id != *chain_id {
         warnings.push(HighRiskSendWarning::ChainMismatch);
     }
 
@@ -972,11 +996,8 @@ fn sui_signed_json_remap(raw: &str) -> Option<String> {
     serde_json::to_string(&remapped).ok()
 }
 
-/// Returns the canonical "raw" derivation-chain name for a given chain row.
-/// Testnets share their mainnet counterpart's derivation engine, so e.g.
-/// `"Ethereum Sepolia"` returns `"Ethereum"`. The Chain enum is the source
-/// of truth for that mapping.
-/// Not exported: it is a column of `chain_identities` now.
+/// The chain whose derivation recipe `chain` uses, or `None` for a chain with
+/// no BIP-32 path. A testnet names itself.
 pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String> {
     if chain.is_testnet() {
         return Some(chain.chain_display_name().to_string());
@@ -1058,22 +1079,22 @@ mod flow_helpers_tests {
     fn send_validation_covers_the_chains_the_old_table_omitted() {
         let evm = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
         let previously_broken_evm = [
-            "Base",
-            "Polygon",
-            "Linea",
-            "Scroll",
-            "Blast",
-            "Mantle",
-            "Sei",
-            "Celo",
-            "Cronos",
-            "opBNB",
-            "zkSync Era",
-            "Sonic",
-            "Berachain",
-            "Unichain",
-            "Ink",
-            "X Layer",
+            "base",
+            "polygon",
+            "linea",
+            "scroll",
+            "blast",
+            "mantle",
+            "sei",
+            "celo",
+            "cronos",
+            "opbnb",
+            "zksync-era",
+            "sonic",
+            "berachain",
+            "unichain",
+            "ink",
+            "x-layer",
         ];
         for chain in previously_broken_evm {
             assert_eq!(
@@ -1089,12 +1110,12 @@ mod flow_helpers_tests {
 
         // Non-EVM chains the old table also missed.
         for (chain, kind) in [
-            ("Zcash", "zcash"),
-            ("Bitcoin Gold", "bitcoinGold"),
-            ("Decred", "decred"),
-            ("Kaspa", "kaspa"),
-            ("Dash", "dash"),
-            ("Bittensor", "bittensor"),
+            ("zcash", "zcash"),
+            ("bitcoin-gold", "bitcoinGold"),
+            ("decred", "decred"),
+            ("kaspa", "kaspa"),
+            ("dash", "dash"),
+            ("bittensor", "bittensor"),
         ] {
             assert_eq!(chain_kind(chain), Some(kind), "{chain} kind");
         }
@@ -1102,7 +1123,7 @@ mod flow_helpers_tests {
         // Still rejects what it should.
         assert_eq!(chain_kind("Not A Chain"), None);
         assert!(!is_valid_send_address(
-            "Polygon".to_string(),
+            "polygon".to_string(),
             "not-an-address".to_string()
         ));
     }
@@ -1205,8 +1226,8 @@ mod flow_helpers_tests {
 /// address with two prefixes — the rule `extra_output_overhead_bytes` already
 /// held in core, restated beside a string.
 #[uniffi::export]
-pub fn is_extension_block_send_destination(chain_name: String, destination: String) -> bool {
-    crate::registry::Chain::from_display_name(&chain_name)
+pub fn is_extension_block_send_destination(chain_id: String, destination: String) -> bool {
+    crate::registry::Chain::from_str_id(&chain_id)
         .is_some_and(|chain| chain.is_extension_block_destination(&destination))
 }
 
@@ -1214,8 +1235,8 @@ pub fn is_extension_block_send_destination(chain_name: String, destination: Stri
 ///
 /// Not exported: the preview core builds prices these bytes itself. The front
 /// end fetched the number to do that arithmetic on its side.
-pub fn extra_output_overhead_bytes(chain_name: String, destination: String) -> u64 {
-    crate::registry::Chain::from_display_name(&chain_name)
+pub fn extra_output_overhead_bytes(chain_id: String, destination: String) -> u64 {
+    crate::registry::Chain::from_str_id(&chain_id)
         .map(|c| c.extra_output_overhead_bytes(&destination))
         .unwrap_or(0)
 }
@@ -1228,16 +1249,16 @@ mod validating_and_normalising_cannot_disagree {
     };
     use crate::registry::Chain;
 
-    fn high_risk_codes(chain_name: &str, destination: &str) -> Vec<String> {
+    fn high_risk_codes(chain_id: &str, destination: &str) -> Vec<String> {
         evaluate_high_risk_send_reasons(HighRiskSendRequest {
-            chain_name: chain_name.to_string(),
+            chain_id: chain_id.to_string(),
             symbol: "SUI".to_string(),
             amount: 1.0,
             holding_amount: 1000.0,
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_family_name: chain_name.to_string(),
+            wallet_chain_id: chain_id.to_string(),
             address_book_entries: vec![],
             tx_addresses: vec![],
         })
@@ -1256,10 +1277,10 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn the_high_risk_check_asks_the_same_question_the_composer_does() {
         let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-        for form in [bare.to_string(), normalize_address("Sui", bare)] {
-            assert!(is_valid_send_address("Sui".into(), form.clone()));
+        for form in [bare.to_string(), normalize_address("sui", bare)] {
+            assert!(is_valid_send_address("sui".into(), form.clone()));
             assert!(
-                !high_risk_codes("Sui", &form).contains(&"invalid_format".to_string()),
+                !high_risk_codes("sui", &form).contains(&"invalid_format".to_string()),
                 "{form} validates but was flagged invalid_format"
             );
         }
@@ -1284,16 +1305,16 @@ mod validating_and_normalising_cannot_disagree {
 
         let codes = |destination: &str| {
             evaluate_high_risk_send_reasons(HighRiskSendRequest {
-                chain_name: "Solana".to_string(),
+                chain_id: "solana".to_string(),
                 symbol: "SOL".to_string(),
                 amount: 1.0,
                 holding_amount: 1000.0,
                 destination_address: destination.to_string(),
                 destination_input: destination.to_string(),
                 used_ens_resolution: false,
-                wallet_family_name: "Solana".to_string(),
+                wallet_chain_id: "solana".to_string(),
                 address_book_entries: vec![HighRiskChainAddress {
-                    chain_name: "Solana".to_string(),
+                    chain_id: "solana".to_string(),
                     address: known.to_string(),
                 }],
                 tx_addresses: vec![],
@@ -1324,16 +1345,16 @@ mod validating_and_normalising_cannot_disagree {
         assert_ne!(stored, typed);
 
         let codes = evaluate_high_risk_send_reasons(HighRiskSendRequest {
-            chain_name: "Ethereum".to_string(),
+            chain_id: "ethereum".to_string(),
             symbol: "ETH".to_string(),
             amount: 1.0,
             holding_amount: 1000.0,
             destination_address: typed.clone(),
             destination_input: typed,
             used_ens_resolution: false,
-            wallet_family_name: "Ethereum".to_string(),
+            wallet_chain_id: "ethereum".to_string(),
             address_book_entries: vec![HighRiskChainAddress {
-                chain_name: "Ethereum".to_string(),
+                chain_id: "ethereum".to_string(),
                 address: stored.to_string(),
             }],
             tx_addresses: vec![],
@@ -1351,7 +1372,7 @@ mod validating_and_normalising_cannot_disagree {
     /// It still says so when the address really is malformed.
     #[test]
     fn a_malformed_destination_is_still_flagged() {
-        assert!(high_risk_codes("Sui", "definitely-not-an-address")
+        assert!(high_risk_codes("sui", "definitely-not-an-address")
             .contains(&"invalid_format".to_string()));
     }
 
@@ -1365,10 +1386,10 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn a_sui_address_without_its_prefix_is_accepted_either_way() {
         let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-        let normalized = normalize_address("Sui", bare);
+        let normalized = normalize_address("sui", bare);
         assert!(normalized.starts_with("0x"), "{normalized}");
-        assert!(is_valid_send_address("Sui".into(), bare.to_string()));
-        assert!(is_valid_send_address("Sui".into(), normalized));
+        assert!(is_valid_send_address("sui".into(), bare.to_string()));
+        assert!(is_valid_send_address("sui".into(), normalized));
     }
 
     /// Every chain, both orders, one answer. Whitespace and case are part of
@@ -1376,7 +1397,7 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn no_chain_answers_differently_before_and_after_normalising() {
         for chain in Chain::mainnets() {
-            let name = chain.chain_display_name().to_string();
+            let name = chain.str_id().to_string();
             for sample in [
                 "  0x742d35Cc6634C0532925a3b844Bc454e4438f44e  ",
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
@@ -1398,12 +1419,12 @@ mod validating_and_normalising_cannot_disagree {
 /// simple-chain previews quote the native gas asset even for token holdings.
 pub(crate) fn quoted_send_amount(
     preview: Option<SendPreview>,
-    chain_name: String,
+    chain_id: String,
     is_native: bool,
     token_decimals: Option<u32>,
     percentage: u32,
 ) -> Option<String> {
-    let chain = Chain::from_display_name(&chain_name)?;
+    let chain = Chain::from_str_id(&chain_id)?;
     let preview = preview?;
     let decimals = if is_native {
         u32::from(chain.native_decimals())
@@ -1418,7 +1439,7 @@ pub(crate) fn quoted_send_amount(
     // No fallback to a caller's portfolio balance: a missing maximum is a
     // missing quote, not permission to offer the whole holding.
     let maximum = compute_send_preview_details(Some(preview), f64::NAN)?.maxSendable?;
-    crate::send::amount_input::send_amount_shortcut(maximum, decimals, percentage)
+    crate::send::amount_input::estimate_shortcut(maximum, decimals, percentage)
 }
 
 #[cfg(test)]
@@ -1426,14 +1447,14 @@ mod shortcut_preview_tests {
     use super::*;
     #[test]
     fn no_quote_and_gas_coin_quotes_cannot_fill_token_amounts() {
-        assert!(quoted_send_amount(None, "Bitcoin".into(), true, None, 100).is_none());
+        assert!(quoted_send_amount(None, "bitcoin".into(), true, None, 100).is_none());
         let preview = SendPreview::Solana {
             preview: SolanaSendPreview {
                 maxSendable: 12.0,
                 ..Default::default()
             },
         };
-        assert!(quoted_send_amount(Some(preview), "Solana".into(), false, Some(6), 100).is_none());
+        assert!(quoted_send_amount(Some(preview), "solana".into(), false, Some(6), 100).is_none());
         let preview = SendPreview::Ethereum {
             preview: EvmSendPreview {
                 maxSendable: Some(4.2),
@@ -1441,7 +1462,7 @@ mod shortcut_preview_tests {
             },
         };
         assert_eq!(
-            quoted_send_amount(Some(preview), "Ethereum".into(), false, Some(6), 100).as_deref(),
+            quoted_send_amount(Some(preview), "ethereum".into(), false, Some(6), 100).as_deref(),
             Some("4.199999")
         );
     }
@@ -1459,24 +1480,24 @@ mod scanned_payload_tests {
     #[test]
     fn payment_uris_reduce_to_the_address_they_carry() {
         let cases = [
-            ("Bitcoin", BTC.to_string(), BTC),
-            ("Bitcoin", format!("bitcoin:{BTC}"), BTC),
+            ("bitcoin", BTC.to_string(), BTC),
+            ("bitcoin", format!("bitcoin:{BTC}"), BTC),
             (
-                "Bitcoin",
+                "bitcoin",
                 format!("bitcoin:{BTC}?amount=0.1&label=Shop"),
                 BTC,
             ),
-            ("Bitcoin", format!("  {BTC}  "), BTC),
+            ("bitcoin", format!("  {BTC}  "), BTC),
             // EIP-681, with and without the chain-id pin and the function.
-            ("Ethereum", format!("ethereum:{EVM}"), EVM),
-            ("Ethereum", format!("ethereum:{EVM}@1"), EVM),
+            ("ethereum", format!("ethereum:{EVM}"), EVM),
+            ("ethereum", format!("ethereum:{EVM}@1"), EVM),
             (
-                "Ethereum",
+                "ethereum",
                 format!("ethereum:{EVM}@1/transfer?value=1"),
                 EVM,
             ),
             // A scheme that puts the address in a path segment.
-            ("Ethereum", format!("wc://x/{EVM}"), EVM),
+            ("ethereum", format!("wc://x/{EVM}"), EVM),
         ];
         for (chain, payload, expected) in cases {
             assert_eq!(
@@ -1494,12 +1515,12 @@ mod scanned_payload_tests {
     #[test]
     fn the_address_comes_back_in_the_form_the_store_keeps() {
         assert_eq!(
-            scanned_send_address("Ethereum".into(), format!("ethereum:{EVM}")).as_deref(),
+            scanned_send_address("ethereum".into(), format!("ethereum:{EVM}")).as_deref(),
             Some(EVM.to_lowercase().as_str())
         );
         let bare_sui = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
         assert_eq!(
-            scanned_send_address("Sui".into(), format!("sui:{bare_sui}")).as_deref(),
+            scanned_send_address("sui".into(), format!("sui:{bare_sui}")).as_deref(),
             Some(format!("0x{bare_sui}").as_str())
         );
     }
@@ -1518,7 +1539,7 @@ mod scanned_payload_tests {
             BTC,
         ] {
             assert_eq!(
-                scanned_send_address("Ethereum".into(), payload.into()),
+                scanned_send_address("ethereum".into(), payload.into()),
                 None,
                 "Ethereum accepted {payload}"
             );
@@ -1553,16 +1574,16 @@ mod scanned_payload_tests {
 mod high_risk_warning_shape {
     use super::{evaluate_high_risk_send_reasons, HighRiskSendRequest, HighRiskSendWarning};
 
-    fn warnings(chain_name: &str, destination: &str) -> Vec<HighRiskSendWarning> {
+    fn warnings(chain_id: &str, destination: &str) -> Vec<HighRiskSendWarning> {
         evaluate_high_risk_send_reasons(HighRiskSendRequest {
-            chain_name: chain_name.to_string(),
+            chain_id: chain_id.to_string(),
             symbol: "X".to_string(),
             amount: 1.0,
             holding_amount: 1000.0,
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_family_name: chain_name.to_string(),
+            wallet_chain_id: chain_id.to_string(),
             address_book_entries: vec![],
             tx_addresses: vec![],
         })
@@ -1572,7 +1593,7 @@ mod high_risk_warning_shape {
     /// chain it was raised on travels with it rather than being in its name.
     #[test]
     fn a_foreign_address_is_one_reason_that_names_its_chain() {
-        for chain in ["Tron", "Solana", "XRP Ledger", "Monero"] {
+        for chain in ["tron", "solana", "xrp", "monero"] {
             assert!(
                 warnings(chain, "0x1111111111111111111111111111111111111111").contains(
                     &HighRiskSendWarning::ForeignAddressFormat {

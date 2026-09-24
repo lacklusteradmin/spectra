@@ -113,7 +113,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
             }
             if read.funded {
                 let balance = read.balance.unwrap();
-                funded.push(serde_json::json!({ "chain": read.candidate.chain_name, "label": read.candidate.path_label, "address": read.candidate.address, "amount": balance.amount_display }));
+                funded.push(serde_json::json!({ "chain": read.candidate.chain_id, "label": read.candidate.path_label, "address": read.candidate.address, "amount": balance.amount_display }));
             }
         }
         if batch.complete {

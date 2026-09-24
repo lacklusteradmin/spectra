@@ -26,7 +26,7 @@ fn tracked(
 ) -> Vec<crate::store::persistence_models::CorePersistedTransactionRecord> {
     records
         .iter()
-        .filter(|r| r.chain_name == chain.chain_display_name())
+        .filter(|r| r.chain_id == chain.str_id())
         .filter(|r| needs_status_poll(r.kind, r.status, r.transaction_hash.as_deref(), poll))
         .cloned()
         .collect()
@@ -70,7 +70,7 @@ impl WalletService {
         let mut chains = std::collections::BTreeSet::new();
         for row in rows {
             let r = row.payload;
-            if let Some(chain) = Chain::from_display_name(&r.chain_name) {
+            if let Some(chain) = Chain::from_str_id(&r.chain_id) {
                 if needs_status_poll(
                     r.kind,
                     r.status,
@@ -349,12 +349,8 @@ impl WalletService {
             PendingStatusPoll::None => {}
         }
 
-        self.apply_polled_pending_statuses(
-            chain.chain_display_name().to_string(),
-            resolutions,
-            Some(records),
-        )
-        .await
+        self.apply_polled_pending_statuses(chain.str_id().to_string(), resolutions, Some(records))
+            .await
     }
 }
 
@@ -376,10 +372,10 @@ mod tests {
             "kind": "send",
             "status": "pending",
             "walletName": "Main",
-            "assetDisplayName": chain.chain_display_name(),
+            "assetDisplayName": chain.str_id(),
             "symbol": chain.coin_symbol(),
-            "chainName": chain.chain_display_name(),
-            "amount": 1.0,
+            "chainId": chain.str_id(),
+            "amount": "1",
             "address": "counterparty",
             "transactionHash": "0xabc",
             "createdAtUnix": 745_200_000.0,
@@ -484,7 +480,7 @@ mod tests {
                 wallet: WalletState::single_address(
                     "wallet-1",
                     "W",
-                    "Ethereum",
+                    "ethereum",
                     "0x1111111111111111111111111111111111111111",
                     None,
                     true,
@@ -647,7 +643,7 @@ mod tests {
         rusqlite::Connection::open(&path)
             .unwrap()
             .execute(
-                "UPDATE history_records SET payload = json_set(payload, '$.amount', 'broken')",
+                "UPDATE history_records SET payload = json_set(payload, '$.amount', json('[]'))",
                 [],
             )
             .unwrap();
@@ -762,7 +758,10 @@ mod tests {
         // 21000 wei, in Sepolia ETH's eighteen places.
         assert_eq!(row.receipt_gas_used.as_deref(), Some("21000"));
         assert_eq!(row.receipt_effective_gas_price_gwei, Some(1e-9));
-        assert_eq!(row.receipt_network_fee, Some(21000.0 / 1e18));
+        assert_eq!(
+            row.receipt_network_fee.as_deref(),
+            Some("0.000000000000021")
+        );
         assert_eq!(row.receipt_block_number, Some(7));
         sepolia.verify().await;
     }

@@ -109,7 +109,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                 wallet: WalletState::single_address(
                     "w",
                     "Test",
-                    chain.chain_display_name(),
+                    chain.str_id(),
                     address,
                     Some(path.into()),
                     false,
@@ -241,7 +241,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
             wallet: WalletState::single_address(
                 "w",
                 "W",
-                "Ethereum",
+                "ethereum",
                 "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
@@ -295,7 +295,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
         })
         .mount(&server)
         .await;
-    let mut request = super::tests::request_fixture::req("ethereum", "Ethereum");
+    let mut request = super::tests::request_fixture::req("ethereum", "ethereum");
     request.to_address = "0x1111111111111111111111111111111111111111".into();
     request.evm_overrides = Some(EvmSendOverridesInput {
         gas_limit: Some(21_000),
@@ -370,7 +370,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
     }
     assert!(
         reopened
-            .stale_pending_failure_ids("Ethereum".into())
+            .stale_pending_failure_ids("ethereum".into())
             .await
             .unwrap()
             .is_empty(),

@@ -7,9 +7,9 @@ use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
 fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecord {
     serde_json::from_value(json!({
         "id":id, "walletId":"wallet", "walletName":"Original", "kind":"send",
-        "chainName":chain.chain_display_name(), "symbol":chain.coin_symbol(), "assetDisplayName":"Coin",
-        "status":status, "amount":1, "address":"recipient", "createdAtUnix":1234.0,
-        "transactionHash":"ab".repeat(32), "failureReason":"old failure",
+        "chainId":chain.str_id(), "symbol":chain.coin_symbol(), "assetDisplayName":"Coin",
+        "status":status, "amount":"1", "address":"recipient", "createdAtUnix":1234.0,
+        "transactionHash":"ab".repeat(32), "failureReason": {"kind": "reported", "message": "old failure"},
         "receiptBlockNumber":90, "confirmationCount":99
     }))
     .unwrap()
@@ -100,7 +100,7 @@ async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
         .mount(&server)
         .await;
     let mut row = record("target", Chain::Dogecoin, "confirmed");
-    row.confirmed_network_fee = Some(1.0);
+    row.confirmed_network_fee = Some("1".into());
     save(&service, row).await;
     service
         .record_status_poll("target".into(), StatusPollOutcome::Confirmed)

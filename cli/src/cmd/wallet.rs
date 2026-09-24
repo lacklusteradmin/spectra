@@ -325,7 +325,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     // applies, asked early enough to keep the key out of the store.
     spectra_core::derivation::import::derive_private_key_import_address(
         &private_key,
-        &[chain.chain_display_name().to_string()],
+        &[chain.str_id().to_string()],
     )
     .map_err(CliError::rejected)?;
 
@@ -448,7 +448,7 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     let created: Vec<WalletState> = outcome
         .wallets
         .iter()
-        .map(|wallet| wallet.to_wallet_state(true))
+        .map(|wallet| wallet.to_wallet_state())
         .collect::<Result<_, _>>()?;
     let first = first_wallet(&outcome)?;
     out.text(|| {
@@ -491,10 +491,10 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
         for wallet in &wallets {
             println!(
                 "  {}  {}  {}{}",
-                out::wallet_dot(&wallet.chain_name, wallet.is_watch_only),
+                out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
                 wallet.name.bold(),
-                out::tint(&wallet.chain_name, &wallet.chain_name).bold(),
-                if wallet.is_watch_only {
+                out::tint(&super::chain_name(&wallet.chain_id), &wallet.chain_id).bold(),
+                if wallet.is_watch_only() {
                     out::hint(" watch").to_string()
                 } else {
                     String::new()
@@ -522,10 +522,12 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 
 fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    // Asked of the secret store, which is what decides whether this wallet can
-    // sign and with what.
-    let signing = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id)?
-        .then_some("private key");
+    // Recorded on the wallet when its secret was stored.
+    let signing = matches!(
+        wallet.signing,
+        spectra_core::store::state::WalletSigning::PrivateKey { .. }
+    )
+    .then_some("private key");
     out.text(|| {
         println!();
         print_wallet_of_kind(&wallet, signing);
@@ -540,7 +542,7 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 /// Repeated calls reuse the reserved index.
 fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_name)?;
+    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
     let network = wallet.chain().unwrap_or(chain);
     let chain_name = network.chain_display_name().to_string();
     let symbol = network.coin_symbol().to_string();
@@ -561,13 +563,16 @@ fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
         println!();
         println!("  {}", address.bold());
         println!();
-        out::field("chain", &out::tint(&chain_name, &chain_name).to_string());
+        out::field(
+            "chain",
+            &out::tint(&chain_name, network.str_id()).to_string(),
+        );
         out::field("symbol", &symbol);
     });
     out.emit(serde_json::json!({
         "ok": true,
         "address": address,
-        "chain": chain_name,
+        "chain": network.str_id(),
         "symbol": symbol,
     }));
     Ok(())
@@ -608,7 +613,8 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
     if !args.yes {
         return Err(CliError::usage(format!(
             "this deletes \"{}\" ({}), its history and its seed — re-run with --yes",
-            wallet.name, wallet.chain_name
+            wallet.name,
+            super::chain_name(&wallet.chain_id)
         )));
     }
 
@@ -623,13 +629,15 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
 
 fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    if wallet.is_watch_only {
+    if wallet.is_watch_only() {
         return Err(CliError::rejected("a watch-only wallet has no seed phrase"));
     }
-    // A wallet imported from a raw key has no phrase, and the store is what
-    // knows which it is. Reporting "no sealed secret" for one was accurate
-    // about the phrase and wrong about the wallet.
-    let is_private_key = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id)?;
+    // A wallet imported from a raw key has no phrase; the wallet records which
+    // it signs with.
+    let is_private_key = matches!(
+        wallet.signing,
+        spectra_core::store::state::WalletSigning::PrivateKey { .. }
+    );
     let what = if is_private_key {
         "private key"
     } else {
@@ -647,7 +655,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         .filter(|name| std::env::var_os(name).is_some());
     // Asked for only when there is something to unlock: a wallet stored
     // without a password has nothing for it to decrypt.
-    let password = if wallet_secrets::is_sealed(ctx.secrets.as_ref(), &wallet.id)? {
+    let password = if wallet.signing.requires_password() {
         Some(
             SecretSource {
                 file: args.password_file.clone(),
@@ -682,8 +690,19 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         return Ok(());
     }
 
-    let seed_phrase =
-        wallet_secrets::load_seed_phrase(ctx.secrets.as_ref(), &wallet.id, password.as_deref())?;
+    // Core answers why a phrase is not revealed; the words are the CLI's.
+    let service = ctx.service()?;
+    service.set_secret_store(ctx.secrets.clone());
+    use spectra_core::service::SeedPhraseReveal as Reveal;
+    let seed_phrase = match service.reveal_seed_phrase(wallet.id.clone(), password)? {
+        Reveal::Phrase { phrase } => phrase,
+        Reveal::NotStored => return Err(CliError::rejected("this wallet stores no seed phrase")),
+        Reveal::PasswordRequired => return Err(CliError::usage("this wallet needs its password")),
+        Reveal::IncorrectPassword => return Err(CliError::rejected("incorrect password")),
+        Reveal::PasswordNotRequired => {
+            return Err(CliError::rejected("this wallet has no password"))
+        }
+    };
 
     out.text(|| {
         println!();
@@ -695,7 +714,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
             "store this securely and clear your terminal".bold()
         );
     });
-    out.emit(serde_json::json!({ "ok": true, "seedPhrase": *seed_phrase }));
+    out.emit(serde_json::json!({ "ok": true, "seedPhrase": seed_phrase }));
     Ok(())
 }
 
@@ -705,7 +724,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 /// catalog default resolved by core.
 fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
     let resolution = spectra_core::resolve_derivation_path(
-        chain.chain_display_name().to_string(),
+        chain.str_id().to_string(),
         requested.unwrap_or_default().to_string(),
     )
     .map_err(CliError::from)?;
@@ -717,10 +736,7 @@ fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
 fn request_for(chains: &[Chain], name: &str) -> WalletImportRequest {
     WalletImportRequest {
         wallet_name: name.to_string(),
-        selected_chain_names: chains
-            .iter()
-            .map(|c| c.chain_display_name().to_string())
-            .collect(),
+        selected_chain_ids: chains.iter().map(|c| c.str_id().to_string()).collect(),
         is_watch_only_import: false,
         is_private_key_import: false,
         watch_only_entries: WalletImportWatchOnlyEntries::default(),
@@ -743,11 +759,10 @@ fn commit_for(
 }
 
 fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletState> {
-    let is_watch_only = outcome.secret_kind == "watchOnly";
     outcome
         .wallets
         .first()
-        .map(|wallet| wallet.to_wallet_state(is_watch_only))
+        .map(|wallet| wallet.to_wallet_state())
         .ok_or_else(|| CliError::failure("import completed without creating a wallet"))?
         .map_err(CliError::from)
 }
@@ -763,11 +778,11 @@ fn print_wallet_of_kind(wallet: &WalletState, signing: Option<&str>) {
     out::field("name", &wallet.name.bold().to_string());
     out::field(
         "chain",
-        &out::tint(&wallet.chain_name, &wallet.chain_name).to_string(),
+        &out::tint(&super::chain_name(&wallet.chain_id), &wallet.chain_id).to_string(),
     );
     out::field(
         "type",
-        if wallet.is_watch_only {
+        if wallet.is_watch_only() {
             "watch-only"
         } else {
             signing.unwrap_or("seed phrase")
@@ -797,15 +812,15 @@ fn wallet_json(wallet: &WalletState) -> serde_json::Value {
     serde_json::json!({
         "id": wallet.id,
         "name": wallet.name,
-        "chain": wallet.chain_name,
+        "chain": wallet.chain_id,
         "address": wallet_address(wallet),
         // Stored addresses for each network in the wallet's family.
         "addresses": wallet
             .addresses
             .iter()
-            .map(|entry| (entry.chain_name.clone(), serde_json::json!(entry.address)))
+            .map(|entry| (entry.chain_id.clone(), serde_json::json!(entry.address)))
             .collect::<serde_json::Map<String, serde_json::Value>>(),
         "derivationPath": wallet.derivation_path,
-        "isWatchOnly": wallet.is_watch_only,
+        "isWatchOnly": wallet.is_watch_only(),
     })
 }

@@ -12,7 +12,7 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 pub struct HistoryRecord {
     pub id: String,
     pub wallet_id: Option<String>,
-    pub chain_name: String,
+    pub chain_id: String,
     pub tx_hash: Option<String>,
     pub created_at: f64,
     pub payload: crate::store::persistence_models::CorePersistedTransactionRecord,
@@ -27,7 +27,7 @@ pub fn history_record_from_payload(
     HistoryRecord {
         id: payload.id.to_lowercase(),
         wallet_id: payload.wallet_id.as_deref().map(str::to_lowercase),
-        chain_name: payload.chain_name.clone(),
+        chain_id: payload.chain_id.clone(),
         tx_hash: payload.transaction_hash.as_deref().map(str::to_lowercase),
         created_at: payload.created_at_unix,
         payload,
@@ -39,7 +39,7 @@ pub fn history_record_from_payload(
 pub(crate) fn history_keypool_indices(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_name: &str,
+    chain_id: &str,
 ) -> Result<(Option<i32>, Option<i32>), String> {
     with_conn(database, |conn| {
         let mut maxima = [None, None];
@@ -49,11 +49,11 @@ pub(crate) fn history_keypool_indices(
         {
             let sql = format!(
                 "SELECT DISTINCT json_extract(payload, '$.{field}')
-                FROM history_records WHERE wallet_id = ?1 AND chain_name = ?2"
+                FROM history_records WHERE wallet_id = ?1 AND chain_id = ?2"
             );
             let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map(params![wallet_id.to_lowercase(), chain_name], |row| {
+                .query_map(params![wallet_id.to_lowercase(), chain_id], |row| {
                     row.get::<_, Option<String>>(0)
                 })
                 .map_err(|e| e.to_string())?;
@@ -62,7 +62,7 @@ pub(crate) fn history_keypool_indices(
                     .map_err(|e| e.to_string())?
                     .as_deref()
                     .and_then(|path| {
-                        crate::app_core::utxo_discovery_index(path, chain_name, branch as u32)
+                        crate::app_core::utxo_discovery_index(path, chain_id, branch as u32)
                     })
                 {
                     let index = i32::try_from(index).map_err(|_| "keypool index out of range")?;
@@ -127,7 +127,7 @@ fn history_fetch_where(
 ) -> Result<Vec<HistoryRecord>, String> {
     with_conn(database, |conn| {
         let sql = format!(
-            "SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
+            "SELECT id, wallet_id, chain_id, tx_hash, created_at, payload
              FROM history_records WHERE {predicate} ORDER BY created_at DESC, id ASC"
         );
         let mut stmt = conn
@@ -161,11 +161,11 @@ fn history_upsert_on_conn(
 ) -> Result<(), String> {
     let mut statement = conn
         .prepare_cached(
-            "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
+            "INSERT INTO history_records (id, wallet_id, chain_id, tx_hash, created_at, payload)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(id) DO UPDATE SET
                          wallet_id  = excluded.wallet_id,
-                         chain_name = excluded.chain_name,
+                         chain_id = excluded.chain_id,
                          tx_hash    = excluded.tx_hash,
                          created_at = excluded.created_at,
                          payload    = excluded.payload",
@@ -178,7 +178,7 @@ fn history_upsert_on_conn(
             .execute(params![
                 rec.id,
                 rec.wallet_id,
-                rec.chain_name,
+                rec.chain_id,
                 rec.tx_hash,
                 rec.created_at,
                 payload_json
@@ -192,15 +192,15 @@ fn history_upsert_on_conn(
 /// A second refresh (including another connection) sees the first one's result.
 pub(crate) fn history_update_chain<T>(
     database: &WalletDatabase,
-    chain_name: &str,
+    chain_id: &str,
     update: impl FnOnce(Vec<HistoryRecord>) -> Result<(Vec<HistoryRecord>, T), String>,
 ) -> Result<T, String> {
-    history_update_chain_checked(database, chain_name, |_, rows| update(rows))
+    history_update_chain_checked(database, chain_id, |_, rows| update(rows))
 }
 
 pub(crate) fn history_update_chain_checked<T>(
     database: &WalletDatabase,
-    chain_name: &str,
+    chain_id: &str,
     update: impl FnOnce(
         &rusqlite::Connection,
         Vec<HistoryRecord>,
@@ -211,8 +211,8 @@ pub(crate) fn history_update_chain_checked<T>(
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| e.to_string())?;
         let existing = {
-            let mut stmt = tx.prepare("SELECT id, wallet_id, chain_name, tx_hash, created_at, payload FROM history_records WHERE chain_name = ?1 ORDER BY created_at DESC, id ASC").map_err(|e| e.to_string())?;
-            decode_history_rows(&mut stmt, params![chain_name], "history_update_chain")?
+            let mut stmt = tx.prepare("SELECT id, wallet_id, chain_id, tx_hash, created_at, payload FROM history_records WHERE chain_id = ?1 ORDER BY created_at DESC, id ASC").map_err(|e| e.to_string())?;
+            decode_history_rows(&mut stmt, params![chain_id], "history_update_chain")?
         };
         let (rows, result) = update(&tx, existing)?;
         history_upsert_on_conn(&tx, &rows)?;
@@ -226,7 +226,7 @@ pub fn history_fetch_all(database: &WalletDatabase) -> Result<Vec<HistoryRecord>
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
+                "SELECT id, wallet_id, chain_id, tx_hash, created_at, payload
                  FROM history_records ORDER BY created_at DESC, id ASC",
             )
             .map_err(|e| format!("history_fetch_all prepare: {e}"))?;
@@ -257,14 +257,14 @@ fn decode_history_rows(
         .map_err(|e| format!("{context} query: {e}"))?;
     let mut records = Vec::new();
     for row in rows {
-        let (id, wallet_id, chain_name, tx_hash, created_at, payload_json) =
+        let (id, wallet_id, chain_id, tx_hash, created_at, payload_json) =
             row.map_err(|e| format!("{context} row: {e}"))?;
         let payload = serde_json::from_str(&payload_json)
             .map_err(|e| format!("{context} decode payload: {e}"))?;
         records.push(HistoryRecord {
             id,
             wallet_id,
-            chain_name,
+            chain_id,
             tx_hash,
             created_at,
             payload,
@@ -310,7 +310,7 @@ pub fn history_replace_all(
             .map_err(|e| format!("history_replace_all delete: {e}"))?;
         {
             let mut statement = tx.prepare_cached(
-                "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
+                "INSERT INTO history_records (id, wallet_id, chain_id, tx_hash, created_at, payload)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
             ).map_err(|e| format!("history_replace_all prepare: {e}"))?;
             for rec in records {
@@ -320,7 +320,7 @@ pub fn history_replace_all(
                     .execute(params![
                         rec.id,
                         rec.wallet_id,
-                        rec.chain_name,
+                        rec.chain_id,
                         rec.tx_hash,
                         rec.created_at,
                         payload_json
@@ -387,12 +387,12 @@ pub(crate) fn history_save_send_progress(
                 .as_deref()
                 .ok_or("missing EVM sender")?;
             let conflict: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_name = ?1 AND id != lower(?2)
+                "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_id = ?1 AND id != lower(?2)
                  AND lower(json_extract(payload, '$.sourceAddress')) = lower(?3)
                  AND json_extract(payload, '$.nonce') = ?4
                  AND json_extract(payload, '$.kind') = 'send'
                  AND json_extract(payload, '$.status') = 'pending')",
-                params![incoming.chain_name, incoming.id, source, nonce], |row| row.get(0)
+                params![incoming.chain_id, incoming.id, source, nonce], |row| row.get(0)
             ).map_err(|e| e.to_string())?;
             if conflict {
                 return Err(
@@ -411,7 +411,7 @@ pub(crate) fn history_save_send_progress(
         let payload = if let Some(json) = previous {
             let mut stored: CorePersistedTransactionRecord =
                 serde_json::from_str(&json).map_err(|e| e.to_string())?;
-            if stored.wallet_id != incoming.wallet_id || stored.chain_name != incoming.chain_name {
+            if stored.wallet_id != incoming.wallet_id || stored.chain_id != incoming.chain_id {
                 return Err("send record identity changed".into());
             }
             stored.signed_transaction_payload = incoming.signed_transaction_payload.clone();
@@ -433,7 +433,7 @@ pub(crate) fn history_save_send_progress(
         };
         let record = history_record_from_payload(payload);
         let json = serde_json::to_string(&record.payload).map_err(|e| e.to_string())?;
-        tx.execute("INSERT INTO history_records(id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET tx_hash=excluded.tx_hash,payload=excluded.payload", params![record.id, record.wallet_id, record.chain_name, record.tx_hash, record.created_at, json]).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO history_records(id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET tx_hash=excluded.tx_hash,payload=excluded.payload", params![record.id, record.wallet_id, record.chain_id, record.tx_hash, record.created_at, json]).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
     })
 }
@@ -445,6 +445,6 @@ pub(crate) fn history_pending_for_sender(
     sender: &str,
 ) -> Result<Vec<HistoryRecord>, String> {
     history_fetch_where(database,
-        "chain_name = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'",
+        "chain_id = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'",
         params![chain, sender])
 }

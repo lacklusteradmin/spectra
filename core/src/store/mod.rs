@@ -15,66 +15,6 @@ pub use artwork::{chain_artwork_name, deployment_artwork_name, token_artwork_nam
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SecretMaterialDescriptor {
-    pub wallet_id: String,
-    pub secret_kind: String,
-    pub has_seed_phrase: bool,
-    pub has_private_key: bool,
-    pub has_password: bool,
-    pub has_signing_material: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletHoldingRef {
-    pub wallet_id: String,
-    pub holding_index: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct GroupedPortfolioHolding {
-    pub asset_identity_key: String,
-    pub wallet_id: String,
-    pub holding_index: u64,
-    pub total_amount: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct PendingSelfSendConfirmationInput {
-    pub wallet_id: String,
-    pub chain_name: String,
-    pub symbol: String,
-    pub destination_address_lowercased: String,
-    pub amount: f64,
-    pub created_at_unix: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SelfSendConfirmationRequest {
-    pub pending_confirmation: Option<PendingSelfSendConfirmationInput>,
-    pub wallet_id: String,
-    pub chain_name: String,
-    pub symbol: String,
-    pub destination_address: String,
-    pub amount: f64,
-    pub now_unix: f64,
-    pub window_seconds: f64,
-    pub owned_addresses: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SelfSendConfirmationPlan {
-    pub requires_confirmation: bool,
-    pub consume_existing_confirmation: bool,
-    pub clear_pending_confirmation: bool,
-}
-
 /// Trimmed, blanks dropped, and each address once — compared case-folded, the
 /// first spelling kept.
 pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -> Vec<String> {
@@ -95,70 +35,6 @@ pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -
     ordered
 }
 
-pub fn self_send_confirmation(request: SelfSendConfirmationRequest) -> SelfSendConfirmationPlan {
-    // Folded to lowercase, deliberately, and unlike the `new_address` check in
-    // `send::flow` — which compares in the chain's own normal form because a
-    // false match there *suppresses* a warning about a swapped destination.
-    //
-    // Here a wrong answer goes the other way. A false match adds a
-    // "you are sending to yourself" prompt the user dismisses; a miss removes
-    // one they should have seen. Bech32 is case-insensitive by definition, so
-    // an own address typed in caps is the same address, and `Bitcoin`'s
-    // `AddressNormalization::None` — correct for its base58 forms — cannot say
-    // that. Folding takes the side where being wrong costs a tap.
-    let destination = request.destination_address.trim().to_lowercase();
-    let owned_addresses = request
-        .owned_addresses
-        .iter()
-        .map(|address| address.trim().to_lowercase())
-        .collect::<std::collections::BTreeSet<_>>();
-
-    if !owned_addresses.contains(&destination) {
-        return SelfSendConfirmationPlan {
-            requires_confirmation: false,
-            consume_existing_confirmation: false,
-            clear_pending_confirmation: false,
-        };
-    }
-
-    let Some(pending) = request.pending_confirmation else {
-        return SelfSendConfirmationPlan {
-            requires_confirmation: true,
-            consume_existing_confirmation: false,
-            clear_pending_confirmation: false,
-        };
-    };
-
-    let is_expired = request.now_unix - pending.created_at_unix > request.window_seconds;
-    if is_expired {
-        return SelfSendConfirmationPlan {
-            requires_confirmation: true,
-            consume_existing_confirmation: false,
-            clear_pending_confirmation: true,
-        };
-    }
-
-    let same_wallet = pending.wallet_id == request.wallet_id;
-    let same_chain = pending.chain_name == request.chain_name;
-    let same_symbol = pending.symbol == request.symbol;
-    let same_destination = pending.destination_address_lowercased == destination;
-    let same_amount = (pending.amount - request.amount).abs() < 0.00000001;
-
-    if same_wallet && same_chain && same_symbol && same_destination && same_amount {
-        return SelfSendConfirmationPlan {
-            requires_confirmation: false,
-            consume_existing_confirmation: true,
-            clear_pending_confirmation: true,
-        };
-    }
-
-    SelfSendConfirmationPlan {
-        requires_confirmation: true,
-        consume_existing_confirmation: false,
-        clear_pending_confirmation: true,
-    }
-}
-
 /// The built-in token catalog, as preference entries.
 ///
 /// Built from `tokens.toml` — the same catalog `list_all_builtin_token_deployments`
@@ -176,9 +52,7 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
         .filter_map(|token| {
             // A catalog row on a chain that cannot host tokens is a data
             // mistake, and skipping it is how it stays one.
-            wallet_domain::CoreTokenHostingChain::from_chain_name(
-                crate::registry::Chain::from_str_id(&token.chain_id)?.chain_display_name(),
-            )?;
+            crate::registry::Chain::from_str_id(&token.chain_id).filter(|c| c.hosts_tokens())?;
             Some(wallet_domain::CoreTokenPreferenceEntry {
                 category: wallet_domain::CoreTokenPreferenceEntry::category_from_tags(&token.tags),
                 is_built_in: true,
@@ -282,7 +156,7 @@ pub struct PriceAlertEvaluationAlert {
     pub holding_key: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub target_price: f64,
     pub condition: wallet_domain::CorePriceAlertCondition,
     pub is_enabled: bool,
@@ -305,17 +179,21 @@ pub struct PriceAlertTriggerUpdate {
     pub has_triggered: bool,
 }
 
-/// A single firing — Swift formats the notification body using this.
+/// A single firing — a front end words the notification from this. The two
+/// prices are in `currency`: the display currency when its rate is known,
+/// USD when it is not.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertNotification {
     pub id: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub target_price: f64,
     pub live_price: f64,
     pub condition: wallet_domain::CorePriceAlertCondition,
+    #[serde(default)]
+    pub currency: state::FiatCurrency,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -355,10 +233,11 @@ pub fn evaluate_price_alerts(
                 id: alert.id,
                 asset_display_name: alert.asset_display_name,
                 symbol: alert.symbol,
-                chain_name: alert.chain_name,
+                chain_id: alert.chain_id,
                 target_price: alert.target_price,
                 live_price,
                 condition: alert.condition,
+                currency: state::FiatCurrency::Usd,
             });
         } else if !meets_target && alert.has_triggered {
             updates.push(PriceAlertTriggerUpdate {
@@ -411,7 +290,7 @@ pub fn new_event_id() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRecipientPreflightRequest {
-    pub chain_name: String,
+    pub chain_id: String,
     pub holding_symbol: String,
     pub token_symbol: Option<String>,
     pub recipient_has_code: Option<bool>,
@@ -430,17 +309,17 @@ pub struct EvmRecipientPreflightRequest {
 pub enum EvmRecipientPreflightWarning {
     /// The recipient has contract code, so it may not be able to receive
     /// `symbol`.
-    RecipientIsContract { chain_name: String, symbol: String },
+    RecipientIsContract { chain_id: String, symbol: String },
     /// The recipient's code could not be read.
-    RecipientCodeUnknown { chain_name: String },
+    RecipientCodeUnknown { chain_id: String },
     /// The token contract has no code on this chain.
     TokenContractMissing {
-        chain_name: String,
+        chain_id: String,
         token_symbol: String,
     },
     /// The token contract's code could not be read.
     TokenCodeUnknown {
-        chain_name: String,
+        chain_id: String,
         token_symbol: String,
     },
 }
@@ -453,25 +332,25 @@ pub fn evm_recipient_preflight_warnings(
     request: EvmRecipientPreflightRequest,
 ) -> Vec<EvmRecipientPreflightWarning> {
     let mut warnings = Vec::new();
-    let chain_name = request.chain_name;
+    let chain_id = request.chain_id;
     match request.recipient_has_code {
         Some(true) => warnings.push(EvmRecipientPreflightWarning::RecipientIsContract {
-            chain_name: chain_name.clone(),
+            chain_id: chain_id.clone(),
             symbol: request.holding_symbol,
         }),
         Some(false) => {}
         None => warnings.push(EvmRecipientPreflightWarning::RecipientCodeUnknown {
-            chain_name: chain_name.clone(),
+            chain_id: chain_id.clone(),
         }),
     }
     if let Some(token_symbol) = request.token_symbol {
         match request.token_has_code {
             Some(false) => warnings.push(EvmRecipientPreflightWarning::TokenContractMissing {
-                chain_name,
+                chain_id,
                 token_symbol,
             }),
             None => warnings.push(EvmRecipientPreflightWarning::TokenCodeUnknown {
-                chain_name,
+                chain_id,
                 token_symbol,
             }),
             Some(true) => {}
@@ -620,7 +499,7 @@ pub struct ResolvedPendingStatusInput {
 pub struct ResolvedPendingTransactionInput {
     pub id: String,
     pub old_status: String,
-    pub old_failure_reason: Option<String>,
+    pub old_failure_reason: Option<persistence_models::TransactionFailure>,
     pub resolution: Option<ResolvedPendingStatusInput>,
     pub is_stale_failure: bool,
 }
@@ -641,12 +520,6 @@ pub struct ResolvedPendingTransactionDecision {
     pub status_changed: bool,
     pub failure_reason_disposition: FailureReasonDisposition,
 }
-
-/// Stored in `failure_reason` when a pending transaction is given up on.
-///
-/// A code rather than a sentence: the front end localizes it at render, so a
-/// user who changes language does not keep the old one on old records.
-pub const FAILURE_REASON_STUCK: &str = "stuckAfterRetries";
 
 /// One chain's resolved statuses, as the network reported them.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -710,7 +583,7 @@ impl EvmReceiptCost {
 /// had three fields to disagree about one fact.
 pub struct TransactionStatusChange {
     pub id: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub transaction_hash: Option<String>,
     pub old_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub new_status: crate::store::wallet_domain::CoreTransactionStatus,
@@ -851,7 +724,7 @@ pub fn merge_chain_keypool_state(
 #[serde(rename_all = "camelCase")]
 pub struct HoldingMergeExistingInput {
     pub symbol: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub contract_address: Option<String>,
 }
 
@@ -861,7 +734,7 @@ pub struct HoldingMergeIncomingInput {
     pub name: String,
     pub symbol: String,
     pub coingecko_id: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub token_standard: String,
     pub contract_address: Option<String>,
     pub amount: f64,
@@ -873,7 +746,7 @@ pub struct HoldingMergeAppendPayload {
     pub name: String,
     pub symbol: String,
     pub coingecko_id: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub token_standard: String,
     pub contract_address: Option<String>,
     pub amount: f64,

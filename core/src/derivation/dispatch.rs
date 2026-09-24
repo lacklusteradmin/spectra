@@ -14,8 +14,8 @@ pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
     }
 }
 
-pub fn derive_for_chain_name(
-    chain_name: &str,
+pub fn derive_for_chain_id(
+    chain_id: &str,
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
@@ -42,9 +42,9 @@ pub fn derive_for_chain_name(
     let wp = want_public_key;
     let wk = want_private_key;
 
-    let Some(chain) = crate::registry::Chain::from_display_name(chain_name) else {
+    let Some(chain) = crate::registry::Chain::from_str_id(chain_id) else {
         return Err(SpectraBridgeError::InvalidInput {
-            message: format!("unsupported chain: {chain_name}"),
+            message: format!("unsupported chain: {chain_id}"),
         });
     };
 
@@ -141,7 +141,7 @@ pub fn derive_for_chain_name(
 /// match, so a chain that lands here was named by a caller rather than chosen
 /// in the app.
 pub fn derive_from_private_key(
-    chain_name: String,
+    chain_id: String,
     private_key_hex: String,
     want_address: bool,
     want_public_key: bool,
@@ -151,7 +151,7 @@ pub fn derive_from_private_key(
     };
     use crate::registry::Chain;
 
-    let Some(chain) = Chain::from_display_name(&chain_name) else {
+    let Some(chain) = Chain::from_str_id(&chain_id) else {
         return Ok(None);
     };
     let result = match chain.mainnet_counterpart() {
@@ -206,13 +206,13 @@ mod dispatch_export_tests {
 
         for chain in crate::registry::Chain::all() {
             let claimed = chain.derives_from_private_key();
-            let produced = derives(chain.chain_display_name()).is_some();
+            let produced = derives(chain.str_id()).is_some();
             assert_eq!(
                 claimed,
                 produced,
                 "{}: the registry says derives_from_private_key = {claimed} and the \
                  dispatcher produced an address = {produced}",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }
@@ -225,21 +225,21 @@ mod dispatch_export_tests {
     #[test]
     fn a_key_alone_is_not_enough_on_these_chains() {
         for name in [
-            "Bitcoin SV",
-            "XRP Ledger",
-            "Solana",
-            "Stellar",
-            "Cardano",
-            "Sui",
-            "Aptos",
-            "TON",
-            "Internet Computer",
-            "NEAR",
-            "Polkadot",
-            "Monero",
+            "bitcoin-sv",
+            "xrp",
+            "solana",
+            "stellar",
+            "cardano",
+            "sui",
+            "aptos",
+            "ton",
+            "internet-computer",
+            "near",
+            "polkadot",
+            "monero",
         ] {
-            let chain = crate::registry::Chain::from_display_name(name)
-                .expect("a chain the registry knows");
+            let chain =
+                crate::registry::Chain::from_str_id(name).expect("a chain the registry knows");
             assert!(
                 !chain.derives_from_private_key(),
                 "{name} now derives from a private key — that is a widening, so say so \
@@ -264,10 +264,10 @@ mod dispatch_export_tests {
             // unreachable from every front end for as long as the skip was
             // here. `default_path_from_catalog` answers "" for those now, and
             // the arms that ignore the path do not mind receiving one.
-            let path = crate::app_core::default_path_for_chain(chain.chain_display_name())
+            let path = crate::app_core::default_path_for_chain(chain.str_id())
                 .expect("a registry chain always has an answer, even when it is none");
-            let result = derive_for_chain_name(
-                chain.chain_display_name(),
+            let result = derive_for_chain_id(
+                chain.str_id(),
                 PHRASE,
                 &path,
                 None,
@@ -279,7 +279,7 @@ mod dispatch_export_tests {
             );
             match result {
                 Ok(r) if r.address.is_some() => {}
-                _ => missing.push(chain.chain_display_name()),
+                _ => missing.push(chain.str_id()),
             }
         }
         assert!(missing.is_empty(), "no address derived for: {missing:?}");

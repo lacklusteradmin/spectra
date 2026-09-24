@@ -71,8 +71,9 @@ mod tests {
         let wallet = crate::store::state::WalletState {
             id: "w".into(),
             name: "W".into(),
-            is_watch_only: false,
-            chain_name: "Ethereum".into(),
+            signing: crate::store::state::WalletSigning::SeedPhrase {
+                password_protected: false,
+            },
             include_in_portfolio_total: true,
             chain_id: "ethereum".into(),
             xpub: None,
@@ -100,7 +101,7 @@ mod tests {
             .unwrap();
         assert_eq!(service.app_state().await.wallets.len(), 1);
         let mut watch = wallet;
-        watch.is_watch_only = true;
+        watch.signing = crate::store::state::WalletSigning::WatchOnly;
         service
             .apply_state_command(StateCommand::UpsertWallet { wallet: watch })
             .await

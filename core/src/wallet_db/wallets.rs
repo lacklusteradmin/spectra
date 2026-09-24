@@ -18,12 +18,12 @@ pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletState) -> Result<
             .map_err(|e| format!("wallet_upsert next index: {e}"))?;
         conn.execute(
             "INSERT INTO wallets
-                 (id, name, chain_name, is_watch_only, include_in_portfolio_total,
+                 (id, name, chain_id, is_watch_only, include_in_portfolio_total,
                   sort_index, payload, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET
                  name                       = excluded.name,
-                 chain_name                 = excluded.chain_name,
+                 chain_id                 = excluded.chain_id,
                  is_watch_only              = excluded.is_watch_only,
                  include_in_portfolio_total = excluded.include_in_portfolio_total,
                  payload                    = excluded.payload,
@@ -31,8 +31,8 @@ pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletState) -> Result<
             params![
                 wallet.id,
                 wallet.name,
-                wallet.chain_name,
-                wallet.is_watch_only,
+                wallet.chain_id,
+                wallet.is_watch_only(),
                 wallet.include_in_portfolio_total,
                 next_index,
                 payload,

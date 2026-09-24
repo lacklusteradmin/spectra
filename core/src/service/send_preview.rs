@@ -45,7 +45,7 @@ impl WalletService {
         };
         let assembly = crate::send::ethereum::prepare_evm_send_assembly(
             crate::send::ethereum::EvmSendAssemblyInput {
-                chain_name: chain.chain_display_name().into(),
+                chain_id: chain.str_id().into(),
                 symbol: holding.symbol.clone(),
                 from_address: from.clone(),
                 resolved_destination: destination,

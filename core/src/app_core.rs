@@ -113,20 +113,6 @@ pub struct AppCoreEndpointRecord {
     pub tx_suffix: String,
 }
 
-/// What one endpoint is and what it is used for, looked up by URL.
-///
-/// A lookup rather than a field on `AppCoreGroupedSettingsEntry`, because the
-/// settings screen assembles some of its groups itself — Bitcoin's Esplora
-/// bases, and whatever RPC the user typed in. Those have no catalog row, and
-/// asking by URL lets them come back `None` instead of forcing the caller to
-/// invent an API for an endpoint it knows nothing about.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreEndpointTag {
-    pub api: Option<String>,
-    pub capabilities: Vec<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreGroupedSettingsEntry {
@@ -141,7 +127,7 @@ pub struct AppCoreExplorerEntry {
     pub endpoint: String,
     pub label: String,
     /// Appended after the transaction hash. Empty for every explorer but
-    /// Aptos's, which was a `chain_name == "Aptos"` branch inside
+    /// Aptos's, which was a `chain_id == "aptos"` branch inside
     /// `core_transaction_explorer_url` — the one thing that export did that a
     /// caller holding this record could not.
     pub tx_suffix: String,
@@ -166,10 +152,10 @@ static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::ne
 /// both in-crate callers took `normalized_path` and dropped the rest.
 #[uniffi::export]
 pub fn resolve_derivation_path(
-    chain: String,
+    chain_id: String,
     derivation_path: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    let default_path = default_path_from_catalog(&chain)?;
+    let default_path = default_path_from_catalog(&chain_id)?;
     Ok(normalize_derivation_path(&derivation_path, &default_path))
 }
 
@@ -198,12 +184,6 @@ pub fn filtered_endpoint_records_for_chain(
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct AppCoreChainEndpoints {
     pub chain_id: String,
-    /// RPC endpoints, for the EVM family.
-    pub evm_rpc: Vec<String>,
-    /// Machine-facing services for this concrete network, excluding web links.
-    pub service_endpoints: Vec<String>,
-    /// Light-wallet backends eligible for the backend selector.
-    pub backends: Vec<String>,
     /// What the settings screen shows, grouped by network.
     pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
     pub transaction_explorer: Option<AppCoreExplorerEntry>,
@@ -219,21 +199,6 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
         .map(|chain| {
             let id = chain.str_id().to_string();
             AppCoreChainEndpoints {
-                service_endpoints: endpoint_records_for_chain(catalog, &id, 0)
-                    .into_iter()
-                    .filter(|r| r.api.is_some())
-                    .map(|r| r.endpoint)
-                    .collect(),
-                backends: endpoint_records_for_chain(catalog, &id, 0)
-                    .into_iter()
-                    .filter(|r| r.api == Some(EndpointApi::MoneroDaemonRpc))
-                    .map(|r| r.endpoint)
-                    .collect(),
-                evm_rpc: endpoint_records_for_chain(catalog, &id, 0)
-                    .into_iter()
-                    .filter(|r| r.api == Some(EndpointApi::EvmJsonRpc))
-                    .map(|r| r.endpoint)
-                    .collect(),
                 grouped_settings: grouped_settings_entries(catalog, chain),
                 transaction_explorer: transaction_explorer_entry(catalog, &id),
                 bitcoin_esplora: bitcoin_esplora_base_urls(catalog, &id).unwrap_or_default(),
@@ -390,7 +355,7 @@ mod tests {
         use crate::registry::Chain;
 
         assert!(!Chain::Monero.uses_derivation_path());
-        assert_eq!(default_path_for_chain("Monero").expect("an answer"), "");
+        assert_eq!(default_path_for_chain("monero").expect("an answer"), "");
 
         // Monero is the only mainnet that says it, so a second one appearing
         // is a catalog edit to notice rather than a silent empty path.
@@ -398,7 +363,7 @@ mod tests {
             assert!(
                 chain.uses_derivation_path(),
                 "{} has no catalog derivation path",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
 
@@ -409,7 +374,7 @@ mod tests {
 
     #[test]
     fn resolves_bitcoin_taproot_path() {
-        let default_path = default_path_for_chain("Bitcoin").expect("default path");
+        let default_path = default_path_for_chain("bitcoin").expect("default path");
         let normalized = normalize_derivation_path("m/86'/0'/2'/0/0", &default_path);
         assert_eq!(normalized, "m/86'/0'/2'/0/0");
     }
@@ -432,7 +397,7 @@ mod tests {
         let paths = seed_derivation_paths_for_account(0).expect("paths");
         for chain in Chain::all() {
             let expected =
-                crate::chains::default_derivation_path_template_by_id(chain.str_id()).is_some();
+                crate::chains::default_derivation_path_template(chain.str_id()).is_some();
             assert_eq!(
                 paths.path_for(chain).is_some(),
                 expected,
@@ -452,22 +417,6 @@ mod tests {
 }
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
-
-/// What the catalog knows about one endpoint URL. `None` for anything it does
-/// not list — a user's own RPC, or a runtime-assembled Esplora base.
-#[uniffi::export]
-pub fn endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
-    let trimmed = endpoint.trim().trim_end_matches('/');
-    load_endpoint_catalog()
-        .ok()?
-        .endpoint_records
-        .iter()
-        .find(|r| r.endpoint.trim_end_matches('/') == trimmed)
-        .map(|r| AppCoreEndpointTag {
-            api: r.api.map(|api| api.as_str().to_string()),
-            capabilities: r.capabilities.clone(),
-        })
-}
 
 // ── Derivation paths ──────────────────────────────────────────────
 
@@ -538,9 +487,7 @@ pub(super) fn seed_derivation_paths_for_account(
         // Keyed by id rather than display name — ids are the stable key, and
         // `every_catalog_name_resolves` guarantees every name resolves back to
         // the id it belongs to.
-        if let Some(template) =
-            crate::chains::default_derivation_path_template_by_id(chain.str_id())
-        {
+        if let Some(template) = crate::chains::default_derivation_path_template(chain.str_id()) {
             by_chain.insert(
                 chain.str_id().to_string(),
                 render_derivation_path_template(template, account),
@@ -560,14 +507,14 @@ fn render_derivation_path_template(template: &str, account: u32) -> String {
     template.replace("{account}", &account.to_string())
 }
 
-pub(super) fn default_path_from_catalog(chain_name: &str) -> Result<String, String> {
-    default_path_from_catalog_for_account(chain_name, 0)
+pub(super) fn default_path_from_catalog(chain_id: &str) -> Result<String, String> {
+    default_path_from_catalog_for_account(chain_id, 0)
 }
 
-fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Result<String, String> {
+fn default_path_from_catalog_for_account(chain_id: &str, account: u32) -> Result<String, String> {
     use crate::registry::Chain;
 
-    let template = crate::chains::default_derivation_path_template(chain_name);
+    let template = crate::chains::default_derivation_path_template(chain_id);
     if let Some(template) = template {
         return Ok(render_derivation_path_template(template, account));
     }
@@ -577,16 +524,16 @@ fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Resu
     // indistinguishable from "the catalog row is broken", and every caller in
     // the import pipeline treated it as the second: the CLI refused the
     // import, and iOS dropped the chain out of the batch it was deriving.
-    match Chain::from_display_name(chain_name) {
+    match Chain::from_str_id(chain_id) {
         Some(chain) if !chain.uses_derivation_path() => Ok(String::new()),
-        _ => Err(format!("Missing default derivation path for {chain_name}.")),
+        _ => Err(format!("Missing default derivation path for {chain_id}.")),
     }
 }
 
 /// Extract a UTXO discovery index only when the path prefix matches the
 /// chain's default path and the penultimate segment is the requested branch.
-pub(crate) fn utxo_discovery_index(raw_path: &str, chain_name: &str, branch: u32) -> Option<u32> {
-    let default_path = default_path_from_catalog(chain_name).ok()?;
+pub(crate) fn utxo_discovery_index(raw_path: &str, chain_id: &str, branch: u32) -> Option<u32> {
+    let default_path = default_path_from_catalog(chain_id).ok()?;
     let path = parse_derivation_path_str(raw_path)?;
     let mut candidate = parse_derivation_path_str(&default_path)?;
     if path.len() != candidate.len() || path.len() < 5 {
@@ -613,8 +560,8 @@ pub(crate) fn utxo_discovery_index(raw_path: &str, chain_name: &str, branch: u32
 }
 
 #[cfg(test)]
-pub(super) fn default_path_for_chain(chain_name: &str) -> Result<String, String> {
-    default_path_from_catalog(chain_name)
+pub(super) fn default_path_for_chain(chain_id: &str) -> Result<String, String> {
+    default_path_from_catalog(chain_id)
 }
 
 // ── FFI surface ──────────────────────────────────────────────────────────
@@ -684,14 +631,12 @@ mod testnet_derivation_paths {
     #[test]
     fn every_testnet_resolves_its_own_catalog_path() {
         for chain in Chain::all().filter(|c| c.is_testnet()) {
-            let resolved = super::resolve_derivation_path(
-                chain.chain_display_name().to_string(),
-                String::new(),
-            );
+            let resolved =
+                super::resolve_derivation_path(chain.str_id().to_string(), String::new());
             assert!(
                 resolved.is_ok(),
                 "{} failed to resolve: {:?}",
-                chain.chain_display_name(),
+                chain.str_id(),
                 resolved.err()
             );
         }
@@ -699,10 +644,11 @@ mod testnet_derivation_paths {
 
     #[test]
     fn bitcoin_testnet_uses_coin_type_one() {
-        let testnet = super::resolve_derivation_path("Bitcoin Testnet4".to_string(), String::new())
-            .expect("testnet4");
+        let testnet =
+            super::resolve_derivation_path("bitcoin-testnet-4".to_string(), String::new())
+                .expect("testnet4");
         let mainnet =
-            super::resolve_derivation_path("Bitcoin".to_string(), String::new()).expect("bitcoin");
+            super::resolve_derivation_path("bitcoin".to_string(), String::new()).expect("bitcoin");
         assert_eq!(testnet, "m/84'/1'/0'/0/0");
         assert_eq!(mainnet, "m/84'/0'/0'/0/0");
     }
@@ -712,15 +658,13 @@ mod testnet_derivation_paths {
 mod endpoint_network_index_tests {
     use super::*;
 
-    /// Reads through the one catalog the front ends read, so the index this
-    /// asserts about is the index they get.
+    /// The network index every endpoint consumer reads through.
     fn rpc_endpoints(chain_id: &str) -> Vec<String> {
-        chain_endpoints()
-            .expect("catalog")
+        endpoint_records_for_chain(endpoint_catalog().expect("catalog"), chain_id, 0)
             .into_iter()
-            .find(|entry| entry.chain_id == chain_id)
-            .map(|entry| entry.evm_rpc)
-            .unwrap_or_default()
+            .filter(|r| r.api == Some(EndpointApi::EvmJsonRpc))
+            .map(|r| r.endpoint)
+            .collect()
     }
 
     /// Network IDs keep testnet lookups independent of mainnet and UI titles.
@@ -770,9 +714,14 @@ mod endpoint_network_index_tests {
             .unwrap();
         let explorer = monero.transaction_explorer.unwrap().endpoint;
         assert!(monero.grouped_settings[0].endpoints.contains(&explorer));
-        assert!(!monero.backends.is_empty());
-        assert!(!monero.backends.contains(&explorer));
-        assert!(!monero.service_endpoints.contains(&explorer));
+        let services: Vec<_> = endpoint_records_for_chain(endpoint_catalog().unwrap(), "monero", 0)
+            .into_iter()
+            .filter(|r| r.api.is_some())
+            .collect();
+        assert!(services
+            .iter()
+            .any(|r| r.api == Some(EndpointApi::MoneroDaemonRpc)));
+        assert!(!services.iter().any(|r| r.endpoint == explorer));
     }
 
     #[test]
@@ -840,7 +789,7 @@ capabilities = []"#;
                 toml::from_str::<TomlEndpoint>(&valid.replace("ethereum-sepolia", bad)).unwrap();
             assert!(AppCoreEndpointRecord::try_from(row).is_err());
         }
-        for field in ["chain_name", "group_title", "kind"] {
+        for field in ["chain_id", "group_title", "kind"] {
             assert!(
                 toml::from_str::<TomlEndpoint>(&format!("{valid}\n{field} = \"Ethereum\" "))
                     .is_err()
@@ -965,39 +914,27 @@ mod endpoint_capabilities {
 }
 
 #[cfg(test)]
-mod an_endpoint_can_be_asked_what_it_is {
-    /// The settings screen shows a URL per row and nothing else. The catalog
-    /// knows what each one is; this is how the row asks.
+mod catalog_endpoints_carry_their_api {
+    fn record(endpoint: &str) -> super::AppCoreEndpointRecord {
+        super::endpoint_catalog()
+            .unwrap()
+            .endpoint_records
+            .iter()
+            .find(|r| r.endpoint == endpoint)
+            .cloned()
+            .unwrap_or_else(|| panic!("{endpoint} is in the catalog"))
+    }
+
     #[test]
-    fn a_catalog_endpoint_reports_its_api_and_capabilities() {
-        let node = super::endpoint_tag("https://ethereum-rpc.publicnode.com".into())
-            .expect("Ethereum's node is in the catalog");
-        assert_eq!(node.api.as_deref(), Some("evm-json-rpc"));
+    fn a_node_and_an_indexer_declare_different_capabilities() {
+        let node = record("https://ethereum-rpc.publicnode.com");
+        assert_eq!(node.api, Some(crate::EndpointApi::EvmJsonRpc));
         assert!(node.capabilities.contains(&"balance".to_string()));
         assert!(
             !node.capabilities.contains(&"history".to_string()),
             "an EVM node cannot serve address history"
         );
-
-        let indexer = super::endpoint_tag("https://eth.blockscout.com".into())
-            .expect("Ethereum's indexer is in the catalog");
-        assert_eq!(indexer.api.as_deref(), Some("blockscout"));
+        let indexer = record("https://eth.blockscout.com");
         assert!(indexer.capabilities.contains(&"history".to_string()));
-    }
-
-    /// A trailing slash is not a different endpoint.
-    #[test]
-    fn the_lookup_ignores_a_trailing_slash() {
-        assert_eq!(
-            super::endpoint_tag("https://eth.blockscout.com/".into()),
-            super::endpoint_tag("https://eth.blockscout.com".into()),
-        );
-    }
-
-    /// An endpoint the user typed has no catalog row, and saying so beats
-    /// guessing an API for it.
-    #[test]
-    fn an_endpoint_the_catalog_does_not_list_has_no_tag() {
-        assert!(super::endpoint_tag("https://my-own-node.example".into()).is_none());
     }
 }

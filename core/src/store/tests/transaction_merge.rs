@@ -29,8 +29,8 @@ fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionReco
         wallet_name: "W".to_string(),
         asset_display_name: "Bitcoin".to_string(),
         symbol: "BTC".to_string(),
-        chain_name: "Bitcoin".to_string(),
-        amount: 1.0,
+        chain_id: "bitcoin".to_string(),
+        amount: "1".into(),
         address: "bc1qexample".to_string(),
         transaction_hash: Some(hash.to_string()),
         nonce: None,
@@ -38,7 +38,6 @@ fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionReco
         receipt_gas_used: None,
         receipt_effective_gas_price_gwei: None,
         receipt_network_fee: None,
-        fee_priority_raw: None,
         fee_rate_description: None,
         confirmation_count: confirmations,
         confirmed_network_fee: None,
@@ -60,7 +59,7 @@ fn merge(incoming: Vec<CoreTransactionRecord>) -> TransactionCommand {
     // Strategy comes from the registry now — "Bitcoin" implies StandardUtxo.
     TransactionCommand::Merge {
         incoming,
-        chain_name: "Bitcoin".to_string(),
+        chain_id: "bitcoin".to_string(),
         preserve_created_at_sentinel_unix: None,
     }
 }

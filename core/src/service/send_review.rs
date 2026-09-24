@@ -116,15 +116,7 @@ impl WalletService {
                 resolved.address.clone(),
             )
             .await;
-        let self_send = self
-            .self_send_confirmation(
-                input.wallet_id.clone(),
-                input.holding_key.clone(),
-                resolved.address,
-                amount,
-                None,
-            )
-            .await?;
+        let requires_self_send_confirmation = self.is_own_address(chain, &resolved.address).await?;
         let state = self.app_state().await;
         let wallet = state
             .wallets
@@ -136,7 +128,7 @@ impl WalletService {
             .address_on(chain)
             .ok_or("Wallet has no sending address")?
             .to_owned();
-        let requires_wallet_password = self.wallet_secret_state(input.wallet_id.clone())?.is_sealed;
+        let requires_wallet_password = wallet.signing.requires_password();
         let id = hex::encode(rand::random::<[u8; 32]>());
         let mut reviews = self.send_reviews.lock().await;
         reviews.retain(|_, r| r.created.elapsed().as_secs() < 120);
@@ -158,7 +150,7 @@ impl WalletService {
             preview: quote.preview,
             warnings,
             recipient_warnings,
-            requires_self_send_confirmation: self_send.requires_confirmation,
+            requires_self_send_confirmation,
             requires_wallet_password,
         })
     }
@@ -391,14 +383,17 @@ mod tests {
             let mut wallet = WalletState::single_address(
                 "w",
                 "W",
-                "Ethereum",
+                "ethereum",
                 "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
             );
             let mut holding = native_coin_template("ethereum").unwrap();
-            holding.amount = 10.0;
+            holding.amount = "10".into();
             wallet.holdings.push(holding);
+            wallet.signing = crate::store::state::WalletSigning::SeedPhrase {
+                password_protected: password.is_some(),
+            };
             service
                 .apply_state_command(StateCommand::UpsertWallet { wallet })
                 .await

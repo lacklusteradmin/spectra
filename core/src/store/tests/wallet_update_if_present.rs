@@ -2,7 +2,7 @@ use crate::service::WalletService;
 use crate::store::state::{StateCommand, WalletState};
 
 fn wallet(id: &str, name: &str) -> WalletState {
-    WalletState::single_address(id, name, "Bitcoin", "bc1qexample", None, false)
+    WalletState::single_address(id, name, "bitcoin", "bc1qexample", None, false)
 }
 
 /// A balance result that arrives after the wallet was deleted must not

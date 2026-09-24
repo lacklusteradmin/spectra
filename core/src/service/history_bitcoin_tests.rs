@@ -87,9 +87,9 @@ async fn stored_testnet_hd_history_uses_its_network_script_and_all_pages() {
     store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
     service.set_secret_store(secrets);
     let mut wallet =
-        WalletState::single_address("w", "Test", "Bitcoin", &address, Some(path.into()), false);
+        WalletState::single_address("w", "Test", "bitcoin", &address, Some(path.into()), false);
     wallet.chain_id = Chain::BitcoinTestnet4.str_id().into();
-    wallet.addresses[0].chain_name = Chain::BitcoinTestnet4.chain_display_name().into();
+    wallet.addresses[0].chain_id = Chain::BitcoinTestnet4.str_id().into();
     service
         .apply_state_command(StateCommand::UpsertWallet { wallet })
         .await

@@ -84,14 +84,19 @@ impl CoreSeedDerivationPreset {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolding {
+    /// The deployment this is a holding of — `deployment_id()`, carried so a
+    /// front end can key rows by it without asking. Derived, so never stored:
+    /// every projection a front end reads fills it in.
+    #[serde(default, skip_serializing)]
+    pub id: String,
     pub name: String,
     pub symbol: String,
     pub coingecko_id: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub token_standard: String,
     pub contract_address: Option<String>,
-    pub amount: f64,
-    pub price_usd: f64,
+    /// The balance, as an exact decimal in the asset's own units.
+    pub amount: String,
 }
 
 impl AssetHolding {
@@ -105,18 +110,17 @@ impl AssetHolding {
     }
 
     pub fn chain(&self) -> Option<crate::registry::Chain> {
-        crate::registry::Chain::from_display_name(&self.chain_name)
-            .or_else(|| crate::registry::Chain::from_str_id(&self.chain_name))
+        crate::registry::Chain::from_str_id(&self.chain_id)
     }
 
     pub fn deployment_id(&self) -> String {
-        let network = self.chain().map(|c| c.str_id()).unwrap_or(&self.chain_name);
+        let network = &self.chain_id;
         if self.is_native() {
             return format!("{network}:native");
         }
         let contract = crate::tokens::normalize_token_identifier(
             self.contract_address.clone(),
-            self.chain_name.clone(),
+            self.chain_id.clone(),
         )
         .unwrap_or_default();
         format!(
@@ -132,16 +136,19 @@ impl AssetHolding {
             .find(|t| t.deployment_id == key)
     }
 
+    /// This holding with its `id` filled in.
+    pub fn identified(mut self) -> Self {
+        self.id = self.deployment_id();
+        self
+    }
+
     /// Validate identity before persistence and derive catalog-owned display facts.
     pub fn canonicalize(&mut self) -> Result<(), String> {
         let network = self.chain().ok_or("unknown holding network")?;
-        if !self.amount.is_finite() || self.amount < 0.0 {
-            return Err("invalid holding amount".into());
-        }
-        self.chain_name = network.chain_display_name().into();
+        self.amount = crate::decimal::canonical(&self.amount).ok_or("invalid holding amount")?;
         self.contract_address = crate::tokens::normalize_token_identifier(
             self.contract_address.clone(),
-            self.chain_name.clone(),
+            self.chain_id.clone(),
         );
         if self.token_standard == "Native" {
             if self.contract_address.is_some() {
@@ -152,14 +159,15 @@ impl AssetHolding {
                 .contract_address
                 .as_ref()
                 .ok_or("protocol token requires an identifier")?;
-            let hosting = CoreTokenHostingChain::from_chain_name(&self.chain_name)
-                .ok_or("network does not support tracked tokens")?;
-            if self.token_standard != hosting.token_standard() {
+            if !network.hosts_tokens() {
+                return Err("network does not support tracked tokens".into());
+            }
+            if self.token_standard != network.token_standard() {
                 return Err("token protocol does not match network".into());
             }
             if !crate::validation::address::validate_address(
                 crate::validation::address::AddressValidationRequest {
-                    kind: hosting.contract_validation_kind().into(),
+                    kind: network.contract_validation_kind().into(),
                     value: contract.clone(),
                 },
             )
@@ -178,8 +186,8 @@ impl AssetHolding {
         }
         if network.is_testnet() {
             self.coingecko_id.clear();
-            self.price_usd = 0.0;
         }
+        self.id = self.deployment_id();
         Ok(())
     }
 
@@ -308,7 +316,7 @@ pub struct WalletView {
     pub chain_id: String,
     /// `Chain::address_slot()` → address for this wallet.
     ///
-    /// A wallet belongs to one chain (`family_name`), so in practice this
+    /// A wallet belongs to one chain (`chain_id`), so in practice this
     /// holds a single entry — two for Ethereum Classic, which occupies both the
     /// shared EVM slot and its own. It is a map rather than one `Option<String>`
     /// per chain so that adding a chain is a registry edit and not a schema
@@ -320,9 +328,11 @@ pub struct WalletView {
     pub seed_derivation_preset: CoreSeedDerivationPreset,
     pub seed_derivation_paths: CoreSeedDerivationPaths,
     pub derivation_overrides: CoreWalletDerivationOverrides,
-    pub family_name: String,
     pub holdings: Vec<AssetHolding>,
     pub include_in_portfolio_total: bool,
+    /// What the wallet signs with and whether a password guards it — read
+    /// from the wallet record, so rendering one touches no secret store.
+    pub signing: crate::store::state::WalletSigning,
 }
 
 impl WalletView {
@@ -349,10 +359,9 @@ impl WalletView {
     /// Convert to the model core computes with.
     ///
     /// The import operation supplies signing capability. Network identity must
-    /// be valid and belong to the stated family before a state can be stored.
+    /// be valid before a state can be stored.
     pub fn to_wallet_state(
         &self,
-        is_watch_only: bool,
     ) -> Result<crate::store::state::WalletState, crate::SpectraBridgeError> {
         use crate::registry::Chain;
         use crate::store::state::{WalletAddress, WalletState};
@@ -360,14 +369,6 @@ impl WalletView {
         let invalid = |message: String| crate::SpectraBridgeError::InvalidInput { message };
         let chain = Chain::from_str_id(&self.chain_id)
             .ok_or_else(|| invalid(format!("unknown wallet network: {}", self.chain_id)))?;
-        let family = Chain::from_display_name(&self.family_name)
-            .ok_or_else(|| invalid(format!("unknown wallet family: {}", self.family_name)))?;
-        if family != chain.mainnet_counterpart() {
-            return Err(invalid(format!(
-                "wallet family {} does not match network {}",
-                self.family_name, self.chain_id
-            )));
-        }
         let derivation_path = self
             .seed_derivation_paths
             .path_for(chain)
@@ -376,10 +377,9 @@ impl WalletView {
         Ok(WalletState {
             id: self.id.clone(),
             name: self.name.clone(),
-            is_watch_only,
-            chain_name: self.family_name.clone(),
-            include_in_portfolio_total: self.include_in_portfolio_total,
+            signing: self.signing,
             chain_id: chain.str_id().to_string(),
+            include_in_portfolio_total: self.include_in_portfolio_total,
             xpub: self.bitcoin_xpub.clone(),
             derivation_preset: self.seed_derivation_preset,
             derivation_path: derivation_path.clone(),
@@ -409,7 +409,7 @@ impl WalletView {
                         let owner =
                             Chain::all().find(|candidate| candidate.address_slot() == slot)?;
                         Some(WalletAddress {
-                            chain_name: owner.chain_display_name().to_string(),
+                            chain_id: owner.str_id().to_string(),
                             address: address.clone(),
                             kind: "receive".to_string(),
                             derivation_path: self
@@ -439,7 +439,7 @@ impl crate::store::state::WalletState {
         let mut seed_derivation_paths = defaults.clone();
         for address in &self.addresses {
             if let (Some(network), Some(path)) = (
-                Chain::from_display_name(&address.chain_name),
+                Chain::from_str_id(&address.chain_id),
                 address.derivation_path.as_deref(),
             ) {
                 seed_derivation_paths.set_path_for(network, path);
@@ -457,7 +457,7 @@ impl crate::store::state::WalletState {
                 .addresses
                 .iter()
                 .filter_map(|entry| {
-                    Chain::from_display_name(&entry.chain_name)
+                    Chain::from_str_id(&entry.chain_id)
                         .map(|chain| (chain.address_slot().to_string(), entry.address.clone()))
                 })
                 .collect(),
@@ -465,225 +465,14 @@ impl crate::store::state::WalletState {
             seed_derivation_preset: self.derivation_preset,
             seed_derivation_paths,
             derivation_overrides: self.derivation_overrides.clone(),
-            family_name: self.chain_name.clone(),
             holdings: self
                 .holdings
                 .iter()
-                .map(|holding| AssetHolding {
-                    name: holding.name.clone(),
-                    symbol: holding.symbol.clone(),
-                    coingecko_id: holding.coingecko_id.clone(),
-                    chain_name: holding.chain_name.clone(),
-                    token_standard: holding.token_standard.clone(),
-                    contract_address: holding.contract_address.clone(),
-                    amount: holding.amount,
-                    price_usd: holding.price_usd,
-                })
+                .cloned()
+                .map(AssetHolding::identified)
                 .collect(),
             include_in_portfolio_total: self.include_in_portfolio_total,
-        }
-    }
-}
-
-/// Stable deployment identity: network, explicit native/protocol type and identifier.
-///
-/// The front end's list key. It used to be an `id` field on the record, filled
-/// by whoever built it — five different formats across the callers, one of them
-/// a fresh `UUID` per build, which makes SwiftUI treat every row as new and
-/// re-animate the whole list. Derived from the holding, it cannot drift.
-#[uniffi::export]
-pub fn holding_identity(holding: &crate::store::wallet_domain::AssetHolding) -> String {
-    holding.deployment_id()
-}
-
-/// Swift `TokenHostingChain` — rawValues are chain display names.
-///
-/// Exactly the chains `chains.toml` gives a `token_standard`, which is the
-/// fact this used to disagree with: eighteen of the twenty-eight were listed,
-/// so a catalog row on Berachain or Ink was dropped from
-/// `built_in_token_preferences` and a custom token could not be added there.
-/// `the_hosting_chains_are_the_chains_with_a_token_standard` holds the two
-/// together.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-pub enum CoreTokenHostingChain {
-    #[serde(rename = "Ethereum")]
-    Ethereum,
-    #[serde(rename = "Arbitrum")]
-    Arbitrum,
-    #[serde(rename = "Optimism")]
-    Optimism,
-    #[serde(rename = "BNB Chain")]
-    Bnb,
-    #[serde(rename = "Avalanche")]
-    Avalanche,
-    #[serde(rename = "Hyperliquid")]
-    Hyperliquid,
-    #[serde(rename = "Polygon")]
-    Polygon,
-    #[serde(rename = "Base")]
-    Base,
-    #[serde(rename = "Linea")]
-    Linea,
-    #[serde(rename = "Scroll")]
-    Scroll,
-    #[serde(rename = "Blast")]
-    Blast,
-    #[serde(rename = "Mantle")]
-    Mantle,
-    #[serde(rename = "Sei")]
-    Sei,
-    #[serde(rename = "Celo")]
-    Celo,
-    #[serde(rename = "Cronos")]
-    Cronos,
-    #[serde(rename = "opBNB")]
-    OpBnb,
-    #[serde(rename = "zkSync Era")]
-    ZkSyncEra,
-    #[serde(rename = "Sonic")]
-    Sonic,
-    #[serde(rename = "Berachain")]
-    Berachain,
-    #[serde(rename = "Unichain")]
-    Unichain,
-    #[serde(rename = "Ink")]
-    Ink,
-    #[serde(rename = "X Layer")]
-    XLayer,
-    #[serde(rename = "Solana")]
-    Solana,
-    #[serde(rename = "Sui")]
-    Sui,
-    #[serde(rename = "Aptos")]
-    Aptos,
-    #[serde(rename = "TON")]
-    Ton,
-    #[serde(rename = "NEAR")]
-    Near,
-    #[serde(rename = "Tron")]
-    Tron,
-}
-
-impl CoreTokenHostingChain {
-    /// Every variant, in declaration order.
-    pub const ALL: &'static [Self] = &[
-        Self::Ethereum,
-        Self::Arbitrum,
-        Self::Optimism,
-        Self::Bnb,
-        Self::Avalanche,
-        Self::Hyperliquid,
-        Self::Polygon,
-        Self::Base,
-        Self::Linea,
-        Self::Scroll,
-        Self::Blast,
-        Self::Mantle,
-        Self::Sei,
-        Self::Celo,
-        Self::Cronos,
-        Self::OpBnb,
-        Self::ZkSyncEra,
-        Self::Sonic,
-        Self::Berachain,
-        Self::Unichain,
-        Self::Ink,
-        Self::XLayer,
-        Self::Solana,
-        Self::Sui,
-        Self::Aptos,
-        Self::Ton,
-        Self::Near,
-        Self::Tron,
-    ];
-
-    /// The chain a known token belongs to, from its display name.
-    ///
-    /// Matches case-insensitively and accepts `tokens.toml`'s `"bnb"` for BNB
-    /// Chain. Derived from [`chain_name`] rather than tabulated again: this
-    /// mapping had four copies — here, its inverse below, a `chain_label`
-    /// helper in the merge planner, and `tokenTrackingChainFor` in Swift.
-    ///
-    /// Not every chain can host known tokens, so this returns `None` rather
-    /// than guessing.
-    pub fn from_chain_name(name: &str) -> Option<Self> {
-        let needle = name.trim();
-        if needle.eq_ignore_ascii_case("bnb") {
-            return Some(Self::Bnb);
-        }
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|chain| chain.chain_name().eq_ignore_ascii_case(needle))
-    }
-
-    /// The display name this variant stands for.
-    pub const fn chain_name(self) -> &'static str {
-        match self {
-            Self::Ethereum => "Ethereum",
-            Self::Arbitrum => "Arbitrum",
-            Self::Optimism => "Optimism",
-            Self::Bnb => "BNB Chain",
-            Self::Avalanche => "Avalanche",
-            Self::Hyperliquid => "Hyperliquid",
-            Self::Polygon => "Polygon",
-            Self::Base => "Base",
-            Self::Linea => "Linea",
-            Self::Scroll => "Scroll",
-            Self::Blast => "Blast",
-            Self::Mantle => "Mantle",
-            Self::Sei => "Sei",
-            Self::Celo => "Celo",
-            Self::Cronos => "Cronos",
-            Self::OpBnb => "opBNB",
-            Self::ZkSyncEra => "zkSync Era",
-            Self::Sonic => "Sonic",
-            Self::Berachain => "Berachain",
-            Self::Unichain => "Unichain",
-            Self::Ink => "Ink",
-            Self::XLayer => "X Layer",
-            Self::Solana => "Solana",
-            Self::Sui => "Sui",
-            Self::Aptos => "Aptos",
-            Self::Ton => "TON",
-            Self::Near => "NEAR",
-            Self::Tron => "Tron",
-        }
-    }
-
-    /// The catalog's token standard for this chain, e.g. `SPL Token` for
-    /// Solana. Read from the registry entry rather than tabulated again.
-    pub fn token_standard(self) -> String {
-        crate::registry::Chain::from_display_name(self.chain_name())
-            .map(|chain| chain.entry().token_standard.clone())
-            .unwrap_or_default()
-    }
-
-    /// Which validator a *token contract* on this chain is judged by.
-    ///
-    /// Not the same question as [`crate::registry::Chain::address_validation_kind`]
-    /// for two of them: a Sui or Aptos token is named by a coin *type*
-    /// (`0xADDR::module::NAME`), not by an address, and a package address is
-    /// only the degenerate case of one. Everywhere else the contract is an
-    /// address in the chain's own format.
-    ///
-    /// Swift wrote this as a seven-arm switch with a `default` that assumed
-    /// EVM, and the CLI did not check the contract at all. Stating it here
-    /// means a chain joining the hosting list arrives with its validator
-    /// rather than falling into whichever arm was written last.
-    pub fn contract_validation_kind(self) -> &'static str {
-        match self {
-            Self::Solana => "solana",
-            Self::Sui => "suiCoinType",
-            Self::Aptos => "aptosTokenType",
-            Self::Ton => "ton",
-            Self::Near => "near",
-            Self::Tron => "tron",
-            // Every remaining variant is an EVM chain, which the registry is
-            // the authority on — asking it keeps the two from drifting.
-            other => crate::registry::Chain::from_display_name(other.chain_name())
-                .map(crate::registry::Chain::address_validation_kind)
-                .unwrap_or("evm"),
+            signing: self.signing,
         }
     }
 }
@@ -734,9 +523,9 @@ impl CoreTokenPreferenceEntry {
             .unwrap_or(CoreTokenPreferenceCategory::Custom)
     }
 
-    pub fn hosting_chain(&self) -> Option<CoreTokenHostingChain> {
-        crate::registry::Chain::from_str_id(&self.token.chain_id)
-            .and_then(|chain| CoreTokenHostingChain::from_chain_name(chain.chain_display_name()))
+    /// The chain hosting this token.
+    pub fn hosting_chain(&self) -> Option<crate::registry::Chain> {
+        crate::registry::Chain::from_str_id(&self.token.chain_id).filter(|c| c.hosts_tokens())
     }
 }
 
@@ -745,7 +534,8 @@ impl CoreTokenPreferenceEntry {
 #[serde(rename_all = "camelCase")]
 pub struct CoreDashboardAssetHolding {
     pub coin: AssetHolding,
-    pub value_usd: Option<f64>,
+    /// In the display currency; `None` when unpriced.
+    pub value: Option<f64>,
 }
 
 /// One dashboard row: an asset, and everywhere it is held.
@@ -765,7 +555,12 @@ pub struct CoreDashboardAssetHolding {
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreDashboardAssetGroup {
-    pub total_value_usd: Option<f64>,
+    /// Everything held across `holdings`, as an exact decimal.
+    pub total_amount: String,
+    /// In the display currency; `None` when any place is unpriced.
+    pub total_value: Option<f64>,
+    /// One unit of the asset in the display currency, from `identity`.
+    pub price: Option<f64>,
     pub id: String,
     /// What the row calls itself and prices itself by: the largest place it is
     /// held, or the catalog's entry for it when it is held nowhere. An identity,
@@ -775,29 +570,18 @@ pub struct CoreDashboardAssetGroup {
     pub is_pinned: bool,
 }
 
-/// Swift `DashboardPinOption` — Color omitted (derived from symbol in Swift).
+/// An asset the dashboard can pin. `deployment_id` is the place it is drawn
+/// from — the colour and artwork follow the deployment, never the ticker.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 pub struct CoreDashboardPinOption {
     pub token_id: String,
+    pub deployment_id: String,
     pub symbol: String,
     pub name: String,
     pub subtitle: String,
     pub artwork_name: Option<String>,
     /// Whether this asset is in the saved dashboard pin selection.
     pub is_pinned: bool,
-}
-
-/// What signing material a wallet has, and whether a password guards it.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct CoreWalletRustSecretMaterialDescriptor {
-    #[serde(rename = "walletID")]
-    pub wallet_id: String,
-    pub secret_kind: String,
-    pub has_seed_phrase: bool,
-    pub has_private_key: bool,
-    pub has_password: bool,
-    pub has_signing_material: bool,
 }
 
 #[cfg(test)]
@@ -847,68 +631,5 @@ mod roundtrip_tests {
             CoreTokenPreferenceEntry::category_from_tags(&entry.token.tags),
             entry.category
         );
-    }
-
-    #[test]
-    fn secret_descriptor_decodes_swift_camelcase() {
-        let json = r#"{
-            "walletID": "w1",
-            "secretKind": "seedPhrase",
-            "hasSeedPhrase": true,
-            "hasPrivateKey": false,
-            "hasPassword": true,
-            "hasSigningMaterial": true,
-            "seedPhraseStoreKey": "wallet.seed.w1",
-            "passwordStoreKey": "wallet.seed.password.w1",
-            "privateKeyStoreKey": "wallet.privatekey.w1"
-        }"#;
-        let d: CoreWalletRustSecretMaterialDescriptor = serde_json::from_str(json).unwrap();
-        assert_eq!(d.wallet_id, "w1");
-        assert!(d.has_password);
-    }
-}
-
-#[cfg(test)]
-mod token_hosting_chain_tests {
-    use super::CoreTokenHostingChain;
-    use crate::registry::Chain;
-
-    /// Every chain that can host known tokens resolves both ways, and the
-    /// name it round-trips through is one the registry recognises. The list
-    /// this walks is `ALL` rather than a copy of it: the copy was the reason
-    /// adding a variant left a test still asserting eighteen.
-    #[test]
-    fn every_tracking_chain_round_trips_through_the_registry() {
-        for variant in CoreTokenHostingChain::ALL {
-            let name = variant.chain_name();
-            assert_eq!(CoreTokenHostingChain::from_chain_name(name), Some(*variant));
-            assert!(
-                Chain::from_display_name(name).is_some(),
-                "{name} is not a chain the registry knows"
-            );
-        }
-    }
-
-    /// The variants are exactly the chains `chains.toml` gives a token
-    /// standard to. Hosting is not a second opinion about which chains carry
-    /// tokens; it is that column, spelled as an enum for the FFI.
-    #[test]
-    fn the_hosting_chains_are_the_chains_with_a_token_standard() {
-        let listed: std::collections::BTreeSet<&str> = CoreTokenHostingChain::ALL
-            .iter()
-            .map(|c| c.chain_name())
-            .collect();
-        let with_standard: std::collections::BTreeSet<&str> = crate::chains::catalog()
-            .iter()
-            .filter(|c| !c.token_standard.is_empty())
-            .map(|c| c.name.as_str())
-            .collect();
-        assert_eq!(listed, with_standard);
-    }
-
-    #[test]
-    fn a_chain_without_tracked_tokens_has_no_variant() {
-        assert_eq!(CoreTokenHostingChain::from_chain_name("Bitcoin"), None);
-        assert_eq!(CoreTokenHostingChain::from_chain_name("Monero"), None);
     }
 }

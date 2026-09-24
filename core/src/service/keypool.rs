@@ -11,7 +11,7 @@ impl WalletService {
     pub async fn register_owned_address(
         &self,
         wallet_id: String,
-        chain_name: String,
+        chain_id: String,
         address: String,
         derivation_path: Option<String>,
         branch: Option<String>,
@@ -24,7 +24,7 @@ impl WalletService {
             }
             let record = crate::wallet_db::OwnedAddressRecord {
                 wallet_id,
-                chain_name: chain_name.clone(),
+                chain_id: chain_id.clone(),
                 address,
                 derivation_path,
                 branch,
@@ -49,12 +49,158 @@ impl WalletService {
         .await
     }
 
+    /// Every wallet's keypool on a chain, with the address its reserved receive
+    /// index was handed out as — for a diagnostics screen.
+    ///
+    /// The app assembled these rows itself: it walked its wallet projection,
+    /// asked for each keypool, re-derived the receive address, and labelled the
+    /// row with the wallet's *account* path under the name "reserved receive
+    /// path" — the helper took the reserved index and ignored it. The reserved
+    /// row is read here from the owned-address table, which recorded the
+    /// address and its path at the moment the index was handed out, so what
+    /// the screen shows is what the user was given rather than a recomputation.
+    pub async fn keypool_diagnostics(
+        &self,
+        chain_id: String,
+    ) -> Result<Vec<KeypoolDiagnostic>, SpectraBridgeError> {
+        let chain = crate::registry::Chain::from_str_id(&chain_id);
+        let mut wallets: Vec<(String, String)> = {
+            let state = self.wallet_state.read().await;
+            state
+                .wallets
+                .iter()
+                .filter(|wallet| {
+                    (chain.is_some() && wallet.family() == chain.map(|c| c.mainnet_counterpart()))
+                        || chain.is_some_and(|chain| wallet.address_on(chain).is_some())
+                })
+                .map(|wallet| (wallet.id.clone(), wallet.name.clone()))
+                .collect()
+        };
+        wallets.sort_by_key(|(_, name)| name.to_lowercase());
+        let mut rows = Vec::with_capacity(wallets.len());
+        for (wallet_id, wallet_name) in wallets {
+            let keypool = self
+                .keypool_state(wallet_id.clone(), chain_id.clone())
+                .await?;
+            let reserved_receive = match keypool.reserved_receive_index {
+                Some(index) => self
+                    .keypool
+                    .read()
+                    .await
+                    .owned_on(&chain_id)
+                    .iter()
+                    .find(|row| {
+                        row.wallet_id == wallet_id
+                            && row.branch.as_deref() == Some("external")
+                            && row.branch_index == Some(index)
+                    })
+                    .cloned(),
+                None => None,
+            };
+            rows.push(KeypoolDiagnostic {
+                wallet_id,
+                wallet_name,
+                keypool,
+                reserved_receive,
+            });
+        }
+        Ok(rows)
+    }
+
+    /// Reserve the next receive index, or return the one already reserved.
+    pub async fn reserve_receive_index(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+        minimum_index: i64,
+    ) -> Result<i64, SpectraBridgeError> {
+        self.write_persisted(move |service| async move {
+            let baseline = service
+                .chain_keypool_baseline(&wallet_id, &chain_id)
+                .await?;
+            let key = keypool_key(&wallet_id, &chain_id);
+            let mut tables = service.keypool.write().await;
+            let merged = crate::store::merge_chain_keypool_state(
+                baseline,
+                tables.state(&key).map(record_from_keypool),
+            );
+            let mut state = keypool_from_record(&merged);
+            if let Some(reserved) = state.reserved_receive_index {
+                // Already reserved: hand back the same index rather than burning a
+                // new one every time the receive sheet opens.
+                persist_keypool(
+                    &service.state_binding,
+                    &mut tables,
+                    key,
+                    &wallet_id,
+                    &chain_id,
+                    state,
+                )
+                .await?;
+                return Ok(reserved);
+            }
+            let reserved = state.next_external_index.max(minimum_index);
+            // Reserving consumes the index, so the keypool has to have a next
+            // one to move to. Asking here refuses before the address is handed
+            // out rather than after it has been shown.
+            let after = next_keypool_index(reserved)?;
+            state.reserved_receive_index = Some(reserved);
+            state.next_external_index = state.next_external_index.max(after);
+            persist_keypool(
+                &service.state_binding,
+                &mut tables,
+                key,
+                &wallet_id,
+                &chain_id,
+                state,
+            )
+            .await?;
+            Ok(reserved)
+        })
+        .await
+    }
+
+    /// Reserve the next change index. Always consumes one.
+    pub async fn reserve_change_index(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+    ) -> Result<i64, SpectraBridgeError> {
+        self.write_persisted(move |service| async move {
+            let baseline = service
+                .chain_keypool_baseline(&wallet_id, &chain_id)
+                .await?;
+            let key = keypool_key(&wallet_id, &chain_id);
+            let mut tables = service.keypool.write().await;
+            let merged = crate::store::merge_chain_keypool_state(
+                baseline,
+                tables.state(&key).map(record_from_keypool),
+            );
+            let mut state = keypool_from_record(&merged);
+            let reserved = state.next_change_index.max(0);
+            state.next_change_index = next_keypool_index(reserved)?;
+            persist_keypool(
+                &service.state_binding,
+                &mut tables,
+                key,
+                &wallet_id,
+                &chain_id,
+                state,
+            )
+            .await?;
+            Ok(reserved)
+        })
+        .await
+    }
+}
+
+impl WalletService {
     /// Every address this wallet is known to hold, on any chain: its stored
     /// addresses, the ends of transactions it made, and the owned-address rows.
     ///
     /// The app assembled this list from its own projections and sent it here
     /// to be deduplicated — the only part it did not already have.
-    pub async fn known_wallet_addresses(
+    pub(crate) async fn known_wallet_addresses(
         &self,
         wallet_id: String,
     ) -> Result<Vec<String>, SpectraBridgeError> {
@@ -80,162 +226,16 @@ impl WalletService {
         ))
     }
 
-    /// Every wallet's keypool on a chain, with the address its reserved receive
-    /// index was handed out as — for a diagnostics screen.
-    ///
-    /// The app assembled these rows itself: it walked its wallet projection,
-    /// asked for each keypool, re-derived the receive address, and labelled the
-    /// row with the wallet's *account* path under the name "reserved receive
-    /// path" — the helper took the reserved index and ignored it. The reserved
-    /// row is read here from the owned-address table, which recorded the
-    /// address and its path at the moment the index was handed out, so what
-    /// the screen shows is what the user was given rather than a recomputation.
-    pub async fn keypool_diagnostics(
-        &self,
-        chain_name: String,
-    ) -> Result<Vec<KeypoolDiagnostic>, SpectraBridgeError> {
-        let chain = crate::registry::Chain::from_display_name(&chain_name);
-        let mut wallets: Vec<(String, String)> = {
-            let state = self.wallet_state.read().await;
-            state
-                .wallets
-                .iter()
-                .filter(|wallet| {
-                    wallet.chain_name == chain_name
-                        || chain.is_some_and(|chain| wallet.address_on(chain).is_some())
-                })
-                .map(|wallet| (wallet.id.clone(), wallet.name.clone()))
-                .collect()
-        };
-        wallets.sort_by_key(|(_, name)| name.to_lowercase());
-        let mut rows = Vec::with_capacity(wallets.len());
-        for (wallet_id, wallet_name) in wallets {
-            let keypool = self
-                .keypool_state(wallet_id.clone(), chain_name.clone())
-                .await?;
-            let reserved_receive = match keypool.reserved_receive_index {
-                Some(index) => self
-                    .keypool
-                    .read()
-                    .await
-                    .owned_on(&chain_name)
-                    .iter()
-                    .find(|row| {
-                        row.wallet_id == wallet_id
-                            && row.branch.as_deref() == Some("external")
-                            && row.branch_index == Some(index)
-                    })
-                    .cloned(),
-                None => None,
-            };
-            rows.push(KeypoolDiagnostic {
-                wallet_id,
-                wallet_name,
-                keypool,
-                reserved_receive,
-            });
-        }
-        Ok(rows)
-    }
-
-    /// Reserve the next receive index, or return the one already reserved.
-    pub async fn reserve_receive_index(
-        &self,
-        wallet_id: String,
-        chain_name: String,
-        minimum_index: i64,
-    ) -> Result<i64, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let baseline = service
-                .chain_keypool_baseline(&wallet_id, &chain_name)
-                .await?;
-            let key = keypool_key(&wallet_id, &chain_name);
-            let mut tables = service.keypool.write().await;
-            let merged = crate::store::merge_chain_keypool_state(
-                baseline,
-                tables.state(&key).map(record_from_keypool),
-            );
-            let mut state = keypool_from_record(&merged);
-            if let Some(reserved) = state.reserved_receive_index {
-                // Already reserved: hand back the same index rather than burning a
-                // new one every time the receive sheet opens.
-                persist_keypool(
-                    &service.state_binding,
-                    &mut tables,
-                    key,
-                    &wallet_id,
-                    &chain_name,
-                    state,
-                )
-                .await?;
-                return Ok(reserved);
-            }
-            let reserved = state.next_external_index.max(minimum_index);
-            // Reserving consumes the index, so the keypool has to have a next
-            // one to move to. Asking here refuses before the address is handed
-            // out rather than after it has been shown.
-            let after = next_keypool_index(reserved)?;
-            state.reserved_receive_index = Some(reserved);
-            state.next_external_index = state.next_external_index.max(after);
-            persist_keypool(
-                &service.state_binding,
-                &mut tables,
-                key,
-                &wallet_id,
-                &chain_name,
-                state,
-            )
-            .await?;
-            Ok(reserved)
-        })
-        .await
-    }
-
-    /// Reserve the next change index. Always consumes one.
-    pub async fn reserve_change_index(
-        &self,
-        wallet_id: String,
-        chain_name: String,
-    ) -> Result<i64, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let baseline = service
-                .chain_keypool_baseline(&wallet_id, &chain_name)
-                .await?;
-            let key = keypool_key(&wallet_id, &chain_name);
-            let mut tables = service.keypool.write().await;
-            let merged = crate::store::merge_chain_keypool_state(
-                baseline,
-                tables.state(&key).map(record_from_keypool),
-            );
-            let mut state = keypool_from_record(&merged);
-            let reserved = state.next_change_index.max(0);
-            state.next_change_index = next_keypool_index(reserved)?;
-            persist_keypool(
-                &service.state_binding,
-                &mut tables,
-                key,
-                &wallet_id,
-                &chain_name,
-                state,
-            )
-            .await?;
-            Ok(reserved)
-        })
-        .await
-    }
-}
-
-impl WalletService {
     /// The addresses this wallet owns — on one chain, or on every chain when
-    /// `chain_name` is absent.
+    /// `chain_id` is absent.
     pub async fn owned_addresses_for_wallet(
         &self,
         wallet_id: String,
-        chain_name: Option<String>,
+        chain_id: Option<String>,
     ) -> Vec<String> {
         let tables = self.keypool.read().await;
         let rows: Box<dyn Iterator<Item = &crate::wallet_db::OwnedAddressRecord>> =
-            match chain_name.as_deref() {
+            match chain_id.as_deref() {
                 Some(chain) => Box::new(tables.owned_on(chain).iter()),
                 None => Box::new(tables.owned_everywhere()),
             };
@@ -262,10 +262,10 @@ impl WalletService {
     pub async fn keypool_state(
         &self,
         wallet_id: String,
-        chain_name: String,
+        chain_id: String,
     ) -> Result<crate::wallet_db::KeypoolState, SpectraBridgeError> {
-        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await?;
-        let key = keypool_key(&wallet_id, &chain_name);
+        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_id).await?;
+        let key = keypool_key(&wallet_id, &chain_id);
         let tables = self.keypool.read().await;
         Ok(keypool_from_record(
             &crate::store::merge_chain_keypool_state(
@@ -278,14 +278,14 @@ impl WalletService {
     pub(super) async fn advance_receive_index_if_current(
         &self,
         wallet_id: String,
-        chain_name: String,
+        chain_id: String,
         expected: i64,
     ) -> Result<Option<i64>, SpectraBridgeError> {
         self.write_persisted(move |service| async move {
             let baseline = service
-                .chain_keypool_baseline(&wallet_id, &chain_name)
+                .chain_keypool_baseline(&wallet_id, &chain_id)
                 .await?;
-            let key = keypool_key(&wallet_id, &chain_name);
+            let key = keypool_key(&wallet_id, &chain_id);
             let mut tables = service.keypool.write().await;
             let Some(mut state) = tables.state(&key).cloned() else {
                 return Ok(None);
@@ -307,7 +307,7 @@ impl WalletService {
                 &mut tables,
                 key,
                 &wallet_id,
-                &chain_name,
+                &chain_id,
                 state,
             )
             .await?;
@@ -326,9 +326,9 @@ impl WalletService {
     pub(crate) async fn chain_keypool_baseline(
         &self,
         wallet_id: &str,
-        chain_name: &str,
+        chain_id: &str,
     ) -> Result<crate::store::ChainKeypoolStateRecord, SpectraBridgeError> {
-        let supports_deep = crate::registry::Chain::from_display_name(chain_name)
+        let supports_deep = crate::registry::Chain::from_str_id(chain_id)
             .is_some_and(|chain| chain.supports_deep_utxo_discovery());
 
         let mut input = crate::store::ChainKeypoolBaselineInput {
@@ -341,7 +341,7 @@ impl WalletService {
         };
 
         if !supports_deep {
-            if let Some(chain) = crate::registry::Chain::from_display_name(chain_name) {
+            if let Some(chain) = crate::registry::Chain::from_str_id(chain_id) {
                 let state = self.wallet_state.read().await;
                 input.has_resolved_address = state
                     .wallets
@@ -355,7 +355,7 @@ impl WalletService {
 
         if let Some(database) = self.state_binding.connection().await {
             let wallet = wallet_id.to_owned();
-            let chain = chain_name.to_owned();
+            let chain = chain_id.to_owned();
             let (external, change) = tokio::task::spawn_blocking(move || {
                 crate::wallet_db::history_keypool_indices(&database, &wallet, &chain)
             })
@@ -368,7 +368,7 @@ impl WalletService {
         let tables = self.keypool.read().await;
         {
             let for_wallet = tables
-                .owned_on(chain_name)
+                .owned_on(chain_id)
                 .iter()
                 .filter(|r| r.wallet_id == wallet_id);
             let (mut external, mut change): (Option<i64>, Option<i64>) = (None, None);
@@ -414,8 +414,8 @@ impl WalletService {
 }
 
 /// Keypool map key. A wallet has one keypool per chain.
-pub(super) fn keypool_key(wallet_id: &str, chain_name: &str) -> String {
-    format!("{wallet_id}|{chain_name}")
+pub(super) fn keypool_key(wallet_id: &str, chain_id: &str) -> String {
+    format!("{wallet_id}|{chain_id}")
 }
 
 /// The addresses a wallet has handed out, and the next index on each chain.
@@ -440,7 +440,7 @@ pub(crate) struct Keypool {
 /// The two tables, together.
 #[derive(Default)]
 pub(crate) struct KeypoolTables {
-    /// Keypool indices, keyed by `wallet_id|chain_name`.
+    /// Keypool indices, keyed by `wallet_id|chain_id`.
     indices: HashMap<String, crate::wallet_db::KeypoolState>,
     /// Addresses this wallet is known to own, keyed by chain name.
     owned: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>,
@@ -465,8 +465,8 @@ impl KeypoolTables {
         self.indices.insert(key, state);
     }
 
-    pub(crate) fn owned_on(&self, chain_name: &str) -> &[crate::wallet_db::OwnedAddressRecord] {
-        self.owned.get(chain_name).map_or(&[], Vec::as_slice)
+    pub(crate) fn owned_on(&self, chain_id: &str) -> &[crate::wallet_db::OwnedAddressRecord] {
+        self.owned.get(chain_id).map_or(&[], Vec::as_slice)
     }
 
     pub(crate) fn owned_everywhere(
@@ -482,7 +482,7 @@ impl KeypoolTables {
     /// shape loses any write that landed in between, and only the serializing
     /// mutex upstream made it safe.
     pub(crate) fn remember_owned(&mut self, record: crate::wallet_db::OwnedAddressRecord) {
-        let rows = self.owned.entry(record.chain_name.clone()).or_default();
+        let rows = self.owned.entry(record.chain_id.clone()).or_default();
         match rows.iter_mut().find(|existing| {
             existing.wallet_id == record.wallet_id && existing.address == record.address
         }) {
@@ -509,13 +509,13 @@ impl KeypoolTables {
     /// separately acquired locks.
     pub(crate) fn forget(&mut self, removed_wallets: &[String], reset_chains: &[String]) {
         self.indices.retain(|key, _| {
-            key.split_once('|').is_none_or(|(wallet_id, chain_name)| {
+            key.split_once('|').is_none_or(|(wallet_id, chain_id)| {
                 !removed_wallets.iter().any(|r| r == wallet_id)
-                    && !reset_chains.iter().any(|c| c == chain_name)
+                    && !reset_chains.iter().any(|c| c == chain_id)
             })
         });
         self.owned
-            .retain(|chain_name, _| !reset_chains.contains(chain_name));
+            .retain(|chain_id, _| !reset_chains.contains(chain_id));
         for rows in self.owned.values_mut() {
             rows.retain(|row| !removed_wallets.contains(&row.wallet_id));
         }
@@ -583,7 +583,7 @@ async fn persist_keypool(
     tables: &mut KeypoolTables,
     key: String,
     wallet_id: &str,
-    chain_name: &str,
+    chain_id: &str,
     state: crate::wallet_db::KeypoolState,
 ) -> Result<(), SpectraBridgeError> {
     if tables.state(&key) == Some(&state) {
@@ -595,10 +595,10 @@ async fn persist_keypool(
         tables.set_state(key, state);
         return Ok(());
     };
-    let (wallet_id, chain_name) = (wallet_id.to_string(), chain_name.to_string());
+    let (wallet_id, chain_id) = (wallet_id.to_string(), chain_id.to_string());
     let to_save = state.clone();
     tokio::task::spawn_blocking(move || {
-        crate::wallet_db::keypool_save(&database, &wallet_id, &chain_name, &to_save)
+        crate::wallet_db::keypool_save(&database, &wallet_id, &chain_id, &to_save)
     })
     .await
     .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -685,15 +685,11 @@ mod the_keypool_stays_inside_the_non_hardened_range {
 mod the_keypool_forgets_indices_and_addresses_together {
     use super::*;
 
-    fn owned(
-        wallet_id: &str,
-        chain_name: &str,
-        index: i64,
-    ) -> crate::wallet_db::OwnedAddressRecord {
+    fn owned(wallet_id: &str, chain_id: &str, index: i64) -> crate::wallet_db::OwnedAddressRecord {
         crate::wallet_db::OwnedAddressRecord {
             wallet_id: wallet_id.to_string(),
-            chain_name: chain_name.to_string(),
-            address: format!("{wallet_id}-{chain_name}-{index}"),
+            chain_id: chain_id.to_string(),
+            address: format!("{wallet_id}-{chain_id}-{index}"),
             derivation_path: None,
             branch: Some("external".to_string()),
             branch_index: Some(index),
@@ -702,7 +698,7 @@ mod the_keypool_forgets_indices_and_addresses_together {
 
     fn populated() -> KeypoolTables {
         let mut tables = KeypoolTables::default();
-        for (wallet, chain) in [("w1", "Bitcoin"), ("w1", "Litecoin"), ("w2", "Bitcoin")] {
+        for (wallet, chain) in [("w1", "bitcoin"), ("w1", "litecoin"), ("w2", "bitcoin")] {
             tables.set_state(
                 keypool_key(wallet, chain),
                 crate::wallet_db::KeypoolState {
@@ -725,9 +721,9 @@ mod the_keypool_forgets_indices_and_addresses_together {
         let mut tables = populated();
         tables.forget(&["w1".to_string()], &[]);
 
-        assert!(tables.state(&keypool_key("w1", "Bitcoin")).is_none());
-        assert!(tables.state(&keypool_key("w1", "Litecoin")).is_none());
-        assert!(tables.state(&keypool_key("w2", "Bitcoin")).is_some());
+        assert!(tables.state(&keypool_key("w1", "bitcoin")).is_none());
+        assert!(tables.state(&keypool_key("w1", "litecoin")).is_none());
+        assert!(tables.state(&keypool_key("w2", "bitcoin")).is_some());
 
         let left: Vec<_> = tables.owned_everywhere().map(|r| &r.wallet_id).collect();
         assert_eq!(left, vec!["w2"], "w1 kept addresses after its indices went");
@@ -737,14 +733,14 @@ mod the_keypool_forgets_indices_and_addresses_together {
     #[test]
     fn a_reset_chain_leaves_neither_table_holding_it() {
         let mut tables = populated();
-        tables.forget(&[], &["Bitcoin".to_string()]);
+        tables.forget(&[], &["bitcoin".to_string()]);
 
-        assert!(tables.state(&keypool_key("w1", "Bitcoin")).is_none());
-        assert!(tables.state(&keypool_key("w2", "Bitcoin")).is_none());
-        assert!(tables.state(&keypool_key("w1", "Litecoin")).is_some());
+        assert!(tables.state(&keypool_key("w1", "bitcoin")).is_none());
+        assert!(tables.state(&keypool_key("w2", "bitcoin")).is_none());
+        assert!(tables.state(&keypool_key("w1", "litecoin")).is_some());
 
-        assert!(tables.owned_on("Bitcoin").is_empty());
-        assert_eq!(tables.owned_on("Litecoin").len(), 1);
+        assert!(tables.owned_on("bitcoin").is_empty());
+        assert_eq!(tables.owned_on("litecoin").len(), 1);
     }
 
     /// Registering the same address twice updates the row rather than issuing
@@ -753,14 +749,14 @@ mod the_keypool_forgets_indices_and_addresses_together {
     #[test]
     fn remembering_an_address_twice_replaces_rather_than_duplicates() {
         let mut tables = KeypoolTables::default();
-        tables.remember_owned(owned("w1", "Bitcoin", 4));
-        let mut revised = owned("w1", "Bitcoin", 4);
+        tables.remember_owned(owned("w1", "bitcoin", 4));
+        let mut revised = owned("w1", "bitcoin", 4);
         revised.derivation_path = Some("m/84'/0'/0'/0/4".to_string());
         tables.remember_owned(revised);
 
-        assert_eq!(tables.owned_on("Bitcoin").len(), 1);
+        assert_eq!(tables.owned_on("bitcoin").len(), 1);
         assert_eq!(
-            tables.owned_on("Bitcoin")[0].derivation_path.as_deref(),
+            tables.owned_on("bitcoin")[0].derivation_path.as_deref(),
             Some("m/84'/0'/0'/0/4")
         );
     }
@@ -769,6 +765,6 @@ mod the_keypool_forgets_indices_and_addresses_together {
     /// the caller has to handle.
     #[test]
     fn an_untouched_chain_reads_as_no_addresses() {
-        assert!(KeypoolTables::default().owned_on("Bitcoin").is_empty());
+        assert!(KeypoolTables::default().owned_on("bitcoin").is_empty());
     }
 }

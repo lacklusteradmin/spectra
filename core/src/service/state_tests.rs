@@ -38,7 +38,7 @@ async fn concurrent_commands_and_events_match_reopened_database() {
                 .await
                 .unwrap();
             s.append_chain_operational_event(
-                "Bitcoin".into(),
+                "bitcoin".into(),
                 crate::service::DiagnosticLogLevel::Info,
                 i.to_string(),
                 None,
@@ -55,10 +55,10 @@ async fn concurrent_commands_and_events_match_reopened_database() {
         serde_json::to_value(reopened.open_state(db).await.unwrap()).unwrap(),
         serde_json::to_value(s.app_state().await).unwrap()
     );
-    let events = s.operational_events("Bitcoin".into()).await;
+    let events = s.operational_events("bitcoin".into()).await;
     assert_eq!(events.len(), 40);
     assert_eq!(
-        serde_json::to_value(reopened.operational_events("Bitcoin".into()).await).unwrap(),
+        serde_json::to_value(reopened.operational_events("bitcoin".into()).await).unwrap(),
         serde_json::to_value(events).unwrap()
     );
 }
@@ -95,14 +95,14 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     sql(&db, "CREATE TRIGGER reject_pool BEFORE INSERT ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;
         CREATE TRIGGER reject_address BEFORE INSERT ON wallet_owned_addresses BEGIN SELECT RAISE(FAIL, 'injected'); END;");
     assert!(s
-        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
         .await
         .is_err());
     assert!(s.keypool.read().await.is_empty());
     assert!(s
         .register_owned_address(
             "w".into(),
-            "Bitcoin".into(),
+            "bitcoin".into(),
             "address".into(),
             None,
             None,
@@ -116,7 +116,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
         "DROP TRIGGER reject_pool; DROP TRIGGER reject_address;",
     );
     assert_eq!(
-        s.reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
             .await
             .unwrap(),
         1
@@ -129,7 +129,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
         .await
         .is_err());
     assert_eq!(
-        s.keypool_state("w".into(), "Bitcoin".into())
+        s.keypool_state("w".into(), "bitcoin".into())
             .await
             .unwrap()
             .reserved_receive_index,
@@ -143,7 +143,7 @@ async fn failed_log_commit_does_not_publish() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     s.append_chain_operational_event(
-        "Bitcoin".into(),
+        "bitcoin".into(),
         crate::service::DiagnosticLogLevel::Info,
         "original".into(),
         None,
@@ -152,10 +152,10 @@ async fn failed_log_commit_does_not_publish() {
     .unwrap();
     sql(&db, "CREATE TRIGGER reject_log BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
     assert!(s.clear_operational_events(None).await.is_err());
-    assert_eq!(s.operational_events("Bitcoin".into()).await.len(), 1);
+    assert_eq!(s.operational_events("bitcoin".into()).await.len(), 1);
     let reopened = service();
     reopened.open_state(db).await.unwrap();
-    assert_eq!(reopened.operational_events("Bitcoin".into()).await.len(), 1);
+    assert_eq!(reopened.operational_events("bitcoin".into()).await.len(), 1);
 }
 
 #[tokio::test]
@@ -203,12 +203,12 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let used = s
-        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
         .await
         .unwrap();
     s.register_owned_address(
         "w".into(),
-        "Bitcoin".into(),
+        "bitcoin".into(),
         "bc1qknown".into(),
         None,
         Some("external".into()),
@@ -217,7 +217,7 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     .await
     .unwrap();
     assert_eq!(
-        s.advance_receive_index_if_current("w".into(), "Bitcoin".into(), used)
+        s.advance_receive_index_if_current("w".into(), "bitcoin".into(), used)
             .await
             .unwrap(),
         Some(11)
@@ -226,7 +226,7 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     reopened.open_state(db).await.unwrap();
     assert_eq!(
         reopened
-            .keypool_state("w".into(), "Bitcoin".into())
+            .keypool_state("w".into(), "bitcoin".into())
             .await
             .unwrap()
             .reserved_receive_index,
@@ -244,7 +244,7 @@ async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
         wallet: WalletState::single_address(
             "w",
             "Wallet",
-            "Bitcoin",
+            "bitcoin",
             "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
             None,
             true,
@@ -285,13 +285,13 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let reserved = s
-        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
         .await
         .unwrap();
     sql(&db, "CREATE TABLE pool_writes (n INTEGER); CREATE TRIGGER audit_pool AFTER UPDATE ON wallet_keypool BEGIN INSERT INTO pool_writes VALUES (1); END;");
     for _ in 0..3 {
         assert_eq!(
-            s.reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+            s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
                 .await
                 .unwrap(),
             reserved
@@ -308,7 +308,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     assert_eq!(count(), 0);
     s.register_owned_address(
         "w".into(),
-        "Bitcoin".into(),
+        "bitcoin".into(),
         "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu".into(),
         Some("m/84'/0'/0'/0/10".into()),
         Some("external".into()),
@@ -317,7 +317,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     .await
     .unwrap();
     assert_eq!(
-        s.reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
             .await
             .unwrap(),
         reserved
@@ -326,7 +326,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     let state = service().open_state(db.clone()).await.unwrap();
     assert_eq!(state.wallets.len(), 0);
     let pool =
-        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "Bitcoin")
+        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "bitcoin")
             .unwrap()
             .unwrap();
     assert_eq!(pool.next_external_index, 11);
@@ -339,30 +339,30 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let held = s
-        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
         .await
         .unwrap();
     let before = s.keypool.read().await.indices().clone();
     sql(&db, "DROP TABLE history_records;");
-    assert!(s.keypool_state("w".into(), "Bitcoin".into()).await.is_err());
+    assert!(s.keypool_state("w".into(), "bitcoin".into()).await.is_err());
     assert!(s
-        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
         .await
         .is_err());
     assert!(s
-        .reserve_change_index("w".into(), "Bitcoin".into())
+        .reserve_change_index("w".into(), "bitcoin".into())
         .await
         .is_err());
     assert!(s
-        .advance_receive_index_if_current("w".into(), "Bitcoin".into(), held)
+        .advance_receive_index_if_current("w".into(), "bitcoin".into(), held)
         .await
         .is_err());
     assert_eq!(*s.keypool.read().await.indices(), before);
     assert_eq!(
-        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "Bitcoin")
+        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "bitcoin")
             .unwrap()
             .unwrap(),
-        before[&keypool_key("w", "Bitcoin")]
+        before[&keypool_key("w", "bitcoin")]
     );
 }
 
@@ -530,7 +530,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
                 holding_key: "ethereum:native".into(),
                 asset_display_name: "Ethereum".into(),
                 symbol: "ETH".into(),
-                chain_name: "Ethereum".into(),
+                chain_id: "ethereum".into(),
                 target_price: 2.0,
                 condition: crate::store::wallet_domain::CorePriceAlertCondition::Above,
                 is_enabled: true,
@@ -571,7 +571,7 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
             wallet: WalletState::single_address(
                 "watch",
                 "Watch",
-                "Ethereum",
+                "ethereum",
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,
@@ -730,7 +730,7 @@ async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
                     state.wallets = vec![crate::store::state::WalletState::single_address(
                         format!("w{i}"),
                         "watch",
-                        "Ethereum",
+                        "ethereum",
                         "0x1111111111111111111111111111111111111111",
                         None,
                         true,
@@ -751,14 +751,6 @@ async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
         assert_eq!(
             ids(&derived.send_coins_by_wallet_id),
             ids(&derived.receive_coins_by_wallet_id)
-        );
-        assert_eq!(
-            ids(&derived.send_coins_by_wallet_id),
-            derived
-                .resolved_addresses_by_wallet_id
-                .keys()
-                .cloned()
-                .collect()
         );
     }
     mutations.await.unwrap();

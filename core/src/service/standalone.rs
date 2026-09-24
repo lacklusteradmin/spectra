@@ -41,9 +41,11 @@ pub fn is_private_key_hex(raw_value: String) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct LargeMovementEvaluation {
     pub should_alert: bool,
+    /// In `currency`: the display currency when its rate is known, else USD.
     pub absolute_delta: f64,
     pub ratio: f64,
     pub direction_up: bool,
+    pub currency: crate::store::state::FiatCurrency,
 }
 
 /// Evaluate whether a portfolio-total swing crosses both an absolute USD
@@ -69,6 +71,7 @@ pub(crate) fn evaluate_large_movement(
             absolute_delta: 0.0,
             ratio: 0.0,
             direction_up: true,
+            currency: crate::store::state::FiatCurrency::Usd,
         };
     }
     let delta = current_total_usd - previous_total_usd;
@@ -80,6 +83,7 @@ pub(crate) fn evaluate_large_movement(
         absolute_delta,
         ratio,
         direction_up: delta >= 0.0,
+        currency: crate::store::state::FiatCurrency::Usd,
     }
 }
 

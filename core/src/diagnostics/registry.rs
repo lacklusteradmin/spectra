@@ -26,12 +26,12 @@ fn registry() -> &'static Mutex<DiagnosticsRegistry> {
 
 /// Every row recorded for a chain, keyed by wallet. Internal: the exporter
 /// builds a document from it, and nothing outside the crate wants every row.
-pub fn diagnostics_all(chain_name: String) -> HashMap<String, HistoryDiagnostics> {
+pub fn diagnostics_all(chain_id: String) -> HashMap<String, HistoryDiagnostics> {
     registry()
         .lock()
         .unwrap()
         .history
-        .get(&chain_name)
+        .get(&chain_id)
         .cloned()
         .unwrap_or_default()
 }
@@ -40,12 +40,12 @@ pub fn diagnostics_all(chain_name: String) -> HashMap<String, HistoryDiagnostics
 ///
 /// Internal: `refresh_history` records its own rows. It was exported for the
 /// app to copy them back in from the result of that same call.
-pub fn diagnostics_record(chain_name: String, entry: HistoryDiagnostics) {
+pub fn diagnostics_record(chain_id: String, entry: HistoryDiagnostics) {
     registry()
         .lock()
         .unwrap()
         .history
-        .entry(chain_name)
+        .entry(chain_id)
         .or_default()
         .insert(entry.wallet_id.clone(), entry);
 }
@@ -60,12 +60,12 @@ pub struct DiagnosticsRunSummary {
 }
 
 #[uniffi::export]
-pub fn diagnostics_run_summary(chain_name: String) -> DiagnosticsRunSummary {
+pub fn diagnostics_run_summary(chain_id: String) -> DiagnosticsRunSummary {
     let sources: Vec<String> = registry()
         .lock()
         .unwrap()
         .history
-        .get(&chain_name)
+        .get(&chain_id)
         .map(|rows| rows.values().map(|d| d.source_used.clone()).collect())
         .unwrap_or_default();
     DiagnosticsRunSummary {
@@ -119,14 +119,14 @@ mod tests {
     fn recording_one_wallet_leaves_the_others_alone() {
         let _g = test_lock();
         diagnostics_clear_all();
-        assert!(diagnostics_all("Bitcoin".into()).is_empty());
+        assert!(diagnostics_all("bitcoin".into()).is_empty());
 
-        diagnostics_record("Bitcoin".into(), sample("w1"));
-        diagnostics_record("Bitcoin".into(), sample("w2"));
-        assert_eq!(diagnostics_all("Bitcoin".into()).len(), 2);
+        diagnostics_record("bitcoin".into(), sample("w1"));
+        diagnostics_record("bitcoin".into(), sample("w2"));
+        assert_eq!(diagnostics_all("bitcoin".into()).len(), 2);
 
-        diagnostics_record("Bitcoin".into(), sample("w3"));
-        let stored = diagnostics_all("Bitcoin".into());
+        diagnostics_record("bitcoin".into(), sample("w3"));
+        let stored = diagnostics_all("bitcoin".into());
         assert_eq!(
             stored.len(),
             3,
@@ -136,12 +136,12 @@ mod tests {
 
         // And a wallet that goes away takes its rows with it, on every chain.
         diagnostics_forget_wallet("w1".into());
-        let stored = diagnostics_all("Bitcoin".into());
+        let stored = diagnostics_all("bitcoin".into());
         assert_eq!(stored.len(), 2);
         assert!(!stored.contains_key("w1"));
 
         diagnostics_clear_all();
-        assert!(diagnostics_all("Bitcoin".into()).is_empty());
+        assert!(diagnostics_all("bitcoin".into()).is_empty());
     }
 
     /// The screen's two numbers come from core.
@@ -149,16 +149,16 @@ mod tests {
     fn the_run_summary_counts_wallets_and_lists_their_sources() {
         let _g = test_lock();
         diagnostics_clear_all();
-        assert_eq!(diagnostics_run_summary("Bitcoin".into()).wallet_count, 0);
+        assert_eq!(diagnostics_run_summary("bitcoin".into()).wallet_count, 0);
 
-        diagnostics_record("Bitcoin".into(), sample("w1"));
-        diagnostics_record("Bitcoin".into(), sample("w2"));
-        let summary = diagnostics_run_summary("Bitcoin".into());
+        diagnostics_record("bitcoin".into(), sample("w1"));
+        diagnostics_record("bitcoin".into(), sample("w2"));
+        let summary = diagnostics_run_summary("bitcoin".into());
         assert_eq!(summary.wallet_count, 2);
         assert_eq!(summary.sources.len(), 2);
 
         // Another chain reads its own rows, not this one's.
-        assert_eq!(diagnostics_run_summary("XRP Ledger".into()).wallet_count, 0);
+        assert_eq!(diagnostics_run_summary("xrp".into()).wallet_count, 0);
         // And a name no chain has is empty rather than a panic.
         assert_eq!(diagnostics_run_summary("Nope".into()).wallet_count, 0);
         diagnostics_clear_all();
@@ -171,13 +171,13 @@ mod tests {
     fn chains_keep_separate_buckets() {
         let _g = test_lock();
         diagnostics_clear_all();
-        diagnostics_record("Bitcoin".into(), sample("w"));
+        diagnostics_record("bitcoin".into(), sample("w"));
 
-        assert_eq!(diagnostics_all("Bitcoin".into()).len(), 1);
-        assert!(diagnostics_all("Litecoin".into()).is_empty());
-        assert!(diagnostics_all("Bitcoin Cash".into()).is_empty());
-        assert!(diagnostics_all("Ethereum".into()).is_empty());
-        assert!(diagnostics_all("Tron".into()).is_empty());
+        assert_eq!(diagnostics_all("bitcoin".into()).len(), 1);
+        assert!(diagnostics_all("litecoin".into()).is_empty());
+        assert!(diagnostics_all("bitcoin-cash".into()).is_empty());
+        assert!(diagnostics_all("ethereum".into()).is_empty());
+        assert!(diagnostics_all("tron".into()).is_empty());
         diagnostics_clear_all();
     }
 
@@ -187,13 +187,13 @@ mod tests {
     fn one_wallet_on_two_chains_keeps_a_row_on_each() {
         let _g = test_lock();
         diagnostics_clear_all();
-        diagnostics_record("Bitcoin".into(), sample("w"));
-        diagnostics_record("Litecoin".into(), sample("w"));
-        assert_eq!(diagnostics_all("Bitcoin".into()).len(), 1);
-        assert_eq!(diagnostics_all("Litecoin".into()).len(), 1);
+        diagnostics_record("bitcoin".into(), sample("w"));
+        diagnostics_record("litecoin".into(), sample("w"));
+        assert_eq!(diagnostics_all("bitcoin".into()).len(), 1);
+        assert_eq!(diagnostics_all("litecoin".into()).len(), 1);
 
         diagnostics_forget_wallet("w".into());
-        assert!(diagnostics_all("Bitcoin".into()).is_empty());
-        assert!(diagnostics_all("Litecoin".into()).is_empty());
+        assert!(diagnostics_all("bitcoin".into()).is_empty());
+        assert!(diagnostics_all("litecoin".into()).is_empty());
     }
 }

@@ -16,6 +16,214 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-23 — Chains are named by id across the boundary
+
+- **Before:** wallets, holdings, transactions, address-book entries, token
+  commands, fee-priority settings, diagnostics, degraded banners, wiki places,
+  funds-finder candidates and endpoint probes carried a chain's display name
+  (`"Bitcoin Testnet4"`), and Swift turned it back into a `Chain` with
+  `Chain(displayName:)`. `WalletState` stored the name twice (`chain_name` and
+  the id), `WalletView` carried a `family_name`, and the CLI's `--json` output
+  printed names under `"chain"`.
+- **After:** every record and command carries `chain_id`. A display name is
+  derived only where text is drawn (`Chain::display_name_for_id` in core,
+  `Chain.displayName(forId:)` in Swift). A wallet's family is
+  `WalletState::family()`, the mainnet counterpart of its network.
+  `Chain(displayName:)`, `CoreTokenHostingChain`, `evm_seed_derivation_chain`
+  and the unused identity fields (`token_hosting_chain`, `send_execution_shape`,
+  `rpc_health_method`, `pending_status_poll`, `seed_derivation_chain`) are
+  gone; `Chain::hosts_tokens()` replaces the hosting-chain list. The wallet
+  detail screen shows the address for the network the wallet is on; it showed
+  the mainnet slot, so a testnet wallet displayed its mainnet address.
+- **Why:** a display name is presentation, and it was also the key. Renaming a
+  chain or translating it would have broken identity, and every front end kept
+  its own name-to-chain parse.
+- **CLI check:** `spectra --json portfolio --stored` shows `"chainId":"bitcoin"`
+  and no `"chainName"`; `spectra --json wallet show <wallet>` lists network ids
+  such as `"bitcoin-signet"`; `spectra --json settings` keys fee priorities by id.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — Wallet signing material is one typed value
+
+- **Before:** `WalletState` stored `is_watch_only`, and Swift asked the Keychain
+  (`wallet_secret_state`) on the render path whether a wallet had a seed, a
+  private key and a password. `CoreWalletRustSecretMaterialDescriptor` and
+  `SecretMaterialDescriptor` described the same thing and were read by nothing.
+- **After:** `WalletState.signing` is `WalletSigning` — `watchOnly`,
+  `seedPhrase { passwordProtected }` or `privateKey { passwordProtected }` —
+  written by core at import. Revealing a phrase is
+  `reveal_seed_phrase(wallet_id, password)`, which answers a `SeedPhraseReveal`
+  (`phrase`, `notStored`, `passwordRequired`, `incorrectPassword`,
+  `passwordNotRequired`). The descriptors, `wallet_secret_state` and
+  `wallet_seed_phrase` are gone.
+- **Why:** whether a wallet can sign is domain state core decides at import;
+  reading it from the Keychain per frame duplicated that and cost a secure
+  store read per row.
+- **CLI check:** `spectra --json wallet show <wallet>` shows
+  `"signing":{"kind":"seedPhrase","passwordProtected":false}` for a seed import
+  without a password; `spectra --json wallet export <wallet> --yes` prints the
+  phrase through `reveal_seed_phrase` and names the typed reason when it cannot.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — Amounts are exact decimals and display cuts, never rounds up
+
+- **Before:** holdings, transaction amounts, receipt and confirmed fees,
+  preview details and send affordability were `f64`. Swift summed holdings for
+  a dashboard row, multiplied amount by price for every fiat figure, parsed the
+  send field with `Double(...)`, and rounded compact amounts to nearest, so a
+  balance of `0.999999999` BTC read `1`. `send_amount_shortcut` took a float
+  balance.
+- **After:** amounts are canonical decimal strings (`core/src/decimal.rs`).
+  Core sums (`CoreDashboardAssetGroup.total_amount`), compares affordability
+  exactly, and `format_asset_amount` truncates to the displayed places with a
+  `below_threshold` flag. `is_valid_amount_input` replaces `parse_amount_input`.
+  `send_amount_shortcut` takes the exact balance; fee-adjusted preview maxima
+  stay on the float path with one ULP reserved. Price-alert targets are typed
+  text that core parses. `price_usd` on holdings and `fee_priority_raw` on
+  records are removed.
+- **Why:** money arithmetic in Swift was a second model of the same numbers,
+  and a float that rounds up shows spendable funds that do not exist.
+- **CLI check:** `spectra --json send shortcut --maximum 0.123456789 --decimals 8
+  --percentage 10` prints `"amount":"0.01234567"`; `spectra --json token format
+  1234.5678 --chain Ethereum` shows `"1234.56"`; `spectra alert add --chain
+  bitcoin --target 0` is refused by core.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — Core values everything in the display currency
+
+- **Before:** Swift held `livePrices` and `fiatRatesFromUSD`, converted USD
+  figures itself, and priced holdings by symbol. Price-alert and
+  large-movement notifications printed USD figures with the selected
+  currency's symbol. The send screens computed the fee's and amount's value
+  from their own copies.
+- **After:** `PortfolioValuation` carries per-holding values, unit prices and
+  alert targets in the display currency; dashboard groups carry `total_value`
+  and `price`; `OwnedSendPreview` carries `network_fee`, `network_fee_value`,
+  `amount_value` and the `amount` it quoted, and the review screen shows a
+  value only for the amount on screen. Notifications carry their `currency`.
+  `refresh_app` returns the price-alert and movement notifications it
+  evaluated, so Swift no longer calls `evaluate_price_alerts` or
+  `evaluate_portfolio_movement` separately. `unpriced_chain_ids` and
+  `refresh_owned_prices` wrappers are gone; a testnet holding has no value.
+- **Why:** one valuation, in core. The duplicated conversions disagreed on
+  rounding and currency.
+- **CLI check:** `spectra --json portfolio --stored` reports dashboard groups
+  with `totalAmount`, `totalValue` and `price` in the selected currency;
+  `python3 scripts/cli-portfolio.py target/debug/spectra` covers alert targets
+  and totals.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — The send composer holds one quote
+
+- **Before:** `SendPreviewStore` kept a slot per chain name, a
+  `preparingChains` set, and a sixteen-arm switch reading each preview's fee;
+  the self-send check had two implementations — review folded case and ignored
+  a `pending` confirmation it was always given as `None`, preflight compared
+  normalized addresses.
+- **After:** the store holds the latest `OwnedSendPreview`, valid only for the
+  wallet, holding and network it names. `is_own_address` is the one ownership
+  check, compared in the chain's normal form (all-caps bech32 is lowercased by
+  `normalize_address`). `self_send_confirmation` and its request, plan and
+  pending records are removed; `spectra send self-check` reports
+  `{"ownAddress": bool}`.
+- **Why:** per-chain slots modelled several concurrent quotes the composer
+  never has, and two ownership rules could disagree.
+- **CLI check:** `spectra --json send self-check --wallet W --holding
+  ethereum:native --destination <own address>` prints `"ownAddress":true`.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — Typed failure and degradation reasons
+
+- **Before:** a failed transaction stored an English `failureReason` string
+  (`FAILURE_REASON_STUCK` among them) and a degraded chain stored an English
+  detail that Swift matched against known sentences to translate.
+- **After:** `TransactionFailure` (`stuckAfterRetries`,
+  `submissionOutcomeUnknown`, `rebroadcastOutcomeUnknown`,
+  `reported { message }`) and `ChainDegradation` (`historyRefreshFailed`,
+  `historyPartiallyLoaded`, `failed { message }`). Swift localizes by case.
+  `core/src/diagnostics/degraded.rs` and its sentence table are deleted.
+- **Why:** matching on English text was a second, lossy encoding of a closed
+  set of reasons.
+- **CLI check:** `spectra --json txs --record <id>` prints
+  `"failureReason":{"kind":"submissionOutcomeUnknown"}` for an unconfirmed
+  broadcast; `spectra --json diagnostics state --command
+  '{"Degraded":{"chain_id":"solana","reason":{"kind":"historyRefreshFailed"}}}'`
+  stores a typed reason.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — Address book ids and duplicates are core's
+
+- **Before:** Swift minted each contact's UUID and rejected a duplicate
+  case-insensitively before core saw it; core compared case-insensitively too,
+  which would merge two distinct base58 addresses.
+- **After:** core mints the id (`AddressBookEntryAdded` names it) and a
+  duplicate is exact equality of normalized addresses, where normalization
+  lowercases an all-caps bech32 or CashAddr address.
+- **Why:** identity and acceptance are core decisions; case-folding is only
+  right for encodings that are case-insensitive.
+- **CLI check:** `spectra address book add` of an all-caps bech32 address after
+  its lowercase form is refused as a duplicate; `cargo test -p spectra_core
+  store::tests::address_book` covers base58 addresses that differ only in case.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
+## 2026-09-23 — Smaller presentation fixes found while shrinking the shell
+
+- **Before:** a holding's colour and a pin option's colour came from its
+  ticker; the transaction detail showed the raw signed payload only for hex;
+  self-test and rescan log categories were per-chain strings; the detail sheet
+  worked out which side of a transfer was the user's.
+- **After:** colour and artwork follow the deployment id; the raw payload is
+  shown for any format; categories are "Self-Tests" and "Rescan" with the chain
+  in the log's `chainId`; `transaction_endpoints(id)` returns each side and
+  whether it is the user's. Unread projections and exports are removed:
+  `resolved_addresses_by_wallet_id`, `merge_built_in_token_preferences`,
+  `endpoint_tag`, `WalletHoldingRef`, `GroupedPortfolioHolding`.
+- **Why:** a custom token calling itself `ETH` is not Ether, and an export or
+  projection nobody reads is a second copy going stale.
+- **CLI check:** `spectra --json txs --endpoints <id>` shows `from`/`to` with
+  `isMine`.
+- **Verification:** the `make verify` gates, run individually: rustfmt and Clippy with
+  `-D warnings` clean, 841 core tests plus the transport test, 443 CLI
+  acceptance checks, and 132 iOS tests on an iPhone 17 Pro simulator
+  (`build-for-testing`, then `test-without-building`). The
+  `unreachable-exports`, `uncalled-core-fns` and `unused-strings` checks report
+  none.
+
 ## 2026-09-23 — Remove failed providers and probe actual endpoint reads
 
 - **Before:** the directory retained 14 failed provider records, Tron PublicNode

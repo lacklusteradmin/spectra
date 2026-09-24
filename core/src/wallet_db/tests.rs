@@ -26,20 +26,20 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
             // Only paths: deliberately not a decodable full transaction record.
             // The baseline query must not fetch/decode transaction bodies.
             for (id, wallet, chain, external, change) in [
-                ("a", "w", "Bitcoin", 4, 2), ("b", "w", "Bitcoin", 4, 2),
-                ("c", "w", "Bitcoin", 8, 3), ("d", "other", "Bitcoin", 90, 90),
-                ("e", "w", "Litecoin", 99, 99),
+                ("a", "w", "bitcoin", 4, 2), ("b", "w", "bitcoin", 4, 2),
+                ("c", "w", "bitcoin", 8, 3), ("d", "other", "bitcoin", 90, 90),
+                ("e", "w", "litecoin", 99, 99),
             ] {
                 let payload = serde_json::json!({
                     "id": id, "kind": "receive", "status": "confirmed",
                     "sourceDerivationPath": format!("m/84'/0'/0'/0/{external}"),
                     "changeDerivationPath": format!("m/84'/0'/0'/1/{change}"),
                 }).to_string();
-                conn.execute("INSERT INTO history_records (id,wallet_id,chain_name,created_at,payload) VALUES (?1,?2,?3,0,?4)",
+                conn.execute("INSERT INTO history_records (id,wallet_id,chain_id,created_at,payload) VALUES (?1,?2,?3,0,?4)",
                     params![id,wallet,chain,payload]).unwrap();
             }
             for (field, index) in [("sourceDerivationPath", "idx_hr_source_path"), ("changeDerivationPath", "idx_hr_change_path")] {
-                let plan: Vec<String> = conn.prepare(&format!("EXPLAIN QUERY PLAN SELECT DISTINCT json_extract(payload, '$.{field}') FROM history_records WHERE wallet_id = 'w' AND chain_name = 'Bitcoin'"))
+                let plan: Vec<String> = conn.prepare(&format!("EXPLAIN QUERY PLAN SELECT DISTINCT json_extract(payload, '$.{field}') FROM history_records WHERE wallet_id = 'w' AND chain_id = 'Bitcoin'"))
                     .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
                 assert!(plan.iter().any(|p| p.contains(index)), "{plan:?}");
                 assert!(!plan.iter().any(|p| p.contains("TEMP B-TREE")), "{plan:?}");
@@ -47,12 +47,12 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
             Ok(())
         }).unwrap();
     assert_eq!(
-        history_keypool_indices(&db, "W", "Bitcoin").unwrap(),
+        history_keypool_indices(&db, "W", "bitcoin").unwrap(),
         (Some(8), Some(3))
     );
     history_delete(&db, &["c".into()]).unwrap();
     assert_eq!(
-        history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
+        history_keypool_indices(&db, "w", "bitcoin").unwrap(),
         (Some(4), Some(2))
     );
     with_conn(&db, |conn| {
@@ -65,12 +65,12 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
     })
     .unwrap();
     assert_eq!(
-        history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
+        history_keypool_indices(&db, "w", "bitcoin").unwrap(),
         (Some(12), Some(2))
     );
     history_clear(&db).unwrap();
     assert_eq!(
-        history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
+        history_keypool_indices(&db, "w", "bitcoin").unwrap(),
         (None, None)
     );
 }
@@ -81,7 +81,7 @@ fn unreadable_metadata_refuses_loading() {
     for key in [META_TOKEN_PREFERENCES, META_PRICE_ALERTS, META_FIAT_RATES] {
         let db = tmp_db();
         let saved = CoreAppState {
-            wallets: vec![wallet("w1", "Bitcoin")],
+            wallets: vec![wallet("w1", "bitcoin")],
             selected_wallet_id: Some("w1".to_string()),
             ..CoreAppState::default()
         };
@@ -140,8 +140,8 @@ fn keypool_round_trip() {
         next_change_index: 2,
         reserved_receive_index: Some(4),
     };
-    keypool_save(&db, "wallet-1", "Bitcoin", &state).unwrap();
-    let loaded = keypool_load(&db, "wallet-1", "Bitcoin").unwrap().unwrap();
+    keypool_save(&db, "wallet-1", "bitcoin", &state).unwrap();
+    let loaded = keypool_load(&db, "wallet-1", "bitcoin").unwrap().unwrap();
     assert_eq!(loaded.next_external_index, 5);
     assert_eq!(loaded.next_change_index, 2);
     assert_eq!(loaded.reserved_receive_index, Some(4));
@@ -155,14 +155,14 @@ fn keypool_upsert_updates_existing() {
         next_change_index: 0,
         reserved_receive_index: None,
     };
-    keypool_save(&db, "wallet-1", "Dogecoin", &first).unwrap();
+    keypool_save(&db, "wallet-1", "dogecoin", &first).unwrap();
     let updated = KeypoolState {
         next_external_index: 10,
         next_change_index: 3,
         reserved_receive_index: Some(9),
     };
-    keypool_save(&db, "wallet-1", "Dogecoin", &updated).unwrap();
-    let loaded = keypool_load(&db, "wallet-1", "Dogecoin").unwrap().unwrap();
+    keypool_save(&db, "wallet-1", "dogecoin", &updated).unwrap();
+    let loaded = keypool_load(&db, "wallet-1", "dogecoin").unwrap().unwrap();
     assert_eq!(loaded.next_external_index, 10);
     assert_eq!(loaded.reserved_receive_index, Some(9));
 }
@@ -173,7 +173,7 @@ fn keypool_load_all_groups_by_chain() {
     keypool_save(
         &db,
         "w1",
-        "Bitcoin",
+        "bitcoin",
         &KeypoolState {
             next_external_index: 1,
             next_change_index: 0,
@@ -184,7 +184,7 @@ fn keypool_load_all_groups_by_chain() {
     keypool_save(
         &db,
         "w2",
-        "Bitcoin",
+        "bitcoin",
         &KeypoolState {
             next_external_index: 2,
             next_change_index: 1,
@@ -195,7 +195,7 @@ fn keypool_load_all_groups_by_chain() {
     keypool_save(
         &db,
         "w1",
-        "Dogecoin",
+        "dogecoin",
         &KeypoolState {
             next_external_index: 5,
             next_change_index: 2,
@@ -204,9 +204,9 @@ fn keypool_load_all_groups_by_chain() {
     )
     .unwrap();
     let all = keypool_load_all(&db).unwrap();
-    assert_eq!(all["Bitcoin"]["w1"].next_external_index, 1);
-    assert_eq!(all["Bitcoin"]["w2"].next_external_index, 2);
-    assert_eq!(all["Dogecoin"]["w1"].reserved_receive_index, Some(4));
+    assert_eq!(all["bitcoin"]["w1"].next_external_index, 1);
+    assert_eq!(all["bitcoin"]["w2"].next_external_index, 2);
+    assert_eq!(all["dogecoin"]["w1"].reserved_receive_index, Some(4));
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn keypool_delete_for_wallet() {
     keypool_save(
         &db,
         "w1",
-        "Bitcoin",
+        "bitcoin",
         &KeypoolState {
             next_external_index: 5,
             next_change_index: 1,
@@ -226,7 +226,7 @@ fn keypool_delete_for_wallet() {
     keypool_save(
         &db,
         "w2",
-        "Bitcoin",
+        "bitcoin",
         &KeypoolState {
             next_external_index: 3,
             next_change_index: 0,
@@ -235,8 +235,8 @@ fn keypool_delete_for_wallet() {
     )
     .unwrap();
     super::keypool_delete_for_wallet(&db, "w1").unwrap();
-    assert!(keypool_load(&db, "w1", "Bitcoin").unwrap().is_none());
-    assert!(keypool_load(&db, "w2", "Bitcoin").unwrap().is_some());
+    assert!(keypool_load(&db, "w1", "bitcoin").unwrap().is_none());
+    assert!(keypool_load(&db, "w2", "bitcoin").unwrap().is_some());
 }
 
 #[test]
@@ -244,14 +244,14 @@ fn address_round_trip() {
     let db = tmp_db();
     let rec = OwnedAddressRecord {
         wallet_id: "w1".to_string(),
-        chain_name: "Bitcoin".to_string(),
+        chain_id: "bitcoin".to_string(),
         address: "bc1qtest".to_string(),
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
         branch: Some("external".to_string()),
         branch_index: Some(0),
     };
     address_save(&db, &rec).unwrap();
-    let records = address_load_all(&db, "w1", "Bitcoin").unwrap();
+    let records = address_load_all(&db, "w1", "bitcoin").unwrap();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].address, "bc1qtest");
     assert_eq!(records[0].branch.as_deref(), Some("external"));
@@ -263,7 +263,7 @@ fn address_round_trip() {
 #[test]
 fn chain_derivation_delete_takes_keypool_and_addresses_together() {
     let db = tmp_db();
-    for chain in ["Bitcoin", "Litecoin"] {
+    for chain in ["bitcoin", "litecoin"] {
         keypool_save(
             &db,
             "w1",
@@ -279,7 +279,7 @@ fn chain_derivation_delete_takes_keypool_and_addresses_together() {
             &db,
             &OwnedAddressRecord {
                 wallet_id: "w1".to_string(),
-                chain_name: chain.to_string(),
+                chain_id: chain.to_string(),
                 address: format!("{chain}-addr"),
                 derivation_path: None,
                 branch: None,
@@ -289,13 +289,13 @@ fn chain_derivation_delete_takes_keypool_and_addresses_together() {
         .unwrap();
     }
 
-    super::chain_derivation_delete_for_chain(&db, "Bitcoin").unwrap();
+    super::chain_derivation_delete_for_chain(&db, "bitcoin").unwrap();
 
-    assert!(keypool_load(&db, "w1", "Bitcoin").unwrap().is_none());
-    assert!(address_load_all(&db, "w1", "Bitcoin").unwrap().is_empty());
+    assert!(keypool_load(&db, "w1", "bitcoin").unwrap().is_none());
+    assert!(address_load_all(&db, "w1", "bitcoin").unwrap().is_empty());
     // The chain that did not switch keeps both halves.
-    assert!(keypool_load(&db, "w1", "Litecoin").unwrap().is_some());
-    assert_eq!(address_load_all(&db, "w1", "Litecoin").unwrap().len(), 1);
+    assert!(keypool_load(&db, "w1", "litecoin").unwrap().is_some());
+    assert_eq!(address_load_all(&db, "w1", "litecoin").unwrap().len(), 1);
 }
 
 /// Deleting a chain nothing was derived on is a no-op, not an error: the
@@ -303,7 +303,7 @@ fn chain_derivation_delete_takes_keypool_and_addresses_together() {
 #[test]
 fn chain_derivation_delete_is_a_no_op_for_an_unused_chain() {
     let db = tmp_db();
-    super::chain_derivation_delete_for_chain(&db, "Dogecoin").unwrap();
+    super::chain_derivation_delete_for_chain(&db, "dogecoin").unwrap();
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn delete_wallet_data_removes_both_tables() {
     keypool_save(
         &db,
         "w1",
-        "Dogecoin",
+        "dogecoin",
         &KeypoolState {
             next_external_index: 1,
             next_change_index: 0,
@@ -324,7 +324,7 @@ fn delete_wallet_data_removes_both_tables() {
         &db,
         &OwnedAddressRecord {
             wallet_id: "w1".to_string(),
-            chain_name: "Dogecoin".to_string(),
+            chain_id: "dogecoin".to_string(),
             address: "D1test".to_string(),
             derivation_path: None,
             branch: None,
@@ -333,8 +333,8 @@ fn delete_wallet_data_removes_both_tables() {
     )
     .unwrap();
     delete_wallet_data(&db, "w1").unwrap();
-    assert!(keypool_load(&db, "w1", "Dogecoin").unwrap().is_none());
-    assert!(address_load_all(&db, "w1", "Dogecoin").unwrap().is_empty());
+    assert!(keypool_load(&db, "w1", "dogecoin").unwrap().is_none());
+    assert!(address_load_all(&db, "w1", "dogecoin").unwrap().is_empty());
 }
 
 use crate::store::state::{AppSettings, WalletAddress};
@@ -344,20 +344,20 @@ use crate::store::state::{AppSettings, WalletAddress};
 /// which only these are required, and going through serde keeps the helper
 /// honest about which ones those are.
 fn history_record(id: &str, wallet_id: &str) -> HistoryRecord {
-    history_record_on(id, wallet_id, "Bitcoin")
+    history_record_on(id, wallet_id, "bitcoin")
 }
 
-fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryRecord {
+fn history_record_on(id: &str, wallet_id: &str, chain_id: &str) -> HistoryRecord {
     let payload = serde_json::from_value(serde_json::json!({
         "id": id,
         "walletId": wallet_id,
         "kind": "send",
         "status": "pending",
         "walletName": "Wallet",
-        "assetDisplayName": chain_name,
+        "assetDisplayName": chain_id,
         "symbol": "BTC",
-        "chainName": chain_name,
-        "amount": 1.0,
+        "chainId": chain_id,
+        "amount": "1",
         "address": "bc1qexample",
         "createdAtUnix": 0.0,
     }))
@@ -365,7 +365,7 @@ fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryReco
     HistoryRecord {
         id: id.to_string(),
         wallet_id: Some(wallet_id.to_string()),
-        chain_name: chain_name.to_string(),
+        chain_id: chain_id.to_string(),
         tx_hash: Some(format!("hash-{id}")),
         created_at: 0.0,
         payload,
@@ -376,19 +376,18 @@ fn wallet(id: &str, chain: &str) -> WalletState {
     WalletState {
         id: id.to_string(),
         name: format!("Wallet {id}"),
-        is_watch_only: false,
-        chain_name: chain.to_string(),
+        signing: crate::store::state::WalletSigning::SeedPhrase {
+            password_protected: false,
+        },
+        chain_id: chain.to_string(),
         include_in_portfolio_total: true,
-        chain_id: crate::registry::Chain::from_display_name(chain)
-            .map(|c| c.str_id().into())
-            .unwrap_or_default(),
         xpub: None,
         derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
         addresses: vec![WalletAddress {
-            chain_name: chain.to_string(),
+            chain_id: chain.to_string(),
             address: format!("addr-{id}"),
             kind: "receive".to_string(),
             derivation_path: None,
@@ -413,12 +412,12 @@ fn persisted_floats_round_trip_without_changing_bits() {
         state
             .diagnostics
             .last_good_unix
-            .insert("Bitcoin".into(), timestamp);
+            .insert("bitcoin".into(), timestamp);
 
         app_state_save(&db, &state).unwrap();
         let loaded = app_state_load(&db).unwrap();
         assert_eq!(
-            loaded.diagnostics.last_good_unix["Bitcoin"].to_bits(),
+            loaded.diagnostics.last_good_unix["bitcoin"].to_bits(),
             timestamp.to_bits(),
             "timestamp {timestamp} changed after reopening"
         );
@@ -434,7 +433,7 @@ fn app_state_round_trips() {
         diagnostics: Default::default(),
         quotes: Default::default(),
         schema_version: 2,
-        wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
+        wallets: vec![wallet("w1", "bitcoin"), wallet("w2", "ethereum")],
         selected_wallet_id: Some("w2".to_string()),
         settings: AppSettings {
             fiat_currency: crate::store::state::FiatCurrency::Cny,
@@ -449,7 +448,7 @@ fn app_state_round_trips() {
         address_book: vec![AddressBookEntry {
             id: "ab1".to_string(),
             name: "Cold".to_string(),
-            chain_name: "Bitcoin".to_string(),
+            chain_id: "bitcoin".to_string(),
             address: "bc1qexample".to_string(),
             note: "vault".to_string(),
         }],
@@ -464,9 +463,9 @@ fn app_state_save_preserves_wallet_order() {
     // Ids deliberately out of lexicographic order, so a load that sorted by
     // id instead of position would fail here.
     let ordered = vec![
-        wallet("zz", "Bitcoin"),
-        wallet("aa", "Solana"),
-        wallet("mm", "Sui"),
+        wallet("zz", "bitcoin"),
+        wallet("aa", "solana"),
+        wallet("mm", "sui"),
     ];
     let state = CoreAppState {
         revision: 0,
@@ -492,7 +491,7 @@ fn app_state_save_prunes_removed_wallets() {
     app_state_save(
         &db,
         &CoreAppState {
-            wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
+            wallets: vec![wallet("w1", "bitcoin"), wallet("w2", "ethereum")],
             selected_wallet_id: Some("w1".to_string()),
             ..CoreAppState::default()
         },
@@ -501,7 +500,7 @@ fn app_state_save_prunes_removed_wallets() {
     app_state_save(
         &db,
         &CoreAppState {
-            wallets: vec![wallet("w2", "Ethereum")],
+            wallets: vec![wallet("w2", "ethereum")],
             ..CoreAppState::default()
         },
     )
@@ -521,15 +520,15 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     let db = tmp_db();
     let before = CoreAppState {
         wallets: vec![
-            wallet("a", "Bitcoin"),
-            wallet("b", "Solana"),
-            wallet("c", "Sui"),
+            wallet("a", "bitcoin"),
+            wallet("b", "solana"),
+            wallet("c", "sui"),
         ],
         selected_wallet_id: Some("a".into()),
         address_book: vec![AddressBookEntry {
             id: "a".into(),
             name: "Alice".into(),
-            chain_name: "Bitcoin".into(),
+            chain_id: "bitcoin".into(),
             address: "recipient".into(),
             note: "".into(),
         }],
@@ -564,10 +563,10 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
 #[test]
 fn wallet_upsert_appends_then_updates_in_place() {
     let db = tmp_db();
-    wallet_upsert(&db, &wallet("w1", "Bitcoin")).unwrap();
-    wallet_upsert(&db, &wallet("w2", "Ethereum")).unwrap();
+    wallet_upsert(&db, &wallet("w1", "bitcoin")).unwrap();
+    wallet_upsert(&db, &wallet("w2", "ethereum")).unwrap();
 
-    let mut renamed = wallet("w1", "Bitcoin");
+    let mut renamed = wallet("w1", "bitcoin");
     renamed.name = "Renamed".to_string();
     renamed.include_in_portfolio_total = false;
     wallet_upsert(&db, &renamed).unwrap();
@@ -593,9 +592,9 @@ fn scoped_history_fetches_return_only_their_own_rows() {
     history_upsert_batch(
         &db,
         &[
-            history_record_on("btc-w1", "w1", "Bitcoin"),
-            history_record_on("btc-w2", "w2", "Bitcoin"),
-            history_record_on("eth-w1", "w1", "Ethereum"),
+            history_record_on("btc-w1", "w1", "bitcoin"),
+            history_record_on("btc-w2", "w2", "bitcoin"),
+            history_record_on("eth-w1", "w1", "ethereum"),
         ],
     )
     .unwrap();
@@ -617,7 +616,7 @@ fn delete_wallet_data_removes_the_wallet_row_and_its_history() {
     app_state_save(
         &db,
         &CoreAppState {
-            wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Bitcoin")],
+            wallets: vec![wallet("w1", "bitcoin"), wallet("w2", "bitcoin")],
             ..CoreAppState::default()
         },
     )
@@ -716,14 +715,14 @@ fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
 #[test]
 fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
     let db = tmp_db();
-    let original = history_record_on("original", "w1", "Bitcoin");
+    let original = history_record_on("original", "w1", "bitcoin");
     history_upsert_batch(&db, std::slice::from_ref(&original)).unwrap();
     with_conn(&db, |conn| {
         conn.execute_batch("CREATE TRIGGER reject_history BEFORE INSERT ON history_records WHEN NEW.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())
     }).unwrap();
     let batch = [
-        history_record_on("new", "w1", "Bitcoin"),
-        history_record_on("reject", "w1", "Bitcoin"),
+        history_record_on("new", "w1", "bitcoin"),
+        history_record_on("reject", "w1", "bitcoin"),
     ];
     for replace in [false, true] {
         let result = if replace {
@@ -758,7 +757,7 @@ fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
 #[test]
 fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
     let db = tmp_db();
-    let mut pending = history_record_on("pending", "w1", "Ethereum");
+    let mut pending = history_record_on("pending", "w1", "ethereum");
     pending.payload.kind = crate::store::wallet_domain::CoreTransactionKind::Send;
     pending.payload.status = crate::store::wallet_domain::CoreTransactionStatus::Pending;
     pending.payload.source_address = Some("0xAbC".into());
@@ -772,14 +771,14 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
     other.payload.id = other.id.clone();
     other.payload.source_address = Some("0xdef".into());
     history_upsert_batch(&db, &[pending, confirmed, other]).unwrap();
-    let rows = history_pending_for_sender(&db, "Ethereum", "0xabc").unwrap();
+    let rows = history_pending_for_sender(&db, "ethereum", "0xabc").unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].payload.nonce, Some(7));
-    assert!(history_pending_for_sender(&db, "Base", "0xabc")
+    assert!(history_pending_for_sender(&db, "base", "0xabc")
         .unwrap()
         .is_empty());
     with_conn(&db, |conn| {
-        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_name = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'")
+        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'")
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
         assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
         Ok(())
@@ -789,7 +788,7 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
 #[test]
 fn failed_history_commit_rolls_back_and_allows_retry() {
     let db = tmp_db();
-    let row = history_record_on("commit", "w1", "Bitcoin");
+    let row = history_record_on("commit", "w1", "bitcoin");
     with_conn(&db, |conn| {
         conn.execute_batch("PRAGMA foreign_keys = ON;
             CREATE TABLE commit_parent (id INTEGER PRIMARY KEY);

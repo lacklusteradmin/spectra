@@ -103,7 +103,7 @@ fn validate(out: Out, args: ValidateArgs) -> CliResult<()> {
     out.emit(serde_json::json!({
         "ok": true,
         "valid": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "normalized": normalized,
     }));
     Ok(())
@@ -120,9 +120,9 @@ fn book_list(ctx: &Ctx, out: Out) -> CliResult<()> {
         for entry in &entries {
             println!(
                 "  {}  {}  {}",
-                out::tint("●", &entry.chain_name).bold(),
+                out::tint("●", &entry.chain_id).bold(),
                 entry.name.bold(),
-                out::tint(&entry.chain_name, &entry.chain_name),
+                out::tint(&super::chain_name(&entry.chain_id), &entry.chain_id),
             );
             println!("     {}", out::info(&entry.address));
             if !entry.note.is_empty() {
@@ -137,7 +137,7 @@ fn book_list(ctx: &Ctx, out: Out) -> CliResult<()> {
             .map(|entry| serde_json::json!({
                 "id": entry.id,
                 "name": entry.name,
-                "chain": entry.chain_name,
+                "chain": entry.chain_id,
                 "address": entry.address,
                 "note": entry.note,
             }))
@@ -148,13 +148,11 @@ fn book_list(ctx: &Ctx, out: Out) -> CliResult<()> {
 
 fn book_add(ctx: &Ctx, out: Out, args: BookAddArgs) -> CliResult<()> {
     // Resolved so `btc` and `Bitcoin` reach the same entry; core stores the
-    // display name.
+    // chain id and assigns the entry's id.
     let chain = resolve_chain(&args.chain)?;
-    let id = uuid::Uuid::new_v4().to_string().to_uppercase();
     let transition = ctx.apply(StateCommand::AddAddressBookEntry {
-        id: id.clone(),
         name: args.name.clone(),
-        chain_name: chain.chain_display_name().to_string(),
+        chain_id: chain.str_id().to_string(),
         address: args.address.clone(),
         note: args.note.clone(),
     })?;
@@ -163,6 +161,10 @@ fn book_add(ctx: &Ctx, out: Out, args: BookAddArgs) -> CliResult<()> {
         return Err(CliError::rejected(rejection_text(reason)));
     }
 
+    let id = transition.events.iter().find_map(|event| match event {
+        spectra_core::store::state::StateEvent::AddressBookEntryAdded { id } => Some(id.clone()),
+        _ => None,
+    });
     out.text(|| println!("  {} saved {}", out::ok_mark(), args.name.bold()));
     out.emit(serde_json::json!({ "ok": true, "id": id }));
     Ok(())

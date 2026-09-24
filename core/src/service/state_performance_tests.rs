@@ -18,8 +18,8 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
                 UtxoDerivation::new(chain, SEED, format!("m/{purpose}'/0'/2'/1/9")).unwrap();
             for index in [0, 1, 40] {
                 let (address, path) = context.derive(index).unwrap();
-                let expected = crate::derivation::dispatch::derive_for_chain_name(
-                    chain.chain_display_name(),
+                let expected = crate::derivation::dispatch::derive_for_chain_id(
+                    chain.str_id(),
                     SEED,
                     &path,
                     None,
@@ -68,7 +68,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
             wallet: WalletState::single_address(
                 "scan",
                 "Scan",
-                "Bitcoin",
+                "bitcoin",
                 "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
                 Some("m/84'/0'/0'/0/0".into()),
                 false,
@@ -228,7 +228,7 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         .await;
     let (service, _dir) = scanning_service(server.uri()).await;
     let before = service
-        .reserve_receive_index("scan".into(), "Bitcoin".into(), 1)
+        .reserve_receive_index("scan".into(), "bitcoin".into(), 1)
         .await
         .unwrap();
     assert!(service
@@ -241,7 +241,7 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         .is_err());
     assert_eq!(
         service
-            .keypool_state("scan".into(), "Bitcoin".into())
+            .keypool_state("scan".into(), "bitcoin".into())
             .await
             .unwrap()
             .reserved_receive_index,
@@ -266,8 +266,8 @@ fn owned_receive_derivation_uses_the_wallet_passphrase() {
     let context =
         UtxoDerivation::with_overrides(Chain::Bitcoin, SEED, path.clone(), &overrides).unwrap();
     let (address, derived_path) = context.derive(3).unwrap();
-    let expected = crate::derivation::dispatch::derive_for_chain_name(
-        "Bitcoin",
+    let expected = crate::derivation::dispatch::derive_for_chain_id(
+        "bitcoin",
         SEED,
         &derived_path,
         Some("different wallet"),

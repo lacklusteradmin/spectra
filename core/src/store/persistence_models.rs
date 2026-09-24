@@ -4,6 +4,39 @@ use serde::{Deserialize, Serialize};
 
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 
+/// Why a transaction is failed, or why its submission is in doubt. Stored as
+/// the reason; a front end words it in the reader's language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum TransactionFailure {
+    /// Confirmation polling gave up on a pending transaction.
+    StuckAfterRetries,
+    /// A broadcast began and its outcome was not recorded.
+    SubmissionOutcomeUnknown,
+    /// A rebroadcast began and its outcome was not recorded.
+    RebroadcastOutcomeUnknown,
+    /// What a node or provider said, verbatim.
+    Reported { message: String },
+}
+
+impl TransactionFailure {
+    /// English, for logs and core-worded notices.
+    pub fn english(&self) -> String {
+        match self {
+            Self::StuckAfterRetries => {
+                "The transaction could not be confirmed after extended retries.".into()
+            }
+            Self::SubmissionOutcomeUnknown => {
+                "Submission outcome unknown; check network status before sending again.".into()
+            }
+            Self::RebroadcastOutcomeUnknown => {
+                "Rebroadcast outcome unknown; check network status before retrying.".into()
+            }
+            Self::Reported { message } => message.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CorePersistedTransactionRecord {
@@ -27,8 +60,9 @@ pub struct CorePersistedTransactionRecord {
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_name: String,
-    pub amount: f64,
+    pub chain_id: String,
+    /// Exact decimal in the asset's units.
+    pub amount: String,
     pub address: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_hash: Option<String>,
@@ -41,15 +75,15 @@ pub struct CorePersistedTransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_effective_gas_price_gwei: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub receipt_network_fee: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fee_priority_raw: Option<String>,
+    /// Exact decimal in the gas asset.
+    pub receipt_network_fee: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_rate_description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmation_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub confirmed_network_fee: Option<f64>,
+    /// Exact decimal in the gas asset.
+    pub confirmed_network_fee: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_fee_rate_per_kb: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,7 +101,7 @@ pub struct CorePersistedTransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signed_transaction_payload_format: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<String>,
+    pub failure_reason: Option<TransactionFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_history_source: Option<String>,
     /// Unix seconds (1970-01-01T00:00:00Z), including fractional seconds.
@@ -84,7 +118,7 @@ mod tests {
         // createdAtUnix as seconds since 1970-01-01 UTC. `status` is one of the
         // required fields — it was optional, and absence meant "decide by
         // kind at the read site", which the app and core decided differently.
-        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAtUnix":745200000.0}"#;
+        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainId":"bitcoin","amount":"0.5","address":"bc1qreceive","createdAtUnix":745200000.0}"#;
         let decoded: CorePersistedTransactionRecord = serde_json::from_str(json).unwrap();
         assert_eq!(decoded.kind, CoreTransactionKind::Receive);
         assert_eq!(decoded.status, CoreTransactionStatus::Pending);
@@ -108,8 +142,8 @@ mod tests {
             wallet_name: "Main".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
-            chain_name: "Bitcoin".to_string(),
-            amount: 0.0,
+            chain_id: "bitcoin".to_string(),
+            amount: "0".into(),
             address: "".to_string(),
             transaction_hash: None,
             nonce: None,
@@ -117,7 +151,6 @@ mod tests {
             receipt_gas_used: None,
             receipt_effective_gas_price_gwei: None,
             receipt_network_fee: None,
-            fee_priority_raw: None,
             fee_rate_description: None,
             confirmation_count: None,
             confirmed_network_fee: None,
@@ -143,16 +176,15 @@ mod tests {
             status: CoreTransactionStatus::Confirmed,
             asset_display_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
-            chain_name: "Ethereum".to_string(),
-            amount: 1.25,
+            chain_id: "ethereum".to_string(),
+            amount: "1.25".into(),
             address: "0xrecipient".to_string(),
             transaction_hash: Some("0xhash".to_string()),
             nonce: Some(7),
             receipt_block_number: Some(20_000_000),
             receipt_gas_used: Some("21000".to_string()),
             receipt_effective_gas_price_gwei: Some(25.5),
-            receipt_network_fee: Some(0.000535),
-            fee_priority_raw: Some("standard".to_string()),
+            receipt_network_fee: Some("0.000535".into()),
             confirmation_count: Some(12),
             used_change_output: Some(true),
             transaction_history_source: Some("rpc".to_string()),

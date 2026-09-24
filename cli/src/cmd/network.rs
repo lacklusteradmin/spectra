@@ -98,7 +98,7 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     let cleared: Vec<String> = family
         .network_choices()
         .iter()
-        .map(|c| c.chain_display_name().to_string())
+        .map(|c| c.str_id().to_string())
         .collect();
 
     out.text(|| {
@@ -109,7 +109,11 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
             selected.chain_display_name().bold()
         );
         for name in &cleared {
-            println!("  {} cleared derivation state for {name}", out::ok_mark());
+            println!(
+                "  {} cleared derivation state for {}",
+                out::ok_mark(),
+                super::chain_name(name)
+            );
         }
     });
     out.emit(serde_json::json!({

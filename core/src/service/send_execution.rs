@@ -105,8 +105,8 @@ impl WalletService {
                 .find(|w| w.id == request.wallet_id)
                 .and_then(|w| w.address_on(chain))
                 .ok_or("Sending wallet removed")?;
-            if crate::send::flow::normalize_address(chain.chain_display_name(), current)
-                != crate::send::flow::normalize_address(chain.chain_display_name(), &sender)
+            if crate::send::flow::normalize_address(chain.str_id(), current)
+                != crate::send::flow::normalize_address(chain.str_id(), &sender)
             {
                 return Err("Sending identity changed; review again".into());
             }

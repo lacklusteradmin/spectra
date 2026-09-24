@@ -29,21 +29,12 @@ fn reset_scopes_do_not_expand_to_unrelated_data() {
 }
 
 #[test]
-fn testnet_pricing_uses_concrete_network_identity() {
-    let unpriced = store::state::unpriced_chain_names();
-    assert!(unpriced.contains(&"Ethereum Sepolia".into()));
-    assert!(unpriced.contains(&"ethereum-sepolia".into()));
-    assert!(!unpriced.contains(&"Ethereum".into()));
-    assert!(!unpriced.contains(&"ethereum".into()));
-}
-
-#[test]
 fn diagnostics_bundle_redacts_secrets_and_refuses_missing_fields() {
     use diagnostics::export::*;
     let bundle=DiagnosticsBundlePayload {
         schema_version:1,generated_at:123.0,
         environment:serde_json::from_value(serde_json::json!({"appVersion":"test","buildNumber":"1","osVersion":"test","localeIdentifier":"en","timeZoneIdentifier":"UTC","selectedFiatCurrency":"USD","walletCount":1,"transactionCount":0})).unwrap(),
-        chain_degraded_messages:std::collections::HashMap::from([("ethereum".into(),"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into())]),
+        chain_degraded:std::collections::HashMap::from([("ethereum".into(),crate::service::ChainDegradation::Failed { message: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into() })]),
         chain_diagnostics_json:std::collections::HashMap::new(),
     };
     let encoded = diagnostics_bundle_to_json(bundle).unwrap();

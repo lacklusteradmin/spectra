@@ -18,8 +18,9 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
     state.wallets.push(crate::store::state::WalletState {
         id: "w1".into(),
         name: "Kept".into(),
-        is_watch_only: false,
-        chain_name: "Bitcoin".into(),
+        signing: crate::store::state::WalletSigning::SeedPhrase {
+            password_protected: false,
+        },
         include_in_portfolio_total: true,
         chain_id: "bitcoin".into(),
         xpub: None,
@@ -75,8 +76,9 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
     let wallet = |id: &str, name: &str| crate::store::state::WalletState {
         id: id.into(),
         name: name.into(),
-        is_watch_only: false,
-        chain_name: "Bitcoin".into(),
+        signing: crate::store::state::WalletSigning::SeedPhrase {
+            password_protected: false,
+        },
         include_in_portfolio_total: true,
         chain_id: "bitcoin".into(),
         xpub: None,

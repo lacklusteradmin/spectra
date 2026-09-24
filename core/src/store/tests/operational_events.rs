@@ -19,7 +19,7 @@ async fn events_survive_reopening_the_database() {
     service.open_state(db.clone()).await.expect("open");
     service
         .append_chain_operational_event(
-            "Bitcoin".into(),
+            "bitcoin".into(),
             DiagnosticLogLevel::Warning,
             "broadcast deferred".into(),
             Some("abc123".into()),
@@ -29,7 +29,7 @@ async fn events_survive_reopening_the_database() {
 
     let reopened = WalletService::new(Vec::new()).expect("service");
     reopened.open_state(db.clone()).await.expect("open");
-    let events = reopened.operational_events("Bitcoin".into()).await;
+    let events = reopened.operational_events("bitcoin".into()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].input.message, "broadcast deferred");
     assert_eq!(events[0].input.level, DiagnosticLogLevel::Warning);
@@ -50,7 +50,7 @@ async fn the_log_is_newest_first_and_bounded() {
     for index in 0..205 {
         service
             .append_chain_operational_event(
-                "Solana".into(),
+                "solana".into(),
                 DiagnosticLogLevel::Info,
                 format!("event {index}"),
                 None,
@@ -58,13 +58,13 @@ async fn the_log_is_newest_first_and_bounded() {
             .await
             .expect("append");
     }
-    let events = service.operational_events("Solana".into()).await;
+    let events = service.operational_events("solana".into()).await;
     assert_eq!(events.len(), 200, "the cap did not hold");
     assert_eq!(events[0].input.message, "event 204");
     assert_eq!(events[199].input.message, "event 5");
     // A different chain keeps its own list.
     assert!(service
-        .operational_events("Bitcoin".into())
+        .operational_events("bitcoin".into())
         .await
         .is_empty());
 }
@@ -72,7 +72,7 @@ async fn the_log_is_newest_first_and_bounded() {
 #[tokio::test]
 async fn clearing_one_chain_leaves_the_others() {
     let service = WalletService::new(Vec::new()).expect("service");
-    for chain in ["Bitcoin", "Solana"] {
+    for chain in ["bitcoin", "solana"] {
         service
             .append_chain_operational_event(
                 chain.into(),
@@ -84,18 +84,18 @@ async fn clearing_one_chain_leaves_the_others() {
             .expect("append");
     }
     service
-        .clear_operational_events(Some("Bitcoin".into()))
+        .clear_operational_events(Some("bitcoin".into()))
         .await
         .expect("clear one");
     assert!(service
-        .operational_events("Bitcoin".into())
+        .operational_events("bitcoin".into())
         .await
         .is_empty());
-    assert_eq!(service.operational_events("Solana".into()).await.len(), 1);
+    assert_eq!(service.operational_events("solana".into()).await.len(), 1);
 
     service
         .clear_operational_events(None)
         .await
         .expect("clear all");
-    assert!(service.operational_events("Solana".into()).await.is_empty());
+    assert!(service.operational_events("solana".into()).await.is_empty());
 }

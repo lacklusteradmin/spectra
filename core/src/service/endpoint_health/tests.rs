@@ -187,7 +187,7 @@ async fn rosetta_posts_metadata_and_checks_the_response() {
         .and(path("/network/list"))
         .and(body_partial_json(json!({"metadata":{}})))
         .respond_with(ResponseTemplate::new(200).set_body_json(
-            json!({"network_identifiers":[{"blockchain":"Internet Computer","network":"test"}]}),
+            json!({"network_identifiers":[{"blockchain":"internet-computer","network":"test"}]}),
         ))
         .expect(1)
         .mount(&server)

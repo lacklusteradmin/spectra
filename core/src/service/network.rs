@@ -34,7 +34,6 @@ impl WalletService {
         chain_id: String,
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
         let chain = chain_for_id(&chain_id)?;
-        let name = chain.chain_display_name().to_string();
         let mut records: Vec<_> = self
             .endpoint_directory()
             .await?
@@ -73,7 +72,6 @@ impl WalletService {
             out.push(EndpointProbe {
                 api: record.api,
                 chain_id: chain_id.clone(),
-                chain_name: name.clone(),
                 endpoint: record.endpoint,
                 capabilities: record.capabilities.clone(),
                 checked,

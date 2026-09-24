@@ -85,16 +85,16 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
         println!();
         println!(
             "  {}  {} {}  {}",
-            out::tint("●", chain.chain_display_name()).bold(),
+            out::tint("●", chain.str_id()).bold(),
             format!("{:.2}", usd * rate).bold(),
             out::hint(&code),
-            out::tint(chain.coin_symbol(), chain.chain_display_name()).bold(),
+            out::tint(chain.coin_symbol(), chain.str_id()).bold(),
         );
         println!("     {} {}", out::hint("via"), out::hint("CoinGecko"));
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "symbol": chain.coin_symbol(),
         "priceUsd": (!chain.is_testnet()).then_some(usd),
         "price": (!chain.is_testnet()).then_some(usd * rate),
@@ -161,7 +161,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
                 out.text(|| {
                     println!(
                         "  {}  {:<14}  {}",
-                        out::wallet_dot(&wallet.chain_name, wallet.is_watch_only),
+                        out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
                         wallet.name,
                         out::hint(&format!("unavailable — {error}")),
                     )
@@ -181,7 +181,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
         out.text(|| {
             println!(
                 "  {}  {:<14}  {:>14}  {}  {}",
-                out::wallet_dot(&wallet.chain_name, wallet.is_watch_only),
+                out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
                 wallet.name,
                 format!("{:.4} {}", amount, chain.coin_symbol()),
                 out::hint(&format!("@ {:.2}", price_usd * rate)),
@@ -190,7 +190,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
         });
         rows.push(serde_json::json!({
             "wallet": wallet.id,
-            "chain": chain.chain_display_name(),
+            "chain": chain.str_id(),
             "symbol": chain.coin_symbol(),
             "amount": amount,
             "priceUsd": (!chain.is_testnet()).then_some(price_usd),

@@ -19,15 +19,14 @@ impl WalletService {
             .ok_or("wallet removed before submission")?;
         let token = request.contract_address.as_ref().and_then(|contract| {
             state.token_preferences.iter().find(|p| {
-                p.hosting_chain().is_some_and(|h| {
-                    h.chain_name() == chain.mainnet_counterpart().chain_display_name()
-                }) && crate::tokens::normalize_token_identifier(
-                    Some(p.token.contract.clone()),
-                    chain.chain_display_name().into(),
-                ) == crate::tokens::normalize_token_identifier(
-                    Some(contract.clone()),
-                    chain.chain_display_name().into(),
-                )
+                p.hosting_chain() == Some(chain.mainnet_counterpart())
+                    && crate::tokens::normalize_token_identifier(
+                        Some(p.token.contract.clone()),
+                        chain.str_id().into(),
+                    ) == crate::tokens::normalize_token_identifier(
+                        Some(contract.clone()),
+                        chain.str_id().into(),
+                    )
             })
         });
         let symbol = token.map(|p| p.token.symbol.as_str()).unwrap_or_else(|| {
@@ -43,9 +42,9 @@ impl WalletService {
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
             "walletName": wallet.name, "assetDisplayName": token.map(|p| p.token.name.as_str()).unwrap_or(symbol), "symbol": symbol,
-            "chainName": chain.chain_display_name(), "amount": request.amount_str.parse::<f64>().map_err(|_| "invalid amount")?,
+            "chainId": chain.str_id(), "amount": crate::decimal::canonical(&request.amount_str).ok_or("invalid amount")?,
             "address": request.to_address, "sourceAddress": source,
-            "failureReason": "Submission outcome unknown; check network status before sending again.",
+            "failureReason": {"kind": "submissionOutcomeUnknown"},
             "createdAtUnix": crate::store::now_unix()
         }))?;
         // This is only a draft. Signing failures must not leave pending rows.
@@ -137,7 +136,7 @@ impl WalletService {
         let (chain, payload, field) = rebroadcast_input(&record)?;
         // Store an uncertain outcome before network I/O; errors never pretend a send happened.
         record.failure_reason =
-            Some("Rebroadcast outcome unknown; check network status before retrying.".into());
+            Some(crate::store::persistence_models::TransactionFailure::RebroadcastOutcomeUnknown);
         self.save_send_record(record.clone()).await?;
         let hash = self
             .broadcast_raw_extract(chain.str_id().into(), payload, field)
@@ -162,7 +161,7 @@ pub(super) fn rebroadcast_input(
     if record.status == CoreTransactionStatus::Confirmed {
         return Err("transaction already confirmed".into());
     }
-    let chain = Chain::from_display_name(&record.chain_name).ok_or("unknown transaction chain")?;
+    let chain = Chain::from_str_id(&record.chain_id).ok_or("unknown transaction chain")?;
     let payload = record
         .signed_transaction_payload
         .as_ref()
@@ -254,13 +253,13 @@ impl WalletService {
         let db = self.bound_database().await?;
         let sender = source.to_owned();
         let rows = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_pending_for_sender(&db, chain.chain_display_name(), &sender)
+            crate::wallet_db::history_pending_for_sender(&db, chain.str_id(), &sender)
         })
         .await
         .map_err(|e| e.to_string())??;
         for row in rows {
             let r = row.payload;
-            if r.chain_name == chain.chain_display_name()
+            if r.chain_id == chain.str_id()
                 && r.source_address
                     .as_deref()
                     .is_some_and(|a| a.eq_ignore_ascii_case(source))
@@ -326,7 +325,7 @@ mod tests {
                 wallet: WalletState::single_address(
                     "w",
                     "W",
-                    "Ethereum",
+                    "ethereum",
                     "0x1111111111111111111111111111111111111111",
                     None,
                     true,
@@ -335,7 +334,7 @@ mod tests {
             .await
             .unwrap();
         let mut record: CorePersistedTransactionRecord = serde_json::from_value(json!({
-            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainName": "Ethereum Sepolia", "amount": 1.0, "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0,
+            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0,
             "signedTransactionPayload": "0xdeadbeef", "signedTransactionPayloadFormat": "evm.raw_hex"
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();
@@ -394,7 +393,11 @@ mod tests {
         server.reset().await;
         let mut late = record.clone();
         late.status = CoreTransactionStatus::Pending;
-        late.failure_reason = Some("late result".into());
+        late.failure_reason = Some(
+            crate::store::persistence_models::TransactionFailure::Reported {
+                message: "late result".into(),
+            },
+        );
         service.save_send_record(late).await.unwrap();
         assert_eq!(
             service.fetch_all_history_records().await.unwrap()[0]

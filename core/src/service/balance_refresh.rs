@@ -42,11 +42,7 @@ impl WalletService {
             let known = state
                 .token_preferences
                 .iter()
-                .filter(|p| {
-                    p.is_enabled
-                        && p.hosting_chain()
-                            .is_some_and(|h| h.chain_name() == chain.chain_display_name())
-                })
+                .filter(|p| p.is_enabled && p.hosting_chain() == Some(chain))
                 .cloned()
                 .collect::<Vec<_>>();
             (entry, known)
@@ -101,7 +97,8 @@ impl WalletService {
         let mut holdings = vec![AssetHolding {
             amount: balance_amount(&native.amount_display)?,
             ..native_coin_template(&entry.chain_id).ok_or("missing native asset")?
-        }];
+        }
+        .identified()];
         if !known.is_empty() {
             let descriptors = known
                 .iter()
@@ -120,21 +117,18 @@ impl WalletService {
                 .fetch_token_balances(entry.chain_id.clone(), entry.address.clone(), descriptors)
                 .await?;
             for result in balances {
-                let key = contract_key(chain.chain_display_name(), &result.contract_address);
+                let key = contract_key(chain.str_id(), &result.contract_address);
                 if let Some(p) = known
                     .iter()
-                    .find(|p| contract_key(chain.chain_display_name(), &p.token.contract) == key)
+                    .find(|p| contract_key(chain.str_id(), &p.token.contract) == key)
                 {
-                    holdings.push(AssetHolding {
-                        name: p.token.name.clone(),
-                        symbol: p.token.symbol.clone(),
-                        coingecko_id: p.token.coingecko_id.clone(),
-                        chain_name: chain.chain_display_name().into(),
-                        token_standard: p.token.token_standard.clone(),
-                        contract_address: Some(p.token.contract.clone()),
-                        amount: balance_amount(&result.balance_display)?,
-                        price_usd: 0.0,
-                    });
+                    holdings.push(
+                        AssetHolding {
+                            amount: balance_amount(&result.balance_display)?,
+                            ..p.token.holding_template()
+                        }
+                        .identified(),
+                    );
                 }
             }
         }
@@ -147,7 +141,7 @@ impl WalletService {
         holdings: Vec<AssetHolding>,
     ) -> Result<WalletState, SpectraBridgeError> {
         for h in &holdings {
-            if !h.amount.is_finite() || h.amount < 0.0 {
+            if crate::decimal::canonical(&h.amount).as_ref() != Some(&h.amount) {
                 return Err("invalid balance".into());
             }
         }
@@ -187,12 +181,10 @@ impl WalletService {
         .await
     }
 }
-fn balance_amount(raw: &str) -> Result<f64, SpectraBridgeError> {
-    let value: f64 = raw.parse().map_err(|_| "invalid balance amount")?;
-    if !value.is_finite() || value < 0.0 {
-        return Err("invalid balance amount".into());
-    }
-    Ok(value)
+/// A provider's balance text as an exact decimal. Refused rather than
+/// rounded: a balance is what the wallet shows and what a send spends.
+fn balance_amount(raw: &str) -> Result<String, SpectraBridgeError> {
+    crate::decimal::canonical(raw).ok_or_else(|| "invalid balance amount".into())
 }
 fn contract_key(chain: &str, contract: &str) -> String {
     crate::tokens::normalize_token_identifier(Some(contract.into()), chain.into())
@@ -208,7 +200,7 @@ fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
             .find(|old| balance_key(old) == balance_key(&h))
         {
             old.amount = h.amount;
-        } else if h.amount > 0.0 {
+        } else if !crate::decimal::is_zero(&h.amount) {
             stored.push(h);
         }
     }
@@ -231,36 +223,34 @@ mod tests {
         let mut w = WalletState::single_address(
             "w",
             "Original",
-            "Ethereum",
+            "ethereum",
             "0x1111111111111111111111111111111111111111",
             None,
             false,
         );
         let mut coin = native_coin_template("ethereum").unwrap();
-        coin.amount = 4.0;
-        coin.price_usd = 123.0;
+        coin.amount = "4".into();
         w.holdings = vec![coin.clone()];
         service
             .apply_state_command(StateCommand::UpsertWallet { wallet: w })
             .await
             .unwrap();
         let entry = refresh_entries_for(&service.app_state().await).remove(0);
-        coin.amount = 0.0;
+        coin.amount = "0".into();
         let updated = service
             .commit_balance_result(entry.clone(), vec![coin.clone()])
             .await
             .unwrap();
         assert_eq!(updated.name, "Original");
-        assert_eq!(updated.holdings[0].amount, 0.0);
-        assert_eq!(updated.holdings[0].price_usd, 123.0);
+        assert_eq!(updated.holdings[0].amount, "0");
         let database = rusqlite::Connection::open(&path).unwrap();
         database.execute_batch("CREATE TRIGGER reject_balance BEFORE UPDATE ON wallets BEGIN SELECT RAISE(FAIL, 'balance write refused'); END;").unwrap();
-        coin.amount = 7.0;
+        coin.amount = "7".into();
         assert!(service
             .commit_balance_result(entry.clone(), vec![coin.clone()])
             .await
             .is_err());
-        assert_eq!(service.app_state().await.wallets[0].holdings[0].amount, 0.0);
+        assert_eq!(service.app_state().await.wallets[0].holdings[0].amount, "0");
         assert_eq!(
             crate::wallet_db::wallet_load(
                 &crate::wallet_db::WalletDatabase::new(path.to_str().unwrap()),
@@ -270,7 +260,7 @@ mod tests {
             .unwrap()
             .holdings[0]
                 .amount,
-            0.0
+            "0"
         );
         database
             .execute_batch("DROP TRIGGER reject_balance")
@@ -282,7 +272,7 @@ mod tests {
             })
             .await
             .unwrap();
-        coin.amount = 99.0;
+        coin.amount = "99".into();
         service
             .commit_balance_result(entry, vec![coin])
             .await
@@ -296,7 +286,7 @@ mod tests {
                 .wallets[0]
                 .holdings[0]
                 .amount,
-            0.0
+            "0"
         );
         for raw in ["bad", "NaN", "inf", "-1"] {
             assert!(balance_amount(raw).is_err());
@@ -321,7 +311,7 @@ mod lifecycle_tests {
         let db = rusqlite::Connection::open(&path).unwrap();
         db.execute_batch("CREATE TRIGGER reject_cleanup BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'fixture cleanup failure'); END;").unwrap();
         service
-            .reserve_receive_index("w".into(), "Ethereum".into(), 0)
+            .reserve_receive_index("w".into(), "ethereum".into(), 0)
             .await
             .unwrap();
         assert!(service
@@ -382,7 +372,7 @@ mod lifecycle_tests {
                 wallet: WalletState::single_address(
                     "w",
                     "W",
-                    "Ethereum",
+                    "ethereum",
                     "0x1111111111111111111111111111111111111111",
                     None,
                     false,
@@ -391,7 +381,7 @@ mod lifecycle_tests {
             .await
             .unwrap();
         service
-            .reserve_receive_index("w".into(), "Ethereum".into(), 0)
+            .reserve_receive_index("w".into(), "ethereum".into(), 0)
             .await
             .unwrap();
         service
@@ -406,11 +396,10 @@ mod lifecycle_tests {
             })
             .await
             .unwrap();
-        assert!(
-            !service
-                .wallet_secret_state("w".into())
-                .unwrap()
-                .has_signing_material
+        assert_eq!(
+            service.reveal_seed_phrase("w".into(), None).unwrap(),
+            crate::service::SeedPhraseReveal::NotStored,
+            "deleting the wallet deletes its secret"
         );
         assert!(service.keypool.read().await.is_empty());
         let reopened = WalletService::new(vec![]).unwrap();
@@ -486,7 +475,7 @@ mod concurrency_tests {
                     wallet: WalletState::single_address(
                         format!("w{i}"),
                         "Concurrent",
-                        "Stellar",
+                        "stellar",
                         "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                         None,
                         true,
@@ -550,16 +539,16 @@ mod concurrency_tests {
                 .unwrap()
                 .holdings[0]
                 .amount,
-            2.0
+            "2"
         );
         assert_eq!(requests.len(), 3);
-        assert_eq!(overlapping.await.unwrap().holdings[0].amount, 2.0);
+        assert_eq!(overlapping.await.unwrap().holdings[0].amount, "2");
         let reopened = WalletService::new(vec![]).unwrap();
         let state = reopened
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
-        assert!(state.wallets.iter().all(|w| w.holdings[0].amount == 2.0));
+        assert!(state.wallets.iter().all(|w| w.holdings[0].amount == "2"));
         server.abort();
     }
 }

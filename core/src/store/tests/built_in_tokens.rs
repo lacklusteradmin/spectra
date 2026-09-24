@@ -1,6 +1,5 @@
 use crate::service::WalletService;
 use crate::store::state::StateCommand;
-use crate::store::wallet_domain::CoreTokenHostingChain;
 
 #[test]
 fn every_built_in_has_a_unique_id() {
@@ -24,7 +23,7 @@ fn the_catalog_chain_ids_all_resolve() {
     for token in crate::tokens::catalog() {
         let chain = crate::registry::Chain::from_str_id(&token.chain_id).unwrap();
         if !token.is_native() {
-            assert!(CoreTokenHostingChain::from_chain_name(chain.chain_display_name()).is_some());
+            assert!(chain.hosts_tokens(), "{}", token.deployment_id);
         }
     }
 }
@@ -34,8 +33,9 @@ fn the_catalog_chain_ids_all_resolve() {
 async fn merging_keeps_what_the_user_chose() {
     let service = WalletService::new(Vec::new()).expect("service");
     let state = service
-        .merge_built_in_token_preferences()
+        .apply_state_command(StateCommand::MergeBuiltInTokens)
         .await
+        .map(|transition| transition.state)
         .expect("merge");
     assert!(!state.token_preferences.is_empty());
 
@@ -47,7 +47,7 @@ async fn merging_keeps_what_the_user_chose() {
         .expect("an enabled built-in");
     let id = target.id().clone();
     let key = crate::store::state::CoreTokenPreferenceKey {
-        chain_name: target.token.chain_id.clone(),
+        chain_id: target.token.chain_id.clone(),
         contract: target.token.contract.clone(),
     };
     service
@@ -59,8 +59,9 @@ async fn merging_keeps_what_the_user_chose() {
         .expect("store");
 
     let after = service
-        .merge_built_in_token_preferences()
+        .apply_state_command(StateCommand::MergeBuiltInTokens)
         .await
+        .map(|transition| transition.state)
         .expect("merge again");
     let kept = after
         .token_preferences

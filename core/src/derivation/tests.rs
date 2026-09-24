@@ -930,7 +930,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "LcubERmHD31PWup1fbozpKuiqjHZ4anxcL"
     );
     check!(
-        "Ethereum",
+        "ethereum",
         "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
         "m/44'/60'/0'/0/0",
         true,
@@ -945,7 +945,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8"
     );
     check!(
-        "Ethereum Classic",
+        "ethereum-classic",
         "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
         "m/44'/61'/0'/0/0",
         true,
@@ -960,7 +960,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "0xF410e37E9C8BCf8CF319c84Ae9dCEbe057804a04"
     );
     check!(
-        "Tron",
+        "tron",
         "trezor-firmware/common/tests/fixtures/tron/get_address.json",
         "m/44'/195'/0'/0/0",
         false,
@@ -975,7 +975,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "TY72iA3SBtrds3QLYsS7LwYfkzXwAXCRWT"
     );
     check!(
-        "XRP Ledger",
+        "xrp",
         "trezor-firmware/tests/device_tests/ripple/test_get_address.py",
         "m/44'/144'/0'/0/0",
         false,
@@ -990,7 +990,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "rNaqKtKrMSwpwZSzRckPf7S96DkimjkF4H"
     );
     check!(
-        "Solana",
+        "solana",
         "trezor-firmware/common/tests/fixtures/solana/get_address.json",
         "m/44'/501'/0'/0'",
         false,

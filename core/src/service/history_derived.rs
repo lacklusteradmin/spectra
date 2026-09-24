@@ -42,10 +42,10 @@ pub struct ReplaceableSend {
     /// The catalog id of the chain the pending send is on — the chain the
     /// replacement must be signed for, not whichever one the composer shows.
     pub chain_id: String,
-    pub chain_name: String,
     pub symbol: String,
     pub to_address: String,
-    pub amount: f64,
+    /// Exact decimal.
+    pub amount: String,
     pub transaction_hash: String,
     /// The nonce as recorded. A replacement still reads the live one from the
     /// chain by hash; this is what a caller can say while that is in flight.
@@ -72,7 +72,7 @@ pub(crate) fn replaceable_send(
         .as_deref()
         .map(str::trim)
         .filter(|hash| !hash.is_empty())?;
-    let chain = crate::registry::Chain::from_display_name(&record.chain_name)?;
+    let chain = crate::registry::Chain::from_str_id(&record.chain_id)?;
     if !chain.is_evm() {
         return None;
     }
@@ -80,10 +80,9 @@ pub(crate) fn replaceable_send(
         transaction_id: record.id.clone(),
         wallet_id: wallet_id.to_owned(),
         chain_id: chain.str_id().to_owned(),
-        chain_name: chain.chain_display_name().to_owned(),
         symbol: record.symbol.clone(),
         to_address: record.address.clone(),
-        amount: record.amount,
+        amount: record.amount.clone(),
         transaction_hash: transaction_hash.to_owned(),
         recorded_nonce: record.nonce,
         can_speed_up: record.deployment_id.as_deref()
@@ -118,7 +117,7 @@ mod tests {
     ) -> CorePersistedTransactionRecord {
         let json = format!(
             r#"{{"id":"{id}","walletId":"{wallet}","kind":"receive","status":"pending","walletName":"W",
-                 "assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"{chain}","amount":0.5,
+                 "assetDisplayName":"Bitcoin","symbol":"BTC","chainId":"{chain}","amount":"0.5",
                  "address":"bc1qreceive","createdAtUnix":{created_at_swift}}}"#
         );
         serde_json::from_str(&json).expect("a persisted record")
@@ -138,7 +137,7 @@ mod tests {
             .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
                 "B1B2C3D4-E5F6-7890-ABCD-EF1234567890",
                 "w1",
-                "Bitcoin",
+                "bitcoin",
                 1_723_507_200.25,
             ))])
             .await
@@ -170,7 +169,7 @@ mod tests {
             &crate::store::state::WalletState::single_address(
                 "w1",
                 "W",
-                "Bitcoin",
+                "bitcoin",
                 "bc1qreceive",
                 None,
                 true,
@@ -180,7 +179,7 @@ mod tests {
         let payload = record(
             "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
             "w1",
-            "Bitcoin",
+            "bitcoin",
             1_723_507_200.25,
         );
         service
@@ -217,10 +216,10 @@ mod replaceable_tests {
             "status": "pending",
             "walletName": "Main",
             "assetDisplayName": chain,
-            "deploymentId": crate::registry::Chain::from_display_name(chain).filter(|c| c.coin_symbol() == symbol).map(|c| c.entry().native_deployment_id.clone()),
+            "deploymentId": crate::registry::Chain::from_str_id(chain).filter(|c| c.coin_symbol() == symbol).map(|c| c.entry().native_deployment_id.clone()),
             "symbol": symbol,
-            "chainName": chain,
-            "amount": 1.5,
+            "chainId": chain,
+            "amount": "1.5",
             "address": "0x1111111111111111111111111111111111111111",
             "transactionHash": "0xabc",
             "createdAtUnix": 1_723_507_200.25,
@@ -242,17 +241,17 @@ mod replaceable_tests {
     #[test]
     fn every_evm_chain_offers_replacement_and_nothing_else_does() {
         let ethereum =
-            replaceable_send(&record("a", "Ethereum", "ETH", json!({}))).expect("ethereum");
+            replaceable_send(&record("a", "ethereum", "ETH", json!({}))).expect("ethereum");
         assert_eq!(ethereum.chain_id, "ethereum");
         assert!(ethereum.can_speed_up);
 
-        let arbitrum = replaceable_send(&record("b", "Arbitrum", "ETH", json!({"nonce": 7})))
+        let arbitrum = replaceable_send(&record("b", "arbitrum", "ETH", json!({"nonce": 7})))
             .expect("arbitrum");
         assert_eq!(arbitrum.chain_id, "arbitrum");
         assert_eq!(arbitrum.recorded_nonce, Some(7));
         assert!(arbitrum.can_speed_up);
 
-        for chain in ["Bitcoin", "Solana", "Dogecoin", "Monero"] {
+        for chain in ["bitcoin", "solana", "dogecoin", "monero"] {
             assert!(
                 replaceable_send(&record("c", chain, "BTC", json!({}))).is_none(),
                 "{chain}"
@@ -267,11 +266,11 @@ mod replaceable_tests {
     #[test]
     fn only_a_native_transfer_can_be_sped_up() {
         let token =
-            replaceable_send(&record("a", "Arbitrum", "ARB", json!({}))).expect("token send");
+            replaceable_send(&record("a", "arbitrum", "ARB", json!({}))).expect("token send");
         assert!(!token.can_speed_up);
         assert_eq!(token.symbol, "ARB");
         assert!(
-            !replaceable_send(&record("b", "Ethereum", "USDC", json!({})))
+            !replaceable_send(&record("b", "ethereum", "USDC", json!({})))
                 .expect("erc20")
                 .can_speed_up
         );
@@ -289,7 +288,7 @@ mod replaceable_tests {
             json!({"walletId": " "}),
         ] {
             assert!(
-                replaceable_send(&record("a", "Ethereum", "ETH", overrides.clone())).is_none(),
+                replaceable_send(&record("a", "ethereum", "ETH", overrides.clone())).is_none(),
                 "{overrides}"
             );
         }
@@ -316,7 +315,7 @@ mod replaceable_tests {
             &crate::store::state::WalletState::single_address(
                 "wallet-1",
                 "W",
-                "Ethereum",
+                "ethereum",
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,
@@ -328,25 +327,25 @@ mod replaceable_tests {
                 records: vec![
                     record(
                         "11111111-1111-1111-1111-111111111111",
-                        "Base",
+                        "base",
                         "ETH",
                         json!({"createdAtUnix": 1.0}),
                     ),
                     record(
                         "22222222-2222-2222-2222-222222222222",
-                        "Optimism",
+                        "optimism",
                         "ETH",
                         json!({"createdAtUnix": 2.0}),
                     ),
                     record(
                         "33333333-3333-3333-3333-333333333333",
-                        "Bitcoin",
+                        "bitcoin",
                         "BTC",
                         json!({"createdAtUnix": 3.0}),
                     ),
                     record(
                         "44444444-4444-4444-4444-444444444444",
-                        "Ethereum",
+                        "ethereum",
                         "ETH",
                         json!({"status": "confirmed"}),
                     ),

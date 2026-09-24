@@ -6,14 +6,14 @@ use crate::{registry::Chain, service::WalletService};
 
 fn native(chain: Chain) -> AssetHolding {
     AssetHolding {
+        id: String::new(),
         name: chain.coin_name().into(),
         symbol: chain.coin_symbol().into(),
-        chain_name: chain.chain_display_name().into(),
+        chain_id: chain.str_id().into(),
         token_standard: "Native".into(),
         coingecko_id: chain.coingecko_id().into(),
         contract_address: None,
-        amount: 0.0,
-        price_usd: 0.0,
+        amount: "0".into(),
     }
 }
 
@@ -53,10 +53,8 @@ fn every_testnet_has_an_independent_unpriced_native_token() {
     for network in Chain::testnets() {
         let mut holding = native(network);
         holding.coingecko_id = network.mainnet_counterpart().coingecko_id().into();
-        holding.price_usd = 100.0;
         holding.canonicalize().unwrap();
         assert!(holding.coingecko_id.is_empty());
-        assert_eq!(holding.price_usd, 0.0);
         assert_ne!(
             holding.token_identity(),
             native(network.mainnet_counterpart()).token_identity()
@@ -70,7 +68,7 @@ async fn invalid_protocol_identity_is_refused_before_storage() {
     let mut wallet = WalletState::single_address(
         "w",
         "W",
-        "Ethereum",
+        "ethereum",
         "0x1111111111111111111111111111111111111111",
         None,
         true,
@@ -98,7 +96,7 @@ fn a_contract_called_eth_is_encoded_as_erc20() {
     use crate::send::ethereum::*;
     let contract = "0x1111111111111111111111111111111111111111";
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-        chain_name: "Ethereum".into(),
+        chain_id: "ethereum".into(),
         symbol: "ETH".into(),
         from_address: "0x2222222222222222222222222222222222222222".into(),
         resolved_destination: "0x3333333333333333333333333333333333333333".into(),

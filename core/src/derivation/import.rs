@@ -71,7 +71,7 @@ impl WalletImportWatchOnlyEntries {
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportRequest {
     pub wallet_name: String,
-    pub selected_chain_names: Vec<String>,
+    pub selected_chain_ids: Vec<String>,
     pub is_watch_only_import: bool,
     pub is_private_key_import: bool,
     pub watch_only_entries: WalletImportWatchOnlyEntries,
@@ -81,8 +81,8 @@ pub struct WalletImportRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalletImportPlanRequest {
     pub wallet_name: String,
-    pub primary_selected_chain_name: String,
-    pub selected_chain_names: Vec<String>,
+    pub primary_selected_chain_id: String,
+    pub selected_chain_ids: Vec<String>,
     /// Ids for the wallets this import will create, or empty to mint them.
     pub planned_wallet_ids: Vec<String>,
     pub is_watch_only_import: bool,
@@ -99,13 +99,13 @@ impl WalletImportPlanRequest {
         has_wallet_password: bool,
     ) -> Self {
         Self {
-            primary_selected_chain_name: request
-                .selected_chain_names
+            primary_selected_chain_id: request
+                .selected_chain_ids
                 .first()
                 .cloned()
                 .unwrap_or_default(),
             wallet_name: request.wallet_name,
-            selected_chain_names: request.selected_chain_names,
+            selected_chain_ids: request.selected_chain_ids,
             planned_wallet_ids: Vec::new(),
             is_watch_only_import: request.is_watch_only_import,
             is_private_key_import: request.is_private_key_import,
@@ -131,7 +131,7 @@ pub struct WalletSecretInstruction {
 pub struct PlannedWallet {
     pub wallet_id: String,
     pub name: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub addresses: WalletImportAddresses,
 }
 
@@ -167,16 +167,35 @@ pub struct WalletImportCommit {
     pub private_key: Option<String>,
 }
 
-/// The address a private-key import stores, keyed by chain display name.
+impl WalletImportCommit {
+    /// What the imported wallets sign with. A blank password stores the
+    /// material unsealed, which is the rule `store_seed_phrase` applies.
+    pub fn signing(&self) -> crate::store::state::WalletSigning {
+        use crate::store::state::WalletSigning;
+        let password_protected = self
+            .password
+            .as_deref()
+            .is_some_and(|p| !p.trim().is_empty());
+        if self.request.is_watch_only_import {
+            WalletSigning::WatchOnly
+        } else if self.request.is_private_key_import {
+            WalletSigning::PrivateKey { password_protected }
+        } else {
+            WalletSigning::SeedPhrase { password_protected }
+        }
+    }
+}
+
+/// The address a private-key import stores, keyed by chain id.
 ///
 /// One chain: `plan_signing_import` refuses more than one for this path. A
 /// chain with no private-key derivation refuses here, before the key is
 /// sealed, rather than storing a wallet that could never sign with it.
 pub fn derive_private_key_import_address(
     private_key: &str,
-    selected_chain_names: &[String],
+    selected_chain_ids: &[String],
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let Some(name) = selected_chain_names.first() else {
+    let Some(name) = selected_chain_ids.first() else {
         return Err("Select a chain first.".to_string());
     };
     let address = crate::derivation::dispatch::derive_from_private_key(
@@ -207,18 +226,18 @@ pub fn derive_private_key_import_address(
 /// missing, and an import left with nothing is refused by the planner.
 pub fn derive_import_addresses(
     seed_phrase: &str,
-    selected_chain_names: &[String],
+    selected_chain_ids: &[String],
     paths: &crate::store::wallet_domain::CoreSeedDerivationPaths,
     overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
 ) -> std::collections::HashMap<String, String> {
     use crate::registry::Chain;
-    let mut by_chain_name = std::collections::HashMap::new();
+    let mut by_chain_id = std::collections::HashMap::new();
     // Every EVM chain's address is derived under Ethereum's entry, because the
     // family shares one address slot. Including Ethereum when only an L2 was
     // selected is what makes that slot get filled.
-    let mut chains: Vec<Chain> = selected_chain_names
+    let mut chains: Vec<Chain> = selected_chain_ids
         .iter()
-        .filter_map(|name| Chain::from_display_name(name))
+        .filter_map(|name| Chain::from_str_id(name))
         .collect();
     if chains.iter().any(|c| c.is_evm()) && !chains.contains(&Chain::Ethereum) {
         chains.push(Chain::Ethereum);
@@ -239,8 +258,8 @@ pub fn derive_import_addresses(
             None if !chain.uses_derivation_path() => "",
             None => continue,
         };
-        let derived = crate::derivation::dispatch::derive_for_chain_name(
-            chain.chain_display_name(),
+        let derived = crate::derivation::dispatch::derive_for_chain_id(
+            chain.str_id(),
             seed_phrase,
             path,
             overrides.passphrase.as_deref(),
@@ -252,11 +271,11 @@ pub fn derive_import_addresses(
         );
         if let Ok(result) = derived {
             if let Some(address) = result.address {
-                by_chain_name.insert(chain.chain_display_name().to_string(), address);
+                by_chain_id.insert(chain.str_id().to_string(), address);
             }
         }
     }
-    by_chain_name
+    by_chain_id
 }
 
 /// The committed wallets. SecretStore writes and rollback belong to core.
@@ -482,13 +501,13 @@ pub(crate) fn wallets_for_import(
         // The planner plans only registry chains, so none is dropped here.
         .filter_map(|planned| {
             // The selection applies only to the family the wallet is on.
-            let network = networks.selected(Chain::from_display_name(&planned.chain_name)?);
+            let network = networks.selected(Chain::from_str_id(&planned.chain_id)?);
             Some(crate::store::wallet_domain::WalletView {
                 id: planned.wallet_id.clone(),
                 name: planned.name.clone(),
                 chain_id: network.str_id().to_string(),
                 addresses: planned.addresses.by_slot.clone(),
-                bitcoin_xpub: if planned.chain_name == "Bitcoin" {
+                bitcoin_xpub: if planned.chain_id == crate::registry::Chain::Bitcoin.str_id() {
                     planned.addresses.bitcoin_xpub.clone()
                 } else {
                     None
@@ -496,9 +515,9 @@ pub(crate) fn wallets_for_import(
                 seed_derivation_preset: commit.seed_derivation_preset,
                 seed_derivation_paths: commit.seed_derivation_paths.clone(),
                 derivation_overrides: commit.derivation_overrides.clone(),
-                family_name: planned.chain_name.clone(),
                 holdings: vec![network.native_holding_template()],
                 include_in_portfolio_total: true,
+                signing: commit.signing(),
             })
         })
         .collect()
@@ -513,21 +532,21 @@ pub fn plan_wallet_import(request: WalletImportPlanRequest) -> Result<WalletImpo
 }
 
 fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
-    if request.selected_chain_names.is_empty() {
+    if request.selected_chain_ids.is_empty() {
         return Err("Select a chain first.".to_string());
     }
     let mut request = request;
     if request.planned_wallet_ids.is_empty() {
         request.planned_wallet_ids = request
-            .selected_chain_names
+            .selected_chain_ids
             .iter()
             .map(|_| crate::store::new_transaction_id())
             .collect();
-    } else if request.selected_chain_names.len() != request.planned_wallet_ids.len() {
+    } else if request.selected_chain_ids.len() != request.planned_wallet_ids.len() {
         return Err("Wallet ID plan did not match selected chains.".to_string());
     }
 
-    let selected_chain_count = request.selected_chain_names.len();
+    let selected_chain_count = request.selected_chain_ids.len();
     let mut wallets = Vec::with_capacity(selected_chain_count);
     let mut secret_instructions = Vec::with_capacity(selected_chain_count);
     let secret_kind = if request.is_private_key_import {
@@ -536,8 +555,8 @@ fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportP
         "seedPhrase"
     };
 
-    for (index, (chain_name, wallet_id)) in request
-        .selected_chain_names
+    for (index, (chain_id, wallet_id)) in request
+        .selected_chain_ids
         .iter()
         .zip(request.planned_wallet_ids.iter())
         .enumerate()
@@ -550,8 +569,8 @@ fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportP
                 index + 1,
                 selected_chain_count,
             ),
-            chain_name: chain_name.clone(),
-            addresses: addresses_for_chain(chain_name, &request.resolved_addresses),
+            chain_id: chain_id.clone(),
+            addresses: addresses_for_chain(chain_id, &request.resolved_addresses),
         });
         secret_instructions.push(WalletSecretInstruction {
             wallet_id: wallet_id.clone(),
@@ -572,7 +591,7 @@ fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportP
 
 fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
     let watch_entries = watch_only_addresses_for_chain(
-        &request.primary_selected_chain_name,
+        &request.primary_selected_chain_id,
         &request.watch_only_entries,
     )?;
     if watch_entries.is_empty() {
@@ -594,7 +613,7 @@ fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImpo
         .zip(request.planned_wallet_ids.iter())
         .enumerate()
         .map(
-            |(index, ((chain_name, addresses), wallet_id))| PlannedWallet {
+            |(index, ((chain_id, addresses), wallet_id))| PlannedWallet {
                 wallet_id: wallet_id.clone(),
                 name: wallet_display_name(
                     &request.wallet_name,
@@ -602,7 +621,7 @@ fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImpo
                     index + 1,
                     selected_chain_count,
                 ),
-                chain_name,
+                chain_id,
                 addresses,
             },
         )
@@ -627,12 +646,12 @@ fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImpo
 }
 
 fn watch_only_addresses_for_chain(
-    primary_chain_name: &str,
+    primary_chain_id: &str,
     entries: &WalletImportWatchOnlyEntries,
 ) -> Result<Vec<(String, WalletImportAddresses)>, String> {
     let unsupported =
-        || format!("Watch-only planning is not available for chain: {primary_chain_name}");
-    let chain = Chain::from_display_name(primary_chain_name).ok_or_else(unsupported)?;
+        || format!("Watch-only planning is not available for chain: {primary_chain_id}");
+    let chain = Chain::from_str_id(primary_chain_id).ok_or_else(unsupported)?;
     if !chain.supports_watch_only_import() {
         return Err(unsupported());
     }
@@ -642,7 +661,7 @@ fn watch_only_addresses_for_chain(
     if chain == Chain::Bitcoin {
         if let Some(xpub) = trim_optional(entries.bitcoin_xpub.as_deref()) {
             return Ok(vec![(
-                primary_chain_name.to_string(),
+                primary_chain_id.to_string(),
                 WalletImportAddresses {
                     by_slot: HashMap::new(),
                     bitcoin_xpub: Some(xpub.to_string()),
@@ -656,22 +675,19 @@ fn watch_only_addresses_for_chain(
         .iter()
         .map(|address| {
             (
-                primary_chain_name.to_string(),
+                primary_chain_id.to_string(),
                 WalletImportAddresses::single(chain, address.clone()),
             )
         })
         .collect())
 }
 
-/// The address slots a wallet on `chain_name` should carry.
+/// The address slots a wallet on `chain_id` should carry.
 ///
 /// A wallet is per-chain, so it takes only the slots its own chain reads.
 /// Bitcoin additionally carries the account xpub when one was supplied.
-fn addresses_for_chain(
-    chain_name: &str,
-    addresses: &WalletImportAddresses,
-) -> WalletImportAddresses {
-    let Some(chain) = Chain::from_display_name(chain_name) else {
+fn addresses_for_chain(chain_id: &str, addresses: &WalletImportAddresses) -> WalletImportAddresses {
+    let Some(chain) = Chain::from_str_id(chain_id) else {
         return WalletImportAddresses::empty();
     };
 
@@ -765,7 +781,7 @@ mod tests {
             assert!(
                 !chain.is_testnet() || chain.mainnet_counterpart() != chain,
                 "{} is a testnet and would be offered",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }
@@ -774,8 +790,8 @@ mod tests {
     fn plans_multi_chain_seed_import() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Main".to_string(),
-            primary_selected_chain_name: "Bitcoin".to_string(),
-            selected_chain_names: vec!["Bitcoin".to_string(), "Ethereum".to_string()],
+            primary_selected_chain_id: "bitcoin".to_string(),
+            selected_chain_ids: vec!["bitcoin".to_string(), "ethereum".to_string()],
             planned_wallet_ids: vec!["1".to_string(), "2".to_string()],
             is_watch_only_import: false,
             is_private_key_import: false,
@@ -817,8 +833,8 @@ mod tests {
     fn evm_chains_share_one_address_slot() {
         let request = |chain: &str| WalletImportPlanRequest {
             wallet_name: "W".to_string(),
-            primary_selected_chain_name: chain.to_string(),
-            selected_chain_names: vec![chain.to_string()],
+            primary_selected_chain_id: chain.to_string(),
+            selected_chain_ids: vec![chain.to_string()],
             planned_wallet_ids: vec!["1".to_string()],
             is_watch_only_import: false,
             is_private_key_import: false,
@@ -831,7 +847,7 @@ mod tests {
         };
 
         // Including chains the old hand-written match never listed.
-        for chain in ["Ethereum", "Arbitrum", "Base", "Polygon", "Ink", "X Layer"] {
+        for chain in ["ethereum", "arbitrum", "base", "polygon", "ink", "x-layer"] {
             let plan = plan_wallet_import(request(chain)).expect("plan");
             assert_eq!(
                 plan.wallets[0]
@@ -849,8 +865,8 @@ mod tests {
     fn ethereum_classic_fills_both_its_own_slot_and_the_evm_slot() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "W".to_string(),
-            primary_selected_chain_name: "Ethereum Classic".to_string(),
-            selected_chain_names: vec!["Ethereum Classic".to_string()],
+            primary_selected_chain_id: "ethereum-classic".to_string(),
+            selected_chain_ids: vec!["ethereum-classic".to_string()],
             planned_wallet_ids: vec!["1".to_string()],
             is_watch_only_import: false,
             is_private_key_import: false,
@@ -881,8 +897,8 @@ mod tests {
     fn seed_import_carries_bitcoin_xpub_only_on_the_bitcoin_wallet() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Main".to_string(),
-            primary_selected_chain_name: "Bitcoin".to_string(),
-            selected_chain_names: vec!["Bitcoin".to_string(), "Solana".to_string()],
+            primary_selected_chain_id: "bitcoin".to_string(),
+            selected_chain_ids: vec!["bitcoin".to_string(), "solana".to_string()],
             planned_wallet_ids: vec!["1".to_string(), "2".to_string()],
             is_watch_only_import: false,
             is_private_key_import: false,
@@ -909,8 +925,8 @@ mod tests {
     fn plans_watch_only_bitcoin_xpub_import() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: String::new(),
-            primary_selected_chain_name: "Bitcoin".to_string(),
-            selected_chain_names: vec!["Bitcoin".to_string()],
+            primary_selected_chain_id: "bitcoin".to_string(),
+            selected_chain_ids: vec!["bitcoin".to_string()],
             planned_wallet_ids: vec!["watch-1".to_string()],
             is_watch_only_import: true,
             is_private_key_import: false,
@@ -936,8 +952,8 @@ mod tests {
     fn watch_only_expands_one_wallet_per_address() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Watch".to_string(),
-            primary_selected_chain_name: "Solana".to_string(),
-            selected_chain_names: vec!["Solana".to_string()],
+            primary_selected_chain_id: "solana".to_string(),
+            selected_chain_ids: vec!["solana".to_string()],
             planned_wallet_ids: vec!["a".to_string(), "b".to_string()],
             is_watch_only_import: true,
             is_private_key_import: false,
@@ -976,8 +992,8 @@ mod tests {
     fn watch_only_rejects_chains_that_need_more_than_an_address() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Watch".to_string(),
-            primary_selected_chain_name: "Monero".to_string(),
-            selected_chain_names: vec!["Monero".to_string()],
+            primary_selected_chain_id: "monero".to_string(),
+            selected_chain_ids: vec!["monero".to_string()],
             planned_wallet_ids: vec!["a".to_string()],
             is_watch_only_import: true,
             is_private_key_import: false,
@@ -998,8 +1014,8 @@ mod tests {
     fn unknown_chain_is_not_importable_watch_only() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Watch".to_string(),
-            primary_selected_chain_name: "Nonexistent Chain".to_string(),
-            selected_chain_names: vec!["Nonexistent Chain".to_string()],
+            primary_selected_chain_id: "Nonexistent Chain".to_string(),
+            selected_chain_ids: vec!["Nonexistent Chain".to_string()],
             planned_wallet_ids: vec!["a".to_string()],
             is_watch_only_import: true,
             is_private_key_import: false,
@@ -1034,8 +1050,8 @@ mod minted_wallet_id_tests {
     fn request(chains: &[&str], planned: Vec<String>) -> WalletImportPlanRequest {
         WalletImportPlanRequest {
             wallet_name: "Main".to_string(),
-            primary_selected_chain_name: chains[0].to_string(),
-            selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
+            primary_selected_chain_id: chains[0].to_string(),
+            selected_chain_ids: chains.iter().map(|c| c.to_string()).collect(),
             planned_wallet_ids: planned,
             is_watch_only_import: false,
             is_private_key_import: false,
@@ -1080,7 +1096,7 @@ mod minted_wallet_id_tests {
             plan_wallet_import(request(&["Bitcoin"], vec!["given-id".to_string()])).expect("plan");
         assert_eq!(plan.wallets[0].wallet_id, "given-id");
         assert!(plan_wallet_import(request(
-            &["Bitcoin"],
+            &["bitcoin"],
             vec!["one".to_string(), "two".to_string()]
         ))
         .is_err());

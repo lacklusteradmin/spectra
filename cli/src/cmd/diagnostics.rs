@@ -108,15 +108,12 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
 }
 
 fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
-    // Core keys self-tests by *display name*, not registry id — `chain_key` in
-    // `ChainSpec` is "Bitcoin Cash", not "bitcoin-cash". Passing the id got
-    // "no self-tests" for every chain, which reads as "this chain is not
-    // covered" rather than "you asked with the wrong key".
+    // Core keys self-tests by chain id.
     let by_chain = match &args.chain {
         Some(name) => {
             let chain = resolve_chain(name)?;
             let results = spectra_core::diagnostics::self_tests::self_tests_run_chain(
-                chain.chain_display_name().to_string(),
+                chain.str_id().to_string(),
             );
             if results.is_empty() {
                 return Err(CliError::rejected(format!(
@@ -124,7 +121,7 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
                     chain.chain_display_name()
                 )));
             }
-            std::collections::HashMap::from([(chain.chain_display_name().to_string(), results)])
+            std::collections::HashMap::from([(chain.str_id().to_string(), results)])
         }
         None => spectra_core::diagnostics::self_tests::self_tests_run_all(),
     };
@@ -149,7 +146,7 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
                 } else {
                     out::fail_mark()
                 },
-                chain_id.bold(),
+                super::chain_name(chain_id).bold(),
                 out::hint(&format!("{} checks", results.len())),
             );
             for result in results.iter().filter(|result| !result.passed) {
@@ -194,7 +191,7 @@ fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let _ = ctx;
     let json = spectra_core::diagnostics::diagnostics_json(
-        chain.chain_display_name().to_string(),
+        chain.str_id().to_string(),
         Vec::new(),
         None,
         None,
@@ -208,8 +205,6 @@ fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
     })?;
 
     out.text(|| println!("{json}"));
-    out.emit(
-        serde_json::json!({ "ok": true, "chain": chain.chain_display_name(), "document": json }),
-    );
+    out.emit(serde_json::json!({ "ok": true, "chain": chain.str_id(), "document": json }));
     Ok(())
 }

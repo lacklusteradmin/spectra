@@ -9,26 +9,77 @@ pub struct OwnedSendPreview {
     pub wallet_id: String,
     pub holding_key: String,
     pub chain_id: String,
+    /// The amount quoted, exactly as it was asked for. A value or fee shown
+    /// beside a different amount field belongs to another quote.
+    pub amount: String,
     pub preview: SendPreview,
-    pub details: Option<crate::send::flow::SendPreviewDetailsCore>,
+    /// The estimated fee in the chain's gas asset, as an exact decimal cut
+    /// to the gas asset's precision.
+    pub network_fee: Option<String>,
+    /// That fee in the display currency, when the gas asset has a quote.
+    pub network_fee_value: Option<f64>,
+    /// The amount being quoted, in the display currency.
+    pub amount_value: Option<f64>,
+    pub details: Option<SendPreviewDetails>,
     pub shortcuts: HashMap<u32, String>,
 }
 
+/// What a preview says about the funds, beyond the fee. Amounts are exact
+/// decimals in the sent asset, cut to its precision and never rounded up.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct SendPreviewDetails {
+    pub spendable_balance: Option<String>,
+    pub fee_rate_description: Option<String>,
+    pub estimated_transaction_bytes: Option<i64>,
+    pub selected_input_count: Option<i64>,
+    pub uses_change_output: Option<bool>,
+    pub max_sendable: Option<String>,
+}
+
+impl SendPreviewDetails {
+    fn from_core(core: crate::send::flow::SendPreviewDetailsCore, decimals: u32) -> Self {
+        let exact = |v: Option<f64>| {
+            v.and_then(crate::decimal::from_f64)
+                .and_then(|d| crate::decimal::truncate(&d, decimals))
+        };
+        Self {
+            spendable_balance: exact(core.spendableBalance),
+            fee_rate_description: core.feeRateDescription,
+            estimated_transaction_bytes: core.estimatedTransactionBytes,
+            selected_input_count: core.selectedInputCount,
+            uses_change_output: core.usesChangeOutput,
+            max_sendable: exact(core.maxSendable),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn owned_preview(
+    state: &CoreAppState,
     wallet_id: String,
-    holding_key: String,
+    holding: &crate::store::wallet_domain::AssetHolding,
+    amount: &str,
     chain: Chain,
-    is_native: bool,
     decimals: Option<u32>,
-    balance: f64,
     preview: SendPreview,
 ) -> OwnedSendPreview {
+    let holding_key = holding.deployment_id();
+    let is_native = holding.is_native();
+    let balance = crate::decimal::to_f64(&holding.amount);
+    let gas_decimals = u32::from(chain.native_decimals());
+    let network_fee = crate::decimal::from_f64(preview.network_fee())
+        .and_then(|fee| crate::decimal::truncate(&fee, gas_decimals));
+    let network_fee_value = network_fee.as_deref().and_then(|fee| {
+        super::valuation::display_value_of(state, &chain.native_holding_template(), fee)
+    });
+    let amount_value = super::valuation::display_value_of(state, holding, amount);
     let shortcuts = [25, 50, 75, 100]
         .into_iter()
         .filter_map(|percent| {
             crate::send::flow::quoted_send_amount(
                 Some(preview.clone()),
-                chain.chain_display_name().into(),
+                chain.str_id().into(),
                 is_native,
                 decimals,
                 percent,
@@ -49,12 +100,17 @@ fn owned_preview(
             details.maxSendable = None;
         }
     }
+    let asset_decimals = decimals.unwrap_or(gas_decimals);
     OwnedSendPreview {
         wallet_id,
         holding_key,
         chain_id: chain.str_id().into(),
+        amount: amount.to_string(),
         preview,
-        details,
+        network_fee,
+        network_fee_value,
+        amount_value,
+        details: details.map(|d| SendPreviewDetails::from_core(d, asset_decimals)),
         shortcuts,
     }
 }
@@ -94,12 +150,12 @@ impl WalletService {
         let token_decimals = token.as_ref().map(|t| u32::from(t.decimals));
         let wrap = |preview| {
             owned_preview(
+                &state,
                 wallet_id.clone(),
-                holding_key.clone(),
+                holding,
+                &amount,
                 chain,
-                holding.is_native(),
                 token_decimals,
-                holding.amount,
                 preview,
             )
         };
@@ -108,7 +164,7 @@ impl WalletService {
                 .preview_owned_evm_send(
                     wallet_id.clone(),
                     holding_key.clone(),
-                    amount,
+                    amount.clone(),
                     destination,
                     explicit_nonce,
                     custom_fees,
@@ -156,7 +212,7 @@ impl WalletService {
                 let priority = state
                     .settings
                     .fee_priority_by_chain
-                    .get(chain.chain_display_name())
+                    .get(chain.str_id())
                     .copied()
                     .unwrap_or(crate::store::state::FeePriority::Normal);
                 // This legacy provider preview accepts a display amount; signing parses the exact input separately.
@@ -183,53 +239,6 @@ impl WalletService {
             ),
         };
         Ok(preview.map(wrap))
-    }
-
-    pub async fn self_send_confirmation(
-        &self,
-        wallet_id: String,
-        holding_key: String,
-        destination: String,
-        amount: f64,
-        pending: Option<crate::store::PendingSelfSendConfirmationInput>,
-    ) -> Result<crate::store::SelfSendConfirmationPlan, SpectraBridgeError> {
-        if !amount.is_finite() || amount < 0.0 {
-            return Err("amount must be finite and non-negative".into());
-        }
-        let state = self.app_state().await;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id == wallet_id)
-            .ok_or("wallet does not exist")?;
-        let holding = wallet
-            .holdings
-            .iter()
-            .find(|h| h.deployment_id() == holding_key)
-            .ok_or("holding does not exist")?;
-        let chain = holding.chain().ok_or("invalid asset network")?;
-        super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
-        let destination = self
-            .resolve_send_destination(chain.str_id().into(), destination)
-            .await?
-            .address;
-        let owned = self.send_owned_addresses(chain).await?;
-        Ok(crate::store::self_send_confirmation(
-            crate::store::SelfSendConfirmationRequest {
-                pending_confirmation: pending,
-                wallet_id,
-                chain_name: chain.chain_display_name().into(),
-                symbol: holding.symbol.clone(),
-                destination_address: destination,
-                amount,
-                now_unix: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_err(|_| "invalid clock")?
-                    .as_secs_f64(),
-                window_seconds: 20.0,
-                owned_addresses: owned,
-            },
-        ))
     }
 }
 
@@ -356,16 +365,16 @@ impl WalletService {
             .ok_or("holding was removed")?;
         let verdict = crate::send::send_affordability(crate::send::SendAffordabilityInput {
             is_native: holding.is_native(),
-            chain_name: chain.chain_display_name().into(),
+            chain_id: chain.str_id().into(),
             symbol: holding.symbol.clone(),
-            amount: preflight.amount,
-            network_fee: fee,
-            holding_balance: holding.amount,
+            amount: preflight.amount_str.clone(),
+            network_fee: crate::decimal::from_f64(fee).ok_or("invalid network fee")?,
+            holding_balance: holding.amount.clone(),
             gas_balance: wallet
                 .holdings
                 .iter()
                 .find(|h| h.is_native() && h.chain() == Some(chain))
-                .map(|h| h.amount),
+                .map(|h| h.amount.clone()),
         });
         use crate::send::SendAffordability;
         match verdict {
@@ -375,8 +384,10 @@ impl WalletService {
                 return Err(format!("Insufficient {symbol} for amount plus network fee (requires {required} {symbol})").into()),
             SendAffordability::AmountExceedsBalance { symbol } =>
                 return Err(format!("Insufficient {symbol} balance").into()),
-            SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_name } =>
-                return Err(format!("Insufficient {gas_symbol} for the {chain_name} network fee ({fee} {gas_symbol})").into()),
+            SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_id } => {
+                let network = crate::registry::Chain::display_name_for_id(&chain_id);
+                return Err(format!("Insufficient {gas_symbol} for the {network} network fee ({fee} {gas_symbol})").into());
+            }
         }
         let fee_rate_svb = match &preview {
             Some(SendPreview::Utxo { preview })
@@ -507,6 +518,53 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Whether a send to `destination` goes to one of the user's own
+    /// addresses on the holding's network. The CLI's check; review asks
+    /// [`Self::is_own_address`] directly with the address it resolved.
+    pub async fn is_own_send_destination(
+        &self,
+        wallet_id: String,
+        holding_key: String,
+        destination: String,
+    ) -> Result<bool, SpectraBridgeError> {
+        let state = self.app_state().await;
+        let holding = state
+            .wallets
+            .iter()
+            .find(|w| w.id == wallet_id)
+            .ok_or("wallet does not exist")?
+            .holdings
+            .iter()
+            .find(|h| h.deployment_id() == holding_key)
+            .ok_or("holding does not exist")?;
+        let chain = holding.chain().ok_or("invalid asset network")?;
+        super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
+        let destination = self
+            .resolve_send_destination(chain.str_id().into(), destination)
+            .await?
+            .address;
+        self.is_own_address(chain, &destination).await
+    }
+
+    /// Whether `destination` is an address of the user's on `chain`, compared
+    /// in the chain's normal form — which lowercases an all-caps bech32
+    /// address, so one typed in caps is still recognised.
+    pub(super) async fn is_own_address(
+        &self,
+        chain: Chain,
+        destination: &str,
+    ) -> Result<bool, SpectraBridgeError> {
+        let normalize = |address: &str| {
+            crate::send::flow::normalized_send_address(chain.str_id().into(), address.into())
+        };
+        let destination = normalize(destination);
+        Ok(self
+            .send_owned_addresses(chain)
+            .await?
+            .iter()
+            .any(|address| normalize(address) == destination))
+    }
+
     pub(super) async fn send_owned_addresses(
         &self,
         chain: Chain,
@@ -517,11 +575,8 @@ impl WalletService {
                 owned.push(address.to_string());
             }
             owned.extend(
-                self.owned_addresses_for_wallet(
-                    wallet.id.clone(),
-                    Some(chain.chain_display_name().into()),
-                )
-                .await,
+                self.owned_addresses_for_wallet(wallet.id.clone(), Some(chain.str_id().into()))
+                    .await,
             );
             if chain.supports_deep_utxo_discovery() && wallet.chain() == Some(chain) {
                 owned.extend(
@@ -546,18 +601,25 @@ mod quote_projection_tests {
                 ..Default::default()
             },
         };
+        let token = crate::store::wallet_domain::AssetHolding {
+            token_standard: Chain::Solana.token_standard().into(),
+            contract_address: Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into()),
+            amount: "100".into(),
+            ..Chain::Solana.native_holding_template()
+        }
+        .identified();
         let quote = owned_preview(
+            &CoreAppState::default(),
             "w".into(),
-            "token".into(),
+            &token,
+            "1",
             Chain::Solana,
-            false,
             Some(6),
-            100.0,
             preview,
         );
         assert!(quote.shortcuts.is_empty());
         let details = quote.details.unwrap();
-        assert_eq!(details.spendableBalance, None);
-        assert_eq!(details.maxSendable, None);
+        assert_eq!(details.spendable_balance, None);
+        assert_eq!(details.max_sendable, None);
     }
 }

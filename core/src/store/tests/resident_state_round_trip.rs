@@ -16,12 +16,12 @@ fn tmp_db() -> String {
 #[test]
 fn an_alert_that_cannot_fire_is_refused() {
     let mut state = CoreAppState::default();
-    for target in [0.0, -5.0, f64::INFINITY, f64::NAN, 0.000001] {
+    for target in ["0", "-5", "inf", "NaN", "1e3", "", "0.000001"] {
         reduce_state_in_place(
             &mut state,
             StateCommand::AddPriceAlert {
                 holding_key: "bitcoin:native".into(),
-                target_price: target,
+                target_price: target.into(),
                 currency: crate::store::state::FiatCurrency::Usd,
                 condition: CorePriceAlertCondition::Above,
             },
@@ -40,7 +40,7 @@ fn alerts_contacts_and_currency_survive_reopening() {
         &mut state,
         StateCommand::AddPriceAlert {
             holding_key: "bitcoin:native".into(),
-            target_price: 1.0,
+            target_price: "1".into(),
             currency: crate::store::state::FiatCurrency::Usd,
             condition: CorePriceAlertCondition::Above,
         },
@@ -48,9 +48,8 @@ fn alerts_contacts_and_currency_survive_reopening() {
     reduce_state_in_place(
         &mut state,
         StateCommand::AddAddressBookEntry {
-            id: "C1".into(),
             name: "Alice".into(),
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".into(),
             note: String::new(),
         },
@@ -122,7 +121,7 @@ fn resetting_settings_restores_every_default() {
         },
         U::BitcoinStopGap { value: 42 },
         U::FeePriority {
-            chain: "Dogecoin".into(),
+            chain: "dogecoin".into(),
             value: FeePriority::Economy,
         },
         U::BackgroundSyncProfile {
@@ -212,11 +211,11 @@ fn every_settings_field_round_trips() {
         },
         U::BitcoinStopGap { value: 42 },
         U::FeePriority {
-            chain: "Bitcoin".into(),
+            chain: "bitcoin".into(),
             value: FeePriority::Priority,
         },
         U::FeePriority {
-            chain: "Dogecoin".into(),
+            chain: "dogecoin".into(),
             value: FeePriority::Economy,
         },
         U::BackgroundSyncProfile {

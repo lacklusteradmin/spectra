@@ -19,6 +19,10 @@ pub struct AppRefreshResult {
     pub pending: Option<PendingMaintenanceResult>,
     pub failures: Vec<String>,
     pub poll_seconds: u64,
+    /// Price alerts this refresh crossed, to notify about.
+    pub price_alerts: Vec<crate::store::PriceAlertNotification>,
+    /// A large portfolio movement this refresh revealed, to notify about.
+    pub movement: Option<super::standalone::LargeMovementEvaluation>,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -44,6 +48,8 @@ impl WalletService {
             pending: None,
             failures: vec![],
             poll_seconds: plan.poll_seconds,
+            price_alerts: vec![],
+            movement: None,
         };
         if !conditions.is_network_reachable {
             if deep_rescan {
@@ -191,6 +197,19 @@ impl WalletService {
         {
             self.refresh_clock.write().await.full_refresh_at =
                 Some(crate::wallet_db::now_secs() as f64);
+        }
+        // What the refresh changed is judged here, once, after every write:
+        // a front end that evaluated alerts itself had to order the calls.
+        match self.evaluate_price_alerts().await {
+            Ok(notifications) => result.price_alerts = notifications,
+            Err(e) => result.failures.push(e.to_string()),
+        }
+        match self
+            .evaluate_portfolio_movement(conditions.app_is_active)
+            .await
+        {
+            Ok(movement) => result.movement = movement,
+            Err(e) => result.failures.push(e.to_string()),
         }
         result.state = self.app_state().await;
         Ok(result)

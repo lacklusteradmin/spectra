@@ -417,6 +417,31 @@ impl Chain {
         self.supports_staking() && self != Self::Icp
     }
 
+    /// The chain can hold tracked tokens: the catalog gives it a token
+    /// standard. Testnets carry their mainnet's standard but no token catalog.
+    pub fn hosts_tokens(self) -> bool {
+        !self.is_testnet() && !self.entry().token_standard.is_empty()
+    }
+
+    /// The catalog's token standard (`ERC-20`, `SPL`), or empty.
+    pub fn token_standard(self) -> &'static str {
+        &self.entry().token_standard
+    }
+
+    /// Which validator a *token contract* on this chain is judged by.
+    ///
+    /// Not [`Chain::address_validation_kind`] for two of them: a Sui or Aptos
+    /// token is named by a coin *type* (`0xADDR::module::NAME`), not by an
+    /// address. Everywhere else the contract is an address in the chain's own
+    /// format.
+    pub fn contract_validation_kind(self) -> &'static str {
+        match self {
+            Chain::Sui => "suiCoinType",
+            Chain::Aptos => "aptosTokenType",
+            other => other.address_validation_kind(),
+        }
+    }
+
     pub fn supports_staking(self) -> bool {
         matches!(
             self,
@@ -436,7 +461,7 @@ impl Chain {
     /// everywhere it was asked, and Monero is a chain for which it is the
     /// answer. See `default_path_from_catalog`.
     pub fn uses_derivation_path(self) -> bool {
-        crate::chains::default_derivation_path_template_by_id(self.str_id()).is_some()
+        crate::chains::default_derivation_path_template(self.str_id()).is_some()
     }
 
     /// Returns `true` for chains that are testnets.
@@ -639,15 +664,16 @@ impl Chain {
     /// starts with before its first refresh.
     pub fn native_holding_template(self) -> crate::store::wallet_domain::AssetHolding {
         crate::store::wallet_domain::AssetHolding {
+            id: String::new(),
             name: self.coin_name().to_string(),
             symbol: self.coin_symbol().to_string(),
             coingecko_id: self.coingecko_id().to_string(),
-            chain_name: self.chain_display_name().to_string(),
+            chain_id: self.str_id().to_string(),
             token_standard: "Native".to_string(),
             contract_address: None,
-            amount: 0.0,
-            price_usd: 0.0,
+            amount: "0".to_string(),
         }
+        .identified()
     }
 
     pub fn coin_name(self) -> &'static str {
@@ -1012,7 +1038,7 @@ impl Chain {
     /// name is accepted only where the registry that named it lives, which is
     /// the stricter of the two readings.
     ///
-    /// Swift asked `chainName == "Ethereum"` for this in three places: the
+    /// Swift asked `chainName == "ethereum"` for this in three places: the
     /// composer's recipient probe, the EVM preview and the submit path. One
     /// fact stated three times is three chances for them to disagree.
     pub fn resolves_ens_names(self) -> bool {
@@ -1264,6 +1290,12 @@ impl Chain {
     ///
     /// No special cases: the enum and `chains.toml` agree on every name, and
     /// `every_catalog_name_resolves` fails if they ever stop.
+    /// The display name for a chain id, for a sentence a person reads. An id
+    /// the registry does not know is shown as it is.
+    pub fn display_name_for_id(id: &str) -> String {
+        Self::from_str_id(id).map_or_else(|| id.to_string(), |c| c.chain_display_name().to_string())
+    }
+
     pub fn from_display_name(name: &str) -> Option<Self> {
         Chain::all().find(|c| c.chain_display_name() == name)
     }
@@ -1302,7 +1334,7 @@ pub enum SendBroadcastMode {
 
 /// What a front end needs to assemble a send for this chain, beyond the
 /// amount and the destination.
-#[derive(Debug, Clone, Copy, uniffi::Record)]
+#[derive(Debug, Clone, Copy)]
 pub struct SendExecutionShape {
     /// Decimal places to show when reporting that the balance cannot cover
     /// the fee. A display precision, not the chain's native decimals.
@@ -1320,7 +1352,7 @@ pub struct SendExecutionShape {
 /// A per-chain fact, so it lives here rather than as one wrapper function per
 /// chain in the shell — there were eighteen of those, each naming a chain, a
 /// chain id, an address resolver and up to two flags.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PendingStatusPoll {
     /// Ask the chain's own status endpoint for a txid.
     Utxo {
@@ -1476,25 +1508,28 @@ mod tests {
         }
     }
 
-    /// No two chains answer to the same hosting variant, and no variant goes
-    /// unclaimed. The count was written as `18`, so growing the enum failed
-    /// here with a number rather than a name; `ALL` is the same assertion
-    /// without the copy.
+    /// Tracked tokens live exactly on the mainnets the catalog gives a token
+    /// standard, and each validates its contracts with a known validator.
     #[test]
-    fn token_hosting_chains_map_one_to_one() {
-        let mut seen = std::collections::HashMap::new();
-        for identity in chain_identities() {
-            if let Some(t) = identity.token_hosting_chain {
-                if let Some(prev) = seen.insert(format!("{t:?}"), identity.name.clone()) {
-                    panic!("{t:?} claimed by both {prev} and {}", identity.name);
-                }
-            }
+    fn token_hosting_follows_the_token_standard_column() {
+        let hosting: Vec<&str> = Chain::all()
+            .filter(|c| c.hosts_tokens())
+            .map(Chain::str_id)
+            .collect();
+        let with_standard: Vec<&str> = crate::chains::catalog()
+            .iter()
+            .filter(|c| !c.token_standard.is_empty() && !c.is_testnet)
+            .map(|c| c.id.as_str())
+            .collect();
+        assert_eq!(hosting, with_standard);
+        assert!(!Chain::Bitcoin.hosts_tokens() && !Chain::Monero.hosts_tokens());
+        for chain in Chain::all().filter(|c| c.hosts_tokens()) {
+            assert!(
+                !chain.contract_validation_kind().is_empty(),
+                "{}",
+                chain.str_id()
+            );
         }
-        assert_eq!(
-            seen.len(),
-            crate::store::wallet_domain::CoreTokenHostingChain::ALL.len(),
-            "a hosting variant is claimed by no chain"
-        );
     }
 
     /// Monero is the only mainnet the flag excludes, and one piece of iOS copy
@@ -1506,9 +1541,9 @@ mod tests {
     fn only_monero_is_excluded_from_watch_only_import() {
         let excluded: Vec<&str> = Chain::all()
             .filter(|c| !c.is_testnet() && !c.supports_watch_only_import())
-            .map(|c| c.chain_display_name())
+            .map(|c| c.str_id())
             .collect();
-        assert_eq!(excluded, vec!["Monero"]);
+        assert_eq!(excluded, vec!["monero"]);
     }
 
     #[test]
@@ -1517,10 +1552,6 @@ mod tests {
             assert_eq!(
                 crate::send::flow::seed_derivation_chain_raw(chain).as_deref(),
                 Some(chain.chain_display_name())
-            );
-            assert_eq!(
-                crate::registry::evm_seed_derivation_chain(chain).as_deref(),
-                chain.is_evm().then_some(chain.chain_display_name())
             );
         }
     }
@@ -1693,27 +1724,10 @@ pub struct ChainIdentity {
     /// The send screen has a network card to show for this chain — a fee, a
     /// preview, or both. False only where core routes no send at all.
     pub has_send_preview: bool,
-    /// Which `CoreTokenHostingChain` this chain is, if it can host known
-    /// tokens. `None` for the chains that cannot.
-    ///
-    /// `CoreTokenHostingChain::chain_name` and its inverse already collapsed
-    /// four copies of this mapping inside Rust; publishing it here removes the
-    /// three that were left in Swift, which hand-wrote `rawValue`,
-    /// `init?(rawValue:)` and `allCases` for an enum core owns.
-    pub token_hosting_chain: Option<crate::store::wallet_domain::CoreTokenHostingChain>,
-    pub send_execution_shape: SendExecutionShape,
+    /// The chain can hold tracked tokens.
+    pub hosts_tokens: bool,
     /// How core moves a send here, which is what the network card says.
     pub send_broadcast_mode: SendBroadcastMode,
-    /// The JSON-RPC method that answers "is this node alive", or `None` for a
-    /// chain whose endpoints are checked over plain HTTP.
-    pub rpc_health_method: Option<String>,
-    pub pending_status_poll: PendingStatusPoll,
-    /// Which chain's derivation path this chain reuses, as a display name.
-    /// `None` for a chain with no BIP-32 path.
-    pub seed_derivation_chain: Option<String>,
-    /// The EVM chain whose derivation this chain reuses, or `None` off the
-    /// EVM family.
-    pub evm_seed_derivation_chain: Option<String>,
     /// The mainnet this chain belongs to, or itself.
     pub mainnet_counterpart: Chain,
     /// The networks this chain's family offers, mainnet first.
@@ -1742,19 +1756,8 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),
-            token_hosting_chain:
-                crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
-                    chain.chain_display_name(),
-                ),
-            send_execution_shape: chain.send_execution_shape(),
+            hosts_tokens: chain.hosts_tokens(),
             send_broadcast_mode: chain.send_broadcast_mode(),
-            rpc_health_method: chain.rpc_health_method().map(str::to_string),
-            pending_status_poll: chain.pending_status_poll(),
-            seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),
-            evm_seed_derivation_chain: chain
-                .is_evm()
-                .then(|| evm_seed_derivation_chain(chain))
-                .flatten(),
             mainnet_counterpart: chain.mainnet_counterpart(),
             network_choices: chain
                 .network_choices()
@@ -1767,25 +1770,6 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
                 .collect(),
         })
         .collect()
-}
-
-/// Not exported: it is a column of `chain_identities` now.
-pub fn evm_seed_derivation_chain(chain: Chain) -> Option<String> {
-    if chain.is_testnet() && chain.is_evm() {
-        return Some(chain.chain_display_name().to_string());
-    }
-    Some(
-        match chain {
-            Chain::Ethereum => "Ethereum",
-            Chain::EthereumClassic => "Ethereum Classic",
-            Chain::Arbitrum => "Arbitrum",
-            Chain::BnbChain => "Ethereum",
-            Chain::Avalanche => "Avalanche",
-            Chain::Hyperliquid => "Hyperliquid",
-            _ => return None,
-        }
-        .to_string(),
-    )
 }
 
 #[cfg(test)]
@@ -1891,13 +1875,13 @@ mod fee_decimals_match_the_asset {
     #[test]
     fn utxo_and_e8s_chains_use_eight() {
         for name in [
-            "Bitcoin",
-            "Bitcoin Cash",
-            "Bitcoin SV",
-            "Litecoin",
-            "Internet Computer",
+            "bitcoin",
+            "bitcoin-cash",
+            "bitcoin-sv",
+            "litecoin",
+            "internet-computer",
         ] {
-            let c = super::Chain::from_display_name(name).unwrap();
+            let c = super::Chain::from_str_id(name).unwrap();
             assert_eq!(c.send_execution_shape().fee_decimals, 8, "{name}");
         }
         assert_eq!(super::Chain::Stellar.send_execution_shape().fee_decimals, 7);

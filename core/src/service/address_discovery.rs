@@ -89,7 +89,7 @@ impl WalletService {
         if network.mainnet_counterpart() == Chain::Bitcoin {
             if let Some(xpub) = xpub.filter(|value| !value.trim().is_empty()) {
                 use crate::derivation::xpub_walker::{derive_children_on_network, HdNetwork};
-                let name = network.chain_display_name().to_string();
+                let id = network.str_id().to_string();
                 let hd_network = if network.is_testnet() {
                     HdNetwork::Testnet
                 } else {
@@ -98,10 +98,10 @@ impl WalletService {
                 // Validate before reserving any index.
                 derive_children_on_network(&xpub, 0, 0, 1, hd_network, None)?;
                 let index = if reserve {
-                    self.reserve_receive_index(wallet_id.clone(), name.clone(), 1)
+                    self.reserve_receive_index(wallet_id.clone(), id.clone(), 1)
                         .await?
                 } else {
-                    self.keypool_state(wallet_id.clone(), name.clone())
+                    self.keypool_state(wallet_id.clone(), id.clone())
                         .await?
                         .reserved_receive_index
                         .unwrap_or(0)
@@ -115,7 +115,7 @@ impl WalletService {
                 if reserve {
                     self.register_owned_address(
                         wallet_id,
-                        name,
+                        id,
                         address.clone(),
                         None,
                         Some("external".into()),
@@ -137,10 +137,7 @@ impl WalletService {
         let Some(address) = stored.filter(|a| !a.trim().is_empty()) else {
             return Ok(None);
         };
-        if !crate::send::flow::is_valid_send_address(
-            network.chain_display_name().into(),
-            address.clone(),
-        ) {
+        if !crate::send::flow::is_valid_send_address(network.str_id().into(), address.clone()) {
             return Err(SpectraBridgeError::InvalidInput {
                 message: "stored receive address is invalid for its network".into(),
             });
@@ -148,7 +145,7 @@ impl WalletService {
         if reserve {
             self.register_owned_address(
                 wallet_id,
-                network.chain_display_name().into(),
+                network.str_id().into(),
                 address.clone(),
                 None,
                 None,
@@ -157,57 +154,6 @@ impl WalletService {
             .await?;
         }
         Ok(Some(address))
-    }
-
-    /// Every address this wallet is already known to hold on `chain_id`.
-    ///
-    /// No network and no derivation: the wallet's own address, what the owned
-    /// table records, and the ends of transactions it has made. Three callers
-    /// want exactly this and not the scan below it.
-    pub async fn known_utxo_addresses(
-        &self,
-        wallet_id: String,
-        chain_id: String,
-    ) -> Result<Vec<String>, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
-        if !chain.supports_deep_utxo_discovery() {
-            return Ok(Vec::new());
-        }
-        let chain_name = chain.chain_display_name().to_string();
-        let mut ordered: Vec<String> = Vec::new();
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-        let wallet = {
-            let state = self.wallet_state.read().await;
-            state.wallets.iter().find(|w| w.id == wallet_id).cloned()
-        };
-        let Some(wallet) = wallet else {
-            return Ok(Vec::new());
-        };
-
-        if let Some(address) = wallet.address_on(chain) {
-            push_utxo_address(&chain_name, address, &mut ordered, &mut seen);
-        }
-        for address in self
-            .owned_addresses_for_wallet(wallet_id.clone(), Some(chain_name.clone()))
-            .await
-        {
-            push_utxo_address(&chain_name, &address, &mut ordered, &mut seen);
-        }
-        for record in self
-            .transactions_for_wallet(wallet_id)
-            .await?
-            .iter()
-            .filter(|r| r.chain_name == chain_name)
-        {
-            if let Some(address) = &record.source_address {
-                push_utxo_address(&chain_name, address, &mut ordered, &mut seen);
-            }
-            if let Some(address) = &record.change_address {
-                push_utxo_address(&chain_name, address, &mut ordered, &mut seen);
-            }
-        }
-        Ok(ordered)
     }
 
     /// Walk a wallet's external addresses and record the ones that have been
@@ -233,7 +179,7 @@ impl WalletService {
         if !chain.supports_deep_utxo_discovery() {
             return Ok(Vec::new());
         }
-        let chain_name = chain.chain_display_name().to_string();
+        let chain_id = chain.str_id().to_string();
 
         let mut ordered = self
             .known_utxo_addresses(wallet_id.clone(), chain_id.clone())
@@ -249,7 +195,7 @@ impl WalletService {
         };
 
         let state = self
-            .keypool_state(wallet_id.clone(), chain_name.clone())
+            .keypool_state(wallet_id.clone(), chain_id.clone())
             .await?;
         let reserved = state.reserved_receive_index.unwrap_or(0).max(0) as u32;
         let upper =
@@ -270,11 +216,11 @@ impl WalletService {
             })
             .buffered(4);
         while let Some((index, address, path, active)) = probes.next().await {
-            push_utxo_address(&chain_name, &address, &mut ordered, &mut seen);
+            push_utxo_address(&chain_id, &address, &mut ordered, &mut seen);
             if active? {
                 self.register_owned_address(
                     wallet_id.clone(),
-                    chain_name.clone(),
+                    chain_id.clone(),
                     address,
                     Some(path),
                     Some("external".to_string()),
@@ -288,6 +234,57 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Every address this wallet is already known to hold on `chain_id`.
+    ///
+    /// No network and no derivation: the wallet's own address, what the owned
+    /// table records, and the ends of transactions it has made. Three callers
+    /// want exactly this and not the scan below it.
+    pub(crate) async fn known_utxo_addresses(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+    ) -> Result<Vec<String>, SpectraBridgeError> {
+        let chain = chain_for_id(&chain_id)?;
+        if !chain.supports_deep_utxo_discovery() {
+            return Ok(Vec::new());
+        }
+        let chain_id = chain.str_id().to_string();
+        let mut ordered: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let wallet = {
+            let state = self.wallet_state.read().await;
+            state.wallets.iter().find(|w| w.id == wallet_id).cloned()
+        };
+        let Some(wallet) = wallet else {
+            return Ok(Vec::new());
+        };
+
+        if let Some(address) = wallet.address_on(chain) {
+            push_utxo_address(&chain_id, address, &mut ordered, &mut seen);
+        }
+        for address in self
+            .owned_addresses_for_wallet(wallet_id.clone(), Some(chain_id.clone()))
+            .await
+        {
+            push_utxo_address(&chain_id, &address, &mut ordered, &mut seen);
+        }
+        for record in self
+            .transactions_for_wallet(wallet_id)
+            .await?
+            .iter()
+            .filter(|r| r.chain_id == chain_id)
+        {
+            if let Some(address) = &record.source_address {
+                push_utxo_address(&chain_id, address, &mut ordered, &mut seen);
+            }
+            if let Some(address) = &record.change_address {
+                push_utxo_address(&chain_id, address, &mut ordered, &mut seen);
+            }
+        }
+        Ok(ordered)
+    }
+
     /// Move each wallet's reservation past a receive address that has been used.
     ///
     /// Network reads happen outside the writer. Advance only the exact index
@@ -317,9 +314,9 @@ impl WalletService {
                 .collect()
         };
         for (wallet_id, network) in wallets {
-            let name = network.chain_display_name().to_string();
+            let id = network.str_id().to_string();
             let Some(used) = self
-                .keypool_state(wallet_id.clone(), name.clone())
+                .keypool_state(wallet_id.clone(), id.clone())
                 .await?
                 .reserved_receive_index
             else {
@@ -335,7 +332,7 @@ impl WalletService {
                 continue;
             }
             if self
-                .advance_receive_index_if_current(wallet_id.clone(), name, used)
+                .advance_receive_index_if_current(wallet_id.clone(), id, used)
                 .await?
                 .is_some()
             {
@@ -415,7 +412,7 @@ impl WalletService {
         let raw_path = wallet
             .addresses
             .iter()
-            .find(|a| a.chain_name == chain.chain_display_name())
+            .find(|a| a.chain_id == chain.str_id())
             .and_then(|a| a.derivation_path.clone())
             .or_else(|| {
                 imported
@@ -425,8 +422,8 @@ impl WalletService {
                     .cloned()
             })
             .unwrap_or_default();
-        let chain_name = chain.chain_display_name().to_string();
-        let resolved = crate::resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
+        let chain_id = chain.str_id().to_string();
+        let resolved = crate::resolve_derivation_path(chain_id.clone(), raw_path).ok()?;
 
         tokio::task::spawn_blocking(move || {
             UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
@@ -522,14 +519,14 @@ impl UtxoDerivation {
 /// Validation is the registry's, judged against the chain the wallet is on —
 /// the Swift original ran the same check through `isValidAddressForPolicy`.
 fn push_utxo_address(
-    chain_name: &str,
+    chain_id: &str,
     address: &str,
     ordered: &mut Vec<String>,
     seen: &mut std::collections::HashSet<String>,
 ) {
     let trimmed = address.trim();
     if trimmed.is_empty()
-        || !crate::send::flow::is_valid_send_address(chain_name.to_string(), trimmed.to_string())
+        || !crate::send::flow::is_valid_send_address(chain_id.to_string(), trimmed.to_string())
     {
         return;
     }
@@ -558,18 +555,18 @@ impl WalletService {
         if !chain.supports_deep_utxo_discovery() {
             return Ok(None);
         }
-        let chain_name = chain.chain_display_name().to_string();
+        let chain_id = chain.str_id().to_string();
 
         let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
             return Ok(None);
         };
         let index = if reserve {
             Some(
-                self.reserve_receive_index(wallet_id.clone(), chain_name.clone(), 1)
+                self.reserve_receive_index(wallet_id.clone(), chain_id.clone(), 1)
                     .await?,
             )
         } else {
-            self.keypool_state(wallet_id.clone(), chain_name.clone())
+            self.keypool_state(wallet_id.clone(), chain_id.clone())
                 .await?
                 .reserved_receive_index
         };
@@ -583,7 +580,7 @@ impl WalletService {
         if reserve {
             self.register_owned_address(
                 wallet_id,
-                chain_name,
+                chain_id,
                 address.clone(),
                 Some(path),
                 Some("external".to_string()),

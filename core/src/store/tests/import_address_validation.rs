@@ -197,39 +197,39 @@ mod watch_only {
         // rejects would test nothing.
         let cases: [(&str, &str, &str); 5] = [
             (
-                "Ethereum",
+                "ethereum",
                 "ethereum",
                 "0x742D35CC6634C0532925A3B844BC454E4438F44E",
             ),
             (
-                "Sui",
+                "sui",
                 "sui",
                 "0x0000000000000000000000000000000000000000000000000000000000000ABC",
             ),
             (
-                "Aptos",
+                "aptos",
                 "aptos",
                 "0x0000000000000000000000000000000000000000000000000000000000000ABC",
             ),
-            ("NEAR", "near", "Example.NEAR"),
+            ("near", "near", "Example.NEAR"),
             (
-                "Solana",
+                "solana",
                 "solana",
                 "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX",
             ),
         ];
-        for (chain_name, slot, typed) in cases {
+        for (chain_id, slot, typed) in cases {
             let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
-            assert!(rejected.is_empty(), "{chain_name}: rejected {typed}");
+            assert!(rejected.is_empty(), "{chain_id}: rejected {typed}");
             let imported = kept
                 .by_chain_id
                 .get(slot)
                 .and_then(|list| list.first())
                 .unwrap();
-            let sent = normalized_send_address(chain_name.to_string(), typed.to_string());
+            let sent = normalized_send_address(chain_id.to_string(), typed.to_string());
             assert_eq!(
                 imported, &sent,
-                "{chain_name}: import normalised to {imported}, send to {sent}"
+                "{chain_id}: import normalised to {imported}, send to {sent}"
             );
         }
     }

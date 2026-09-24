@@ -48,7 +48,7 @@ pub struct AddArgs {
     currency: String,
     /// Price to watch for, in USD.
     #[arg(long)]
-    target: f64,
+    target: String,
     /// Fire when the price rises above the target instead of below it.
     #[arg(long)]
     above: bool,
@@ -104,7 +104,7 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
         for alert in &alerts {
             println!(
                 "  {}  {:<22} {}",
-                out::tint("●", &alert.chain_name).bold(),
+                out::tint("●", &alert.chain_id).bold(),
                 describe(alert).bold(),
                 out::hint(if alert.has_triggered {
                     "triggered"
@@ -121,7 +121,7 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
             .map(|alert| serde_json::json!({
                 "id": alert.id,
                 "symbol": alert.symbol,
-                "chain": alert.chain_name,
+                "chain": alert.chain_id,
                 "target": alert.target_price,
                 "condition": match alert.condition {
                     CorePriceAlertCondition::Above => "above",
@@ -227,7 +227,7 @@ fn check(ctx: &Ctx, out: Out, stored: bool) -> CliResult<()> {
         for notification in &notifications {
             println!(
                 "  {}  {} crossed {:.2}",
-                out::tint("!", &notification.chain_name).bold(),
+                out::tint("!", &notification.chain_id).bold(),
                 notification.symbol.bold(),
                 notification.target_price,
             );
@@ -246,7 +246,7 @@ fn check(ctx: &Ctx, out: Out, stored: bool) -> CliResult<()> {
             .iter()
             .map(|n| serde_json::json!({
                 "symbol": n.symbol,
-                "chain": n.chain_name,
+                "chain": n.chain_id,
                 "target": n.target_price,
             }))
             .collect::<Vec<_>>(),

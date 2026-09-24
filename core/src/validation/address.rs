@@ -854,14 +854,12 @@ mod every_chain_accepts_what_it_derives {
             let Some(path) = crate::store::wallet_domain::CoreSeedDerivationPaths::default()
                 .path_for(chain)
                 .map(str::to_string)
-                .or_else(|| {
-                    crate::app_core::default_path_from_catalog(chain.chain_display_name()).ok()
-                })
+                .or_else(|| crate::app_core::default_path_from_catalog(chain.str_id()).ok())
             else {
                 continue;
             };
-            let derived = crate::derivation::dispatch::derive_for_chain_name(
-                chain.chain_display_name(),
+            let derived = crate::derivation::dispatch::derive_for_chain_id(
+                chain.str_id(),
                 MNEMONIC,
                 &path,
                 None,
@@ -883,7 +881,7 @@ mod every_chain_accepts_what_it_derives {
             if !verdict.is_valid {
                 failures.push(format!(
                     "{} derived {address} and its own `{}` validator refuses it",
-                    chain.chain_display_name(),
+                    chain.str_id(),
                     chain.address_validation_kind()
                 ));
             }

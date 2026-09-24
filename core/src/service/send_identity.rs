@@ -50,19 +50,19 @@ impl WalletService {
             .cloned()
             .ok_or_else(|| invalid("send wallet does not exist"))?;
         let sensitive_overrides = SensitiveOverrides::take_from(&mut wallet);
-        if wallet.is_watch_only {
+        if wallet.is_watch_only() {
             return Err(invalid("a watch-only wallet cannot send"));
         }
         let stored = wallet
             .address_on(chain)
             .ok_or_else(|| invalid("wallet has no address on the requested chain"))?;
-        let name = chain.chain_display_name();
-        if !crate::send::flow::is_valid_send_address(name.into(), stored.into()) {
+        let id = chain.str_id();
+        if !crate::send::flow::is_valid_send_address(id.into(), stored.into()) {
             return Err(invalid(
                 "stored sender address is invalid for the requested chain",
             ));
         }
-        let from_address = crate::send::flow::normalize_address(name, stored);
+        let from_address = crate::send::flow::normalize_address(id, stored);
         let secrets = self.secrets()?;
         let material = load_signing_material(&*secrets, wallet_id, password)
             .map_err(|error| invalid(&error.to_string()))?;
@@ -73,7 +73,7 @@ impl WalletService {
                     .addresses
                     .iter()
                     .find(|a| {
-                        crate::registry::Chain::from_display_name(&a.chain_name)
+                        crate::registry::Chain::from_str_id(&a.chain_id)
                             .is_some_and(|owner| owner.address_slot() == chain.address_slot())
                     })
                     .and_then(|a| a.derivation_path.as_deref())
@@ -84,12 +84,12 @@ impl WalletService {
                     })
                     .or_else(|| defaults.path_for(chain))
                     .unwrap_or_default();
-                let path = crate::resolve_derivation_path(name.into(), path.into())?;
+                let path = crate::resolve_derivation_path(id.into(), path.into())?;
                 let overrides = &sensitive_overrides.0;
                 overrides.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);
-                let mut derived = crate::derivation::dispatch::derive_for_chain_name(
-                    name,
+                let mut derived = crate::derivation::dispatch::derive_for_chain_id(
+                    id,
                     &seed,
                     &path,
                     sensitive_overrides.passphrase(),
@@ -120,7 +120,7 @@ impl WalletService {
                         .to_string(),
                 );
                 let derived = crate::derivation::dispatch::derive_from_private_key(
-                    name.into(),
+                    id.into(),
                     key.to_string(),
                     true,
                     true,
@@ -136,7 +136,7 @@ impl WalletService {
         let is_named_account = chain.supports_named_sender_accounts()
             && !(from_address.len() == 64 && from_address.bytes().all(|b| b.is_ascii_hexdigit()));
         if !is_named_account
-            && crate::send::flow::normalize_address(name, derived_address) != from_address
+            && crate::send::flow::normalize_address(id, derived_address) != from_address
         {
             return Err(invalid(
                 "stored sender address does not match the wallet signing key",

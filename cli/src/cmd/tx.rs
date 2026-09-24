@@ -11,7 +11,6 @@ use spectra_core::send::{
 };
 use spectra_core::service::WalletService;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
-use spectra_core::store::wallet_secrets;
 
 use super::chain::{
     service_for_chain, ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST,
@@ -30,6 +29,9 @@ pub struct TxsArgs {
     /// Read one transaction directly by stored ID.
     #[arg(long)]
     record: Option<String>,
+    /// The two ends of one stored transaction, and which is the wallet's own.
+    #[arg(long, value_name = "ID")]
+    endpoints: Option<String>,
 
     /// Query a bounded, deduplicated page of stored history.
     #[arg(long)]
@@ -184,14 +186,12 @@ pub enum SendCommand {
         #[arg(long)]
         destination: String,
     },
-    /// Determine self-send ownership from core wallets and history.
+    /// Whether a destination is one of the user's own addresses on the holding's network.
     SelfCheck {
         #[arg(long)]
         wallet: String,
         #[arg(long)]
         holding: String,
-        #[arg(long)]
-        amount: f64,
         #[arg(long)]
         destination: String,
     },
@@ -494,18 +494,25 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::SelfCheck {
             wallet,
             holding,
-            amount,
             destination,
         } => {
             let wallet = ctx.find_wallet(&wallet)?;
-            let result = ctx.rt.block_on(ctx.service()?.self_send_confirmation(
+            let own = ctx.rt.block_on(ctx.service()?.is_own_send_destination(
                 wallet.id,
                 holding,
                 destination,
-                amount,
-                None,
             ))?;
-            out.emit(serde_json::json!({"confirmation":result}));
+            out.text(|| {
+                println!(
+                    "  {}",
+                    if own {
+                        "own address"
+                    } else {
+                        "not an own address"
+                    }
+                )
+            });
+            out.emit(serde_json::json!({"ownAddress": own}));
             Ok(())
         }
         SendCommand::Rebroadcast {
@@ -600,7 +607,13 @@ fn signing_password(
     file: Option<String>,
     env: Option<String>,
 ) -> CliResult<Option<String>> {
-    if !wallet_secrets::is_sealed(ctx.secrets.as_ref(), wallet_id)? {
+    let requires_password = ctx
+        .state()?
+        .wallets
+        .iter()
+        .find(|wallet| wallet.id == wallet_id)
+        .is_some_and(|wallet| wallet.signing.requires_password());
+    if !requires_password {
         return Ok(None);
     }
     let env = env.filter(|name| std::env::var_os(name).is_some());
@@ -609,7 +622,7 @@ fn signing_password(
 
 fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.from)?;
-    let chain = resolve_chain(args.chain.as_deref().unwrap_or(&wallet.chain_name))?;
+    let chain = resolve_chain(args.chain.as_deref().unwrap_or(&wallet.chain_id))?;
     let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());
@@ -648,7 +661,7 @@ fn exact_amount(out: Out, args: AmountArgs) -> CliResult<()> {
 #[derive(Args)]
 pub struct ShortcutArgs {
     #[arg(long)]
-    maximum: f64,
+    maximum: String,
     #[arg(long)]
     decimals: u32,
     #[arg(long, default_value_t = 100)]
@@ -773,16 +786,16 @@ pub struct AffordabilityArgs {
     symbol: String,
     /// Amount, in whole units of that asset.
     #[arg(long)]
-    amount: f64,
+    amount: String,
     /// Network fee, in whole units of the chain's gas asset.
     #[arg(long)]
-    fee: f64,
+    fee: String,
     /// What the wallet holds of the asset being sent.
     #[arg(long)]
-    balance: f64,
+    balance: String,
     /// What it holds of the gas asset. Omit for a send of the chain's own asset.
     #[arg(long)]
-    gas_balance: Option<f64>,
+    gas_balance: Option<String>,
 }
 
 /// The fee half of "can this send land", on the command line.
@@ -804,7 +817,7 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
     }
     let verdict = send_affordability(SendAffordabilityInput {
         is_native: token.is_native(),
-        chain_name: chain.chain_display_name().to_string(),
+        chain_id: chain.str_id().to_string(),
         symbol: args.symbol,
         amount: args.amount,
         network_fee: args.fee,
@@ -824,11 +837,11 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
         SendAffordability::FeeExceedsGasBalance {
             gas_symbol,
             fee,
-            chain_name,
+            chain_id,
         } => {
             serde_json::json!({
                 "verdict": "feeExceedsGasBalance", "gasSymbol": gas_symbol,
-                "fee": fee, "chainName": chain_name,
+                "fee": fee, "chainId": chain_id,
             })
         }
     };
@@ -853,8 +866,9 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
             SendAffordability::FeeExceedsGasBalance {
                 gas_symbol,
                 fee,
-                chain_name,
+                chain_id,
             } => {
+                let chain_name = super::chain_name(chain_id);
                 println!(
                     "  {}  not enough {gas_symbol} for the ~{fee} {chain_name} fee",
                     "\u{2717}".red()
@@ -887,7 +901,7 @@ pub struct ProbeArgs {
 /// the CLI supplies the wording.
 fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let wallet_chain = resolve_chain(&wallet.chain_name)?;
+    let wallet_chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
     let symbol = args
         .asset
         .clone()
@@ -898,7 +912,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         .holdings
         .iter()
         .filter(|h| h.symbol.eq_ignore_ascii_case(&symbol))
-        .filter(|h| on_chain.is_none_or(|c| c.chain_display_name() == h.chain_name))
+        .filter(|h| on_chain.is_none_or(|c| c.str_id() == h.chain_id))
         .collect();
     let holding = match candidates.as_slice() {
         [] => {
@@ -909,14 +923,17 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         }
         [one] => *one,
         many => {
-            let chains: Vec<&str> = many.iter().map(|h| h.chain_name.as_str()).collect();
+            let chains: Vec<String> = many
+                .iter()
+                .map(|h| super::chain_name(&h.chain_id))
+                .collect();
             return Err(CliError::usage(format!(
                 "{symbol} is held on {} — narrow it with --chain",
                 chains.join(", ")
             )));
         }
     };
-    let chain = resolve_chain(&holding.chain_name)?;
+    let chain = resolve_chain(&holding.chain_id)?;
 
     // Both halves in one service: the holding and the token row come from the
     // opened state, the balance and history reads from the chain's endpoints.
@@ -946,7 +963,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     out.emit(serde_json::json!({
         "ok": true,
         "wallet": wallet.id,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "destination": args.to,
         "asset": holding.symbol,
         "activity": risk.activity,
@@ -989,7 +1006,7 @@ pub struct ScanArgs {
 fn scan(out: Out, args: ScanArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let Some(address) = spectra_core::send::flow::scanned_send_address(
-        chain.chain_display_name().to_string(),
+        chain.str_id().to_string(),
         args.payload.clone(),
     ) else {
         return Err(CliError::rejected(format!(
@@ -1004,7 +1021,7 @@ fn scan(out: Out, args: ScanArgs) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "payload": args.payload,
         "address": address,
     }));
@@ -1045,7 +1062,7 @@ fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "typed": args.to,
         "address": resolved.address,
         "usedEns": resolved.used_ens,
@@ -1121,6 +1138,22 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         out.emit(serde_json::json!({"ok":true,"summary":summary}));
         return Ok(());
     }
+    if let Some(id) = args.endpoints {
+        let endpoints = ctx
+            .rt
+            .block_on(ctx.service()?.transaction_endpoints(id))?
+            .ok_or_else(|| CliError::rejected("no such transaction"))?;
+        out.text(|| {
+            for (label, end) in [("from", &endpoints.from), ("to", &endpoints.to)] {
+                if let Some(end) = end {
+                    let mine = if end.is_mine { "  (this wallet)" } else { "" };
+                    println!("  {label:<4} {}{mine}", end.address);
+                }
+            }
+        });
+        out.emit(serde_json::json!({"ok":true,"endpoints":endpoints}));
+        return Ok(());
+    }
     if let Some(id) = args.record {
         let record = ctx.rt.block_on(ctx.service()?.transaction(id))?;
         out.text(|| println!("{record:?}"));
@@ -1161,7 +1194,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 .into_iter()
                 .find(|row| row.id.eq_ignore_ascii_case(&id))
                 .ok_or_else(|| CliError::rejected("Transaction not found."))?;
-            let chain = resolve_chain(&transaction.chain_name)?;
+            let chain = resolve_chain(&transaction.chain_id)?;
             ctx.rt.block_on(service.update_endpoints(
                 vec![spectra_core::service::ChainEndpoints {
                     capabilities: vec![
@@ -1275,7 +1308,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 "  {}  {:>12}  {}  {}",
                 colored_mark,
                 format!("{:.6}", record.amount),
-                out::tint(&record.symbol, &record.chain_name).bold(),
+                out::tint(&record.symbol, &record.chain_id).bold(),
                 out::hint(&record.address),
             );
             if let Some(hash) = &record.transaction_hash {
@@ -1306,7 +1339,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 },
                 "amount": record.amount,
                 "symbol": record.symbol,
-                "chain": record.chain_name,
+                "chain": record.chain_id,
                 "address": record.address,
                 // What the detail sheet's "History Source" row shows, as the
                 // app reads it: a proper noun, a chain's provider set, or
@@ -1318,8 +1351,8 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                     .map(|source| match source {
                         spectra_core::fetch::transactions::HistorySource::Provider { name } =>
                             serde_json::json!({"provider": name}),
-                        spectra_core::fetch::transactions::HistorySource::ChainProviders { chain_name } =>
-                            serde_json::json!({"chainProviders": chain_name}),
+                        spectra_core::fetch::transactions::HistorySource::ChainProviders { chain_id } =>
+                            serde_json::json!({"chainProviders": chain_id}),
                         spectra_core::fetch::transactions::HistorySource::Internal =>
                             serde_json::json!("internal"),
                     }),
@@ -1361,7 +1394,7 @@ fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             println!(
                 "  {:>12}  {}  {}",
                 format!("{:.6}", send.amount),
-                out::tint(&send.symbol, &send.chain_name).bold(),
+                out::tint(&send.symbol, &send.chain_id).bold(),
                 out::hint(&out::short_hash(&send.transaction_hash)),
             );
             println!(
@@ -1404,14 +1437,16 @@ fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
 
 pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.from)?;
-    if wallet.is_watch_only {
+    if wallet.is_watch_only() {
         return Err(CliError::rejected("a watch-only wallet cannot send"));
     }
     // The network this wallet is on, not its family's mainnet: it decides
     // which chain id is signed and which endpoints the send reads. Core
     // resolves it the same way, so the two agree on one rule
     // (`WalletState::chain`) rather than each having its own.
-    let chain = wallet.chain().unwrap_or(resolve_chain(&wallet.chain_name)?);
+    let chain = wallet
+        .chain()
+        .unwrap_or(resolve_chain(&wallet.chain_id)?.mainnet_counterpart());
 
     let amount: f64 = args
         .amount
@@ -1563,7 +1598,7 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
     };
 
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-        chain_name: chain.chain_display_name().to_string(),
+        chain_id: chain.str_id().to_string(),
         symbol: symbol.clone(),
         from_address: args.from.clone(),
         resolved_destination: args.to.clone(),
@@ -1590,7 +1625,7 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "symbol": symbol,
         "isNative": assembly.is_native,
         "to": assembly.to_address,

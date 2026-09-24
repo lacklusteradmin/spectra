@@ -72,10 +72,7 @@ impl WalletService {
             (chain, address)
         };
         let endpoints = self.staking_endpoints(chain.str_id().into()).await?;
-        if !crate::send::flow::is_valid_send_address(
-            chain.chain_display_name().into(),
-            address.clone(),
-        ) {
+        if !crate::send::flow::is_valid_send_address(chain.str_id().into(), address.clone()) {
             return Err("Invalid staking wallet address".into());
         }
         StakingService::new(vec![endpoints])

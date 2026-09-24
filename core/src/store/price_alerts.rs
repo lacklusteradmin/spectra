@@ -27,10 +27,14 @@ fn rejected(reason: PriceAlertRejection) -> Vec<StateEvent> {
 pub(super) fn add(
     state: &mut CoreAppState,
     key: String,
-    target: f64,
+    target: String,
     currency: super::state::FiatCurrency,
     condition: CorePriceAlertCondition,
 ) -> Vec<StateEvent> {
+    let Some(target) = crate::decimal::canonical(target.trim()).map(|t| crate::decimal::to_f64(&t))
+    else {
+        return rejected(PriceAlertRejection::InvalidTarget);
+    };
     let rate = if currency == crate::store::state::FiatCurrency::Usd {
         Some(1.0)
     } else {
@@ -48,7 +52,7 @@ pub(super) fn add(
         .iter()
         .flat_map(|w| &w.holdings)
         .find(|h| h.deployment_id() == key)
-        .map(|h| (h.name.clone(), h.symbol.clone(), h.chain_name.clone()))
+        .map(|h| (h.name.clone(), h.symbol.clone(), h.chain_id.clone()))
         .or_else(|| {
             crate::registry::Chain::all()
                 .find(|c| c.entry().native_deployment_id == key)
@@ -56,11 +60,11 @@ pub(super) fn add(
                     (
                         c.coin_name().into(),
                         c.coin_symbol().into(),
-                        c.chain_display_name().into(),
+                        c.str_id().into(),
                     )
                 })
         });
-    let Some((asset_display_name, symbol, chain_name)) = metadata else {
+    let Some((asset_display_name, symbol, chain_id)) = metadata else {
         return rejected(PriceAlertRejection::UnknownAsset);
     };
     if state
@@ -78,7 +82,7 @@ pub(super) fn add(
             holding_key: key,
             asset_display_name,
             symbol,
-            chain_name,
+            chain_id,
             target_price: target,
             condition,
             is_enabled: true,
@@ -118,7 +122,7 @@ mod tests {
             add(
                 &mut state,
                 "ethereum:native".into(),
-                0.000008,
+                "0.000008".into(),
                 crate::store::state::FiatCurrency::Eur,
                 CorePriceAlertCondition::Above
             )[0],
@@ -130,7 +134,7 @@ mod tests {
         add(
             &mut state,
             "bitcoin:native".into(),
-            100.0,
+            "100".into(),
             crate::store::state::FiatCurrency::Usd,
             CorePriceAlertCondition::Below,
         );
@@ -169,7 +173,7 @@ mod tests {
             subject(add(
                 &mut state,
                 "bitcoin:native".into(),
-                0.0,
+                "0".into(),
                 crate::store::state::FiatCurrency::Usd,
                 CorePriceAlertCondition::Above
             )),
@@ -179,7 +183,7 @@ mod tests {
             subject(add(
                 &mut state,
                 "bitcoin:native".into(),
-                1.0,
+                "1".into(),
                 crate::store::state::FiatCurrency::Eur,
                 CorePriceAlertCondition::Above
             )),
@@ -189,7 +193,7 @@ mod tests {
             subject(add(
                 &mut state,
                 "nowhere:native".into(),
-                1.0,
+                "1".into(),
                 crate::store::state::FiatCurrency::Usd,
                 CorePriceAlertCondition::Above
             )),
@@ -198,7 +202,7 @@ mod tests {
         add(
             &mut state,
             "bitcoin:native".into(),
-            1.0,
+            "1".into(),
             crate::store::state::FiatCurrency::Usd,
             CorePriceAlertCondition::Above,
         );
@@ -206,7 +210,7 @@ mod tests {
             subject(add(
                 &mut state,
                 "bitcoin:native".into(),
-                1.0,
+                "1".into(),
                 crate::store::state::FiatCurrency::Usd,
                 CorePriceAlertCondition::Above
             )),

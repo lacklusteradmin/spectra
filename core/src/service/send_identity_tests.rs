@@ -20,7 +20,7 @@ async fn wallet(
             wallet: WalletState::single_address(
                 "w",
                 "Wallet",
-                "Ethereum",
+                "ethereum",
                 address,
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
@@ -66,7 +66,7 @@ async fn mismatched_missing_and_watch_only_wallets_are_refused() {
         .await
         .is_err());
     let mut stored = service.app_state().await.wallets[0].clone();
-    stored.is_watch_only = true;
+    stored.signing = crate::store::state::WalletSigning::WatchOnly;
     service
         .apply_state_command(StateCommand::UpsertWallet { wallet: stored })
         .await
@@ -136,9 +136,9 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
     service.set_secret_store(secrets.clone());
     let defaults = crate::derivation_paths_for_preset(Default::default()).unwrap();
     for chain in Chain::all() {
-        let name = chain.chain_display_name();
+        let name = chain.str_id();
         let path = defaults.path_for(chain).unwrap_or_default();
-        let derived = crate::derivation::dispatch::derive_for_chain_name(
+        let derived = crate::derivation::dispatch::derive_for_chain_id(
             name, SEED, path, None, None, None, true, false, false,
         )
         .unwrap();
@@ -176,7 +176,7 @@ async fn near_named_accounts_are_resolved_but_implicit_accounts_must_match_the_k
     for (address, valid) in [("alice.near".to_string(), true), ("11".repeat(32), false)] {
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address("w", "Wallet", "NEAR", &address, None, false),
+                wallet: WalletState::single_address("w", "Wallet", "near", &address, None, false),
             })
             .await
             .unwrap();

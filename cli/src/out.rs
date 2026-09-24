@@ -75,7 +75,7 @@ pub fn field(label: &str, value: &str) {
 static CHAIN_COLOR: LazyLock<HashMap<String, CatalogColor>> = LazyLock::new(|| {
     spectra_core::chains::list_all_chains()
         .into_iter()
-        .map(|chain| (chain.name, chain.color))
+        .map(|chain| (chain.id, chain.color))
         .collect()
 });
 
@@ -98,24 +98,24 @@ fn rgb_for_color(color: CatalogColor) -> (u8, u8, u8) {
     }
 }
 
-fn chain_rgb(chain_name: &str) -> (u8, u8, u8) {
+fn chain_rgb(chain_id: &str) -> (u8, u8, u8) {
     CHAIN_COLOR
-        .get(chain_name)
+        .get(chain_id)
         .map(|color| rgb_for_color(*color))
         .unwrap_or((200, 200, 210))
 }
 
-pub fn tint(s: &str, chain_name: &str) -> colored::ColoredString {
-    let (r, g, b) = chain_rgb(chain_name);
+pub fn tint(s: &str, chain_id: &str) -> colored::ColoredString {
+    let (r, g, b) = chain_rgb(chain_id);
     s.truecolor(r, g, b)
 }
 
 /// Filled dot for a spending wallet, hollow for watch-only.
-pub fn wallet_dot(chain_name: &str, is_watch_only: bool) -> colored::ColoredString {
+pub fn wallet_dot(chain_id: &str, is_watch_only: bool) -> colored::ColoredString {
     if is_watch_only {
-        tint("○", chain_name)
+        tint("○", chain_id)
     } else {
-        tint("●", chain_name).bold()
+        tint("●", chain_id).bold()
     }
 }
 

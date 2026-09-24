@@ -49,7 +49,7 @@ impl WalletService {
         };
         let mut groups = std::collections::BTreeMap::<String, Vec<HistoryRefreshKey>>::new();
         for wallet in &state.wallets {
-            let Some(chain) = Chain::from_display_name(&wallet.chain_name) else {
+            let Some(chain) = wallet.family() else {
                 continue;
             };
             let selected = match &scope {
@@ -147,12 +147,12 @@ impl WalletService {
         result: &Result<HistoryRefreshOutcome, SpectraBridgeError>,
     ) {
         use crate::service::DiagnosticCommand;
-        let chain_name = chain.chain_display_name().to_string();
+        let chain_id = chain.str_id().to_string();
         let command = match result {
             Ok(outcome) => {
                 for row in &outcome.diagnostics {
                     crate::diagnostics::diagnostics_record(
-                        chain_name.clone(),
+                        chain_id.clone(),
                         crate::diagnostics::HistoryDiagnostics {
                             wallet_id: row.wallet_id.clone(),
                             identifier: row.identifier.clone(),
@@ -166,24 +166,24 @@ impl WalletService {
                         },
                     );
                 }
-                // English on purpose: this is stored, and the templates are
-                // what the diagnostics screen localizes when it shows them.
                 if outcome.wallets_failed > 0 {
-                    let detail = if outcome.wallets_refreshed == 0 {
-                        format!("{chain_name} history refresh failed. Using cached history.")
+                    let reason = if outcome.wallets_refreshed == 0 {
+                        super::diagnostic_state::ChainDegradation::HistoryRefreshFailed
                     } else {
-                        format!("{chain_name} history loaded with partial provider failures.")
+                        super::diagnostic_state::ChainDegradation::HistoryPartiallyLoaded
                     };
-                    Some(DiagnosticCommand::Degraded { chain_name, detail })
+                    Some(DiagnosticCommand::Degraded { chain_id, reason })
                 } else if outcome.wallets_refreshed > 0 {
-                    Some(DiagnosticCommand::Healthy { chain_name })
+                    Some(DiagnosticCommand::Healthy { chain_id })
                 } else {
                     None
                 }
             }
             Err(error) => Some(DiagnosticCommand::Degraded {
-                chain_name,
-                detail: error.to_string(),
+                chain_id,
+                reason: super::diagnostic_state::ChainDegradation::Failed {
+                    message: error.to_string(),
+                },
             }),
         };
         if let Some(command) = command {

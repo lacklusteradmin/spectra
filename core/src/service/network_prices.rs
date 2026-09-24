@@ -107,7 +107,7 @@ impl WalletService {
         }
         let mut requests = HashMap::new();
         for coin in coins {
-            let Some(chain) = Chain::from_display_name(&coin.chain_name) else {
+            let Some(chain) = Chain::from_str_id(&coin.chain_id) else {
                 continue;
             };
             let network = chain;

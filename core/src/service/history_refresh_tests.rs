@@ -5,8 +5,9 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
     WalletState {
         id: id.to_string(),
         name: format!("{id} wallet"),
-        is_watch_only: false,
-        chain_name: chain.chain_display_name().to_string(),
+        signing: crate::store::state::WalletSigning::SeedPhrase {
+            password_protected: false,
+        },
         include_in_portfolio_total: true,
         chain_id: chain.str_id().into(),
         xpub: None,
@@ -17,7 +18,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         addresses: addresses
             .iter()
             .map(|(chain, address)| WalletAddress {
-                chain_name: chain.chain_display_name().to_string(),
+                chain_id: chain.str_id().to_string(),
                 address: (*address).to_string(),
                 kind: "receive".to_string(),
                 derivation_path: None,
@@ -89,7 +90,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
             status: "confirmed".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "tBTC".to_string(),
-            chain_name: "Bitcoin Testnet4".to_string(),
+            chain_id: "bitcoin-testnet-4".to_string(),
             amount: 1.0,
             counterparty: "tb1other".to_string(),
             tx_hash: "abc".to_string(),
@@ -97,7 +98,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
             timestamp: 1.0,
         },
     );
-    assert_eq!(record.chain_name, "Bitcoin Testnet4", "filed under");
+    assert_eq!(record.chain_id, "bitcoin-testnet-4", "filed under");
     assert_eq!(
         record.deployment_id.as_deref(),
         Some("bitcoin-testnet-4:native")
@@ -152,7 +153,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
             status: "confirmed".to_string(),
             asset_display_name: "Solana".to_string(),
             symbol: "SOL".to_string(),
-            chain_name: "Solana".to_string(),
+            chain_id: "solana".to_string(),
             amount: 1.5,
             counterparty: "So2".to_string(),
             tx_hash: "sig".to_string(),
@@ -182,7 +183,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
         status: "confirmed".to_string(),
         asset_display_name: "Solana".to_string(),
         symbol: "SOL".to_string(),
-        chain_name: "Solana".to_string(),
+        chain_id: "solana".to_string(),
         amount: 0.0,
         counterparty: String::new(),
         tx_hash: String::new(),
@@ -406,7 +407,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
     service
         .register_owned_address(
             "w1".to_string(),
-            Chain::Litecoin.chain_display_name().to_string(),
+            Chain::Litecoin.str_id().to_string(),
             REFUSES.to_string(),
             None,
             None,
@@ -593,13 +594,8 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
     // a failed read marks the chain degraded, in the English template the
     // screen localizes.
     assert_eq!(
-        service
-            .diagnostic_state()
-            .await
-            .degraded
-            .get("Cronos")
-            .map(String::as_str),
-        Some("Cronos history refresh failed. Using cached history.")
+        service.diagnostic_state().await.degraded.get("cronos"),
+        Some(&crate::service::ChainDegradation::HistoryRefreshFailed)
     );
 }
 
@@ -708,7 +704,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0x1111111111111111111111111111111111111111".into(),
-            chain_name: Chain::EthereumSepolia.chain_display_name().into(),
+            chain_id: Chain::EthereumSepolia.str_id().into(),
             token_source_used: None,
             native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
@@ -746,12 +742,9 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         stored[0].status,
         crate::store::wallet_domain::CoreTransactionStatus::Failed
     );
-    assert_eq!(
-        stored[0].chain_name,
-        Chain::EthereumSepolia.chain_display_name()
-    );
+    assert_eq!(stored[0].chain_id, Chain::EthereumSepolia.str_id());
     let mut wrong_network = fetched.clone();
-    wrong_network.chain_name = "Ethereum".into();
+    wrong_network.chain_id = "ethereum".into();
     wrong_network.id = "wrong-network".into();
     assert!(service
         .merge_fetched_history(vec![wrong_network])
@@ -807,7 +800,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
             native: vec![],
         },
         normalized_address: "from".into(),
-        chain_name: "Ethereum".into(),
+        chain_id: "ethereum".into(),
         token_source_used: None,
         native_asset_display_name: "Ether".into(),
         native_asset_symbol: "ETH".into(),
@@ -825,7 +818,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
             existing_transactions: vec![],
             incoming_transactions: rows,
             strategy: crate::fetch::transactions::TransactionMergeStrategy::Evm,
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             include_symbol_in_identity: true,
             preserve_created_at_sentinel_unix: None,
         },

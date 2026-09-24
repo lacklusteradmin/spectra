@@ -4,11 +4,11 @@ use crate::service::WalletService;
 async fn receive_reservation_is_stable_across_calls() {
     let service = WalletService::new(Vec::new()).expect("service");
     let first = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 0)
         .await
         .expect("reserve");
     let second = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 0)
         .await
         .expect("reserve");
     // Opening the receive sheet twice must not burn two addresses.
@@ -23,7 +23,7 @@ async fn change_indices_are_never_handed_out_twice() {
         let service = service.clone();
         handles.push(tokio::spawn(async move {
             service
-                .reserve_change_index("w1".into(), "Bitcoin".into())
+                .reserve_change_index("w1".into(), "bitcoin".into())
                 .await
                 .expect("reserve")
         }));
@@ -52,14 +52,14 @@ async fn keypool_survives_reopening_the_database() {
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db.clone()).await.expect("open");
     let reserved = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 0)
         .await
         .expect("reserve");
 
     let reopened = WalletService::new(Vec::new()).expect("service");
     reopened.open_state(db.clone()).await.expect("open");
     let after = reopened
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 0)
         .await
         .expect("reserve");
     // A restart must not reissue the address already handed out.
@@ -81,7 +81,7 @@ async fn a_recorded_owned_address_raises_the_baseline() {
     service
         .register_owned_address(
             "w1".into(),
-            "Bitcoin".into(),
+            "bitcoin".into(),
             "bc1qexample".into(),
             None,
             Some("external".into()),
@@ -90,7 +90,7 @@ async fn a_recorded_owned_address_raises_the_baseline() {
         .await
         .expect("register");
     let reserved = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 0)
         .await
         .expect("reserve");
     assert_eq!(
@@ -117,7 +117,7 @@ async fn owned_addresses_survive_reopening_the_database() {
     service
         .register_owned_address(
             "w1".into(),
-            "Bitcoin".into(),
+            "bitcoin".into(),
             "bc1qexample".into(),
             Some("m/84'/0'/0'/0/3".into()),
             Some("external".into()),
@@ -130,14 +130,14 @@ async fn owned_addresses_survive_reopening_the_database() {
     reopened.open_state(db.clone()).await.expect("open");
     assert_eq!(
         reopened
-            .owned_addresses_for_wallet("w1".into(), Some("Bitcoin".into()))
+            .owned_addresses_for_wallet("w1".into(), Some("bitcoin".into()))
             .await,
         vec!["bc1qexample".to_string()]
     );
     // And the baseline it feeds comes back with it.
     assert_eq!(
         reopened
-            .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
+            .reserve_receive_index("w1".into(), "bitcoin".into(), 0)
             .await
             .expect("reserve"),
         4
@@ -166,7 +166,7 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
             wallet: WalletState::single_address(
                 "w1",
                 "Savings",
-                "Bitcoin",
+                "bitcoin",
                 "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
                 None,
                 true,
@@ -176,20 +176,20 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
         .expect("upsert");
 
     let before = service
-        .keypool_diagnostics("Bitcoin".into())
+        .keypool_diagnostics("bitcoin".into())
         .await
         .expect("diagnostics");
     assert_eq!(before.len(), 1);
     assert!(before[0].reserved_receive.is_none(), "nothing reserved yet");
 
     let index = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 7)
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 7)
         .await
         .expect("reserve");
     service
         .register_owned_address(
             "w1".into(),
-            "Bitcoin".into(),
+            "bitcoin".into(),
             "bc1qreserved".into(),
             Some(format!("m/84'/0'/0'/0/{index}")),
             Some("external".into()),
@@ -199,7 +199,7 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
         .expect("register");
 
     let rows = service
-        .keypool_diagnostics("Bitcoin".into())
+        .keypool_diagnostics("bitcoin".into())
         .await
         .expect("diagnostics");
     assert_eq!(rows[0].wallet_name, "Savings");
@@ -234,7 +234,7 @@ async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
             wallet: WalletState::single_address(
                 "w1",
                 "Watch",
-                "Ethereum",
+                "ethereum",
                 "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
                 None,
                 true,
@@ -250,7 +250,7 @@ async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
         service
             .register_owned_address(
                 "w1".into(),
-                "Ethereum".into(),
+                "ethereum".into(),
                 address.into(),
                 None,
                 None,

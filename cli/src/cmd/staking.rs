@@ -68,7 +68,7 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
         for validator in validators.iter().take(args.limit) {
             println!(
                 "  {}  {:<34} {:>7}",
-                out::tint("●", chain.chain_display_name()).bold(),
+                out::tint("●", chain.str_id()).bold(),
                 validator.display_name,
                 format!("{:.2}%", validator.apy * 100.0).bold(),
             );
@@ -83,7 +83,7 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "validators": validators
             .iter()
             .take(args.limit)
@@ -100,7 +100,7 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
 
 fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_name)?;
+    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
     let service = ctx.service()?;
     let positions = ctx
         .rt
@@ -115,7 +115,7 @@ fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
         for position in &positions {
             println!(
                 "  {}  {:<30} {}",
-                out::tint("●", &wallet.chain_name).bold(),
+                out::tint("●", &wallet.chain_id).bold(),
                 position.validator_display_name,
                 format!("{:?}", position.status).to_lowercase(),
             );
@@ -128,7 +128,7 @@ fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
     out.emit(serde_json::json!({
         "ok": true,
         "wallet": wallet.id,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "positions": positions
             .iter()
             .map(|position| serde_json::json!({

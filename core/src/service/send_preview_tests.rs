@@ -21,8 +21,8 @@ mod fee_estimates_are_typed {
             (Chain::Polkadot, "160000000", "0.016"), // 10 decimals
         ] {
             let fee = service.native_fee_estimate(chain).await.expect("fee");
-            assert_eq!(fee.raw, raw, "{}", chain.chain_display_name());
-            assert_eq!(fee.display, display, "{}", chain.chain_display_name());
+            assert_eq!(fee.raw, raw, "{}", chain.str_id());
+            assert_eq!(fee.display, display, "{}", chain.str_id());
             assert_eq!(fee.source, "static");
         }
     }
@@ -71,29 +71,29 @@ async fn seed_probe_holding(
     use crate::store::wallet_domain::{
         AssetHolding, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
     };
-    let chain_name = chain.chain_display_name().to_string();
+    let chain_id = chain.str_id().to_string();
     let mut state = service.wallet_state.write().await;
     let mut wallet = WalletState::single_address(
         "probe-wallet",
         "Probe",
-        chain_name.clone(),
+        chain_id.clone(),
         "sender",
         None,
         false,
     );
     wallet.holdings = vec![AssetHolding {
+        id: String::new(),
         name: symbol.to_string(),
         symbol: symbol.to_string(),
         coingecko_id: String::new(),
-        chain_name: chain_name.clone(),
+        chain_id: chain_id.clone(),
         token_standard: if token.is_none() {
             "Native".into()
         } else {
             chain.entry().token_standard.clone()
         },
         contract_address: token.map(|(contract, _)| contract.to_string()),
-        amount: 1.0,
-        price_usd: 0.0,
+        amount: "1".into(),
     }];
     state.wallets.push(wallet);
     if let Some((contract, decimals)) = token {

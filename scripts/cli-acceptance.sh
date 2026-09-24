@@ -45,9 +45,10 @@ source "$(dirname "$0")/cli-assertions.sh"
 check "transparent transaction stages" 0 python3 "$(dirname "$0")/cli-send-stages.py" "$BIN"
 
 
-# Fee-adjusted shortcuts are floored in core, not multiplied as Swift Doubles.
-contains "MAX stays below its quoted budget" '0.99998999' spectra send shortcut --maximum 0.99999 --decimals 8
-contains "half is a plain decimal within precision" '0.49999999' spectra send shortcut --maximum 1 --decimals 8 --percentage 50
+# Shortcuts are floored in core over the exact balance, never through a float.
+contains "MAX is the exact balance" '"amount":"0.99999"' spectra --json send shortcut --maximum 0.99999 --decimals 8
+contains "half is exact" '"amount":"0.5"' spectra --json send shortcut --maximum 1 --decimals 8 --percentage 50
+contains "a percentage floors at precision" '"amount":"0.01234567"' spectra --json send shortcut --maximum 0.123456789 --decimals 8 --percentage 10
 check "shortcut refuses percentages over 100" 1 spectra send shortcut --maximum 1 --decimals 8 --percentage 101
 
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -493,16 +494,16 @@ check "deletes the unsealed wallet"         $OK \
 # on testnet instead.
 
 section "addresses per network"
-contains "a Bitcoin wallet stores its testnet4 address too" '"Bitcoin Testnet4"' \
+contains "a Bitcoin wallet stores its testnet4 address too" '"bitcoin-testnet-4"' \
     spectra --json wallet show "Multi 1"
-contains "and its signet one" '"Bitcoin Signet"' spectra --json wallet show "Multi 1"
+contains "and its signet one" '"bitcoin-signet"' spectra --json wallet show "Multi 1"
 contains "the mainnet address is the primary" 'bc1q' spectra --json wallet show "Multi 1"
 # One key, two encodings: a testnet address is not the mainnet one.
 check "the testnet address differs from the mainnet address" $OK \
     bash -c '"$1" --data-dir "$2" --json wallet show "Multi 1" | grep -q "tb1"' _ "$BIN" "$DATA_DIR"
 # The EVM family shares one address, and Ethereum Classic has a slot of its own
 # holding the same key — so an Ethereum wallet answers on both.
-contains "an EVM wallet fills the Ethereum Classic slot too" '"Ethereum Classic"' \
+contains "an EVM wallet fills the Ethereum Classic slot too" '"ethereum-classic"' \
     spectra --json wallet show "Multi 2"
 # A chain the wallet was never imported for has no address, and no seed is read
 # to invent one.
@@ -760,7 +761,7 @@ contains "and is not marked as below a threshold" '"belowThreshold":false' \
     spectra --json token format 0.00042 --chain Bitcoin
 contains "an eighteen-decimal chain does the same" '"shows":"0.000015"' \
     spectra --json token format 0.000015 --chain Ethereum
-contains "a large balance spends its budget on the integer" '"shows":"1234.57"' \
+contains "a large balance spends its budget on the integer, cut rather than rounded up" '"shows":"1234.56"' \
     spectra --json token format 1234.5678 --chain Ethereum
 contains "trailing zeros are trimmed, not padded" '"shows":"12.5"' \
     spectra --json token format 12.5 --chain Ethereum --symbol USDC
@@ -911,7 +912,7 @@ section "send affordability"
 # a literal `true`, and a preflight field.
 contains "counts the fee against a native balance" '"verdict":"amountPlusFeeExceedsBalance"' \
     spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
-contains "and quotes it to the chain's own decimals" '"required":"1.50000000"' \
+contains "and states the exact total required" '"required":"1.5"' \
     spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
 # Arbitrum charges gas in ETH, not ARB. A caller that took the governance token
 # for the native asset would check the fee against the wrong balance.
@@ -988,7 +989,7 @@ check "refuses an id the registry does not know" $REJECTED \
 # iOS cleared them and the CLI did not, so this axis could not see a switch
 # that left them behind.
 contains "clears the family's derivation state with the switch" \
-    '"clearedDerivationState":["Solana","Solana Devnet"]' \
+    '"clearedDerivationState":["solana","solana-devnet"]' \
     spectra --json network set solana-devnet
 contains "and names both sides of a bitcoin switch" '"clearedDerivationState":[' \
     spectra --json network set bitcoin-signet
@@ -1210,9 +1211,9 @@ section "self-tests"
 # A suite keyed by a name no caller can type is green and unreachable at the
 # same time: `CHAIN_SPECS` had a row keyed "XRP" where the registry says "XRP
 # Ledger", and every caller resolves its input through the registry.
-contains "runs a chain's self-tests"       '"chain":"XRP Ledger"' \
+contains "runs a chain's self-tests"       '"chain":"xrp"' \
     spectra --json diagnostics self-test --chain "XRP Ledger"
-contains "and the symbol resolves to it"   '"chain":"XRP Ledger"' \
+contains "and the symbol resolves to it"   '"chain":"xrp"' \
     spectra --json diagnostics self-test --chain XRP
 contains "with no failures"                '"failed":0' \
     spectra --json diagnostics self-test --chain "XRP Ledger"
@@ -1272,13 +1273,12 @@ closure_spectra() { "$BIN" --data-dir "$DATA_DIR/closure" "$@"; }
 check "dashboard groups render from stored state" $OK closure_spectra --json portfolio --stored
 # A pinned asset the user holds none of is built from the catalog rather than
 # read from a wallet, so it never passes the canonicalize every stored holding
-# does. Its `chain_name` used to be the catalog's `network` — a str id — while
-# every held asset beside it carried the display name, and the app's exact-match
-# chain lookup rendered the id verbatim.
+# does. Every holding, held or not, names its chain by registry id; display
+# names are the front end's to render.
 contains "a pinned asset nobody holds names its chain like a stored one" \
-    '"chainName":"Bitcoin"' closure_spectra --json portfolio --stored
-lacks "and never the catalog's str id" \
-    '"chainName":"bitcoin"' closure_spectra --json portfolio --stored
+    '"chainId":"bitcoin"' closure_spectra --json portfolio --stored
+lacks "and never by display name" \
+    '"chainName"' closure_spectra --json portfolio --stored
 # And it holds nothing, rather than carrying a synthesized holding so the row
 # had something to name itself with — which told the reader they held zero of
 # the asset on whichever chain the catalog listed first.

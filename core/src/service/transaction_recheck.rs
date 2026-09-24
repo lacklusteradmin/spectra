@@ -6,7 +6,7 @@ use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 use crate::SpectraBridgeError;
 
 pub(super) fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<Chain, String> {
-    let chain = Chain::from_display_name(&record.chain_name)
+    let chain = Chain::from_str_id(&record.chain_id)
         .ok_or("Status recheck is not available for this transaction.")?;
     let PendingStatusPoll::Utxo { require_send_kind } = chain.pending_status_poll() else {
         return Err("Status recheck is not available for this transaction.".into());
@@ -77,7 +77,7 @@ impl WalletService {
         };
         let confirmed = status.confirmed;
         let (change, tracker) = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_update_chain(&database, chain.chain_display_name(), |rows| {
+            crate::wallet_db::history_update_chain(&database, chain.str_id(), |rows| {
                 let mut row = rows
                     .into_iter()
                     .find(|row| row.payload.id.eq_ignore_ascii_case(&expected.id))
@@ -86,7 +86,7 @@ impl WalletService {
                 if current.transaction_hash != expected.transaction_hash
                     || current.wallet_id != expected.wallet_id
                     || current.kind != expected.kind
-                    || current.chain_name != expected.chain_name
+                    || current.chain_id != expected.chain_id
                 {
                     return Err("Transaction changed during status recheck; check it again.".into());
                 }
@@ -130,7 +130,7 @@ impl WalletService {
                 }
                 let change = TransactionStatusChange {
                     id: current.id.clone(),
-                    chain_name: current.chain_name.clone(),
+                    chain_id: current.chain_id.clone(),
                     transaction_hash: current.transaction_hash.clone(),
                     old_status: current_status,
                     new_status,

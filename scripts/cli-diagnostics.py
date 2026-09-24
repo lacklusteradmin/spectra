@@ -115,12 +115,12 @@ class DiagnosticsTests(unittest.TestCase):
                 p = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=30)
                 assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
                 return json.loads(p.stdout) if success else None
-            run('diagnostics', 'state', '--command', json.dumps({'Degraded': {'chain_name': 'Solana', 'detail': 'timeout'}}))
+            run('diagnostics', 'state', '--command', json.dumps({'Degraded': {'chain_id': 'solana', 'reason': {'kind': 'failed', 'message': 'timeout'}}}))
             degraded = run('diagnostics', 'state')['state']
             assert degraded['degraded'], degraded
-            run('diagnostics', 'state', '--command', json.dumps({'Healthy': {'chain_name': 'Solana'}}))
+            run('diagnostics', 'state', '--command', json.dumps({'Healthy': {'chain_id': 'solana'}}))
             recovered = run('diagnostics', 'state')['state']
-            assert not recovered['degraded'] and 'Solana' in recovered['last_good_unix'], recovered
+            assert not recovered['degraded'] and 'solana' in recovered['last_good_unix'], recovered
             assert len(recovered['logs']) == 2 and recovered['logs'][0]['input']['message'] == 'Chain recovered', recovered
             conditions = dict(appIsActive=True, isNetworkReachable=False, isConstrainedNetwork=False,
                               isExpensiveNetwork=False, isLowPowerMode=False, batteryLevel=1, wantsPriceRefresh=True)

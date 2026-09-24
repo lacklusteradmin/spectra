@@ -1,9 +1,38 @@
 //! Durable diagnostics are core state; platforms supply events, never replacement lists.
 use super::*;
 use serde::{Deserialize, Serialize};
+/// Why a chain's data is stale. A front end words each one; the stored form
+/// is the reason, not a sentence in whichever language wrote it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum ChainDegradation {
+    /// No wallet's history could be read; cached history is shown.
+    HistoryRefreshFailed,
+    /// Some wallets' history loaded and some did not.
+    HistoryPartiallyLoaded,
+    /// The refresh failed outright, with what the failing call said.
+    Failed { message: String },
+}
+
+impl ChainDegradation {
+    /// English, for logs and exports read by whoever debugs them.
+    pub fn log_text(&self, chain_id: &str) -> String {
+        let name = crate::registry::Chain::display_name_for_id(chain_id);
+        match self {
+            Self::HistoryRefreshFailed => {
+                format!("{name} history refresh failed. Using cached history.")
+            }
+            Self::HistoryPartiallyLoaded => {
+                format!("{name} history loaded with partial provider failures.")
+            }
+            Self::Failed { message } => message.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct DiagnosticState {
-    pub degraded: HashMap<String, String>,
+    pub degraded: HashMap<String, ChainDegradation>,
     pub last_good_unix: HashMap<String, f64>,
     pub logs: Vec<DiagnosticLog>,
 }
@@ -31,7 +60,7 @@ pub struct DiagnosticLogInput {
     pub level: DiagnosticLogLevel,
     pub category: String,
     pub message: String,
-    pub chain_name: Option<String>,
+    pub chain_id: Option<String>,
     pub wallet_id: Option<String>,
     pub transaction_hash: Option<String>,
     pub source: Option<String>,
@@ -39,11 +68,22 @@ pub struct DiagnosticLogInput {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Enum)]
 pub enum DiagnosticCommand {
-    Append { input: DiagnosticLogInput },
-    Healthy { chain_name: String },
-    Synced { chain_name: String },
-    Degraded { chain_name: String, detail: String },
-    ClearLogs { chain_name: Option<String> },
+    Append {
+        input: DiagnosticLogInput,
+    },
+    Healthy {
+        chain_id: String,
+    },
+    Synced {
+        chain_id: String,
+    },
+    Degraded {
+        chain_id: String,
+        reason: ChainDegradation,
+    },
+    ClearLogs {
+        chain_id: Option<String>,
+    },
     Reset,
 }
 impl DiagnosticState {
@@ -51,7 +91,7 @@ impl DiagnosticState {
         input.category = input.category.trim().into();
         input.message = input.message.trim().into();
         for text in [
-            &mut input.chain_name,
+            &mut input.chain_id,
             &mut input.wallet_id,
             &mut input.transaction_hash,
             &mut input.source,
@@ -86,13 +126,13 @@ impl WalletService {
         &self,
         command: DiagnosticCommand,
     ) -> Result<DiagnosticState, SpectraBridgeError> {
-        let chain_name = match &command {
-            DiagnosticCommand::Healthy { chain_name }
-            | DiagnosticCommand::Synced { chain_name }
-            | DiagnosticCommand::Degraded { chain_name, .. } => Some(chain_name),
+        let chain_id = match &command {
+            DiagnosticCommand::Healthy { chain_id }
+            | DiagnosticCommand::Synced { chain_id }
+            | DiagnosticCommand::Degraded { chain_id, .. } => Some(chain_id),
             _ => None,
         };
-        if chain_name.is_some_and(|s| Chain::from_display_name(s).is_none()) {
+        if chain_id.is_some_and(|s| Chain::from_str_id(s).is_none()) {
             return Err("unknown diagnostic chain".into());
         }
         let result = self
@@ -100,39 +140,33 @@ impl WalletService {
                 let d = &mut state.diagnostics;
                 match command {
                     DiagnosticCommand::Append { input } => d.append(input),
-                    DiagnosticCommand::Synced { chain_name } => {
-                        d.last_good_unix
-                            .insert(chain_name, crate::store::now_unix());
+                    DiagnosticCommand::Synced { chain_id } => {
+                        d.last_good_unix.insert(chain_id, crate::store::now_unix());
                     }
-                    DiagnosticCommand::Healthy { chain_name } => {
+                    DiagnosticCommand::Healthy { chain_id } => {
                         d.last_good_unix
-                            .insert(chain_name.clone(), crate::store::now_unix());
-                        if d.degraded.remove(&chain_name).is_some() {
+                            .insert(chain_id.clone(), crate::store::now_unix());
+                        if d.degraded.remove(&chain_id).is_some() {
                             d.append(sync_log(
-                                chain_name,
+                                chain_id,
                                 DiagnosticLogLevel::Info,
                                 "Chain recovered".into(),
                             ));
                         }
                     }
-                    DiagnosticCommand::Degraded { chain_name, detail } => {
-                        let classified =
-                            crate::diagnostics::diagnostics_classify_degraded_detail(detail);
-                        if classified.indicates_live_success {
+                    DiagnosticCommand::Degraded { chain_id, reason } => {
+                        // A partial load is also a live read.
+                        if reason == ChainDegradation::HistoryPartiallyLoaded {
                             d.last_good_unix
-                                .insert(chain_name.clone(), crate::store::now_unix());
+                                .insert(chain_id.clone(), crate::store::now_unix());
                         }
-                        d.degraded
-                            .insert(chain_name.clone(), classified.normalized.clone());
-                        d.append(sync_log(
-                            chain_name,
-                            DiagnosticLogLevel::Warning,
-                            classified.normalized,
-                        ));
+                        let text = reason.log_text(&chain_id);
+                        d.degraded.insert(chain_id.clone(), reason);
+                        d.append(sync_log(chain_id, DiagnosticLogLevel::Warning, text));
                     }
-                    DiagnosticCommand::ClearLogs { chain_name } => d
+                    DiagnosticCommand::ClearLogs { chain_id } => d
                         .logs
-                        .retain(|l| chain_name.is_some() && l.input.chain_name != chain_name),
+                        .retain(|l| chain_id.is_some() && l.input.chain_id != chain_id),
                     DiagnosticCommand::Reset => *d = DiagnosticState::default(),
                 }
                 vec![crate::store::state::StateEvent::DiagnosticsChanged]
@@ -146,7 +180,7 @@ fn sync_log(chain: String, level: DiagnosticLogLevel, message: String) -> Diagno
         level,
         category: "Chain Sync".into(),
         message,
-        chain_name: Some(chain),
+        chain_id: Some(chain),
         wallet_id: None,
         transaction_hash: None,
         source: Some("network".into()),
@@ -169,20 +203,22 @@ mod tests {
             .unwrap();
         service
             .apply_diagnostic_command(DiagnosticCommand::Degraded {
-                chain_name: "Solana".into(),
-                detail: "timeout".into(),
+                chain_id: "solana".into(),
+                reason: ChainDegradation::Failed {
+                    message: "timeout".into(),
+                },
             })
             .await
             .unwrap();
         let d = service
             .apply_diagnostic_command(DiagnosticCommand::Healthy {
-                chain_name: "Solana".into(),
+                chain_id: "solana".into(),
             })
             .await
             .unwrap();
         assert!(d.degraded.is_empty());
         assert_eq!(d.logs.len(), 2);
-        assert!(d.last_good_unix.contains_key("Solana"));
+        assert!(d.last_good_unix.contains_key("solana"));
         let reopened = WalletService::new(vec![]).unwrap();
         assert_eq!(
             reopened
@@ -221,7 +257,7 @@ impl WalletService {
         } else {
             requested
         };
-        let mut results = self_tests_run_chain(chain.chain_display_name().into());
+        let mut results = self_tests_run_chain(chain.str_id().into());
         let rpc_endpoint = if chain.is_evm() {
             let endpoints = self.configured_endpoint_urls(chain.str_id()).await;
             let rpc = endpoints
@@ -266,7 +302,7 @@ mod configured_tests {
             .mount(&server)
             .await;
         let service = WalletService::new_catalog().unwrap();
-        for chain in ["Ethereum", "Ethereum Sepolia"] {
+        for chain in ["ethereum", "ethereum-sepolia"] {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
@@ -276,7 +312,7 @@ mod configured_tests {
                             "broadcast".into(),
                             "verification".into(),
                         ],
-                        chain_id: crate::registry::Chain::from_display_name(chain)
+                        chain_id: crate::registry::Chain::from_str_id(chain)
                             .unwrap()
                             .str_id()
                             .into(),

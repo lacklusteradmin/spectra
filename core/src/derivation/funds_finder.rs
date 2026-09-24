@@ -28,10 +28,8 @@ pub struct FundsFinderRequest {
 /// The balance is checked by the core FundsScan session.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct FundsFinderCandidate {
-    /// Machine-readable chain ID understood by `fetch_native_balance_summary`.
+    /// The network the candidate was derived for.
     pub chain_id: String,
-    /// Human-readable chain name shown in the UI.
-    pub chain_name: String,
     /// Full BIP-32 path used (e.g. `m/84'/0'/0'/0/0`).
     pub derivation_path: String,
     /// Short human-readable label (e.g. `"BIP84 Native SegWit · Account 0"`).
@@ -89,7 +87,7 @@ pub fn generate_funds_finder_candidates(
             } else {
                 format!("{label} · Account {account}")
             };
-            push_candidate(&mut out, "bitcoin", "Bitcoin", &path, &label_full, || {
+            push_candidate(&mut out, "bitcoin", &path, &label_full, || {
                 derive_bitcoin(
                     seed.clone(),
                     path.clone(),
@@ -113,7 +111,7 @@ pub fn generate_funds_finder_candidates(
                 (a, 0) => format!("Account {a}"),
                 (a, i) => format!("Account {a} · Address {i}"),
             };
-            push_candidate(&mut out, "ethereum", "Ethereum", &path, &label, || {
+            push_candidate(&mut out, "ethereum", &path, &label, || {
                 derive_evm(seed.clone(), path.clone(), pass.clone(), true, false, false)
             });
         }
@@ -124,7 +122,7 @@ pub fn generate_funds_finder_candidates(
         ("m/44'/60'/0'/0", "Legacy (m/44'/60'/0'/0)"),
         ("m/44'/60'", "Legacy (m/44'/60')"),
     ] {
-        push_candidate(&mut out, "ethereum", "Ethereum", path, label, || {
+        push_candidate(&mut out, "ethereum", path, label, || {
             derive_evm(
                 seed.clone(),
                 path.to_string(),
@@ -152,7 +150,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Legacy · Account {account}")
         };
-        push_candidate(&mut out, "solana", "Solana", &std_path, &std_label, || {
+        push_candidate(&mut out, "solana", &std_path, &std_label, || {
             derive_solana(
                 seed.clone(),
                 std_path.clone(),
@@ -163,7 +161,7 @@ pub fn generate_funds_finder_candidates(
                 false,
             )
         });
-        push_candidate(&mut out, "solana", "Solana", &leg_path, &leg_label, || {
+        push_candidate(&mut out, "solana", &leg_path, &leg_label, || {
             derive_solana(
                 seed.clone(),
                 leg_path.clone(),
@@ -202,7 +200,7 @@ pub fn generate_funds_finder_candidates(
             } else {
                 format!("{label} · Account {account}")
             };
-            push_candidate(&mut out, "litecoin", "Litecoin", &path, &label_full, || {
+            push_candidate(&mut out, "litecoin", &path, &label_full, || {
                 derive_litecoin(
                     seed.clone(),
                     path.clone(),
@@ -224,7 +222,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "dogecoin", "Dogecoin", &path, &label, || {
+        push_candidate(&mut out, "dogecoin", &path, &label, || {
             derive_dogecoin(
                 seed.clone(),
                 path.clone(),
@@ -245,24 +243,17 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(
-            &mut out,
-            "bitcoin-cash",
-            "Bitcoin Cash",
-            &path,
-            &label,
-            || {
-                derive_bitcoin_cash(
-                    seed.clone(),
-                    path.clone(),
-                    pass.clone(),
-                    BitcoinScriptType::P2pkh,
-                    true,
-                    false,
-                    false,
-                )
-            },
-        );
+        push_candidate(&mut out, "bitcoin-cash", &path, &label, || {
+            derive_bitcoin_cash(
+                seed.clone(),
+                path.clone(),
+                pass.clone(),
+                BitcoinScriptType::P2pkh,
+                true,
+                false,
+                false,
+            )
+        });
     }
 
     // ── Bitcoin SV ────────────────────────────────────────────────────────────
@@ -273,7 +264,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "bitcoin-sv", "Bitcoin SV", &path, &label, || {
+        push_candidate(&mut out, "bitcoin-sv", &path, &label, || {
             derive_bitcoin_sv(
                 seed.clone(),
                 path.clone(),
@@ -294,7 +285,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "xrp", "XRP Ledger", &path, &label, || {
+        push_candidate(&mut out, "xrp", &path, &label, || {
             derive_xrp(seed.clone(), path.clone(), pass.clone(), true, false, false)
         });
     }
@@ -307,7 +298,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "tron", "Tron", &path, &label, || {
+        push_candidate(&mut out, "tron", &path, &label, || {
             derive_tron(seed.clone(), path.clone(), pass.clone(), true, false, false)
         });
     }
@@ -320,7 +311,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "stellar", "Stellar", &path, &label, || {
+        push_candidate(&mut out, "stellar", &path, &label, || {
             derive_stellar(
                 seed.clone(),
                 path.clone(),
@@ -336,7 +327,6 @@ pub fn generate_funds_finder_candidates(
     push_candidate(
         &mut out,
         "stellar",
-        "Stellar",
         "m/44'/148'",
         "Legacy (m/44'/148')",
         || {
@@ -357,7 +347,6 @@ pub fn generate_funds_finder_candidates(
     push_candidate(
         &mut out,
         "polkadot",
-        "Polkadot",
         "sr25519",
         "Standard (sr25519)",
         || derive_polkadot(seed.clone(), pass.clone(), None, true, false, false),
@@ -371,7 +360,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "dash", "Dash", &path, &label, || {
+        push_candidate(&mut out, "dash", &path, &label, || {
             derive_dash(
                 seed.clone(),
                 path.clone(),
@@ -392,7 +381,7 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(&mut out, "zcash", "Zcash", &path, &label, || {
+        push_candidate(&mut out, "zcash", &path, &label, || {
             derive_zcash(seed.clone(), path.clone(), pass.clone(), true, false, false)
         });
     }
@@ -405,24 +394,17 @@ pub fn generate_funds_finder_candidates(
         } else {
             format!("Account {account}")
         };
-        push_candidate(
-            &mut out,
-            "bitcoin-gold",
-            "Bitcoin Gold",
-            &path,
-            &label,
-            || {
-                derive_bitcoin_gold(
-                    seed.clone(),
-                    path.clone(),
-                    pass.clone(),
-                    BitcoinScriptType::P2pkh,
-                    true,
-                    false,
-                    false,
-                )
-            },
-        );
+        push_candidate(&mut out, "bitcoin-gold", &path, &label, || {
+            derive_bitcoin_gold(
+                seed.clone(),
+                path.clone(),
+                pass.clone(),
+                BitcoinScriptType::P2pkh,
+                true,
+                false,
+                false,
+            )
+        });
     }
 
     Ok(out)
@@ -433,7 +415,6 @@ pub fn generate_funds_finder_candidates(
 fn push_candidate(
     out: &mut Vec<FundsFinderCandidate>,
     chain_id: &str,
-    chain_name: &str,
     path: &str,
     label: &str,
     derive: impl FnOnce() -> Result<crate::derivation::types::DerivationResult, SpectraBridgeError>,
@@ -442,7 +423,6 @@ fn push_candidate(
         if let Some(address) = result.address {
             out.push(FundsFinderCandidate {
                 chain_id: chain_id.to_string(),
-                chain_name: chain_name.to_string(),
                 derivation_path: path.to_string(),
                 path_label: label.to_string(),
                 address,

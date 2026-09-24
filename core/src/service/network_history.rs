@@ -21,7 +21,7 @@ impl WalletService {
                 status: e.status,
                 asset_display_name: e.asset_display_name,
                 symbol: e.symbol,
-                chain_name: e.chain_name,
+                chain_id: e.chain_id,
                 amount: e.amount,
                 counterparty: e.counterparty,
                 tx_hash: e.tx_hash,

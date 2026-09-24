@@ -99,8 +99,8 @@ class PortfolioTests(unittest.TestCase):
                         w=json.loads(payload); change(w)
                         db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(w),id))
             def seed(w):
-                w['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainName='Ethereum',
-                    tokenStandard='Native',contractAddress=None,amount=1,priceUsd=0)]
+                w['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainId='ethereum',
+                    tokenStandard='Native',contractAddress=None,amount='1')]
             change_wallets(seed)
             def quote(price):
                 with sqlite3.connect(dbpath) as db:
@@ -133,8 +133,8 @@ class PortfolioTests(unittest.TestCase):
             with sqlite3.connect(dbpath) as db:
                 wid, raw = db.execute('SELECT id,payload FROM wallets').fetchone()
                 wallet = json.loads(raw)
-                native = dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainName='Ethereum', tokenStandard='Native', contractAddress=None, amount=2, priceUsd=999)
-                usdc = dict(name='USD Coin', symbol='USDC', coingeckoId='usd-coin', chainName='Ethereum', tokenStandard='ERC-20', contractAddress='0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', amount=100, priceUsd=1)
+                native = dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum', tokenStandard='Native', contractAddress=None, amount='2')
+                usdc = dict(name='USD Coin', symbol='USDC', coingeckoId='usd-coin', chainId='ethereum', tokenStandard='ERC-20', contractAddress='0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', amount='100')
                 wallet['holdings'] = [native, usdc]
                 db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet),wid))
                 db.execute('INSERT OR REPLACE INTO app_state_meta VALUES (?,?)', ('quotes',json.dumps({'prices':{'ethereum:native':3000}})))
@@ -214,10 +214,10 @@ class PortfolioTests(unittest.TestCase):
                         wallet = json.loads(db.execute('SELECT payload FROM wallets').fetchone()[0])
                         return {h['symbol']: h['amount'] for h in wallet['holdings']}
                 assert run('refresh', '--wallet', 'Fixture', '--endpoint', endpoint)['refreshed'] == 1
-                assert balances()['ETH'] == 1 and balances()['USDC'] == 2
+                assert balances()['ETH'] == '1' and balances()['USDC'] == '2'
                 phase = 2
                 assert run('refresh', '--wallet', 'Fixture', '--endpoint', endpoint)['refreshed'] == 1
-                assert balances()['ETH'] == 0 and balances()['USDC'] == 2, 'failed token read must preserve its last balance'
+                assert balances()['ETH'] == '0' and balances()['USDC'] == '2', 'failed token read must preserve its last balance'
             finally:
                 server.shutdown()
                 server.server_close()
@@ -253,8 +253,8 @@ class PortfolioTests(unittest.TestCase):
             with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
                 wallet = json.loads(db.execute("SELECT payload FROM wallets").fetchone()[0])
                 def holding(network, amount, contract=None):
-                    return dict(name="Ether", symbol="ETH", coingeckoId="ethereum", chainName=network, tokenStandard="ERC-20" if contract else "Native", contractAddress=contract, amount=amount, priceUsd=100)
-                wallet["holdings"] = [holding("Ethereum", 1), holding("Base", 2), holding("Ethereum Sepolia", 3), holding("Ethereum", 4, "0x1111111111111111111111111111111111111111")]
+                    return dict(name="Ether", symbol="ETH", coingeckoId="ethereum", chainId=network, tokenStandard="ERC-20" if contract else "Native", contractAddress=contract, amount=str(amount))
+                wallet["holdings"] = [holding("ethereum", 1), holding("base", 2), holding("ethereum-sepolia", 3), holding("ethereum", 4, "0x1111111111111111111111111111111111111111")]
                 db.execute("UPDATE wallets SET payload=?", (json.dumps(wallet),))
             groups = run("portfolio", "--stored", "--pin-token", "ethereum")["groups"]
             assert all(g["isPinned"] == (g["id"] == "ethereum") for g in groups)
@@ -263,9 +263,9 @@ class PortfolioTests(unittest.TestCase):
             assert len([o for o in options if o["symbol"] == "ETH"]) >= 2
             run("portfolio", "--stored", "--pin-token", "ETH", succeeds=False)
             eth_group = next(g for g in groups if g["id"] == eth["token_id"])
-            assert sum(h["coin"]["amount"] for h in eth_group["holdings"]) == 3
+            assert sum(float(h["coin"]["amount"]) for h in eth_group["holdings"]) == 3
             test_group = next(g for g in groups if g["id"] == test_eth["token_id"])
-            assert all(h["valueUsd"] is None for h in test_group["holdings"])
+            assert all(h["value"] is None for h in test_group["holdings"])
             assert any(g["id"].startswith("custom:ethereum:erc-20:") for g in groups)
             run("send", "preview", "--wallet", "Identity", "--holding", "Ethereum|ETH", "--amount", "1", succeeds=False)
             run("token", "add", "--chain", "ethereum", "--symbol", "ETH", "--name", "Lookalike", "--contract", "invalid", "--decimals", "18", succeeds=False)

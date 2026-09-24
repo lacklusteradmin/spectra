@@ -25,7 +25,7 @@ mod token_decimals_come_from_the_contract {
                     .unwrap(),
                 None,
                 "{} has no metadata client, so the caller's value must stand",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }
@@ -85,14 +85,14 @@ mod sign_only_tests {
     /// back with `signed_payload: None`.
     #[test]
     fn either_route_asks_the_same_thing() {
-        let plain = req("ethereum", "Ethereum");
+        let plain = req("ethereum", "ethereum");
         assert!(!plain.wants_sign_only(), "a send is not a dry run");
 
-        let mut by_field = req("ethereum", "Ethereum");
+        let mut by_field = req("ethereum", "ethereum");
         by_field.sign_only = true;
         assert!(by_field.wants_sign_only());
 
-        let mut by_overrides = req("ethereum", "Ethereum");
+        let mut by_overrides = req("ethereum", "ethereum");
         by_overrides.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
             sign_only: Some(true),
             ..Default::default()
@@ -103,7 +103,7 @@ mod sign_only_tests {
         );
 
         // Overrides that say nothing about it do not unsay the field.
-        let mut both = req("ethereum", "Ethereum");
+        let mut both = req("ethereum", "ethereum");
         both.sign_only = true;
         both.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
             sign_only: None,
@@ -123,8 +123,9 @@ mod send_chain_tests {
         WalletState {
             id: id.to_string(),
             name: id.to_string(),
-            is_watch_only: false,
-            chain_name: chain.chain_display_name().to_string(),
+            signing: crate::store::state::WalletSigning::SeedPhrase {
+                password_protected: false,
+            },
             include_in_portfolio_total: true,
             chain_id: chain_id.unwrap_or(chain.str_id()).to_string(),
             xpub: None,
@@ -170,7 +171,7 @@ mod send_chain_tests {
 async fn invalid_exact_amount_and_fee_refuse_before_storage_or_keys() {
     let service = WalletService::new(vec![]).unwrap();
     for amount in ["-1", "NaN", "0.0000000000000000001", "1e8"] {
-        let mut request = request_fixture::req("ethereum", "Ethereum");
+        let mut request = request_fixture::req("ethereum", "ethereum");
         request.amount_str = amount.into();
         let error = service.build_send(request).await.unwrap_err().to_string();
         assert!(
@@ -179,7 +180,7 @@ async fn invalid_exact_amount_and_fee_refuse_before_storage_or_keys() {
         );
     }
     for fee in [f64::NAN, -1.0, f64::INFINITY, 0.00000000001] {
-        let mut request = request_fixture::req("bitcoin", "Bitcoin");
+        let mut request = request_fixture::req("bitcoin", "bitcoin");
         request.fee_rate_svb = Some(fee);
         assert!(service
             .build_send(request)

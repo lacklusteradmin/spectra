@@ -566,13 +566,13 @@ mod decimals_come_from_the_chain {
             match chain {
                 // TON reads every jetton the address holds in one call, so a
                 // failure there is the chain's answer and not one token's.
-                Chain::Ton => assert!(results.is_err(), "TON"),
+                Chain::Ton => assert!(results.is_err(), "ton"),
                 _ => assert!(
                     results
-                        .unwrap_or_else(|e| panic!("{}: {e}", chain.chain_display_name()))
+                        .unwrap_or_else(|e| panic!("{}: {e}", chain.str_id()))
                         .is_empty(),
                     "{} fabricated a balance for a contract it could not read",
-                    chain.chain_display_name()
+                    chain.str_id()
                 ),
             }
         }

@@ -6,7 +6,6 @@ use colored::Colorize as _;
 use spectra_core::store::state::{
     CoreTokenPreferenceKey, StateCommand, StateEvent, StateTransition, TokenPreferenceRejection,
 };
-use spectra_core::store::wallet_domain::CoreTokenHostingChain;
 
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx};
@@ -55,7 +54,7 @@ pub struct ArtworkArgs {
 #[derive(Args)]
 pub struct FormatArgs {
     /// Amount in the asset's own units, as a person would type it.
-    amount: f64,
+    amount: String,
     /// Chain display name, registry id or symbol.
     #[arg(long)]
     chain: String,
@@ -182,7 +181,7 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
         for token in &tokens {
             println!(
                 "  {}  {:<8} {:<24} {}",
-                out::tint("●", chain.chain_display_name()).bold(),
+                out::tint("●", chain.str_id()).bold(),
                 token.symbol.bold(),
                 token.name,
                 out::hint(&format!("{} decimals", token.decimals)),
@@ -194,7 +193,7 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain.chain_display_name(),
+        "chain": chain.str_id(),
         "tokens": tokens
             .iter()
             .map(|token| serde_json::json!({
@@ -258,17 +257,18 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let chain_name = chain.chain_display_name().to_string();
-    CoreTokenHostingChain::from_chain_name(&chain_name)
-        .ok_or_else(|| CliError::rejected(format!("{chain_name} does not support known tokens")))?;
+    if !chain.hosts_tokens() {
+        return Err(CliError::rejected(format!(
+            "{chain_name} does not support known tokens"
+        )));
+    }
 
     let matches: Vec<_> = ctx
         .state()?
         .token_preferences
         .into_iter()
         .filter(|entry| {
-            entry
-                .hosting_chain()
-                .is_some_and(|h| h.chain_name() == chain_name)
+            entry.hosting_chain() == Some(chain)
                 && (entry.token.deployment_id == args.symbol
                     || entry.token.symbol.eq_ignore_ascii_case(&args.symbol))
         })
@@ -291,7 +291,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
 
     let transition = ctx.apply(StateCommand::SetTokenPreferencesEnabled {
         tokens: vec![CoreTokenPreferenceKey {
-            chain_name: chain_name.clone(),
+            chain_id: chain.str_id().to_string(),
             contract: entry.token.contract.clone(),
         }],
         is_enabled,
@@ -305,7 +305,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": chain_name,
+        "chain": chain.str_id(),
         "id": entry.token.deployment_id,
                 "symbol": entry.token.symbol,
         "contract": entry.token.contract,
@@ -323,7 +323,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
 /// command held none of them.
 fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
-        chain_name: resolve_chain(&args.chain)?.chain_display_name().to_string(),
+        chain_id: resolve_chain(&args.chain)?.str_id().to_string(),
         contract: args.contract,
         symbol: args.symbol,
         name: args.name,
@@ -337,9 +337,9 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 }
 
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
-    let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
+    let chain_id = resolve_chain(&args.chain)?.str_id().to_string();
     let transition = ctx.apply(StateCommand::AddCustomToken {
-        chain_name: chain_name.clone(),
+        chain_id,
         symbol: args.symbol.clone(),
         name: args.name,
         contract: args.contract.clone(),
@@ -372,23 +372,23 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 }
 
 fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
-    let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
+    let chain_id = resolve_chain(&args.chain)?.str_id().to_string();
     let transition = ctx.apply(StateCommand::RemoveCustomToken {
-        chain_name: chain_name.clone(),
+        chain_id: chain_id.clone(),
         contract: args.contract.clone(),
     })?;
     reject_on_event(&transition)?;
     out.text(|| println!("  {} removed {}", out::ok_mark(), args.contract.bold()));
     out.emit(serde_json::json!({
-        "ok": true, "chain": chain_name, "contract": args.contract
+        "ok": true, "chain": chain_id, "contract": args.contract
     }));
     Ok(())
 }
 
 fn decimals(ctx: &Ctx, out: Out, args: DecimalsArgs) -> CliResult<()> {
-    let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
+    let chain_id = resolve_chain(&args.chain)?.str_id().to_string();
     let transition = ctx.apply(StateCommand::SetCustomTokenDecimals {
-        chain_name: chain_name.clone(),
+        chain_id: chain_id.clone(),
         contract: args.contract.clone(),
         decimals: args.decimals,
     })?;
@@ -402,7 +402,7 @@ fn decimals(ctx: &Ctx, out: Out, args: DecimalsArgs) -> CliResult<()> {
         );
     });
     out.emit(serde_json::json!({
-        "ok": true, "chain": chain_name, "contract": args.contract, "decimals": args.decimals
+        "ok": true, "chain": chain_id, "contract": args.contract, "decimals": args.decimals
     }));
     Ok(())
 }
@@ -449,7 +449,7 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
 
 fn discover(ctx: &Ctx, out: Out, args: DiscoverArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_name)?;
+    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
     let address = wallet_address(&wallet).to_string();
     if address.is_empty() {
         return Err(CliError::rejected(format!(
@@ -519,31 +519,24 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
         }
         None => u32::from(chain.native_decimals()),
     };
-    let display = spectra_core::formatting::asset_amount_display(args.amount, asset_decimals);
-    let rendered = if display.below_threshold {
-        format!("<{:.*}", display.places as usize, display.threshold)
+    let text = spectra_core::formatting::format_asset_amount(args.amount.clone(), asset_decimals)
+        .ok_or_else(|| CliError::usage("amount must be an unsigned decimal"))?;
+    let rendered = if text.below_threshold {
+        format!("<{}", text.value)
     } else {
-        let full = format!("{:.*}", display.places as usize, args.amount);
-        let trimmed = if full.contains('.') {
-            full.trim_end_matches('0').trim_end_matches('.').to_string()
-        } else {
-            full
-        };
-        trimmed
+        text.value.clone()
     };
     let _ = ctx;
 
     out.text(|| {
         out::field("shows", &rendered);
-        out::field("places", &display.places.to_string());
         out::field("asset decimals", &asset_decimals.to_string());
     });
     out.emit(serde_json::json!({
         "ok": true,
         "shows": rendered,
-        "places": display.places,
         "assetDecimals": asset_decimals,
-        "belowThreshold": display.below_threshold,
+        "belowThreshold": text.below_threshold,
     }));
     Ok(())
 }

@@ -5,7 +5,7 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 // All user-facing projections select the same canonical transaction and owner.
 const VISIBLE: &str = "EXISTS (SELECT 1 FROM wallets w WHERE lower(w.id) = h.wallet_id)
     AND h.id = (SELECT candidate.id FROM history_records candidate
-        WHERE candidate.wallet_id = h.wallet_id AND candidate.chain_name = h.chain_name
+        WHERE candidate.wallet_id = h.wallet_id AND candidate.chain_id = h.chain_id
           AND candidate.asset_key = h.asset_key AND candidate.hash_key = h.hash_key
         ORDER BY candidate.status_rank DESC, candidate.created_at DESC, candidate.id ASC LIMIT 1)";
 
@@ -62,7 +62,7 @@ fn page_sql(query: &HistoryQuery) -> String {
         AND (?2 = 'all' OR json_extract(h.payload, '$.kind') = ?2 OR json_extract(h.payload, '$.status') = ?2)
         AND (?3 = '' OR instr(spectra_lower(coalesce(json_extract(h.payload, '$.walletName'), '') || ' ' ||
           coalesce(json_extract(h.payload, '$.assetDisplayName'), '') || ' ' ||
-          coalesce(json_extract(h.payload, '$.symbol'), '') || ' ' || h.chain_name || ' ' ||
+          coalesce(json_extract(h.payload, '$.symbol'), '') || ' ' || h.chain_id || ' ' ||
           coalesce(json_extract(h.payload, '$.address'), '') || ' ' || coalesce(h.tx_hash, '') || ' ' ||
           coalesce(json_extract(h.payload, '$.transactionHistorySource'), '')), ?3) > 0)
         ORDER BY h.created_at {order}, h.id ASC LIMIT ?4")

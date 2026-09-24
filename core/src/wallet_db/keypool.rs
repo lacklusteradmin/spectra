@@ -16,23 +16,23 @@ pub struct KeypoolState {
 pub fn keypool_save(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_name: &str,
+    chain_id: &str,
     state: &KeypoolState,
 ) -> Result<(), String> {
     with_conn(database, |conn| {
         conn.execute(
             "INSERT INTO wallet_keypool
-                 (wallet_id, chain_name, next_external_index, next_change_index,
+                 (wallet_id, chain_id, next_external_index, next_change_index,
                   reserved_receive_index, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(wallet_id, chain_name) DO UPDATE SET
+             ON CONFLICT(wallet_id, chain_id) DO UPDATE SET
                  next_external_index    = excluded.next_external_index,
                  next_change_index      = excluded.next_change_index,
                  reserved_receive_index = excluded.reserved_receive_index,
                  updated_at             = excluded.updated_at",
             params![
                 wallet_id,
-                chain_name,
+                chain_id,
                 state.next_external_index,
                 state.next_change_index,
                 state.reserved_receive_index,
@@ -48,13 +48,13 @@ pub fn keypool_save(
 pub fn keypool_load(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_name: &str,
+    chain_id: &str,
 ) -> Result<Option<KeypoolState>, String> {
     with_conn(database, |conn| {
         let result = conn.query_row(
             "SELECT next_external_index, next_change_index, reserved_receive_index
-             FROM wallet_keypool WHERE wallet_id = ?1 AND chain_name = ?2",
-            params![wallet_id, chain_name],
+             FROM wallet_keypool WHERE wallet_id = ?1 AND chain_id = ?2",
+            params![wallet_id, chain_id],
             |row| {
                 Ok(KeypoolState {
                     next_external_index: row.get(0)?,
@@ -79,7 +79,7 @@ pub fn keypool_load_for_wallet(
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT chain_name, next_external_index, next_change_index, reserved_receive_index
+                "SELECT chain_id, next_external_index, next_change_index, reserved_receive_index
                  FROM wallet_keypool WHERE wallet_id = ?1",
             )
             .map_err(|e| format!("keypool_load_for_wallet prepare: {e}"))?;
@@ -107,17 +107,17 @@ pub fn keypool_load_for_wallet(
 /// Load all keypool state across every wallet for a given chain.
 pub fn keypool_load_for_chain(
     database: &WalletDatabase,
-    chain_name: &str,
+    chain_id: &str,
 ) -> Result<std::collections::HashMap<String, KeypoolState>, String> {
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT wallet_id, next_external_index, next_change_index, reserved_receive_index
-                 FROM wallet_keypool WHERE chain_name = ?1",
+                 FROM wallet_keypool WHERE chain_id = ?1",
             )
             .map_err(|e| format!("keypool_load_for_chain prepare: {e}"))?;
         let rows = stmt
-            .query_map(params![chain_name], |row| {
+            .query_map(params![chain_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     KeypoolState {
@@ -148,14 +148,14 @@ pub fn keypool_load_all(
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT chain_name, wallet_id, next_external_index, next_change_index, reserved_receive_index
+                "SELECT chain_id, wallet_id, next_external_index, next_change_index, reserved_receive_index
                  FROM wallet_keypool",
             )
             .map_err(|e| format!("keypool_load_all prepare: {e}"))?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?, // chain_name
+                    row.get::<_, String>(0)?, // chain_id
                     row.get::<_, String>(1)?, // wallet_id
                     KeypoolState {
                         next_external_index: row.get(2)?,
@@ -190,11 +190,11 @@ pub fn keypool_delete_for_wallet(database: &WalletDatabase, wallet_id: &str) -> 
 }
 
 /// Remove all keypool entries for a chain (e.g. when the user switches network modes).
-pub fn keypool_delete_for_chain(database: &WalletDatabase, chain_name: &str) -> Result<(), String> {
+pub fn keypool_delete_for_chain(database: &WalletDatabase, chain_id: &str) -> Result<(), String> {
     with_conn(database, |conn| {
         conn.execute(
-            "DELETE FROM wallet_keypool WHERE chain_name = ?1",
-            params![chain_name],
+            "DELETE FROM wallet_keypool WHERE chain_id = ?1",
+            params![chain_id],
         )
         .map_err(|e| format!("keypool_delete_for_chain: {e}"))?;
         Ok(())
@@ -211,7 +211,7 @@ pub fn keypool_delete_for_chain(database: &WalletDatabase, chain_name: &str) -> 
 /// a failed one, which at least leaves a state the next attempt can repeat.
 pub fn chain_derivation_delete_for_chain(
     database: &WalletDatabase,
-    chain_name: &str,
+    chain_id: &str,
 ) -> Result<(), String> {
     with_conn(database, |conn| {
         let tx = conn
@@ -219,8 +219,8 @@ pub fn chain_derivation_delete_for_chain(
             .map_err(|e| format!("chain_derivation_delete_for_chain begin: {e}"))?;
         for table in ["wallet_keypool", "wallet_owned_addresses"] {
             tx.execute(
-                &format!("DELETE FROM {table} WHERE chain_name = ?1"),
-                params![chain_name],
+                &format!("DELETE FROM {table} WHERE chain_id = ?1"),
+                params![chain_id],
             )
             .map_err(|e| format!("chain_derivation_delete_for_chain {table}: {e}"))?;
         }

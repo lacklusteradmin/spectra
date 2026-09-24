@@ -95,7 +95,7 @@ impl WalletService {
                 HashMap::new();
             for record in owned {
                 by_chain
-                    .entry(record.chain_name.clone())
+                    .entry(record.chain_id.clone())
                     .or_default()
                     .push(record);
             }
@@ -131,13 +131,8 @@ impl WalletService {
     ) -> Result<StateTransition, SpectraBridgeError> {
         let validate =
             |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
-                let network = crate::registry::Chain::from_str_id(&wallet.chain_id)
+                crate::registry::Chain::from_str_id(&wallet.chain_id)
                     .ok_or("unknown wallet network")?;
-                let family = crate::registry::Chain::from_display_name(&wallet.chain_name)
-                    .ok_or("unknown wallet chain")?;
-                if network.mainnet_counterpart() != family.mainnet_counterpart() {
-                    return Err("wallet network belongs to another family".into());
-                }
                 for holding in &mut wallet.holdings {
                     holding.canonicalize()?;
                 }
@@ -192,22 +187,6 @@ impl WalletService {
         dashboard_pin_options_from(&self.app_state().await)
     }
 
-    /// Fold this build's built-in token catalog into the stored preferences
-    /// and keep the result.
-    ///
-    /// A user's `is_enabled` survives; tokens the build
-    /// added appear; tokens the user added stay. The caller used to fetch the
-    /// catalog from core, reshape it, send both lists back for merging and
-    /// assign the answer — core owns both sides, so it does all of it.
-    pub async fn merge_built_in_token_preferences(
-        &self,
-    ) -> Result<CoreAppState, SpectraBridgeError> {
-        Ok(self
-            .apply_state_command(StateCommand::MergeBuiltInTokens)
-            .await?
-            .state)
-    }
-
     /// Evaluate and update alerts against core-owned quotes under the state writer.
     pub async fn evaluate_price_alerts(
         &self,
@@ -245,7 +224,23 @@ impl WalletService {
                     alert.has_triggered = update.has_triggered;
                 }
             }
-            *output.lock().expect("alert result lock") = evaluation.notifications;
+            // Priced in the display currency when its rate is known.
+            let display = |usd: f64| super::valuation::to_display(state, usd);
+            let notifications = evaluation
+                .notifications
+                .into_iter()
+                .map(|mut n| {
+                    if let (Some(target), Some(live)) =
+                        (display(n.target_price), display(n.live_price))
+                    {
+                        n.target_price = target;
+                        n.live_price = live;
+                        n.currency = state.settings.fiat_currency;
+                    }
+                    n
+                })
+                .collect();
+            *output.lock().expect("alert result lock") = notifications;
             if evaluation.updates.is_empty() {
                 Vec::new()
             } else {
@@ -384,7 +379,7 @@ impl WalletService {
                         .await
                         .wallets
                         .iter()
-                        .any(|w| removed.contains(&w.id) && !w.is_watch_only)
+                        .any(|w| removed.contains(&w.id) && !w.is_watch_only())
                 {
                     return Err(
                         "secret store must be registered before deleting a signing wallet".into(),
@@ -427,7 +422,7 @@ impl WalletService {
                 crate::diagnostics::diagnostics_forget_wallet(id.clone());
             }
             for name in &reset_chains {
-                if let Some(chain) = crate::registry::Chain::from_display_name(name) {
+                if let Some(chain) = crate::registry::Chain::from_str_id(name) {
                     service
                         .history_pagination
                         .reset_chain(chain.mainnet_counterpart().str_id());
@@ -598,8 +593,8 @@ fn derive_wallet_state(
     let token_preferences = &state.token_preferences;
     // The network the user picked for a holding's family, and whether that
     // network is quoted at all.
-    let network_of = |chain_name: &str| -> Option<crate::registry::Chain> {
-        crate::registry::Chain::from_display_name(chain_name)
+    let network_of = |chain_id: &str| -> Option<crate::registry::Chain> {
+        crate::registry::Chain::from_str_id(chain_id)
     };
     let signing: HashSet<&str> = signing_material_wallet_ids
         .iter()
@@ -610,7 +605,7 @@ fn derive_wallet_state(
     let mut unique_price_request_coins = Vec::new();
     let mut seen_price_keys = HashSet::new();
     let mut grouped_order: Vec<String> = Vec::new();
-    let mut grouped_totals: BTreeMap<String, f64> = BTreeMap::new();
+    let mut grouped_totals: BTreeMap<String, String> = BTreeMap::new();
     let mut grouped_representative: BTreeMap<String, crate::store::wallet_domain::AssetHolding> =
         BTreeMap::new();
 
@@ -624,8 +619,14 @@ fn derive_wallet_state(
         let mut send_coins = Vec::new();
         let mut receive_coins = Vec::new();
 
-        for holding in &wallet.holdings {
-            let network = network_of(&holding.chain_name);
+        for holding in wallet
+            .holdings
+            .iter()
+            .cloned()
+            .map(AssetHolding::identified)
+        {
+            let holding = &holding;
+            let network = network_of(&holding.chain_id);
             // Identity is per *network*: testnet BTC groups separately from
             // mainnet BTC and is quoted separately (which is to say, not).
             let identity_key = holding.deployment_id();
@@ -634,8 +635,7 @@ fn derive_wallet_state(
             // "has a backend", "supports send", "supports receive" and "is
             // a live chain" were four spellings of "the registry knows this
             // chain". Verified identical before it was deleted.
-            let chain_is_known =
-                crate::registry::Chain::from_display_name(&holding.chain_name).is_some();
+            let chain_is_known = crate::registry::Chain::from_str_id(&holding.chain_id).is_some();
 
             if network.is_none_or(|chain| !chain.is_testnet())
                 && seen_price_keys.insert(identity_key.clone())
@@ -649,7 +649,11 @@ fn derive_wallet_state(
                     grouped_order.push(identity_key.clone());
                     grouped_representative.insert(identity_key.clone(), holding.clone());
                 }
-                *grouped_totals.entry(identity_key).or_default() += holding.amount;
+                let total = grouped_totals
+                    .entry(identity_key)
+                    .or_insert_with(|| "0".to_string());
+                *total = crate::decimal::add(total, &holding.amount)
+                    .ok_or("portfolio total out of range")?;
             }
 
             let selected_network = wallet.chain();
@@ -691,47 +695,14 @@ fn derive_wallet_state(
         .into_iter()
         .filter_map(|key| {
             let mut representative = grouped_representative.remove(&key)?;
-            representative.amount = grouped_totals.get(&key).copied().unwrap_or(0.0);
+            representative.amount = grouped_totals
+                .remove(&key)
+                .unwrap_or_else(|| "0".to_string());
             Some(representative)
         })
         .collect();
 
-    let resolved_addresses_by_wallet_id = state
-        .wallets
-        .iter()
-        .map(|wallet| {
-            let selected = wallet.chain();
-            let addresses = Chain::all()
-                .filter_map(|chain| {
-                    let effective = match selected {
-                        Some(network)
-                            if network.mainnet_counterpart() == chain.mainnet_counterpart() =>
-                        {
-                            if chain != network && chain != chain.mainnet_counterpart() {
-                                return None;
-                            }
-                            network
-                        }
-                        _ => chain,
-                    };
-                    wallet
-                        .address_on(effective)
-                        .filter(|a| {
-                            crate::send::flow::is_valid_send_address(
-                                effective.chain_display_name().into(),
-                                a.to_string(),
-                            )
-                        })
-                        .map(|address| {
-                            (chain.chain_display_name().to_string(), address.to_string())
-                        })
-                })
-                .collect();
-            (wallet.id.clone(), addresses)
-        })
-        .collect();
     Ok(WalletDerivedState {
-        resolved_addresses_by_wallet_id,
         included_portfolio_holdings,
         unique_price_request_coins,
         portfolio,
@@ -739,16 +710,6 @@ fn derive_wallet_state(
         receive_coins_by_wallet_id,
         send_enabled_wallet_ids,
         receive_enabled_wallet_ids,
-        refreshable_chain_names: wallets
-            .iter()
-            .map(|w| {
-                w.chain()
-                    .map(|c| c.chain_display_name().to_string())
-                    .unwrap_or_else(|| w.chain_name.clone())
-            })
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect(),
     })
 }
 
@@ -773,6 +734,7 @@ fn dashboard_pin_options_from(
             .entry(token_id.clone())
             .or_insert_with(|| CoreDashboardPinOption {
                 token_id: token_id.clone(),
+                deployment_id: coin.deployment_id(),
                 symbol: coin.symbol.clone(),
                 name: coin.name.clone(),
                 subtitle: if token_id.starts_with("custom:") {
@@ -809,12 +771,10 @@ fn dashboard_groups_from(
     let settings = &state.settings;
     let pinned = settings.pinned_dashboard_assets();
 
-    let network_title = |chain_name: &str| -> String {
-        crate::registry::Chain::from_display_name(chain_name)
-            .map(|chain| chain.chain_display_name().to_string())
-            .unwrap_or_else(|| chain_name.to_string())
-    };
-    let value_of = |coin: &crate::store::wallet_domain::AssetHolding| valuation::value(state, coin);
+    // Ordering uses USD, which needs no exchange rate; what the row shows is
+    // the display currency.
+    let usd_of = |coin: &crate::store::wallet_domain::AssetHolding| valuation::value(state, coin);
+    let display_of = |usd: Option<f64>| usd.and_then(|usd| valuation::to_display(state, usd));
 
     // One row per asset, wherever it is held. The same asset on two
     // chains, or on one chain across two wallets, is one row.
@@ -827,7 +787,7 @@ fn dashboard_groups_from(
     for coin in derived
         .included_portfolio_holdings
         .iter()
-        .filter(|c| c.amount > 0.0)
+        .filter(|c| !crate::decimal::is_zero(&c.amount))
     {
         let key = coin.token_identity();
         if !grouped.contains_key(&key) {
@@ -849,18 +809,18 @@ fn dashboard_groups_from(
         for coin in coins {
             let contract = crate::tokens::normalize_token_identifier(
                 coin.contract_address.clone(),
-                coin.chain_name.clone(),
+                coin.chain_id.clone(),
             )
             .unwrap_or_else(|| "native".to_string());
             let place = format!(
                 "{}|{}|{contract}",
-                network_title(&coin.chain_name).to_lowercase(),
+                coin.chain_id,
                 coin.token_standard.to_lowercase()
             );
             match by_place.get_mut(&place) {
                 Some(existing) => {
-                    existing.amount += coin.amount;
-                    existing.price_usd = coin.price_usd;
+                    existing.amount = crate::decimal::add(&existing.amount, &coin.amount)
+                        .ok_or("asset total out of range")?;
                 }
                 None => {
                     place_order.push(place.clone());
@@ -872,33 +832,44 @@ fn dashboard_groups_from(
             .iter()
             .filter_map(|p| by_place.get(p))
             .map(|coin| CoreDashboardAssetHolding {
-                value_usd: value_of(coin),
+                value: display_of(usd_of(coin)),
                 coin: coin.clone(),
             })
             .collect();
         // Largest value first, so the row is presented as the place most of
-        // it is. Ties break on chain name so the order does not wander.
+        // it is. Ties break on chain id so the order does not wander.
         holdings.sort_by(|lhs, rhs| {
-            let (l, r) = (lhs.value_usd.unwrap_or(-1.0), rhs.value_usd.unwrap_or(-1.0));
+            let (l, r) = (
+                usd_of(&lhs.coin).unwrap_or(-1.0),
+                usd_of(&rhs.coin).unwrap_or(-1.0),
+            );
             if (l - r).abs() > 0.000_001 {
                 return r.total_cmp(&l);
             }
             lhs.coin
-                .chain_name
+                .chain_id
                 .to_lowercase()
-                .cmp(&rhs.coin.chain_name.to_lowercase())
+                .cmp(&rhs.coin.chain_id.to_lowercase())
         });
         let Some(largest) = holdings.first() else {
             continue;
         };
-        let total_value_usd = holdings.iter().try_fold(0.0, |sum, holding| {
-            holding.value_usd.and_then(|value| {
+        let total_usd = holdings.iter().try_fold(0.0, |sum, holding| {
+            usd_of(&holding.coin).and_then(|value| {
                 let total = sum + value;
                 total.is_finite().then_some(total)
             })
         });
+        let total_amount = holdings
+            .iter()
+            .try_fold("0".to_string(), |sum, h| {
+                crate::decimal::add(&sum, &h.coin.amount)
+            })
+            .ok_or("asset total out of range")?;
         groups.push(CoreDashboardAssetGroup {
-            total_value_usd,
+            total_amount,
+            total_value: display_of(total_usd),
+            price: valuation::display_price(state, &largest.coin),
             is_pinned: pinned.contains(&key),
             identity: largest.coin.clone(),
             holdings,
@@ -909,14 +880,20 @@ fn dashboard_groups_from(
     // A pinned token the user holds none of still gets a row, named by the
     // catalog and holding nothing.
     let row_symbol = |g: &CoreDashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
-    let row_value = |g: &CoreDashboardAssetGroup| g.total_value_usd;
+    let row_value = |g: &CoreDashboardAssetGroup| {
+        g.holdings.iter().try_fold(0.0, |sum, holding| {
+            usd_of(&holding.coin).map(|value| sum + value)
+        })
+    };
     let present: std::collections::HashSet<String> = groups.iter().map(|g| g.id.clone()).collect();
     for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
         let Some(prototype) = pinned_prototype(state, symbol, derived) else {
             continue;
         };
         groups.push(CoreDashboardAssetGroup {
-            total_value_usd: Some(0.0),
+            total_amount: "0".to_string(),
+            total_value: display_of(Some(0.0)),
+            price: valuation::display_price(state, &prototype),
             id: symbol.clone(),
             identity: prototype,
             holdings: Vec::new(),
@@ -968,7 +945,7 @@ fn pinned_prototype(
         .find(|c| c.token_identity() == token_id)
     {
         let mut coin = coin.clone();
-        coin.amount = 0.0;
+        coin.amount = "0".to_string();
         return Some(coin);
     }
     let tokens = crate::tokens::list_token_deployments(String::new());
@@ -984,16 +961,12 @@ impl WalletService {
         &self,
         state: &CoreAppState,
     ) -> Result<WalletDerivedState, SpectraBridgeError> {
-        // A wallet whose material cannot be read right now cannot sign right
-        // now, so it offers no send. The portfolio still renders; failing the
-        // whole projection for one unreadable Keychain item would not.
+        // What a wallet signs with is recorded on it, so the projection reads
+        // no secret store.
         let signing_material_wallet_ids: Vec<String> = state
             .wallets
             .iter()
-            .filter(|wallet| {
-                self.wallet_secret_state(wallet.id.clone())
-                    .is_ok_and(|secrets| secrets.has_signing_material)
-            })
+            .filter(|wallet| !wallet.is_watch_only())
             .map(|wallet| wallet.id.clone())
             .collect();
         derive_wallet_state(state, signing_material_wallet_ids)

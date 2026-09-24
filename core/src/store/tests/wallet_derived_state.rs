@@ -4,11 +4,12 @@ use crate::store::wallet_domain::AssetHolding;
 
 fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
     AssetHolding {
+        id: String::new(),
         name: symbol.to_string(),
         symbol: symbol.to_string(),
         coingecko_id: symbol.to_lowercase(),
-        chain_name: chain.to_string(),
-        token_standard: if crate::registry::Chain::from_display_name(chain)
+        chain_id: chain.to_string(),
+        token_standard: if crate::registry::Chain::from_str_id(chain)
             .is_some_and(|c| c.coin_symbol() == symbol)
         {
             "Native".into()
@@ -20,8 +21,7 @@ fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
         } else {
             None
         },
-        amount,
-        price_usd: 1.0,
+        amount: crate::decimal::from_f64(amount).unwrap(),
     }
 }
 
@@ -36,14 +36,14 @@ async fn service_with(
         summary.holdings = holdings
             .into_iter()
             .map(|c| crate::store::wallet_domain::AssetHolding {
+                id: String::new(),
                 name: c.name,
                 symbol: c.symbol,
                 coingecko_id: c.coingecko_id,
-                chain_name: c.chain_name,
+                chain_id: c.chain_id,
                 token_standard: c.token_standard,
                 contract_address: c.contract_address,
                 amount: c.amount,
-                price_usd: c.price_usd,
             })
             .collect();
         service
@@ -57,24 +57,24 @@ async fn service_with(
 #[tokio::test]
 async fn portfolio_sums_the_same_asset_across_wallets() {
     let service = service_with(vec![
-        ("w1", "Bitcoin", vec![coin("BTC", "Bitcoin", 1.5)], true),
-        ("w2", "Bitcoin", vec![coin("BTC", "Bitcoin", 0.5)], true),
+        ("w1", "bitcoin", vec![coin("BTC", "bitcoin", 1.5)], true),
+        ("w2", "bitcoin", vec![coin("BTC", "bitcoin", 0.5)], true),
     ])
     .await;
     let derived = service.wallet_derived_state().await.expect("derived");
     assert_eq!(derived.portfolio.len(), 1);
-    assert_eq!(derived.portfolio[0].amount, 2.0);
+    assert_eq!(derived.portfolio[0].amount, "2");
 }
 
 #[tokio::test]
 async fn wallets_excluded_from_the_total_contribute_nothing() {
     let service = service_with(vec![
-        ("w1", "Bitcoin", vec![coin("BTC", "Bitcoin", 1.0)], true),
-        ("w2", "Bitcoin", vec![coin("BTC", "Bitcoin", 9.0)], false),
+        ("w1", "bitcoin", vec![coin("BTC", "bitcoin", 1.0)], true),
+        ("w2", "bitcoin", vec![coin("BTC", "bitcoin", 9.0)], false),
     ])
     .await;
     let derived = service.wallet_derived_state().await.expect("derived");
-    assert_eq!(derived.portfolio[0].amount, 1.0);
+    assert_eq!(derived.portfolio[0].amount, "1");
     assert_eq!(derived.included_portfolio_holdings.len(), 1);
 }
 
@@ -83,19 +83,15 @@ async fn wallets_excluded_from_the_total_contribute_nothing() {
 #[tokio::test]
 async fn no_testnet_coin_is_quoted_on_any_family() {
     for (chain, testnet_id) in [
-        ("Bitcoin", "bitcoin-testnet"),
-        ("Ethereum", "ethereum-sepolia"),
-        ("Dogecoin", "dogecoin-testnet"),
+        ("bitcoin", "bitcoin-testnet"),
+        ("ethereum", "ethereum-sepolia"),
+        ("dogecoin", "dogecoin-testnet"),
     ] {
         let network = crate::registry::Chain::from_str_id(testnet_id).unwrap();
         let service = service_with(vec![(
             "w1",
             chain,
-            vec![coin(
-                network.coin_symbol(),
-                network.chain_display_name(),
-                1.0,
-            )],
+            vec![coin(network.coin_symbol(), network.str_id(), 1.0)],
             true,
         )])
         .await;
@@ -150,12 +146,21 @@ async fn choosing_mainnet_stores_its_explicit_id() {
 async fn sending_needs_signing_material_on_a_live_chain() {
     let service = service_with(vec![(
         "w1",
-        "Bitcoin",
-        vec![coin("BTC", "Bitcoin", 1.0)],
+        "bitcoin",
+        vec![coin("BTC", "bitcoin", 1.0)],
         true,
     )])
     .await;
 
+    let with_key = service.wallet_derived_state().await.expect("derived");
+    assert_eq!(with_key.send_enabled_wallet_ids, vec!["w1".to_string()]);
+
+    let mut wallet = service.app_state().await.wallets[0].clone();
+    wallet.signing = crate::store::state::WalletSigning::WatchOnly;
+    service
+        .apply_state_command(StateCommand::UpsertWallet { wallet })
+        .await
+        .expect("upsert");
     let watch_only = service.wallet_derived_state().await.expect("derived");
     assert!(watch_only.send_enabled_wallet_ids.is_empty());
     // Receiving never needs a key.
@@ -163,38 +168,21 @@ async fn sending_needs_signing_material_on_a_live_chain() {
         watch_only.receive_enabled_wallet_ids,
         vec!["w1".to_string()]
     );
-
-    install_key(&service);
-    let with_key = service.wallet_derived_state().await.expect("derived");
-    assert_eq!(with_key.send_enabled_wallet_ids, vec!["w1".to_string()]);
 }
 
 #[tokio::test]
 async fn an_untracked_token_on_ethereum_cannot_be_sent() {
     let service = service_with(vec![(
         "w1",
-        "Ethereum",
-        vec![coin("ETH", "Ethereum", 1.0), coin("SHIB", "Ethereum", 1.0)],
+        "ethereum",
+        vec![coin("ETH", "ethereum", 1.0), coin("SHIB", "ethereum", 1.0)],
         true,
     )])
     .await;
-    install_key(&service);
     let derived = service.wallet_derived_state().await.expect("derived");
     let sendable: Vec<&str> = derived.send_coins_by_wallet_id["w1"]
         .iter()
         .map(|c| c.symbol.as_str())
         .collect();
     assert_eq!(sendable, vec!["ETH"], "SHIB is not a known token");
-}
-
-fn install_key(service: &WalletService) {
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
-    crate::store::wallet_secrets::store_seed_phrase(
-        &*secrets,
-        "w1",
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-        None,
-    )
-    .unwrap();
-    service.set_secret_store(secrets);
 }

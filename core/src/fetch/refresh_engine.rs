@@ -414,7 +414,7 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
 
 pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Option<RefreshEntry> {
     use crate::registry::Chain;
-    let chain = Chain::from_display_name(&wallet.chain_name)?;
+    let chain = wallet.family()?;
     let address = wallet
         .xpub
         .as_deref()
@@ -458,8 +458,9 @@ mod refresh_entry_tests {
         WalletState {
             id: id.to_string(),
             name: id.to_string(),
-            is_watch_only: false,
-            chain_name: chain.chain_display_name().to_string(),
+            signing: crate::store::state::WalletSigning::SeedPhrase {
+                password_protected: false,
+            },
             include_in_portfolio_total: true,
             chain_id: chain.str_id().into(),
             xpub: None,
@@ -470,7 +471,7 @@ mod refresh_entry_tests {
             addresses: addresses
                 .iter()
                 .map(|(chain, address)| WalletAddress {
-                    chain_name: chain.chain_display_name().to_string(),
+                    chain_id: chain.str_id().to_string(),
                     address: (*address).to_string(),
                     kind: "receive".to_string(),
                     derivation_path: None,
@@ -586,7 +587,7 @@ mod refresh_entry_tests {
             wallet: WalletState::single_address(
                 "w",
                 name,
-                "Ethereum",
+                "ethereum",
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,

@@ -18,7 +18,7 @@ pub(crate) fn can_send_coin(
     if is_live_chain && !has_signing_material {
         return false;
     }
-    let Some(chain) = crate::registry::Chain::from_display_name(&coin.chain_name) else {
+    let Some(chain) = crate::registry::Chain::from_str_id(&coin.chain_id) else {
         return false;
     };
     let is_known_token = || {

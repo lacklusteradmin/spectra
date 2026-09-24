@@ -3,21 +3,21 @@ use crate::registry::{Chain, SendFeeField};
 #[test]
 fn protocol_fee_units_and_signing_capabilities_match_execution_requirements() {
     let cases: &[(&str, u8, bool, SendFeeField, f64)] = &[
-        ("Sui", 6, false, SendFeeField::GasBudget, 0.0),
-        ("Aptos", 6, false, SendFeeField::None, 0.0),
-        ("TON", 6, false, SendFeeField::None, 0.0),
-        ("XRP Ledger", 6, true, SendFeeField::None, 0.0),
-        ("Stellar", 7, true, SendFeeField::None, 0.0),
-        ("Monero", 6, false, SendFeeField::None, 0.0),
-        ("Cardano", 6, false, SendFeeField::FeeAmount, 0.0),
-        ("NEAR", 6, false, SendFeeField::None, 0.0),
-        ("Polkadot", 6, false, SendFeeField::None, 0.0),
-        ("Bitcoin Cash", 8, false, SendFeeField::FeeSats, 0.00001),
-        ("Bitcoin SV", 8, false, SendFeeField::FeeSats, 0.00001),
-        ("Litecoin", 8, false, SendFeeField::FeeSats, 0.0001),
+        ("sui", 6, false, SendFeeField::GasBudget, 0.0),
+        ("aptos", 6, false, SendFeeField::None, 0.0),
+        ("ton", 6, false, SendFeeField::None, 0.0),
+        ("xrp", 6, true, SendFeeField::None, 0.0),
+        ("stellar", 7, true, SendFeeField::None, 0.0),
+        ("monero", 6, false, SendFeeField::None, 0.0),
+        ("cardano", 6, false, SendFeeField::FeeAmount, 0.0),
+        ("near", 6, false, SendFeeField::None, 0.0),
+        ("polkadot", 6, false, SendFeeField::None, 0.0),
+        ("bitcoin-cash", 8, false, SendFeeField::FeeSats, 0.00001),
+        ("bitcoin-sv", 8, false, SendFeeField::FeeSats, 0.00001),
+        ("litecoin", 8, false, SendFeeField::FeeSats, 0.0001),
     ];
     for (name, decimals, private_key, field, fallback) in cases {
-        let chain = Chain::from_display_name(name).expect(name);
+        let chain = Chain::from_str_id(name).expect(name);
         let shape = chain.send_execution_shape();
         assert_eq!(shape.fee_decimals, *decimals, "{name} fee_decimals");
         assert_eq!(

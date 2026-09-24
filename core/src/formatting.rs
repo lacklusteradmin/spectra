@@ -72,9 +72,51 @@ pub fn asset_amount_display(amount: f64, asset_decimals: u32) -> AssetAmountDisp
     }
 }
 
+/// An asset amount as a row shows it: an exact decimal cut to the places
+/// [`asset_amount_display`] picks, never rounded up. The digits are
+/// unlocalized; a front end adds grouping and its decimal separator.
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetAmountText {
+    /// The shown value, or the threshold when `below_threshold`.
+    pub value: String,
+    /// The amount is positive but smaller than `value`: render `<value`.
+    pub below_threshold: bool,
+}
+
+/// `amount` (an exact decimal) of an asset with `asset_decimals` places, as
+/// shown in a compact row. `None` when `amount` is not a decimal.
 #[uniffi::export]
-pub fn formatting_asset_amount_display(amount: f64, asset_decimals: u32) -> AssetAmountDisplay {
-    asset_amount_display(amount, asset_decimals)
+pub fn format_asset_amount(amount: String, asset_decimals: u32) -> Option<AssetAmountText> {
+    let exact = crate::decimal::canonical(&amount)?;
+    let display = asset_amount_display(crate::decimal::to_f64(&exact), asset_decimals);
+    if display.below_threshold {
+        return Some(AssetAmountText {
+            value: crate::decimal::from_units(1, display.places),
+            below_threshold: true,
+        });
+    }
+    Some(AssetAmountText {
+        value: crate::decimal::truncate(&exact, display.places)?,
+        below_threshold: false,
+    })
+}
+
+#[cfg(test)]
+mod amount_text_tests {
+    use super::format_asset_amount;
+
+    #[test]
+    fn a_large_balance_keeps_its_digits_and_a_dust_balance_says_so() {
+        let shown = |a: &str, d| format_asset_amount(a.into(), d).unwrap();
+        assert_eq!(shown("1234.56789", 18).value, "1234.56");
+        let dust = shown("0.000000000000000001", 18);
+        assert!(dust.below_threshold);
+        assert_eq!(dust.value, "0.00000001");
+        assert_eq!(shown("0.00042", 8).value, "0.00042");
+        assert_eq!(shown("0", 8).value, "0");
+        assert!(format_asset_amount("1e3".into(), 8).is_none());
+    }
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

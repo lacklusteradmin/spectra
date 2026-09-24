@@ -129,9 +129,9 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
             match summary {
                 Some(summary) => println!(
                     "  {}  {:<18} {}",
-                    out::wallet_dot(&summary.chain_name, summary.is_watch_only),
+                    out::wallet_dot(&summary.chain_id, summary.is_watch_only()),
                     name,
-                    out::hint(&summary.chain_name),
+                    out::hint(&super::chain_name(&summary.chain_id)),
                 ),
                 None => println!(
                     "  {}  {:<18} {}",

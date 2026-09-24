@@ -109,7 +109,7 @@ mod tests {
                 routed,
                 chain.supports_staking(),
                 "{}: supports_staking = {} but the dispatch routed it = {routed}",
-                chain.chain_display_name(),
+                chain.str_id(),
                 chain.supports_staking()
             );
         }
@@ -127,7 +127,7 @@ mod tests {
             assert!(
                 !chain.supports_staking(),
                 "{} is a testnet and claims staking",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
         assert!(Chain::Solana.supports_staking());
@@ -148,7 +148,7 @@ mod tests {
                 !chain.supports_staking(),
                 "{} now stakes — that is a new client, so say so in PLAN.md and \
                  take it off this list",
-                chain.chain_display_name()
+                chain.str_id()
             );
         }
     }

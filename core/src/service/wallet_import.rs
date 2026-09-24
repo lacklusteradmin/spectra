@@ -3,48 +3,36 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// What material this wallet has, and whether it is behind a password.
+    /// Reveal a wallet's seed phrase.
     ///
-    /// Three Swift methods asked this three ways —
-    /// `walletRequiresSeedPhrasePassword`, `walletHasSigningMaterial` and
-    /// `isPrivateKeyBackedWallet` — each one reaching into the Keychain under
-    /// a key it built itself.
-    ///
-    /// A store that cannot be read is an error, not three `false`s. Answering
-    /// "not sealed" for a sealed wallet whose verifier read failed is what let
-    /// the reveal path read the envelope as if it were the phrase.
-    pub fn wallet_secret_state(
-        &self,
-        wallet_id: String,
-    ) -> Result<WalletSecretState, SpectraBridgeError> {
-        use crate::store::wallet_secrets::{
-            has_signing_material, is_private_key_backed, is_sealed,
-        };
-        let store = self.secrets()?;
-        let read = |e: crate::store::wallet_secrets::WalletSecretError| {
-            SpectraBridgeError::from(e.to_string())
-        };
-        Ok(WalletSecretState {
-            has_signing_material: has_signing_material(&*store, &wallet_id).map_err(read)?,
-            has_private_key: is_private_key_backed(&*store, &wallet_id).map_err(read)?,
-            is_sealed: is_sealed(&*store, &wallet_id).map_err(read)?,
-        })
-    }
-
-    /// Read a wallet's seed phrase. `password` is required exactly when
-    /// `wallet_secret_state().is_sealed`.
+    /// The password is passed as typed: core applies its one rule for
+    /// passwords (surrounding whitespace is not part of one, and blank is
+    /// none). The answer says why a phrase was not revealed, so a front end
+    /// words the reason rather than guessing it from an error string.
     ///
     /// This is the reveal path. Derivation does not need it — core derives
     /// from the phrase without it leaving the crate.
-    pub fn wallet_seed_phrase(
+    pub fn reveal_seed_phrase(
         &self,
         wallet_id: String,
         password: Option<String>,
-    ) -> Result<String, SpectraBridgeError> {
+    ) -> Result<SeedPhraseReveal, SpectraBridgeError> {
+        use crate::store::wallet_secrets::WalletSecretError as E;
         let store = self.secrets()?;
-        crate::store::wallet_secrets::load_seed_phrase(&*store, &wallet_id, password.as_deref())
-            .map(|phrase| phrase.to_string())
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))
+        match crate::store::wallet_secrets::load_seed_phrase(
+            &*store,
+            &wallet_id,
+            password.as_deref(),
+        ) {
+            Ok(phrase) if !phrase.trim().is_empty() => Ok(SeedPhraseReveal::Phrase {
+                phrase: phrase.to_string(),
+            }),
+            Ok(_) | Err(E::NotSealed) => Ok(SeedPhraseReveal::NotStored),
+            Err(E::PasswordRequired) => Ok(SeedPhraseReveal::PasswordRequired),
+            Err(E::IncorrectPassword) => Ok(SeedPhraseReveal::IncorrectPassword),
+            Err(E::PasswordNotRequired) => Ok(SeedPhraseReveal::PasswordNotRequired),
+            Err(error) => Err(SpectraBridgeError::from(error.to_string())),
+        }
     }
 
     /// Import wallets: plan them, build them, and store them.
@@ -80,9 +68,8 @@ impl WalletService {
         {
             return Err("Derivation overrides require a mnemonic wallet".into());
         }
-        for name in &commit.request.selected_chain_names {
-            let chain =
-                crate::registry::Chain::from_display_name(name).ok_or("Unknown import chain")?;
+        for name in &commit.request.selected_chain_ids {
+            let chain = crate::registry::Chain::from_str_id(name).ok_or("Unknown import chain")?;
             commit.derivation_overrides.validate_for_chain(chain)?;
         }
         // Complete explicit overrides with network-local defaults before
@@ -114,13 +101,13 @@ impl WalletService {
                 (Some(key), _) => Some(
                     crate::derivation::import::derive_private_key_import_address(
                         key,
-                        &commit.request.selected_chain_names,
+                        &commit.request.selected_chain_ids,
                     )
                     .map_err(|message| SpectraBridgeError::InvalidInput { message })?,
                 ),
                 (None, Some(seed)) => Some(crate::derivation::import::derive_import_addresses(
                     seed,
-                    &commit.request.selected_chain_names,
+                    &commit.request.selected_chain_ids,
                     &commit.seed_derivation_paths,
                     &commit.derivation_overrides,
                 )),
@@ -131,8 +118,8 @@ impl WalletService {
             if let Some(derived) = derived {
                 resolved_addresses.by_slot = derived
                     .into_iter()
-                    .filter_map(|(chain_name, address)| {
-                        crate::registry::Chain::from_display_name(&chain_name)
+                    .filter_map(|(chain_id, address)| {
+                        crate::registry::Chain::from_str_id(&chain_id)
                             .map(|chain| (chain.address_slot().to_string(), address))
                     })
                     .collect();
@@ -235,7 +222,7 @@ impl WalletService {
                 reduce_state_in_place(
                     &mut snapshot,
                     StateCommand::UpsertWallet {
-                        wallet: wallet.to_wallet_state(is_watch_only)?,
+                        wallet: wallet.to_wallet_state()?,
                     },
                 );
             }

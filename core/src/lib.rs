@@ -88,6 +88,7 @@ mod app_core;
 pub use app_core::*;
 
 pub mod chains;
+pub mod decimal;
 pub mod derivation;
 pub mod diagnostics;
 pub mod fetch;

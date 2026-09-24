@@ -142,7 +142,7 @@ impl AppStateChanges {
             for chain in self.reset_chains {
                 for table in ["wallet_keypool", "wallet_owned_addresses"] {
                     tx.execute(
-                        &format!("DELETE FROM {table} WHERE chain_name = ?1"),
+                        &format!("DELETE FROM {table} WHERE chain_id = ?1"),
                         params![chain],
                     )
                     .map_err(|e| e.to_string())?;
@@ -179,21 +179,21 @@ impl AppStateChanges {
             }
             for (index, wallet, payload) in self.wallets {
                 tx.execute("INSERT INTO wallets
-                    (id, name, chain_name, is_watch_only, include_in_portfolio_total, sort_index, payload, updated_at)
+                    (id, name, chain_id, is_watch_only, include_in_portfolio_total, sort_index, payload, updated_at)
                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                    ON CONFLICT(id) DO UPDATE SET name=excluded.name, chain_name=excluded.chain_name,
+                    ON CONFLICT(id) DO UPDATE SET name=excluded.name, chain_id=excluded.chain_id,
                     is_watch_only=excluded.is_watch_only, include_in_portfolio_total=excluded.include_in_portfolio_total,
                     sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
-                    params![wallet.id, wallet.name, wallet.chain_name, wallet.is_watch_only,
+                    params![wallet.id, wallet.name, wallet.chain_id, wallet.is_watch_only(),
                         wallet.include_in_portfolio_total, index as i64, payload, updated_at])
                     .map_err(|e| format!("app_state_save wallet: {e}"))?;
             }
             for (index, entry, payload) in self.addresses {
-                tx.execute("INSERT INTO address_book (id, chain_name, address, sort_index, payload, updated_at)
+                tx.execute("INSERT INTO address_book (id, chain_id, address, sort_index, payload, updated_at)
                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                    ON CONFLICT(id) DO UPDATE SET chain_name=excluded.chain_name, address=excluded.address,
+                    ON CONFLICT(id) DO UPDATE SET chain_id=excluded.chain_id, address=excluded.address,
                     sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
-                    params![entry.id, entry.chain_name, entry.address, index as i64, payload, updated_at])
+                    params![entry.id, entry.chain_id, entry.address, index as i64, payload, updated_at])
                     .map_err(|e| format!("app_state_save address: {e}"))?;
             }
             for (key, value) in self.meta {
@@ -344,7 +344,7 @@ pub(crate) fn changed_selected_chains(before: &CoreAppState, after: &CoreAppStat
         .flat_map(|c| {
             c.network_choices()
                 .iter()
-                .map(|n| n.chain_display_name().to_string())
+                .map(|n| n.str_id().to_string())
                 .collect::<Vec<_>>()
         })
         .collect()

@@ -180,16 +180,16 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
     let svc = service("solana", &server);
     let address = "11111111111111111111111111111111";
     let mut wallet = crate::store::state::WalletState::single_address(
-        "watch", "Watch", "Solana", address, None, true,
+        "watch", "Watch", "solana", address, None, true,
     );
     wallet
         .holdings
         .push(crate::store::wallet_domain::AssetHolding {
             name: "Solana".into(),
             symbol: "SOL".into(),
-            chain_name: "Solana".into(),
+            chain_id: "solana".into(),
             token_standard: "Native".into(),
-            amount: 2.0,
+            amount: "2".into(),
             ..Default::default()
         });
     svc.wallet_state.write().await.wallets.push(wallet);

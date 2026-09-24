@@ -6,7 +6,7 @@ use super::*;
 #[serde(rename_all = "camelCase")]
 pub struct OwnedAddressRecord {
     pub wallet_id: String,
-    pub chain_name: String,
+    pub chain_id: String,
     pub address: String,
     pub derivation_path: Option<String>,
     pub branch: Option<String>,
@@ -20,16 +20,16 @@ pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> R
     with_conn(database, |conn| {
         conn.execute(
             "INSERT INTO wallet_owned_addresses
-                 (wallet_id, chain_name, address, derivation_path, branch, branch_index, updated_at)
+                 (wallet_id, chain_id, address, derivation_path, branch, branch_index, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(wallet_id, chain_name, address) DO UPDATE SET
+             ON CONFLICT(wallet_id, chain_id, address) DO UPDATE SET
                  derivation_path = excluded.derivation_path,
                  branch          = excluded.branch,
                  branch_index    = excluded.branch_index,
                  updated_at      = excluded.updated_at",
             params![
                 record.wallet_id,
-                record.chain_name,
+                record.chain_id,
                 record.address,
                 record.derivation_path,
                 record.branch,
@@ -46,20 +46,20 @@ pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> R
 pub fn address_load_all(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_name: &str,
+    chain_id: &str,
 ) -> Result<Vec<OwnedAddressRecord>, String> {
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT address, derivation_path, branch, branch_index
-                 FROM wallet_owned_addresses WHERE wallet_id = ?1 AND chain_name = ?2",
+                 FROM wallet_owned_addresses WHERE wallet_id = ?1 AND chain_id = ?2",
             )
             .map_err(|e| format!("address_load_all prepare: {e}"))?;
         let rows = stmt
-            .query_map(params![wallet_id, chain_name], |row| {
+            .query_map(params![wallet_id, chain_id], |row| {
                 Ok(OwnedAddressRecord {
                     wallet_id: wallet_id.to_string(),
-                    chain_name: chain_name.to_string(),
+                    chain_id: chain_id.to_string(),
                     address: row.get(0)?,
                     derivation_path: row.get(1)?,
                     branch: row.get(2)?,
@@ -82,7 +82,7 @@ pub fn address_load_all_chains(
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT wallet_id, chain_name, address, derivation_path, branch, branch_index
+                "SELECT wallet_id, chain_id, address, derivation_path, branch, branch_index
                  FROM wallet_owned_addresses",
             )
             .map_err(|e| format!("address_load_all_chains prepare: {e}"))?;
@@ -90,7 +90,7 @@ pub fn address_load_all_chains(
             .query_map([], |row| {
                 Ok(OwnedAddressRecord {
                     wallet_id: row.get(0)?,
-                    chain_name: row.get(1)?,
+                    chain_id: row.get(1)?,
                     address: row.get(2)?,
                     derivation_path: row.get(3)?,
                     branch: row.get(4)?,
@@ -119,11 +119,11 @@ pub fn address_delete_for_wallet(database: &WalletDatabase, wallet_id: &str) -> 
 }
 
 /// Remove all owned address records for a chain (e.g. after a rescan).
-pub fn address_delete_for_chain(database: &WalletDatabase, chain_name: &str) -> Result<(), String> {
+pub fn address_delete_for_chain(database: &WalletDatabase, chain_id: &str) -> Result<(), String> {
     with_conn(database, |conn| {
         conn.execute(
-            "DELETE FROM wallet_owned_addresses WHERE chain_name = ?1",
-            params![chain_name],
+            "DELETE FROM wallet_owned_addresses WHERE chain_id = ?1",
+            params![chain_id],
         )
         .map_err(|e| format!("address_delete_for_chain: {e}"))?;
         Ok(())

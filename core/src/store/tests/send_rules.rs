@@ -1,19 +1,19 @@
 use crate::registry::{Chain, SendRule};
 
-fn rule(display_name: &str) -> SendRule {
-    Chain::from_display_name(display_name)
-        .unwrap_or_else(|| panic!("unknown chain {display_name}"))
+fn rule(chain_id: &str) -> SendRule {
+    Chain::from_str_id(chain_id)
+        .unwrap_or_else(|| panic!("unknown chain {chain_id}"))
         .send_rule()
 }
 
 #[test]
 fn the_two_exceptions_and_the_default() {
-    assert_eq!(rule("Ethereum Classic"), SendRule::NativeOnly);
-    assert_eq!(rule("Hyperliquid"), SendRule::NativeOnly);
-    assert_eq!(rule("Solana"), SendRule::SupportedSolanaCoin);
+    assert_eq!(rule("ethereum-classic"), SendRule::NativeOnly);
+    assert_eq!(rule("hyperliquid"), SendRule::NativeOnly);
+    assert_eq!(rule("solana"), SendRule::SupportedSolanaCoin);
     // Non-EVM chains carry no extra restriction.
-    assert_eq!(rule("Bitcoin"), SendRule::Any);
-    assert_eq!(rule("Polkadot"), SendRule::Any);
+    assert_eq!(rule("bitcoin"), SendRule::Any);
+    assert_eq!(rule("polkadot"), SendRule::Any);
 }
 
 /// One rule for the EVM family.

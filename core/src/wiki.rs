@@ -45,7 +45,6 @@ fn prose_for(symbol: &str) -> (&'static str, &'static str) {
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 pub struct AssetWikiPlace {
     pub chain_id: String,
-    pub chain_name: String,
     pub token_standard: String,
     pub contract: String,
     pub decimals: u32,
@@ -97,7 +96,6 @@ fn build() -> Vec<AssetWikiEntry> {
             });
         out[slot].lives_on.push(AssetWikiPlace {
             chain_id: chain.id.clone(),
-            chain_name: chain.name.clone(),
             token_standard: "Native".to_string(),
             contract: String::new(),
             decimals: chain.native_decimals,
@@ -108,16 +106,12 @@ fn build() -> Vec<AssetWikiEntry> {
     // Then the deployments. A coin already listed gains places rather than a
     // second row: CRO is native to Cronos and a contract on Ethereum.
     for token in tokens::catalog().iter().filter(|t| !t.is_native()) {
-        let chain_name = chains::chain_by_str_id(&token.chain_id)
-            .map(|c| c.name.clone())
-            .unwrap_or_else(|| token.chain_id.clone());
         let slot = *index.entry(token.token_id.clone()).or_insert_with(|| {
             out.push(entry_from_token(token));
             out.len() - 1
         });
         out[slot].lives_on.push(AssetWikiPlace {
             chain_id: token.chain_id.clone(),
-            chain_name,
             token_standard: token.token_standard.clone(),
             contract: token.contract.clone(),
             decimals: token.decimals,
@@ -134,7 +128,10 @@ fn build() -> Vec<AssetWikiEntry> {
                 if a.is_native {
                     std::cmp::Ordering::Equal
                 } else {
-                    a.chain_name.cmp(&b.chain_name)
+                    let name = |place: &AssetWikiPlace| {
+                        chains::chain_by_str_id(&place.chain_id).map(|c| c.name.clone())
+                    };
+                    name(a).cmp(&name(b))
                 }
             })
         });
@@ -222,7 +219,7 @@ mod the_wiki_is_one_asset_table {
         assert!(eth.lives_on.iter().all(|p| p.contract.is_empty()));
         // Presented as its home chain, because native places sort first and
         // the catalog lists Ethereum before its rollups.
-        assert_eq!(eth.lives_on[0].chain_name, "Ethereum");
+        assert_eq!(eth.lives_on[0].chain_id, "ethereum");
         assert_eq!(eth.name, "Ethereum");
         assert!(!eth.total_circulation_model.is_empty());
     }
@@ -238,9 +235,9 @@ mod the_wiki_is_one_asset_table {
         let cro = asset("CRO");
         assert_eq!(cro.lives_on.len(), 2);
         assert!(cro.lives_on[0].is_native);
-        assert_eq!(cro.lives_on[0].chain_name, "Cronos");
+        assert_eq!(cro.lives_on[0].chain_id, "cronos");
         assert!(!cro.lives_on[1].is_native);
-        assert_eq!(cro.lives_on[1].chain_name, "Ethereum");
+        assert_eq!(cro.lives_on[1].chain_id, "ethereum");
         assert_eq!(cro.lives_on[1].token_standard, "ERC-20");
         assert!(!cro.lives_on[1].contract.is_empty());
     }
@@ -257,7 +254,7 @@ mod the_wiki_is_one_asset_table {
             usdc.lives_on.iter().map(|p| p.decimals).collect();
         assert!(!widths.is_empty());
         // Chain names are resolved, not left as ids.
-        assert!(usdc.lives_on.iter().any(|p| p.chain_name == "Ethereum"));
+        assert!(usdc.lives_on.iter().any(|p| p.chain_id == "ethereum"));
     }
 
     /// `crypto-wiki.toml` has no row nothing claims.

@@ -40,7 +40,7 @@ impl WalletService {
             let wallets = state
                 .wallets
                 .iter()
-                .filter(|wallet| wallet.chain_name == chain.chain_display_name())
+                .filter(|wallet| wallet.family() == Some(chain))
                 .filter(|wallet| {
                     wallet_ids.is_empty()
                         || wallet_ids
@@ -265,11 +265,11 @@ impl WalletService {
         let path = wallet
             .addresses
             .iter()
-            .find(|a| a.chain_name == network.chain_display_name())
+            .find(|a| a.chain_id == network.str_id())
             .and_then(|a| a.derivation_path.clone())
             .or_else(|| wallet.derivation_path.clone())
             .unwrap_or_else(|| {
-                crate::app_core::default_path_from_catalog(Chain::Bitcoin.chain_display_name())
+                crate::app_core::default_path_from_catalog(Chain::Bitcoin.str_id())
                     .unwrap_or_default()
             });
         let account_path = path.split('/').take(4).collect::<Vec<_>>().join("/");
@@ -312,8 +312,8 @@ fn bitcoin_record(
         wallet_name: wallet.name.clone(),
         asset_display_name: chain.chain_display_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
-        chain_name: chain.chain_display_name().to_string(),
-        amount: snapshot.amount_btc,
+        chain_id: chain.str_id().to_string(),
+        amount: crate::decimal::amount_from_f64(snapshot.amount_btc),
         address: snapshot.counterparty_address,
         transaction_hash: Some(snapshot.txid).filter(|txid| !txid.is_empty()),
         nonce: None,
@@ -321,7 +321,6 @@ fn bitcoin_record(
         receipt_gas_used: None,
         receipt_effective_gas_price_gwei: None,
         receipt_network_fee: None,
-        fee_priority_raw: None,
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,

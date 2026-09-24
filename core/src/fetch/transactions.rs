@@ -19,19 +19,21 @@ pub struct CoreTransactionRecord {
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_name: String,
-    pub amount: f64,
+    pub chain_id: String,
+    /// Exact decimal in the asset's units.
+    pub amount: String,
     pub address: String,
     pub transaction_hash: Option<String>,
     pub nonce: Option<i64>,
     pub receipt_block_number: Option<i64>,
     pub receipt_gas_used: Option<String>,
     pub receipt_effective_gas_price_gwei: Option<f64>,
-    pub receipt_network_fee: Option<f64>,
-    pub fee_priority_raw: Option<String>,
+    /// Exact decimal in the gas asset.
+    pub receipt_network_fee: Option<String>,
     pub fee_rate_description: Option<String>,
     pub confirmation_count: Option<i64>,
-    pub confirmed_network_fee: Option<f64>,
+    /// Exact decimal in the gas asset.
+    pub confirmed_network_fee: Option<String>,
     pub estimated_fee_rate_per_kb: Option<f64>,
     pub used_change_output: Option<bool>,
     pub source_derivation_path: Option<String>,
@@ -40,7 +42,7 @@ pub struct CoreTransactionRecord {
     pub change_address: Option<String>,
     pub signed_transaction_payload: Option<String>,
     pub signed_transaction_payload_format: Option<String>,
-    pub failure_reason: Option<String>,
+    pub failure_reason: Option<crate::store::persistence_models::TransactionFailure>,
     pub transaction_history_source: Option<String>,
     pub created_at_unix: f64,
 }
@@ -62,7 +64,7 @@ pub enum HistorySource {
     /// A named third-party indexer. A proper noun, shown as it is.
     Provider { name: String },
     /// The aggregate of one chain's own history providers.
-    ChainProviders { chain_name: String },
+    ChainProviders { chain_id: String },
     /// Spectra's own reader. Not a third party, so not a source to name.
     Internal,
 }
@@ -80,7 +82,7 @@ pub fn history_source(source: String) -> Option<HistorySource> {
     if let Some(id) = trimmed.strip_suffix(".providers") {
         if let Some(chain) = crate::registry::Chain::from_str_id(id) {
             return Some(HistorySource::ChainProviders {
-                chain_name: chain.chain_display_name().to_string(),
+                chain_id: chain.str_id().to_string(),
             });
         }
     }
@@ -118,7 +120,7 @@ pub struct TransactionMergeRequest {
     pub existing_transactions: Vec<CoreTransactionRecord>,
     pub incoming_transactions: Vec<CoreTransactionRecord>,
     pub strategy: TransactionMergeStrategy,
-    pub chain_name: String,
+    pub chain_id: String,
     #[serde(default)]
     pub include_symbol_in_identity: bool,
     pub preserve_created_at_sentinel_unix: Option<f64>,
@@ -164,7 +166,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             wallet_name: stored.wallet_name,
             asset_display_name: stored.asset_display_name,
             symbol: stored.symbol,
-            chain_name: stored.chain_name,
+            chain_id: stored.chain_id,
             amount: stored.amount,
             address: stored.address,
             transaction_hash: stored.transaction_hash,
@@ -173,7 +175,6 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             receipt_gas_used: stored.receipt_gas_used,
             receipt_effective_gas_price_gwei: stored.receipt_effective_gas_price_gwei,
             receipt_network_fee: stored.receipt_network_fee,
-            fee_priority_raw: stored.fee_priority_raw,
             fee_rate_description: stored.fee_rate_description,
             confirmation_count: stored.confirmation_count,
             confirmed_network_fee: stored.confirmed_network_fee,
@@ -204,7 +205,7 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             wallet_name: wire.wallet_name,
             asset_display_name: wire.asset_display_name,
             symbol: wire.symbol,
-            chain_name: wire.chain_name,
+            chain_id: wire.chain_id,
             amount: wire.amount,
             address: wire.address,
             transaction_hash: wire.transaction_hash,
@@ -213,7 +214,6 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             receipt_gas_used: wire.receipt_gas_used,
             receipt_effective_gas_price_gwei: wire.receipt_effective_gas_price_gwei,
             receipt_network_fee: wire.receipt_network_fee,
-            fee_priority_raw: wire.fee_priority_raw,
             fee_rate_description: wire.fee_rate_description,
             confirmation_count: wire.confirmation_count,
             confirmed_network_fee: wire.confirmed_network_fee,
@@ -237,7 +237,7 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
         existing_transactions,
         incoming_transactions,
         strategy,
-        chain_name,
+        chain_id,
         include_symbol_in_identity,
         preserve_created_at_sentinel_unix,
     } = request;
@@ -259,7 +259,7 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
     }
 
     for incoming in incoming_transactions {
-        if !incoming_is_relevant(&incoming, &strategy, &chain_name) {
+        if !incoming_is_relevant(&incoming, &strategy, &chain_id) {
             continue;
         }
 
@@ -270,7 +270,7 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
                     &merged_transactions[i],
                     &incoming,
                     &strategy,
-                    &chain_name,
+                    &chain_id,
                     include_symbol_in_identity,
                 )
             })
@@ -309,7 +309,7 @@ type IdentityBucketKey = (String, Option<String>, String, Option<String>);
 
 fn bucket_key(record: &CoreTransactionRecord) -> IdentityBucketKey {
     (
-        record.chain_name.clone(),
+        record.chain_id.clone(),
         record.transaction_hash.clone(),
         record.kind.clone(),
         record.wallet_id.clone(),
@@ -319,9 +319,9 @@ fn bucket_key(record: &CoreTransactionRecord) -> IdentityBucketKey {
 fn incoming_is_relevant(
     incoming: &CoreTransactionRecord,
     strategy: &TransactionMergeStrategy,
-    chain_name: &str,
+    chain_id: &str,
 ) -> bool {
-    if incoming.chain_name != chain_name || incoming.transaction_hash.is_none() {
+    if incoming.chain_id != chain_id || incoming.transaction_hash.is_none() {
         return false;
     }
 
@@ -337,13 +337,13 @@ fn matches_identity(
     existing: &CoreTransactionRecord,
     incoming: &CoreTransactionRecord,
     strategy: &TransactionMergeStrategy,
-    chain_name: &str,
+    chain_id: &str,
     include_symbol_in_identity: bool,
 ) -> bool {
     if existing.deployment_id != incoming.deployment_id {
         return false;
     }
-    if existing.chain_name != chain_name
+    if existing.chain_id != chain_id
         || existing.transaction_hash != incoming.transaction_hash
         || existing.kind != incoming.kind
     {
@@ -366,7 +366,8 @@ fn matches_identity(
                 && existing.symbol == incoming.symbol
                 && normalize_evm_address(&existing.address)
                     == normalize_evm_address(&incoming.address)
-                && approximately_equal(existing.amount, incoming.amount)
+                && crate::decimal::compare(&existing.amount, &incoming.amount)
+                    == Some(std::cmp::Ordering::Equal)
         }
     }
 }
@@ -402,7 +403,7 @@ fn merge_standard_utxo(
         wallet_name: incoming.wallet_name,
         asset_display_name: incoming.asset_display_name,
         symbol: incoming.symbol,
-        chain_name: incoming.chain_name,
+        chain_id: incoming.chain_id,
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
@@ -413,7 +414,6 @@ fn merge_standard_utxo(
         receipt_gas_used: existing.receipt_gas_used,
         receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
         receipt_network_fee: existing.receipt_network_fee,
-        fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
             .or(existing.fee_rate_description),
@@ -452,7 +452,7 @@ fn merge_dogecoin(
         wallet_name: incoming.wallet_name,
         asset_display_name: incoming.asset_display_name,
         symbol: incoming.symbol,
-        chain_name: incoming.chain_name,
+        chain_id: incoming.chain_id,
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
@@ -463,7 +463,6 @@ fn merge_dogecoin(
         receipt_gas_used: existing.receipt_gas_used,
         receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
         receipt_network_fee: existing.receipt_network_fee,
-        fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
             .or(existing.fee_rate_description),
@@ -511,7 +510,7 @@ fn merge_account_based(
         wallet_name: incoming.wallet_name,
         asset_display_name: incoming.asset_display_name,
         symbol: incoming.symbol,
-        chain_name: incoming.chain_name,
+        chain_id: incoming.chain_id,
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
@@ -522,7 +521,6 @@ fn merge_account_based(
         receipt_gas_used: existing.receipt_gas_used,
         receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
         receipt_network_fee: existing.receipt_network_fee,
-        fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
             .or(existing.fee_rate_description),
@@ -566,7 +564,7 @@ fn merge_evm(
         wallet_name: incoming.wallet_name,
         asset_display_name: incoming.asset_display_name,
         symbol: incoming.symbol,
-        chain_name: incoming.chain_name,
+        chain_id: incoming.chain_id,
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
@@ -581,7 +579,6 @@ fn merge_evm(
         receipt_network_fee: incoming
             .receipt_network_fee
             .or(existing.receipt_network_fee),
-        fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
             .or(existing.fee_rate_description),
@@ -617,7 +614,7 @@ fn resolve_created_at(
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> f64 {
     if let Some(sentinel) = preserve_created_at_sentinel_unix {
-        if approximately_equal(incoming_created_at_unix, sentinel) {
+        if (incoming_created_at_unix - sentinel).abs() < 0.000_000_000_1 {
             return existing_created_at_unix;
         }
     }
@@ -628,10 +625,6 @@ fn normalize_evm_address(address: &str) -> String {
     address.trim().to_lowercase()
 }
 
-fn approximately_equal(lhs: f64, rhs: f64) -> bool {
-    (lhs - rhs).abs() < 0.0000000001
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -639,7 +632,7 @@ mod tests {
         TransactionMergeStrategy,
     };
 
-    fn sample_transaction(chain_name: &str) -> CoreTransactionRecord {
+    fn sample_transaction(chain_id: &str) -> CoreTransactionRecord {
         CoreTransactionRecord {
             deployment_id: None,
             id: "tx-1".to_string(),
@@ -649,19 +642,18 @@ mod tests {
             wallet_name: "Wallet".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
-            chain_name: chain_name.to_string(),
-            amount: 1.25,
+            chain_id: chain_id.to_string(),
+            amount: "1.25".into(),
             address: "0xAbC".to_string(),
             transaction_hash: Some("hash-1".to_string()),
             nonce: Some(7),
             receipt_block_number: Some(10),
             receipt_gas_used: Some("100".to_string()),
             receipt_effective_gas_price_gwei: Some(2.5),
-            receipt_network_fee: Some(0.01),
-            fee_priority_raw: Some("normal".to_string()),
+            receipt_network_fee: Some("0.01".into()),
             fee_rate_description: Some("normal".to_string()),
             confirmation_count: Some(2),
-            confirmed_network_fee: Some(1.0),
+            confirmed_network_fee: Some("1".into()),
             estimated_fee_rate_per_kb: Some(3.0),
             used_change_output: Some(true),
             source_derivation_path: Some("m/0/0".to_string()),
@@ -670,7 +662,11 @@ mod tests {
             change_address: Some("change-old".to_string()),
             signed_transaction_payload: Some("payload-old".to_string()),
             signed_transaction_payload_format: Some("hex".to_string()),
-            failure_reason: Some("old-failure".to_string()),
+            failure_reason: Some(
+                crate::store::persistence_models::TransactionFailure::Reported {
+                    message: "old-failure".into(),
+                },
+            ),
             transaction_history_source: Some("rpc".to_string()),
             created_at_unix: 250.0,
         }
@@ -678,11 +674,11 @@ mod tests {
 
     #[test]
     fn merges_standard_utxo_transactions_with_swift_compatible_precedence() {
-        let existing = sample_transaction("Bitcoin");
-        let mut incoming = sample_transaction("Bitcoin");
+        let existing = sample_transaction("bitcoin");
+        let mut incoming = sample_transaction("bitcoin");
         incoming.id = "tx-2".to_string();
         incoming.status = "confirmed".to_string();
-        incoming.amount = 2.0;
+        incoming.amount = "2".into();
         incoming.address = "incoming-address".to_string();
         incoming.receipt_gas_used = None;
         incoming.receipt_effective_gas_price_gwei = None;
@@ -699,7 +695,7 @@ mod tests {
             existing_transactions: vec![existing],
             incoming_transactions: vec![incoming],
             strategy: TransactionMergeStrategy::StandardUtxo,
-            chain_name: "Bitcoin".to_string(),
+            chain_id: "bitcoin".to_string(),
             include_symbol_in_identity: false,
             preserve_created_at_sentinel_unix: None,
         });
@@ -708,14 +704,21 @@ mod tests {
         let record = &merged[0];
         assert_eq!(record.id, "tx-1");
         assert_eq!(record.status, "confirmed");
-        assert_eq!(record.amount, 2.0);
+        assert_eq!(record.amount, "2");
         assert_eq!(record.confirmation_count, Some(12));
         assert_eq!(record.receipt_gas_used.as_deref(), Some("100"));
         assert_eq!(record.receipt_effective_gas_price_gwei, Some(2.5));
         assert_eq!(record.used_change_output, Some(false));
         assert_eq!(record.source_derivation_path.as_deref(), Some("m/0/0"));
         assert_eq!(record.source_address.as_deref(), Some("source-new"));
-        assert_eq!(record.failure_reason.as_deref(), Some("old-failure"));
+        assert_eq!(
+            record.failure_reason,
+            Some(
+                crate::store::persistence_models::TransactionFailure::Reported {
+                    message: "old-failure".into()
+                }
+            )
+        );
         assert_eq!(
             record.transaction_history_source.as_deref(),
             Some("esplora")
@@ -733,25 +736,25 @@ mod tests {
     /// still has to run inside the bucket, not stop at the first candidate.
     #[test]
     fn a_bucket_collision_still_matches_the_right_record() {
-        let mut usdc = sample_transaction("Ethereum");
+        let mut usdc = sample_transaction("ethereum");
         usdc.id = "tx-usdc".to_string();
         usdc.symbol = "USDC".to_string();
-        usdc.amount = 100.0;
+        usdc.amount = "100".into();
         usdc.address = "0xAAAA".to_string();
 
-        let mut usdt = sample_transaction("Ethereum");
+        let mut usdt = sample_transaction("ethereum");
         usdt.id = "tx-usdt".to_string();
         usdt.symbol = "USDT".to_string();
-        usdt.amount = 50.0;
+        usdt.amount = "50".into();
         usdt.address = "0xBBBB".to_string();
         // Same chain, hash, kind, wallet as `usdc` — same bucket key.
         // Different symbol/address/amount is the only thing that
         // distinguishes them under the Evm strategy.
 
-        let mut incoming = sample_transaction("Ethereum");
+        let mut incoming = sample_transaction("ethereum");
         incoming.id = "tx-usdt-incoming".to_string();
         incoming.symbol = "USDT".to_string();
-        incoming.amount = 50.0;
+        incoming.amount = "50".into();
         incoming.address = "0xBBBB".to_string();
         incoming.status = "confirmed".to_string();
 
@@ -759,7 +762,7 @@ mod tests {
             existing_transactions: vec![usdc, usdt],
             incoming_transactions: vec![incoming],
             strategy: TransactionMergeStrategy::Evm,
-            chain_name: "Ethereum".to_string(),
+            chain_id: "ethereum".to_string(),
             include_symbol_in_identity: true,
             preserve_created_at_sentinel_unix: None,
         });
@@ -789,29 +792,33 @@ mod tests {
 
     #[test]
     fn merges_evm_transactions_and_preserves_existing_created_at_for_sentinel_values() {
-        let mut existing = sample_transaction("Ethereum");
+        let mut existing = sample_transaction("ethereum");
         existing.symbol = "USDC".to_string();
-        existing.amount = 3.5;
+        existing.amount = "3.5".into();
         existing.address = "0xABCDEF".to_string();
         existing.source_address = Some("keep-source".to_string());
         existing.created_at_unix = 900.0;
 
-        let mut incoming = sample_transaction("Ethereum");
+        let mut incoming = sample_transaction("ethereum");
         incoming.id = "tx-2".to_string();
         incoming.symbol = "USDC".to_string();
-        incoming.amount = 3.5;
+        incoming.amount = "3.5".into();
         incoming.address = " 0xabcdef ".to_string();
         incoming.receipt_gas_used = Some("222".to_string());
         incoming.receipt_effective_gas_price_gwei = Some(4.0);
-        incoming.receipt_network_fee = Some(0.02);
-        incoming.failure_reason = Some("new-failure".to_string());
+        incoming.receipt_network_fee = Some("0.02".into());
+        incoming.failure_reason = Some(
+            crate::store::persistence_models::TransactionFailure::Reported {
+                message: "new-failure".into(),
+            },
+        );
         incoming.created_at_unix = -999_999.0;
 
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![existing],
             incoming_transactions: vec![incoming],
             strategy: TransactionMergeStrategy::Evm,
-            chain_name: "Ethereum".to_string(),
+            chain_id: "ethereum".to_string(),
             include_symbol_in_identity: false,
             preserve_created_at_sentinel_unix: Some(-999_999.0),
         });
@@ -821,9 +828,16 @@ mod tests {
         assert_eq!(record.id, "tx-1");
         assert_eq!(record.receipt_gas_used.as_deref(), Some("222"));
         assert_eq!(record.receipt_effective_gas_price_gwei, Some(4.0));
-        assert_eq!(record.receipt_network_fee, Some(0.02));
+        assert_eq!(record.receipt_network_fee, Some("0.02".into()));
         assert_eq!(record.source_address.as_deref(), Some("keep-source"));
-        assert_eq!(record.failure_reason.as_deref(), Some("new-failure"));
+        assert_eq!(
+            record.failure_reason,
+            Some(
+                crate::store::persistence_models::TransactionFailure::Reported {
+                    message: "new-failure".into()
+                }
+            )
+        );
         assert_eq!(record.created_at_unix, 900.0);
     }
 }
@@ -847,19 +861,18 @@ mod wire_persisted_conversion {
             wallet_name: "Wallet".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
-            chain_name: "Bitcoin".to_string(),
-            amount: 1.25,
+            chain_id: "bitcoin".to_string(),
+            amount: "1.25".into(),
             address: "bc1qexample".to_string(),
             transaction_hash: Some("0xhash".to_string()),
             nonce: Some(7),
             receipt_block_number: Some(1234),
             receipt_gas_used: Some("21000".to_string()),
             receipt_effective_gas_price_gwei: Some(12.5),
-            receipt_network_fee: Some(0.00042),
-            fee_priority_raw: Some("priority".to_string()),
+            receipt_network_fee: Some("0.00042".into()),
             fee_rate_description: Some("12 sat/vB".to_string()),
             confirmation_count: Some(6),
-            confirmed_network_fee: Some(1.5),
+            confirmed_network_fee: Some("1.5".into()),
             estimated_fee_rate_per_kb: Some(0.01),
             used_change_output: Some(true),
             source_derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
@@ -868,7 +881,11 @@ mod wire_persisted_conversion {
             change_address: Some("bc1qchange".to_string()),
             signed_transaction_payload: Some("deadbeef".to_string()),
             signed_transaction_payload_format: Some("hex".to_string()),
-            failure_reason: Some("none".to_string()),
+            failure_reason: Some(
+                crate::store::persistence_models::TransactionFailure::Reported {
+                    message: "none".into(),
+                },
+            ),
             transaction_history_source: Some("esplora".to_string()),
             created_at_unix: 1_700_000_000.0,
         }
@@ -943,11 +960,11 @@ mod history_source_tests {
             Some(HistorySource::Internal)
         );
         // The aggregate names any chain, not only the one the switch spelled out.
-        for (id, name) in [("dogecoin", "Dogecoin"), ("litecoin", "Litecoin")] {
+        for id in ["dogecoin", "litecoin"] {
             assert_eq!(
                 history_source(format!("{id}.providers")),
                 Some(HistorySource::ChainProviders {
-                    chain_name: name.into()
+                    chain_id: id.into()
                 })
             );
         }

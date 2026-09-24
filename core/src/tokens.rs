@@ -116,22 +116,19 @@ pub struct TokenDeploymentEntry {
 }
 
 impl TokenDeploymentEntry {
-    /// A zero-balance holding, with the registry display name derived from its chain ID.
+    /// A zero-balance holding of this deployment.
     pub fn holding_template(&self) -> crate::store::wallet_domain::AssetHolding {
-        let chain_name = crate::registry::Chain::from_str_id(&self.chain_id).map_or_else(
-            || self.chain_id.clone(),
-            |c| c.chain_display_name().to_string(),
-        );
         crate::store::wallet_domain::AssetHolding {
+            id: String::new(),
             name: self.name.clone(),
             symbol: self.symbol.clone(),
             coingecko_id: self.coingecko_id.clone(),
-            chain_name,
+            chain_id: self.chain_id.clone(),
             token_standard: self.token_standard.clone(),
             contract_address: (!self.contract.is_empty()).then(|| self.contract.clone()),
-            amount: 0.0,
-            price_usd: 0.0,
+            amount: "0".to_string(),
         }
+        .identified()
     }
 
     pub fn is_native(&self) -> bool {
@@ -144,9 +141,9 @@ impl TokenDeploymentEntry {
             && network == holding.chain()
             && crate::tokens::normalize_token_identifier(
                 Some(self.contract.clone()),
-                network.unwrap().chain_display_name().into(),
+                self.chain_id.clone(),
             ) == holding.contract_address.clone().and_then(|c| {
-                crate::tokens::normalize_token_identifier(Some(c), holding.chain_name.clone())
+                crate::tokens::normalize_token_identifier(Some(c), holding.chain_id.clone())
             })
             && self.is_native() == holding.is_native()
     }
@@ -453,17 +450,14 @@ pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
 /// TON rule stated where the others are.
 pub fn normalize_token_identifier(
     contract_address: Option<String>,
-    chain_name: String,
+    chain_id: String,
 ) -> Option<String> {
     let raw = contract_address?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    match crate::registry::Chain::from_display_name(&chain_name)
-        .or_else(|| crate::registry::Chain::from_str_id(&chain_name))
-        .map(|c| c.mainnet_counterpart())
-    {
+    match crate::registry::Chain::from_str_id(&chain_id).map(|c| c.mainnet_counterpart()) {
         Some(crate::registry::Chain::Sui) => {
             Some(normalize_sui_token_identifier(trimmed.to_string()))
         }
@@ -497,7 +491,7 @@ mod tests {
 
     /// The rule, not the symptom: a template is already what `canonicalize`
     /// would leave behind, so the two ways of getting an `AssetHolding` for a
-    /// catalog token cannot drift apart again. `chain_name` is the field that
+    /// catalog token cannot drift apart again. `chain_id` is the field that
     /// did — the catalog's `network` is a str id and a stored holding's is a
     /// display name — and this checks every entry, so a catalog row spelled the
     /// other way fails here rather than on someone's screen.
@@ -525,12 +519,12 @@ mod tests {
             .find(|t| t.deployment_id == "bitcoin:native")
             .expect("the catalog lists bitcoin");
         assert_eq!(bitcoin.chain_id, "bitcoin", "the catalog stores a str id");
-        assert_eq!(bitcoin.holding_template().chain_name, "Bitcoin");
+        assert_eq!(bitcoin.holding_template().chain_id, "bitcoin");
         assert_eq!(
-            bitcoin.holding_template().chain_name,
+            bitcoin.holding_template().chain_id,
             crate::registry::Chain::Bitcoin
                 .native_holding_template()
-                .chain_name,
+                .chain_id,
             "the two template builders agree"
         );
     }
@@ -573,12 +567,12 @@ mod tests {
     #[test]
     fn token_identifier_normalisation_is_per_chain() {
         for chain in [
-            "Solana",
-            "Solana Devnet",
-            "Tron",
-            "Tron Nile",
-            "TON",
-            "TON Testnet",
+            "solana",
+            "solana-devnet",
+            "tron",
+            "tron-nile",
+            "ton",
+            "ton-testnet",
         ] {
             assert_eq!(
                 normalize_token_identifier(Some(" AbCd ".into()), chain.into()),
@@ -588,24 +582,24 @@ mod tests {
         }
 
         assert_eq!(
-            normalize_token_identifier(Some("  ".into()), "Ethereum".into()),
+            normalize_token_identifier(Some("  ".into()), "ethereum".into()),
             None
         );
-        assert_eq!(normalize_token_identifier(None, "Ethereum".into()), None);
+        assert_eq!(normalize_token_identifier(None, "ethereum".into()), None);
         assert_eq!(
-            normalize_token_identifier(Some("0xABCDEF".into()), "Ethereum".into()),
+            normalize_token_identifier(Some("0xABCDEF".into()), "ethereum".into()),
             Some("0xabcdef".into())
         );
         assert_eq!(
-            normalize_token_identifier(Some("0x0002::Foo::bar".into()), "Sui".into()),
+            normalize_token_identifier(Some("0x0002::Foo::bar".into()), "sui".into()),
             Some("0x2::Foo::bar".into())
         );
         assert_eq!(
-            normalize_token_identifier(Some("0x001::coin::USDC".into()), "Aptos".into()),
+            normalize_token_identifier(Some("0x001::coin::USDC".into()), "aptos".into()),
             Some("0x1::coin::USDC".into())
         );
         assert_eq!(
-            normalize_token_identifier(Some("  EQAbC  ".into()), "TON".into()),
+            normalize_token_identifier(Some("  EQAbC  ".into()), "ton".into()),
             Some("EQAbC".into()),
             "a jetton master address keeps its case"
         );
@@ -815,11 +809,8 @@ tags = []
             let chain = crate::registry::Chain::from_str_id(&entry.chain_id)
                 .expect("a deployment network is a registry chain");
             assert_eq!(
-                normalize_token_identifier(
-                    Some(entry.contract.clone()),
-                    chain.chain_display_name().into()
-                )
-                .as_deref(),
+                normalize_token_identifier(Some(entry.contract.clone()), chain.str_id().into())
+                    .as_deref(),
                 Some(entry.contract.as_str()),
                 "{} is not in normalized form",
                 entry.deployment_id
@@ -861,21 +852,19 @@ pub(crate) fn history_deployment(
 ) -> Option<String> {
     match contract {
         None => Some(chain.entry().native_deployment_id.clone()),
-        Some(contract) => {
-            normalize_token_identifier(Some(contract.into()), chain.chain_display_name().into())
-                .map(|id| {
-                    format!(
-                        "{}:{}:{}",
-                        chain.str_id(),
-                        chain
-                            .mainnet_counterpart()
-                            .entry()
-                            .token_standard
-                            .to_lowercase(),
-                        id
-                    )
-                })
-        }
+        Some(contract) => normalize_token_identifier(Some(contract.into()), chain.str_id().into())
+            .map(|id| {
+                format!(
+                    "{}:{}:{}",
+                    chain.str_id(),
+                    chain
+                        .mainnet_counterpart()
+                        .entry()
+                        .token_standard
+                        .to_lowercase(),
+                    id
+                )
+            }),
     }
 }
 

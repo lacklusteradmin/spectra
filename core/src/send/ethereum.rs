@@ -119,7 +119,7 @@ pub struct EvmSupportedToken {
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmSendAssemblyInput {
-    pub chain_name: String,
+    pub chain_id: String,
     pub symbol: String,
     pub from_address: String,
     // Caller passes the already-resolved destination (ENS resolved in Swift).
@@ -170,8 +170,8 @@ fn is_valid_evm_address(address: &str) -> bool {
 
 /// Whether this asset is the one the chain pays fees in, and so moves as a
 /// plain value transfer rather than an ERC-20 call.
-pub fn is_native_evm_asset(chain_name: &str, symbol: &str) -> bool {
-    crate::registry::Chain::from_display_name(chain_name)
+pub fn is_native_evm_asset(chain_id: &str, symbol: &str) -> bool {
+    crate::registry::Chain::from_str_id(chain_id)
         .is_some_and(|chain| chain.is_evm() && chain.coin_symbol() == symbol)
 }
 
@@ -180,9 +180,8 @@ pub fn is_native_evm_asset(chain_name: &str, symbol: &str) -> bool {
 /// This named seven chains. The registry knows twenty-three EVM mainnets, and
 /// the sixteen outside the list got `UnsupportedChain` here, no fee preview in
 /// the send sheet, and a blocked send behind "Unable to estimate network fee".
-pub fn is_supported_evm_chain(chain_name: &str) -> bool {
-    crate::registry::Chain::from_display_name(chain_name)
-        .is_some_and(crate::registry::Chain::is_evm)
+pub fn is_supported_evm_chain(chain_id: &str) -> bool {
+    crate::registry::Chain::from_str_id(chain_id).is_some_and(crate::registry::Chain::is_evm)
 }
 
 /// Shift a typed decimal amount into the asset's smallest unit.
@@ -229,8 +228,8 @@ fn encode_erc20_transfer_data(
 pub fn prepare_evm_send_assembly(
     input: EvmSendAssemblyInput,
 ) -> Result<EvmSendAssembly, EvmSendError> {
-    if !is_supported_evm_chain(&input.chain_name) {
-        return Err(EvmSendError::UnsupportedChain(input.chain_name));
+    if !is_supported_evm_chain(&input.chain_id) {
+        return Err(EvmSendError::UnsupportedChain(input.chain_id));
     }
     if !is_valid_evm_address(&input.from_address) {
         return Err(EvmSendError::InvalidFromAddress);
@@ -240,11 +239,11 @@ pub fn prepare_evm_send_assembly(
     }
     let destination = normalize_evm_address(&input.resolved_destination);
 
-    if input.token.is_none() && is_native_evm_asset(&input.chain_name, &input.symbol) {
+    if input.token.is_none() && is_native_evm_asset(&input.chain_id, &input.symbol) {
         // Every EVM chain in the catalog is 18, but read it rather than
         // restate it — a chain that is not would be silently off by orders of
         // magnitude on the funds path.
-        let decimals = crate::registry::Chain::from_display_name(&input.chain_name)
+        let decimals = crate::registry::Chain::from_str_id(&input.chain_id)
             .map(|chain| u32::from(chain.native_decimals()))
             .unwrap_or(18);
         let wei = amount_to_smallest_unit(&input.amount, decimals)?;
@@ -387,7 +386,7 @@ mod one_amount_one_conversion {
 
     fn native_wei(amount: &str) -> Result<String, EvmSendError> {
         prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             symbol: "ETH".into(),
             from_address: FROM.into(),
             resolved_destination: TO.into(),
@@ -454,7 +453,7 @@ mod one_amount_one_conversion {
     #[test]
     fn a_token_amount_uses_the_contract_precision() {
         let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             symbol: "USDC".into(),
             from_address: FROM.into(),
             resolved_destination: TO.into(),
@@ -477,7 +476,7 @@ mod one_amount_one_conversion {
         );
         // One decimal past the contract's precision is refused, not truncated.
         assert!(prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             symbol: "USDC".into(),
             from_address: FROM.into(),
             resolved_destination: TO.into(),
@@ -508,21 +507,16 @@ mod every_evm_chain_can_assemble {
         let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
         for chain in crate::registry::Chain::all().filter(|c| c.is_evm() && !c.is_testnet()) {
             let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-                chain_name: chain.chain_display_name().to_string(),
+                chain_id: chain.str_id().to_string(),
                 symbol: chain.coin_symbol().to_string(),
                 from_address: address.to_string(),
                 resolved_destination: address.to_string(),
                 amount: "1".into(),
                 token: None,
             })
-            .unwrap_or_else(|e| {
-                panic!(
-                    "{} cannot assemble a send: {e:?}",
-                    chain.chain_display_name()
-                )
-            });
-            assert!(assembly.is_native, "{}", chain.chain_display_name());
-            assert_eq!(assembly.data_hex, "0x", "{}", chain.chain_display_name());
+            .unwrap_or_else(|e| panic!("{} cannot assemble a send: {e:?}", chain.str_id()));
+            assert!(assembly.is_native, "{}", chain.str_id());
+            assert_eq!(assembly.data_hex, "0x", "{}", chain.str_id());
         }
     }
 
@@ -536,24 +530,24 @@ mod every_evm_chain_can_assemble {
     #[test]
     fn a_governance_token_is_not_the_gas_asset() {
         let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
-        for (chain_name, symbol, contract) in [
+        for (chain_id, symbol, contract) in [
             (
-                "Arbitrum",
+                "arbitrum",
                 "ARB",
                 "0x912ce59144191c1204e64559fe8253a0e49e6548",
             ),
             (
-                "Optimism",
+                "optimism",
                 "OP",
                 "0x4200000000000000000000000000000000000042",
             ),
         ] {
             assert!(
-                !is_native_evm_asset(chain_name, symbol),
-                "{symbol} is not what {chain_name} pays fees in"
+                !is_native_evm_asset(chain_id, symbol),
+                "{symbol} is not what {chain_id} pays fees in"
             );
             let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-                chain_name: chain_name.to_string(),
+                chain_id: chain_id.to_string(),
                 symbol: symbol.to_string(),
                 from_address: address.to_string(),
                 resolved_destination: address.to_string(),
@@ -582,7 +576,7 @@ mod tests {
     #[test]
     fn native_eth_assembly() {
         let a = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             symbol: "ETH".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
             resolved_destination: "0x2222222222222222222222222222222222222222".into(),
@@ -600,7 +594,7 @@ mod tests {
     #[test]
     fn erc20_assembly_has_transfer_selector() {
         let a = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             symbol: "USDC".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
             resolved_destination: "0x2222222222222222222222222222222222222222".into(),
@@ -625,7 +619,7 @@ mod tests {
     #[test]
     fn invalid_destination_rejected() {
         let err = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_name: "Ethereum".into(),
+            chain_id: "ethereum".into(),
             symbol: "ETH".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
             resolved_destination: "not-an-address".into(),

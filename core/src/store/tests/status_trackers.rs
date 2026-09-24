@@ -15,7 +15,7 @@ fn pending_send(id: &str, chain: &str) -> CorePersistedTransactionRecord {
     serde_json::from_value(serde_json::json!({
         "id": id, "walletId": "w1", "kind": "send", "status": "pending",
         "walletName": "W", "assetDisplayName": chain, "symbol": "BTC",
-        "chainName": chain, "amount": 1.0, "address": "bc1qexample",
+        "chainId": chain, "amount": "1", "address": "bc1qexample",
         "transactionHash": format!("hash-{id}"), "createdAtUnix": 0.0,
     }))
     .expect("fixture must match CorePersistedTransactionRecord")
@@ -64,17 +64,17 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
         .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
             id: "tx1".into(),
             wallet_id: Some("w1".into()),
-            chain_name: "Bitcoin".into(),
+            chain_id: "bitcoin".into(),
             tx_hash: Some("hash-tx1".into()),
             created_at: 0.0,
-            payload: pending_send("tx1", "Bitcoin"),
+            payload: pending_send("tx1", "bitcoin"),
         }])
         .await
         .expect("store");
 
     let changes = service
         .apply_resolved_pending_statuses(
-            "Bitcoin".into(),
+            "bitcoin".into(),
             vec![ResolvedPendingStatus {
                 id: "tx1".into(),
                 status: "confirmed".into(),
@@ -103,15 +103,21 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
     assert_eq!(tx.confirmation_count, Some(6));
     assert_eq!(tx.receipt_block_number, Some(900_000));
 
-    // A transaction given up on stores a code, not a sentence: the text a
+    // A transaction given up on stores a reason, not a sentence: the text a
     // user reads is localized at render, so changing language does not
     // leave old records in the old one.
-    assert_eq!(crate::store::FAILURE_REASON_STUCK, "stuckAfterRetries");
+    assert_eq!(
+        serde_json::to_value(
+            crate::store::persistence_models::TransactionFailure::StuckAfterRetries
+        )
+        .unwrap(),
+        serde_json::json!({"kind": "stuckAfterRetries"})
+    );
 
     // Applying the same resolution again is not a change.
     let again = service
         .apply_resolved_pending_statuses(
-            "Bitcoin".into(),
+            "bitcoin".into(),
             vec![ResolvedPendingStatus {
                 id: "tx1".into(),
                 status: "confirmed".into(),
@@ -143,17 +149,17 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
         .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
             id: "tx1".into(),
             wallet_id: Some("w1".into()),
-            chain_name: "Bitcoin".into(),
+            chain_id: "bitcoin".into(),
             tx_hash: Some("hash-tx1".into()),
             created_at: 0.0,
-            payload: pending_send("tx1", "Bitcoin"),
+            payload: pending_send("tx1", "bitcoin"),
         }])
         .await
         .expect("store");
 
     assert!(
         service
-            .stale_pending_failure_ids("Bitcoin".into())
+            .stale_pending_failure_ids("bitcoin".into())
             .await
             .expect("read")
             .is_empty(),
@@ -167,7 +173,7 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
     }
     assert_eq!(
         service
-            .stale_pending_failure_ids("Bitcoin".into())
+            .stale_pending_failure_ids("bitcoin".into())
             .await
             .expect("read"),
         vec!["tx1".to_string()]
@@ -175,7 +181,7 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
 
     // Another chain's sweep must not pick it up.
     assert!(service
-        .stale_pending_failure_ids("Litecoin".into())
+        .stale_pending_failure_ids("litecoin".into())
         .await
         .expect("read")
         .is_empty());
