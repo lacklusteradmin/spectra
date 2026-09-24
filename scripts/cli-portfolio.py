@@ -162,6 +162,40 @@ class PortfolioTests(unittest.TestCase):
             valuation = run('portfolio','--stored')['valuation']
             assert valuation['portfolio']['fiatTotal'] is None, valuation
 
+    def test_live_portfolio_is_core_valuation(self):
+        """Live totals are core's valuation after core's refreshes; the CLI multiplies nothing."""
+        import time
+        with tempfile.TemporaryDirectory(prefix='spectra-live-') as directory:
+            def run(*args):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
+                assert result.returncode == 0, (args, result.stdout, result.stderr)
+                return json.loads(result.stdout)
+            run('wallet', 'watch', '--chain', 'ethereum', '--address', '0x'+'11'*20, '--name', 'Live')
+            now = time.time()
+            with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
+                wid, raw = db.execute('SELECT id,payload FROM wallets').fetchone()
+                wallet = json.loads(raw)
+                # No address: the balance read fails before any request, and
+                # fresh quotes are not due, so nothing here needs a network.
+                wallet['addresses'] = []
+                wallet['holdings'] = [
+                    dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum', tokenStandard='Native', contractAddress=None, amount='2'),
+                    dict(name='Unpriced', symbol='UNP', coingeckoId='', chainId='ethereum', tokenStandard='ERC-20', contractAddress='0x'+'22'*20, amount='5')]
+                db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
+                db.execute('INSERT OR REPLACE INTO app_state_meta VALUES (?,?)', ('quotes', json.dumps(
+                    {'prices': {'ethereum:native': 3000.5}, 'pricesAttemptAt': now, 'pricesSuccessAt': now})))
+            live = run('portfolio')
+            assert live['currency'] == 'USD' and live['total'] == 6001.0 and live['unpricedCount'] == 1, live
+            assert [u['wallet'] for u in live['unavailable']] == [wid], live
+            (row,) = live['wallets']
+            assert row['total'] == 6001.0, row
+            values = {h['deploymentId']: h['value'] for h in row['holdings']}
+            assert values['ethereum:native'] == 6001.0 and values['ethereum:erc-20:0x'+'22'*20] is None, values
+            assert {h['amount'] for h in row['holdings']} == {'2', '5'}, row
+            # A testnet coin has no market: no price, not a zero one.
+            quote = run('price', 'bitcoin-testnet-4')
+            assert quote['priceUsd'] is None and quote['price'] is None and quote['currency'] == 'USD', quote
+
     def test_balance_refresh(self):
         """Save refreshed balances and preserve token balances when their query fails."""
         usdc = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'

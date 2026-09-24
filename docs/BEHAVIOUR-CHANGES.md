@@ -16,6 +16,37 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-24 — The CLI's live portfolio and spot price are core's valuation
+
+- **Before:** `spectra portfolio` fetched each wallet's native balance and a USD
+  price itself, multiplied them as floats and converted with a rate it fetched
+  on the spot; tokens were left out, and nothing it read was stored. When the
+  rate lookup failed it quietly switched the whole report to USD. `spectra price
+  <chain>` multiplied the same way, printed `0.00` for a testnet coin, and
+  always said "via CoinGecko" whichever provider answered.
+- **After:** live `portfolio` asks core to refresh each wallet's balances
+  (`refresh_wallet_balances`), then prices and fiat rates when they are due,
+  and renders `portfolio_snapshot().valuation`: every held asset, with its
+  amount as core stores it and its value, the wallet totals and the total in
+  the display currency, plus `unpricedCount`, the wallets whose balances could
+  not be read (`unavailable`) and refresh `failures`. The refreshed balances and
+  quotes are stored, as the app's are. `price <chain>` renders core's
+  `native_spot_price`, which converts with the stored rate. A missing rate or
+  a testnet coin gives no price (`null`, shown as `—`) rather than another
+  currency's figure or a zero. The CLI-only `service::fetch_prices` and
+  `service::fetch_fiat_rates` are removed, and so is the provider claim.
+- **Why:** the last money arithmetic outside core. The CLI had its own
+  valuation that disagreed with the app's: native assets only, float
+  amounts, and its own currency fallback.
+- **CLI check:** `python3 scripts/cli-portfolio.py target/debug/spectra
+  PortfolioTests.test_live_portfolio_is_core_valuation` values a seeded wallet
+  offline. Its unreadable balance is listed as unavailable, an unpriced token
+  has a `null` value, and `price bitcoin-testnet-4` returns `"price":null`.
+- **Verification:** rustfmt and Clippy with `-D warnings` clean; 841 core tests
+  plus the transport test; 443 CLI acceptance checks; the export and
+  uncalled-function checks report none. The regenerated Swift bindings are
+  byte-identical, since no FFI export changed, so the iOS suite was not rerun.
+
 ## 2026-09-23 — Chains are named by id across the boundary
 
 - **Before:** wallets, holdings, transactions, address-book entries, token

@@ -26,7 +26,9 @@ impl Default for BalanceRefreshes {
 }
 
 impl WalletService {
-    pub(crate) async fn refresh_wallet_balances(
+    /// Fetch one wallet's balances and store them. The app's sweeps and the
+    /// CLI's live portfolio both come through here.
+    pub async fn refresh_wallet_balances(
         &self,
         wallet_id: String,
     ) -> Result<WalletState, SpectraBridgeError> {

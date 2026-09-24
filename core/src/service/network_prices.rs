@@ -57,7 +57,57 @@ fn apply_price_result(
     }
 }
 
+/// A chain's native asset, priced now.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeSpotPrice {
+    pub chain_id: String,
+    pub symbol: String,
+    /// `None` on a testnet, whose coin has no market, or when no provider
+    /// quoted it.
+    pub price_usd: Option<f64>,
+    /// In `currency`; `None` also when no rate for it is stored.
+    pub price: Option<f64>,
+    pub currency: String,
+}
+
 impl WalletService {
+    /// Quote a chain's native asset and convert it with the stored rate,
+    /// refreshed first when it is due. Nothing is invented: a missing rate is a
+    /// missing price, not a USD figure labelled in another currency.
+    pub async fn native_spot_price(
+        &self,
+        chain_id: String,
+    ) -> Result<NativeSpotPrice, SpectraBridgeError> {
+        let chain = Chain::from_str_id(&chain_id).ok_or("unknown chain")?;
+        let key = chain.entry().native_deployment_id.clone();
+        let price_usd = if chain.is_testnet() {
+            None
+        } else {
+            let request = crate::fetch::price::PriceRequestCoin {
+                holding_key: key.clone(),
+                coingecko_id: chain.coingecko_id().to_string(),
+                coinpaprika_id: crate::tokens::deployment(&key)
+                    .map(|token| token.coinpaprika_id.clone())
+                    .unwrap_or_default(),
+            };
+            crate::fetch::price::fetch_prices(&[request])
+                .await
+                .map_err(SpectraBridgeError::from)?
+                .get(&key)
+                .copied()
+                .filter(|price| price.is_finite() && *price > 0.0)
+        };
+        let state = self.refresh_owned_fiat_rates(false).await?;
+        Ok(NativeSpotPrice {
+            chain_id: chain.str_id().into(),
+            symbol: chain.coin_symbol().into(),
+            price_usd,
+            price: price_usd.and_then(|usd| super::valuation::to_display(&state, usd)),
+            currency: state.settings.fiat_currency.code().into(),
+        })
+    }
+
     /// Fetch the display-currency cross rates and store them.
     ///
     /// The rates are core's state: every quoted amount passes through them and
@@ -217,52 +267,6 @@ impl WalletService {
 
 // ── Provider reads ────────────────────────────────────────────────────────
 //
-// Functions, not methods. Both took `&self` and read nothing from it — the
-// coins or currencies to quote arrive as arguments and the provider list is
-// the price module's own. They are not FFI exports either; the CLI is the only
-// caller. Sitting on `WalletService` only told a reader to go looking for
-// state that was never there.
-
-/// Fetch USD spot prices for the supplied coins.
-///
-/// `coins` are the known tokens. All providers use their public endpoints —
-/// no API key plumbing.
-pub async fn fetch_prices(
-    coins: Vec<crate::fetch::price::PriceRequestCoin>,
-) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-    tracing::debug!(coins = coins.len(), "fetch_prices enter");
-    match crate::fetch::price::fetch_prices(&coins).await {
-        Ok(quotes) => {
-            tracing::debug!(returned = quotes.len(), "fetch_prices ok");
-            Ok(quotes)
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "fetch_prices failed");
-            Err(SpectraBridgeError::from(e))
-        }
-    }
-}
-
-/// Fetch display-currency cross rates from USD, without storing them.
-///
-/// [`WalletService::refresh_fiat_rates`] is the stateful one: it fetches,
-/// merges and persists. This is the read on its own, which is what the CLI's
-/// `market` command wants.
-pub async fn fetch_fiat_rates(
-    currencies: Vec<String>,
-) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-    tracing::debug!(currencies = currencies.len(), "fetch_fiat_rates enter");
-    match crate::fetch::price::fetch_fiat_rates(&currencies).await {
-        Ok(rates) => {
-            tracing::debug!(returned = rates.len(), "fetch_fiat_rates ok");
-            Ok(rates)
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "fetch_fiat_rates failed");
-            Err(SpectraBridgeError::from(e))
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
