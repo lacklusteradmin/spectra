@@ -75,7 +75,6 @@ impl WalletService {
         // Complete explicit overrides with network-local defaults before
         // deriving, so those same paths are persisted with the addresses.
         let mut paths = crate::derivation_paths_for_preset(commit.seed_derivation_preset)?;
-        paths.is_custom_enabled = commit.seed_derivation_paths.is_custom_enabled;
         paths
             .by_chain
             .extend(std::mem::take(&mut commit.seed_derivation_paths.by_chain));

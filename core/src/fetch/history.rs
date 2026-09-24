@@ -44,16 +44,6 @@ enum StatusRule {
     ConfirmedWhenMined,
 }
 
-/// Whether a row may name an asset other than the chain's native one.
-enum SymbolOverride {
-    /// Native asset only.
-    None,
-    /// A row's `symbol` names its own asset — as Solana's SPL and Tron's
-    /// TRC-20 transfers do. The display name is the token catalog's, and the
-    /// ticker itself for a token the catalog does not carry.
-    RowNamesAsset,
-}
-
 /// JSON fields and source units used to normalize a chain's history.
 struct HistoryShape {
     hash: HashField,
@@ -71,7 +61,6 @@ struct HistoryShape {
     block_height: Option<&'static str>,
     /// Fields naming the other party, as `(when incoming, when outgoing)`.
     counterparty: Option<(&'static str, &'static str)>,
-    symbol_override: SymbolOverride,
 }
 
 impl HistoryShape {
@@ -89,7 +78,6 @@ impl HistoryShape {
             status: StatusRule::AlwaysConfirmed,
             block_height: None,
             counterparty: None,
-            symbol_override: SymbolOverride::None,
         }
     }
 
@@ -164,14 +152,12 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
         Chain::Solana => HistoryShape {
             hash: HashField::Text("signature"),
             amount_in_base_units: false,
-            symbol_override: SymbolOverride::RowNamesAsset,
             ..HistoryShape::confirmed_native("amount_display").with_counterparty("from", "to")
         },
 
         // TRC20 transfers, likewise.
         Chain::Tron => HistoryShape {
             amount_in_base_units: false,
-            symbol_override: SymbolOverride::RowNamesAsset,
             ..HistoryShape::confirmed_native("amount_display")
                 .with_counterparty("from", "to")
                 .with_time("timestamp_ms", 1e3)
@@ -287,33 +273,26 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
                 }
             };
 
+            // A row names its asset by contract: Solana's SPL rows carry a
+            // mint and Tron's TRC-20 rows a contract, and every row without
+            // one is the chain's own coin. The ticker a row carries is display
+            // text and decides nothing — another token may use the same one.
             let contract = entry
                 .get("mint")
                 .or_else(|| entry.get("contract"))
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty());
-            let token_deployment = contract
-                .and_then(|contract| crate::tokens::history_deployment(chain, Some(contract)));
-            let catalog_token = token_deployment
-                .as_deref()
-                .and_then(crate::tokens::deployment);
-            let (entry_asset, entry_symbol) = match shape.symbol_override {
-                SymbolOverride::None => (asset_display_name, symbol),
-                SymbolOverride::RowNamesAsset => {
-                    let found = entry["symbol"].as_str().unwrap_or(symbol);
-                    if let Some(token) = catalog_token {
-                        (token.name.as_str(), token.symbol.as_str())
-                    } else if let Some(contract) = contract {
-                        // An unregistered contract cannot borrow another asset's
-                        // name from a matching ticker (or from another network).
-                        (contract, contract)
-                    } else if found == symbol {
-                        (asset_display_name, found)
-                    } else {
-                        let named = crate::tokens::token_name_on_chain(chain.str_id(), found);
-                        (named.unwrap_or(found), found)
-                    }
-                }
+            // A contract that does not normalize for this chain names no asset
+            // the row could be filed under, so the row is refused.
+            let deployment_id = crate::tokens::deployment_id_for(chain, contract)?;
+            let (entry_asset, entry_symbol) = match contract {
+                None => (asset_display_name, symbol),
+                Some(contract) => match crate::tokens::deployment(&deployment_id) {
+                    Some(token) => (token.name.as_str(), token.symbol.as_str()),
+                    // An unregistered contract cannot borrow another asset's
+                    // name or ticker; it is shown as itself.
+                    None => (contract, contract),
+                },
             };
 
             let raw_time = &entry[shape.time];
@@ -332,13 +311,7 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
             };
 
             Some(ChainHistoryEntry {
-                deployment_id: match contract {
-                    Some(_) => token_deployment,
-                    None if entry_symbol == symbol => {
-                        crate::tokens::history_deployment(chain, None)
-                    }
-                    None => None,
-                },
+                deployment_id: Some(deployment_id),
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: if chain.is_evm() {
                     entry
@@ -524,6 +497,27 @@ mod normalize_chain_history_tests {
         }
     }
 
+    /// A token that borrows a known ticker on another contract is filed under
+    /// its own contract and shown as itself, not as the token it imitates.
+    #[test]
+    fn a_borrowed_ticker_does_not_borrow_an_identity() {
+        let rows = normalize_chain_history(
+            "tron",
+            r#"[{"txid":"x","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","contract":"TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf","is_incoming":true}]"#,
+        );
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(
+            row.deployment_id,
+            crate::tokens::deployment_id_for(
+                Chain::Tron,
+                Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")
+            )
+        );
+        assert_ne!(row.symbol, "USDT");
+        assert_ne!(row.asset_display_name, "Tether USD");
+    }
+
     /// One populated entry per chain shape, in the JSON that chain's client
     /// serializes, against the row it must normalize to. Field names, units
     /// and timestamp scales all live in `history_shape`, so this is where a
@@ -591,12 +585,12 @@ mod normalize_chain_history_tests {
         ),
         (
             "solana",
-            r#"[{"signature":"h2","timestamp":1700000012,"is_incoming":true,"amount_display":"42.5","symbol":"USDC","from":"sFrom","to":"sTo"}]"#,
+            r#"[{"signature":"h2","timestamp":1700000012,"is_incoming":true,"amount_display":"42.5","symbol":"USDC","mint":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","from":"sFrom","to":"sTo"}]"#,
             r#"[{"kind":"receive","status":"confirmed","asset_display_name":"USD Coin","symbol":"USDC","chain_id":"solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
         ),
         (
             "tron",
-            r#"[{"txid":"i1","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","is_incoming":true}]"#,
+            r#"[{"txid":"i1","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","contract":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","is_incoming":true}]"#,
             r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tether USD","symbol":"USDT","chain_id":"tron","amount":7.5,"counterparty":"TFrom","tx_hash":"i1","block_height":null,"timestamp":1700000013.0}]"#,
         ),
         (
@@ -609,7 +603,7 @@ mod normalize_chain_history_tests {
         // of the ones it did not reach.
         (
             "tron",
-            r#"[{"txid":"i3","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"2.0","symbol":"TUSD","is_incoming":true}]"#,
+            r#"[{"txid":"i3","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"2.0","symbol":"TUSD","contract":"TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4","is_incoming":true}]"#,
             r#"[{"kind":"receive","status":"confirmed","asset_display_name":"TrueUSD","symbol":"TUSD","chain_id":"tron","amount":2.0,"counterparty":"TFrom","tx_hash":"i3","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         // A ticker the catalog does not carry stays the ticker: a row nobody
@@ -617,7 +611,7 @@ mod normalize_chain_history_tests {
         (
             "tron",
             r#"[{"txid":"i4","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"1.0","symbol":"NOTATOKEN","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"NOTATOKEN","symbol":"NOTATOKEN","chain_id":"tron","amount":1.0,"counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_id":"tron","amount":1.0,"counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         (
             "sui",
@@ -676,21 +670,23 @@ mod normalize_chain_history_tests {
         for (chain, raw, expected) in CASES {
             let rows = normalize_chain_history(chain, raw);
             let mut actual = serde_json::to_value(&rows).unwrap();
-            for row in actual.as_array_mut().unwrap() {
+            let sources: Vec<Value> = serde_json::from_str(raw).unwrap();
+            for (row, source) in actual.as_array_mut().unwrap().iter_mut().zip(&sources) {
                 let identity = row
                     .as_object_mut()
                     .unwrap()
                     .remove("deployment_id")
                     .unwrap();
-                if row["symbol"] == Chain::from_str_id(chain).unwrap().coin_symbol() {
-                    assert_eq!(
-                        identity,
-                        Chain::from_str_id(chain)
-                            .unwrap()
-                            .entry()
-                            .native_deployment_id
-                    );
-                }
+                // Identity comes from the contract the row carries, or the
+                // chain's own coin when it carries none — never from the ticker.
+                let contract = source
+                    .get("mint")
+                    .or_else(|| source.get("contract"))
+                    .and_then(Value::as_str)
+                    .filter(|c| !c.is_empty());
+                let expected =
+                    crate::tokens::deployment_id_for(Chain::from_str_id(chain).unwrap(), contract);
+                assert_eq!(identity, serde_json::to_value(expected).unwrap(), "{chain}");
             }
             assert_eq!(
                 actual,

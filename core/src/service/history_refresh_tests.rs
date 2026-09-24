@@ -85,7 +85,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
         target,
         Chain::Bitcoin,
         crate::fetch::history_decode::NormalizedHistoryItem {
-            deployment_id: None,
+            deployment_id: Some("bitcoin-testnet-4:native".to_string()),
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
             asset_display_name: "Bitcoin".to_string(),
@@ -766,7 +766,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
 #[test]
 fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
     assert_eq!(
-        crate::tokens::history_deployment(
+        crate::tokens::deployment_id_for(
             Chain::EthereumSepolia,
             Some("0x1111111111111111111111111111111111111111")
         )
@@ -819,7 +819,6 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
             incoming_transactions: rows,
             strategy: crate::fetch::transactions::TransactionMergeStrategy::Evm,
             chain_id: "ethereum".into(),
-            include_symbol_in_identity: true,
             preserve_created_at_sentinel_unix: None,
         },
     );

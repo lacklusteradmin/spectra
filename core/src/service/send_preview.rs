@@ -43,10 +43,15 @@ impl WalletService {
                 .await?
                 .address
         };
+        // The stored holding says what is sent: its token's contract on this
+        // network, or the network's own coin.
+        let deployment_id =
+            crate::tokens::deployment_id_for(chain, token.as_ref().map(|t| t.contract.as_str()))
+                .ok_or("the held token's contract is not valid on this network")?;
         let assembly = crate::send::ethereum::prepare_evm_send_assembly(
             crate::send::ethereum::EvmSendAssemblyInput {
                 chain_id: chain.str_id().into(),
-                symbol: holding.symbol.clone(),
+                deployment_id,
                 from_address: from.clone(),
                 resolved_destination: destination,
                 amount,

@@ -22,6 +22,20 @@ pub struct OwnedSendPreview {
     pub amount_value: Option<f64>,
     pub details: Option<SendPreviewDetails>,
     pub shortcuts: HashMap<u32, String>,
+    /// What the destination's own history says, checked beside the quote.
+    /// `None` when no destination was given.
+    pub recipient: Option<RecipientCheck>,
+}
+
+/// Whether the destination has been used, from raw smallest-unit balances.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum RecipientCheck {
+    Checked {
+        activity: super::types::SendDestinationActivity,
+    },
+    /// The destination's balance or history could not be read.
+    Unavailable,
 }
 
 /// What a preview says about the funds, beyond the fee. Amounts are exact
@@ -112,12 +126,61 @@ fn owned_preview(
         amount_value,
         details: details.map(|d| SendPreviewDetails::from_core(d, asset_decimals)),
         shortcuts,
+        recipient: None,
     }
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Quote a send and, alongside it, check whether the destination has been
+    /// used. A recipient read that fails leaves the quote standing.
     pub async fn preview_owned_send(
+        &self,
+        wallet_id: String,
+        holding_key: String,
+        amount: String,
+        destination: String,
+        explicit_nonce: Option<i64>,
+        custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
+    ) -> Result<Option<OwnedSendPreview>, SpectraBridgeError> {
+        let recipient = async {
+            if destination.trim().is_empty() {
+                return None;
+            }
+            Some(
+                match self
+                    .send_destination_risk(
+                        wallet_id.clone(),
+                        holding_key.clone(),
+                        destination.clone(),
+                    )
+                    .await
+                {
+                    Ok(risk) => RecipientCheck::Checked {
+                        activity: risk.activity,
+                    },
+                    Err(_) => RecipientCheck::Unavailable,
+                },
+            )
+        };
+        let quote = self.preview_quote_only(
+            wallet_id.clone(),
+            holding_key.clone(),
+            amount,
+            destination.clone(),
+            explicit_nonce,
+            custom_fees,
+        );
+        let (quote, recipient) = tokio::join!(quote, recipient);
+        Ok(quote?.map(|preview| OwnedSendPreview {
+            recipient,
+            ..preview
+        }))
+    }
+}
+
+impl WalletService {
+    async fn preview_quote_only(
         &self,
         wallet_id: String,
         holding_key: String,

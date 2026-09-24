@@ -497,10 +497,7 @@ pub(super) fn seed_derivation_paths_for_account(
     if by_chain.is_empty() {
         return Err("Chain catalog produced no derivation paths.".to_string());
     }
-    Ok(CoreSeedDerivationPaths {
-        is_custom_enabled: false,
-        by_chain,
-    })
+    Ok(CoreSeedDerivationPaths { by_chain })
 }
 
 fn render_derivation_path_template(template: &str, account: u32) -> String {

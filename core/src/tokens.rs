@@ -317,22 +317,6 @@ pub fn catalog() -> &'static [TokenDeploymentEntry] {
     &CATALOG
 }
 
-/// The catalog's name for the token a chain's own feed calls `symbol`.
-///
-/// A history row names its asset by ticker, and a ticker is unique only within
-/// a chain — which is why this takes one. `None` when the catalog does not
-/// carry the token, and the caller shows the ticker itself.
-///
-/// Enabled or not does not enter into it: what a token is called is a fact
-/// about the token, not about whether this wallet tracks it.
-pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'static str> {
-    let mut matches = CATALOG
-        .iter()
-        .filter(|t| t.chain_id == chain_id && t.symbol.eq_ignore_ascii_case(symbol));
-    let token = matches.next()?;
-    matches.next().is_none().then_some(token.name.as_str())
-}
-
 // ── Token-id + endpoint URL normalization helpers ─────────────────
 
 // Pure token-identifier + endpoint normalization helpers (string munging,
@@ -801,7 +785,7 @@ tags = []
     }
 
     /// The contract is the id now, so it has to be spelled the way every
-    /// lookup spells it: `history_deployment` builds the same string from a
+    /// lookup spells it: `deployment_id_for` builds the same string from a
     /// normalized address, and a row that disagrees is a row nothing resolves.
     #[test]
     fn every_catalog_contract_is_already_normalized() {
@@ -845,11 +829,12 @@ pub(crate) fn token_display_decimals(
         .min(38)
 }
 
-/// Canonical deployment identity for a transfer on its actual network.
-pub(crate) fn history_deployment(
-    chain: crate::registry::Chain,
-    contract: Option<&str>,
-) -> Option<String> {
+/// The deployment id of an asset on a concrete network: the network's own coin
+/// when there is no contract, otherwise the normalized contract under the
+/// network's token standard. `None` for a contract that does not normalize on
+/// that network. Identity is derived here from network and contract, never
+/// from a ticker.
+pub fn deployment_id_for(chain: crate::registry::Chain, contract: Option<&str>) -> Option<String> {
     match contract {
         None => Some(chain.entry().native_deployment_id.clone()),
         Some(contract) => normalize_token_identifier(Some(contract.into()), chain.str_id().into())

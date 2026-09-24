@@ -1,7 +1,10 @@
-// Rust-owned balance refresh loop. Rust drives the timer, fetches, applies
-// each result to its own wallet state, and hands the observer a typed
-// `WalletState` — the front end only mirrors it.
+// Rust-owned refresh loops. Rust drives both timers — the balance sweep and
+// the maintenance tick — fetches, applies each result to its own state, and
+// tells the observer what changed. The front end supplies device conditions
+// and renders; it runs no loop of its own.
 
+use crate::fetch::refresh_policy::DeviceConditions;
+use crate::service::app_refresh::{AppRefreshIntent, AppRefreshResult};
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,15 +15,19 @@ use std::time::{Duration, Instant};
 
 struct Inner {
     wallet_service: Arc<WalletService>,
-    observer: RwLock<Option<Arc<dyn BalanceObserver>>>,
+    observer: RwLock<Option<Arc<dyn RefreshObserver>>>,
     entries: RwLock<Vec<RefreshEntry>>,
+    /// What the platform last said about the device. `None` until it says
+    /// anything, which is how a one-shot caller like the CLI runs no loops.
+    conditions: RwLock<Option<DeviceConditions>>,
     stop_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    maintenance_stop_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// Whether the task forwarding Tor status to the observer is running.
+    forwards_tor_status: AtomicBool,
     /// True while a refresh cycle is in flight. The timer tick path skips
     /// missed ticks via `MissedTickBehavior::Skip`, but `trigger_immediate`
-    /// spawns its own task and can stack concurrent cycles when multiple
-    /// Swift callers (fiat refresh, pull-to-refresh, wallet change,
-    /// app-resume) fire in close succession. This flag de-dupes across
-    /// both paths.
+    /// spawns its own task and can stack concurrent cycles when several
+    /// callers fire in close succession. This flag de-dupes across both paths.
     is_cycle_running: AtomicBool,
     /// Set by `trigger_immediate` when a cycle is already in flight. The
     /// running cycle checks this flag before exiting and re-runs if set,
@@ -28,17 +35,22 @@ struct Inner {
     pending_trigger: AtomicBool,
 }
 
-// ── BalanceRefreshEngine (UniFFI-exported object)
+/// How long the maintenance loop waits after a refresh that failed outright.
+const MAINTENANCE_RETRY_SECONDS: u64 = 60;
 
-/// Attach an observer before `start`. The service refreshes registered entries
-/// when its wallet state changes. A short-lived caller uses `refresh_now`.
+// ── RefreshEngine (UniFFI-exported object)
+
+/// Attach an observer, then report device conditions: while the app is active
+/// and a wallet has something to fetch, the engine sweeps balances and runs
+/// maintenance ticks at the cadence core plans. A short-lived caller uses
+/// `refresh_now` and never reports conditions.
 #[derive(uniffi::Object)]
-pub struct BalanceRefreshEngine {
+pub struct RefreshEngine {
     inner: Arc<Inner>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-impl BalanceRefreshEngine {
+impl RefreshEngine {
     #[uniffi::constructor]
     pub fn new(wallet_service: Arc<WalletService>) -> Arc<Self> {
         Arc::new(Self {
@@ -46,14 +58,17 @@ impl BalanceRefreshEngine {
                 wallet_service,
                 observer: RwLock::new(None),
                 entries: RwLock::new(vec![]),
+                conditions: RwLock::new(None),
                 stop_tx: Mutex::new(None),
+                maintenance_stop_tx: Mutex::new(None),
+                forwards_tor_status: AtomicBool::new(false),
                 is_cycle_running: AtomicBool::new(false),
                 pending_trigger: AtomicBool::new(false),
             }),
         })
     }
 
-    pub fn set_observer(&self, observer: Arc<dyn BalanceObserver>) {
+    pub fn set_observer(&self, observer: Arc<dyn RefreshObserver>) {
         *self.inner.observer.write().unwrap() = Some(observer);
     }
 
@@ -77,16 +92,15 @@ impl BalanceRefreshEngine {
     /// Adopt core's wallets and refresh only when fetch inputs change.
     /// Returns whether they changed. Balance-only updates must not retrigger
     /// a sweep, since sweeps themselves update wallet balances.
-    pub async fn reconcile_wallets(&self, app_is_active: bool) -> bool {
+    pub async fn reconcile_wallets(&self) -> bool {
         let state = self.inner.wallet_service.app_state().await;
         let entries = refresh_entries_for(&state);
-        let has_entries = !entries.is_empty();
         if !self.replace_entries(entries) {
             return false;
         }
-        if !has_entries {
+        if !self.has_entries() {
             self.stop();
-        } else if app_is_active {
+        } else if self.app_is_active() {
             if self.is_running() {
                 self.trigger_immediate().await;
             } else {
@@ -94,18 +108,28 @@ impl BalanceRefreshEngine {
                     .await;
             }
         }
+        self.reconcile_maintenance();
         true
     }
 
-    /// The platform supplies activity; core reads wallet scope and cadence.
-    pub async fn configure_for_device(&self, app_is_active: bool) {
-        self.stop();
-        let count = self.sync_entries(None).await;
-        if !app_is_active || count == 0 {
-            return;
+    /// What only the device knows. Coming to the foreground restarts the
+    /// balance sweep, whose first tick runs at once; leaving it stops both
+    /// loops. Other changes only reach the next maintenance tick.
+    pub async fn set_device_conditions(&self, conditions: DeviceConditions) {
+        self.forward_tor_status();
+        let was_active = self.app_is_active();
+        let is_active = conditions.app_is_active;
+        *self.inner.conditions.write().unwrap() = Some(conditions);
+        if !is_active {
+            self.stop();
+        } else if !was_active {
+            self.stop();
+            if self.sync_entries(None).await > 0 {
+                self.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
+                    .await;
+            }
         }
-        self.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
-            .await;
+        self.reconcile_maintenance();
     }
 
     /// Start the periodic refresh loop.
@@ -150,7 +174,7 @@ impl BalanceRefreshEngine {
 
 // ── Refresh cycle (private, not exported)
 
-impl BalanceRefreshEngine {
+impl RefreshEngine {
     /// Store `entries` if they differ from the current list. Answers whether
     /// they did.
     fn replace_entries(&self, entries: Vec<RefreshEntry>) -> bool {
@@ -162,6 +186,19 @@ impl BalanceRefreshEngine {
         true
     }
 
+    fn has_entries(&self) -> bool {
+        !self.inner.entries.read().unwrap().is_empty()
+    }
+
+    fn app_is_active(&self) -> bool {
+        self.inner
+            .conditions
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|c| c.app_is_active)
+    }
+
     fn is_running(&self) -> bool {
         self.inner.stop_tx.lock().unwrap().is_some()
     }
@@ -169,11 +206,86 @@ impl BalanceRefreshEngine {
     /// Stop the periodic refresh loop. Safe to call even if not started.
     ///
     /// Internal: `reconcile_wallets` stops the engine when no wallet is left to
-    /// fetch, and `configure_for_device` when the app leaves the foreground.
+    /// fetch, and `set_device_conditions` when the app leaves the foreground.
     fn stop(&self) {
         if let Some(tx) = self.inner.stop_tx.lock().unwrap().take() {
             let _ = tx.send(());
         }
+    }
+
+    /// Hand the observer the Tor status now and on every change, for as long
+    /// as the engine lives. Called from an async export, so a runtime is
+    /// present for the spawn.
+    fn forward_tor_status(&self) {
+        if self.inner.forwards_tor_status.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let inner = Arc::downgrade(&self.inner);
+        tokio::spawn(async move {
+            let mut changes = crate::tor::subscribe_status();
+            loop {
+                let status = changes.borrow_and_update().clone();
+                let Some(inner) = inner.upgrade() else { return };
+                if let Some(observer) = inner.observer.read().unwrap().clone() {
+                    observer.on_tor_status_changed(status);
+                }
+                drop(inner);
+                if changes.changed().await.is_err() {
+                    return;
+                }
+            }
+        });
+    }
+
+    /// Run the maintenance loop exactly while the app is active and a wallet
+    /// has something to fetch. Called from async exports, so a runtime is
+    /// present for the spawn.
+    fn reconcile_maintenance(&self) {
+        let mut stop_lock = self.inner.maintenance_stop_tx.lock().unwrap();
+        let wanted = self.app_is_active() && self.has_entries();
+        if !wanted {
+            if let Some(tx) = stop_lock.take() {
+                let _ = tx.send(());
+            }
+            return;
+        }
+        if stop_lock.is_some() {
+            return;
+        }
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        *stop_lock = Some(tx);
+        drop(stop_lock);
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            loop {
+                let seconds =
+                    match Self::refresh_and_notify(&inner, AppRefreshIntent::Scheduled).await {
+                        Some(result) => result,
+                        None => MAINTENANCE_RETRY_SECONDS,
+                    };
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(seconds)) => {}
+                    _ = &mut rx => break,
+                }
+            }
+        });
+    }
+
+    /// One app refresh under the current conditions, handed to the observer.
+    /// Answers the seconds core plans until the next tick, or `None` when there
+    /// were no conditions or the refresh failed outright.
+    async fn refresh_and_notify(inner: &Inner, intent: AppRefreshIntent) -> Option<u64> {
+        let conditions = inner.conditions.read().unwrap().clone()?;
+        let result = inner
+            .wallet_service
+            .refresh_app(intent, conditions)
+            .await
+            .ok()?;
+        let seconds = result.poll_seconds;
+        if let Some(observer) = inner.observer.read().unwrap().clone() {
+            observer.on_refresh_complete(result);
+        }
+        Some(seconds)
     }
 
     async fn run_cycle(inner: &Inner) {
@@ -263,6 +375,9 @@ impl BalanceRefreshEngine {
             if let Some(o) = obs.as_ref() {
                 o.on_refresh_cycle_complete(refreshed, errors);
             }
+            // New balances can cross an alert or a movement threshold. An app
+            // that reported conditions gets that judgement with the sweep.
+            Self::refresh_and_notify(inner, AppRefreshIntent::BalancesUpdated).await;
 
             let elapsed_ms = cycle_start.elapsed().as_millis();
             tracing::debug!(refreshed, errors, elapsed_ms, "refresh cycle end");
@@ -391,7 +506,7 @@ use crate::store::state::WalletState;
 /// state before invoking the callback, so Swift receives a typed
 /// `WalletState` record directly — no JSON shuttle.
 #[uniffi::export(with_foreign)]
-pub trait BalanceObserver: Send + Sync {
+pub trait RefreshObserver: Send + Sync {
     /// Called after each successful balance fetch within a cycle. `summary`
     /// is the updated `WalletState` (already applied to the Rust store), or
     /// `None` if the native amount could not be parsed or the wallet is not
@@ -400,6 +515,14 @@ pub trait BalanceObserver: Send + Sync {
 
     /// Called once the full sweep of all registered entries completes.
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);
+
+    /// Called after an app refresh the engine ran itself — a maintenance tick,
+    /// or the judgement after a sweep — with what to notify the user about.
+    fn on_refresh_complete(&self, result: AppRefreshResult);
+
+    /// The embedded Tor client's status, sent once when the platform first
+    /// reports conditions and then on every change.
+    fn on_tor_status_changed(&self, status: crate::tor::TorStatus);
 }
 
 /// What to refresh for the wallets in `state`, one entry per wallet that has an
@@ -563,13 +686,100 @@ mod refresh_entry_tests {
         assert_eq!(entries[0].chain_id, Chain::Arbitrum.str_id());
     }
 
+    /// The maintenance loop runs while the app is active with something to
+    /// fetch, reports each tick to the observer, and stops in the background.
+    #[tokio::test]
+    async fn device_conditions_start_and_stop_the_maintenance_loop() {
+        use super::{RefreshEngine, RefreshObserver};
+        use crate::fetch::refresh_policy::DeviceConditions;
+        use crate::service::app_refresh::AppRefreshResult;
+        use crate::service::WalletService;
+        use crate::store::state::StateCommand;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        struct Ticks(AtomicU32, AtomicU32);
+        impl RefreshObserver for Ticks {
+            fn on_balance_updated(&self, _: String, _: String, _: Option<WalletState>) {}
+            fn on_refresh_cycle_complete(&self, _: u32, _: u32) {}
+            fn on_refresh_complete(&self, _: AppRefreshResult) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+            fn on_tor_status_changed(&self, _: crate::tor::TorStatus) {
+                self.1.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let conditions = |active: bool| DeviceConditions {
+            app_is_active: active,
+            // Offline: a tick answers without touching a network.
+            is_network_reachable: false,
+            is_constrained_network: false,
+            is_expensive_network: false,
+            is_low_power_mode: false,
+            battery_level: 1.0,
+            wants_price_refresh: true,
+        };
+        let service = WalletService::new(vec![]).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "maintenance-loop-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        let engine = RefreshEngine::new(service.clone());
+        let ticks = Arc::new(Ticks(AtomicU32::new(0), AtomicU32::new(0)));
+        engine.set_observer(ticks.clone());
+
+        engine.set_device_conditions(conditions(true)).await;
+        assert!(
+            engine.inner.maintenance_stop_tx.lock().unwrap().is_none(),
+            "no wallets, no loop"
+        );
+
+        service
+            .apply_state_command(StateCommand::UpsertWallet {
+                wallet: WalletState::single_address(
+                    "w",
+                    "W",
+                    "ethereum",
+                    "0x1111111111111111111111111111111111111111",
+                    None,
+                    true,
+                ),
+            })
+            .await
+            .unwrap();
+        engine.reconcile_wallets().await;
+        for _ in 0..100 {
+            if ticks.0.load(Ordering::SeqCst) > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            ticks.0.load(Ordering::SeqCst) > 0,
+            "the first tick runs at once"
+        );
+        assert!(
+            ticks.1.load(Ordering::SeqCst) > 0,
+            "the observer is told the Tor status without asking"
+        );
+
+        engine.set_device_conditions(conditions(false)).await;
+        assert!(engine.inner.maintenance_stop_tx.lock().unwrap().is_none());
+        assert!(!engine.is_running());
+    }
+
     /// Replacing the wallet list is not a reason to refresh unless what a sweep
     /// fetches changed. Answering yes to every replacement is what made the end
     /// of each sweep — which replaces the list with new balances — start the
     /// next one.
     #[tokio::test]
     async fn only_a_change_in_what_is_fetched_counts_as_a_change() {
-        use super::BalanceRefreshEngine;
+        use super::RefreshEngine;
         use crate::service::WalletService;
         use crate::store::state::StateCommand;
 
@@ -582,7 +792,7 @@ mod refresh_entry_tests {
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
-        let engine = BalanceRefreshEngine::new(service.clone());
+        let engine = RefreshEngine::new(service.clone());
         let upsert = |name: &str| StateCommand::UpsertWallet {
             wallet: WalletState::single_address(
                 "w",
@@ -594,17 +804,11 @@ mod refresh_entry_tests {
             ),
         };
 
-        assert!(
-            !engine.reconcile_wallets(false).await,
-            "no wallets, no entries"
-        );
+        assert!(!engine.reconcile_wallets().await, "no wallets, no entries");
         service.apply_state_command(upsert("W")).await.unwrap();
+        assert!(engine.reconcile_wallets().await, "a new wallet is a change");
         assert!(
-            engine.reconcile_wallets(false).await,
-            "a new wallet is a change"
-        );
-        assert!(
-            !engine.reconcile_wallets(false).await,
+            !engine.reconcile_wallets().await,
             "the same list again is not"
         );
 
@@ -613,7 +817,7 @@ mod refresh_entry_tests {
             .apply_state_command(upsert("Renamed"))
             .await
             .unwrap();
-        assert!(!engine.reconcile_wallets(false).await);
+        assert!(!engine.reconcile_wallets().await);
 
         service
             .apply_state_command(StateCommand::RemoveWallet {
@@ -621,15 +825,12 @@ mod refresh_entry_tests {
             })
             .await
             .unwrap();
-        assert!(
-            engine.reconcile_wallets(false).await,
-            "a removal is a change"
-        );
+        assert!(engine.reconcile_wallets().await, "a removal is a change");
     }
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-impl BalanceRefreshEngine {
+impl RefreshEngine {
     /// Run one refresh cycle immediately without waiting for the next tick.
     /// Also `async` to guarantee Tokio context for `tokio::spawn`.
     ///

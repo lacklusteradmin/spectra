@@ -16,6 +16,221 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-24 — History, merges and EVM assembly identify assets by deployment
+
+- **Before:** four places decided which asset a thing was by its ticker. A
+  Solana or Tron history row without a contract was the native coin only if its
+  ticker matched, and a token row's name was looked up by ticker
+  (`token_name_on_chain`). A history entry with no deployment was filed as the
+  native coin when its ticker matched. The transaction merge compared tickers on
+  top of deployment ids, with a registry flag (`merge_identity_includes_symbol`)
+  for Tron. EVM send assembly treated a token-less input as a value transfer
+  only when its ticker equalled the gas asset's. An SPL balance row with no mint
+  flowed on with an empty ticker.
+- **After:** identity is the deployment id — network, standard, contract. A
+  history row's contract (or mint) gives its deployment; a row without one is
+  the network's own coin, which the adapters guarantee (Tron token rows require
+  a contract, Solana SPL rows without a mint are skipped); a contract that does
+  not normalize refuses the row. A token row is named from the catalog entry for
+  its deployment, or shown as its contract. Merges compare deployment ids only.
+  `EvmSendAssemblyInput` carries `deployment_id` instead of `symbol`: the
+  network's native deployment is a value transfer and must carry no contract;
+  any other must carry the contract that derives exactly that deployment.
+  `history_deployment` is now `tokens::deployment_id_for`.
+- **Why:** a ticker is display text; any token can borrow one (PLAN: never
+  infer identity from ticker). On the funds path the assembly now refuses a
+  mismatch between the stated asset and its contract instead of trusting either.
+- **CLI check:** `spectra --json send assemble --chain Ethereum --from … --to …
+  --amount 1 --symbol ETH --contract 0xa0b8…eb48 --decimals 6` answers
+  `"isNative":false`. Core tests cover a borrowed ticker in history, two tokens
+  sharing a ticker in one transaction, and every assembly mismatch.
+- **Verification:** `make verify` passed: rustfmt/clippy, 846 core tests plus
+  the transport test, 445 offline CLI checks and 133 iPhone simulator tests.
+
+## 2026-09-24 — Crypto wiki prose is keyed by token id
+
+- **Before:** the wiki grouped deployments by `token_id`, but looked up each
+  coin's description and supply model in `crypto-wiki.toml` by ticker
+  (`asset = "ETH"`). A new token reusing a ticker would silently have shown
+  another coin's text; the file's header relied on a uniqueness test that no
+  longer existed.
+- **After:** every row is `token_id = "…"`, the lookup and the coverage test use
+  the id, and the file rejects unknown keys. The prose shown is unchanged.
+- **Why:** identity is the catalog id, never the ticker (PLAN boundary rules).
+- **CLI check:** none — the wiki is not a CLI command; `cargo test -p
+  spectra_core wiki` checks that every coin has exactly its own row.
+
+## 2026-09-24 — Thinner Swift shell: one command queue, core-run refresh, one string table
+
+### Device authentication errors stay in the flow that asked
+
+- **Before:** any failed device authentication — unlock, delete wallet, reset,
+  rebroadcast, Monero sync — wrote both `sendFlow.error` and `appLockError`, so
+  one failed unlock showed a "Send Error" and a "Security Notice" on the home
+  screen. Rebroadcast reported `sendFlow.error` as its own failure. The replace
+  and cancel composers wrote "Replacement context loaded…" into the send error
+  field, where the home screen showed it as an error.
+- **After:** `authenticate(_:reason:)` returns the failure reason; each caller
+  shows it in its own flow (unlock → lock screen, delete → `commandError`,
+  reset → the reset sheet, which stays open, sign → the send session,
+  rebroadcast/Monero sync → their own result). The "context loaded" line is
+  removed: the filled composer and the pending-send line already say it.
+- **Before:** revealing a seed phrase required biometrics only, with no
+  passcode fallback, whatever the Face ID preference said; a passcode-only
+  device could never reveal one.
+- **After:** `.revealSeedPhrase` is a `DeviceAuthenticationAction` that always
+  requires device-owner authentication (biometrics or passcode), and no
+  preference turns it off.
+- **Why:** an error belongs to the operation that failed; key material is never
+  shown unauthenticated, and a user without Face ID must still be able to see
+  their own backup.
+- **CLI check:** none applies — device authentication is a platform operation.
+  `DeviceAuthenticationTests` covers the policy table and `SendSessionTests`
+  the signing session's handling of a returned failure.
+
+### One state-command queue
+
+- **Before:** seven ways to send a `StateCommand`: settings (queued, optimistic),
+  contacts (own queue), wallet fields (third queue), pins and fiat currency
+  (unqueued, errors swallowed), token preferences (unqueued), custom endpoints
+  (called the bridge from the view). Some adopted the state and rebuilt the
+  portfolio in a detached task, some awaited the rebuild.
+- **After:** `enqueueStateCommand` is the only path. Commands run in the order
+  the user issued them, the committed state and portfolio snapshot are adopted
+  inside the queue, and `awaitPendingStateCommands` waits for all of them.
+  Failures that have no field of their own (pins, fiat currency, wallet fields,
+  settings) appear as an "Action Failed" notice instead of being dropped or
+  only logged. `applyCoreState` no longer spawns a portfolio read.
+- **Why:** one writer and one ordering rule for core-owned state; a dropped
+  error is a silent failure.
+- **CLI check:** none needed — the CLI already calls `apply_state_command`
+  directly; `AppStateTests` covers ordering, stale reads and persistence.
+
+### Core runs the maintenance loop and writes its own event log
+
+- **Before:** Swift ran a `while` loop that asked core for a plan, called
+  `refresh_app(Scheduled)` and slept for the cadence core returned; core's
+  balance engine ran a second loop. After each sweep Swift called
+  `refresh_app(BalancesUpdated)` itself. Swift wrote the operational log lines
+  for events core performed — confirmed/failed status changes, broadcast
+  accepted, rescan started/completed, self-test results, refresh failures —
+  some localized, some English.
+- **After:** `BalanceRefreshEngine`/`BalanceObserver` are `RefreshEngine`/
+  `RefreshObserver`. The platform reports `DeviceConditions` (foreground,
+  network path, visible tab); while the app is active and a wallet has something
+  to fetch, core runs both the balance sweep and the maintenance tick, runs the
+  post-sweep judgement, and hands each `AppRefreshResult` to
+  `on_refresh_complete`. Swift adopts projections and delivers notifications.
+  Core records status changes, each broadcast attempt's outcome, rescan
+  outcomes, self-test results, refresh and pending failures and failed
+  rechecks, in English, with `source: core`. Swift logs only failures on its
+  own side (a platform API, or a call into core that threw).
+- **Why:** one owner for refresh cadence and for the log of what core did; the
+  CLI now gets the same log lines as the app.
+- **CLI check:** `python3 scripts/cli-diagnostics.py target/debug/spectra
+  DiagnosticsTests.test_offline_refresh` asserts core-sourced `Rescan`,
+  `Refresh` and `Self-Tests` lines after an offline rescan and a configured
+  self-test. Core tests cover the engine loop lifecycle and the logged recheck.
+
+### Core pushes what changed instead of the shell re-reading
+
+- **Before:** Swift polled `tor_status()` every second. Each wallet's balance
+  update made Swift re-read the whole portfolio snapshot; each completed
+  refresh re-read the portfolio, the transaction snapshot and diagnostics
+  whether or not they changed. "Load more history" asked core one synchronous
+  cursor question per wallet on every render. The send composer made two core
+  calls, a quote and a separate recipient check.
+- **After:** core publishes every Tor state change and bootstrap step; the
+  refresh engine forwards them through `on_tor_status_changed`. The app reads
+  the portfolio once per sweep, and `AppRefreshResult` says whether
+  `transactions_changed` or `diagnostics_changed`, so the shell re-reads only
+  those. `TransactionSnapshot.wallets_with_more_history` names the wallets with
+  pages left; `history_cursor` is no longer exported. `preview_owned_send`
+  checks the recipient beside the quote and returns it as `recipient`
+  (`checked` with the activity, or `unavailable`); a failed recipient read
+  leaves the quote standing.
+- **Why:** each answer comes from its owner once, with what changed attached,
+  rather than the shell asking again to find out.
+- **CLI check:** `spectra --json send preview …` prints the `recipient` field;
+  `python3 scripts/cli-diagnostics.py target/debug/spectra` covers the refresh
+  flags through `diagnostics refresh`. Core tests cover the engine's Tor
+  forwarding.
+
+### The Swift bridge is the service, not a copy of its API
+
+- **Before:** `WalletServiceBridge` restated about fifty core methods as
+  one-line forwards, some with different labels, plus stale comments.
+- **After:** it owns only the database path, the lazy service with its secret
+  store, the open-state binding and the refresh engine; callers use core's API
+  as generated (`try await bridge.ready().portfolioSnapshot()`).
+- **Why:** a forwarding layer that only renames is a second API to keep in step.
+- **CLI check:** none applies; no behaviour changes.
+
+### Registry fact for account xpubs; tests that restated core
+
+- `Chain::accepts_account_xpub` (Bitcoin only) replaces `chain == .bitcoin` in
+  the watch-only form and in core's import planner.
+- iOS tests that asserted core rules now assert only that the result crosses
+  the binding: contact refusal wording (rules in `address_book.rs`), log
+  appends (trim and the 800 cap, now tested in core), and the testnet4 import
+  derivation (covered by `store/tests/wallet_import.rs`).
+
+### The seed envelope's master key is wrapped by the Secure Enclave
+
+- **Before:** signing material was sealed under a master key stored in the
+  Keychain as raw bytes, in the same access class as the sealed items, so any
+  reader of one Keychain item could read the other and the envelope protected
+  nothing Keychain did not already.
+- **After:** the master key is stored only as an ECIES blob encrypted to a
+  P-256 key created in the Secure Enclave (`.privateKeyUsage`,
+  `WhenPasscodeSetThisDeviceOnly`). A copied Keychain opens nothing without
+  this device's enclave. No user presence is required, so background
+  derivation is unaffected. A wrapped key whose wrapping key is gone is
+  unreadable, never replaced. The simulator has no enclave and uses a software
+  wrapping key. Seeds sealed under the old raw key are not migrated
+  (prelaunch): re-import them.
+- **Why:** the user chose to make the layer real rather than keep or delete a
+  layer that added no protection; for keys, the stricter side.
+- **CLI check:** none applies — the Keychain and enclave are platform storage;
+  the CLI's file secret store is unchanged. `SecureSeedStoreTests` checks the
+  stored shape and round trips; the device branch compiles for `generic/platform=iOS`.
+
+### Smaller removals
+
+- The `providerState` reset scope is removed: core cleared nothing for it and
+  Swift cleared `URLCache`/cookies/credentials that nothing uses (all network
+  traffic is core's). `settings reset --scope providerState` is now rejected.
+- `CoreSeedDerivationPaths.is_custom_enabled` is removed: it was stored and
+  never read. `normalized_send_address` is no longer exported (no caller).
+- The chain catalog's `category` is a typed `ChainCategory`; a misspelt section
+  fails at load instead of dropping the chain from the picker.
+- The recipient activity check runs beside the send preview under one request
+  token instead of before it; the preview no longer waits on it.
+- The Tor status poll runs only while Tor is enabled or winding down.
+- Dead Swift code removed: the wrapper debounce (`DebouncedAction`), the
+  maintenance-plan wrapper, unused formatter/flags/wrappers, the duplicated
+  edit-mode flag, and the Swift copy of the history filter enum. The two
+  byte-identical Keychain store types are one `SealedSigningStore`; the seed
+  envelope and its Keychain services are unchanged.
+
+### One localized string table
+
+- **Before:** two localization systems: `RuntimeStrings.<locale>.json` looked up
+  through a manifest plus an `.lproj` fallback that no bundle had, and six
+  `*Content.<locale>.json` files decoded into structs. Donation addresses were
+  copied into each locale's file.
+- **After:** `RuntimeStrings.<locale>.json` is the only localized copy; screen
+  copy structs are typed names for `namespace.key` entries. Donation addresses
+  live once in `resources/Donations.json`, titled by chain name, and a test
+  checks each is a valid address for its chain. `scripts/unused-strings.sh`
+  now also checks dotted keys, both ways; it removed 21 strings nothing read.
+- **Why:** one table per language, and funds destinations written once.
+- **CLI check:** `scripts/unused-strings.sh`; `PresentationCatalogTests`.
+
+- **Verification:** `make verify` passed: rustfmt/clippy, 844 core tests plus
+  the transport test, 444 offline CLI checks and 133 iPhone simulator tests,
+  including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+
 ## 2026-09-24 — The CLI's live portfolio and spot price are core's valuation
 
 - **Before:** `spectra portfolio` fetched each wallet's native balance and a USD

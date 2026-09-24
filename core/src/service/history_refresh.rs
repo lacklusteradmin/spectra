@@ -111,10 +111,8 @@ fn record_for(
     entry: crate::fetch::history_decode::NormalizedHistoryItem,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: entry.deployment_id.or_else(|| {
-            (entry.symbol == target.network.coin_symbol())
-                .then(|| target.network.entry().native_deployment_id.clone())
-        }),
+        // The feed names every row's deployment; the ticker is display text.
+        deployment_id: entry.deployment_id,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(target.wallet_id.clone()),
         kind: entry.kind,
@@ -634,7 +632,7 @@ fn aggregated_record(
     aggregate: crate::fetch::history_decode::AggregatedTransaction,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: crate::tokens::history_deployment(chain, None),
+        deployment_id: crate::tokens::deployment_id_for(chain, None),
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet_id.to_string()),
         kind: aggregate.kind,

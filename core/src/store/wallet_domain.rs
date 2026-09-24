@@ -282,7 +282,6 @@ impl Drop for SensitiveOverrides {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreSeedDerivationPaths {
-    pub is_custom_enabled: bool,
     /// Concrete network ID → derivation path. Mainnet and testnet overrides
     /// are independent, even when their default paths happen to match.
     pub by_chain: HashMap<String, String>,

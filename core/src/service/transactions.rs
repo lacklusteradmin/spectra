@@ -297,7 +297,7 @@ impl WalletService {
         // Keep tracker changes and the database commit ordered, including when
         // the caller cancels while the blocking transaction is running.
         let mut tracker_guard = self.status_trackers.clone().write_owned().await;
-        tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let changes = tokio::task::spawn_blocking(move || -> Result<_, String> {
             let mut next_trackers = tracker_guard.clone();
             let changes = crate::wallet_db::history_update_chain(&database, &chain_id, |rows| {
                 let stored: Vec<_> = rows
@@ -424,8 +424,9 @@ impl WalletService {
             Ok(changes)
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+        self.record_status_changes(&changes).await;
+        Ok(changes)
     }
 
     /// Stored transactions for one wallet, newest first.
@@ -755,7 +756,6 @@ fn merge_history_rows(
             incoming_transactions: incoming,
             strategy: chain.transaction_merge_strategy(),
             chain_id: chain.str_id().into(),
-            include_symbol_in_identity: chain.merge_identity_includes_symbol(),
             preserve_created_at_sentinel_unix,
         },
     );

@@ -1,8 +1,59 @@
 //! Per-chain views of the shared durable diagnostic log.
 use super::*;
 impl WalletService {
-    /// Record something that happened on a chain. A test fixture: front ends
-    /// write their events through `apply_diagnostic_command`.
+    /// Record something core did. Core writes the events for work it performs —
+    /// status changes, broadcasts, rescans, self-tests, refresh failures — so
+    /// every front end, the CLI included, gets the same log. Front ends append
+    /// only what failed on their side of the boundary. English: the log is read
+    /// by whoever debugs it. Best effort: an unwritable log never fails the work.
+    pub(crate) async fn record_event(
+        &self,
+        level: DiagnosticLogLevel,
+        category: &str,
+        message: String,
+        chain_id: Option<String>,
+        transaction_hash: Option<String>,
+    ) {
+        let _ = self
+            .apply_diagnostic_command(DiagnosticCommand::Append {
+                input: DiagnosticLogInput {
+                    level,
+                    category: category.into(),
+                    message,
+                    chain_id,
+                    transaction_hash,
+                    wallet_id: None,
+                    source: Some("core".into()),
+                    metadata: None,
+                },
+            })
+            .await;
+    }
+
+    /// One line per transaction whose stored status a poll or recheck changed.
+    pub(crate) async fn record_status_changes(
+        &self,
+        changes: &[crate::store::TransactionStatusChange],
+    ) {
+        use crate::store::wallet_domain::CoreTransactionStatus as Status;
+        for change in changes.iter().filter(|c| c.status_changed) {
+            let (level, message) = match change.new_status {
+                Status::Confirmed => (DiagnosticLogLevel::Info, "Transaction confirmed on-chain."),
+                Status::Failed => (DiagnosticLogLevel::Error, "Transaction failed."),
+                Status::Pending => (DiagnosticLogLevel::Info, "Transaction is pending again."),
+            };
+            self.record_event(
+                level,
+                "Transaction Status",
+                message.into(),
+                Some(change.chain_id.clone()),
+                change.transaction_hash.clone(),
+            )
+            .await;
+        }
+    }
+
+    /// Record something that happened on a chain. A test fixture.
     #[cfg(test)]
     pub(crate) async fn append_chain_operational_event(
         &self,

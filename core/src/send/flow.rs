@@ -84,7 +84,7 @@ pub(crate) fn normalize_address(chain_id: &str, address: &str) -> String {
     }
 }
 
-#[uniffi::export]
+/// Internal: core normalizes wherever it resolves or binds a destination.
 pub fn normalized_send_address(chain_id: String, address: String) -> String {
     normalize_address(&chain_id, &address)
 }

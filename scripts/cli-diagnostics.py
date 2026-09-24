@@ -33,6 +33,14 @@ class DiagnosticsTests(unittest.TestCase):
             run('diagnostics','refresh','--intent',json.dumps({'afterSend':{'chain_id':'missing'}}),'--conditions',json.dumps(conditions),success=False)
             result = run('diagnostics','refresh','--intent',json.dumps({'deepRescan':{'chain_id':'bitcoin'}}),'--conditions',json.dumps(conditions))['refresh']
             assert result['failures'] and result['pending'] is None, 'offline rescan falsely succeeded'
+            # Core logs the work it performs; no front end appends these lines.
+            logs = run('diagnostics', 'state')['state']['logs']
+            rescans = [l['input'] for l in logs if l['input']['category'] == 'Rescan']
+            assert rescans and rescans[0]['source'] == 'core' and rescans[0]['chain_id'] == 'bitcoin', logs
+            assert any(l['input']['category'] == 'Refresh' for l in logs), logs
+            assert run('diagnostics', 'configured', '--chain', 'bitcoin')['ok']
+            logs = run('diagnostics', 'state')['state']['logs']
+            assert any(l['input']['category'] == 'Self-Tests' and l['input']['source'] == 'core' for l in logs), logs
             for chain in ['ethereum','missing']:
                 run('diagnostics','refresh','--intent',json.dumps({'deepRescan':{'chain_id':chain}}),'--conditions',json.dumps(conditions),success=False)
 

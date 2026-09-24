@@ -26,7 +26,7 @@ use tor_rtcompat::PreferredRuntime;
 // ── Public FFI types ─────────────────────────────────────────────────────────
 
 /// Tor lifecycle status surfaced to Swift via UniFFI.
-#[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum)]
 pub enum TorStatus {
     /// Tor is not running; HTTP goes direct.
     Stopped,
@@ -156,6 +156,9 @@ pub(crate) fn reconcile(
         }
     }
     *configuration = Some(desired);
+    drop(state);
+    drop(configuration);
+    publish_status();
 }
 
 fn stop_runtime(state: &mut TorInternalState) {
@@ -180,7 +183,30 @@ fn force_remote_dns(socks5_url: &str) -> String {
     }
 }
 
-/// Poll the current Tor state. Cheap — just reads an atomic.
+/// The last published status, for subscribers. Every change to `TOR_STATE` or
+/// the bootstrap percentage publishes, so a front end is told rather than
+/// polling.
+static STATUS: LazyLock<tokio::sync::watch::Sender<TorStatus>> =
+    LazyLock::new(|| tokio::sync::watch::channel(TorStatus::Stopped).0);
+
+/// Publish the current status if it changed. Call with `TOR_STATE` released.
+fn publish_status() {
+    let status = tor_status();
+    STATUS.send_if_modified(|current| {
+        let changed = *current != status;
+        if changed {
+            *current = status;
+        }
+        changed
+    });
+}
+
+/// Status changes as they happen, starting from the current one.
+pub(crate) fn subscribe_status() -> tokio::sync::watch::Receiver<TorStatus> {
+    STATUS.subscribe()
+}
+
+/// Read the current Tor state. Cheap — just reads an atomic.
 #[uniffi::export]
 pub fn tor_status() -> TorStatus {
     match &*TOR_STATE.lock() {
@@ -202,6 +228,11 @@ fn is_current_bootstrap(state: &TorInternalState, percent: &Arc<AtomicU8>) -> bo
 }
 
 async fn bootstrap_tor(data_dir: String, percent: Arc<AtomicU8>) {
+    finish_bootstrap(data_dir, percent).await;
+    publish_status();
+}
+
+async fn finish_bootstrap(data_dir: String, percent: Arc<AtomicU8>) {
     let result = async {
         let client = try_bootstrap(&data_dir, &percent).await?;
         // Bind before publishing Ready; use a free port to avoid collisions
@@ -251,6 +282,7 @@ async fn try_bootstrap(
     let config = builder.build().map_err(|e| e.to_string())?;
 
     percent.store(5, Ordering::Relaxed);
+    publish_status();
 
     let client: TorClient<PreferredRuntime> = TorClient::builder()
         .config(config)
@@ -259,6 +291,7 @@ async fn try_bootstrap(
         .map_err(|e| e.to_string())?;
 
     percent.store(100, Ordering::Relaxed);
+    publish_status();
     Ok(client)
 }
 

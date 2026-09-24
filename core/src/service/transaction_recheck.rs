@@ -27,8 +27,29 @@ pub(super) fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<C
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Recheck one stored UTXO transaction even if automatic polling has stopped.
-    /// Failed reads leave both the saved status and its poll tracker untouched.
+    /// Failed reads leave both the saved status and its poll tracker untouched,
+    /// and are recorded in the operational log.
     pub async fn recheck_transaction_status(
+        &self,
+        transaction_id: String,
+    ) -> Result<TransactionStatusChange, SpectraBridgeError> {
+        let result = self.recheck_stored_status(transaction_id).await;
+        if let Err(error) = &result {
+            self.record_event(
+                crate::service::DiagnosticLogLevel::Error,
+                "Pending Transactions",
+                format!("Status recheck failed: {error}"),
+                None,
+                None,
+            )
+            .await;
+        }
+        result
+    }
+}
+
+impl WalletService {
+    async fn recheck_stored_status(
         &self,
         transaction_id: String,
     ) -> Result<TransactionStatusChange, SpectraBridgeError> {
@@ -147,6 +168,8 @@ impl WalletService {
             .write()
             .await
             .insert(change.id.clone(), tracker);
+        self.record_status_changes(std::slice::from_ref(&change))
+            .await;
         Ok(change)
     }
 }

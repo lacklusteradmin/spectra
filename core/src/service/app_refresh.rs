@@ -23,10 +23,114 @@ pub struct AppRefreshResult {
     pub price_alerts: Vec<crate::store::PriceAlertNotification>,
     /// A large portfolio movement this refresh revealed, to notify about.
     pub movement: Option<super::standalone::LargeMovementEvaluation>,
+    /// Stored transactions changed: a status or receipt, or new history. A
+    /// front end re-reads its transaction projection only when this is set.
+    pub transactions_changed: bool,
+    /// The diagnostic state changed: a log line, or a chain's health. A front
+    /// end re-reads diagnostics only when this is set.
+    pub diagnostics_changed: bool,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Run one refresh for `intent` and record what went wrong in the
+    /// operational log, so every caller — scheduled tick, user, CLI — logs alike.
     pub async fn refresh_app(
+        &self,
+        intent: AppRefreshIntent,
+        conditions: DeviceConditions,
+    ) -> Result<AppRefreshResult, SpectraBridgeError> {
+        let rescanned = match &intent {
+            AppRefreshIntent::DeepRescan { chain_id } => Some(chain_id.clone()),
+            _ => None,
+        };
+        let diagnostics_before = self.diagnostics_fingerprint().await;
+        let mut result = self.run_app_refresh(intent, conditions).await;
+        match &result {
+            Ok(result) => self.record_refresh_outcome(result, rescanned).await,
+            Err(error) => {
+                if let Some(chain_id) = rescanned {
+                    self.record_event(
+                        DiagnosticLogLevel::Error,
+                        "Rescan",
+                        format!("Deep rescan failed: {error}"),
+                        Some(chain_id),
+                        None,
+                    )
+                    .await;
+                }
+            }
+        }
+        if let Ok(result) = result.as_mut() {
+            result.diagnostics_changed = self.diagnostics_fingerprint().await != diagnostics_before;
+        }
+        result
+    }
+}
+
+impl WalletService {
+    /// Enough of the diagnostic state to tell whether a refresh changed it:
+    /// the newest log line and every chain's health.
+    async fn diagnostics_fingerprint(&self) -> String {
+        let state = self.wallet_state.read().await;
+        let diagnostics = &state.diagnostics;
+        let mut health: Vec<_> = diagnostics
+            .degraded
+            .iter()
+            .map(|(chain, reason)| format!("{chain}:{reason:?}"))
+            .chain(
+                diagnostics
+                    .last_good_unix
+                    .iter()
+                    .map(|(chain, at)| format!("{chain}@{at}")),
+            )
+            .collect();
+        health.sort();
+        let newest = diagnostics.logs.first().map(|log| log.id.as_str());
+        format!("{newest:?}|{}", health.join(","))
+    }
+
+    async fn record_refresh_outcome(&self, result: &AppRefreshResult, rescanned: Option<String>) {
+        for failure in &result.failures {
+            self.record_event(
+                DiagnosticLogLevel::Error,
+                "Refresh",
+                failure.clone(),
+                rescanned.clone(),
+                None,
+            )
+            .await;
+        }
+        for failure in result.pending.iter().flat_map(|p| &p.failures) {
+            self.record_event(
+                DiagnosticLogLevel::Error,
+                "Pending Transactions",
+                failure.message.clone(),
+                Some(failure.chain_id.clone()),
+                None,
+            )
+            .await;
+        }
+        if let Some(chain_id) = rescanned {
+            let (level, message) = if result.failures.is_empty() {
+                (
+                    DiagnosticLogLevel::Info,
+                    "Deep rescan completed.".to_string(),
+                )
+            } else {
+                (
+                    DiagnosticLogLevel::Warning,
+                    format!(
+                        "Deep rescan completed with {} failure(s).",
+                        result.failures.len()
+                    ),
+                )
+            };
+            self.record_event(level, "Rescan", message, Some(chain_id), None)
+                .await;
+        }
+    }
+
+    async fn run_app_refresh(
         &self,
         intent: AppRefreshIntent,
         conditions: DeviceConditions,
@@ -50,6 +154,8 @@ impl WalletService {
             poll_seconds: plan.poll_seconds,
             price_alerts: vec![],
             movement: None,
+            transactions_changed: false,
+            diagnostics_changed: false,
         };
         if !conditions.is_network_reachable {
             if deep_rescan {
@@ -94,6 +200,7 @@ impl WalletService {
         if poll {
             match self.refresh_pending_transactions().await {
                 Ok(pending) => {
+                    result.transactions_changed |= !pending.changes.is_empty();
                     if pending.failures.is_empty() {
                         self.record_refresh(RefreshKind::PendingTransactions).await;
                     }
@@ -143,6 +250,7 @@ impl WalletService {
                             result.failures.push(error);
                         }
                         if let Some(outcome) = row.outcome {
+                            result.transactions_changed |= outcome.added > 0 || outcome.updated > 0;
                             if outcome.wallets_failed > 0 {
                                 result.failures.push(format!(
                                     "{}: {} history reads failed",

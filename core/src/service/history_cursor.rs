@@ -8,7 +8,7 @@
 use super::*;
 
 /// Where the next history page for one (chain, wallet) starts.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HistoryCursor {
     /// Cursor chains (the UTXO family). `None` before the first fetch.
     pub next_cursor: Option<String>,
@@ -35,7 +35,6 @@ pub enum HistoryScope {
     All,
 }
 
-#[uniffi::export]
 impl WalletService {
     /// Where the next history fetch for this (chain, wallet) starts.
     pub fn history_cursor(&self, chain_id: String, wallet_id: String) -> HistoryCursor {
@@ -44,6 +43,25 @@ impl WalletService {
             next_page: self.history_pagination.page(&chain_id, &wallet_id),
             is_exhausted: self.history_pagination.is_exhausted(&chain_id, &wallet_id),
         }
+    }
+
+    /// Wallets whose family's history feed still has pages to fetch, for the
+    /// transaction snapshot. A front end asks nothing per wallet.
+    pub(crate) async fn wallets_with_more_history_now(&self) -> Vec<String> {
+        self.wallet_state
+            .read()
+            .await
+            .wallets
+            .iter()
+            .filter(|wallet| {
+                wallet.family().is_some_and(|family| {
+                    !self
+                        .history_pagination
+                        .is_exhausted(family.str_id(), &wallet.id)
+                })
+            })
+            .map(|wallet| wallet.id.clone())
+            .collect()
     }
 }
 

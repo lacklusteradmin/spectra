@@ -517,11 +517,16 @@ impl SolanaClient {
                 if owner != address {
                     continue;
                 }
-                let mint = post_entry
+                // The mint is the token's identity. A row without one names no
+                // asset, and is left out rather than filed under a guess.
+                let Some(mint) = post_entry
                     .get("mint")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                    .filter(|mint| !mint.is_empty())
+                    .map(str::to_string)
+                else {
+                    continue;
+                };
                 let acct_idx = post_entry
                     .get("accountIndex")
                     .and_then(|v| v.as_u64())

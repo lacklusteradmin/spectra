@@ -507,7 +507,9 @@ pub(crate) fn wallets_for_import(
                 name: planned.name.clone(),
                 chain_id: network.str_id().to_string(),
                 addresses: planned.addresses.by_slot.clone(),
-                bitcoin_xpub: if planned.chain_id == crate::registry::Chain::Bitcoin.str_id() {
+                bitcoin_xpub: if crate::registry::Chain::from_str_id(&planned.chain_id)
+                    .is_some_and(|chain| chain.accepts_account_xpub())
+                {
                     planned.addresses.bitcoin_xpub.clone()
                 } else {
                     None
@@ -721,7 +723,7 @@ fn addresses_for_chain(chain_id: &str, addresses: &WalletImportAddresses) -> Wal
 
     WalletImportAddresses {
         by_slot,
-        bitcoin_xpub: if chain == Chain::Bitcoin {
+        bitcoin_xpub: if chain.accepts_account_xpub() {
             addresses.bitcoin_xpub.clone()
         } else {
             None

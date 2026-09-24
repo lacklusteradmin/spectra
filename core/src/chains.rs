@@ -17,6 +17,19 @@ static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 /// name in a TOML file drew in the wrong colour and nothing failed. Per-chain
 /// presentation facts belong to the catalog; this makes the catalog's the only
 /// spelling, checked when the file is parsed, and the app's switch exhaustive.
+/// The setup picker's section for a chain. A display grouping only: it never
+/// decides a protocol capability (`is_evm` is the registry's). Parsed from the
+/// catalog, so a misspelt section fails when the file loads rather than
+/// dropping the chain from the picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChainCategory {
+    BitcoinFamily,
+    EvmL1,
+    EvmL2,
+    Other,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
 pub enum CatalogColor {
@@ -67,7 +80,7 @@ struct TomlUiFile {
 struct TomlChainUi {
     chain_id: String,
     search_keywords: Vec<String>,
-    category: String,
+    category: ChainCategory,
     /// Position in the setup picker's short list, or absent.
     #[serde(default)]
     popular_rank: Option<u8>,
@@ -144,7 +157,7 @@ pub struct ChainEntry {
     pub address_prefix_hint: String,
     pub gas_token_symbol: String,
     pub search_keywords: Vec<String>,
-    pub category: String,
+    pub category: ChainCategory,
     /// Where this chain sits in the setup picker's short list, or `None` for
     /// the chains that reach it only through "browse all".
     ///
@@ -405,8 +418,12 @@ mod explicit_network_catalog {
         for (actual, expected) in catalog.iter().zip(CATALOG.iter()) {
             assert_eq!(actual.is_evm, expected.is_evm, "{}", actual.id);
         }
-        assert!(catalog.iter().any(|c| c.is_evm && c.category == "other"));
-        assert!(catalog.iter().any(|c| !c.is_evm && c.category == "evm-l1"));
+        assert!(catalog
+            .iter()
+            .any(|c| c.is_evm && c.category == ChainCategory::Other));
+        assert!(catalog
+            .iter()
+            .any(|c| !c.is_evm && c.category == ChainCategory::EvmL1));
     }
 
     #[test]
@@ -476,10 +493,13 @@ mod explicit_network_catalog {
                 &main.native_asset_display_name,
                 &net.native_asset_display_name,
             ),
-            ("category", &main.category, &net.category),
         ] {
             assert_eq!(a, b, "{field} did not carry through to the network");
         }
+        assert_eq!(
+            main.category, net.category,
+            "category did not carry through to the network"
+        );
         assert_eq!(
             main.color, net.color,
             "color did not carry through to the network"

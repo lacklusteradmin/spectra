@@ -1,14 +1,14 @@
-//! `BalanceRefreshEngine` is the one subsystem where Rust already owns the
-//! loop; this is the second `BalanceObserver` it has ever had.
-//!
-//! One sweep, awaited — `trigger_immediate` spawns and returns, which suits an
-//! app and abandons the work of a process about to exit.
+//! `RefreshEngine` owns the app's refresh loops; the CLI reports no device
+//! conditions, so it runs none of them and asks for one sweep, awaited —
+//! `trigger_immediate` spawns and returns, which suits an app and abandons the
+//! work of a process about to exit.
 
 use std::sync::{Arc, Mutex};
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::fetch::refresh_engine::{BalanceObserver, BalanceRefreshEngine};
+use spectra_core::fetch::refresh_engine::{RefreshEngine, RefreshObserver};
+use spectra_core::service::app_refresh::AppRefreshResult;
 use spectra_core::service::ChainEndpoints;
 use spectra_core::store::state::WalletState;
 
@@ -37,7 +37,7 @@ struct Collected {
 
 struct Collector(Mutex<Collected>);
 
-impl BalanceObserver for Collector {
+impl RefreshObserver for Collector {
     fn on_balance_updated(
         &self,
         _chain_id: String,
@@ -53,6 +53,12 @@ impl BalanceObserver for Collector {
         state.errors = errors;
         state.complete = true;
     }
+
+    /// Never called: the CLI reports no device conditions.
+    fn on_refresh_complete(&self, _result: AppRefreshResult) {}
+
+    /// Never called, for the same reason.
+    fn on_tor_status_changed(&self, _status: spectra_core::tor::TorStatus) {}
 }
 
 pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
@@ -93,7 +99,7 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
             .map_err(CliError::from)?;
     }
 
-    let engine = BalanceRefreshEngine::new(service);
+    let engine = RefreshEngine::new(service);
     let collector = Arc::new(Collector(Mutex::new(Collected::default())));
     engine.set_observer(collector.clone());
     // Core builds refresh entries from its wallets and their networks.

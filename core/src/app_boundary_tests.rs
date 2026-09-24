@@ -16,7 +16,6 @@ fn reset_scopes_do_not_expand_to_unrelated_data() {
     use store::state::ResetScope;
     let wallets = store::reset_dispatch(vec![ResetScope::WalletsAndSecrets]);
     assert!(wallets.reset_wallets_and_secrets && wallets.reset_history_and_cache);
-    assert!(wallets.clear_network_and_transport_caches);
     assert!(!wallets.reset_alerts_and_contacts && !wallets.reset_settings_and_endpoints);
     let settings = store::reset_dispatch(vec![ResetScope::SettingsAndEndpoints]);
     assert!(settings.reset_settings_and_endpoints);

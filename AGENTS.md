@@ -83,8 +83,8 @@ including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
 
 `resources/` is the app target's synchronized group, and Xcode copies such a
 group in **flat**: every file under it lands at the bundle's resource root,
-whatever directory it sat in. `resources/strings/CommonContent.en.json` ships
-as `CommonContent.en.json`.
+whatever directory it sat in. `resources/strings/RuntimeStrings.en.json` ships
+as `RuntimeStrings.en.json`.
 
 Two rules follow, and both have already been broken once:
 
@@ -92,7 +92,7 @@ Two rules follow, and both have already been broken once:
   ships, read or not. Build-time inputs go elsewhere — icon sources in
   `icons/`, the translator glossary in `docs/LocalizationGlossary.json`.
 - **The file name is the only disambiguator.** Keep `resources/` flat, and put
-  the locale in the name (`CommonContent.zh-Hans.json`). Per-locale
+  the locale in the name (`RuntimeStrings.zh-Hans.json`). Per-locale
   subdirectories look like they separate files and do not: drop the suffix
   trusting the directory and the files silently overwrite each other in the
   bundle.

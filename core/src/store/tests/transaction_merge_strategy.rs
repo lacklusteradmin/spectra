@@ -35,19 +35,6 @@ fn history_protocols_select_their_merge_semantics() {
 }
 
 #[test]
-fn only_tron_keys_its_merge_identity_on_symbol() {
-    for chain in Chain::all() {
-        let expected = matches!(chain.str_id(), "tron" | "tron-nile");
-        assert_eq!(
-            chain.merge_identity_includes_symbol(),
-            expected,
-            "{}",
-            chain.str_id()
-        );
-    }
-}
-
-#[test]
 fn a_testnet_merges_the_same_way_as_its_mainnet() {
     for chain in Chain::all() {
         let mainnet = chain.mainnet_counterpart();

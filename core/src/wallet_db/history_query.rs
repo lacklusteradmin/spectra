@@ -216,6 +216,7 @@ pub(crate) fn history_snapshot(
             replaceable,
             earliest,
             total_count,
+            wallets_with_more_history: Vec::new(),
         })
     })
 }

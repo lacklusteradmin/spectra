@@ -827,6 +827,12 @@ contains "addressed to its contract, not the recipient" \
     spectra --json send assemble --chain Arbitrum --from $EVM_ADDR --to $EVM_ADDR \
         --amount 100 --symbol ARB \
         --contract 0x912ce59144191c1204e64559fe8253a0e49e6548 --decimals 18
+# The asset is its contract, not its ticker: a token calling itself ETH is
+# still an ERC-20 transfer to that contract, never a value transfer of ETH.
+contains "a borrowed gas ticker does not make a token native" '"isNative":false' \
+    spectra --json send assemble --chain Ethereum --from $EVM_ADDR --to $EVM_ADDR \
+        --amount 1 --symbol ETH \
+        --contract 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 --decimals 6
 check "refuses a malformed sender"          $REJECTED \
     spectra send assemble --chain Base --from nothex --to $EVM_ADDR --amount 1
 check "refuses a malformed recipient"       $REJECTED \
@@ -1298,6 +1304,7 @@ check "dashboard reset restores defaults explicitly" $OK closure_spectra setting
 contains "reset pins bitcoin again" '"is_pinned":true' closure_spectra --json portfolio --pin-options
 contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
 check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
+check "provider state is no longer a reset scope" $REJECTED closure_spectra settings reset --scope providerState --yes
 check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111
 contains "receive falls back to the stored address on an account chain" \
     '0x1111111111111111111111111111111111111111' closure_spectra --json wallet receive "Closure Watch"

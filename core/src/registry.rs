@@ -946,14 +946,6 @@ impl Chain {
         }
     }
 
-    /// Whether the merge identity for this chain includes the asset symbol.
-    ///
-    /// Tron carries multiple assets on one transaction hash, so hash alone is
-    /// not a unique key there.
-    pub fn merge_identity_includes_symbol(self) -> bool {
-        matches!(self.mainnet_counterpart(), Chain::Tron)
-    }
-
     /// Encode a discovered public child using this chain's supported address format.
     pub(crate) fn encode_discovery_address(
         self,
@@ -1143,6 +1135,14 @@ impl Chain {
             Chain::DashTestnet => "dashTestnet",
             Chain::Bittensor => "bittensor",
         }
+    }
+
+    /// `true` when a watch-only or seed import can carry an account extended
+    /// public key for this chain, which stands in for the whole account and
+    /// makes one wallet rather than one per address. Bitcoin only: the xpub
+    /// prefixes and HD discovery behind it are Bitcoin's.
+    pub fn accepts_account_xpub(self) -> bool {
+        self == Chain::Bitcoin
     }
 
     /// `true` when a wallet on this chain can be imported watch-only from an
@@ -1496,6 +1496,13 @@ mod tests {
     /// read, and Monero must stay excluded.
     #[test]
     fn watch_only_support_excludes_monero_and_testnets() {
+        assert_eq!(
+            Chain::all()
+                .filter(|c| c.accepts_account_xpub())
+                .collect::<Vec<_>>(),
+            vec![Chain::Bitcoin],
+            "only Bitcoin's import carries an account xpub"
+        );
         assert!(!Chain::Monero.supports_watch_only_import());
         assert!(!Chain::BitcoinTestnet.supports_watch_only_import());
         assert!(Chain::Bitcoin.supports_watch_only_import());
@@ -1713,6 +1720,8 @@ pub struct ChainIdentity {
     pub supports_deep_utxo_discovery: bool,
     /// A watch-only import can carry addresses for this chain.
     pub supports_watch_only_import: bool,
+    /// An import can carry an account xpub for this chain.
+    pub accepts_account_xpub: bool,
     /// A private key alone yields an address on this chain.
     ///
     /// Was `core_supported_private_key_chain_names`, an export whose whole
@@ -1753,6 +1762,7 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             address_validation_kind: chain.address_validation_kind().to_string(),
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
             supports_watch_only_import: chain.supports_watch_only_import(),
+            accepts_account_xpub: chain.accepts_account_xpub(),
             derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),

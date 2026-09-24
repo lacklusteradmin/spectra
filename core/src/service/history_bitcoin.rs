@@ -304,7 +304,7 @@ fn bitcoin_record(
     snapshot: crate::fetch::history::CoreBitcoinHistorySnapshot,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: crate::tokens::history_deployment(chain, None),
+        deployment_id: crate::tokens::deployment_id_for(chain, None),
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet.id.clone()),
         kind: snapshot.kind,

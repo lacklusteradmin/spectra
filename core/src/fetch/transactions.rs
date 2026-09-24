@@ -121,8 +121,6 @@ pub struct TransactionMergeRequest {
     pub incoming_transactions: Vec<CoreTransactionRecord>,
     pub strategy: TransactionMergeStrategy,
     pub chain_id: String,
-    #[serde(default)]
-    pub include_symbol_in_identity: bool,
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
 
@@ -238,7 +236,6 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
         incoming_transactions,
         strategy,
         chain_id,
-        include_symbol_in_identity,
         preserve_created_at_sentinel_unix,
     } = request;
     let mut merged_transactions = existing_transactions;
@@ -266,13 +263,7 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
         let candidates = index.get(&bucket_key(&incoming));
         let existing_index = candidates.and_then(|indices| {
             indices.iter().copied().find(|&i| {
-                matches_identity(
-                    &merged_transactions[i],
-                    &incoming,
-                    &strategy,
-                    &chain_id,
-                    include_symbol_in_identity,
-                )
+                matches_identity(&merged_transactions[i], &incoming, &strategy, &chain_id)
             })
         });
 
@@ -338,8 +329,10 @@ fn matches_identity(
     incoming: &CoreTransactionRecord,
     strategy: &TransactionMergeStrategy,
     chain_id: &str,
-    include_symbol_in_identity: bool,
 ) -> bool {
+    // The asset is its deployment — chain, standard and contract — never its
+    // ticker: two tokens may share a symbol, and a transaction can move
+    // several assets under one hash.
     if existing.deployment_id != incoming.deployment_id {
         return false;
     }
@@ -356,14 +349,11 @@ fn matches_identity(
             existing.wallet_id == incoming.wallet_id && incoming.wallet_id.is_some()
         }
         TransactionMergeStrategy::AccountBased => {
-            existing.wallet_id == incoming.wallet_id
-                && incoming.wallet_id.is_some()
-                && (!include_symbol_in_identity || existing.symbol == incoming.symbol)
+            existing.wallet_id == incoming.wallet_id && incoming.wallet_id.is_some()
         }
         TransactionMergeStrategy::Evm => {
             existing.wallet_id == incoming.wallet_id
                 && incoming.wallet_id.is_some()
-                && existing.symbol == incoming.symbol
                 && normalize_evm_address(&existing.address)
                     == normalize_evm_address(&incoming.address)
                 && crate::decimal::compare(&existing.amount, &incoming.amount)
@@ -696,7 +686,6 @@ mod tests {
             incoming_transactions: vec![incoming],
             strategy: TransactionMergeStrategy::StandardUtxo,
             chain_id: "bitcoin".to_string(),
-            include_symbol_in_identity: false,
             preserve_created_at_sentinel_unix: None,
         });
 
@@ -726,9 +715,52 @@ mod tests {
         assert_eq!(record.created_at_unix, 500.0);
     }
 
+    /// Assets are told apart by deployment, never by ticker. A token that
+    /// calls itself USDT on another contract, moved in the same transaction
+    /// as the real one, stays its own row on every strategy; the same
+    /// deployment seen again merges.
+    #[test]
+    fn a_shared_ticker_on_another_contract_is_another_asset() {
+        for (chain, strategy) in [
+            ("tron", TransactionMergeStrategy::AccountBased),
+            ("ethereum", TransactionMergeStrategy::Evm),
+        ] {
+            let record = |id: &str, contract: &str| {
+                let mut record = sample_transaction(chain);
+                record.id = id.to_string();
+                record.symbol = "USDT".to_string();
+                record.deployment_id = Some(format!("{chain}:token:{contract}"));
+                record
+            };
+            let merged = merge_transactions(TransactionMergeRequest {
+                existing_transactions: vec![record("real", "0xreal")],
+                incoming_transactions: vec![
+                    record("imposter", "0ximposter"),
+                    record("again", "0xreal"),
+                ],
+                strategy,
+                chain_id: chain.to_string(),
+                preserve_created_at_sentinel_unix: None,
+            });
+            let mut contracts: Vec<_> = merged
+                .iter()
+                .filter_map(|r| r.deployment_id.clone())
+                .collect();
+            contracts.sort();
+            assert_eq!(
+                contracts,
+                vec![
+                    format!("{chain}:token:0ximposter"),
+                    format!("{chain}:token:0xreal")
+                ],
+                "{chain}: one row per deployment"
+            );
+        }
+    }
+
     /// Two existing records share `matches_identity`'s coarse key — same
-    /// chain, hash, kind and wallet — and only the finer EVM-strategy check
-    /// (symbol, address, amount) tells them apart. An incoming record must
+    /// chain, hash, kind and wallet — and only the finer check (deployment,
+    /// address, amount) tells them apart. An incoming record must
     /// still find *its* match and leave the other one alone.
     ///
     /// This is the case the bucketed index has to get right: bucketing on the
@@ -738,21 +770,24 @@ mod tests {
     fn a_bucket_collision_still_matches_the_right_record() {
         let mut usdc = sample_transaction("ethereum");
         usdc.id = "tx-usdc".to_string();
+        usdc.deployment_id = Some("ethereum:erc-20:0xusdc".to_string());
         usdc.symbol = "USDC".to_string();
         usdc.amount = "100".into();
         usdc.address = "0xAAAA".to_string();
 
         let mut usdt = sample_transaction("ethereum");
         usdt.id = "tx-usdt".to_string();
+        usdt.deployment_id = Some("ethereum:erc-20:0xusdt".to_string());
         usdt.symbol = "USDT".to_string();
         usdt.amount = "50".into();
         usdt.address = "0xBBBB".to_string();
         // Same chain, hash, kind, wallet as `usdc` — same bucket key.
-        // Different symbol/address/amount is the only thing that
+        // Different deployment/address/amount is the only thing that
         // distinguishes them under the Evm strategy.
 
         let mut incoming = sample_transaction("ethereum");
         incoming.id = "tx-usdt-incoming".to_string();
+        incoming.deployment_id = Some("ethereum:erc-20:0xusdt".to_string());
         incoming.symbol = "USDT".to_string();
         incoming.amount = "50".into();
         incoming.address = "0xBBBB".to_string();
@@ -763,7 +798,6 @@ mod tests {
             incoming_transactions: vec![incoming],
             strategy: TransactionMergeStrategy::Evm,
             chain_id: "ethereum".to_string(),
-            include_symbol_in_identity: true,
             preserve_created_at_sentinel_unix: None,
         });
 
@@ -819,7 +853,6 @@ mod tests {
             incoming_transactions: vec![incoming],
             strategy: TransactionMergeStrategy::Evm,
             chain_id: "ethereum".to_string(),
-            include_symbol_in_identity: false,
             preserve_created_at_sentinel_unix: Some(-999_999.0),
         });
 

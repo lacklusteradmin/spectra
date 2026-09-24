@@ -122,28 +122,23 @@ pub struct CoreResetPlan {
     pub reset_alerts_and_contacts: bool,
     pub reset_settings_and_endpoints: bool,
     pub reset_dashboard_customization: bool,
-    pub reset_provider_state: bool,
-    pub clear_network_and_transport_caches: bool,
 }
 
 /// Which sub-resets a set of user-chosen scopes implies.
 ///
 /// Core applies the domain resets; the returned scope expansion also tells
-/// the platform which local caches and preferences to clear.
+/// the platform which of its own flows and preferences to clear.
 pub fn reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
     use state::ResetScope;
     let has = |scope: ResetScope| scopes.contains(&scope);
     let wallets_and_secrets = has(ResetScope::WalletsAndSecrets);
-    let history_and_cache_direct = has(ResetScope::HistoryAndCache);
-    let history_and_cache = wallets_and_secrets || history_and_cache_direct;
+    let history_and_cache = wallets_and_secrets || has(ResetScope::HistoryAndCache);
     CoreResetPlan {
         reset_wallets_and_secrets: wallets_and_secrets,
         reset_history_and_cache: history_and_cache,
         reset_alerts_and_contacts: has(ResetScope::AlertsAndContacts),
         reset_settings_and_endpoints: has(ResetScope::SettingsAndEndpoints),
         reset_dashboard_customization: has(ResetScope::DashboardCustomization),
-        reset_provider_state: has(ResetScope::ProviderState),
-        clear_network_and_transport_caches: wallets_and_secrets || history_and_cache_direct,
     }
 }
 

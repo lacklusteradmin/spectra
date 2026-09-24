@@ -50,6 +50,9 @@ pub struct TransactionSnapshot {
     pub replaceable: Vec<super::history_derived::ReplaceableSend>,
     pub earliest: Vec<crate::store::WalletEarliestTransactionDate>,
     pub total_count: u64,
+    /// Wallets whose chain history has pages not yet fetched. A front end
+    /// offers "load more" for these and asks nothing per wallet.
+    pub wallets_with_more_history: Vec<String>,
 }
 
 /// One end of a stored transfer, and whether it is the wallet's own address.
@@ -156,6 +159,7 @@ impl WalletService {
     }
     pub async fn transaction_snapshot(&self) -> Result<TransactionSnapshot, SpectraBridgeError> {
         let database = self.bound_database().await?;
+        let more = self.wallets_with_more_history_now().await;
         let sequence = self.projection_sequence.clone();
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::history_snapshot(&database, &sequence)
@@ -170,7 +174,11 @@ impl WalletService {
                 .collect();
             snapshot
         })
-        .map_err(Into::into)
+        .map_err(SpectraBridgeError::from)
+        .map(|mut snapshot| {
+            snapshot.wallets_with_more_history = more;
+            snapshot
+        })
     }
     pub async fn transaction(
         &self,

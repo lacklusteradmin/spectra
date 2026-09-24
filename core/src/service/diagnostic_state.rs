@@ -271,6 +271,29 @@ impl WalletService {
         } else {
             None
         };
+        let failed = results.iter().filter(|r| !r.passed).count();
+        let (level, message) = if failed == 0 {
+            (
+                DiagnosticLogLevel::Info,
+                format!("Self-tests passed ({} checks).", results.len()),
+            )
+        } else {
+            (
+                DiagnosticLogLevel::Warning,
+                format!(
+                    "Self-tests completed with {failed} failure(s) of {} checks.",
+                    results.len()
+                ),
+            )
+        };
+        self.record_event(
+            level,
+            "Self-Tests",
+            message,
+            Some(chain.str_id().into()),
+            None,
+        )
+        .await;
         Ok(ConfiguredSelfTestReport {
             chain_id: chain.str_id().into(),
             rpc_endpoint,

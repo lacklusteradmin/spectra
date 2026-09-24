@@ -1084,7 +1084,8 @@ pub struct AssembleArgs {
     /// Amount, in whole units of the asset being sent.
     #[arg(long)]
     amount: String,
-    /// Asset to send. Defaults to what the chain pays fees in.
+    /// Ticker to print. Display only: the asset is `--contract`, or the gas
+    /// asset without one.
     #[arg(long)]
     symbol: Option<String>,
     /// ERC-20 contract, when sending a token rather than the gas asset.
@@ -1597,9 +1598,13 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
         (None, None) => None,
     };
 
+    // The asset is its deployment: the contract's on this chain, or the gas
+    // asset's when there is none. The ticker only labels the output.
+    let deployment_id = spectra_core::tokens::deployment_id_for(chain, args.contract.as_deref())
+        .ok_or_else(|| CliError::rejected("the contract is not valid on this chain"))?;
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
         chain_id: chain.str_id().to_string(),
-        symbol: symbol.clone(),
+        deployment_id,
         from_address: args.from.clone(),
         resolved_destination: args.to.clone(),
         amount,

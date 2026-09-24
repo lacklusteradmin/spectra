@@ -310,8 +310,30 @@ impl WalletService {
                     attempt.detail = error.to_string();
                 }
             }
+            let (level, message) = if attempt.outcome == SubmissionOutcome::Accepted {
+                (
+                    crate::service::DiagnosticLogLevel::Info,
+                    format!("Broadcast accepted by {}.", attempt.endpoint),
+                )
+            } else {
+                (
+                    crate::service::DiagnosticLogLevel::Warning,
+                    format!(
+                        "Broadcast to {} uncertain: {}",
+                        attempt.endpoint, attempt.detail
+                    ),
+                )
+            };
             stored.view.revision += 1;
             self.save_send_artifact(&stored, Vec::new()).await?;
+            self.record_event(
+                level,
+                "Broadcast",
+                message,
+                Some(chain.str_id().into()),
+                submission.transaction_hash.clone(),
+            )
+            .await;
         }
         if let Some(accepted) = stored
             .view

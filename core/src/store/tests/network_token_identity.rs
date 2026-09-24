@@ -97,7 +97,11 @@ fn a_contract_called_eth_is_encoded_as_erc20() {
     let contract = "0x1111111111111111111111111111111111111111";
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
         chain_id: "ethereum".into(),
-        symbol: "ETH".into(),
+        deployment_id: crate::tokens::deployment_id_for(
+            crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
+            Some(&String::from(contract)),
+        )
+        .unwrap(),
         from_address: "0x2222222222222222222222222222222222222222".into(),
         resolved_destination: "0x3333333333333333333333333333333333333333".into(),
         amount: "1".into(),

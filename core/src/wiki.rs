@@ -7,21 +7,22 @@ use std::sync::LazyLock;
 
 static CRYPTO_WIKI_TOML: &str = include_str!("../data/crypto-wiki.toml");
 
-/// The wiki file: one row per coin, keyed by the coin's own symbol.
+/// The wiki file: one row per coin, keyed by the catalog's token id.
 #[derive(Debug, Deserialize)]
 struct TomlAssetWikiFile {
     assets: Vec<TomlWikiAsset>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TomlWikiAsset {
-    asset: String,
+    token_id: String,
     comment: String,
     #[serde(default)]
     total_circulation_model: String,
 }
 
-/// The prose, keyed by coin symbol.
+/// The prose, keyed by token id.
 static PROSE: LazyLock<Vec<TomlWikiAsset>> = LazyLock::new(|| {
     let parsed: TomlAssetWikiFile = toml::from_str(CRYPTO_WIKI_TOML)
         .expect("crypto-wiki.toml is embedded at compile time and must be valid TOML");
@@ -29,10 +30,11 @@ static PROSE: LazyLock<Vec<TomlWikiAsset>> = LazyLock::new(|| {
 });
 
 /// What the file says about a coin: its description and its supply model.
-fn prose_for(symbol: &str) -> (&'static str, &'static str) {
+/// Looked up by identity; a ticker is display text and two coins may share one.
+fn prose_for(token_id: &str) -> (&'static str, &'static str) {
     PROSE
         .iter()
-        .find(|a| a.asset == symbol)
+        .find(|a| a.token_id == token_id)
         .map(|a| (a.comment.as_str(), a.total_circulation_model.as_str()))
         .unwrap_or_default()
 }
@@ -135,7 +137,7 @@ fn build() -> Vec<AssetWikiEntry> {
                 }
             })
         });
-        let (comment, circulation) = prose_for(&entry.symbol);
+        let (comment, circulation) = prose_for(&entry.token_id);
         entry.comment = comment.to_string();
         entry.total_circulation_model = circulation.to_string();
     }
@@ -184,11 +186,11 @@ pub fn list_asset_wiki() -> Vec<AssetWikiEntry> {
 mod the_wiki_is_one_asset_table {
     use super::*;
 
-    fn asset(symbol: &str) -> &'static AssetWikiEntry {
+    fn asset(token_id: &str) -> &'static AssetWikiEntry {
         ASSETS
             .iter()
-            .find(|a| a.symbol == symbol)
-            .unwrap_or_else(|| panic!("{symbol} has no wiki row"))
+            .find(|a| a.token_id == token_id)
+            .unwrap_or_else(|| panic!("{token_id} has no wiki row"))
     }
 
     /// Every coin appears once, with prose, and nothing appears twice.
@@ -213,7 +215,7 @@ mod the_wiki_is_one_asset_table {
     /// about the networks, and no page about the coin.
     #[test]
     fn a_coin_native_to_ten_chains_is_one_row() {
-        let eth = asset("ETH");
+        let eth = asset("ethereum");
         assert_eq!(eth.lives_on.len(), 10);
         assert!(eth.lives_on.iter().all(|p| p.is_native));
         assert!(eth.lives_on.iter().all(|p| p.contract.is_empty()));
@@ -227,12 +229,11 @@ mod the_wiki_is_one_asset_table {
     /// A coin that is native on one chain and a contract on another is one
     /// row with both kinds of place.
     ///
-    /// CRO is the only one, and it only works because the two catalogs were
-    /// made to agree about its market-data id — they named it `crypto-com-chain`
-    /// and `cronos`, and priced it five hundred times apart.
+    /// CRO is the only one: the native coin and the ERC-20 share a token id,
+    /// which is what makes them one row.
     #[test]
     fn a_coin_can_be_native_here_and_a_contract_there() {
-        let cro = asset("CRO");
+        let cro = asset("crypto-com-chain");
         assert_eq!(cro.lives_on.len(), 2);
         assert!(cro.lives_on[0].is_native);
         assert_eq!(cro.lives_on[0].chain_id, "cronos");
@@ -245,7 +246,7 @@ mod the_wiki_is_one_asset_table {
     /// A token's places are its deployments, with the per-chain facts intact.
     #[test]
     fn a_token_lists_a_contract_per_chain() {
-        let usdc = asset("USDC");
+        let usdc = asset("usd-coin");
         assert_eq!(usdc.lives_on.len(), 13);
         assert!(usdc.lives_on.iter().all(|p| !p.is_native));
         assert!(usdc.lives_on.iter().all(|p| !p.contract.is_empty()));
@@ -265,14 +266,14 @@ mod the_wiki_is_one_asset_table {
     #[test]
     fn the_file_documents_no_coin_the_app_does_not_have() {
         let documented: std::collections::BTreeSet<&str> =
-            PROSE.iter().map(|a| a.asset.as_str()).collect();
+            PROSE.iter().map(|a| a.token_id.as_str()).collect();
         assert_eq!(
             documented.len(),
             PROSE.len(),
             "a coin has two rows in the file"
         );
         let held: std::collections::BTreeSet<&str> =
-            ASSETS.iter().map(|a| a.symbol.as_str()).collect();
+            ASSETS.iter().map(|a| a.token_id.as_str()).collect();
         assert_eq!(documented, held, "the file and the catalogs disagree");
     }
 

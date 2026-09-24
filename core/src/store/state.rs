@@ -349,17 +349,15 @@ pub enum ResetScope {
     AlertsAndContacts,
     SettingsAndEndpoints,
     DashboardCustomization,
-    ProviderState,
 }
 
 impl ResetScope {
-    pub const ALL: [ResetScope; 6] = [
+    pub const ALL: [ResetScope; 5] = [
         Self::WalletsAndSecrets,
         Self::HistoryAndCache,
         Self::AlertsAndContacts,
         Self::SettingsAndEndpoints,
         Self::DashboardCustomization,
-        Self::ProviderState,
     ];
 
     pub fn as_raw(self) -> &'static str {
@@ -369,7 +367,6 @@ impl ResetScope {
             Self::AlertsAndContacts => "alertsAndContacts",
             Self::SettingsAndEndpoints => "settingsAndEndpoints",
             Self::DashboardCustomization => "dashboardCustomization",
-            Self::ProviderState => "providerState",
         }
     }
 

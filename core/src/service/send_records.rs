@@ -36,7 +36,7 @@ impl WalletService {
                 .unwrap_or(chain.coin_symbol())
         });
         let deployment_id =
-            crate::tokens::history_deployment(chain, request.contract_address.as_deref())
+            crate::tokens::deployment_id_for(chain, request.contract_address.as_deref())
                 .ok_or("token identifier missing")?;
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,

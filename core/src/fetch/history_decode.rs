@@ -164,7 +164,7 @@ pub fn build_evm_transaction_records(
                 status: "confirmed".into(),
                 deployment_id: crate::registry::Chain::from_str_id(&request.chain_id).and_then(
                     |chain| {
-                        crate::tokens::history_deployment(chain, Some(&transfer.contract_address))
+                        crate::tokens::deployment_id_for(chain, Some(&transfer.contract_address))
                     },
                 ),
                 wallet_id: wallet.wallet_id.clone(),
@@ -201,7 +201,7 @@ pub fn build_evm_transaction_records(
             out.push(EvmHistoryTransactionRecord {
                 status: transfer.status.clone(),
                 deployment_id: crate::registry::Chain::from_str_id(&request.chain_id)
-                    .and_then(|chain| crate::tokens::history_deployment(chain, None)),
+                    .and_then(|chain| crate::tokens::deployment_id_for(chain, None)),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
