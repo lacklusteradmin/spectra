@@ -2,7 +2,7 @@ use super::*;
 use crate::service::{ChainEndpoints, StatusPollOutcome};
 use crate::store::wallet_domain::CoreTransactionStatus;
 use serde_json::json;
-use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
 fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecord {
     serde_json::from_value(json!({
@@ -126,33 +126,41 @@ async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
 async fn explicit_recheck_refuses_invalid_scope_before_network_or_tracker_mutation() {
     let server = MockServer::start().await;
     let (service, _) = service(Chain::Bitcoin, &server).await;
-    assert!(WalletService::new(vec![])
-        .unwrap()
-        .recheck_transaction_status("missing".into())
-        .await
-        .is_err());
-    assert!(service
-        .recheck_transaction_status("missing".into())
-        .await
-        .is_err());
+    assert!(
+        WalletService::new(vec![])
+            .unwrap()
+            .recheck_transaction_status("missing".into())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .recheck_transaction_status("missing".into())
+            .await
+            .is_err()
+    );
     for chain in [Chain::Ethereum, Chain::Bitcoin] {
         let mut row = record("target", chain, "pending");
         if chain == Chain::Bitcoin {
             row.transaction_hash = Some("  ".into());
         }
         save(&service, row).await;
-        assert!(service
-            .recheck_transaction_status("target".into())
-            .await
-            .is_err());
+        assert!(
+            service
+                .recheck_transaction_status("target".into())
+                .await
+                .is_err()
+        );
     }
     let mut row = record("target", Chain::Bitcoin, "pending");
     row.kind = crate::store::wallet_domain::CoreTransactionKind::Receive;
     save(&service, row).await;
-    assert!(service
-        .recheck_transaction_status("target".into())
-        .await
-        .is_err());
+    assert!(
+        service
+            .recheck_transaction_status("target".into())
+            .await
+            .is_err()
+    );
     row = record("receive", Chain::Litecoin, "failed");
     row.kind = crate::store::wallet_domain::CoreTransactionKind::Receive;
     assert!(recheck_chain(&row).is_ok());
@@ -179,10 +187,12 @@ async fn explicit_recheck_failed_or_mismatched_provider_preserves_saved_state() 
         let before = serde_json::to_value(service.transactions().await.unwrap()).unwrap();
         let tracker =
             serde_json::to_value(&service.status_trackers.read().await["target"]).unwrap();
-        assert!(service
-            .recheck_transaction_status("target".into())
-            .await
-            .is_err());
+        assert!(
+            service
+                .recheck_transaction_status("target".into())
+                .await
+                .is_err()
+        );
         assert_eq!(
             serde_json::to_value(service.transactions().await.unwrap()).unwrap(),
             before
@@ -279,16 +289,20 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
         service.transactions().await.unwrap()[0].confirmation_count,
         Some(1)
     );
-    assert!(service
-        .pending_maintenance_chains()
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(service
-        .poll_pending_transactions("dogecoin".into())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        service
+            .pending_maintenance_chains()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        service
+            .poll_pending_transactions("dogecoin".into())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let reopened = WalletService::new(vec![ChainEndpoints {
         capabilities: crate::app_core::ENDPOINT_CAPABILITIES
             .map(String::from)
@@ -298,17 +312,21 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
     }])
     .unwrap();
     reopened.open_state(path).await.unwrap();
-    assert!(reopened
-        .refresh_pending_transactions()
-        .await
-        .unwrap()
-        .chains
-        .is_empty());
-    assert!(reopened
-        .poll_pending_transactions("dogecoin".into())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        reopened
+            .refresh_pending_transactions()
+            .await
+            .unwrap()
+            .chains
+            .is_empty()
+    );
+    assert!(
+        reopened
+            .poll_pending_transactions("dogecoin".into())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     server.verify().await; // No second request, even after a new service starts.
     server.reset().await;
     Mock::given(any())
@@ -327,10 +345,12 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
         reopened.transactions().await.unwrap()[0].confirmation_count,
         Some(100001)
     );
-    assert!(reopened
-        .pending_maintenance_chains()
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        reopened
+            .pending_maintenance_chains()
+            .await
+            .unwrap()
+            .is_empty()
+    );
     server.verify().await;
 }

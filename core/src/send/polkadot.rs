@@ -10,7 +10,7 @@
 //! a schnorrkel `Keypair`, signs with `signing_context(b"substrate")`, and
 //! emits the result under `MultiSignature::Sr25519` (variant `0x01`).
 
-use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u128, scale_compact_u32};
+use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u32, scale_compact_u128};
 use serde_json::json;
 
 use crate::derivation::polkadot::decode_ss58;

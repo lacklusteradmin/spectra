@@ -1,7 +1,7 @@
 use super::*;
 use crate::send::payload::PreparedSubmission;
 use crate::send::stages::*;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 impl WalletService {
     pub(super) async fn prepare_staged_protocol(
@@ -294,7 +294,7 @@ impl WalletService {
                 .await?,
             ),
             Chain::Tron => {
-                use crate::send::tron::{prepare_transfer, Transfer};
+                use crate::send::tron::{Transfer, prepare_transfer};
                 let transfer = match request.contract_address.as_deref() {
                     Some(contract) => Transfer::Token {
                         contract,
@@ -563,7 +563,7 @@ impl WalletService {
                 (hex::encode(raw), "txid", Some(hash))
             }
             PreparedPayload::FixedUtxo { .. } => {
-                return self.sign_fixed_utxo(chain, stored, signer).await
+                return self.sign_fixed_utxo(chain, stored, signer).await;
             }
             PreparedPayload::Xrp {
                 sequence,

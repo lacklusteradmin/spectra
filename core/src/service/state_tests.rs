@@ -69,7 +69,10 @@ async fn failed_state_commit_does_not_publish_and_retry_persists() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let before = s.app_state().await;
-    sql(&db, "CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
+    sql(
+        &db,
+        "CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;",
+    );
     assert!(s.apply_state_command(currency("EUR")).await.is_err());
     assert_eq!(s.app_state().await, before);
     assert_eq!(
@@ -94,13 +97,14 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     s.open_state(db.clone()).await.unwrap();
     sql(&db, "CREATE TRIGGER reject_pool BEFORE INSERT ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;
         CREATE TRIGGER reject_address BEFORE INSERT ON wallet_owned_addresses BEGIN SELECT RAISE(FAIL, 'injected'); END;");
-    assert!(s
-        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
-        .await
-        .is_err());
+    assert!(
+        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+            .await
+            .is_err()
+    );
     assert!(s.keypool.read().await.is_empty());
-    assert!(s
-        .register_owned_address(
+    assert!(
+        s.register_owned_address(
             "w".into(),
             "bitcoin".into(),
             "address".into(),
@@ -109,7 +113,8 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
             None
         )
         .await
-        .is_err());
+        .is_err()
+    );
     assert!(s.keypool.read().await.owned_everywhere().next().is_none());
     sql(
         &db,
@@ -121,13 +126,17 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
             .unwrap(),
         1
     );
-    sql(&db, "CREATE TRIGGER reject_delete BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;");
-    assert!(s
-        .apply_state_command(StateCommand::SelectChainForFamily {
+    sql(
+        &db,
+        "CREATE TRIGGER reject_delete BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;",
+    );
+    assert!(
+        s.apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "bitcoin-testnet-4".into()
         })
         .await
-        .is_err());
+        .is_err()
+    );
     assert_eq!(
         s.keypool_state("w".into(), "bitcoin".into())
             .await
@@ -150,7 +159,10 @@ async fn failed_log_commit_does_not_publish() {
     )
     .await
     .unwrap();
-    sql(&db, "CREATE TRIGGER reject_log BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
+    sql(
+        &db,
+        "CREATE TRIGGER reject_log BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;",
+    );
     assert!(s.clear_operational_events(None).await.is_err());
     assert_eq!(s.operational_events("bitcoin".into()).await.len(), 1);
     let reopened = service();
@@ -252,7 +264,9 @@ async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
     })
     .await
     .unwrap();
-    sql(&db, "CREATE TABLE write_audit (name TEXT);\
+    sql(
+        &db,
+        "CREATE TABLE write_audit (name TEXT);\
         CREATE TRIGGER wallet_insert AFTER INSERT ON wallets BEGIN INSERT INTO write_audit VALUES ('wallet'); END;\
         CREATE TRIGGER wallet_update AFTER UPDATE ON wallets BEGIN INSERT INTO write_audit VALUES ('wallet'); END;\
         CREATE TRIGGER wallet_delete AFTER DELETE ON wallets BEGIN INSERT INTO write_audit VALUES ('wallet'); END;\
@@ -261,7 +275,8 @@ async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
         CREATE TRIGGER book_delete AFTER DELETE ON address_book BEGIN INSERT INTO write_audit VALUES ('book'); END;\
         CREATE TRIGGER meta_insert AFTER INSERT ON app_state_meta BEGIN INSERT INTO write_audit VALUES (NEW.key); END;\
         CREATE TRIGGER meta_update AFTER UPDATE ON app_state_meta BEGIN INSERT INTO write_audit VALUES (NEW.key); END;\
-        CREATE TRIGGER meta_delete AFTER DELETE ON app_state_meta BEGIN INSERT INTO write_audit VALUES (OLD.key); END;");
+        CREATE TRIGGER meta_delete AFTER DELETE ON app_state_meta BEGIN INSERT INTO write_audit VALUES (OLD.key); END;",
+    );
     s.apply_state_command(currency("EUR")).await.unwrap();
     s.apply_state_command(currency("EUR")).await.unwrap();
     let conn = rusqlite::Connection::open(&db).unwrap();
@@ -288,7 +303,10 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
         .reserve_receive_index("w".into(), "bitcoin".into(), 1)
         .await
         .unwrap();
-    sql(&db, "CREATE TABLE pool_writes (n INTEGER); CREATE TRIGGER audit_pool AFTER UPDATE ON wallet_keypool BEGIN INSERT INTO pool_writes VALUES (1); END;");
+    sql(
+        &db,
+        "CREATE TABLE pool_writes (n INTEGER); CREATE TRIGGER audit_pool AFTER UPDATE ON wallet_keypool BEGIN INSERT INTO pool_writes VALUES (1); END;",
+    );
     for _ in 0..3 {
         assert_eq!(
             s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
@@ -345,18 +363,21 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
     let before = s.keypool.read().await.indices().clone();
     sql(&db, "DROP TABLE history_records;");
     assert!(s.keypool_state("w".into(), "bitcoin".into()).await.is_err());
-    assert!(s
-        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
-        .await
-        .is_err());
-    assert!(s
-        .reserve_change_index("w".into(), "bitcoin".into())
-        .await
-        .is_err());
-    assert!(s
-        .advance_receive_index_if_current("w".into(), "bitcoin".into(), held)
-        .await
-        .is_err());
+    assert!(
+        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        s.reserve_change_index("w".into(), "bitcoin".into())
+            .await
+            .is_err()
+    );
+    assert!(
+        s.advance_receive_index_if_current("w".into(), "bitcoin".into(), held)
+            .await
+            .is_err()
+    );
     assert_eq!(*s.keypool.read().await.indices(), before);
     assert_eq!(
         crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "bitcoin")
@@ -466,8 +487,8 @@ mod tor_and_rates {
     /// switch, and Tor is not carrying traffic.
     #[test]
     fn the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready() {
-        use crate::tor::kill_switch_verdict;
         use crate::tor::TorStatus;
+        use crate::tor::kill_switch_verdict;
         for (wanted, switch, ready, expected) in [
             (true, true, false, true),
             (true, true, true, false),
@@ -579,24 +600,30 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
         })
         .await
         .unwrap();
-    assert!(service
-        .receive_address("missing".into(), "ethereum".into(), true)
-        .await
-        .is_err());
-    assert!(service
-        .receive_address("watch".into(), "bitcoin".into(), true)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        service
+            .receive_address("missing".into(), "ethereum".into(), true)
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .receive_address("watch".into(), "bitcoin".into(), true)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let read = service
         .receive_address("watch".into(), "ethereum".into(), false)
         .await
         .unwrap()
         .unwrap();
-    assert!(service
-        .owned_addresses_for_wallet("watch".into(), None)
-        .await
-        .is_empty());
+    assert!(
+        service
+            .owned_addresses_for_wallet("watch".into(), None)
+            .await
+            .is_empty()
+    );
     assert_eq!(
         service
             .receive_address("watch".into(), "ethereum".into(), true)
@@ -606,15 +633,19 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
     );
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.open_state(path.clone()).await.unwrap();
-    assert!(reopened
-        .owned_addresses_for_wallet("watch".into(), None)
-        .await
-        .contains(&read));
-    assert!(reopened
-        .discover_chain_addresses("bitcoin".into())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        reopened
+            .owned_addresses_for_wallet("watch".into(), None)
+            .await
+            .contains(&read)
+    );
+    assert!(
+        reopened
+            .discover_chain_addresses("bitcoin".into())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let _ = std::fs::remove_file(path);
 }
 
@@ -625,12 +656,15 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     service.open_state(path.clone()).await.unwrap();
     let original = service.configured_endpoint_urls("ethereum").await;
     assert!(!original.is_empty());
-    assert!(!service
-        .configured_endpoint_urls(
-            &crate::registry::Chain::Ton.endpoint_str_id(crate::registry::EndpointSlot::Secondary)
-        )
-        .await
-        .is_empty());
+    assert!(
+        !service
+            .configured_endpoint_urls(
+                &crate::registry::Chain::Ton
+                    .endpoint_str_id(crate::registry::EndpointSlot::Secondary)
+            )
+            .await
+            .is_empty()
+    );
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
@@ -692,12 +726,13 @@ async fn failed_open_does_not_publish_and_can_retry_seeding() {
         db.with_connection(|conn| {
             conn.execute_batch("CREATE TRIGGER reject_seed BEFORE INSERT ON app_state_meta WHEN NEW.key = 'token_preferences' BEGIN SELECT RAISE(FAIL, 'seed blocked'); END;").map_err(|e| e.to_string())
         }).unwrap();
-        assert!(s
-            .open_state(path.clone())
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("seed blocked"));
+        assert!(
+            s.open_state(path.clone())
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("seed blocked")
+        );
         assert_eq!(s.app_state().await, before);
         assert!(!s.state_binding.is_bound_to(&path).await);
         assert_eq!(
@@ -766,7 +801,10 @@ async fn committed_versions_order_reads_and_failed_writes_do_not_advance_them() 
     let noop = s.apply_state_command(currency("EUR")).await.unwrap();
     assert!(noop.events.is_empty());
     assert_eq!(noop.state.revision, first.revision);
-    sql(&db, "CREATE TRIGGER reject_revision BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
+    sql(
+        &db,
+        "CREATE TRIGGER reject_revision BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;",
+    );
     assert!(s.apply_state_command(currency("JPY")).await.is_err());
     assert_eq!(s.app_state().await.revision, first.revision);
     assert_eq!(

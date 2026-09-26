@@ -31,9 +31,9 @@ use std::sync::Arc;
 use crate::fetch::bitcoin::{BitcoinClient, EsploraUtxo};
 
 use super::bitcoin::{
-    encode_p2pkh, encode_p2sh_p2wpkh, encode_p2wpkh, parse_bip32_path, BitcoinNetworkParams,
-    ExtendedPrivateKey, ExtendedPublicKey, BTC_MAINNET, BTC_TESTNET, XPUB_VERSION_MAINNET,
-    XPUB_VERSION_TESTNET,
+    BTC_MAINNET, BTC_TESTNET, BitcoinNetworkParams, ExtendedPrivateKey, ExtendedPublicKey,
+    XPUB_VERSION_MAINNET, XPUB_VERSION_TESTNET, encode_p2pkh, encode_p2sh_p2wpkh, encode_p2wpkh,
+    parse_bip32_path,
 };
 
 // ── Script type inferred from the xpub prefix

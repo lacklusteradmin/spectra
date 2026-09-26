@@ -244,17 +244,19 @@ mod destination_resolution_tests {
     #[tokio::test]
     async fn an_unknown_chain_resolves_nothing() {
         let service = WalletService::new(Vec::new()).expect("service");
-        assert!(service
-            .resolve_send_destination("not-a-chain".into(), "0xabc".into())
-            .await
-            .is_err());
+        assert!(
+            service
+                .resolve_send_destination("not-a-chain".into(), "0xabc".into())
+                .await
+                .is_err()
+        );
     }
 }
 
 #[cfg(test)]
 mod failed_reads {
     use super::*;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     /// The send path is the caller that must not read an absent balance as a
     /// zero. `fetch_token_balances` leaves out a token it could not read so a
@@ -356,16 +358,18 @@ mod failed_reads {
             }
             let before = server.received_requests().await.unwrap().len();
             for value in ["bad", "-1", "+1", "340282366920938463463374607431768211456"] {
-                assert!(service
-                    .fetch_evm_send_preview_json(
-                        "ethereum",
-                        "from".into(),
-                        "to".into(),
-                        value.into(),
-                        "0x".into()
-                    )
-                    .await
-                    .is_err());
+                assert!(
+                    service
+                        .fetch_evm_send_preview_json(
+                            "ethereum",
+                            "from".into(),
+                            "to".into(),
+                            value.into(),
+                            "0x".into()
+                        )
+                        .await
+                        .is_err()
+                );
             }
             assert_eq!(server.received_requests().await.unwrap().len(), before);
         }
@@ -432,7 +436,7 @@ mod failed_reads {
 #[cfg(test)]
 mod a_preview_quotes_the_asset_it_moves {
     use super::*;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     /// One ETH held, and 250 of an 8-decimal token.
     const ETH_BALANCE_WEI: &str = "0xde0b6b3a7640000";
@@ -690,7 +694,7 @@ mod a_preview_quotes_the_asset_it_moves {
 #[cfg(test)]
 mod destination_probe_tests {
     use super::*;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
     #[tokio::test]
     async fn evm_activity_uses_one_balance_read_and_never_guesses_after_failure() {
         for nonce in [Some("0x1"), Some("0x0"), None] {

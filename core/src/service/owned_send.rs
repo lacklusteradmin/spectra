@@ -108,11 +108,10 @@ fn owned_preview(
             preview,
             SendPreview::Ethereum { .. } | SendPreview::Tron { .. }
         )
+        && let Some(details) = &mut details
     {
-        if let Some(details) = &mut details {
-            details.spendableBalance = None;
-            details.maxSendable = None;
-        }
+        details.spendableBalance = None;
+        details.maxSendable = None;
     }
     let asset_decimals = decimals.unwrap_or(gas_decimals);
     OwnedSendPreview {

@@ -2,12 +2,12 @@
 use super::*;
 #[cfg(test)]
 use crate::fetch::refresh_engine::refresh_entries_for;
-use crate::fetch::refresh_engine::{refresh_entry_for, RefreshEntry};
+use crate::fetch::refresh_engine::{RefreshEntry, refresh_entry_for};
 use crate::store::state::WalletState;
 use crate::store::wallet_domain::AssetHolding;
 use futures::{
-    future::{BoxFuture, WeakShared},
     FutureExt,
+    future::{BoxFuture, WeakShared},
 };
 
 type BalanceRead = BoxFuture<'static, Result<WalletState, String>>;
@@ -96,11 +96,13 @@ impl WalletService {
         let native = self
             .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
             .await?;
-        let mut holdings = vec![AssetHolding {
-            amount: balance_amount(&native.amount_display)?,
-            ..native_coin_template(&entry.chain_id).ok_or("missing native asset")?
-        }
-        .identified()];
+        let mut holdings = vec![
+            AssetHolding {
+                amount: balance_amount(&native.amount_display)?,
+                ..native_coin_template(&entry.chain_id).ok_or("missing native asset")?
+            }
+            .identified(),
+        ];
         if !known.is_empty() {
             let descriptors = known
                 .iter()
@@ -248,10 +250,12 @@ mod tests {
         let database = rusqlite::Connection::open(&path).unwrap();
         database.execute_batch("CREATE TRIGGER reject_balance BEFORE UPDATE ON wallets BEGIN SELECT RAISE(FAIL, 'balance write refused'); END;").unwrap();
         coin.amount = "7".into();
-        assert!(service
-            .commit_balance_result(entry.clone(), vec![coin.clone()])
-            .await
-            .is_err());
+        assert!(
+            service
+                .commit_balance_result(entry.clone(), vec![coin.clone()])
+                .await
+                .is_err()
+        );
         assert_eq!(service.app_state().await.wallets[0].holdings[0].amount, "0");
         assert_eq!(
             crate::wallet_db::wallet_load(
@@ -316,12 +320,14 @@ mod lifecycle_tests {
             .reserve_receive_index("w".into(), "ethereum".into(), 0)
             .await
             .unwrap();
-        assert!(service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: "ethereum-sepolia".into()
-            })
-            .await
-            .is_err());
+        assert!(
+            service
+                .apply_state_command(StateCommand::SelectChainForFamily {
+                    chain_id: "ethereum-sepolia".into()
+                })
+                .await
+                .is_err()
+        );
         assert_eq!(
             service
                 .app_state()
@@ -405,12 +411,14 @@ mod lifecycle_tests {
         );
         assert!(service.keypool.read().await.is_empty());
         let reopened = WalletService::new(vec![]).unwrap();
-        assert!(reopened
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap()
-            .wallets
-            .is_empty());
+        assert!(
+            reopened
+                .open_state(path.to_string_lossy().into())
+                .await
+                .unwrap()
+                .wallets
+                .is_empty()
+        );
         assert!(reopened.keypool.read().await.is_empty());
     }
 }

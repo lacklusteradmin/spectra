@@ -10,10 +10,10 @@
 //! so it owns the loop; what comes back is what changed, which is what a front
 //! end needs to write an event and a notification.
 
+use crate::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
 use crate::store::{ResolvedPendingStatus, TransactionStatusChange};
-use crate::SpectraBridgeError;
 
 /// The stored records this chain's poll shape tracks.
 ///
@@ -70,15 +70,15 @@ impl WalletService {
         let mut chains = std::collections::BTreeSet::new();
         for row in rows {
             let r = row.payload;
-            if let Some(chain) = Chain::from_str_id(&r.chain_id) {
-                if needs_status_poll(
+            if let Some(chain) = Chain::from_str_id(&r.chain_id)
+                && needs_status_poll(
                     r.kind,
                     r.status,
                     r.transaction_hash.as_deref(),
                     chain.pending_status_poll(),
-                ) {
-                    chains.insert(chain.str_id().to_owned());
-                }
+                )
+            {
+                chains.insert(chain.str_id().to_owned());
             }
         }
         Ok(chains.into_iter().collect())
@@ -461,15 +461,19 @@ mod tests {
         let unpolled = Chain::all()
             .find(|chain| matches!(chain.pending_status_poll(), PendingStatusPoll::None))
             .expect("some chain is not polled");
-        assert!(service
-            .poll_pending_transactions(unpolled.str_id().to_string())
-            .await
-            .expect("poll")
-            .is_empty());
-        assert!(service
-            .poll_pending_transactions("not-a-chain".to_string())
-            .await
-            .is_err());
+        assert!(
+            service
+                .poll_pending_transactions(unpolled.str_id().to_string())
+                .await
+                .expect("poll")
+                .is_empty()
+        );
+        assert!(
+            service
+                .poll_pending_transactions("not-a-chain".to_string())
+                .await
+                .is_err()
+        );
     }
     #[tokio::test]
     async fn maintenance_skips_confirmed_records_after_reopening_and_ignores_empty_hashes() {
@@ -506,18 +510,22 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(service
-            .pending_maintenance_chains()
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            service
+                .pending_maintenance_chains()
+                .await
+                .unwrap()
+                .is_empty()
+        );
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path).await.unwrap();
-        assert!(reopened
-            .pending_maintenance_chains()
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            reopened
+                .pending_maintenance_chains()
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     async fn stored_service() -> (std::sync::Arc<WalletService>, String) {
@@ -559,10 +567,12 @@ mod tests {
             .record_status_poll("deleted".into(), crate::service::StatusPollOutcome::Failed)
             .await;
         service.prune_status_trackers().await.unwrap();
-        assert!(service
-            .transactions_due_for_status_poll(ids.clone())
-            .await
-            .is_empty());
+        assert!(
+            service
+                .transactions_due_for_status_poll(ids.clone())
+                .await
+                .is_empty()
+        );
         let trackers = service.status_trackers.read().await;
         assert!(!trackers.contains_key("deleted"));
         for id in ids {
@@ -572,7 +582,7 @@ mod tests {
 
     #[tokio::test]
     async fn consecutive_evm_polls_do_not_repeat_the_request() {
-        use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
         let server = MockServer::start().await;
         Mock::given(any()).respond_with(|request: &Request| {
             let body: serde_json::Value = request.body_json().unwrap();
@@ -619,16 +629,20 @@ mod tests {
     #[tokio::test]
     async fn polling_propagates_unopened_and_corrupt_storage() {
         let unopened = WalletService::new(vec![]).unwrap();
-        assert!(unopened
-            .poll_pending_transactions("ethereum".into())
-            .await
-            .is_err());
+        assert!(
+            unopened
+                .poll_pending_transactions("ethereum".into())
+                .await
+                .is_err()
+        );
         let (service, path) = stored_service().await;
-        assert!(service
-            .poll_pending_transactions("ethereum".into())
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            service
+                .poll_pending_transactions("ethereum".into())
+                .await
+                .unwrap()
+                .is_empty()
+        );
         service
             .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
                 "broken",
@@ -647,10 +661,12 @@ mod tests {
                 [],
             )
             .unwrap();
-        assert!(service
-            .poll_pending_transactions("ethereum".into())
-            .await
-            .is_err());
+        assert!(
+            service
+                .poll_pending_transactions("ethereum".into())
+                .await
+                .is_err()
+        );
         assert!(service.status_trackers.read().await.contains_key("broken"));
         let count: i64 = rusqlite::Connection::open(&path)
             .unwrap()
@@ -689,7 +705,7 @@ mod tests {
 
     #[tokio::test]
     async fn audit_fix5_owned_pending_maintenance_uses_recorded_network_after_settings_change() {
-        use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
         let mainnet = MockServer::start().await;
         let sepolia = MockServer::start().await;
         let (service, _) = stored_service().await;

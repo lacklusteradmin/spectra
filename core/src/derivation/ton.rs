@@ -336,9 +336,9 @@ pub(crate) fn derive_ton_standard(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::SpectraBridgeError;
 use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::DerivationResult;
-use crate::SpectraBridgeError;
 
 // Shared derivation logic for all TON networks (mainnet and testnet addresses are identical).
 fn ton_internal(

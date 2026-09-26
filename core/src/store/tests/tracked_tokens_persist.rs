@@ -67,7 +67,7 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
 
 #[test]
 fn new_network_deployments_inherit_the_tokens_saved_choice() {
-    use crate::store::state::{reduce_state_in_place, CoreTokenPreferenceKey};
+    use crate::store::state::{CoreTokenPreferenceKey, reduce_state_in_place};
     let mut state = CoreAppState::default();
     reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
     let token = state

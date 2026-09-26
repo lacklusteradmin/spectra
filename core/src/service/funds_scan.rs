@@ -1,9 +1,9 @@
 //! A bounded scan session. Only addresses survive candidate generation.
 use super::*;
 use crate::derivation::funds_finder::{
-    generate_funds_finder_candidates, FundsFinderCandidate, FundsFinderRequest,
+    FundsFinderCandidate, FundsFinderRequest, generate_funds_finder_candidates,
 };
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 
 #[derive(Clone, serde::Serialize, uniffi::Record)]
 pub struct FundsScanRead {
@@ -119,7 +119,7 @@ mod tests {
 #[cfg(test)]
 mod scan_tests {
     use super::*;
-    use wiremock::{matchers::method, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::method};
     #[tokio::test]
     async fn scan_reports_failed_reads_separately_and_finishes_batches() {
         let server = MockServer::start().await;

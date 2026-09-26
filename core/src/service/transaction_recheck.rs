@@ -1,9 +1,9 @@
 //! Explicit status reads target a stored transaction, not a caller-built poll plan.
+use crate::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
-use crate::SpectraBridgeError;
 
 pub(super) fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<Chain, String> {
     let chain = Chain::from_str_id(&record.chain_id)

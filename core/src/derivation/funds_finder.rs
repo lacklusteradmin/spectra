@@ -6,6 +6,7 @@
 //! candidate matrix and returns them to Swift. Swift then calls the existing
 //! `fetch_native_balance_summary` for each candidate and surfaces hits.
 
+use crate::SpectraBridgeError;
 use crate::derivation::types::BitcoinScriptType;
 use crate::derivation::{
     bitcoin::derive_bitcoin, bitcoin_cash::derive_bitcoin_cash, bitcoin_gold::derive_bitcoin_gold,
@@ -13,7 +14,6 @@ use crate::derivation::{
     litecoin::derive_litecoin, polkadot::derive_polkadot, solana::derive_solana,
     stellar::derive_stellar, tron::derive_tron, xrp::derive_xrp, zcash::derive_zcash,
 };
-use crate::SpectraBridgeError;
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -419,14 +419,14 @@ fn push_candidate(
     label: &str,
     derive: impl FnOnce() -> Result<crate::derivation::types::DerivationResult, SpectraBridgeError>,
 ) {
-    if let Ok(result) = derive() {
-        if let Some(address) = result.address {
-            out.push(FundsFinderCandidate {
-                chain_id: chain_id.to_string(),
-                derivation_path: path.to_string(),
-                path_label: label.to_string(),
-                address,
-            });
-        }
+    if let Ok(result) = derive()
+        && let Some(address) = result.address
+    {
+        out.push(FundsFinderCandidate {
+            chain_id: chain_id.to_string(),
+            derivation_path: path.to_string(),
+            path_label: label.to_string(),
+            address,
+        });
     }
 }

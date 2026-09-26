@@ -30,6 +30,7 @@
 //! visibility, so anything that should stay off the FFI lives in a plain
 //! `impl` block.
 
+pub(crate) use crate::SpectraBridgeError;
 pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::fetch::http::HttpClient;
 pub(crate) use crate::fetch::{
@@ -43,11 +44,10 @@ pub(crate) use crate::fetch::{
 pub(crate) use crate::registry::{Chain, EndpointSlot};
 pub(crate) use crate::store::secret_store::SecretStore;
 pub(crate) use crate::store::state::{
-    reduce_state_in_place, CoreAppState, StateCommand, StateTransition,
+    CoreAppState, StateCommand, StateTransition, reduce_state_in_place,
 };
 pub(crate) use crate::store::wallet_domain::AssetHolding;
 pub(crate) use crate::store::{TransactionStatusPollConfig, TransactionStatusTrackerState};
-pub(crate) use crate::SpectraBridgeError;
 
 pub(crate) use serde_json::json;
 pub(crate) use std::collections::HashMap;
@@ -239,7 +239,7 @@ impl WalletService {
         // debug builds used to do by default.
         static LOGGING: std::sync::OnceLock<()> = std::sync::OnceLock::new();
         LOGGING.get_or_init(|| {
-            use tracing_subscriber::{fmt, EnvFilter};
+            use tracing_subscriber::{EnvFilter, fmt};
             let filter =
                 EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
             let _ = fmt()
@@ -337,17 +337,17 @@ impl WalletService {
                 Some((network, "explorer")) => (network, EndpointSlot::Explorer),
                 _ => (chain_id, EndpointSlot::Primary),
             };
-            if let Some(chain) = Chain::from_str_id(network_id) {
-                if let Some(api) = chain.endpoint_api(slot) {
-                    let mut custom = self.custom_api_endpoints(chain, api, &[]).await;
-                    if !custom.is_empty() {
-                        for url in base.iter() {
-                            if !custom.contains(url) {
-                                custom.push(url.clone());
-                            }
+            if let Some(chain) = Chain::from_str_id(network_id)
+                && let Some(api) = chain.endpoint_api(slot)
+            {
+                let mut custom = self.custom_api_endpoints(chain, api, &[]).await;
+                if !custom.is_empty() {
+                    for url in base.iter() {
+                        if !custom.contains(url) {
+                            custom.push(url.clone());
                         }
-                        return Arc::new(custom);
                     }
+                    return Arc::new(custom);
                 }
             }
         }

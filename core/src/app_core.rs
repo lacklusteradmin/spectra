@@ -1,5 +1,5 @@
-use crate::store::wallet_domain::CoreSeedDerivationPaths;
 use crate::EndpointApi;
+use crate::store::wallet_domain::CoreSeedDerivationPaths;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -715,9 +715,11 @@ mod endpoint_network_index_tests {
             .into_iter()
             .filter(|r| r.api.is_some())
             .collect();
-        assert!(services
-            .iter()
-            .any(|r| r.api == Some(EndpointApi::MoneroDaemonRpc)));
+        assert!(
+            services
+                .iter()
+                .any(|r| r.api == Some(EndpointApi::MoneroDaemonRpc))
+        );
         assert!(!services.iter().any(|r| r.endpoint == explorer));
     }
 
@@ -776,10 +778,12 @@ capabilities = []"#;
         );
         let link_with_capability =
             link.replace("capabilities = []", "capabilities = [\"balance\"]");
-        assert!(AppCoreEndpointRecord::try_from(
-            toml::from_str::<TomlEndpoint>(&link_with_capability).unwrap()
-        )
-        .is_err());
+        assert!(
+            AppCoreEndpointRecord::try_from(
+                toml::from_str::<TomlEndpoint>(&link_with_capability).unwrap()
+            )
+            .is_err()
+        );
 
         for bad in ["Ethereum Sepolia", "unknown-network", ""] {
             let row =

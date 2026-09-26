@@ -1,6 +1,6 @@
 //! Staking queries use committed transport settings, refreshed for every call.
 use super::*;
-use crate::staking::{service::StakingService, StakingPosition, StakingValidator};
+use crate::staking::{StakingPosition, StakingValidator, service::StakingService};
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -119,10 +119,12 @@ mod tests {
             );
         }
         for chain in ["bitcoin", "solana-devnet"] {
-            assert!(service
-                .fetch_staking_validators(chain.into())
-                .await
-                .is_err());
+            assert!(
+                service
+                    .fetch_staking_validators(chain.into())
+                    .await
+                    .is_err()
+            );
         }
         let explicit = WalletService::new(vec![ChainEndpoints {
             capabilities: vec!["staking".into()],

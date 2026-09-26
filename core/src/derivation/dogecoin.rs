@@ -17,9 +17,9 @@ pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
+use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{derive_legacy_p2pkh, encode_p2pkh};
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::SpectraBridgeError;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 pub(crate) const DOGE_MAINNET_VERSION: u8 = 0x1e;

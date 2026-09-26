@@ -2,9 +2,9 @@ pub(crate) use super::icp_stages::PreparedIcpTransaction;
 // ICP send: Rosetta construction flow (preprocess → metadata → payloads →
 // sign → combine → submit).
 
+use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
-use serde_json::Value;
 
 use crate::fetch::icp::{IcpClient, IcpSendResult};
 
@@ -190,7 +190,7 @@ fn sign_icp_payload(hash_bytes: &[u8], private_key_bytes: &[u8]) -> Result<Strin
 mod strict_payload_tests {
     use super::*;
     use std::sync::Arc;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     #[test]
     fn icp_signing_requires_a_domain_separated_request() {
@@ -269,11 +269,9 @@ mod strict_payload_tests {
                 assert!(result.is_err(), "{fault}");
             }
             if ["missing", "empty", "hex", "prefix", "type"].contains(&fault) {
-                assert!(server.received_requests().await.unwrap().iter().all(|r| ![
-                    "/construction/combine",
-                    "/construction/submit"
-                ]
-                .contains(&r.url.path())));
+                assert!(server.received_requests().await.unwrap().iter().all(|r| {
+                    !["/construction/combine", "/construction/submit"].contains(&r.url.path())
+                }));
             }
         }
     }

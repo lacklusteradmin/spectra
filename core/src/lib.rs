@@ -82,7 +82,7 @@ impl From<reqwest::Error> for SpectraBridgeError {
 }
 
 mod endpoint_api;
-pub use endpoint_api::{endpoint_capability_options, EndpointApi};
+pub use endpoint_api::{EndpointApi, endpoint_capability_options};
 
 mod app_core;
 pub use app_core::*;

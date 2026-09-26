@@ -49,7 +49,7 @@ fn diagnostics_bundle_redacts_secrets_and_refuses_missing_fields() {
 /// and unchanged when refused.
 #[test]
 fn applying_a_setting_is_the_reducers_rule() {
-    use store::state::{app_settings_applying, app_settings_defaults, AppSettingUpdate};
+    use store::state::{AppSettingUpdate, app_settings_applying, app_settings_defaults};
     let defaults = app_settings_defaults();
     let trimmed = app_settings_applying(
         defaults.clone(),

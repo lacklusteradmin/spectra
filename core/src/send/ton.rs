@@ -1,8 +1,8 @@
 //! TON send: WalletV4R2 message builder, signer, and sendBoc.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::fetch::http::{with_fallback, RetryProfile};
+use crate::fetch::http::{RetryProfile, with_fallback};
 
 #[cfg(test)]
 use crate::derivation::ton::parse_ton_address;
@@ -220,33 +220,37 @@ mod protocol_tests {
             .to_bytes();
         let to = format!("0:{}", "22".repeat(32));
         for mode in [0, 128, 160, 255] {
-            assert!(build_transfer_at(
-                &to, 1, 7, None, &[1; 32], &public, 698983191, 1800000000, mode
-            )
-            .is_err());
+            assert!(
+                build_transfer_at(
+                    &to, 1, 7, None, &[1; 32], &public, 698983191, 1800000000, mode
+                )
+                .is_err()
+            );
         }
         assert!(
             build_transfer_at(&to, 1, 7, None, &[2; 32], &public, 698983191, 1800000000, 3)
                 .is_err()
         );
-        assert!(build_transfer_at(
-            "kQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPgpP",
-            1,
-            7,
-            None,
-            &[1; 32],
-            &public,
-            698983191,
-            1800000000,
-            3
-        )
-        .is_err());
+        assert!(
+            build_transfer_at(
+                "kQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPgpP",
+                1,
+                7,
+                None,
+                &[1; 32],
+                &public,
+                698983191,
+                1800000000,
+                3
+            )
+            .is_err()
+        );
     }
     #[tokio::test]
     async fn ton_reads_real_seqno_and_refuses_failed_reads_and_submissions() {
         use wiremock::{
-            matchers::{method, path},
             Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
         };
         let server = MockServer::start().await;
         let client = TonClient::new(std::sync::Arc::new(vec![server.uri()]));

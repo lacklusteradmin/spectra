@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 fn path() -> String {

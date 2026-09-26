@@ -1,7 +1,7 @@
 //! Stellar send: XDR Payment builder (native XLM), Ed25519 signer,
 //! and Horizon POST /transactions.
 
-use crate::fetch::http::{with_fallback, RetryProfile};
+use crate::fetch::http::{RetryProfile, with_fallback};
 
 use crate::derivation::stellar::decode_stellar_address;
 use crate::fetch::stellar::{StellarClient, StellarSendResult};
@@ -83,7 +83,7 @@ pub fn build_signed_payment_xdr(
     envelope.extend_from_slice(&tx_xdr);
     // DecoratedSignature array (1 item)
     envelope.extend_from_slice(&1u32.to_be_bytes()); // array length
-                                                     // hint = last 4 bytes of public key
+    // hint = last 4 bytes of public key
     envelope.extend_from_slice(&public_key[28..32]);
     // signature (VarOpaque, max 64)
     xdr_write_bytes(&mut envelope, signature.to_bytes().as_ref());
@@ -114,7 +114,7 @@ fn encode_payment_tx(
     // Operation: sourceAccount optional=0, type=PAYMENT(1)
     tx.extend_from_slice(&0u32.to_be_bytes()); // no source account override
     tx.extend_from_slice(&1u32.to_be_bytes()); // PAYMENT op type
-                                               // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
+    // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
     tx.extend_from_slice(&0u32.to_be_bytes());
     tx.extend_from_slice(to);
     // ASSET_TYPE_NATIVE = 0

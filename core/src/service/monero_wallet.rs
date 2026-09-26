@@ -3,9 +3,9 @@ use super::*;
 use crate::send::monero_local::{self, LocalWallet, PreparedMoneroTransaction};
 use crate::store::secret_store::SecretClass;
 use ::monero_wallet::{
+    ViewPair,
     address::{MoneroAddress, Network},
     ed25519::Scalar,
-    ViewPair,
 };
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;

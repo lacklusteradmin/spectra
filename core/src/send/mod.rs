@@ -467,8 +467,8 @@ fn native_evm_symbol_for_chain(chain_id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        route_send_asset, validate_send_preflight, SendAssetRoutingInput, SendExecutionRequest,
-        SendSubmitPreflightRequest, SendTokenIdentity,
+        SendAssetRoutingInput, SendExecutionRequest, SendSubmitPreflightRequest, SendTokenIdentity,
+        route_send_asset, validate_send_preflight,
     };
 
     /// Every chain the router sends down the shared preview path has a shape
@@ -598,7 +598,7 @@ mod tests {
     #[test]
     fn every_evm_chain_runs_the_evm_destination_checks() {
         use crate::registry::Chain;
-        use crate::send::flow::{evaluate_high_risk_send_reasons, HighRiskSendRequest};
+        use crate::send::flow::{HighRiskSendRequest, evaluate_high_risk_send_reasons};
 
         let request = |chain: Chain, destination: &str| HighRiskSendRequest {
             chain_id: chain.str_id().to_string(),
@@ -1084,7 +1084,7 @@ mod token_decimals_are_not_assumed {
 
 #[cfg(test)]
 mod affordability_reads_the_chain_rather_than_the_caller {
-    use super::{send_affordability, SendAffordability, SendAffordabilityInput};
+    use super::{SendAffordability, SendAffordabilityInput, send_affordability};
 
     fn input(chain: &str, symbol: &str) -> SendAffordabilityInput {
         SendAffordabilityInput {

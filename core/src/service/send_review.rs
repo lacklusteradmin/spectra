@@ -281,11 +281,13 @@ mod tests {
         }
         let mut expired = reviewed(&original);
         expired.created -= std::time::Duration::from_secs(121);
-        assert!(expired
-            .validate_input(&original)
-            .unwrap_err()
-            .to_string()
-            .contains("expired"));
+        assert!(
+            expired
+                .validate_input(&original)
+                .unwrap_err()
+                .to_string()
+                .contains("expired")
+        );
     }
     #[tokio::test]
     async fn tampered_confirmations_are_consumed_and_restart_requires_review() {
@@ -311,12 +313,14 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("already consumed"));
         let reopened = WalletService::new(vec![]).unwrap();
-        assert!(reopened
-            .execute_owned_send("review".into(), original, None)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("review missing"));
+        assert!(
+            reopened
+                .execute_owned_send("review".into(), original, None)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("review missing")
+        );
     }
     #[tokio::test]
     async fn reviewed_quote_signs_once_and_stale_nonce_never_broadcasts() {
@@ -325,10 +329,10 @@ mod tests {
                 secret_backends::InMemorySecretStore, state::WalletState,
                 wallet_secrets::store_seed_phrase,
             };
-            use serde_json::{json, Value};
+            use serde_json::{Value, json};
             use sha3::Digest;
             use std::sync::atomic::{AtomicU64, Ordering};
-            use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+            use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
             let server = MockServer::start().await;
             let nonce = Arc::new(AtomicU64::new(7));
             let observed_nonce = nonce.clone();
@@ -434,12 +438,14 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(sent.evm.unwrap().nonce, 7);
-            assert!(service
-                .execute_owned_send(review.id, input.clone(), None)
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("already consumed"));
+            assert!(
+                service
+                    .execute_owned_send(review.id, input.clone(), None)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("already consumed")
+            );
             let stale = service.review_owned_send(input.clone()).await.unwrap();
             assert_eq!(
                 stale.request.evm_overrides.unwrap().nonce,
@@ -447,12 +453,14 @@ mod tests {
                 "the journal advances a stale provider's nonce"
             );
             nonce.store(9, Ordering::SeqCst);
-            assert!(service
-                .execute_owned_send(stale.id, input, password.map(str::to_owned))
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("nonce changed"));
+            assert!(
+                service
+                    .execute_owned_send(stale.id, input, password.map(str::to_owned))
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("nonce changed")
+            );
             let broadcasts = server
                 .received_requests()
                 .await

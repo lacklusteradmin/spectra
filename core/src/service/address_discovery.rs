@@ -86,53 +86,52 @@ impl WalletService {
             )
         };
         // Extended public keys are sufficient for watch-only Bitcoin receiving.
-        if network.mainnet_counterpart() == Chain::Bitcoin {
-            if let Some(xpub) = xpub.filter(|value| !value.trim().is_empty()) {
-                use crate::derivation::xpub_walker::{derive_children_on_network, HdNetwork};
-                let id = network.str_id().to_string();
-                let hd_network = if network.is_testnet() {
-                    HdNetwork::Testnet
-                } else {
-                    HdNetwork::Mainnet
-                };
-                // Validate before reserving any index.
-                derive_children_on_network(&xpub, 0, 0, 1, hd_network, None)?;
-                let index = if reserve {
-                    self.reserve_receive_index(wallet_id.clone(), id.clone(), 1)
-                        .await?
-                } else {
-                    self.keypool_state(wallet_id.clone(), id.clone())
-                        .await?
-                        .reserved_receive_index
-                        .unwrap_or(0)
-                };
-                let index = u32::try_from(index)
-                    .map_err(|_| SpectraBridgeError::from("receive index is out of range"))?;
-                let address = derive_children_on_network(&xpub, 0, index, 1, hd_network, None)?
-                    .pop()
-                    .ok_or_else(|| SpectraBridgeError::from("missing derived address"))?
-                    .address;
-                if reserve {
-                    self.register_owned_address(
-                        wallet_id,
-                        id,
-                        address.clone(),
-                        None,
-                        Some("external".into()),
-                        Some(i64::from(index)),
-                    )
-                    .await?;
-                }
-                return Ok(Some(address));
+        if network.mainnet_counterpart() == Chain::Bitcoin
+            && let Some(xpub) = xpub.filter(|value| !value.trim().is_empty())
+        {
+            use crate::derivation::xpub_walker::{HdNetwork, derive_children_on_network};
+            let id = network.str_id().to_string();
+            let hd_network = if network.is_testnet() {
+                HdNetwork::Testnet
+            } else {
+                HdNetwork::Mainnet
+            };
+            // Validate before reserving any index.
+            derive_children_on_network(&xpub, 0, 0, 1, hd_network, None)?;
+            let index = if reserve {
+                self.reserve_receive_index(wallet_id.clone(), id.clone(), 1)
+                    .await?
+            } else {
+                self.keypool_state(wallet_id.clone(), id.clone())
+                    .await?
+                    .reserved_receive_index
+                    .unwrap_or(0)
+            };
+            let index = u32::try_from(index)
+                .map_err(|_| SpectraBridgeError::from("receive index is out of range"))?;
+            let address = derive_children_on_network(&xpub, 0, index, 1, hd_network, None)?
+                .pop()
+                .ok_or_else(|| SpectraBridgeError::from("missing derived address"))?
+                .address;
+            if reserve {
+                self.register_owned_address(
+                    wallet_id,
+                    id,
+                    address.clone(),
+                    None,
+                    Some("external".into()),
+                    Some(i64::from(index)),
+                )
+                .await?;
             }
+            return Ok(Some(address));
         }
-        if network.supports_deep_utxo_discovery() {
-            if let Some(address) = self
+        if network.supports_deep_utxo_discovery()
+            && let Some(address) = self
                 .utxo_receive_address(wallet_id.clone(), network.str_id().into(), reserve)
                 .await?
-            {
-                return Ok(Some(address));
-            }
+        {
+            return Ok(Some(address));
         }
         let Some(address) = stored.filter(|a| !a.trim().is_empty()) else {
             return Ok(None);
@@ -382,7 +381,7 @@ impl WalletService {
             _ => {
                 return Err(SpectraBridgeError::from(
                     "chain does not support UTXO discovery",
-                ))
+                ));
             }
         };
         Ok(active)
@@ -461,7 +460,7 @@ impl UtxoDerivation {
         overrides
             .validate_for_chain(chain)
             .map_err(|e| e.to_string())?;
-        use crate::derivation::bitcoin::{derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey};
+        use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed, parse_bip32_path};
         let path = crate::app_core::derivation_path_replacing_last_two(
             base_path.clone(),
             0,

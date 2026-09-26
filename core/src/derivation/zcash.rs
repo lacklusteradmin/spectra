@@ -53,9 +53,9 @@ pub fn validate_zcash_address(address: &str, testnet: bool) -> bool {
     }
 }
 
-use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 const ZCASH_MAINNET_VERSION: [u8; 2] = [0x1C, 0xB8];
 const ZCASH_TESTNET_VERSION: [u8; 2] = [0x1D, 0x25];

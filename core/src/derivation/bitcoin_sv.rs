@@ -65,9 +65,9 @@ pub fn validate_bsv_address(address: &str, testnet: bool) -> bool {
     decode_bsv_address(address).is_ok_and(|(_, network)| network == wanted)
 }
 
+use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::SpectraBridgeError;
 
 pub(crate) const BSV_MAINNET_VERSION: u8 = BsvNetwork::Mainnet.p2pkh_version();
 pub(crate) const BSV_TESTNET_VERSION: u8 = BsvNetwork::Testnet.p2pkh_version();

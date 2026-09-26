@@ -3,7 +3,7 @@
 use spectra_core::{
     service::WalletService,
     store::state::{AppSettingUpdate, StateCommand},
-    tor::{tor_status, TorStatus},
+    tor::{TorStatus, tor_status},
 };
 
 #[tokio::test]

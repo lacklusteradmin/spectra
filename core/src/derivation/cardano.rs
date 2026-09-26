@@ -228,9 +228,9 @@ pub(crate) fn derive_cardano_shelley_enterprise_address(
     public_key: &[u8; 32],
     is_mainnet: bool,
 ) -> Result<String, String> {
-    use blake2::digest::consts::U28;
-    use blake2::digest::Digest;
     use blake2::Blake2b;
+    use blake2::digest::Digest;
+    use blake2::digest::consts::U28;
     type Blake2b224 = Blake2b<U28>;
 
     let mut hasher = Blake2b224::new();
@@ -285,9 +285,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::hmac_sha512;
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::hmac_sha512;
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 // Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
 fn cardano_internal(

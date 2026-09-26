@@ -2,7 +2,7 @@
 use crate::fetch::http::{HttpClient, RetryProfile};
 use crate::registry::{Chain, EvmHistorySource};
 use crate::{AppCoreEndpointRecord, EndpointApi};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const ZERO_EVM: &str = "0x0000000000000000000000000000000000000000";
 const ZERO_TRON: &str = "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb";

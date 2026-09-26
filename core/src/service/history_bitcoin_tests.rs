@@ -3,7 +3,7 @@ use crate::derivation::types::BitcoinScriptType;
 use crate::store::{
     secret_backends::InMemorySecretStore, state::WalletState, wallet_secrets::store_seed_phrase,
 };
-use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
 const SEED: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -15,7 +15,7 @@ fn tx(i: u64, address: &str) -> serde_json::Value {
 
 #[tokio::test]
 async fn stored_testnet_hd_history_uses_its_network_script_and_all_pages() {
-    use crate::derivation::bitcoin::{derive_from_seed_phrase, BTC_TESTNET};
+    use crate::derivation::bitcoin::{BTC_TESTNET, derive_from_seed_phrase};
     let path = "m/84'/1'/0'/0/0";
     let address = derive_from_seed_phrase(
         BTC_TESTNET,

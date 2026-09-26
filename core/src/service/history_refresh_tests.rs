@@ -335,10 +335,12 @@ async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
     assert_eq!(outcome.wallets_failed, 0);
     assert_eq!(outcome.added, 0);
 
-    assert!(service
-        .refresh_utxo_chain_history("not-a-chain".to_string(), Vec::new(), false)
-        .await
-        .is_err());
+    assert!(
+        service
+            .refresh_utxo_chain_history("not-a-chain".to_string(), Vec::new(), false)
+            .await
+            .is_err()
+    );
 }
 
 /// A UTXO wallet one of whose addresses did not answer stores nothing.
@@ -356,7 +358,7 @@ async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
 /// the case the offline gate cannot reach — hence the mock backend.
 #[tokio::test]
 async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
     const ANSWERS: &str = "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n9";
     const REFUSES: &str = "LhK2kQwiaAvhjWY799cZvMyYwnQAcxkarr";
 
@@ -467,10 +469,12 @@ async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
     assert_eq!(outcome.added, 0);
     assert_eq!(outcome.diagnostics.len(), 1);
     assert_eq!(outcome.diagnostics[0].source_used, "none");
-    assert!(outcome.diagnostics[0]
-        .error
-        .as_deref()
-        .is_some_and(|error| error.contains("no Bitcoin address")));
+    assert!(
+        outcome.diagnostics[0]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("no Bitcoin address"))
+    );
     // The row names the wallet when it has nothing else to be named by.
     assert_eq!(outcome.diagnostics[0].identifier, "w1 wallet");
     // A failure leaves the cursor where it was. Writing `None` there says
@@ -499,10 +503,12 @@ async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
 #[tokio::test]
 async fn a_non_evm_chain_is_refused() {
     let service = WalletService::new(Vec::new()).expect("service");
-    assert!(service
-        .refresh_evm_chain_history(Chain::Solana.str_id().to_string(), Vec::new(), false, None)
-        .await
-        .is_err());
+    assert!(
+        service
+            .refresh_evm_chain_history(Chain::Solana.str_id().to_string(), Vec::new(), false, None)
+            .await
+            .is_err()
+    );
     // With no wallets there is nothing to fetch, no error and no store to
     // write to.
     let outcome = service
@@ -528,20 +534,24 @@ async fn a_chain_with_no_wallets_refreshes_nothing() {
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
     assert_eq!(outcome.added, 0);
-    assert!(service
-        .refresh_chain_history("not-a-chain".to_string(), Vec::new())
-        .await
-        .is_err());
+    assert!(
+        service
+            .refresh_chain_history("not-a-chain".to_string(), Vec::new())
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
 async fn owned_history_scope_and_failed_clock_are_core_decisions() {
     use crate::service::HistoryRefreshScope;
     let service = WalletService::new(vec![]).unwrap();
-    assert!(service
-        .refresh_history(HistoryRefreshScope::All, false, None, 0.0)
-        .await
-        .is_err());
+    assert!(
+        service
+            .refresh_history(HistoryRefreshScope::All, false, None, 0.0)
+            .await
+            .is_err()
+    );
     let path = std::env::temp_dir().join(format!(
         "history-owned-{}.sqlite",
         crate::store::new_event_id()
@@ -556,27 +566,31 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
         })
         .await
         .unwrap();
-    assert!(service
-        .refresh_history(
-            HistoryRefreshScope::Wallets { wallet_ids: vec![] },
-            false,
-            None,
-            0.0
-        )
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(service
-        .refresh_history(
-            HistoryRefreshScope::Chains {
-                chain_ids: vec!["invalid".into()]
-            },
-            false,
-            None,
-            0.0
-        )
-        .await
-        .is_err());
+    assert!(
+        service
+            .refresh_history(
+                HistoryRefreshScope::Wallets { wallet_ids: vec![] },
+                false,
+                None,
+                0.0
+            )
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        service
+            .refresh_history(
+                HistoryRefreshScope::Chains {
+                    chain_ids: vec!["invalid".into()]
+                },
+                false,
+                None,
+                0.0
+            )
+            .await
+            .is_err()
+    );
     for _ in 0..2 {
         let result = service
             .refresh_history(HistoryRefreshScope::All, false, None, 3600.0)
@@ -614,9 +628,11 @@ fn evm_groups_share_only_the_same_network_and_address() {
     ];
     let groups = evm_history_groups(&targets, false);
     assert_eq!(groups.len(), 2);
-    assert!(groups
-        .iter()
-        .any(|(ids, _)| ids == &vec!["main-a", "main-b"]));
+    assert!(
+        groups
+            .iter()
+            .any(|(ids, _)| ids == &vec!["main-a", "main-b"])
+    );
     assert!(groups.iter().any(|(ids, _)| ids == &vec!["test"]));
     assert_eq!(evm_history_groups(&targets, true).len(), 3);
 }
@@ -649,11 +665,13 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     let scope = |id: &str| HistoryRefreshScope::Wallets {
         wallet_ids: vec![id.into()],
     };
-    assert!(service
-        .refresh_history(scope("A"), false, None, 3600.0)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        service
+            .refresh_history(scope("A"), false, None, 3600.0)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     for _ in 0..2 {
         let results = service
             .refresh_history(scope("B"), false, None, 3600.0)
@@ -746,18 +764,22 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     let mut wrong_network = fetched.clone();
     wrong_network.chain_id = "ethereum".into();
     wrong_network.id = "wrong-network".into();
-    assert!(service
-        .merge_fetched_history(vec![wrong_network])
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        service
+            .merge_fetched_history(vec![wrong_network])
+            .await
+            .unwrap()
+            .is_empty()
+    );
     // The response was fetched before deletion and is submitted after the wallet transaction commits.
     crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::new(&db), "w").unwrap();
-    assert!(service
-        .merge_fetched_history(vec![fetched])
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        service
+            .merge_fetched_history(vec![fetched])
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.open_state(db).await.unwrap();
     assert!(reopened.transactions().await.unwrap().is_empty());

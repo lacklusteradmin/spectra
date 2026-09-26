@@ -1,8 +1,8 @@
 //! Alert edits are intents over the latest owned state, never list replacement.
 use super::{
+    PriceAlertEvaluationAlert,
     state::{CoreAppState, StateEvent},
     wallet_domain::CorePriceAlertCondition,
-    PriceAlertEvaluationAlert,
 };
 
 /// Typed reasons for refused alert edits; front ends localize them.

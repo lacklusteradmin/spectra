@@ -1,7 +1,7 @@
 //! Resolve a stored wallet into one signing identity before any provider reads.
 use super::*;
 use crate::store::wallet_domain::SensitiveOverrides;
-use crate::store::wallet_secrets::{load_signing_material, SigningMaterial};
+use crate::store::wallet_secrets::{SigningMaterial, load_signing_material};
 use zeroize::Zeroizing;
 
 pub(super) struct ResolvedSendIdentity {

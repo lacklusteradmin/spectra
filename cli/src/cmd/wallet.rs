@@ -14,7 +14,7 @@ use spectra_core::store::wallet_domain::CoreSeedDerivationPaths;
 use spectra_core::store::wallet_secrets;
 
 use super::resolve_chain;
-use crate::ctx::{wallet_address, Ctx, SecretSource};
+use crate::ctx::{Ctx, SecretSource, wallet_address};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
@@ -700,7 +700,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         Reveal::PasswordRequired => return Err(CliError::usage("this wallet needs its password")),
         Reveal::IncorrectPassword => return Err(CliError::rejected("incorrect password")),
         Reveal::PasswordNotRequired => {
-            return Err(CliError::rejected("this wallet has no password"))
+            return Err(CliError::rejected("this wallet has no password"));
         }
     };
 

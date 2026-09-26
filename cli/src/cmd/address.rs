@@ -5,7 +5,7 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::{AddressBookRejection, StateCommand, StateEvent, StateTransition};
-use spectra_core::validation::address::{validate_address, AddressValidationRequest};
+use spectra_core::validation::address::{AddressValidationRequest, validate_address};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;

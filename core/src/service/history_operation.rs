@@ -1,7 +1,7 @@
 //! Core owns history protocol selection, scope, and successful refresh clocks.
 use super::{HistoryRefreshOutcome, WalletService};
 use crate::fetch::refresh_policy::HistoryRefreshKey;
-use crate::{registry::Chain, SpectraBridgeError};
+use crate::{SpectraBridgeError, registry::Chain};
 
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum HistoryRefreshScope {
@@ -186,10 +186,10 @@ impl WalletService {
                 },
             }),
         };
-        if let Some(command) = command {
-            if let Err(error) = self.apply_diagnostic_command(command).await {
-                tracing::warn!(%error, "history diagnostics were not recorded");
-            }
+        if let Some(command) = command
+            && let Err(error) = self.apply_diagnostic_command(command).await
+        {
+            tracing::warn!(%error, "history diagnostics were not recorded");
         }
     }
 }

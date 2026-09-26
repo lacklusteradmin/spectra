@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 
 // ── Public result types
 
@@ -547,7 +547,7 @@ mod integer_tests {
 
     #[tokio::test]
     async fn invalid_decimals_are_refused_before_reading_the_symbol() {
-        use wiremock::{matchers::body_partial_json, Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
         for result in [
             format!("{:064x}", 39),
             format!("{:064x}", 256),
@@ -562,10 +562,12 @@ mod integer_tests {
                 .expect(1)
                 .mount(&server)
                 .await;
-            assert!(TronClient::new(std::sync::Arc::new(vec![server.uri()]))
-                .fetch_trc20_metadata("contract")
-                .await
-                .is_err());
+            assert!(
+                TronClient::new(std::sync::Arc::new(vec![server.uri()]))
+                    .fetch_trc20_metadata("contract")
+                    .await
+                    .is_err()
+            );
             assert_eq!(server.received_requests().await.unwrap().len(), 1);
         }
     }
@@ -576,7 +578,7 @@ mod metadata_cache_rpc_tests {
     use super::*;
     use serde_json::json;
     use std::{sync::Arc, time::Duration};
-    use wiremock::{matchers::body_partial_json, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
 
     #[tokio::test]
     async fn concurrent_balance_reads_share_metadata_but_sends_and_new_sources_read_fresh() {

@@ -3,9 +3,9 @@ use super::*;
 use crate::store::{
     secret_backends::InMemorySecretStore, state::WalletState, wallet_secrets::store_seed_phrase,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
-use serde_json::{json, Value};
-use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use serde_json::{Value, json};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
 #[tokio::test]
 async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
@@ -178,12 +178,14 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         } else {
             // An unregistered custom node cannot prove these network identities.
             // Still exercise the protocol wire adapter with locally verified signatures.
-            assert!(service
-                .broadcast_send(signed.id.clone(), vec![server.uri()])
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("cannot be verified"));
+            assert!(
+                service
+                    .broadcast_send(signed.id.clone(), vec![server.uri()])
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("cannot be verified")
+            );
             service
                 .broadcast_at(
                     chain,
@@ -203,12 +205,14 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         assert_eq!(restored.signed_payload, signed.signed_payload);
         assert_eq!(restored.review_digest, signed.review_digest);
         let requests = server.received_requests().await.unwrap();
-        assert!(!requests
-            .iter()
-            .any(|r| r.url.path().contains("encode_submission")
-                || r.url.path().contains("createtransaction")
-                || r.url.path().contains("triggersmartcontract")
-                || String::from_utf8_lossy(&r.body).contains("unsafe_transferSui")));
+        assert!(
+            !requests
+                .iter()
+                .any(|r| r.url.path().contains("encode_submission")
+                    || r.url.path().contains("createtransaction")
+                    || r.url.path().contains("triggersmartcontract")
+                    || String::from_utf8_lossy(&r.body).contains("unsafe_transferSui"))
+        );
     }
 }
 

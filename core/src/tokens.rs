@@ -695,29 +695,35 @@ tags = []
             SAMPLE.replace("decimals = 6", "decimals = 39"),
             SAMPLE.replace("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "bad-contract"),
         ] {
-            assert!(std::panic::catch_unwind(|| {
-                load_catalog(parse_token_file(&file).unwrap(), empty_file())
-            })
-            .is_err());
+            assert!(
+                std::panic::catch_unwind(|| {
+                    load_catalog(parse_token_file(&file).unwrap(), empty_file())
+                })
+                .is_err()
+            );
         }
         let mut duplicate = parse_token_file(SAMPLE).unwrap();
         duplicate
             .deployments
             .push(parse_token_file(SAMPLE).unwrap().deployments.remove(0));
         assert!(std::panic::catch_unwind(|| load_catalog(duplicate, empty_file())).is_err());
-        assert!(std::panic::catch_unwind(|| {
-            load_catalog(
-                parse_token_file(SAMPLE).unwrap(),
-                parse_token_file(SAMPLE).unwrap(),
-            )
-        })
-        .is_err());
+        assert!(
+            std::panic::catch_unwind(|| {
+                load_catalog(
+                    parse_token_file(SAMPLE).unwrap(),
+                    parse_token_file(SAMPLE).unwrap(),
+                )
+            })
+            .is_err()
+        );
         // Testnet assets still cannot borrow a mainnet market identity.
         let testnet = SAMPLE.replace("chain_id = \"ethereum\"", "chain_id = \"ethereum-sepolia\"");
-        assert!(std::panic::catch_unwind(|| {
-            load_catalog(empty_file(), parse_token_file(&testnet).unwrap())
-        })
-        .is_err());
+        assert!(
+            std::panic::catch_unwind(|| {
+                load_catalog(empty_file(), parse_token_file(&testnet).unwrap())
+            })
+            .is_err()
+        );
     }
 
     /// A token's non-deployment facts are one fact, whatever it is deployed on.

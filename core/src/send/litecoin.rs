@@ -11,7 +11,7 @@ use crate::derivation::litecoin::parse_mweb_address;
 #[cfg(test)]
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 #[cfg(test)]
-use crate::send::mweb::{build_peg_in_extension, MWEB_PEGIN_OVERHEAD_BYTES};
+use crate::send::mweb::{MWEB_PEGIN_OVERHEAD_BYTES, build_peg_in_extension};
 
 #[cfg(test)]
 impl BlockbookClient {

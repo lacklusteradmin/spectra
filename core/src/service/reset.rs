@@ -90,10 +90,12 @@ mod tests {
             .await
             .unwrap();
         use crate::store::state::ResetScope;
-        assert!(service
-            .reset_data(vec![ResetScope::WalletsAndSecrets])
-            .await
-            .is_err());
+        assert!(
+            service
+                .reset_data(vec![ResetScope::WalletsAndSecrets])
+                .await
+                .is_err()
+        );
         assert_eq!(service.app_state().await.wallets.len(), 1);
         service
             .reset_data(vec![ResetScope::SettingsAndEndpoints])

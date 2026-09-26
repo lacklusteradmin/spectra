@@ -49,46 +49,56 @@ async fn stored_mnemonic_resolves_the_same_identity_on_evm_chains() {
 #[tokio::test]
 async fn mismatched_missing_and_watch_only_wallets_are_refused() {
     let (service, _) = wallet(KEY_ADDRESS, None).await;
-    assert!(service
-        .send_identity_address("w".into(), "ethereum".into(), None)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("does not match"));
-    assert!(service
-        .send_identity_address("w".into(), "solana".into(), None)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("no address"));
-    assert!(service
-        .send_identity_address("missing".into(), "ethereum".into(), None)
-        .await
-        .is_err());
+    assert!(
+        service
+            .send_identity_address("w".into(), "ethereum".into(), None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("does not match")
+    );
+    assert!(
+        service
+            .send_identity_address("w".into(), "solana".into(), None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("no address")
+    );
+    assert!(
+        service
+            .send_identity_address("missing".into(), "ethereum".into(), None)
+            .await
+            .is_err()
+    );
     let mut stored = service.app_state().await.wallets[0].clone();
     stored.signing = crate::store::state::WalletSigning::WatchOnly;
     service
         .apply_state_command(StateCommand::UpsertWallet { wallet: stored })
         .await
         .unwrap();
-    assert!(service
-        .send_identity_address("w".into(), "ethereum".into(), None)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("watch-only"));
+    assert!(
+        service
+            .send_identity_address("w".into(), "ethereum".into(), None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("watch-only")
+    );
 }
 
 #[tokio::test]
 async fn ambiguous_stored_material_is_refused_instead_of_preferring_a_key() {
     let (service, secrets) = wallet(ETH, None).await;
     store_private_key(&*secrets, "w", &format!("{:064x}", 1), None).unwrap();
-    assert!(service
-        .send_identity_address("w".into(), "ethereum".into(), None)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("both mnemonic and private key"));
+    assert!(
+        service
+            .send_identity_address("w".into(), "ethereum".into(), None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("both mnemonic and private key")
+    );
 }
 
 #[tokio::test]
@@ -115,10 +125,12 @@ async fn private_key_wallet_needs_no_caller_or_stored_derivation_path() {
 async fn passwords_unlock_stored_material_and_wrong_passwords_fail() {
     let (service, _) = wallet(ETH, Some("secret")).await;
     for password in [None, Some("wrong".into())] {
-        assert!(service
-            .send_identity_address("w".into(), "ethereum".into(), password)
-            .await
-            .is_err());
+        assert!(
+            service
+                .send_identity_address("w".into(), "ethereum".into(), password)
+                .await
+                .is_err()
+        );
     }
     assert_eq!(
         service

@@ -5,7 +5,7 @@
 //! Transactions are BORSH-serialized and signed with Ed25519.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::fetch::http::{HttpClient, RetryProfile};
 

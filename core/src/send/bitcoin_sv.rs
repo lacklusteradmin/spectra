@@ -3,7 +3,7 @@
 
 use serde_json::json;
 
-use crate::fetch::http::{with_fallback, RetryProfile};
+use crate::fetch::http::{RetryProfile, with_fallback};
 
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::bitcoin_sv::decode_bsv_address;

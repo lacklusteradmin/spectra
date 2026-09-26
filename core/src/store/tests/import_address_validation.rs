@@ -296,7 +296,7 @@ mod watch_only {
 
 #[test]
 fn watch_only_chain_identity_is_not_an_evm_storage_slot() {
-    use crate::derivation::import::{validated_watch_only_entries, WalletImportWatchOnlyEntries};
+    use crate::derivation::import::{WalletImportWatchOnlyEntries, validated_watch_only_entries};
     let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e".to_string();
     let entries = WalletImportWatchOnlyEntries {
         by_chain_id: std::collections::HashMap::from([

@@ -270,11 +270,13 @@ async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
             "0x1111111111111111111111111111111111111111".to_string(),
         ]
     );
-    assert!(service
-        .known_wallet_addresses("nobody".into())
-        .await
-        .expect("known")
-        .is_empty());
+    assert!(
+        service
+            .known_wallet_addresses("nobody".into())
+            .await
+            .expect("known")
+            .is_empty()
+    );
 
     let _ = std::fs::remove_file(&db);
 }

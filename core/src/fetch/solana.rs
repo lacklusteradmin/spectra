@@ -7,7 +7,7 @@
 //! Ed25519 signing is performed using the `ed25519-dalek` crate.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::fetch::http::HttpClient;
 
@@ -690,7 +690,7 @@ fn format_sol(lamports: u64) -> String {
 #[cfg(test)]
 mod balance_read_tests {
     use super::*;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     #[tokio::test]
     async fn spl_empty_accounts_are_zero_but_malformed_accounts_are_errors() {
@@ -746,10 +746,10 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<([u8; 32], u8),
     if parsed["type"] != "mint" || info["isInitialized"] != true {
         return Err("SPL mint: expected initialized mint".into());
     }
-    if let Some(extensions) = info.get("extensions") {
-        if !extensions.as_array().is_some_and(|e| e.is_empty()) {
-            return Err("SPL mint: Token-2022 extensions are not supported for sending".into());
-        }
+    if let Some(extensions) = info.get("extensions")
+        && !extensions.as_array().is_some_and(|e| e.is_empty())
+    {
+        return Err("SPL mint: Token-2022 extensions are not supported for sending".into());
     }
     let decimals = info["decimals"]
         .as_u64()
@@ -786,9 +786,11 @@ mod audit_fix5_mint_tests {
             "Hzvpgx8hB4wZewvsYXSedgrgSb4yNycQRhufYeMaKuRM"
         );
         token2022["data"]["parsed"]["info"]["extensions"] = json!([{"extension":"transferHook"}]);
-        assert!(validate_transfer_mint(&token2022)
-            .unwrap_err()
-            .contains("extensions"));
+        assert!(
+            validate_transfer_mint(&token2022)
+                .unwrap_err()
+                .contains("extensions")
+        );
         assert!(validate_transfer_mint(&account("11111111111111111111111111111111")).is_err());
         assert!(validate_transfer_mint(&serde_json::Value::Null).is_err());
     }

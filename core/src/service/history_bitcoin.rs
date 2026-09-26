@@ -37,7 +37,8 @@ impl WalletService {
             .clamp(MIN_BITCOIN_LIMIT, MAX_BITCOIN_LIMIT);
         let wallets: Vec<crate::store::state::WalletState> = {
             let state = self.app_state().await;
-            let wallets = state
+
+            state
                 .wallets
                 .iter()
                 .filter(|wallet| wallet.family() == Some(chain))
@@ -48,8 +49,7 @@ impl WalletService {
                             .any(|id| id.eq_ignore_ascii_case(&wallet.id))
                 })
                 .cloned()
-                .collect();
-            wallets
+                .collect()
         };
         if wallets.is_empty() {
             return Ok(HistoryRefreshOutcome::nothing());
@@ -178,7 +178,7 @@ impl WalletService {
         limit: u32,
         cursor: Option<&str>,
     ) -> Result<BitcoinHistoryPage, SpectraBridgeError> {
-        use crate::derivation::xpub_walker::{derive_children_on_network, HdNetwork};
+        use crate::derivation::xpub_walker::{HdNetwork, derive_children_on_network};
         let account = self
             .bitcoin_account_xpub(wallet, overrides, network)
             .map(|(key, script)| (key, Some(script)))
@@ -249,7 +249,7 @@ impl WalletService {
         overrides: &crate::store::wallet_domain::SensitiveOverrides,
         network: Chain,
     ) -> Option<(String, crate::derivation::xpub_walker::HdScriptType)> {
-        use crate::store::wallet_secrets::{load_signing_material, SigningMaterial};
+        use crate::store::wallet_secrets::{SigningMaterial, load_signing_material};
         let secrets = self.secrets().ok()?;
         // A private-key wallet has no range to walk; only a phrase derives one.
         let seed = match load_signing_material(&*secrets, &wallet.id, None).ok()? {

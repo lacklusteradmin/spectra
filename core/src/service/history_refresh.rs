@@ -7,12 +7,12 @@
 //! the result back to be merged. Core owns all three; a caller asks for a
 //! chain and is told what changed.
 
-use futures::{stream, StreamExt as _};
+use futures::{StreamExt as _, stream};
 
+use crate::SpectraBridgeError;
 use crate::registry::Chain;
 use crate::service::WalletService;
 use crate::store::state::CoreAppState;
-use crate::SpectraBridgeError;
 
 /// What one chain's history refresh did.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

@@ -63,12 +63,14 @@ async fn evm_checks_reads_after_chain_identity_and_rejects_wrong_network() {
         .mount(&server)
         .await;
     assert!(!probe(Chain::Ethereum, &record).await.1);
-    assert!(server
-        .received_requests()
-        .await
-        .unwrap()
-        .iter()
-        .all(|r| r.body_json::<Value>().unwrap()["method"] == "eth_chainId"));
+    assert!(
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.body_json::<Value>().unwrap()["method"] == "eth_chainId")
+    );
 }
 
 #[test]
@@ -79,12 +81,14 @@ fn rpc_requires_a_result_and_accepts_large_hex_balances() {
         json!([]),
         Response::RpcHex(None),
     );
-    assert!(check
-        .validate(
-            Chain::Ethereum,
-            &json!({"result":"0x100000000000000000000"})
-        )
-        .is_ok());
+    assert!(
+        check
+            .validate(
+                Chain::Ethereum,
+                &json!({"result":"0x100000000000000000000"})
+            )
+            .is_ok()
+    );
     for response in [
         json!({}),
         json!({"result":null}),

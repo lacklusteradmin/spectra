@@ -6,9 +6,9 @@
 
 use crate::registry::EvmHistorySource;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 
 // ── ERC-20 4-byte function selectors  (keccak256(signature)[..4])
 pub(crate) const SEL_BALANCE_OF: [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
@@ -616,7 +616,8 @@ impl EvmClient {
             .map_err(|e| format!("history parse: {e}"))?;
 
         let addr_norm = address.to_lowercase();
-        let entries = items
+
+        items
             .into_iter()
             .map(|tx| {
                 let status = match (tx.is_error.as_deref(), tx.receipt_status.as_deref()) {
@@ -642,9 +643,7 @@ impl EvmClient {
                     is_incoming: tx.to.to_lowercase() == addr_norm,
                 })
             })
-            .collect();
-
-        entries
+            .collect()
     }
 
     /// Fetch ERC-20 token transfer history for `address` via Etherscan `tokentx`.
@@ -793,11 +792,7 @@ pub fn decode_abi_string_or_bytes32(hex_str: &str) -> Option<String> {
         .take_while(|&b| b != 0)
         .collect();
     let s = String::from_utf8(trimmed).ok()?;
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ── Formatting
@@ -978,7 +973,7 @@ mod every_evm_chain_says_where_its_history_comes_from {
 mod history_page_tests {
     use super::*;
     use std::sync::Arc;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     #[tokio::test]
     async fn native_history_obeys_page_and_size_and_propagates_errors() {
@@ -1081,7 +1076,7 @@ mod fee_history_tests {
 #[cfg(test)]
 mod execution_history_regressions {
     use super::*;
-    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     #[tokio::test]
     async fn history_preserves_reverts_and_refuses_unknown_execution_status() {
         for (flags, expected) in [

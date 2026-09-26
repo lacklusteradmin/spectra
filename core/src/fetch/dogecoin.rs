@@ -220,11 +220,7 @@ fn parse_blockcypher_time(s: Option<&str>) -> u64 {
         let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
         let days = era * 146097 + doe - 719468;
         let ts = days * 86400 + hour * 3600 + min * 60 + sec;
-        if ts < 0 {
-            None
-        } else {
-            Some(ts as u64)
-        }
+        if ts < 0 { None } else { Some(ts as u64) }
     }
     s.and_then(|s| if s.is_empty() { None } else { inner(s) })
         .unwrap_or(0)

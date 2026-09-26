@@ -83,7 +83,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
 async fn discovery_has_four_in_flight_probes_and_returns_index_order() {
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::sync::{mpsc, Semaphore};
+    use tokio::sync::{Semaphore, mpsc};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -125,9 +125,11 @@ async fn discovery_has_four_in_flight_probes_and_returns_index_order() {
         assert!(request.starts_with("GET /address/"));
         assert!(!request.contains("/txs"));
     }
-    assert!(tokio::time::timeout(Duration::from_millis(50), rx.recv())
-        .await
-        .is_err());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), rx.recv())
+            .await
+            .is_err()
+    );
     permits.add_permits(4);
     tokio::time::timeout(Duration::from_secs(5), rx.recv())
         .await
@@ -148,7 +150,7 @@ async fn discovery_has_four_in_flight_probes_and_returns_index_order() {
 #[tokio::test]
 async fn activity_probes_include_pending_and_spent_addresses_without_transaction_bodies() {
     use serde_json::json;
-    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
     for (chain, url, body) in [
         (
             Chain::Bitcoin,
@@ -211,16 +213,18 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
         endpoints: vec![server.uri()],
     }])
     .unwrap();
-    assert!(service
-        .utxo_address_has_activity(Chain::BitcoinSV, "a")
-        .await
-        .unwrap());
+    assert!(
+        service
+            .utxo_address_has_activity(Chain::BitcoinSV, "a")
+            .await
+            .unwrap()
+    );
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
 
 #[tokio::test]
 async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
-    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     let server = MockServer::start().await;
     Mock::given(any())
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
@@ -231,14 +235,18 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         .reserve_receive_index("scan".into(), "bitcoin".into(), 1)
         .await
         .unwrap();
-    assert!(service
-        .discover_utxo_addresses("scan".into(), "bitcoin".into())
-        .await
-        .is_err());
-    assert!(service
-        .advance_used_utxo_reservations("bitcoin".into())
-        .await
-        .is_err());
+    assert!(
+        service
+            .discover_utxo_addresses("scan".into(), "bitcoin".into())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .advance_used_utxo_reservations("bitcoin".into())
+            .await
+            .is_err()
+    );
     assert_eq!(
         service
             .keypool_state("scan".into(), "bitcoin".into())
@@ -247,13 +255,15 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
             .reserved_receive_index,
         Some(before)
     );
-    assert!(service
-        .keypool
-        .read()
-        .await
-        .owned_everywhere()
-        .next()
-        .is_none());
+    assert!(
+        service
+            .keypool
+            .read()
+            .await
+            .owned_everywhere()
+            .next()
+            .is_none()
+    );
 }
 
 #[test]

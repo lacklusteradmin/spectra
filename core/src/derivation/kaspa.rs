@@ -40,9 +40,9 @@ fn polymod(values: &[u8]) -> u64 {
     for &d in values {
         let c0 = (c >> 35) as u8;
         c = ((c & 0x07_FFFF_FFFF) << 5) ^ d as u64;
-        for (i, gen) in POLYMOD_GENERATORS.iter().enumerate() {
+        for (i, generator) in POLYMOD_GENERATORS.iter().enumerate() {
             if (c0 >> i) & 1 == 1 {
-                c ^= *gen;
+                c ^= *generator;
             }
         }
     }
@@ -224,10 +224,10 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::derive_bip39_seed;
-use crate::derivation::primitives::ExtendedPrivateKey;
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::ExtendedPrivateKey;
+use crate::derivation::primitives::derive_bip39_seed;
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 /// UniFFI export: derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
 pub fn derive_kaspa(

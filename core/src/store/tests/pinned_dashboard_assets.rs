@@ -64,18 +64,22 @@ async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_de
     let reopened = WalletService::new(Vec::new()).expect("service");
     let state = reopened.open_state(path).await.expect("reopen");
     assert!(state.settings.pinned_dashboard_assets().is_empty());
-    assert!(reopened
-        .dashboard_pin_options()
-        .await
-        .expect("options")
-        .iter()
-        .all(|option| !option.is_pinned));
-    assert!(reopened
-        .portfolio_snapshot()
-        .await
-        .expect("portfolio")
-        .groups
-        .is_empty());
+    assert!(
+        reopened
+            .dashboard_pin_options()
+            .await
+            .expect("options")
+            .iter()
+            .all(|option| !option.is_pinned)
+    );
+    assert!(
+        reopened
+            .portfolio_snapshot()
+            .await
+            .expect("portfolio")
+            .groups
+            .is_empty()
+    );
 
     let reset = reopened
         .apply_state_command(StateCommand::ResetPinnedDashboardAssets)

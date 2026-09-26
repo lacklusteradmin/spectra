@@ -960,7 +960,7 @@ impl Chain {
         Ok(match self {
             Self::Bitcoin => return btc::encode_address_inner(btc::BTC_MAINNET, script, key),
             Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
-                return btc::encode_address_inner(btc::BTC_TESTNET, script, key)
+                return btc::encode_address_inner(btc::BTC_TESTNET, script, key);
             }
             Self::BitcoinCash => btc::encode_p2pkh(bch::BCH_MAINNET_VERSION, &key.serialize()),
             Self::BitcoinCashTestnet => {
@@ -1453,7 +1453,7 @@ mod tests {
     /// old per-module copies of this table had.
     #[test]
     fn every_chain_has_a_kind_validate_address_recognises() {
-        use crate::validation::address::{validate_address, AddressValidationRequest};
+        use crate::validation::address::{AddressValidationRequest, validate_address};
         for chain in Chain::all() {
             let kind = chain.address_validation_kind();
             assert!(!kind.is_empty(), "{} has an empty kind", chain.str_id());

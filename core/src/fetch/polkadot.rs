@@ -1,7 +1,7 @@
 //! Polkadot RPC client. Balance and history have no configured keyless source.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::fetch::http::HttpClient;
 
@@ -127,15 +127,19 @@ mod unavailable_reads {
     #[tokio::test]
     async fn missing_sources_are_errors_not_empty_wallets() {
         let client = PolkadotClient::new(std::sync::Arc::new(vec![]));
-        assert!(client
-            .fetch_balance("address")
-            .await
-            .unwrap_err()
-            .contains("no keyless balance source"));
-        assert!(client
-            .fetch_history("address")
-            .await
-            .unwrap_err()
-            .contains("no keyless history source"));
+        assert!(
+            client
+                .fetch_balance("address")
+                .await
+                .unwrap_err()
+                .contains("no keyless balance source")
+        );
+        assert!(
+            client
+                .fetch_history("address")
+                .await
+                .unwrap_err()
+                .contains("no keyless history source")
+        );
     }
 }

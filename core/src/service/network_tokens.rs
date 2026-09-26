@@ -149,7 +149,7 @@ impl WalletService {
             c => {
                 return Err(SpectraBridgeError::from(format!(
                     "discover_token_balances: {c:?} is marked enumerable but has no client"
-                )))
+                )));
             }
         };
         let known: std::collections::HashMap<String, crate::tokens::TokenDeploymentEntry> =
@@ -444,7 +444,7 @@ impl WalletService {
             c => {
                 return Err(SpectraBridgeError::from(format!(
                     "fetch_token_balances: unsupported chain: {c:?}"
-                )))
+                )));
             }
         };
 
@@ -584,7 +584,7 @@ mod decimals_come_from_the_chain {
     /// only caller discards the error, so it stopped silently.
     #[tokio::test]
     async fn an_unreadable_token_does_not_take_the_readable_ones_with_it() {
-        use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
         let holder = format!("0x{}", "33".repeat(20));
         let good = format!("0x{}", "11".repeat(20));
         let bad = format!("0x{}", "22".repeat(20));

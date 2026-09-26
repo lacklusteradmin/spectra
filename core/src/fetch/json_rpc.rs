@@ -1,10 +1,10 @@
 //! Shared wire handling; chain clients still own methods and domain decoding.
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
 use crate::EndpointApi;
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 
 pub(crate) async fn call(
     api: EndpointApi,
@@ -69,8 +69,8 @@ fn decode(api: EndpointApi, response: Value) -> Result<Value, String> {
 mod tests {
     use super::*;
     use wiremock::{
-        matchers::{body_json, method},
         Mock, MockServer, ResponseTemplate,
+        matchers::{body_json, method},
     };
 
     #[tokio::test]
@@ -130,11 +130,13 @@ mod tests {
     #[test]
     fn malformed_and_xrpl_error_responses_are_not_successes() {
         assert!(decode(EndpointApi::EvmJsonRpc, json!({})).is_err());
-        assert!(decode(
-            EndpointApi::XrplJsonRpc,
-            json!({"result":{"status":"error","error_message":"refused"}})
-        )
-        .unwrap_err()
-        .contains("refused"));
+        assert!(
+            decode(
+                EndpointApi::XrplJsonRpc,
+                json!({"result":{"status":"error","error_message":"refused"}})
+            )
+            .unwrap_err()
+            .contains("refused")
+        );
     }
 }

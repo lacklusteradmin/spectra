@@ -1,7 +1,7 @@
 //! Dogecoin send: P2PKH signer and Blockbook broadcast.
 
 use super::bitcoin_wire::p2pkh_script;
-use crate::fetch::http::{with_fallback, RetryProfile};
+use crate::fetch::http::{RetryProfile, with_fallback};
 
 use super::bitcoin_wire::{
     build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint,

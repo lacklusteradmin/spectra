@@ -1,4 +1,4 @@
-use crate::store::state::{reduce_state_in_place, CoreAppState, StateCommand};
+use crate::store::state::{CoreAppState, StateCommand, reduce_state_in_place};
 use crate::store::wallet_domain::CorePriceAlertCondition;
 use crate::wallet_db;
 
@@ -86,7 +86,7 @@ fn alerts_contacts_and_currency_survive_reopening() {
 #[test]
 fn resetting_settings_restores_every_default() {
     use crate::store::state::{
-        reduce_state_in_place, AppSettingUpdate as U, FeePriority, StateCommand,
+        AppSettingUpdate as U, FeePriority, StateCommand, reduce_state_in_place,
     };
     let mut state = CoreAppState::default();
     let defaults = state.settings.clone();
@@ -151,9 +151,11 @@ fn resetting_settings_restores_every_default() {
 
     let events = reduce_state_in_place(&mut state, StateCommand::ResetAppSettings);
     assert_eq!(state.settings, defaults);
-    assert!(events
-        .iter()
-        .any(|e| matches!(e, crate::store::state::StateEvent::AppSettingChanged)));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, crate::store::state::StateEvent::AppSettingChanged))
+    );
 
     // Resetting what is already default is not a change.
     assert!(reduce_state_in_place(&mut state, StateCommand::ResetAppSettings).is_empty());

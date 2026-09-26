@@ -31,8 +31,8 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
+use crate::derivation::types::DerivationResult;
 
 // Shared body for derive_near / derive_near_testnet.
 fn near_internal(

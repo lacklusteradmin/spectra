@@ -391,7 +391,7 @@ pub(crate) fn expiry_height(tip: u64) -> Result<u32, String> {
 mod expiry_tests {
     use super::*;
     use std::sync::Arc;
-    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
     #[test]
     fn expiry_is_checked() {
         assert_eq!(expiry_height(2000000).unwrap(), 2000040);
@@ -419,18 +419,22 @@ mod expiry_tests {
             .await
             .unwrap_err();
         assert!(err.contains("json decode"), "{err}");
-        assert!(server
-            .received_requests()
-            .await
-            .unwrap()
-            .iter()
-            .any(|r| r.url.path() == "/api/v2"));
-        assert!(server
-            .received_requests()
-            .await
-            .unwrap()
-            .iter()
-            .all(|r| !r.url.path().contains("sendtx")));
+        assert!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.url.path() == "/api/v2")
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| !r.url.path().contains("sendtx"))
+        );
     }
 }
 
@@ -479,13 +483,15 @@ mod zip244_tests {
             &public,
         )
         .unwrap();
-        assert!(sign_transaction(
-            &inputs,
-            &outputs,
-            3_400_040,
-            &[2; 32],
-            ZcashNetworkUpgrade::NU5
-        )
-        .is_err());
+        assert!(
+            sign_transaction(
+                &inputs,
+                &outputs,
+                3_400_040,
+                &[2; 32],
+                ZcashNetworkUpgrade::NU5
+            )
+            .is_err()
+        );
     }
 }

@@ -182,12 +182,14 @@ async fn invalid_exact_amount_and_fee_refuse_before_storage_or_keys() {
     for fee in [f64::NAN, -1.0, f64::INFINITY, 0.00000000001] {
         let mut request = request_fixture::req("bitcoin", "bitcoin");
         request.fee_rate_svb = Some(fee);
-        assert!(service
-            .build_send(request)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("fee must"));
+        assert!(
+            service
+                .build_send(request)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("fee must")
+        );
     }
 }
 
@@ -225,12 +227,14 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         submission: None,
         signed_digest: None,
     };
-    assert!(service
-        .validate_signed_expiry(Chain::Ton, &stored)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("expired"));
+    assert!(
+        service
+            .validate_signed_expiry(Chain::Ton, &stored)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("expired")
+    );
     stored.prepared = PreparedPayload::Ton {
         seqno: 1,
         amount: 1,
@@ -247,10 +251,12 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         amount: 1,
         token_contract: None,
     };
-    assert!(service
-        .validate_signed_expiry(Chain::Near, &stored)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("expired"));
+    assert!(
+        service
+            .validate_signed_expiry(Chain::Near, &stored)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("expired")
+    );
 }

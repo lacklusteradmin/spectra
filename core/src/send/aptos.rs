@@ -2,7 +2,7 @@
 use super::bcs;
 use crate::fetch::aptos::{AptosClient, AptosSendResult};
 use crate::send::keys::Ed25519Seed;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha3::{Digest, Sha3_256};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

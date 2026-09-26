@@ -646,10 +646,15 @@ mod status_commit_regressions {
             .unwrap();
         let conn = rusqlite::Connection::open(db).unwrap();
         conn.execute_batch("CREATE TRIGGER reject_status BEFORE UPDATE ON history_records BEGIN SELECT RAISE(FAIL, 'test refusal'); END;").unwrap();
-        assert!(service
-            .apply_resolved_pending_statuses("bitcoin".into(), vec![resolution("tx", "confirmed")])
-            .await
-            .is_err());
+        assert!(
+            service
+                .apply_resolved_pending_statuses(
+                    "bitcoin".into(),
+                    vec![resolution("tx", "confirmed")]
+                )
+                .await
+                .is_err()
+        );
         assert!(service.status_trackers.read().await.is_empty());
         assert_eq!(
             service.transactions().await.unwrap()[0].status,

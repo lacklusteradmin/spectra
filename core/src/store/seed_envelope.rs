@@ -92,8 +92,8 @@ pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
 /// Serde helper — encodes `Vec<u8>` as standard base64, matching Swift's
 /// `JSONEncoder` treatment of `Data`.
 pub(crate) mod base64_serde {
-    use base64::engine::general_purpose::STANDARD;
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S: Serializer>(data: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error> {

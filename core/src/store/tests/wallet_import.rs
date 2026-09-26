@@ -276,10 +276,12 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
     assert!(service.import_wallets(missing).await.is_err());
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute_batch("CREATE TRIGGER fail_import BEFORE INSERT ON wallets BEGIN SELECT RAISE(ABORT, 'injected'); END;").unwrap();
-    assert!(service
-        .import_wallets(commit(&["ethereum", "solana"]))
-        .await
-        .is_err());
+    assert!(
+        service
+            .import_wallets(commit(&["ethereum", "solana"]))
+            .await
+            .is_err()
+    );
     assert_eq!(store.len(), 0);
     assert!(service.app_state().await.wallets.is_empty());
 }

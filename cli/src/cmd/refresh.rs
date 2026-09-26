@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use clap::Args;
 use colored::Colorize as _;
 use spectra_core::fetch::refresh_engine::{RefreshEngine, RefreshObserver};
-use spectra_core::service::app_refresh::AppRefreshResult;
 use spectra_core::service::ChainEndpoints;
+use spectra_core::service::app_refresh::AppRefreshResult;
 use spectra_core::store::state::WalletState;
 
 use crate::ctx::Ctx;

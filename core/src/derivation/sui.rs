@@ -41,9 +41,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::derive_slip10_ed25519_key;
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::derive_slip10_ed25519_key;
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 // Shared derivation logic for all Sui networks.
 fn sui_internal(

@@ -116,10 +116,12 @@ mod tests {
             .get_or_fetch(key("a"), async { Ok(metadata()) })
             .await
             .unwrap();
-        assert!(cache
-            .get_or_fetch(key("a"), async { Err("provider unavailable".into()) })
-            .await
-            .is_err());
+        assert!(
+            cache
+                .get_or_fetch(key("a"), async { Err("provider unavailable".into()) })
+                .await
+                .is_err()
+        );
         cache
             .get_or_fetch(key("a"), async { Ok(metadata()) })
             .await

@@ -81,11 +81,7 @@ pub(crate) fn decimal_string_from_wei(wei_str: &str) -> String {
     } else {
         format!("{int_part}.{frac_trimmed}")
     };
-    if negative {
-        format!("-{body}")
-    } else {
-        body
-    }
+    if negative { format!("-{body}") } else { body }
 }
 
 // ────────────────────────────────────────────────────────────────────

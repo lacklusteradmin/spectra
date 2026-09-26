@@ -164,7 +164,7 @@ impl BitcoinClient {
 // Bitcoin fetch paths (Esplora REST): balance, UTXOs, history, fee estimates,
 // and tx status.
 
-use crate::fetch::http::{with_fallback, RetryProfile};
+use crate::fetch::http::{RetryProfile, with_fallback};
 
 impl BitcoinClient {
     /// Address counters include spent history and pending transactions, without tx bodies.

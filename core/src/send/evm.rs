@@ -4,7 +4,7 @@
 
 use serde_json::json;
 
-use crate::fetch::evm::{decode_hex, EvmClient, EvmSendResult, SEL_TRANSFER};
+use crate::fetch::evm::{EvmClient, EvmSendResult, SEL_TRANSFER, decode_hex};
 
 impl EvmClient {
     /// Broadcast a pre-signed raw transaction hex (0x-prefixed).
@@ -429,7 +429,7 @@ pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, S
 mod gas_tests {
     use super::*;
     use std::sync::Arc;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     #[tokio::test]
     async fn signing_estimates_final_payload_and_refuses_failed_gas() {

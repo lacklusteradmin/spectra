@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use super::types::*;
 use crate::diagnostics::sanitizer::sanitize_diagnostics_string;

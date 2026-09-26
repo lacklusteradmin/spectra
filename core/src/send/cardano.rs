@@ -1,7 +1,7 @@
 //! Cardano send: minimal CBOR encoder for an ADA-only Shelley transfer,
 //! keyless Koios submission.
 
-use crate::fetch::http::{http_request, with_fallback, HttpHeader, HttpRetryProfile};
+use crate::fetch::http::{HttpHeader, HttpRetryProfile, http_request, with_fallback};
 
 use crate::fetch::cardano::{CardanoClient, CardanoSendResult};
 
@@ -298,8 +298,8 @@ mod keyless_submission_tests {
     use super::*;
     use std::sync::Arc;
     use wiremock::{
-        matchers::{body_bytes, header, method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{body_bytes, header, method, path},
     };
 
     #[tokio::test]
@@ -325,11 +325,13 @@ mod keyless_submission_tests {
             .respond_with(ResponseTemplate::new(202).set_body_json(""))
             .mount(&server)
             .await;
-        assert!(client
-            .submit_tx("8100")
-            .await
-            .unwrap_err()
-            .contains("invalid transaction id"));
+        assert!(
+            client
+                .submit_tx("8100")
+                .await
+                .unwrap_err()
+                .contains("invalid transaction id")
+        );
         server.reset().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(400).set_body_string("invalid transaction"))

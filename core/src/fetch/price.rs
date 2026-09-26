@@ -287,10 +287,10 @@ fn resolve_paprika_quotes(coins: &[PriceRequestCoin], tickers: &[PaprikaTicker])
         let Some(ticker) = by_id.get(id) else {
             continue;
         };
-        if let Some(price) = ticker.quotes.as_ref().and_then(|q| q.usd.as_ref()?.price) {
-            if price > 0.0 {
-                resolved.insert(coin.holding_key.clone(), price);
-            }
+        if let Some(price) = ticker.quotes.as_ref().and_then(|q| q.usd.as_ref()?.price)
+            && price > 0.0
+        {
+            resolved.insert(coin.holding_key.clone(), price);
         }
     }
 
@@ -333,10 +333,10 @@ fn filter_rates(rates: HashMap<String, f64>, allowed: &[String]) -> HashMap<Stri
     let mut out = HashMap::new();
     for currency in allowed {
         let upper = currency.to_uppercase();
-        if let Some(rate) = rates.get(&upper) {
-            if *rate > 0.0 {
-                out.insert(upper, *rate);
-            }
+        if let Some(rate) = rates.get(&upper)
+            && *rate > 0.0
+        {
+            out.insert(upper, *rate);
         }
     }
     out
@@ -361,16 +361,16 @@ pub fn merge_fiat_rate_updates(
         if currency == base_currency {
             continue;
         }
-        if let Some(&rate) = fetched.get(&currency) {
-            if rate > 0.0 {
-                out.insert(currency, rate);
-                continue;
-            }
+        if let Some(&rate) = fetched.get(&currency)
+            && rate > 0.0
+        {
+            out.insert(currency, rate);
+            continue;
         }
-        if let Some(&rate) = existing.get(&currency) {
-            if rate > 0.0 {
-                out.insert(currency, rate);
-            }
+        if let Some(&rate) = existing.get(&currency)
+            && rate > 0.0
+        {
+            out.insert(currency, rate);
         }
     }
     out

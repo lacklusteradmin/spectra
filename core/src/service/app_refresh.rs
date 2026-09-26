@@ -210,7 +210,7 @@ impl WalletService {
             }
         }
         if heavy {
-            use futures::{stream, StreamExt};
+            use futures::{StreamExt, stream};
             let entries = {
                 let state = self.wallet_state.read().await;
                 crate::fetch::refresh_engine::refresh_entries_for(&state)
@@ -369,23 +369,27 @@ mod tests {
             .unwrap();
         assert!(!result.failures.is_empty());
         assert!(result.pending.is_none());
-        assert!(service
-            .refresh_app(
-                AppRefreshIntent::DeepRescan {
-                    chain_id: "ethereum".into()
-                },
-                conditions.clone()
-            )
-            .await
-            .is_err());
-        assert!(service
-            .refresh_app(
-                AppRefreshIntent::AfterSend {
-                    chain_id: "missing".into()
-                },
-                conditions
-            )
-            .await
-            .is_err());
+        assert!(
+            service
+                .refresh_app(
+                    AppRefreshIntent::DeepRescan {
+                        chain_id: "ethereum".into()
+                    },
+                    conditions.clone()
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            service
+                .refresh_app(
+                    AppRefreshIntent::AfterSend {
+                        chain_id: "missing".into()
+                    },
+                    conditions
+                )
+                .await
+                .is_err()
+        );
     }
 }

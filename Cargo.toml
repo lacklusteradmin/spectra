@@ -1,6 +1,6 @@
 [workspace]
 members = ["core", "ffi", "cli", "tools/uniffi-bindgen"]
-resolver = "2"
+resolver = "3"
 
 [profile.release]
 lto = true

@@ -444,7 +444,9 @@ pub(crate) fn history_pending_for_sender(
     chain: &str,
     sender: &str,
 ) -> Result<Vec<HistoryRecord>, String> {
-    history_fetch_where(database,
+    history_fetch_where(
+        database,
         "chain_id = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'",
-        params![chain, sender])
+        params![chain, sender],
+    )
 }

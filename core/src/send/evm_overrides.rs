@@ -221,9 +221,11 @@ mod tests {
         .resolve(Chain::Ethereum)
         .unwrap();
         assert_eq!(empty.calldata, Some(Vec::new()));
-        assert!(EvmSendOverridesInput::default()
-            .resolve(Chain::Bitcoin)
-            .is_err());
+        assert!(
+            EvmSendOverridesInput::default()
+                .resolve(Chain::Bitcoin)
+                .is_err()
+        );
         let input = EvmSendOverridesInput {
             access_list_json: Some(
                 r#"[{"address":"0x1111111111111111111111111111111111111111","storageKeys":[]}]"#

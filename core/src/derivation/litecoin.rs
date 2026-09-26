@@ -58,9 +58,9 @@ pub fn is_mweb_address(address: &str) -> bool {
     address.starts_with("ltcmweb1") || address.starts_with("tmweb1")
 }
 
+use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{derive_legacy_p2pkh, encode_p2pkh};
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::SpectraBridgeError;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 pub(crate) const LTC_MAINNET_VERSION: u8 = 0x30;

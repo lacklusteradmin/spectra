@@ -352,9 +352,9 @@ pub(crate) fn derive_from_seed_phrase_testnet(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::ExtendedPrivateKey;
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::ExtendedPrivateKey;
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 /// Derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
 pub fn derive_decred(

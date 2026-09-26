@@ -418,12 +418,16 @@ mod explicit_network_catalog {
         for (actual, expected) in catalog.iter().zip(CATALOG.iter()) {
             assert_eq!(actual.is_evm, expected.is_evm, "{}", actual.id);
         }
-        assert!(catalog
-            .iter()
-            .any(|c| c.is_evm && c.category == ChainCategory::Other));
-        assert!(catalog
-            .iter()
-            .any(|c| !c.is_evm && c.category == ChainCategory::EvmL1));
+        assert!(
+            catalog
+                .iter()
+                .any(|c| c.is_evm && c.category == ChainCategory::Other)
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|c| !c.is_evm && c.category == ChainCategory::EvmL1)
+        );
     }
 
     #[test]

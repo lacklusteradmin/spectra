@@ -11,7 +11,7 @@
 //! Pallet/call indexes live in `super::substrate`; re-verify against runtime
 //! metadata after each subtensor runtime upgrade.
 
-use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u128, scale_compact_u32};
+use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u32, scale_compact_u128};
 use serde_json::json;
 
 use crate::derivation::bittensor::decode_bittensor_ss58;

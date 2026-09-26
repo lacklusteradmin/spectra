@@ -543,10 +543,12 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     after.address_book.clear();
     after.settings.fiat_currency = crate::store::state::FiatCurrency::Eur;
     with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())).unwrap();
-    assert!(AppStateChanges::between(Some(&before), &after)
-        .unwrap()
-        .save(&db)
-        .is_err());
+    assert!(
+        AppStateChanges::between(Some(&before), &after)
+            .unwrap()
+            .save(&db)
+            .is_err()
+    );
     assert_eq!(app_state_load(&db).unwrap(), before);
     with_conn(&db, |conn| {
         conn.execute_batch("DROP TRIGGER reject_meta;")
@@ -774,9 +776,11 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
     let rows = history_pending_for_sender(&db, "ethereum", "0xabc").unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].payload.nonce, Some(7));
-    assert!(history_pending_for_sender(&db, "base", "0xabc")
-        .unwrap()
-        .is_empty());
+    assert!(
+        history_pending_for_sender(&db, "base", "0xabc")
+            .unwrap()
+            .is_empty()
+    );
     with_conn(&db, |conn| {
         let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'")
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();

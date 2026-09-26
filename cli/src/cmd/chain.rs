@@ -11,7 +11,7 @@ use spectra_core::service::{ChainEndpoints, WalletService};
 use std::sync::Arc;
 
 use super::resolve_chain;
-use crate::ctx::{wallet_address, Ctx};
+use crate::ctx::{Ctx, wallet_address};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 

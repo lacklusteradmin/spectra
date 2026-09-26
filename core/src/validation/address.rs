@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::derivation::bitcoin::{parse_bitcoin_address, BitcoinNetworkKind};
+use crate::derivation::bitcoin::{BitcoinNetworkKind, parse_bitcoin_address};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -583,8 +583,7 @@ fn validate_aptos_token_type(value: &str) -> AddressValidationResult {
 mod tests {
     use super::*;
 
-    const MNEMONIC: &str =
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     fn validate(kind: &str, value: String) -> AddressValidationResult {
         validate_address(AddressValidationRequest {

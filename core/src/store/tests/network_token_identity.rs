@@ -76,18 +76,22 @@ async fn invalid_protocol_identity_is_refused_before_storage() {
     let mut holding = native(Chain::Ethereum);
     holding.token_standard = "ERC-20".into();
     wallet.holdings.push(holding);
-    assert!(service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: wallet.clone()
-        })
-        .await
-        .is_err());
+    assert!(
+        service
+            .apply_state_command(StateCommand::UpsertWallet {
+                wallet: wallet.clone()
+            })
+            .await
+            .is_err()
+    );
     assert!(service.app_state().await.wallets.is_empty());
     wallet.holdings[0].contract_address = Some("not-an-address".into());
-    assert!(service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .is_err());
+    assert!(
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet })
+            .await
+            .is_err()
+    );
     assert!(service.app_state().await.wallets.is_empty());
 }
 

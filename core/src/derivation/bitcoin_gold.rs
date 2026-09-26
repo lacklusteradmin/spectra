@@ -26,9 +26,9 @@ pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
+use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
 pub fn derive_bitcoin_gold(

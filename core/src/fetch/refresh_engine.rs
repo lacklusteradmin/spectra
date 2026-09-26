@@ -4,8 +4,8 @@
 // and renders; it runs no loop of its own.
 
 use crate::fetch::refresh_policy::DeviceConditions;
-use crate::service::app_refresh::{AppRefreshIntent, AppRefreshResult};
 use crate::service::WalletService;
+use crate::service::app_refresh::{AppRefreshIntent, AppRefreshResult};
 use futures::stream::{self, StreamExt};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -692,11 +692,11 @@ mod refresh_entry_tests {
     async fn device_conditions_start_and_stop_the_maintenance_loop() {
         use super::{RefreshEngine, RefreshObserver};
         use crate::fetch::refresh_policy::DeviceConditions;
-        use crate::service::app_refresh::AppRefreshResult;
         use crate::service::WalletService;
+        use crate::service::app_refresh::AppRefreshResult;
         use crate::store::state::StateCommand;
-        use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
         use std::time::Duration;
 
         struct Ticks(AtomicU32, AtomicU32);

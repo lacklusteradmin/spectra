@@ -228,15 +228,17 @@ mod protocol_tests {
         {
             assert_eq!(hex::encode(bytes), vector["signed_hex"].as_str().unwrap());
         }
-        assert!(build_near_transfer_tx(
-            "alice.near",
-            &[9; 32],
-            42,
-            "token.near",
-            1,
-            &[2; 32],
-            &[1; 32]
-        )
-        .is_err());
+        assert!(
+            build_near_transfer_tx(
+                "alice.near",
+                &[9; 32],
+                42,
+                "token.near",
+                1,
+                &[2; 32],
+                &[1; 32]
+            )
+            .is_err()
+        );
     }
 }

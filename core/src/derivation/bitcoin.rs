@@ -6,7 +6,7 @@
 //! primitives in `primitives`; this module also owns extended-key serialization.
 
 pub(crate) use crate::derivation::primitives::{
-    derive_bip39_seed, parse_bip32_path, HARDENED_OFFSET,
+    HARDENED_OFFSET, derive_bip39_seed, parse_bip32_path,
 };
 use bech32::Hrp;
 use hmac::{Hmac, Mac};
@@ -367,8 +367,8 @@ pub(crate) fn encode_p2tr(
 
 // ── Derivation pipeline (shared by Bitcoin-family chains) ────────────────
 
-use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
 
 /// BIP-39 → BIP-32 path walk → (compressed pubkey, raw private bytes).
 /// `pub(crate)` so BCH / BSV / LTC / DOGE / DASH / BTG chain files can reuse it.

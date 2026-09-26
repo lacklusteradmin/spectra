@@ -1,6 +1,6 @@
 //! Send eligibility, asset routing and recipient warnings from owned state.
-use crate::service::WalletService;
 use crate::SpectraBridgeError;
+use crate::service::WalletService;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -651,11 +651,13 @@ mod send_token_identity_tests {
         // A token nothing tracks has no identity, so the send refuses rather
         // than guessing a scale.
         assert!(send_token_identity(&holding("tron", "NOPE", None), &preferences).is_none());
-        assert!(send_token_identity(
-            &holding("tron", "USDT", Some("TSomeOtherContractAddressEntirely")),
-            &preferences
-        )
-        .is_none());
+        assert!(
+            send_token_identity(
+                &holding("tron", "USDT", Some("TSomeOtherContractAddressEntirely")),
+                &preferences
+            )
+            .is_none()
+        );
         // And a chain that hosts no known tokens has none either.
         assert!(send_token_identity(&holding("monero", "XMR", None), &preferences).is_none());
     }

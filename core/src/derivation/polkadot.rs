@@ -18,8 +18,8 @@ pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], String> {
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
+use crate::derivation::types::DerivationResult;
 
 // Shared derivation logic for all Substrate-based networks; ss58_prefix selects the network.
 fn substrate_internal(

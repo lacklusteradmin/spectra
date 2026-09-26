@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 
 #[derive(Debug, Deserialize)]
 struct InsightAddress {

@@ -1160,24 +1160,23 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
         }
         StateCommand::RenameWallet { wallet_id, name } => {
             let name = name.trim();
-            if !name.is_empty() {
-                if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
-                    if wallet.name != name {
-                        wallet.name = name.to_owned();
-                        events.push(StateEvent::WalletUpdated { wallet_id });
-                    }
-                }
+            if !name.is_empty()
+                && let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id)
+                && wallet.name != name
+            {
+                wallet.name = name.to_owned();
+                events.push(StateEvent::WalletUpdated { wallet_id });
             }
         }
         StateCommand::SetWalletPortfolioInclusion {
             wallet_id,
             included,
         } => {
-            if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
-                if wallet.include_in_portfolio_total != included {
-                    wallet.include_in_portfolio_total = included;
-                    events.push(StateEvent::WalletUpdated { wallet_id });
-                }
+            if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id)
+                && wallet.include_in_portfolio_total != included
+            {
+                wallet.include_in_portfolio_total = included;
+                events.push(StateEvent::WalletUpdated { wallet_id });
             }
         }
         StateCommand::UpsertWallet { wallet } => {
@@ -1203,12 +1202,12 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             }
         }
         StateCommand::UpdateWalletIfPresent { wallet } => {
-            if let Some(index) = state.wallets.iter().position(|w| w.id == wallet.id) {
-                if state.wallets[index] != wallet {
-                    let wallet_id = wallet.id.clone();
-                    state.wallets[index] = wallet;
-                    events.push(StateEvent::WalletUpdated { wallet_id });
-                }
+            if let Some(index) = state.wallets.iter().position(|w| w.id == wallet.id)
+                && state.wallets[index] != wallet
+            {
+                let wallet_id = wallet.id.clone();
+                state.wallets[index] = wallet;
+                events.push(StateEvent::WalletUpdated { wallet_id });
             }
         }
         StateCommand::SelectWallet { wallet_id } => {
@@ -1276,11 +1275,11 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 events.push(StateEvent::AddressBookRejected {
                     reason: AddressBookRejection::EmptyName,
                 });
-            } else if let Some(entry) = state.address_book.iter_mut().find(|e| e.id == id) {
-                if entry.name != name {
-                    entry.name = name;
-                    events.push(StateEvent::AddressBookEntryRenamed { id });
-                }
+            } else if let Some(entry) = state.address_book.iter_mut().find(|e| e.id == id)
+                && entry.name != name
+            {
+                entry.name = name;
+                events.push(StateEvent::AddressBookEntryRenamed { id });
             }
         }
         StateCommand::RemoveAddressBookEntry { id } => {

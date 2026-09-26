@@ -15,7 +15,7 @@
 //! omit the derivation path to derive the root sr25519 keypair.
 
 use crate::derivation::primitives::{
-    decode_ss58, derive_substrate_sr25519_material, encode_ss58, OptionalKeyMaterial,
+    OptionalKeyMaterial, decode_ss58, derive_substrate_sr25519_material, encode_ss58,
 };
 
 // Decode a Bittensor SS58 address and return the inner 32-byte sr25519 public key.
@@ -55,8 +55,8 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI export ─────────────────────────────────────────────────────────
 
-use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
+use crate::derivation::types::DerivationResult;
 
 /// UniFFI export: derive Bittensor wallet (address, public key, mini-secret) from a seed phrase.
 pub fn derive_bittensor(

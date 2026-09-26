@@ -13,19 +13,19 @@ pub(crate) fn normalize_bch_address(addr: &str) -> String {
 // Base58check-decode a BCH address (with or without "bitcoincash:" prefix) into the 20-byte hash.
 pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], String> {
     let norm = normalize_bch_address(address);
-    if let Ok(decoded) = bs58::decode(&norm).with_check(None).into_vec() {
-        if decoded.len() == 21 {
-            let mut hash = [0u8; 20];
-            hash.copy_from_slice(&decoded[1..21]);
-            return Ok(hash);
-        }
+    if let Ok(decoded) = bs58::decode(&norm).with_check(None).into_vec()
+        && decoded.len() == 21
+    {
+        let mut hash = [0u8; 20];
+        hash.copy_from_slice(&decoded[1..21]);
+        return Ok(hash);
     }
     Err(format!("cannot decode BCH address: {address}"))
 }
 
+use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{derive_legacy_p2pkh, encode_p2pkh};
 use crate::derivation::types::DerivationResult;
-use crate::SpectraBridgeError;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 pub(crate) const BCH_MAINNET_VERSION: u8 = 0x00;

@@ -160,9 +160,11 @@ mod tests {
                 .next_page,
             2
         );
-        assert!(service
-            .history_cursor("bitcoin".into(), "a".into())
-            .next_cursor
-            .is_none());
+        assert!(
+            service
+                .history_cursor("bitcoin".into(), "a".into())
+                .next_cursor
+                .is_none()
+        );
     }
 }

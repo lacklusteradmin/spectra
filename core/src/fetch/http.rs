@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use parking_lot::RwLock;
 use reqwest::{Client, Method, StatusCode};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::sync::LazyLock;
 use tokio::time::sleep;
 

@@ -306,7 +306,7 @@ impl WalletService {
 mod configured_tests {
     use super::*;
     use serde_json::json;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     #[tokio::test]
     async fn configured_diagnostics_follow_selected_network_and_report_wrong_chain() {
@@ -376,10 +376,12 @@ mod configured_tests {
             .run_configured_self_tests("ethereum".into())
             .await
             .unwrap();
-        assert!(mainnet
-            .results
-            .iter()
-            .any(|r| r.name == "RPC Chain ID" && !r.passed));
+        assert!(
+            mainnet
+                .results
+                .iter()
+                .any(|r| r.name == "RPC Chain ID" && !r.passed)
+        );
         let explicit = service
             .run_configured_self_tests("ethereum-sepolia".into())
             .await

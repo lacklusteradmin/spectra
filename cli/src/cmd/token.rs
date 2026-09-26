@@ -8,7 +8,7 @@ use spectra_core::store::state::{
 };
 
 use super::resolve_chain;
-use crate::ctx::{wallet_address, Ctx};
+use crate::ctx::{Ctx, wallet_address};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 

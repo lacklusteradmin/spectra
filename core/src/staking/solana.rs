@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct SolanaStakingClient {
@@ -32,11 +32,7 @@ struct VoteAccount {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn short_id(id: &str) -> &str {
-    if id.len() >= 8 {
-        &id[..8]
-    } else {
-        id
-    }
+    if id.len() >= 8 { &id[..8] } else { id }
 }
 
 fn vote_account_to_validator(v: VoteAccount, is_active: bool) -> StakingValidator {

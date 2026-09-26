@@ -7,7 +7,7 @@
 //! prefixed with a flag byte (0x00 for Ed25519).
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::fetch::http::HttpClient;
 

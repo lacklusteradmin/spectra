@@ -542,21 +542,27 @@ mod utxo_discovery_is_the_registrys_chain_set {
     async fn a_chain_without_the_walk_does_nothing() {
         let service = crate::service::WalletService::new(Vec::new()).expect("service");
         let evm = Chain::Ethereum.str_id().to_string();
-        assert!(service
-            .discover_utxo_addresses("w".into(), evm.clone())
-            .await
-            .expect("ok")
-            .is_empty());
-        assert!(service
-            .known_utxo_addresses("w".into(), evm.clone())
-            .await
-            .expect("ok")
-            .is_empty());
-        assert!(service
-            .utxo_receive_address("w".into(), evm.clone(), false)
-            .await
-            .expect("ok")
-            .is_none());
+        assert!(
+            service
+                .discover_utxo_addresses("w".into(), evm.clone())
+                .await
+                .expect("ok")
+                .is_empty()
+        );
+        assert!(
+            service
+                .known_utxo_addresses("w".into(), evm.clone())
+                .await
+                .expect("ok")
+                .is_empty()
+        );
+        assert!(
+            service
+                .utxo_receive_address("w".into(), evm.clone(), false)
+                .await
+                .expect("ok")
+                .is_none()
+        );
         service
             .advance_used_utxo_reservations(evm)
             .await

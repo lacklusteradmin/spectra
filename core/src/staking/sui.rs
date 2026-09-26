@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct SuiStakingClient {
@@ -37,11 +37,7 @@ struct SuiValidatorSummary {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn short_id(id: &str) -> &str {
-    if id.len() >= 10 {
-        &id[..10]
-    } else {
-        id
-    }
+    if id.len() >= 10 { &id[..10] } else { id }
 }
 
 impl SuiStakingClient {

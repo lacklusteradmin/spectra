@@ -154,7 +154,7 @@ impl WalletService {
             c => {
                 return Err(SpectraBridgeError::from(format!(
                     "fetch_utxo_tx_status: unsupported API: {c:?}"
-                )))
+                )));
             }
         };
         Ok(status)

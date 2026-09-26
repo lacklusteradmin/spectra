@@ -425,8 +425,7 @@ mod tests {
     use super::*;
     use crate::store::secret_backends::InMemorySecretStore;
 
-    const PHRASE: &str =
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     #[test]
     fn seals_and_unlocks_with_the_right_password() {
@@ -504,9 +503,11 @@ mod tests {
             !is_sealed(&store, "w").unwrap(),
             "a stale verifier would lie here"
         );
-        assert!(store
-            .load_secret(Blob::Salt.class(), Blob::Salt.key("w"))
-            .is_err());
+        assert!(
+            store
+                .load_secret(Blob::Salt.class(), Blob::Salt.key("w"))
+                .is_err()
+        );
         assert_eq!(&*load_seed_phrase(&store, "w", None).expect("load"), PHRASE);
     }
 

@@ -111,7 +111,7 @@ impl WalletService {
                     &commit.derivation_overrides,
                 )),
                 (None, None) => {
-                    return Err("Signing import requires a seed phrase or private key".into())
+                    return Err("Signing import requires a seed phrase or private key".into());
                 }
             };
             if let Some(derived) = derived {
@@ -180,7 +180,7 @@ impl WalletService {
             Err(message) if !rejected_addresses.is_empty() => {
                 return Err(SpectraBridgeError::InvalidInput {
                     message: format!("{message} Rejected: {}", rejected_addresses.join(", ")),
-                })
+                });
             }
             Err(message) => return Err(SpectraBridgeError::from(message)),
         };

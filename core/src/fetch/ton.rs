@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 
 // ── Public result types
 
@@ -237,7 +237,7 @@ impl TonClient {
     }
 
     pub async fn fetch_seqno(&self, address: &str) -> Result<u32, String> {
-        use serde_json::{json, Value};
+        use serde_json::{Value, json};
         // A failed read is not an undeployed wallet. Only a positive state
         // response may select seqno zero and the deployment path.
         let info: Value = self
@@ -322,25 +322,25 @@ impl TonClient {
             let fee: u64 = tx.fee.parse().unwrap_or(0);
 
             // Incoming: in_msg.destination == address
-            if let Some(msg) = &tx.in_msg {
-                if !msg.destination.is_empty() {
-                    let amount: u64 = msg.value.parse().unwrap_or(0);
-                    let comment = if msg.message.is_empty() {
-                        None
-                    } else {
-                        Some(msg.message.clone())
-                    };
-                    entries.push(TonHistoryEntry {
-                        txid: txid.clone(),
-                        timestamp,
-                        from: msg.source.clone(),
-                        to: msg.destination.clone(),
-                        amount_nanotons: amount,
-                        fee_nanotons: fee,
-                        is_incoming: true,
-                        comment,
-                    });
-                }
+            if let Some(msg) = &tx.in_msg
+                && !msg.destination.is_empty()
+            {
+                let amount: u64 = msg.value.parse().unwrap_or(0);
+                let comment = if msg.message.is_empty() {
+                    None
+                } else {
+                    Some(msg.message.clone())
+                };
+                entries.push(TonHistoryEntry {
+                    txid: txid.clone(),
+                    timestamp,
+                    from: msg.source.clone(),
+                    to: msg.destination.clone(),
+                    amount_nanotons: amount,
+                    fee_nanotons: fee,
+                    is_incoming: true,
+                    comment,
+                });
             }
             // Outgoing.
             for msg in &tx.out_msgs {

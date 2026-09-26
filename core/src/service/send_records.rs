@@ -265,11 +265,10 @@ impl WalletService {
                     .is_some_and(|a| a.eq_ignore_ascii_case(source))
                 && r.kind == CoreTransactionKind::Send
                 && r.status == CoreTransactionStatus::Pending
+                && let Some(nonce) = r.nonce
             {
-                if let Some(nonce) = r.nonce {
-                    let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
-                    next = next.max(nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
-                }
+                let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
+                next = next.max(nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
             }
         }
         let db = self.bound_database().await?;
@@ -283,10 +282,9 @@ impl WalletService {
             if artifact.view.chain_id == chain.str_id()
                 && artifact.view.sender.eq_ignore_ascii_case(source)
                 && artifact.view.stage == crate::send::stages::SendStage::Signed
+                && let crate::send::stages::PreparedPayload::Evm(p) = artifact.prepared
             {
-                if let crate::send::stages::PreparedPayload::Evm(p) = artifact.prepared {
-                    next = next.max(p.nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
-                }
+                next = next.max(p.nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
             }
         }
         Ok(next)
@@ -298,8 +296,8 @@ mod tests {
     use super::*;
     use crate::store::state::WalletState;
     use wiremock::{
-        matchers::{body_partial_json, method},
         Mock, MockServer, ResponseTemplate,
+        matchers::{body_partial_json, method},
     };
     #[tokio::test]
     async fn stored_rebroadcast_uses_recorded_network_and_requires_node_identifier() {
@@ -380,14 +378,18 @@ mod tests {
             )
             .mount(&server)
             .await;
-        assert!(service
-            .rebroadcast_transaction(record.id.clone())
-            .await
-            .is_err());
-        assert!(service.fetch_all_history_records().await.unwrap()[0]
-            .payload
-            .failure_reason
-            .is_some());
+        assert!(
+            service
+                .rebroadcast_transaction(record.id.clone())
+                .await
+                .is_err()
+        );
+        assert!(
+            service.fetch_all_history_records().await.unwrap()[0]
+                .payload
+                .failure_reason
+                .is_some()
+        );
         record.status = CoreTransactionStatus::Confirmed;
         service.save_send_record(record.clone()).await.unwrap();
         server.reset().await;

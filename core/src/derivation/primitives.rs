@@ -1,7 +1,7 @@
 use bip39::{Language, Mnemonic};
-use blake2::digest::consts::U64;
-use blake2::digest::Digest;
 use blake2::Blake2b;
+use blake2::digest::Digest;
+use blake2::digest::consts::U64;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
@@ -244,10 +244,10 @@ pub(crate) fn decode_ss58(
         .into_vec()
         .map_err(|e| format!("ss58 decode: {e}"))?;
     let (prefix, key_start) = ss58_prefix_from_bytes(&decoded)?;
-    if let Some(expected) = expected_prefix {
-        if prefix != expected {
-            return Err(format!("ss58 prefix: {prefix}"));
-        }
+    if let Some(expected) = expected_prefix
+        && prefix != expected
+    {
+        return Err(format!("ss58 prefix: {prefix}"));
     }
     let checksum_start = key_start + 32;
     if decoded.len() != checksum_start + 2 {

@@ -1,7 +1,7 @@
 //! Offline SDK oracles: derive real mnemonic keys, then use production signers.
 use super::*;
 use crate::{derivation::dispatch::derive_for_chain_id, send::keys::Ed25519Seed};
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::Value;
 /// The SPL Token program id. Production reads it off the mint's owner in the
 /// RPC response, so the bytes are not a constant anywhere in the crate.
@@ -112,10 +112,12 @@ fn audit_sui_local_ptb_and_intent_signature_match_official_sdk() {
         expected["raw"]
     );
     assert_eq!(signature, expected["signature"]);
-    assert!(prepare("0x11", 123456789, 10_000_000)
-        .unwrap()
-        .sign(&key(&d))
-        .is_err());
+    assert!(
+        prepare("0x11", 123456789, 10_000_000)
+            .unwrap()
+            .sign(&key(&d))
+            .is_err()
+    );
     assert!(prepare(d.address.as_deref().unwrap(), 195_000_000, 10_000_000).is_err());
     assert!(prepare(d.address.as_deref().unwrap(), u64::MAX, 1).is_err());
 }
@@ -298,27 +300,31 @@ fn audit_local_builders_refuse_unfunded_or_mismatched_inputs() {
             balance: 200_000_000,
         },
     ];
-    assert!(sui::prepare_transfer(
-        d.address.as_deref().unwrap(),
-        "0x22",
-        1,
-        10000,
-        1000,
-        &coins
-    )
-    .is_err());
+    assert!(
+        sui::prepare_transfer(
+            d.address.as_deref().unwrap(),
+            "0x22",
+            1,
+            10000,
+            1000,
+            &coins
+        )
+        .is_err()
+    );
 }
 
 #[tokio::test]
 async fn audit_failed_sui_execution_is_not_a_successful_send() {
-    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     let server = MockServer::start().await;
     Mock::given(any()).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"jsonrpc":"2.0","id":1,"result":{"digest":"11111111111111111111111111111111","effects":{"status":{"status":"failure","error":"InsufficientGas"}}}}))).mount(&server).await;
     let client = crate::fetch::sui::SuiClient::new(std::sync::Arc::new(vec![server.uri()]));
-    assert!(client
-        .execute_signed_tx("test-payload", "test-signature")
-        .await
-        .is_err());
+    assert!(
+        client
+            .execute_signed_tx("test-payload", "test-signature")
+            .await
+            .is_err()
+    );
 }
 
 #[test]

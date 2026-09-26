@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct NearStakingClient {

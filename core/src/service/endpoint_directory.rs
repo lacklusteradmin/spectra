@@ -360,11 +360,13 @@ mod tests {
                 .count(),
             2
         );
-        assert!(!reopened
-            .configured_endpoint_urls("solana-devnet")
-            .await
-            .iter()
-            .any(|url| url.contains(&server.uri())));
+        assert!(
+            !reopened
+                .configured_endpoint_urls("solana-devnet")
+                .await
+                .iter()
+                .any(|url| url.contains(&server.uri()))
+        );
     }
 
     #[tokio::test]
@@ -415,21 +417,27 @@ mod tests {
             .fetch_evm_history_page("ethereum".into(), "test".into(), vec![], 1, 10)
             .await
             .unwrap();
-        assert!(service
-            .discover_token_balances("tron".into(), "test".into())
-            .await
-            .unwrap()
-            .is_empty());
-        assert!(!service
-            .configured_endpoint_urls("ethereum")
-            .await
-            .iter()
-            .any(|url| url.contains(&server.uri())));
-        assert!(!service
-            .configured_endpoint_urls("tron")
-            .await
-            .iter()
-            .any(|url| url.contains(&server.uri())));
+        assert!(
+            service
+                .discover_token_balances("tron".into(), "test".into())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            !service
+                .configured_endpoint_urls("ethereum")
+                .await
+                .iter()
+                .any(|url| url.contains(&server.uri()))
+        );
+        assert!(
+            !service
+                .configured_endpoint_urls("tron")
+                .await
+                .iter()
+                .any(|url| url.contains(&server.uri()))
+        );
     }
 
     #[tokio::test]
@@ -448,12 +456,14 @@ mod tests {
                 vec![StateEvent::AppSettingRejected]
             );
         }
-        assert!(service
-            .app_state()
-            .await
-            .settings
-            .custom_endpoints
-            .is_empty());
+        assert!(
+            service
+                .app_state()
+                .await
+                .settings
+                .custom_endpoints
+                .is_empty()
+        );
         assert_eq!(
             add(
                 &service,
@@ -548,10 +558,12 @@ mod tests {
                 .smallest_unit,
             "42"
         );
-        assert!(reopened
-            .validate_broadcast_endpoint(Chain::Ethereum, &balance.uri())
-            .await
-            .is_err());
+        assert!(
+            reopened
+                .validate_broadcast_endpoint(Chain::Ethereum, &balance.uri())
+                .await
+                .is_err()
+        );
         reopened
             .validate_broadcast_endpoint(Chain::Ethereum, &broadcast.uri())
             .await
@@ -567,19 +579,24 @@ mod tests {
                 .capabilities,
             ["balance"]
         );
-        assert!(own
-            .iter()
-            .all(|r| r.record.probe_url.is_none() && r.record.explorer_label.is_none()));
-        assert!(!reopened
-            .send_endpoints("ethereum".into())
-            .await
-            .unwrap()
-            .contains(&balance.uri()));
-        assert!(reopened
-            .send_endpoints("ethereum".into())
-            .await
-            .unwrap()
-            .contains(&broadcast.uri()));
+        assert!(
+            own.iter()
+                .all(|r| r.record.probe_url.is_none() && r.record.explorer_label.is_none())
+        );
+        assert!(
+            !reopened
+                .send_endpoints("ethereum".into())
+                .await
+                .unwrap()
+                .contains(&balance.uri())
+        );
+        assert!(
+            reopened
+                .send_endpoints("ethereum".into())
+                .await
+                .unwrap()
+                .contains(&broadcast.uri())
+        );
         assert_eq!(balance.received_requests().await.unwrap().len(), 1);
         assert_eq!(broadcast.received_requests().await.unwrap().len(), 1);
         // Even explicit transport overrides cannot widen a saved declaration.
@@ -591,27 +608,33 @@ mod tests {
             }])
             .await
             .unwrap();
-        assert!(reopened
-            .send_endpoints("ethereum".into())
-            .await
-            .unwrap()
-            .is_empty());
-        assert!(reopened
-            .validate_broadcast_endpoint(Chain::Ethereum, &balance.uri())
-            .await
-            .is_err());
+        assert!(
+            reopened
+                .send_endpoints("ethereum".into())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reopened
+                .validate_broadcast_endpoint(Chain::Ethereum, &balance.uri())
+                .await
+                .is_err()
+        );
     }
 
     #[test]
     fn custom_capabilities_are_explicit_validated_and_canonical() {
         for caps in [vec![], vec!["made-up".into()], vec!["history".into()]] {
-            assert!(CustomEndpoint::validated(
-                "ethereum".into(),
-                "evm-json-rpc".into(),
-                "https://node.example".into(),
-                caps
-            )
-            .is_err());
+            assert!(
+                CustomEndpoint::validated(
+                    "ethereum".into(),
+                    "evm-json-rpc".into(),
+                    "https://node.example".into(),
+                    caps
+                )
+                .is_err()
+            );
         }
         let endpoint = CustomEndpoint::validated(
             "ethereum".into(),
@@ -755,11 +778,13 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&result).unwrap()["txid"],
             "0xaccepted"
         );
-        assert!(!failing_balance
-            .received_requests()
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            !failing_balance
+                .received_requests()
+                .await
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(balance.received_requests().await.unwrap().len(), 1);
         assert_eq!(broadcast.received_requests().await.unwrap().len(), 2);
         service
@@ -770,10 +795,12 @@ mod tests {
             }])
             .await
             .unwrap();
-        assert!(service
-            .broadcast_raw("ethereum", "0xdeadbeef".into())
-            .await
-            .is_err());
+        assert!(
+            service
+                .broadcast_raw("ethereum", "0xdeadbeef".into())
+                .await
+                .is_err()
+        );
         assert_eq!(balance.received_requests().await.unwrap().len(), 1);
     }
     #[tokio::test]

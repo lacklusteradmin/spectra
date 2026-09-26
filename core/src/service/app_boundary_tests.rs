@@ -115,14 +115,16 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         ))
         .mount(&server)
         .await;
-    assert!(svc
-        .fetch_simple_chain_send_preview("solana".into(), "sender".into())
-        .await
-        .is_err());
-    assert!(svc
-        .fetch_simple_chain_send_preview("ethereum".into(), "sender".into())
-        .await
-        .is_err());
+    assert!(
+        svc.fetch_simple_chain_send_preview("solana".into(), "sender".into())
+            .await
+            .is_err()
+    );
+    assert!(
+        svc.fetch_simple_chain_send_preview("ethereum".into(), "sender".into())
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -194,8 +196,8 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
         });
     svc.wallet_state.write().await.wallets.push(wallet);
     for (amount, nonce) in [("0.0000000001", None), ("NaN", None), ("1", Some(1))] {
-        assert!(svc
-            .preview_owned_send(
+        assert!(
+            svc.preview_owned_send(
                 "watch".into(),
                 "solana:native".into(),
                 amount.into(),
@@ -204,7 +206,8 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
                 None
             )
             .await
-            .is_err());
+            .is_err()
+        );
     }
     assert!(server.received_requests().await.unwrap().is_empty());
     Mock::given(method("POST"))
@@ -238,8 +241,8 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
     assert_eq!(preview.maxSendable, 1.999995);
     svc.wallet_state.write().await.wallets[0].addresses.clear();
     let count = server.received_requests().await.unwrap().len();
-    assert!(svc
-        .preview_owned_send(
+    assert!(
+        svc.preview_owned_send(
             "watch".into(),
             "solana:native".into(),
             "1".into(),
@@ -248,7 +251,8 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
             None
         )
         .await
-        .is_err());
+        .is_err()
+    );
     assert_eq!(server.received_requests().await.unwrap().len(), count);
 }
 
@@ -281,11 +285,13 @@ async fn one_blockbook_adapter_reads_each_network_and_keeps_bch_address_rules() 
         assert_eq!(balance.amount_display, "1.23456789");
     }
     let client = BlockbookClient::new(Arc::new(vec![server.uri()]), Chain::Dash);
-    assert!(client
-        .sign_litecoin_and_broadcast("from", "to", 1, 1, &[], None)
-        .await
-        .unwrap_err()
-        .contains("network"));
+    assert!(
+        client
+            .sign_litecoin_and_broadcast("from", "to", 1, 1, &[], None)
+            .await
+            .unwrap_err()
+            .contains("network")
+    );
 }
 
 #[tokio::test]

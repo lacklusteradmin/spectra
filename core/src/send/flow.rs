@@ -5,7 +5,7 @@
 
 use crate::registry::Chain;
 use crate::send::preview_types::*;
-use crate::validation::address::{validate_address, AddressValidationRequest};
+use crate::validation::address::{AddressValidationRequest, validate_address};
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmReceiptClassification {
@@ -1244,8 +1244,8 @@ pub fn extra_output_overhead_bytes(chain_id: String, destination: String) -> u64
 #[cfg(test)]
 mod validating_and_normalising_cannot_disagree {
     use super::{
-        evaluate_high_risk_send_reasons, is_valid_send_address, normalize_address,
-        HighRiskSendRequest,
+        HighRiskSendRequest, evaluate_high_risk_send_reasons, is_valid_send_address,
+        normalize_address,
     };
     use crate::registry::Chain;
 
@@ -1372,8 +1372,10 @@ mod validating_and_normalising_cannot_disagree {
     /// It still says so when the address really is malformed.
     #[test]
     fn a_malformed_destination_is_still_flagged() {
-        assert!(high_risk_codes("sui", "definitely-not-an-address")
-            .contains(&"invalid_format".to_string()));
+        assert!(
+            high_risk_codes("sui", "definitely-not-an-address")
+                .contains(&"invalid_format".to_string())
+        );
     }
 
     /// The order a caller happens to use must not change the answer.
@@ -1572,7 +1574,7 @@ mod scanned_payload_tests {
 
 #[cfg(test)]
 mod high_risk_warning_shape {
-    use super::{evaluate_high_risk_send_reasons, HighRiskSendRequest, HighRiskSendWarning};
+    use super::{HighRiskSendRequest, HighRiskSendWarning, evaluate_high_risk_send_reasons};
 
     fn warnings(chain_id: &str, destination: &str) -> Vec<HighRiskSendWarning> {
         evaluate_high_risk_send_reasons(HighRiskSendRequest {

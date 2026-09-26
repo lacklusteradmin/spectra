@@ -3,18 +3,18 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::send::ethereum::{
-    parse_evm_custom_fees, parse_evm_nonce, prepare_evm_send_assembly, EvmSendAssemblyInput,
-    EvmSendOverridesInput, EvmSupportedToken,
+    EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken, parse_evm_custom_fees,
+    parse_evm_nonce, prepare_evm_send_assembly,
 };
 use spectra_core::send::{
-    send_affordability, SendAffordability, SendAffordabilityInput, SendExecutionRequest,
+    SendAffordability, SendAffordabilityInput, SendExecutionRequest, send_affordability,
 };
 use spectra_core::service::WalletService;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
 
 use super::chain::{
-    service_for_chain, ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST,
-    ENDPOINT_CAPABILITY_FEE, ENDPOINT_CAPABILITY_UTXO,
+    ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST, ENDPOINT_CAPABILITY_FEE,
+    ENDPOINT_CAPABILITY_UTXO, service_for_chain,
 };
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
@@ -545,12 +545,12 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             once,
         } => {
             let wallet = ctx.find_wallet(&args.from)?;
-            if let Some(chain) = args.chain.as_deref() {
-                if resolve_chain(chain)?.str_id() != wallet.chain_id {
-                    return Err(CliError::usage(
-                        "Monero sync must use the wallet's selected network",
-                    ));
-                }
+            if let Some(chain) = args.chain.as_deref()
+                && resolve_chain(chain)?.str_id() != wallet.chain_id
+            {
+                return Err(CliError::usage(
+                    "Monero sync must use the wallet's selected network",
+                ));
             }
             let password =
                 signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
@@ -919,7 +919,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
             return Err(CliError::rejected(format!(
                 "wallet {} holds no {symbol}",
                 wallet.id
-            )))
+            )));
         }
         [one] => *one,
         many => {

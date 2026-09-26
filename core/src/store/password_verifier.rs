@@ -50,9 +50,8 @@ pub fn create_verifier(password: &str) -> Result<Vec<u8>, String> {
         digest,
     };
 
-    let result = serde_json::to_vec(&envelope).map_err(|e| format!("JSON encode failed: {e}"));
     // digest is moved into envelope, no separate zeroize needed
-    result
+    serde_json::to_vec(&envelope).map_err(|e| format!("JSON encode failed: {e}"))
 }
 
 /// Verify `password` against a verifier envelope produced by
@@ -188,8 +187,8 @@ mod a_stored_envelope_is_not_trusted {
     /// field — an empty salt makes the digest a plain password hash.
     #[test]
     fn a_salt_or_digest_of_the_wrong_size_is_refused() {
-        use base64::engine::general_purpose::STANDARD;
         use base64::Engine;
+        use base64::engine::general_purpose::STANDARD;
         for field in ["salt", "digest"] {
             for bytes in [vec![], vec![0u8; 4], vec![0u8; 64]] {
                 let data = tampered("correct horse battery staple", |value| {

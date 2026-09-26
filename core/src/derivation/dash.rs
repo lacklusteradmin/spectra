@@ -53,9 +53,9 @@ pub fn validate_dash_address(address: &str, testnet: bool) -> bool {
     }
 }
 
+use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::SpectraBridgeError;
 
 const DASH_MAINNET_P2PKH: u8 = 0x4C;
 const DASH_TESTNET_P2PKH: u8 = 0x8C;

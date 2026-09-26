@@ -43,7 +43,7 @@ pub fn resolve_chain(needle: &str) -> CliResult<Chain> {
 /// what it claims to be, and core checks that claim against every BIP-39
 /// language.
 pub fn reject_bad_seed_phrase(phrase: &str) -> CliResult<()> {
-    use spectra_core::validation::{check_seed_phrase, SeedPhraseCheck};
+    use spectra_core::validation::{SeedPhraseCheck, check_seed_phrase};
     let words: Vec<String> = phrase.split_whitespace().map(str::to_string).collect();
     let verdict = check_seed_phrase(SeedPhraseCheck {
         expected_word_count: words.len() as u32,

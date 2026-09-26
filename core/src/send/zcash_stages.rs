@@ -1,5 +1,5 @@
 //! Transparent-only Zcash construction. Never asks a server to construct or sign.
-use super::zcash::{expiry_height, sign_transaction, ZcashNetworkUpgrade};
+use super::zcash::{ZcashNetworkUpgrade, expiry_height, sign_transaction};
 use crate::{fetch::blockbook::BlockbookClient, registry::Chain};
 use serde::{Deserialize, Serialize};
 

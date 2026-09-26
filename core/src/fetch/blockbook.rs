@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
 
 // ── Wire shapes ───────────────────────────────────────────────────────────
 
@@ -357,7 +357,7 @@ fn parse_units(value: &str) -> Result<u64, String> {
 #[cfg(test)]
 mod strict_amount_tests {
     use super::*;
-    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
     #[tokio::test]
     async fn malformed_balances_and_utxos_are_errors() {
         for amount in [

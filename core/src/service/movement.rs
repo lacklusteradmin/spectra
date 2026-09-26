@@ -156,11 +156,13 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(service
-            .evaluate_portfolio_movement(false)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            service
+                .evaluate_portfolio_movement(false)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let reopened = WalletService::new(vec![]).unwrap();
         reopened
             .open_state(path.to_string_lossy().into())

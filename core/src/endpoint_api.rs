@@ -139,24 +139,30 @@ mod tests {
 
     #[test]
     fn known_incompatible_urls_are_rejected_before_configuration() {
-        assert!(validate_configured_endpoint(
-            Chain::Bitcoin,
-            EndpointSlot::Primary,
-            "https://blockchain.info/multiaddr"
-        )
-        .is_err());
-        assert!(validate_configured_endpoint(
-            Chain::Bitcoin,
-            EndpointSlot::Primary,
-            "https://blockstream.info/api/"
-        )
-        .is_ok());
-        assert!(validate_configured_endpoint(
-            Chain::Monero,
-            EndpointSlot::Primary,
-            "https://blockstream.info/api"
-        )
-        .is_err());
+        assert!(
+            validate_configured_endpoint(
+                Chain::Bitcoin,
+                EndpointSlot::Primary,
+                "https://blockchain.info/multiaddr"
+            )
+            .is_err()
+        );
+        assert!(
+            validate_configured_endpoint(
+                Chain::Bitcoin,
+                EndpointSlot::Primary,
+                "https://blockstream.info/api/"
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_configured_endpoint(
+                Chain::Monero,
+                EndpointSlot::Primary,
+                "https://blockstream.info/api"
+            )
+            .is_err()
+        );
     }
 }
 

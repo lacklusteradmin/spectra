@@ -79,12 +79,12 @@ pub fn history_source(source: String) -> Option<HistorySource> {
     }
     // `<chain-id>.providers`, written by the history aggregate. Resolved
     // through the registry so a new chain needs no arm here.
-    if let Some(id) = trimmed.strip_suffix(".providers") {
-        if let Some(chain) = crate::registry::Chain::from_str_id(id) {
-            return Some(HistorySource::ChainProviders {
-                chain_id: chain.str_id().to_string(),
-            });
-        }
+    if let Some(id) = trimmed.strip_suffix(".providers")
+        && let Some(chain) = crate::registry::Chain::from_str_id(id)
+    {
+        return Some(HistorySource::ChainProviders {
+            chain_id: chain.str_id().to_string(),
+        });
     }
     // `rust` is a single address read in-process, `rust.hd` an xpub account
     // walked from it. Both are Spectra reading the chain's own endpoints;
@@ -603,10 +603,10 @@ fn resolve_created_at(
     incoming_created_at_unix: f64,
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> f64 {
-    if let Some(sentinel) = preserve_created_at_sentinel_unix {
-        if (incoming_created_at_unix - sentinel).abs() < 0.000_000_000_1 {
-            return existing_created_at_unix;
-        }
+    if let Some(sentinel) = preserve_created_at_sentinel_unix
+        && (incoming_created_at_unix - sentinel).abs() < 0.000_000_000_1
+    {
+        return existing_created_at_unix;
     }
     incoming_created_at_unix
 }
@@ -618,8 +618,8 @@ fn normalize_evm_address(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        merge_transactions, CoreTransactionRecord, TransactionMergeRequest,
-        TransactionMergeStrategy,
+        CoreTransactionRecord, TransactionMergeRequest, TransactionMergeStrategy,
+        merge_transactions,
     };
 
     fn sample_transaction(chain_id: &str) -> CoreTransactionRecord {
@@ -977,7 +977,7 @@ mod wire_persisted_conversion {
 
 #[cfg(test)]
 mod history_source_tests {
-    use super::{history_source, HistorySource};
+    use super::{HistorySource, history_source};
 
     /// Every id a producer writes names something, and the ones the app's
     /// switch missed are among them.

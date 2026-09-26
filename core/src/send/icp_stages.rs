@@ -5,7 +5,7 @@ use crate::send::keys::Ed25519Seed;
 use crate::{derivation::icp::*, fetch::icp::IcpClient, registry::Chain};
 use serde::{Deserialize, Serialize};
 use serde_cbor::Value as Cbor;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

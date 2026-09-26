@@ -91,9 +91,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::ExtendedPrivateKey;
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::ExtendedPrivateKey;
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 // Shared derivation logic for all XRP Ledger networks.
 fn xrp_internal(

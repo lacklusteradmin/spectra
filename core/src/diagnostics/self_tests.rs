@@ -1,4 +1,4 @@
-use crate::validation::address::{validate_address, AddressValidationRequest};
+use crate::validation::address::{AddressValidationRequest, validate_address};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -346,7 +346,7 @@ mod fixtures_are_real_tests {
     #[test]
     fn a_chain_accepts_the_address_it_derives() {
         use crate::registry::Chain;
-        use crate::validation::address::{validate_address, AddressValidationRequest};
+        use crate::validation::address::{AddressValidationRequest, validate_address};
 
         for chain in Chain::all() {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use crate::registry::Chain;
 use crate::service::ChainEndpoints;
 use crate::staking::{
-    aptos::AptosStakingClient, icp::IcpStakingClient, near::NearStakingClient,
-    polkadot::PolkadotStakingClient, solana::SolanaStakingClient, sui::SuiStakingClient,
-    StakingError, StakingPosition, StakingValidator,
+    StakingError, StakingPosition, StakingValidator, aptos::AptosStakingClient,
+    icp::IcpStakingClient, near::NearStakingClient, polkadot::PolkadotStakingClient,
+    solana::SolanaStakingClient, sui::SuiStakingClient,
 };
 
 pub struct StakingService {

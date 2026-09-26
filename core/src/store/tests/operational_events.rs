@@ -63,10 +63,12 @@ async fn the_log_is_newest_first_and_bounded() {
     assert_eq!(events[0].input.message, "event 204");
     assert_eq!(events[199].input.message, "event 5");
     // A different chain keeps its own list.
-    assert!(service
-        .operational_events("bitcoin".into())
-        .await
-        .is_empty());
+    assert!(
+        service
+            .operational_events("bitcoin".into())
+            .await
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -87,10 +89,12 @@ async fn clearing_one_chain_leaves_the_others() {
         .clear_operational_events(Some("bitcoin".into()))
         .await
         .expect("clear one");
-    assert!(service
-        .operational_events("bitcoin".into())
-        .await
-        .is_empty());
+    assert!(
+        service
+            .operational_events("bitcoin".into())
+            .await
+            .is_empty()
+    );
     assert_eq!(service.operational_events("solana".into()).await.len(), 1);
 
     service
@@ -129,22 +133,29 @@ async fn core_records_its_own_refresh_and_recheck_outcomes() {
         .await
         .expect("an offline rescan answers with its failure");
     let rescan = service.operational_events("bitcoin".into()).await;
-    assert!(rescan
-        .iter()
-        .any(|e| e.input.category == "Rescan" && e.input.level == DiagnosticLogLevel::Warning));
-    assert!(rescan
-        .iter()
-        .all(|e| e.input.source.as_deref() == Some("core")));
+    assert!(
+        rescan
+            .iter()
+            .any(|e| e.input.category == "Rescan" && e.input.level == DiagnosticLogLevel::Warning)
+    );
+    assert!(
+        rescan
+            .iter()
+            .all(|e| e.input.source.as_deref() == Some("core"))
+    );
 
-    assert!(service
-        .recheck_transaction_status("missing".into())
-        .await
-        .is_err());
+    assert!(
+        service
+            .recheck_transaction_status("missing".into())
+            .await
+            .is_err()
+    );
     let logs = service.diagnostic_state().await.logs;
-    assert!(logs
-        .iter()
-        .any(|e| e.input.category == "Pending Transactions"
-            && e.input.level == DiagnosticLogLevel::Error));
+    assert!(
+        logs.iter()
+            .any(|e| e.input.category == "Pending Transactions"
+                && e.input.level == DiagnosticLogLevel::Error)
+    );
 }
 
 /// The durable log trims every field and keeps the newest 800 lines. This is

@@ -1,6 +1,6 @@
 use crate::derivation::aptos::derive_aptos;
 use crate::derivation::bitcoin::derive_bitcoin;
-use crate::derivation::bitcoin::{derive_bip39_seed, ExtendedPrivateKey};
+use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed};
 use crate::derivation::bitcoin_cash::derive_bitcoin_cash;
 use crate::derivation::bitcoin_sv::derive_bitcoin_sv;
 use crate::derivation::cardano::derive_cardano;
@@ -581,9 +581,9 @@ fn polkadot_path_with_junction_is_rejected() {
 #[test]
 fn polkadot_ss58_round_trip() {
     // Re-decode the SS58 address and verify the embedded pubkey + checksum.
-    use blake2::digest::consts::U64;
-    use blake2::digest::Digest;
     use blake2::Blake2b;
+    use blake2::digest::Digest;
+    use blake2::digest::consts::U64;
     type Blake2b512 = Blake2b<U64>;
 
     let result = derive_polkadot(MNEMONIC.into(), None, None, true, true, false).expect("polkadot");

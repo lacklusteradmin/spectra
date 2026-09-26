@@ -100,7 +100,12 @@ pub(crate) fn signed_sends_for_sender(
     chain: &str,
     sender: &str,
 ) -> Result<Vec<StoredSend>, String> {
-    signed_sends_where(database, "json_extract(payload, '$.view.chain_id') = ?1 AND lower(json_extract(payload, '$.view.sender')) = lower(?2)", chain, sender)
+    signed_sends_where(
+        database,
+        "json_extract(payload, '$.view.chain_id') = ?1 AND lower(json_extract(payload, '$.view.sender')) = lower(?2)",
+        chain,
+        sender,
+    )
 }
 
 pub(crate) fn signed_sends_for_wallet(
@@ -108,7 +113,12 @@ pub(crate) fn signed_sends_for_wallet(
     chain: &str,
     wallet: &str,
 ) -> Result<Vec<StoredSend>, String> {
-    signed_sends_where(database, "json_extract(payload, '$.view.chain_id') = ?1 AND json_extract(payload, '$.view.wallet_id') = ?2", chain, wallet)
+    signed_sends_where(
+        database,
+        "json_extract(payload, '$.view.chain_id') = ?1 AND json_extract(payload, '$.view.wallet_id') = ?2",
+        chain,
+        wallet,
+    )
 }
 
 fn signed_sends_where(
@@ -203,12 +213,16 @@ mod query_tests {
             }
             Ok(())
         }).unwrap();
-        assert!(signed_sends_for_sender(&db, "ethereum", "0xABC")
-            .unwrap()
-            .is_empty());
-        assert!(signed_sends_for_wallet(&db, "ethereum", "w")
-            .unwrap()
-            .is_empty());
+        assert!(
+            signed_sends_for_sender(&db, "ethereum", "0xABC")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            signed_sends_for_wallet(&db, "ethereum", "w")
+                .unwrap()
+                .is_empty()
+        );
         with_conn(&db, |conn| {
             conn.execute("UPDATE send_artifacts SET payload = json_set(payload, '$.view.stage', 'Signed') WHERE id = 'unsigned'", []).unwrap();
             Ok(())

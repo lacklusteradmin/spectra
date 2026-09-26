@@ -492,23 +492,25 @@ mod one_amount_one_conversion {
             assembly.data_hex
         );
         // One decimal past the contract's precision is refused, not truncated.
-        assert!(prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_id: "ethereum".into(),
-            deployment_id: crate::tokens::deployment_id_for(
-                crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
-                Some(&String::from("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"))
-            )
-            .unwrap(),
-            from_address: FROM.into(),
-            resolved_destination: TO.into(),
-            amount: "1.1234567".into(),
-            token: Some(EvmSupportedToken {
-                symbol: "USDC".into(),
-                contract_address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".into(),
-                decimals: 6,
-            }),
-        })
-        .is_err());
+        assert!(
+            prepare_evm_send_assembly(EvmSendAssemblyInput {
+                chain_id: "ethereum".into(),
+                deployment_id: crate::tokens::deployment_id_for(
+                    crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
+                    Some(&String::from("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"))
+                )
+                .unwrap(),
+                from_address: FROM.into(),
+                resolved_destination: TO.into(),
+                amount: "1.1234567".into(),
+                token: Some(EvmSupportedToken {
+                    symbol: "USDC".into(),
+                    contract_address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".into(),
+                    decimals: 6,
+                }),
+            })
+            .is_err()
+        );
     }
 }
 
@@ -689,9 +691,10 @@ mod tests {
         assert_eq!(a.to_address, "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48");
         assert!(a.data_hex.starts_with("0xa9059cbb"));
         // 100 USDC at 6 decimals = 100_000_000 = 0x5F5E100, padded
-        assert!(a
-            .data_hex
-            .ends_with("0000000000000000000000000000000000000000000000000000000005f5e100"));
+        assert!(
+            a.data_hex
+                .ends_with("0000000000000000000000000000000000000000000000000000000005f5e100")
+        );
     }
 
     #[test]
@@ -726,11 +729,13 @@ mod tests {
         .unwrap();
         assert_eq!(decoded.nonce, 12);
         assert_eq!(decoded.max_fee_per_gas_gwei, 50.0);
-        assert!(decoded
-            .fee_rate_description
-            .as_deref()
-            .unwrap_or("")
-            .contains("custom"));
+        assert!(
+            decoded
+                .fee_rate_description
+                .as_deref()
+                .unwrap_or("")
+                .contains("custom")
+        );
         // 21000 * 50 gwei = 0.00105 ETH
         assert!((decoded.estimated_network_fee_eth - 0.00105).abs() < 1e-9);
         assert_eq!(decoded.spendable_balance, Some(4.2));
@@ -827,12 +832,14 @@ mod nonce_tests {
     #[test]
     fn preview_refuses_negative_nonce_from_caller_or_rpc() {
         for (raw, explicit) in [(r#"{"nonce":1}"#, Some(-1)), (r#"{"nonce":-1}"#, None)] {
-            assert!(decode_evm_send_preview(EvmPreviewDecodeInput {
-                raw_json: raw.into(),
-                explicit_nonce: explicit,
-                custom_fees: None,
-            })
-            .is_none());
+            assert!(
+                decode_evm_send_preview(EvmPreviewDecodeInput {
+                    raw_json: raw.into(),
+                    explicit_nonce: explicit,
+                    custom_fees: None,
+                })
+                .is_none()
+            );
         }
     }
 

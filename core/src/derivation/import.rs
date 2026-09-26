@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::registry::Chain;
-use crate::validation::address::{validate_address, AddressValidationRequest};
+use crate::validation::address::{AddressValidationRequest, validate_address};
 
 /// Addresses supplied by a wallet import, keyed by [`Chain::address_slot`].
 ///
@@ -269,10 +269,10 @@ pub fn derive_import_addresses(
             false,
             false,
         );
-        if let Ok(result) = derived {
-            if let Some(address) = result.address {
-                by_chain_id.insert(chain.str_id().to_string(), address);
-            }
+        if let Ok(result) = derived
+            && let Some(address) = result.address
+        {
+            by_chain_id.insert(chain.str_id().to_string(), address);
         }
     }
     by_chain_id
@@ -660,16 +660,16 @@ fn watch_only_addresses_for_chain(
 
     // Bitcoin has a second form: one xpub stands in for the whole account, so
     // it plans a single wallet instead of one per address.
-    if chain == Chain::Bitcoin {
-        if let Some(xpub) = trim_optional(entries.bitcoin_xpub.as_deref()) {
-            return Ok(vec![(
-                primary_chain_id.to_string(),
-                WalletImportAddresses {
-                    by_slot: HashMap::new(),
-                    bitcoin_xpub: Some(xpub.to_string()),
-                },
-            )]);
-        }
+    if chain == Chain::Bitcoin
+        && let Some(xpub) = trim_optional(entries.bitcoin_xpub.as_deref())
+    {
+        return Ok(vec![(
+            primary_chain_id.to_string(),
+            WalletImportAddresses {
+                by_slot: HashMap::new(),
+                bitcoin_xpub: Some(xpub.to_string()),
+            },
+        )]);
     }
 
     Ok(entries
@@ -1097,10 +1097,12 @@ mod minted_wallet_id_tests {
         let plan =
             plan_wallet_import(request(&["Bitcoin"], vec!["given-id".to_string()])).expect("plan");
         assert_eq!(plan.wallets[0].wallet_id, "given-id");
-        assert!(plan_wallet_import(request(
-            &["bitcoin"],
-            vec!["one".to_string(), "two".to_string()]
-        ))
-        .is_err());
+        assert!(
+            plan_wallet_import(request(
+                &["bitcoin"],
+                vec!["one".to_string(), "two".to_string()]
+            ))
+            .is_err()
+        );
     }
 }

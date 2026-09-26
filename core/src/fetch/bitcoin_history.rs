@@ -6,7 +6,7 @@
 //! addresses or provider pages is counted exactly once.
 use super::bitcoin::BitcoinHistoryEntry;
 use crate::fetch::history::CoreBitcoinHistorySnapshot;
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::future::Future;
@@ -300,9 +300,11 @@ mod tests {
             }
         }
         assert_eq!(items.len(), 30);
-        assert!(items
-            .iter()
-            .all(|r| r.amount_btc == 0.00000001 && r.kind == "receive"));
+        assert!(
+            items
+                .iter()
+                .all(|r| r.amount_btc == 0.00000001 && r.kind == "receive")
+        );
         assert_eq!(
             items.iter().map(|r| &r.txid).collect::<HashSet<_>>().len(),
             30
@@ -315,28 +317,34 @@ mod tests {
         })
         .await
         .unwrap();
-        assert!(page(
-            "bitcoin-testnet-4",
-            &["a".into()],
-            p.next_cursor.as_deref(),
-            10,
-            |_, _| std::future::ready(Ok(vec![]))
-        )
-        .await
-        .is_err());
-        assert!(page(
-            "bitcoin",
-            &["a".into()],
-            p.next_cursor.as_deref(),
-            100,
-            |_, _| std::future::ready(Err("offline".into()))
-        )
-        .await
-        .is_err());
-        assert!(page("bitcoin", &["a".into()], None, 100, |_, _| {
-            std::future::ready(Ok(rows(25)))
-        })
-        .await
-        .is_err());
+        assert!(
+            page(
+                "bitcoin-testnet-4",
+                &["a".into()],
+                p.next_cursor.as_deref(),
+                10,
+                |_, _| std::future::ready(Ok(vec![]))
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            page(
+                "bitcoin",
+                &["a".into()],
+                p.next_cursor.as_deref(),
+                100,
+                |_, _| std::future::ready(Err("offline".into()))
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            page("bitcoin", &["a".into()], None, 100, |_, _| {
+                std::future::ready(Ok(rows(25)))
+            })
+            .await
+            .is_err()
+        );
     }
 }

@@ -180,11 +180,13 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
     );
 
     // Another chain's sweep must not pick it up.
-    assert!(service
-        .stale_pending_failure_ids("litecoin".into())
-        .await
-        .expect("read")
-        .is_empty());
+    assert!(
+        service
+            .stale_pending_failure_ids("litecoin".into())
+            .await
+            .expect("read")
+            .is_empty()
+    );
 }
 
 /// Pruning drops trackers for transactions core does not hold.

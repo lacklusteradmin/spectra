@@ -1,5 +1,5 @@
-use crate::derivation::types::{BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::types::{BitcoinScriptType, DerivationResult};
 
 pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
     let purpose = path
@@ -118,7 +118,7 @@ pub fn derive_for_chain_id(
         other => {
             return Err(SpectraBridgeError::InvalidInput {
                 message: format!("unsupported chain: {}", other.chain_display_name()),
-            })
+            });
         }
     };
 
@@ -254,8 +254,7 @@ mod dispatch_export_tests {
     /// the set of derivable chains and the set the registry knows are the same.
     #[test]
     fn every_registry_chain_derives_through_one_call() {
-        const PHRASE: &str =
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let mut missing = Vec::new();
         for chain in crate::registry::Chain::all() {
             // Every chain, with no `continue`. It used to skip the ones the

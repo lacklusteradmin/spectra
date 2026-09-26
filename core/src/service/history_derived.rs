@@ -8,9 +8,9 @@
 //! existed only to let that caller decide whether the round trip was worth
 //! making; core decides that where the data is, so it is gone.
 
+use crate::SpectraBridgeError;
 use crate::service::WalletService;
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
-use crate::SpectraBridgeError;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
