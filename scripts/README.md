@@ -1,6 +1,6 @@
 # Scripts
 
-This directory contains 24 scripts and tool configuration files. Use the Makefile
+This directory contains 31 scripts and tool configuration files. Use the Makefile
 for routine work:
 
 ```sh
@@ -18,19 +18,26 @@ when tests finish. The environment must allow binding local ports.
 
 | File | Purpose |
 |---|---|
-| `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks command output, exit codes and invalid inputs, then runs the five integration suites below. |
+| `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks command output, exit codes and invalid inputs, then runs the Python suites below except `cli-monero-regtest.py`. |
 | `cli-wallets.py` | Wallet imports, mnemonic and passphrase handling, invalid derivation inputs, automatic names, receive addresses and password validation. |
 | `cli-portfolio.py` | Balance refresh and preservation after failed reads; network/token identity; valuation with missing quotes or exchange rates; persisted portfolio inclusion and its effect on totals; price and portfolio movement alerts. |
 | `cli-history.py` | Complete Bitcoin history pagination and duplicate-free repeated refreshes; stored history paging, search, sorting, deduplication and source labels; corrupt-record refusal; individual transaction status rechecks. |
 | `cli-send.py` | Send previews, self-send confirmation, fee refusal, cancellation and replacement drafts, and network mismatch refusal; wrong passwords never broadcast, while a correct password broadcasts once and saves the matching transaction. |
 | `cli-diagnostics.py` | Offline refresh outcomes, background maintenance policy, failure/recovery logs, diagnostics against the selected network, wrong-chain node refusal, and validator queries through the configured node. |
+| `cli-transport.py` | A stored Tor or custom-proxy policy routes a fresh CLI process through the selected SOCKS proxy. |
+| `cli-endpoints.py` | Typed endpoint persistence, source filters and API selection. |
+| `cli-token-preferences.py` | Token-wide choices and editable price-source metadata survive process restarts. |
+| `cli-send-stages.py` | Durable build, sign and explicit-node submission stages against loopback nodes. |
+| `cli-send-icp-zcash.py` | ICP and Zcash send stages against loopback providers. |
+| `cli-send-monero.py` | Monero ownership and network guards; the signature fixture runs in Rust. |
+| `cli-monero-regtest.py` | Optional: a real `monerod` behind a loopback proxy, run by hand with `--monerod /path/to/monerod`. Not part of `make verify`. |
 | `cli-assertions.sh` | Shared shell assertions: checks exit codes and output, and counts passes and failures. Sourced by other scripts. |
 | `test-cli-assertions.sh` | Tests the assertion helpers so failed commands cannot be reported as passing. |
 
-The five Python suites use the standard-library `unittest` runner. Each scenario
-reports its own result, and a failure does not stop the remaining scenarios in
-that file. No third-party Python packages are required. Run a whole suite or an
-individual scenario:
+The wallets, portfolio, history, send, diagnostics and transport suites use the
+standard-library `unittest` runner. Each scenario reports its own result, and a
+failure does not stop the remaining scenarios in that file. No third-party
+Python packages are required. Run a whole suite or an individual scenario:
 
 ```sh
 python3 scripts/cli-portfolio.py

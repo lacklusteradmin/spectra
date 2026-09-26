@@ -17,7 +17,20 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 - <<'PY'
-import re, pathlib, sys
+import re, pathlib, subprocess, sys
+
+def hand_written(root, suffix):
+    """Files under `root` a person wrote: tracked or new, never ignored.
+
+    Walking the directory reads the bindings too — `swift/generated/` and the
+    Kotlin `uniffi/` package, both ignored and both present once bindgen has
+    run. Generated code calls every export and quotes every doc comment, so
+    it made each check pass on a machine that had built for that platform.
+    """
+    listed = subprocess.run(
+        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', root],
+        check=True, capture_output=True, text=True).stdout.split('\0')
+    return [pathlib.Path(p) for p in sorted(listed) if p.endswith(suffix) and pathlib.Path(p).exists()]
 
 ATTRIBUTE = re.compile(r'\s*#\[(cfg\(test\)|test|tokio::test)')
 SKIPPABLE = re.compile(r'\s*(#\[|///|//!|$)')
@@ -109,9 +122,8 @@ for path in sources:
             definitions.append((m.group(1), f"{path.relative_to('core/src')}:{lineno}"))
 rust_calls = '\n'.join(production)
 
-swift = strip_noise('\n'.join(p.read_text() for p in pathlib.Path('swift').rglob('*.swift')
-                              if 'generated' not in p.parts), 'func')
-kotlin = strip_noise('\n'.join(p.read_text() for p in pathlib.Path('kotlin').rglob('*.kt')), 'fun')
+swift = strip_noise('\n'.join(p.read_text() for p in hand_written('swift', '.swift')), 'func')
+kotlin = strip_noise('\n'.join(p.read_text() for p in hand_written('kotlin', '.kt')), 'fun')
 
 # UniFFI calls these itself; no Rust or Swift source names them.
 ALLOWED = {'new', 'uniffi_reexport_hack'}

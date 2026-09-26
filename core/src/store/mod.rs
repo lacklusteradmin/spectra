@@ -710,54 +710,8 @@ pub fn merge_chain_keypool_state(
     state
 }
 
-// ─── O: Wallet holdings merge from balance summary ────────────────────────────
-//
-// Core merges balance summaries by holding identity while retaining price
-// metadata and initializing newly discovered holdings.
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct HoldingMergeExistingInput {
-    pub symbol: String,
-    pub chain_id: String,
-    pub contract_address: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct HoldingMergeIncomingInput {
-    pub name: String,
-    pub symbol: String,
-    pub coingecko_id: String,
-    pub chain_id: String,
-    pub token_standard: String,
-    pub contract_address: Option<String>,
-    pub amount: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct HoldingMergeAppendPayload {
-    pub name: String,
-    pub symbol: String,
-    pub coingecko_id: String,
-    pub chain_id: String,
-    pub token_standard: String,
-    pub contract_address: Option<String>,
-    pub amount: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum HoldingMergeAction {
-    UpdateAmount { existing_index: u32, amount: f64 },
-    Append { coin: HoldingMergeAppendPayload },
-}
-
 #[cfg(test)]
 mod tests;
-
-// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod evm_receipt_cost_tests {

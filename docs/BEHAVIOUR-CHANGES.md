@@ -16,6 +16,65 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-26 — One wallet setup, with advanced options on the seed step
+
+- **Before:** Add Wallet opened with a Simple / Advanced segmented picker. It
+  was stored on the draft as `SetupModeChoice`, and its only effect was
+  whether the seed step showed an orange Advanced card. The card routed to an
+  `.advanced` side page inside the setup flow, which every navigation switch
+  had to special-case (blank primary title, disabled primary action, custom
+  back route, hidden button bar). Nothing on the seed step said whether a path,
+  passphrase or HMAC key had been changed.
+- **After:** there is no mode. Create and import seed flows always show a
+  quiet "Advanced Options" row under the seed phrase. It opens a sheet with
+  the same per-chain paths and overrides (`WalletDerivationOptionsView`). Once
+  any of these differs from its default, the row turns orange and names them
+  ("Customized: Derivation Paths and Passphrase"). Private-key and watch-only
+  imports have no row, as before. `WalletSetupPage.advanced` and its special
+  cases are gone. The picker's strings and the leftover
+  "Choose Setup Type" are deleted.
+- **Why:** the picker asked a question before the user had context for it, and
+  it gated one button. Keeping the side route in the linear page enum was a
+  second navigation model inside `SetupFlow`. The options stay hidden, but
+  they change which addresses the seed derives, so the row must show when
+  they differ from their defaults.
+- **CLI check:** none applies; this is Swift presentation only, and derivation
+  inputs reach core unchanged. `scripts/unused-strings.sh` reports 0.
+- **Verification:** `make test-ios` passed 133 iPhone simulator tests. The flow
+  was checked by hand in the simulator: no picker, the row under the grid, the
+  sheet, and the summary after editing a path and a passphrase. Rust and CLI
+  suites were not run because no Rust code changed.
+
+## 2026-09-25 — Remove dead code the scans missed, and stop the scans reading bindings
+
+- **Before:** core exported four holding-merge types (`HoldingMergeExistingInput`,
+  `HoldingMergeIncomingInput`, `HoldingMergeAppendPayload`, `HoldingMergeAction`)
+  that no function took or returned, so they appeared only in the generated
+  bindings. Swift kept `SettingTextField` (its last callers went in Beta Commit
+  167), `SpectraLoadingCard`, `AppLocalization.preferredLocalizationIdentifiers()`
+  with the `Tables.identifiers` field only it read, and a `TransactionKind`
+  alias only a test used. The runtime tables kept `" Last good sync: %@."`,
+  superseded by `diagnostics.degradedLastGoodSyncFormat`. The CLI depended on
+  `uuid` and the FFI crate on `uniffi`, neither used. `uncalled-core-fns.sh`
+  and `unused-strings.sh` walked their directories, so they read the ignored
+  Kotlin bindings (and, for strings, `swift/generated/`) once bindgen had run;
+  generated code calls every export and quotes every doc comment, so both
+  checks passed on any machine that had built bindings. The stale Kotlin
+  bindings were what kept the Last-good-sync key "reachable".
+- **After:** all of the above is deleted, with no replacement. Both scans read
+  only files git tracks or would track (`git ls-files --cached --others
+  --exclude-standard`), so ignored output no longer counts as a caller.
+  `scripts/README.md` lists every CLI suite and the current file count.
+- **Why:** dead exports read as API and keep compiling; a scan that ignored
+  output can satisfy is not a gate.
+- **CLI check:** none changes; no removed item was reachable from `spectra`.
+  `scripts/uncalled-core-fns.sh`, `scripts/unreachable-exports.sh` and
+  `scripts/unused-strings.sh` report 0 with Kotlin bindings present, and
+  `cargo machete` reports no unused dependencies.
+- **Verification:** `make verify` passed: fmt and clippy clean, 847 Rust tests,
+  445 CLI acceptance checks and 133 iPhone simulator tests. Swift bindings
+  regenerated without the `uniffi` dependency in `ffi/`.
+
 ## 2026-09-24 — History, merges and EVM assembly identify assets by deployment
 
 - **Before:** four places decided which asset a thing was by its ticker. A
