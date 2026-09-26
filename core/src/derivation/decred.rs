@@ -162,16 +162,12 @@ pub(crate) fn blake256(data: &[u8]) -> [u8; 32] {
         // Single padding block. The bit counter for this block is the
         // total-message-bits-after-prefix, i.e., previous t plus rem_bits —
         // BUT if rem_len == 0 (no message bits in this block) we set t=0.
-        let final_t0;
-        let final_t1;
-        if rem_len == 0 {
-            final_t0 = 0;
-            final_t1 = 0;
+        let (final_t0, final_t1) = if rem_len == 0 {
+            (0, 0)
         } else {
             let (nt0, c) = t0.overflowing_add(rem_bits);
-            final_t0 = nt0;
-            final_t1 = if c { t1.wrapping_add(1) } else { t1 };
-        }
+            (nt0, if c { t1.wrapping_add(1) } else { t1 })
+        };
         last[55] |= 0x01;
         last[56..64].copy_from_slice(&total_bits.to_be_bytes());
         blake256_compress(&mut h, &last, final_t0, final_t1);

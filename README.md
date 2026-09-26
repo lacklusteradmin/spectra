@@ -44,22 +44,16 @@ The CLI is the front end with no platform under it, and every domain rule has to
 be drivable from it. It needs nothing but a Rust toolchain:
 
 ```sh
-cargo run -p spectra-cli -- --help
+cargo run -p spectra_cli -- --help
 ```
 
 ### The iOS app
 
-The Swift bindings are generated from the Rust core and are **not** checked in,
-so a fresh clone has to build them before the Xcode project will compile:
-
-```sh
-make ios-artifacts
-```
-
-That compiles the `ffi` crate for the iOS targets, lipo-merges the simulator
-static libraries into `build/apple/`, and regenerates `swift/generated/`. Then
-open `swift/Spectra.xcodeproj`. Never hand-edit `swift/generated/` — change the
-Rust API and regenerate.
+Open `swift/Spectra.xcodeproj` and build. The Xcode “Build Rust Core” phase
+runs `scripts/build-ios.sh`, which compiles the Rust core for the device or the
+arm64 simulator and generates `swift/generated/` from it, so a fresh clone needs
+no separate step. Simulators are arm64 only. The Swift bindings are **not** checked
+in; never hand-edit `swift/generated/` — change the Rust API and rebuild.
 
 ### Verification
 

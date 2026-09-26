@@ -169,8 +169,10 @@ fn select_coins<'a>(
 ) -> Result<(Vec<&'a EsploraUtxo>, u64), String> {
     let mut sorted: Vec<&EsploraUtxo> = utxos.iter().collect();
     match strategy {
-        CoinSelectionStrategy::LargestFirst => sorted.sort_by(|a, b| b.value.cmp(&a.value)),
-        CoinSelectionStrategy::SmallestFirst => sorted.sort_by(|a, b| a.value.cmp(&b.value)),
+        CoinSelectionStrategy::LargestFirst => {
+            sorted.sort_by_key(|utxo| std::cmp::Reverse(utxo.value))
+        }
+        CoinSelectionStrategy::SmallestFirst => sorted.sort_by_key(|utxo| utxo.value),
     }
 
     let mut selected: Vec<&EsploraUtxo> = Vec::new();

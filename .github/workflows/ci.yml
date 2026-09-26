@@ -60,7 +60,7 @@ jobs:
           sqlite3 --version
 
       - name: Build the CLI
-        run: cargo build -p spectra-cli
+        run: cargo build -p spectra_cli
 
       - name: Acceptance suite
         run: ./scripts/cli-acceptance.sh

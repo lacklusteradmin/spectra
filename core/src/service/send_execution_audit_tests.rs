@@ -33,7 +33,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     let tx=STANDARD.decode(body["params"][0].as_str().unwrap()).unwrap();
                     if token {
                         let program = crate::derivation::solana::decode_b58_32(if token2022 {"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"} else {"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}).unwrap();
-                        assert!(tx[69..69 + tx[68] as usize * 32].chunks_exact(32).any(|key| key == program));
+                        assert!(tx[69..69 + tx[68] as usize * 32].as_chunks::<32>().0.contains(&program));
                     }
                     let public:[u8;32]=tx[69..101].try_into().unwrap();
                     ed25519_dalek::VerifyingKey::from_bytes(&public).unwrap().verify_strict(&tx[65..],&ed25519_dalek::Signature::from_slice(&tx[1..65]).unwrap()).unwrap();

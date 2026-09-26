@@ -317,7 +317,7 @@ impl TronClient {
             });
         }
 
-        entries.sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms));
         entries.truncate(limit);
         Ok(entries)
     }

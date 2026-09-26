@@ -4052,7 +4052,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spectra-cli"
+name = "spectra_cli"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -4062,13 +4062,6 @@ dependencies = [
  "serde_json",
  "spectra_core",
  "tokio",
-]
-
-[[package]]
-name = "spectra-uniffi-bindgen"
-version = "0.1.0"
-dependencies = [
- "uniffi",
 ]
 
 [[package]]
@@ -4127,6 +4120,13 @@ name = "spectra_core_ffi"
 version = "0.1.0"
 dependencies = [
  "spectra_core",
+]
+
+[[package]]
+name = "spectra_uniffi_bindgen"
+version = "0.1.0"
+dependencies = [
+ "uniffi",
 ]
 
 [[package]]

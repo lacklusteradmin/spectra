@@ -228,7 +228,7 @@ impl CardanoClient {
                 }
             })
             .collect();
-        entries.sort_by(|a, b| b.block_time.cmp(&a.block_time));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_time));
         Ok(entries)
     }
 

@@ -170,7 +170,7 @@ impl DogecoinClient {
                 }
             })
             .collect();
-        entries.sort_by(|a, b| b.block_height.cmp(&a.block_height));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_height));
         Ok(entries)
     }
 

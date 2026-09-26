@@ -53,9 +53,8 @@ handling and persistence; they do not establish acceptance by a real chain.
 
 | File | Purpose |
 |---|---|
-| `build-ios.sh` | Compiles Rust libraries for iPhone devices and simulators, merging simulator architectures. Accepts `--release`. |
+| `build-ios.sh` | Run by the Xcode “Build Rust Core” phase: compiles the Rust library for the device or the arm64 simulator and generates the Swift bindings from it. |
 | `build-android.sh` | Compiles Rust libraries for Android architectures and copies them to `jniLibs`. Requires the Android NDK and cargo-ndk. Accepts `--release`. |
-| `bindgen-ios.sh` | Generates Swift bindings from the compiled Rust library and applies the project's generator fixes. Do not edit the generated output by hand. |
 | `bindgen-android.sh` | Generates Kotlin bindings from the compiled Rust library. |
 | `ios-rust-build-env.sh` | Sourced by build scripts to set a consistent minimum iOS version and clear incompatible iOS build caches when that version changes. |
 

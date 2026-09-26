@@ -71,15 +71,17 @@ coverage gaps are listed in [PLAN.md](PLAN.md#known-open-items).
 ## Regenerating bindings
 
 ```sh
-./scripts/bindgen-ios.sh
+make ios
 ```
 
-Change the Rust API, regenerate, then build Swift. Never edit `swift/generated/`
-by hand. The Xcode “Build Rust Derivation Core” phase calls this script, which
-is the only writer of the generated sources: it post-processes nothing, so a
-Swift-6 problem in them is a UniFFI version or API-shape problem, not something
-to patch downstream. 0.31.2 is the floor because it is the release that emits
-`nonisolated(unsafe)` on the callback-interface `vtablePtr` statics itself.
+Change the Rust API, then build: in Xcode, or with `make ios`. Never edit
+`swift/generated/` by hand. The Xcode “Build Rust Core” phase runs
+`scripts/build-ios.sh`, which builds the iOS library and generates the bindings
+from that same library. It is the only writer of the generated sources and
+post-processes nothing, so a Swift 6 problem in them is a UniFFI version or
+API-shape problem, not something to patch downstream. 0.31.2 is the floor
+because it is the release that emits `nonisolated(unsafe)` on the
+callback-interface `vtablePtr` statics itself.
 
 ## Common errors
 

@@ -216,10 +216,8 @@ fn solana_semantics(tx: &[u8]) -> Value {
     let header = &message[..3];
     let count = message[3] as usize;
     assert!(count < 128);
-    let accounts = message[4..4 + count * 32]
-        .chunks_exact(32)
-        .collect::<Vec<_>>();
-    ed25519_dalek::VerifyingKey::from_bytes(accounts[0].try_into().unwrap())
+    let (accounts, _) = message[4..4 + count * 32].as_chunks::<32>();
+    ed25519_dalek::VerifyingKey::from_bytes(&accounts[0])
         .unwrap()
         .verify_strict(
             message,
@@ -362,9 +360,7 @@ fn audit_solana_self_transfers_merge_account_privileges() {
         "ATA owner aliases signer, including writable privilege"
     );
     for tx in [native, spl] {
-        let keys = tx[69..69 + tx[68] as usize * 32]
-            .chunks_exact(32)
-            .collect::<Vec<_>>();
+        let (keys, _) = tx[69..69 + tx[68] as usize * 32].as_chunks::<32>();
         assert_eq!(
             keys.len(),
             keys.iter().collect::<std::collections::HashSet<_>>().len()

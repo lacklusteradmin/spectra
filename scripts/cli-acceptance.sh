@@ -19,7 +19,7 @@ set -uo pipefail
 
 BIN="${1:-}"
 if [[ -z "$BIN" ]]; then
-    cargo build -p spectra-cli --quiet || exit 1
+    cargo build -p spectra_cli --quiet || exit 1
     BIN="$(cd "$(dirname "$0")/.." && pwd)/target/debug/spectra"
 fi
 

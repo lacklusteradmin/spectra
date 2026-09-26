@@ -7,9 +7,9 @@ IOS_TEST_DEST ?= platform=iOS Simulator,name=iPhone 17 Pro
 # Optional isolation when another task is building the same Xcode project.
 IOS_TEST_DERIVED_DATA ?=
 
-.PHONY: verify fmt lint check check-ui test test-cli test-ios \
-	ios iosr ios-artifacts ios-artifacts-release android androidr \
-	bindgen-ios bindgen-android clean clean-generated
+.PHONY: verify fmt lint check-ui test test-cli test-ios \
+	ios iosr android androidr \
+	bindgen-android clean
 
 # ── Verification ────────────────────────────────────────────────────
 # `verify` is the gate AGENTS.md describes: all three suites must pass
@@ -23,9 +23,6 @@ lint:
 
 fmt:
 	cargo fmt --all
-
-check:
-	cargo check --workspace
 
 check-ui:
 	scripts/check-design-tokens.sh
@@ -49,14 +46,6 @@ ios:
 iosr:
 	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Release -destination "$(IOS_SIM_DEST)" build
 
-ios-artifacts:
-	scripts/build-ios.sh
-	scripts/bindgen-ios.sh
-
-ios-artifacts-release:
-	scripts/build-ios.sh --release
-	scripts/bindgen-ios.sh
-
 android:
 	scripts/build-android.sh
 	scripts/bindgen-android.sh
@@ -65,15 +54,9 @@ androidr:
 	scripts/build-android.sh --release
 	scripts/bindgen-android.sh
 
-bindgen-ios:
-	scripts/bindgen-ios.sh
-
 bindgen-android:
 	scripts/bindgen-android.sh
 
-clean: clean-generated
+clean:
 	cargo clean
-	rm -rf build/
-
-clean-generated:
-	rm -rf swift/generated/ kotlin/app/src/main/kotlin/uniffi/ kotlin/app/src/main/jniLibs/
+	rm -rf build/ swift/generated/ kotlin/app/src/main/kotlin/uniffi/ kotlin/app/src/main/jniLibs/
