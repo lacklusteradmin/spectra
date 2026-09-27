@@ -1,9 +1,6 @@
 # macOS
 .DS_Store
 
-# Xcode / Swift
-build/
-
 # Xcode user data
 xcuserdata/
 *.xcworkspace/xcuserdata/

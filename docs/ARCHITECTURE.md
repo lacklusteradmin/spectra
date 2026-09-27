@@ -20,6 +20,12 @@ external consumer that needs the isolation. There are no published library APIs
 or semver commitments between these crates. Core builds and tests without Xcode
 or an Android toolchain.
 
+Xcode builds the Rust core through `scripts/build-ios.sh` into its own
+DerivedData (`spectra-rust/cargo-target`), not the workspace `target/`. Keeping
+them apart means terminal cargo and Xcode never wait on each other's build lock
+or invalidate each other's cache with different environments, and Clean Build
+Folder clears the Rust side too. Deleting `target/` does not affect Xcode.
+
 ## Ownership
 
 Rust owns wallets, settings, address rules, transaction history, persistence,

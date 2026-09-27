@@ -3,7 +3,6 @@ name = "spectra_core_ffi"
 version = "0.1.0"
 edition = "2024"
 publish = false
-autobins = false
 
 [lib]
 name = "spectra_core"
