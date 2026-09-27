@@ -16,13 +16,12 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
-## 2026-09-26 — Exported async methods run on core's own runtime; one-action Send
+## 2026-09-26 — Exported async methods run on core's own runtime
 
 - **Before:** UniFFI polled every exported async future on the calling
   thread. On iOS that is a Swift cooperative-pool thread with a 512 KiB stack,
   and in a Debug build Build Transaction overflowed it inside the EVM nonce
-  read (`EXC_BAD_ACCESS`, stack guard) before any request left the device. The
-  send composer took three taps to send (Build, Sign, Broadcast). The amount
+  read (`EXC_BAD_ACCESS`, stack guard) before any request left the device. The amount
   page asked core for a 10% shortcut that core never computed, so that button
   was always disabled; a share shortcut filled in 18-digit wei amounts. The
   recipient check failed whenever the history read failed, so on every chain
@@ -34,18 +33,19 @@ how to check it without the app:
   `core::worker::run`, which spawns it on a core-owned tokio runtime with 8 MiB
   worker stacks; the caller only awaits the join, and dropping it aborts the
   body, so cancellation is unchanged. `WalletService`, `RefreshEngine` and
-  `FundsScan` are cheap `Clone`s for this. The composer's Review has one
-  **Send** action: it builds, asks one confirmation, signs and broadcasts to
-  core's default endpoints; a send left signed keeps a Broadcast step. Core
+  `FundsScan` are cheap `Clone`s for this. Build, Sign and Broadcast stay
+  three explicit actions, with broadcast nodes chosen on the signed
+  transaction (a one-action Send was tried in Beta Commit 177 and reverted: it
+  broadcast to core's defaults and skipped that choice, against the
+  transparent-stages design in PLAN.md). Core
   exports the shortcut list (`send_amount_shortcut_percentages`, 25/50/75/100);
   shares are cut to display precision, the maximum stays exact. A funded
   destination is known used without a history read. The preview's
   `RecipientCheck` is a record carrying `is_own_address`, and a self-send's
   review drops the `NewAddress` warning.
 - **Why:** how much stack core needs is core's to decide, not the calling
-  platform's. The three-step send exposed core's stages as UI without adding a
-  decision, and the other changes each removed a message or control that
-  stated something false.
+  platform's. The other changes each removed a message or control that stated
+  something false.
 - **CLI check:** `spectra --json send preview` shows `shortcuts` for 25/50/75/100
   and `recipient.isOwnAddress`; `spectra send build-owned` to one of the
   wallet's own addresses lists no `new_address` warning. The CLI already
