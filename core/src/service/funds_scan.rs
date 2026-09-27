@@ -19,11 +19,11 @@ pub struct FundsScanProgress {
     pub complete: bool,
     pub reads: Vec<FundsScanRead>,
 }
-#[derive(uniffi::Object)]
+#[derive(Clone, uniffi::Object)]
 pub struct FundsScan {
     service: WalletService,
-    candidates: Vec<FundsFinderCandidate>,
-    checked: tokio::sync::Mutex<usize>,
+    candidates: Arc<Vec<FundsFinderCandidate>>,
+    checked: Arc<tokio::sync::Mutex<usize>>,
 }
 #[uniffi::export]
 impl WalletService {
@@ -44,57 +44,62 @@ impl WalletService {
         }
         Ok(Arc::new(FundsScan {
             service: self.clone(),
-            candidates,
-            checked: tokio::sync::Mutex::new(0),
+            candidates: Arc::new(candidates),
+            checked: Arc::new(tokio::sync::Mutex::new(0)),
         }))
     }
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl FundsScan {
     pub fn candidates(&self) -> Vec<FundsFinderCandidate> {
-        self.candidates.clone()
+        self.candidates.to_vec()
     }
     /// Cancellation leaves this batch unconsumed; a caller may retry it.
     pub async fn next_batch(&self) -> FundsScanProgress {
-        let mut checked = self.checked.lock().await;
-        let end = (*checked + 4).min(self.candidates.len());
-        let reads = stream::iter(self.candidates[*checked..end].iter().cloned())
-            .map(|candidate| async {
-                let result = self
-                    .service
-                    .fetch_native_balance_summary(
-                        candidate.chain_id.clone(),
-                        candidate.address.clone(),
-                    )
-                    .await
-                    .and_then(|balance| {
-                        funded(&balance.smallest_unit).map(|is_funded| (balance, is_funded))
-                    });
-                match result {
-                    Ok((balance, funded)) => FundsScanRead {
-                        candidate,
-                        balance: Some(balance),
-                        funded,
-                        error: None,
-                    },
-                    Err(error) => FundsScanRead {
-                        candidate,
-                        balance: None,
-                        funded: false,
-                        error: Some(error.to_string()),
-                    },
-                }
-            })
-            .buffered(4)
-            .collect()
-            .await;
-        *checked = end;
-        FundsScanProgress {
-            total: self.candidates.len() as u32,
-            checked: end as u32,
-            complete: end == self.candidates.len(),
-            reads,
-        }
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let mut checked = this.checked.lock().await;
+            let end = (*checked + 4).min(this.candidates.len());
+            let reads = stream::iter(this.candidates[*checked..end].iter().cloned())
+                .map(|candidate| async {
+                    let result = this
+                        .service
+                        .fetch_native_balance_summary(
+                            candidate.chain_id.clone(),
+                            candidate.address.clone(),
+                        )
+                        .await
+                        .and_then(|balance| {
+                            funded(&balance.smallest_unit).map(|is_funded| (balance, is_funded))
+                        });
+                    match result {
+                        Ok((balance, funded)) => FundsScanRead {
+                            candidate,
+                            balance: Some(balance),
+                            funded,
+                            error: None,
+                        },
+                        Err(error) => FundsScanRead {
+                            candidate,
+                            balance: None,
+                            funded: false,
+                            error: Some(error.to_string()),
+                        },
+                    }
+                })
+                .buffered(4)
+                .collect()
+                .await;
+            *checked = end;
+            FundsScanProgress {
+                total: this.candidates.len() as u32,
+                checked: end as u32,
+                complete: end == this.candidates.len(),
+                reads,
+            }
+        })
+        .await
     }
 }
 fn funded(raw: &str) -> Result<bool, SpectraBridgeError> {
@@ -146,15 +151,17 @@ mod scan_tests {
         .unwrap();
         let scan = FundsScan {
             service: (*service).clone(),
-            checked: tokio::sync::Mutex::new(0),
-            candidates: (1..=3)
-                .map(|n| FundsFinderCandidate {
-                    chain_id: "ethereum".into(),
-                    derivation_path: "fixture".into(),
-                    path_label: "fixture".into(),
-                    address: format!("0x{n:040x}"),
-                })
-                .collect(),
+            checked: Arc::new(tokio::sync::Mutex::new(0)),
+            candidates: Arc::new(
+                (1..=3)
+                    .map(|n| FundsFinderCandidate {
+                        chain_id: "ethereum".into(),
+                        derivation_path: "fixture".into(),
+                        path_label: "fixture".into(),
+                        address: format!("0x{n:040x}"),
+                    })
+                    .collect(),
+            ),
         };
         let batch = scan.next_batch().await;
         assert_eq!(batch.checked, 3);

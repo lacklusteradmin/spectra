@@ -748,6 +748,38 @@ mod destination_probe_tests {
         }
     }
     #[tokio::test]
+    async fn a_funded_destination_needs_no_history_read() {
+        // Every read but the balance fails, and BNB has no keyed explorer here:
+        // a funded address is still known to be in use.
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|request: &Request| {
+                let body: serde_json::Value = request.body_json().unwrap();
+                ResponseTemplate::new(200).set_body_json(if body["method"] == "eth_getBalance" {
+                    json!({"jsonrpc":"2.0","id":body["id"],"result":"0x1"})
+                } else {
+                    json!({"jsonrpc":"2.0","id":body["id"],"error":{"code":-32000,"message":"offline"}})
+                })
+            })
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
+                .map(String::from)
+                .to_vec(),
+            chain_id: Chain::BnbChain.str_id().into(),
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let key = seed_probe_holding(&service, Chain::BnbChain, "BNB", None).await;
+        let risk = service
+            .send_destination_risk("probe-wallet".into(), key, format!("0x{}", "44".repeat(20)))
+            .await
+            .unwrap();
+        assert!(!risk.balance_is_zero);
+        assert_eq!(risk.activity, SendDestinationActivity::Funded);
+    }
+    #[tokio::test]
     async fn successful_empty_history_is_distinct_from_unknown() {
         let server = MockServer::start().await;
         Mock::given(any())

@@ -108,35 +108,40 @@ impl WalletService {
     pub async fn endpoint_directory(
         &self,
     ) -> Result<Vec<EndpointDirectoryEntry>, SpectraBridgeError> {
-        let catalog = crate::app_core::endpoint_catalog()?;
-        let custom = self
-            .wallet_state
-            .read()
-            .await
-            .settings
-            .custom_endpoints
-            .clone();
-        let mut entries: Vec<_> = catalog
-            .endpoint_records
-            .iter()
-            .cloned()
-            .map(|record| EndpointDirectoryEntry {
-                api_name: record
-                    .api
-                    .map(|api| api.as_str().into())
-                    .unwrap_or_default(),
-                record,
-                is_built_in: true,
-            })
-            .collect();
-        for endpoint in custom {
-            entries.push(EndpointDirectoryEntry {
-                api_name: endpoint.api.as_str().into(),
-                record: endpoint.record()?,
-                is_built_in: false,
-            });
-        }
-        Ok(entries)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let catalog = crate::app_core::endpoint_catalog()?;
+            let custom = this
+                .wallet_state
+                .read()
+                .await
+                .settings
+                .custom_endpoints
+                .clone();
+            let mut entries: Vec<_> = catalog
+                .endpoint_records
+                .iter()
+                .cloned()
+                .map(|record| EndpointDirectoryEntry {
+                    api_name: record
+                        .api
+                        .map(|api| api.as_str().into())
+                        .unwrap_or_default(),
+                    record,
+                    is_built_in: true,
+                })
+                .collect();
+            for endpoint in custom {
+                entries.push(EndpointDirectoryEntry {
+                    api_name: endpoint.api.as_str().into(),
+                    record: endpoint.record()?,
+                    is_built_in: false,
+                });
+            }
+            Ok(entries)
+        })
+        .await
     }
 }
 

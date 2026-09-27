@@ -16,6 +16,47 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-26 — Exported async methods run on core's own runtime; one-action Send
+
+- **Before:** UniFFI polled every exported async future on the calling
+  thread. On iOS that is a Swift cooperative-pool thread with a 512 KiB stack,
+  and in a Debug build Build Transaction overflowed it inside the EVM nonce
+  read (`EXC_BAD_ACCESS`, stack guard) before any request left the device. The
+  send composer took three taps to send (Build, Sign, Broadcast). The amount
+  page asked core for a 10% shortcut that core never computed, so that button
+  was always disabled; a share shortcut filled in 18-digit wei amounts. The
+  recipient check failed whenever the history read failed, so on every chain
+  without an explorer (every testnet) it said "Unable to verify this address's
+  activity" even for a funded address. A self-send was flagged at review both
+  as "a new destination with no prior history" and as "belongs to your
+  wallet".
+- **After:** all 73 exported async methods hand their body to
+  `core::worker::run`, which spawns it on a core-owned tokio runtime with 8 MiB
+  worker stacks; the caller only awaits the join, and dropping it aborts the
+  body, so cancellation is unchanged. `WalletService`, `RefreshEngine` and
+  `FundsScan` are cheap `Clone`s for this. The composer's Review has one
+  **Send** action: it builds, asks one confirmation, signs and broadcasts to
+  core's default endpoints; a send left signed keeps a Broadcast step. Core
+  exports the shortcut list (`send_amount_shortcut_percentages`, 25/50/75/100);
+  shares are cut to display precision, the maximum stays exact. A funded
+  destination is known used without a history read. The preview's
+  `RecipientCheck` is a record carrying `is_own_address`, and a self-send's
+  review drops the `NewAddress` warning.
+- **Why:** how much stack core needs is core's to decide, not the calling
+  platform's. The three-step send exposed core's stages as UI without adding a
+  decision, and the other changes each removed a message or control that
+  stated something false.
+- **CLI check:** `spectra --json send preview` shows `shortcuts` for 25/50/75/100
+  and `recipient.isOwnAddress`; `spectra send build-owned` to one of the
+  wallet's own addresses lists no `new_address` warning. The CLI already
+  polls on its own runtime, so the crash never reproduced there; the new
+  `worker` tests cover the runtime, cancellation and panic propagation.
+- **Verification:** `make verify` passed: lint, 853 Rust tests, 445 CLI
+  acceptance checks and 133 iPhone simulator tests. By hand in a Debug build
+  on an Ethereum Sepolia wallet: the composer reaches the Send confirmation
+  (the build that used to crash), then was cancelled; nothing was signed or
+  broadcast.
+
 ## 2026-09-26 — One wallet setup, with advanced options on the seed step
 
 - **Before:** Add Wallet opened with a Simple / Advanced segmented picker. It

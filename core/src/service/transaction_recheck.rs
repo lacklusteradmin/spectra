@@ -33,18 +33,23 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<TransactionStatusChange, SpectraBridgeError> {
-        let result = self.recheck_stored_status(transaction_id).await;
-        if let Err(error) = &result {
-            self.record_event(
-                crate::service::DiagnosticLogLevel::Error,
-                "Pending Transactions",
-                format!("Status recheck failed: {error}"),
-                None,
-                None,
-            )
-            .await;
-        }
-        result
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let result = this.recheck_stored_status(transaction_id).await;
+            if let Err(error) = &result {
+                this.record_event(
+                    crate::service::DiagnosticLogLevel::Error,
+                    "Pending Transactions",
+                    format!("Status recheck failed: {error}"),
+                    None,
+                    None,
+                )
+                .await;
+            }
+            result
+        })
+        .await
     }
 }
 

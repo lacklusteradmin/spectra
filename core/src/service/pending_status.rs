@@ -93,30 +93,35 @@ impl WalletService {
     pub async fn refresh_pending_transactions(
         &self,
     ) -> Result<PendingMaintenanceResult, SpectraBridgeError> {
-        self.prune_status_trackers().await?;
-        let chains = self.pending_maintenance_chains().await?;
-        let outcomes = futures::future::join_all(
-            chains
-                .iter()
-                .map(|chain| self.poll_pending_transactions(chain.clone())),
-        )
-        .await;
-        let mut changes = Vec::new();
-        let mut failures = Vec::new();
-        for (chain_id, outcome) in chains.iter().zip(outcomes) {
-            match outcome {
-                Ok(updated) => changes.extend(updated),
-                Err(error) => failures.push(PendingMaintenanceFailure {
-                    chain_id: chain_id.clone(),
-                    message: error.to_string(),
-                }),
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.prune_status_trackers().await?;
+            let chains = this.pending_maintenance_chains().await?;
+            let outcomes = futures::future::join_all(
+                chains
+                    .iter()
+                    .map(|chain| this.poll_pending_transactions(chain.clone())),
+            )
+            .await;
+            let mut changes = Vec::new();
+            let mut failures = Vec::new();
+            for (chain_id, outcome) in chains.iter().zip(outcomes) {
+                match outcome {
+                    Ok(updated) => changes.extend(updated),
+                    Err(error) => failures.push(PendingMaintenanceFailure {
+                        chain_id: chain_id.clone(),
+                        message: error.to_string(),
+                    }),
+                }
             }
-        }
-        Ok(PendingMaintenanceResult {
-            chains,
-            changes,
-            failures,
+            Ok(PendingMaintenanceResult {
+                chains,
+                changes,
+                failures,
+            })
         })
+        .await
     }
 
     /// Poll one chain's pending transactions and apply what came back.
@@ -130,66 +135,208 @@ impl WalletService {
         &self,
         chain_id: String,
     ) -> Result<Vec<TransactionStatusChange>, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain {chain_id:?}")))?;
-        let poll = chain.pending_status_poll();
-        if matches!(poll, PendingStatusPoll::None) {
-            return Ok(Vec::new());
-        }
-        // Trackers for records nothing polls any more go first: the set is read
-        // from the store here rather than computed by a caller and sent over.
-        self.prune_status_trackers().await?;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = Chain::from_str_id(&chain_id)
+                .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain {chain_id:?}")))?;
+            let poll = chain.pending_status_poll();
+            if matches!(poll, PendingStatusPoll::None) {
+                return Ok(Vec::new());
+            }
+            // Trackers for records nothing polls any more go first: the set is read
+            // from the store here rather than computed by a caller and sent over.
+            this.prune_status_trackers().await?;
 
-        let records = {
-            let stored = self.fetch_all_history_records().await?;
-            let all: Vec<_> = stored.into_iter().map(|row| row.payload).collect();
-            tracked(&all, chain, poll)
-        };
-        if records.is_empty() {
-            return Ok(Vec::new());
-        }
+            let records = {
+                let stored = this.fetch_all_history_records().await?;
+                let all: Vec<_> = stored.into_iter().map(|row| row.payload).collect();
+                tracked(&all, chain, poll)
+            };
+            if records.is_empty() {
+                return Ok(Vec::new());
+            }
 
-        let due: std::collections::HashSet<String> = self
-            .transactions_due_for_status_poll(
-                records.iter().map(|record| record.id.clone()).collect(),
-            )
-            .await
-            .into_iter()
-            .collect();
+            let due: std::collections::HashSet<String> = this
+                .transactions_due_for_status_poll(
+                    records.iter().map(|record| record.id.clone()).collect(),
+                )
+                .await
+                .into_iter()
+                .collect();
 
-        // `tracked` selected records for this exact stored network. Settings
-        // may have changed since submission and must not redirect old hashes.
-        let network = chain;
-        let chain_id = network.str_id().to_string();
+            // `tracked` selected records for this exact stored network. Settings
+            // may have changed since submission and must not redirect old hashes.
+            let network = chain;
+            let chain_id = network.str_id().to_string();
 
-        let mut resolutions = Vec::new();
-        match poll {
-            PendingStatusPoll::Utxo { .. } => {
-                for record in records.iter().filter(|r| due.contains(&r.id)) {
-                    let Some(hash) = record.transaction_hash.clone() else {
-                        continue;
-                    };
-                    match self.fetch_utxo_tx_status(chain_id.clone(), hash).await {
-                        Ok(status) => {
-                            // Confirmation depth is provider metadata, not a polling threshold.
-                            let confirmations = if status.confirmed {
-                                match status.confirmations.map(u32::try_from).transpose() {
-                                    Ok(count) => count,
-                                    Err(_) => {
-                                        self.record_status_poll(
+            let mut resolutions = Vec::new();
+            match poll {
+                PendingStatusPoll::Utxo { .. } => {
+                    for record in records.iter().filter(|r| due.contains(&r.id)) {
+                        let Some(hash) = record.transaction_hash.clone() else {
+                            continue;
+                        };
+                        match this.fetch_utxo_tx_status(chain_id.clone(), hash).await {
+                            Ok(status) => {
+                                // Confirmation depth is provider metadata, not a polling threshold.
+                                let confirmations = if status.confirmed {
+                                    match status.confirmations.map(u32::try_from).transpose() {
+                                        Ok(count) => count,
+                                        Err(_) => {
+                                            this.record_status_poll(
+                                                record.id.clone(),
+                                                crate::service::StatusPollOutcome::Failed,
+                                            )
+                                            .await;
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    None
+                                };
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    if status.confirmed {
+                                        crate::service::StatusPollOutcome::Confirmed
+                                    } else {
+                                        crate::service::StatusPollOutcome::Pending
+                                    },
+                                )
+                                .await;
+                                resolutions.push(ResolvedPendingStatus {
+                                    id: record.id.clone(),
+                                    status: if status.confirmed {
+                                        "confirmed"
+                                    } else {
+                                        "pending"
+                                    }
+                                    .to_string(),
+                                    confirmations,
+                                    receipt_block_number: status
+                                        .block_height
+                                        .map(|height| height as i64),
+                                    confirmed_network_fee: None,
+                                    evm_receipt_cost: None,
+                                });
+                            }
+                            Err(_) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Failed,
+                                )
+                                .await
+                            }
+                        }
+                    }
+                }
+                PendingStatusPoll::EvmReceipt => {
+                    for record in records.iter().filter(|r| due.contains(&r.id)) {
+                        let Some(hash) = record.transaction_hash.clone() else {
+                            continue;
+                        };
+                        match this.evm_transaction_status(chain_id.clone(), hash).await {
+                            // A node that answered "no receipt yet" is a pending
+                            // poll, not a failed one.
+                            Ok(None) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Pending,
+                                )
+                                .await
+                            }
+                            Ok(Some(classification)) if !classification.is_confirmed => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Pending,
+                                )
+                                .await
+                            }
+                            Ok(Some(classification)) => {
+                                // A reverted receipt is a failure, not a
+                                // confirmation: the history summary the other arm
+                                // reads cannot tell the two apart.
+                                let status = if classification.is_failed {
+                                    "failed"
+                                } else {
+                                    "confirmed"
+                                };
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Confirmed,
+                                )
+                                .await;
+                                resolutions.push(ResolvedPendingStatus {
+                                    id: record.id.clone(),
+                                    status: status.to_string(),
+                                    confirmations: None,
+                                    receipt_block_number: classification.block_number,
+                                    confirmed_network_fee: None,
+                                    evm_receipt_cost: classification.cost,
+                                });
+                            }
+                            Err(_) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Failed,
+                                )
+                                .await
+                            }
+                        }
+                    }
+                }
+                PendingStatusPoll::HistoryTxids => {
+                    // One history read per address, not per transaction: the
+                    // records are grouped by the wallet's address first.
+                    let state = this.app_state().await;
+                    let mut by_address: std::collections::HashMap<String, Vec<&_>> =
+                        std::collections::HashMap::new();
+                    for record in records.iter().filter(|r| due.contains(&r.id)) {
+                        let Some(address) = record
+                            .wallet_id
+                            .as_deref()
+                            .and_then(|wallet_id| {
+                                state
+                                    .wallets
+                                    .iter()
+                                    .find(|wallet| wallet.id.eq_ignore_ascii_case(wallet_id))
+                            })
+                            .and_then(|wallet| wallet.active_address())
+                        else {
+                            continue;
+                        };
+                        by_address
+                            .entry(address.to_string())
+                            .or_default()
+                            .push(record);
+                    }
+                    for (address, group) in by_address {
+                        let confirmed =
+                            match this.fetch_history_summary(chain_id.clone(), address).await {
+                                Ok(summary) => summary
+                                    .confirmed_txids
+                                    .into_iter()
+                                    .map(|txid| txid.to_lowercase())
+                                    .collect::<std::collections::HashSet<_>>(),
+                                Err(_) => {
+                                    for record in group {
+                                        this.record_status_poll(
                                             record.id.clone(),
                                             crate::service::StatusPollOutcome::Failed,
                                         )
                                         .await;
-                                        continue;
                                     }
+                                    continue;
                                 }
-                            } else {
-                                None
                             };
-                            self.record_status_poll(
+                        for record in group.into_iter().filter(|r| due.contains(&r.id)) {
+                            let is_confirmed = record
+                                .transaction_hash
+                                .as_deref()
+                                .is_some_and(|hash| confirmed.contains(&hash.to_lowercase()));
+                            this.record_status_poll(
                                 record.id.clone(),
-                                if status.confirmed {
+                                if is_confirmed {
                                     crate::service::StatusPollOutcome::Confirmed
                                 } else {
                                     crate::service::StatusPollOutcome::Pending
@@ -198,159 +345,27 @@ impl WalletService {
                             .await;
                             resolutions.push(ResolvedPendingStatus {
                                 id: record.id.clone(),
-                                status: if status.confirmed {
-                                    "confirmed"
-                                } else {
-                                    "pending"
-                                }
-                                .to_string(),
-                                confirmations,
-                                receipt_block_number: status
-                                    .block_height
-                                    .map(|height| height as i64),
+                                status: if is_confirmed { "confirmed" } else { "pending" }
+                                    .to_string(),
+                                confirmations: None,
+                                receipt_block_number: None,
                                 confirmed_network_fee: None,
                                 evm_receipt_cost: None,
                             });
                         }
-                        Err(_) => {
-                            self.record_status_poll(
-                                record.id.clone(),
-                                crate::service::StatusPollOutcome::Failed,
-                            )
-                            .await
-                        }
                     }
                 }
+                PendingStatusPoll::None => {}
             }
-            PendingStatusPoll::EvmReceipt => {
-                for record in records.iter().filter(|r| due.contains(&r.id)) {
-                    let Some(hash) = record.transaction_hash.clone() else {
-                        continue;
-                    };
-                    match self.evm_transaction_status(chain_id.clone(), hash).await {
-                        // A node that answered "no receipt yet" is a pending
-                        // poll, not a failed one.
-                        Ok(None) => {
-                            self.record_status_poll(
-                                record.id.clone(),
-                                crate::service::StatusPollOutcome::Pending,
-                            )
-                            .await
-                        }
-                        Ok(Some(classification)) if !classification.is_confirmed => {
-                            self.record_status_poll(
-                                record.id.clone(),
-                                crate::service::StatusPollOutcome::Pending,
-                            )
-                            .await
-                        }
-                        Ok(Some(classification)) => {
-                            // A reverted receipt is a failure, not a
-                            // confirmation: the history summary the other arm
-                            // reads cannot tell the two apart.
-                            let status = if classification.is_failed {
-                                "failed"
-                            } else {
-                                "confirmed"
-                            };
-                            self.record_status_poll(
-                                record.id.clone(),
-                                crate::service::StatusPollOutcome::Confirmed,
-                            )
-                            .await;
-                            resolutions.push(ResolvedPendingStatus {
-                                id: record.id.clone(),
-                                status: status.to_string(),
-                                confirmations: None,
-                                receipt_block_number: classification.block_number,
-                                confirmed_network_fee: None,
-                                evm_receipt_cost: classification.cost,
-                            });
-                        }
-                        Err(_) => {
-                            self.record_status_poll(
-                                record.id.clone(),
-                                crate::service::StatusPollOutcome::Failed,
-                            )
-                            .await
-                        }
-                    }
-                }
-            }
-            PendingStatusPoll::HistoryTxids => {
-                // One history read per address, not per transaction: the
-                // records are grouped by the wallet's address first.
-                let state = self.app_state().await;
-                let mut by_address: std::collections::HashMap<String, Vec<&_>> =
-                    std::collections::HashMap::new();
-                for record in records.iter().filter(|r| due.contains(&r.id)) {
-                    let Some(address) = record
-                        .wallet_id
-                        .as_deref()
-                        .and_then(|wallet_id| {
-                            state
-                                .wallets
-                                .iter()
-                                .find(|wallet| wallet.id.eq_ignore_ascii_case(wallet_id))
-                        })
-                        .and_then(|wallet| wallet.active_address())
-                    else {
-                        continue;
-                    };
-                    by_address
-                        .entry(address.to_string())
-                        .or_default()
-                        .push(record);
-                }
-                for (address, group) in by_address {
-                    let confirmed =
-                        match self.fetch_history_summary(chain_id.clone(), address).await {
-                            Ok(summary) => summary
-                                .confirmed_txids
-                                .into_iter()
-                                .map(|txid| txid.to_lowercase())
-                                .collect::<std::collections::HashSet<_>>(),
-                            Err(_) => {
-                                for record in group {
-                                    self.record_status_poll(
-                                        record.id.clone(),
-                                        crate::service::StatusPollOutcome::Failed,
-                                    )
-                                    .await;
-                                }
-                                continue;
-                            }
-                        };
-                    for record in group.into_iter().filter(|r| due.contains(&r.id)) {
-                        let is_confirmed = record
-                            .transaction_hash
-                            .as_deref()
-                            .is_some_and(|hash| confirmed.contains(&hash.to_lowercase()));
-                        self.record_status_poll(
-                            record.id.clone(),
-                            if is_confirmed {
-                                crate::service::StatusPollOutcome::Confirmed
-                            } else {
-                                crate::service::StatusPollOutcome::Pending
-                            },
-                        )
-                        .await;
-                        resolutions.push(ResolvedPendingStatus {
-                            id: record.id.clone(),
-                            status: if is_confirmed { "confirmed" } else { "pending" }.to_string(),
-                            confirmations: None,
-                            receipt_block_number: None,
-                            confirmed_network_fee: None,
-                            evm_receipt_cost: None,
-                        });
-                    }
-                }
-            }
-            PendingStatusPoll::None => {}
-        }
 
-        self.apply_polled_pending_statuses(chain.str_id().to_string(), resolutions, Some(records))
+            this.apply_polled_pending_statuses(
+                chain.str_id().to_string(),
+                resolutions,
+                Some(records),
+            )
             .await
+        })
+        .await
     }
 }
 

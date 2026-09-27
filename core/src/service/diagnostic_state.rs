@@ -120,59 +120,69 @@ impl DiagnosticState {
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn diagnostic_state(&self) -> DiagnosticState {
-        self.wallet_state.read().await.diagnostics.clone()
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.wallet_state.read().await.diagnostics.clone()
+        })
+        .await
     }
     pub async fn apply_diagnostic_command(
         &self,
         command: DiagnosticCommand,
     ) -> Result<DiagnosticState, SpectraBridgeError> {
-        let chain_id = match &command {
-            DiagnosticCommand::Healthy { chain_id }
-            | DiagnosticCommand::Synced { chain_id }
-            | DiagnosticCommand::Degraded { chain_id, .. } => Some(chain_id),
-            _ => None,
-        };
-        if chain_id.is_some_and(|s| Chain::from_str_id(s).is_none()) {
-            return Err("unknown diagnostic chain".into());
-        }
-        let result = self
-            .mutate_persisted_state(move |state| {
-                let d = &mut state.diagnostics;
-                match command {
-                    DiagnosticCommand::Append { input } => d.append(input),
-                    DiagnosticCommand::Synced { chain_id } => {
-                        d.last_good_unix.insert(chain_id, crate::store::now_unix());
-                    }
-                    DiagnosticCommand::Healthy { chain_id } => {
-                        d.last_good_unix
-                            .insert(chain_id.clone(), crate::store::now_unix());
-                        if d.degraded.remove(&chain_id).is_some() {
-                            d.append(sync_log(
-                                chain_id,
-                                DiagnosticLogLevel::Info,
-                                "Chain recovered".into(),
-                            ));
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain_id = match &command {
+                DiagnosticCommand::Healthy { chain_id }
+                | DiagnosticCommand::Synced { chain_id }
+                | DiagnosticCommand::Degraded { chain_id, .. } => Some(chain_id),
+                _ => None,
+            };
+            if chain_id.is_some_and(|s| Chain::from_str_id(s).is_none()) {
+                return Err("unknown diagnostic chain".into());
+            }
+            let result = this
+                .mutate_persisted_state(move |state| {
+                    let d = &mut state.diagnostics;
+                    match command {
+                        DiagnosticCommand::Append { input } => d.append(input),
+                        DiagnosticCommand::Synced { chain_id } => {
+                            d.last_good_unix.insert(chain_id, crate::store::now_unix());
                         }
-                    }
-                    DiagnosticCommand::Degraded { chain_id, reason } => {
-                        // A partial load is also a live read.
-                        if reason == ChainDegradation::HistoryPartiallyLoaded {
+                        DiagnosticCommand::Healthy { chain_id } => {
                             d.last_good_unix
                                 .insert(chain_id.clone(), crate::store::now_unix());
+                            if d.degraded.remove(&chain_id).is_some() {
+                                d.append(sync_log(
+                                    chain_id,
+                                    DiagnosticLogLevel::Info,
+                                    "Chain recovered".into(),
+                                ));
+                            }
                         }
-                        let text = reason.log_text(&chain_id);
-                        d.degraded.insert(chain_id.clone(), reason);
-                        d.append(sync_log(chain_id, DiagnosticLogLevel::Warning, text));
+                        DiagnosticCommand::Degraded { chain_id, reason } => {
+                            // A partial load is also a live read.
+                            if reason == ChainDegradation::HistoryPartiallyLoaded {
+                                d.last_good_unix
+                                    .insert(chain_id.clone(), crate::store::now_unix());
+                            }
+                            let text = reason.log_text(&chain_id);
+                            d.degraded.insert(chain_id.clone(), reason);
+                            d.append(sync_log(chain_id, DiagnosticLogLevel::Warning, text));
+                        }
+                        DiagnosticCommand::ClearLogs { chain_id } => d
+                            .logs
+                            .retain(|l| chain_id.is_some() && l.input.chain_id != chain_id),
+                        DiagnosticCommand::Reset => *d = DiagnosticState::default(),
                     }
-                    DiagnosticCommand::ClearLogs { chain_id } => d
-                        .logs
-                        .retain(|l| chain_id.is_some() && l.input.chain_id != chain_id),
-                    DiagnosticCommand::Reset => *d = DiagnosticState::default(),
-                }
-                vec![crate::store::state::StateEvent::DiagnosticsChanged]
-            })
-            .await?;
-        Ok(result.state.diagnostics)
+                    vec![crate::store::state::StateEvent::DiagnosticsChanged]
+                })
+                .await?;
+            Ok(result.state.diagnostics)
+        })
+        .await
     }
 }
 fn sync_log(chain: String, level: DiagnosticLogLevel, message: String) -> DiagnosticLogInput {
@@ -247,58 +257,63 @@ impl WalletService {
         &self,
         chain_id: String,
     ) -> Result<ConfiguredSelfTestReport, SpectraBridgeError> {
-        use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
-        let requested = chain_for_id(&chain_id)?;
-        let chain = if requested == requested.mainnet_counterpart() {
-            self.app_state()
-                .await
-                .settings
-                .selected_chain_for_family(requested)
-        } else {
-            requested
-        };
-        let mut results = self_tests_run_chain(chain.str_id().into());
-        let rpc_endpoint = if chain.is_evm() {
-            let endpoints = self.configured_endpoint_urls(chain.str_id()).await;
-            let rpc = endpoints
-                .first()
-                .ok_or("No RPC configured for this network")?
-                .clone();
-            results.extend(
-                self_tests_run_evm_rpc(chain.str_id().into(), rpc.clone(), rpc.clone()).await,
-            );
-            Some(rpc)
-        } else {
-            None
-        };
-        let failed = results.iter().filter(|r| !r.passed).count();
-        let (level, message) = if failed == 0 {
-            (
-                DiagnosticLogLevel::Info,
-                format!("Self-tests passed ({} checks).", results.len()),
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
+            let requested = chain_for_id(&chain_id)?;
+            let chain = if requested == requested.mainnet_counterpart() {
+                this.app_state()
+                    .await
+                    .settings
+                    .selected_chain_for_family(requested)
+            } else {
+                requested
+            };
+            let mut results = self_tests_run_chain(chain.str_id().into());
+            let rpc_endpoint = if chain.is_evm() {
+                let endpoints = this.configured_endpoint_urls(chain.str_id()).await;
+                let rpc = endpoints
+                    .first()
+                    .ok_or("No RPC configured for this network")?
+                    .clone();
+                results.extend(
+                    self_tests_run_evm_rpc(chain.str_id().into(), rpc.clone(), rpc.clone()).await,
+                );
+                Some(rpc)
+            } else {
+                None
+            };
+            let failed = results.iter().filter(|r| !r.passed).count();
+            let (level, message) = if failed == 0 {
+                (
+                    DiagnosticLogLevel::Info,
+                    format!("Self-tests passed ({} checks).", results.len()),
+                )
+            } else {
+                (
+                    DiagnosticLogLevel::Warning,
+                    format!(
+                        "Self-tests completed with {failed} failure(s) of {} checks.",
+                        results.len()
+                    ),
+                )
+            };
+            this.record_event(
+                level,
+                "Self-Tests",
+                message,
+                Some(chain.str_id().into()),
+                None,
             )
-        } else {
-            (
-                DiagnosticLogLevel::Warning,
-                format!(
-                    "Self-tests completed with {failed} failure(s) of {} checks.",
-                    results.len()
-                ),
-            )
-        };
-        self.record_event(
-            level,
-            "Self-Tests",
-            message,
-            Some(chain.str_id().into()),
-            None,
-        )
-        .await;
-        Ok(ConfiguredSelfTestReport {
-            chain_id: chain.str_id().into(),
-            rpc_endpoint,
-            results,
+            .await;
+            Ok(ConfiguredSelfTestReport {
+                chain_id: chain.str_id().into(),
+                rpc_endpoint,
+                results,
+            })
         })
+        .await
     }
 }
 

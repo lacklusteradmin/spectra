@@ -22,7 +22,12 @@ impl WalletService {
     /// replaces exactly the way a mainnet one does, offered neither speed-up
     /// nor cancel. The family is the registry's, and the rule is here.
     pub async fn replaceable_sends(&self) -> Result<Vec<ReplaceableSend>, SpectraBridgeError> {
-        Ok(self.transaction_snapshot().await?.replaceable)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            Ok(this.transaction_snapshot().await?.replaceable)
+        })
+        .await
     }
 }
 

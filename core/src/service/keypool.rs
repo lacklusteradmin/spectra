@@ -17,34 +17,39 @@ impl WalletService {
         branch: Option<String>,
         branch_index: Option<i64>,
     ) -> Result<(), SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let address = address.trim().to_string();
-            if address.is_empty() || wallet_id.is_empty() {
-                return Ok(());
-            }
-            let record = crate::wallet_db::OwnedAddressRecord {
-                wallet_id,
-                chain_id: chain_id.clone(),
-                address,
-                derivation_path,
-                branch,
-                branch_index,
-            };
-            // The row goes to storage first and becomes visible second, under
-            // the lock that the reservation paths also take. This used to clone
-            // the whole table, mutate the copy and write it back — a shape that
-            // drops any write landing in between.
-            let mut tables = service.keypool.write().await;
-            if let Some(database) = service.state_binding.connection().await {
-                let to_save = record.clone();
-                tokio::task::spawn_blocking(move || {
-                    crate::wallet_db::address_save(&database, &to_save)
-                })
-                .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
-            }
-            tables.remember_owned(record);
-            Ok(())
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.write_persisted(move |service| async move {
+                let address = address.trim().to_string();
+                if address.is_empty() || wallet_id.is_empty() {
+                    return Ok(());
+                }
+                let record = crate::wallet_db::OwnedAddressRecord {
+                    wallet_id,
+                    chain_id: chain_id.clone(),
+                    address,
+                    derivation_path,
+                    branch,
+                    branch_index,
+                };
+                // The row goes to storage first and becomes visible second, under
+                // the lock that the reservation paths also take. This used to clone
+                // the whole table, mutate the copy and write it back — a shape that
+                // drops any write landing in between.
+                let mut tables = service.keypool.write().await;
+                if let Some(database) = service.state_binding.connection().await {
+                    let to_save = record.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::wallet_db::address_save(&database, &to_save)
+                    })
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                }
+                tables.remember_owned(record);
+                Ok(())
+            })
+            .await
         })
         .await
     }
@@ -63,48 +68,54 @@ impl WalletService {
         &self,
         chain_id: String,
     ) -> Result<Vec<KeypoolDiagnostic>, SpectraBridgeError> {
-        let chain = crate::registry::Chain::from_str_id(&chain_id);
-        let mut wallets: Vec<(String, String)> = {
-            let state = self.wallet_state.read().await;
-            state
-                .wallets
-                .iter()
-                .filter(|wallet| {
-                    (chain.is_some() && wallet.family() == chain.map(|c| c.mainnet_counterpart()))
-                        || chain.is_some_and(|chain| wallet.address_on(chain).is_some())
-                })
-                .map(|wallet| (wallet.id.clone(), wallet.name.clone()))
-                .collect()
-        };
-        wallets.sort_by_key(|(_, name)| name.to_lowercase());
-        let mut rows = Vec::with_capacity(wallets.len());
-        for (wallet_id, wallet_name) in wallets {
-            let keypool = self
-                .keypool_state(wallet_id.clone(), chain_id.clone())
-                .await?;
-            let reserved_receive = match keypool.reserved_receive_index {
-                Some(index) => self
-                    .keypool
-                    .read()
-                    .await
-                    .owned_on(&chain_id)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = crate::registry::Chain::from_str_id(&chain_id);
+            let mut wallets: Vec<(String, String)> = {
+                let state = this.wallet_state.read().await;
+                state
+                    .wallets
                     .iter()
-                    .find(|row| {
-                        row.wallet_id == wallet_id
-                            && row.branch.as_deref() == Some("external")
-                            && row.branch_index == Some(index)
+                    .filter(|wallet| {
+                        (chain.is_some()
+                            && wallet.family() == chain.map(|c| c.mainnet_counterpart()))
+                            || chain.is_some_and(|chain| wallet.address_on(chain).is_some())
                     })
-                    .cloned(),
-                None => None,
+                    .map(|wallet| (wallet.id.clone(), wallet.name.clone()))
+                    .collect()
             };
-            rows.push(KeypoolDiagnostic {
-                wallet_id,
-                wallet_name,
-                keypool,
-                reserved_receive,
-            });
-        }
-        Ok(rows)
+            wallets.sort_by_key(|(_, name)| name.to_lowercase());
+            let mut rows = Vec::with_capacity(wallets.len());
+            for (wallet_id, wallet_name) in wallets {
+                let keypool = this
+                    .keypool_state(wallet_id.clone(), chain_id.clone())
+                    .await?;
+                let reserved_receive = match keypool.reserved_receive_index {
+                    Some(index) => this
+                        .keypool
+                        .read()
+                        .await
+                        .owned_on(&chain_id)
+                        .iter()
+                        .find(|row| {
+                            row.wallet_id == wallet_id
+                                && row.branch.as_deref() == Some("external")
+                                && row.branch_index == Some(index)
+                        })
+                        .cloned(),
+                    None => None,
+                };
+                rows.push(KeypoolDiagnostic {
+                    wallet_id,
+                    wallet_name,
+                    keypool,
+                    reserved_receive,
+                });
+            }
+            Ok(rows)
+        })
+        .await
     }
 
     /// Reserve the next receive index, or return the one already reserved.
@@ -114,20 +125,41 @@ impl WalletService {
         chain_id: String,
         minimum_index: i64,
     ) -> Result<i64, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let baseline = service
-                .chain_keypool_baseline(&wallet_id, &chain_id)
-                .await?;
-            let key = keypool_key(&wallet_id, &chain_id);
-            let mut tables = service.keypool.write().await;
-            let merged = crate::store::merge_chain_keypool_state(
-                baseline,
-                tables.state(&key).map(record_from_keypool),
-            );
-            let mut state = keypool_from_record(&merged);
-            if let Some(reserved) = state.reserved_receive_index {
-                // Already reserved: hand back the same index rather than burning a
-                // new one every time the receive sheet opens.
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.write_persisted(move |service| async move {
+                let baseline = service
+                    .chain_keypool_baseline(&wallet_id, &chain_id)
+                    .await?;
+                let key = keypool_key(&wallet_id, &chain_id);
+                let mut tables = service.keypool.write().await;
+                let merged = crate::store::merge_chain_keypool_state(
+                    baseline,
+                    tables.state(&key).map(record_from_keypool),
+                );
+                let mut state = keypool_from_record(&merged);
+                if let Some(reserved) = state.reserved_receive_index {
+                    // Already reserved: hand back the same index rather than burning a
+                    // new one every time the receive sheet opens.
+                    persist_keypool(
+                        &service.state_binding,
+                        &mut tables,
+                        key,
+                        &wallet_id,
+                        &chain_id,
+                        state,
+                    )
+                    .await?;
+                    return Ok(reserved);
+                }
+                let reserved = state.next_external_index.max(minimum_index);
+                // Reserving consumes the index, so the keypool has to have a next
+                // one to move to. Asking here refuses before the address is handed
+                // out rather than after it has been shown.
+                let after = next_keypool_index(reserved)?;
+                state.reserved_receive_index = Some(reserved);
+                state.next_external_index = state.next_external_index.max(after);
                 persist_keypool(
                     &service.state_binding,
                     &mut tables,
@@ -137,25 +169,9 @@ impl WalletService {
                     state,
                 )
                 .await?;
-                return Ok(reserved);
-            }
-            let reserved = state.next_external_index.max(minimum_index);
-            // Reserving consumes the index, so the keypool has to have a next
-            // one to move to. Asking here refuses before the address is handed
-            // out rather than after it has been shown.
-            let after = next_keypool_index(reserved)?;
-            state.reserved_receive_index = Some(reserved);
-            state.next_external_index = state.next_external_index.max(after);
-            persist_keypool(
-                &service.state_binding,
-                &mut tables,
-                key,
-                &wallet_id,
-                &chain_id,
-                state,
-            )
-            .await?;
-            Ok(reserved)
+                Ok(reserved)
+            })
+            .await
         })
         .await
     }
@@ -166,29 +182,34 @@ impl WalletService {
         wallet_id: String,
         chain_id: String,
     ) -> Result<i64, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let baseline = service
-                .chain_keypool_baseline(&wallet_id, &chain_id)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.write_persisted(move |service| async move {
+                let baseline = service
+                    .chain_keypool_baseline(&wallet_id, &chain_id)
+                    .await?;
+                let key = keypool_key(&wallet_id, &chain_id);
+                let mut tables = service.keypool.write().await;
+                let merged = crate::store::merge_chain_keypool_state(
+                    baseline,
+                    tables.state(&key).map(record_from_keypool),
+                );
+                let mut state = keypool_from_record(&merged);
+                let reserved = state.next_change_index.max(0);
+                state.next_change_index = next_keypool_index(reserved)?;
+                persist_keypool(
+                    &service.state_binding,
+                    &mut tables,
+                    key,
+                    &wallet_id,
+                    &chain_id,
+                    state,
+                )
                 .await?;
-            let key = keypool_key(&wallet_id, &chain_id);
-            let mut tables = service.keypool.write().await;
-            let merged = crate::store::merge_chain_keypool_state(
-                baseline,
-                tables.state(&key).map(record_from_keypool),
-            );
-            let mut state = keypool_from_record(&merged);
-            let reserved = state.next_change_index.max(0);
-            state.next_change_index = next_keypool_index(reserved)?;
-            persist_keypool(
-                &service.state_binding,
-                &mut tables,
-                key,
-                &wallet_id,
-                &chain_id,
-                state,
-            )
-            .await?;
-            Ok(reserved)
+                Ok(reserved)
+            })
+            .await
         })
         .await
     }

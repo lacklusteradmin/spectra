@@ -34,28 +34,33 @@ impl WalletService {
         &self,
         wallet_id: String,
     ) -> Result<Option<MoneroSyncStatus>, SpectraBridgeError> {
-        let state = self.app_state().await;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id == wallet_id)
-            .ok_or("Wallet removed")?;
-        let chain = chain_for_id(&wallet.chain_id)?;
-        if chain.mainnet_counterpart() != Chain::Monero {
-            return Ok(None);
-        }
-        let db = self.bound_database().await?;
-        if crate::wallet_db::monero_load(&db, &wallet_id, chain.str_id())?.is_none() {
-            return Ok(Some(MoneroSyncStatus {
-                wallet_id,
-                scanned_height: 0,
-                target_height: 0,
-                unlocked_piconeros: 0,
-                complete: false,
-            }));
-        }
-        let (_, cached, _) = self.load_monero(&wallet_id).await?;
-        Ok(Some(status(&cached)?))
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let state = this.app_state().await;
+            let wallet = state
+                .wallets
+                .iter()
+                .find(|w| w.id == wallet_id)
+                .ok_or("Wallet removed")?;
+            let chain = chain_for_id(&wallet.chain_id)?;
+            if chain.mainnet_counterpart() != Chain::Monero {
+                return Ok(None);
+            }
+            let db = this.bound_database().await?;
+            if crate::wallet_db::monero_load(&db, &wallet_id, chain.str_id())?.is_none() {
+                return Ok(Some(MoneroSyncStatus {
+                    wallet_id,
+                    scanned_height: 0,
+                    target_height: 0,
+                    unlocked_piconeros: 0,
+                    complete: false,
+                }));
+            }
+            let (_, cached, _) = this.load_monero(&wallet_id).await?;
+            Ok(Some(status(&cached)?))
+        })
+        .await
     }
 
     /// Bounded, durable scan batch. Both shells can await batches until complete;
@@ -66,66 +71,71 @@ impl WalletService {
         password: Option<String>,
         restore_height: Option<u64>,
     ) -> Result<MoneroSyncStatus, SpectraBridgeError> {
-        let password = password.map(Zeroizing::new);
-        let state = self.app_state().await;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id == wallet_id)
-            .ok_or("Wallet removed")?;
-        let chain = chain_for_id(&wallet.chain_id)?;
-        chain.monero_network_name()?;
-        let signer = self
-            .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
-            .await?;
-        let _guard = self.lock_sender(chain, &signer.from_address).await?;
-        let secret = Zeroizing::new(
-            hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-        );
-        if secret.len() != 64 {
-            return Err("Invalid Monero key material".into());
-        }
-        let store = self.secrets()?;
-        store
-            .save_secret(
-                SecretClass::Generic,
-                format!("{wallet_id}.monero-view"),
-                hex::encode(&secret[32..]),
-            )
-            .map_err(|e| e.to_string())?;
-        let db = self.bound_database().await?;
-        let (revision, mut cached, key) =
-            if crate::wallet_db::monero_load(&db, &wallet_id, chain.str_id())?.is_some() {
-                if restore_height.is_some() {
-                    return Err(
-                        "Restore height can only be set before the first Monero sync".into(),
-                    );
-                }
-                let (r, w, k) = self.load_monero(&wallet_id).await?;
-                (Some(r), w, k)
-            } else {
-                (
-                    None,
-                    LocalWallet {
-                        wallet_id: wallet_id.clone(),
-                        chain_id: chain.str_id().into(),
-                        sender: signer.from_address.clone(),
-                        restore_height: restore_height.unwrap_or(0),
-                        next_height: restore_height.unwrap_or(0),
-                        timestamps: Vec::new(),
-                        last_hash: None,
-                        target_height: 0,
-                        outputs: Vec::new(),
-                        transfers: Vec::new(),
-                    },
-                    cache_key(&wallet_id, &secret[32..]),
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let password = password.map(Zeroizing::new);
+            let state = this.app_state().await;
+            let wallet = state
+                .wallets
+                .iter()
+                .find(|w| w.id == wallet_id)
+                .ok_or("Wallet removed")?;
+            let chain = chain_for_id(&wallet.chain_id)?;
+            chain.monero_network_name()?;
+            let signer = this
+                .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
+                .await?;
+            let _guard = this.lock_sender(chain, &signer.from_address).await?;
+            let secret = Zeroizing::new(
+                hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
+            );
+            if secret.len() != 64 {
+                return Err("Invalid Monero key material".into());
+            }
+            let store = this.secrets()?;
+            store
+                .save_secret(
+                    SecretClass::Generic,
+                    format!("{wallet_id}.monero-view"),
+                    hex::encode(&secret[32..]),
                 )
-            };
-        let endpoint = self.monero_endpoint(chain, &["verification"]).await?;
-        let rpc = monero_local::daemon(&endpoint, chain).await?;
-        monero_local::scan(&mut cached, &rpc, &signer.private_key_hex, 500).await?;
-        self.save_monero(revision, &cached, &key).await?;
-        Ok(status(&cached)?)
+                .map_err(|e| e.to_string())?;
+            let db = this.bound_database().await?;
+            let (revision, mut cached, key) =
+                if crate::wallet_db::monero_load(&db, &wallet_id, chain.str_id())?.is_some() {
+                    if restore_height.is_some() {
+                        return Err(
+                            "Restore height can only be set before the first Monero sync".into(),
+                        );
+                    }
+                    let (r, w, k) = this.load_monero(&wallet_id).await?;
+                    (Some(r), w, k)
+                } else {
+                    (
+                        None,
+                        LocalWallet {
+                            wallet_id: wallet_id.clone(),
+                            chain_id: chain.str_id().into(),
+                            sender: signer.from_address.clone(),
+                            restore_height: restore_height.unwrap_or(0),
+                            next_height: restore_height.unwrap_or(0),
+                            timestamps: Vec::new(),
+                            last_hash: None,
+                            target_height: 0,
+                            outputs: Vec::new(),
+                            transfers: Vec::new(),
+                        },
+                        cache_key(&wallet_id, &secret[32..]),
+                    )
+                };
+            let endpoint = this.monero_endpoint(chain, &["verification"]).await?;
+            let rpc = monero_local::daemon(&endpoint, chain).await?;
+            monero_local::scan(&mut cached, &rpc, &signer.private_key_hex, 500).await?;
+            this.save_monero(revision, &cached, &key).await?;
+            Ok(status(&cached)?)
+        })
+        .await
     }
 }
 fn cache_key(wallet_id: &str, view: &[u8]) -> Zeroizing<Vec<u8>> {

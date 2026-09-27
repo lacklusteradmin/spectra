@@ -12,27 +12,32 @@ impl WalletService {
         destination_address: String,
         amount_input: String,
     ) -> Result<crate::send::SendPreflight, SpectraBridgeError> {
-        let state = self.wallet_state.read().await;
-        let wallet = state.wallets.iter().find(|w| w.id == wallet_id);
-        let holding = wallet.and_then(|wallet| {
-            wallet
-                .holdings
-                .iter()
-                .find(|h| h.deployment_id() == holding_key)
-        });
-        let request = crate::send::SendSubmitPreflightRequest {
-            wallet_found: wallet.is_some(),
-            asset_found: holding.is_some(),
-            destination_address,
-            amount_input,
-            available_balance: holding
-                .map(|h| h.amount.clone())
-                .unwrap_or_else(|| "0".into()),
-            asset: holding.map(|holding| routing_input(holding, &state.token_preferences)),
-            token: holding
-                .and_then(|holding| send_token_identity(holding, &state.token_preferences)),
-        };
-        Ok(crate::send::validate_send_preflight(request)?)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let state = this.wallet_state.read().await;
+            let wallet = state.wallets.iter().find(|w| w.id == wallet_id);
+            let holding = wallet.and_then(|wallet| {
+                wallet
+                    .holdings
+                    .iter()
+                    .find(|h| h.deployment_id() == holding_key)
+            });
+            let request = crate::send::SendSubmitPreflightRequest {
+                wallet_found: wallet.is_some(),
+                asset_found: holding.is_some(),
+                destination_address,
+                amount_input,
+                available_balance: holding
+                    .map(|h| h.amount.clone())
+                    .unwrap_or_else(|| "0".into()),
+                asset: holding.map(|holding| routing_input(holding, &state.token_preferences)),
+                token: holding
+                    .and_then(|holding| send_token_identity(holding, &state.token_preferences)),
+            };
+            Ok(crate::send::validate_send_preflight(request)?)
+        })
+        .await
     }
 
     /// How a holding's send and preview are routed.
@@ -48,19 +53,40 @@ impl WalletService {
         wallet_id: String,
         holding_key: String,
     ) -> Option<crate::send::SendAssetRoute> {
-        let state = self.wallet_state.read().await;
-        let holding = state
-            .wallets
-            .iter()
-            .find(|w| w.id == wallet_id)?
-            .holdings
-            .iter()
-            .find(|h| h.deployment_id() == holding_key)?;
-        Some(crate::send::route_send_asset(&routing_input(
-            holding,
-            &state.token_preferences,
-        )))
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let state = this.wallet_state.read().await;
+            let holding = state
+                .wallets
+                .iter()
+                .find(|w| w.id == wallet_id)?
+                .holdings
+                .iter()
+                .find(|h| h.deployment_id() == holding_key)?;
+            Some(crate::send::route_send_asset(&routing_input(
+                holding,
+                &state.token_preferences,
+            )))
+        })
+        .await
     }
+}
+
+/// A send to one of the user's own wallets is not to a stranger. Its review
+/// asks to confirm the self-send; "a new destination with no history" beside
+/// that said the opposite about the same address, so it goes.
+pub(super) fn without_new_address_for_self_send(
+    warnings: Vec<crate::send::flow::HighRiskSendWarning>,
+    is_self_send: bool,
+) -> Vec<crate::send::flow::HighRiskSendWarning> {
+    if !is_self_send {
+        return warnings;
+    }
+    warnings
+        .into_iter()
+        .filter(|warning| !matches!(warning, crate::send::flow::HighRiskSendWarning::NewAddress))
+        .collect()
 }
 
 impl WalletService {
@@ -385,10 +411,38 @@ impl WalletService {
         let requires_self_send_confirmation =
             self.is_own_address(chain, &request.to_address).await?;
         Ok(crate::send::stages::SendArtifactReview {
-            warnings,
+            warnings: without_new_address_for_self_send(warnings, requires_self_send_confirmation),
             recipient_warnings,
             requires_self_send_confirmation,
         })
+    }
+}
+
+#[cfg(test)]
+mod self_send_warning_tests {
+    use super::without_new_address_for_self_send;
+    use crate::send::flow::HighRiskSendWarning;
+
+    #[test]
+    fn a_self_send_is_not_a_new_destination() {
+        let warnings = vec![
+            HighRiskSendWarning::NewAddress,
+            HighRiskSendWarning::LargeSend {
+                percent: 50,
+                symbol: "ETH".into(),
+            },
+        ];
+        assert_eq!(
+            without_new_address_for_self_send(warnings.clone(), true),
+            vec![HighRiskSendWarning::LargeSend {
+                percent: 50,
+                symbol: "ETH".into()
+            }]
+        );
+        assert_eq!(
+            without_new_address_for_self_send(warnings.clone(), false),
+            warnings
+        );
     }
 }
 

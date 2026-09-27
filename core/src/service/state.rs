@@ -51,70 +51,76 @@ impl WalletService {
         &self,
         database_path: String,
     ) -> Result<CoreAppState, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            // Opening is idempotent. A second call with the same database returns
-            // what is already held rather than re-reading — a late `open_state`
-            // (the app's launch reload racing a user action) would otherwise
-            // replace the in-memory state with a snapshot taken before the newer
-            // command, silently reverting it.
-            if service.state_binding.is_bound_to(&database_path).await {
-                return Ok(service.wallet_state.read().await.clone());
-            }
-
-            let database = crate::wallet_db::WalletDatabase::new(&database_path);
-            let source = database.clone();
-            let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
-                let loaded = crate::wallet_db::app_state_load(&source)?;
-                let keypool = crate::wallet_db::keypool_load_all(&source)?;
-                let owned = crate::wallet_db::address_load_all_chains(&source)?;
-                let is_new = source.with_connection(|conn| {
-                    conn.query_row(
-                        "SELECT NOT EXISTS(SELECT 1 FROM app_state_meta)",
-                        [],
-                        |row| row.get::<_, bool>(0),
-                    )
-                    .map_err(|e| e.to_string())
-                })?;
-                if is_new {
-                    crate::wallet_db::app_state_save(&source, &loaded)?;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.write_persisted(move |service| async move {
+                // Opening is idempotent. A second call with the same database returns
+                // what is already held rather than re-reading — a late `open_state`
+                // (the app's launch reload racing a user action) would otherwise
+                // replace the in-memory state with a snapshot taken before the newer
+                // command, silently reverting it.
+                if service.state_binding.is_bound_to(&database_path).await {
+                    return Ok(service.wallet_state.read().await.clone());
                 }
-                Ok::<_, String>((loaded, keypool, owned))
+
+                let database = crate::wallet_db::WalletDatabase::new(&database_path);
+                let source = database.clone();
+                let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
+                    let loaded = crate::wallet_db::app_state_load(&source)?;
+                    let keypool = crate::wallet_db::keypool_load_all(&source)?;
+                    let owned = crate::wallet_db::address_load_all_chains(&source)?;
+                    let is_new = source.with_connection(|conn| {
+                        conn.query_row(
+                            "SELECT NOT EXISTS(SELECT 1 FROM app_state_meta)",
+                            [],
+                            |row| row.get::<_, bool>(0),
+                        )
+                        .map_err(|e| e.to_string())
+                    })?;
+                    if is_new {
+                        crate::wallet_db::app_state_save(&source, &loaded)?;
+                    }
+                    Ok::<_, String>((loaded, keypool, owned))
+                })
+                .await
+                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                let keypool = keypool
+                    .into_iter()
+                    .flat_map(|(chain, per_wallet)| {
+                        per_wallet
+                            .into_iter()
+                            .map(move |(wallet, state)| (keypool_key(&wallet, &chain), state))
+                    })
+                    .collect();
+
+                let mut by_chain: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>> =
+                    HashMap::new();
+                for record in owned {
+                    by_chain
+                        .entry(record.chain_id.clone())
+                        .or_default()
+                        .push(record);
+                }
+
+                let mut state = loaded.clone();
+                let merged = reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+                if !merged.is_empty() {
+                    let changes =
+                        crate::wallet_db::AppStateChanges::between(Some(&loaded), &state)?;
+                    let target = database.clone();
+                    tokio::task::spawn_blocking(move || changes.save(&target))
+                        .await
+                        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                }
+                // Publish only after every fallible initialization step succeeds.
+                service.keypool.write().await.load(keypool, by_chain);
+                let state = service.publish_state(state).await;
+                service.state_binding.bind(database).await;
+                service.reconcile_transport(&state.settings, false);
+                Ok(state)
             })
             .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
-            let keypool = keypool
-                .into_iter()
-                .flat_map(|(chain, per_wallet)| {
-                    per_wallet
-                        .into_iter()
-                        .map(move |(wallet, state)| (keypool_key(&wallet, &chain), state))
-                })
-                .collect();
-
-            let mut by_chain: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>> =
-                HashMap::new();
-            for record in owned {
-                by_chain
-                    .entry(record.chain_id.clone())
-                    .or_default()
-                    .push(record);
-            }
-
-            let mut state = loaded.clone();
-            let merged = reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
-            if !merged.is_empty() {
-                let changes = crate::wallet_db::AppStateChanges::between(Some(&loaded), &state)?;
-                let target = database.clone();
-                tokio::task::spawn_blocking(move || changes.save(&target))
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
-            }
-            // Publish only after every fallible initialization step succeeds.
-            service.keypool.write().await.load(keypool, by_chain);
-            let state = service.publish_state(state).await;
-            service.state_binding.bind(database).await;
-            service.reconcile_transport(&state.settings, false);
-            Ok(state)
         })
         .await
     }
@@ -129,53 +135,58 @@ impl WalletService {
         &self,
         mut command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
-        let validate =
-            |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
-                crate::registry::Chain::from_str_id(&wallet.chain_id)
-                    .ok_or("unknown wallet network")?;
-                for holding in &mut wallet.holdings {
-                    holding.canonicalize()?;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let validate =
+                |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
+                    crate::registry::Chain::from_str_id(&wallet.chain_id)
+                        .ok_or("unknown wallet network")?;
+                    for holding in &mut wallet.holdings {
+                        holding.canonicalize()?;
+                    }
+                    Ok(())
+                };
+            match &mut command {
+                StateCommand::SetPinnedDashboardAssets { token_ids } => {
+                    let options = this.dashboard_pin_options().await?;
+                    for id in token_ids
+                        .iter()
+                        .map(|id| id.trim())
+                        .filter(|id| !id.is_empty())
+                    {
+                        if !options.iter().any(|option| option.token_id == id) {
+                            return Err(SpectraBridgeError::InvalidInput {
+                                message: format!("unknown or unpinnable token ID: {id}"),
+                            });
+                        }
+                    }
                 }
-                Ok(())
-            };
-        match &mut command {
-            StateCommand::SetPinnedDashboardAssets { token_ids } => {
-                let options = self.dashboard_pin_options().await?;
-                for id in token_ids
-                    .iter()
-                    .map(|id| id.trim())
-                    .filter(|id| !id.is_empty())
-                {
+                StateCommand::SetDashboardAssetPinned {
+                    token_id,
+                    is_pinned: true,
+                } => {
+                    let options = this.dashboard_pin_options().await?;
+                    let id = token_id.trim();
                     if !options.iter().any(|option| option.token_id == id) {
                         return Err(SpectraBridgeError::InvalidInput {
                             message: format!("unknown or unpinnable token ID: {id}"),
                         });
                     }
                 }
-            }
-            StateCommand::SetDashboardAssetPinned {
-                token_id,
-                is_pinned: true,
-            } => {
-                let options = self.dashboard_pin_options().await?;
-                let id = token_id.trim();
-                if !options.iter().any(|option| option.token_id == id) {
-                    return Err(SpectraBridgeError::InvalidInput {
-                        message: format!("unknown or unpinnable token ID: {id}"),
-                    });
+                StateCommand::UpsertWallet { wallet }
+                | StateCommand::UpdateWalletIfPresent { wallet } => validate(wallet)?,
+                StateCommand::ReplaceState { state } => {
+                    for wallet in &mut state.wallets {
+                        validate(wallet)?;
+                    }
                 }
+                _ => {}
             }
-            StateCommand::UpsertWallet { wallet }
-            | StateCommand::UpdateWalletIfPresent { wallet } => validate(wallet)?,
-            StateCommand::ReplaceState { state } => {
-                for wallet in &mut state.wallets {
-                    validate(wallet)?;
-                }
-            }
-            _ => {}
-        }
-        self.mutate_persisted_state(move |state| reduce_state_in_place(state, command))
-            .await
+            this.mutate_persisted_state(move |state| reduce_state_in_place(state, command))
+                .await
+        })
+        .await
     }
 
     // ── Operational events ────────────────────────────────────────────────
@@ -184,72 +195,82 @@ impl WalletService {
     pub async fn dashboard_pin_options(
         &self,
     ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
-        dashboard_pin_options_from(&self.app_state().await)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            dashboard_pin_options_from(&this.app_state().await)
+        })
+        .await
     }
 
     /// Evaluate and update alerts against core-owned quotes under the state writer.
     pub async fn evaluate_price_alerts(
         &self,
     ) -> Result<Vec<crate::store::PriceAlertNotification>, SpectraBridgeError> {
-        let notifications = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let output = notifications.clone();
-        self.mutate_persisted_state(move |state| {
-            if !state.settings.use_price_alerts {
-                return Vec::new();
-            }
-            let prices = state
-                .quotes
-                .prices
-                .iter()
-                .filter(|(_, p)| p.is_finite() && **p > 0.0)
-                .map(|(key, p)| crate::store::PriceAlertEvaluationPrice {
-                    holding_key: key.clone(),
-                    live_price: *p,
-                })
-                .collect();
-            let evaluation = crate::store::evaluate_price_alerts(
-                state
-                    .price_alerts
-                    .iter()
-                    .filter(|alert| {
-                        crate::tokens::deployment(&alert.holding_key)
-                            .is_some_and(|t| !t.coingecko_id.is_empty())
-                    })
-                    .cloned()
-                    .collect(),
-                prices,
-            );
-            for update in &evaluation.updates {
-                if let Some(alert) = state.price_alerts.iter_mut().find(|a| a.id == update.id) {
-                    alert.has_triggered = update.has_triggered;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let notifications = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let output = notifications.clone();
+            this.mutate_persisted_state(move |state| {
+                if !state.settings.use_price_alerts {
+                    return Vec::new();
                 }
-            }
-            // Priced in the display currency when its rate is known.
-            let display = |usd: f64| super::valuation::to_display(state, usd);
-            let notifications = evaluation
-                .notifications
-                .into_iter()
-                .map(|mut n| {
-                    if let (Some(target), Some(live)) =
-                        (display(n.target_price), display(n.live_price))
-                    {
-                        n.target_price = target;
-                        n.live_price = live;
-                        n.currency = state.settings.fiat_currency;
+                let prices = state
+                    .quotes
+                    .prices
+                    .iter()
+                    .filter(|(_, p)| p.is_finite() && **p > 0.0)
+                    .map(|(key, p)| crate::store::PriceAlertEvaluationPrice {
+                        holding_key: key.clone(),
+                        live_price: *p,
+                    })
+                    .collect();
+                let evaluation = crate::store::evaluate_price_alerts(
+                    state
+                        .price_alerts
+                        .iter()
+                        .filter(|alert| {
+                            crate::tokens::deployment(&alert.holding_key)
+                                .is_some_and(|t| !t.coingecko_id.is_empty())
+                        })
+                        .cloned()
+                        .collect(),
+                    prices,
+                );
+                for update in &evaluation.updates {
+                    if let Some(alert) = state.price_alerts.iter_mut().find(|a| a.id == update.id) {
+                        alert.has_triggered = update.has_triggered;
                     }
-                    n
-                })
-                .collect();
-            *output.lock().expect("alert result lock") = notifications;
-            if evaluation.updates.is_empty() {
-                Vec::new()
-            } else {
-                vec![crate::store::state::StateEvent::PriceAlertsEvaluated]
-            }
+                }
+                // Priced in the display currency when its rate is known.
+                let display = |usd: f64| super::valuation::to_display(state, usd);
+                let notifications = evaluation
+                    .notifications
+                    .into_iter()
+                    .map(|mut n| {
+                        if let (Some(target), Some(live)) =
+                            (display(n.target_price), display(n.live_price))
+                        {
+                            n.target_price = target;
+                            n.live_price = live;
+                            n.currency = state.settings.fiat_currency;
+                        }
+                        n
+                    })
+                    .collect();
+                *output.lock().expect("alert result lock") = notifications;
+                if evaluation.updates.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![crate::store::state::StateEvent::PriceAlertsEvaluated]
+                }
+            })
+            .await?;
+            let result = notifications.lock().expect("alert result lock").clone();
+            Ok(result)
         })
-        .await?;
-        let result = notifications.lock().expect("alert result lock").clone();
-        Ok(result)
+        .await
     }
 
     // ── Owned transaction store ───────────────────────────────────────────
@@ -276,13 +297,23 @@ impl WalletService {
     ///
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
-        let state = self.app_state().await;
-        self.derive_wallet_projection(&state)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let state = this.app_state().await;
+            this.derive_wallet_projection(&state)
+        })
+        .await
     }
 
     /// Current snapshot of the owned state.
     pub async fn app_state(&self) -> CoreAppState {
-        self.wallet_state.read().await.clone()
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.wallet_state.read().await.clone()
+        })
+        .await
     }
 
     // ── History pagination cursor methods live in `service/history_cursor.rs` ──
@@ -996,23 +1027,28 @@ pub struct PortfolioSnapshot {
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn portfolio_snapshot(&self) -> Result<PortfolioSnapshot, SpectraBridgeError> {
-        let _guard = self.state_writer.lock().await;
-        let state = self.wallet_state.read().await.clone();
-        let revision = self
-            .projection_sequence
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            + 1;
-        let derived = self.derive_wallet_projection(&state)?;
-        Ok(PortfolioSnapshot {
-            revision,
-            wallets: wallets_for_display(&state)?,
-            groups: dashboard_groups_from(&state, &derived)?,
-            pin_options: dashboard_pin_options_from(&state)?,
-            valuation: valuation::portfolio_valuation(&state),
-            asset_precision: crate::formatting::asset_precision_catalog(&state),
-            derived,
-            state,
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let _guard = this.state_writer.lock().await;
+            let state = this.wallet_state.read().await.clone();
+            let revision = this
+                .projection_sequence
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            let derived = this.derive_wallet_projection(&state)?;
+            Ok(PortfolioSnapshot {
+                revision,
+                wallets: wallets_for_display(&state)?,
+                groups: dashboard_groups_from(&state, &derived)?,
+                pin_options: dashboard_pin_options_from(&state)?,
+                valuation: valuation::portfolio_valuation(&state),
+                asset_precision: crate::formatting::asset_precision_catalog(&state),
+                derived,
+                state,
+            })
         })
+        .await
     }
 }
 

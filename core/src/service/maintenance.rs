@@ -6,16 +6,21 @@ use crate::service::WalletService;
 impl WalletService {
     /// What to do this tick, and how long to wait for the next one.
     pub async fn maintenance_plan(&self, conditions: DeviceConditions) -> MaintenancePlan {
-        let settings = self.wallet_state.read().await.settings.clone();
-        let has_pending_work = self.has_pending_transaction_work().await;
-        let clock = self.refresh_clock.read().await.clone();
-        crate::fetch::refresh_policy::maintenance_plan(
-            &clock,
-            &settings,
-            &conditions,
-            has_pending_work,
-            crate::wallet_db::now_secs() as f64,
-        )
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let settings = this.wallet_state.read().await.settings.clone();
+            let has_pending_work = this.has_pending_transaction_work().await;
+            let clock = this.refresh_clock.read().await.clone();
+            crate::fetch::refresh_policy::maintenance_plan(
+                &clock,
+                &settings,
+                &conditions,
+                has_pending_work,
+                crate::wallet_db::now_secs() as f64,
+            )
+        })
+        .await
     }
 }
 

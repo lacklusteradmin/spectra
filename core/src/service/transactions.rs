@@ -22,88 +22,93 @@ impl WalletService {
         &self,
         command: TransactionCommand,
     ) -> Result<TransactionChange, SpectraBridgeError> {
-        let database = self.bound_database().await?;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let database = this.bound_database().await?;
 
-        tokio::task::spawn_blocking(move || -> Result<TransactionChange, String> {
-            match command {
-                TransactionCommand::Upsert { records } => {
-                    if records.is_empty() {
-                        return Ok(TransactionChange::default());
+            tokio::task::spawn_blocking(move || -> Result<TransactionChange, String> {
+                match command {
+                    TransactionCommand::Upsert { records } => {
+                        if records.is_empty() {
+                            return Ok(TransactionChange::default());
+                        }
+                        let rows: Vec<crate::wallet_db::HistoryRecord> = records
+                            .into_iter()
+                            .map(crate::wallet_db::history_record_from_payload)
+                            .collect();
+                        let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+                        let existing = crate::wallet_db::history_existing_ids(&database, &ids)?;
+                        crate::wallet_db::history_upsert_batch(&database, &rows)?;
+                        let existing: std::collections::HashSet<String> =
+                            existing.into_iter().collect();
+                        let (updated, added): (Vec<String>, Vec<String>) =
+                            ids.into_iter().partition(|id| existing.contains(id));
+                        Ok(TransactionChange {
+                            added,
+                            updated,
+                            removed: Vec::new(),
+                        })
                     }
-                    let rows: Vec<crate::wallet_db::HistoryRecord> = records
-                        .into_iter()
-                        .map(crate::wallet_db::history_record_from_payload)
-                        .collect();
-                    let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
-                    let existing = crate::wallet_db::history_existing_ids(&database, &ids)?;
-                    crate::wallet_db::history_upsert_batch(&database, &rows)?;
-                    let existing: std::collections::HashSet<String> =
-                        existing.into_iter().collect();
-                    let (updated, added): (Vec<String>, Vec<String>) =
-                        ids.into_iter().partition(|id| existing.contains(id));
-                    Ok(TransactionChange {
-                        added,
-                        updated,
-                        removed: Vec::new(),
-                    })
-                }
-                TransactionCommand::Merge {
-                    incoming,
-                    chain_id,
-                    preserve_created_at_sentinel_unix,
-                } => {
-                    let chain = Chain::from_str_id(&chain_id)
-                        .ok_or_else(|| format!("merge: unknown chain {chain_id:?}"))?;
-                    crate::wallet_db::history_update_chain(&database, &chain_id, |existing| {
-                        merge_history_rows(
-                            existing,
-                            incoming,
-                            chain,
-                            preserve_created_at_sentinel_unix,
-                        )
-                    })
-                }
+                    TransactionCommand::Merge {
+                        incoming,
+                        chain_id,
+                        preserve_created_at_sentinel_unix,
+                    } => {
+                        let chain = Chain::from_str_id(&chain_id)
+                            .ok_or_else(|| format!("merge: unknown chain {chain_id:?}"))?;
+                        crate::wallet_db::history_update_chain(&database, &chain_id, |existing| {
+                            merge_history_rows(
+                                existing,
+                                incoming,
+                                chain,
+                                preserve_created_at_sentinel_unix,
+                            )
+                        })
+                    }
 
-                TransactionCommand::Remove { ids } => {
-                    if ids.is_empty() {
-                        return Ok(TransactionChange::default());
+                    TransactionCommand::Remove { ids } => {
+                        if ids.is_empty() {
+                            return Ok(TransactionChange::default());
+                        }
+                        let ids: Vec<String> = ids.iter().map(|id| id.to_lowercase()).collect();
+                        let removed = crate::wallet_db::history_existing_ids(&database, &ids)?;
+                        crate::wallet_db::history_delete(&database, &ids)?;
+                        Ok(TransactionChange {
+                            removed,
+                            ..TransactionChange::default()
+                        })
                     }
-                    let ids: Vec<String> = ids.iter().map(|id| id.to_lowercase()).collect();
-                    let removed = crate::wallet_db::history_existing_ids(&database, &ids)?;
-                    crate::wallet_db::history_delete(&database, &ids)?;
-                    Ok(TransactionChange {
-                        removed,
-                        ..TransactionChange::default()
-                    })
-                }
-                TransactionCommand::RemoveForWallet { wallet_id } => {
-                    let removed: Vec<String> =
-                        crate::wallet_db::history_fetch_for_wallet(&database, &wallet_id)?
+                    TransactionCommand::RemoveForWallet { wallet_id } => {
+                        let removed: Vec<String> =
+                            crate::wallet_db::history_fetch_for_wallet(&database, &wallet_id)?
+                                .into_iter()
+                                .map(|record| record.id)
+                                .collect();
+                        crate::wallet_db::history_delete_for_wallet(&database, &wallet_id)?;
+                        Ok(TransactionChange {
+                            removed,
+                            ..TransactionChange::default()
+                        })
+                    }
+                    TransactionCommand::Clear => {
+                        let removed: Vec<String> = crate::wallet_db::history_fetch_all(&database)?
                             .into_iter()
                             .map(|record| record.id)
                             .collect();
-                    crate::wallet_db::history_delete_for_wallet(&database, &wallet_id)?;
-                    Ok(TransactionChange {
-                        removed,
-                        ..TransactionChange::default()
-                    })
+                        crate::wallet_db::history_clear(&database)?;
+                        Ok(TransactionChange {
+                            removed,
+                            ..TransactionChange::default()
+                        })
+                    }
                 }
-                TransactionCommand::Clear => {
-                    let removed: Vec<String> = crate::wallet_db::history_fetch_all(&database)?
-                        .into_iter()
-                        .map(|record| record.id)
-                        .collect();
-                    crate::wallet_db::history_clear(&database)?;
-                    Ok(TransactionChange {
-                        removed,
-                        ..TransactionChange::default()
-                    })
-                }
-            }
+            })
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(Into::into)
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
     }
 
     /// Every stored transaction, newest first.
@@ -113,12 +118,17 @@ impl WalletService {
         Vec<crate::store::persistence_models::CorePersistedTransactionRecord>,
         SpectraBridgeError,
     > {
-        let database = self.bound_database().await?;
-        tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map(|rows| rows.into_iter().map(|row| row.payload).collect())
-            .map_err(Into::into)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let database = this.bound_database().await?;
+            tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
+                .await
+                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+                .map(|rows| rows.into_iter().map(|row| row.payload).collect())
+                .map_err(Into::into)
+        })
+        .await
     }
 
     /// What to tell the user about a send, from its stored record.
@@ -128,14 +138,19 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<crate::send::verification::SendVerificationNotice, SpectraBridgeError> {
-        let record = self.transaction(transaction_id).await?;
-        Ok(
-            crate::send::verification::verification_notice_for_last_sent(
-                record
-                    .as_ref()
-                    .map(crate::send::verification::LastSentTransactionSnapshot::from),
-            ),
-        )
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let record = this.transaction(transaction_id).await?;
+            Ok(
+                crate::send::verification::verification_notice_for_last_sent(
+                    record
+                        .as_ref()
+                        .map(crate::send::verification::LastSentTransactionSnapshot::from),
+                ),
+            )
+        })
+        .await
     }
 }
 

@@ -90,10 +90,15 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<String, SpectraBridgeError> {
-        let service = self.clone();
-        tokio::spawn(async move { service.rebroadcast_stored(transaction_id).await })
-            .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let service = this.clone();
+            tokio::spawn(async move { service.rebroadcast_stored(transaction_id).await })
+                .await
+                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+        })
+        .await
     }
 }
 impl WalletService {

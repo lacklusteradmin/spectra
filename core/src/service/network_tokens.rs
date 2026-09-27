@@ -60,131 +60,140 @@ impl WalletService {
         chain_id: String,
         address: String,
     ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "discover_token_balances: unsupported chain_id: {chain_id}"
-            ))
-        })?;
-        // The registry says which chains have a node that answers "what does
-        // this address hold?". Refusing here rather than in the match below
-        // keeps the two from drifting apart, which is how a chain ends up
-        // silently reporting an empty wallet.
-        if !chain.entry().enumerates_holdings {
-            return Err(SpectraBridgeError::from(format!(
-                "discover_token_balances: {} cannot enumerate holdings; \
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
+                SpectraBridgeError::from(format!(
+                    "discover_token_balances: unsupported chain_id: {chain_id}"
+                ))
+            })?;
+            // The registry says which chains have a node that answers "what does
+            // this address hold?". Refusing here rather than in the match below
+            // keeps the two from drifting apart, which is how a chain ends up
+            // silently reporting an empty wallet.
+            if !chain.entry().enumerates_holdings {
+                return Err(SpectraBridgeError::from(format!(
+                    "discover_token_balances: {} cannot enumerate holdings; \
                  a token contract only answers about a holder you name, so \
                  listing them needs an indexer",
-                chain.str_id()
-            )));
-        }
-        let endpoints = self
-            .endpoints_for(chain.str_id(), &["token-discovery"])
-            .await;
-        // Not `unwrap_or_default()` on any arm: a node that will not answer is
-        // not an address that holds nothing, and the difference is what a user
-        // reads as "my tokens are gone".
-        let held: Vec<crate::fetch::HeldToken> = match chain {
-            Chain::Solana | Chain::SolanaDevnet => SolanaClient::new(endpoints)
-                .fetch_all_spl_balances(&address)
-                .await
-                .map_err(SpectraBridgeError::from)?
-                .into_iter()
-                .map(|b| crate::fetch::HeldToken {
-                    contract: b.mint,
-                    balance_raw: b.balance_raw.parse().unwrap_or(0),
-                    decimals: Some(b.decimals),
-                    symbol: None,
-                })
-                .collect(),
-            Chain::Tron | Chain::TronNile => {
-                let mut accounts = if self
-                    .uses_catalog_endpoints
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                {
-                    self.api_endpoints(chain, crate::EndpointApi::TrongridV1, &["token-discovery"])
-                        .await?
-                } else {
-                    Vec::new()
-                };
-                if accounts.is_empty() {
-                    accounts = endpoints
-                        .iter()
-                        .map(|url| format!("{}/v1/accounts", url.trim_end_matches('/')))
-                        .collect();
-                }
-                TronClient::with_metadata_cache(
-                    self.endpoints_for(chain.str_id(), &["token-balance"]).await,
-                    chain.str_id(),
-                    self.trc20_metadata.clone(),
-                )
-                .fetch_all_trc20_balances(&address, &accounts)
-                .await
-                .map_err(SpectraBridgeError::from)?
-            }
-            Chain::Sui | Chain::SuiTestnet => SuiClient::new(endpoints)
-                .fetch_all_coin_balances(&address)
-                .await
-                .map_err(SpectraBridgeError::from)?,
-            Chain::Aptos | Chain::AptosTestnet => AptosClient::new(endpoints)
-                .fetch_all_coin_balances(&address)
-                .await
-                .map_err(SpectraBridgeError::from)?,
-            Chain::Ton | Chain::TonTestnet => {
-                // The v3 API is the only one that enumerates jetton wallets; it
-                // lives in the chain's Secondary endpoint slot.
-                let v3 = self
-                    .endpoints_for(
-                        &chain.endpoint_str_id(EndpointSlot::Secondary),
-                        &["token-discovery"],
-                    )
-                    .await;
-                TonClient::new(self.endpoints_for(chain.str_id(), &["token-balance"]).await)
-                    .with_v3_endpoints(v3)
-                    .fetch_all_jetton_balances(&address)
-                    .await
-                    .map_err(SpectraBridgeError::from)?
-            }
-            // Unreachable: the registry gate above rejects every chain that
-            // has no client arm here, and the test below holds the two together.
-            c => {
-                return Err(SpectraBridgeError::from(format!(
-                    "discover_token_balances: {c:?} is marked enumerable but has no client"
+                    chain.str_id()
                 )));
             }
-        };
-        let known: std::collections::HashMap<String, crate::tokens::TokenDeploymentEntry> =
-            crate::tokens::list_token_deployments(chain.str_id().to_string())
-                .into_iter()
-                .map(|t| (t.contract.clone(), t))
-                .collect();
-        Ok(held
-            .into_iter()
-            .map(|b| {
-                let entry = known.get(&b.contract);
-                // The chain's own count wins over the catalog's, and where
-                // neither vouches for one, zero is the only honest answer: the
-                // display then reads as the raw base-unit count it is, next to
-                // a contract address and no name.
-                let decimals: u8 = b
-                    .decimals
-                    .or_else(|| entry.and_then(|e| u8::try_from(e.decimals).ok()))
-                    .unwrap_or(0);
-                TokenBalanceResult {
-                    contract_address: b.contract,
-                    symbol: entry
-                        .map(|e| e.symbol.clone())
-                        .or_else(|| b.symbol.filter(|s| !s.is_empty()))
-                        .unwrap_or_default(),
-                    decimals,
-                    balance_raw: b.balance_raw.to_string(),
-                    balance_display: crate::fetch::evm::format_token_amount(
-                        b.balance_raw,
-                        decimals,
-                    ),
-                    is_known: entry.is_some(),
+            let endpoints = this
+                .endpoints_for(chain.str_id(), &["token-discovery"])
+                .await;
+            // Not `unwrap_or_default()` on any arm: a node that will not answer is
+            // not an address that holds nothing, and the difference is what a user
+            // reads as "my tokens are gone".
+            let held: Vec<crate::fetch::HeldToken> = match chain {
+                Chain::Solana | Chain::SolanaDevnet => SolanaClient::new(endpoints)
+                    .fetch_all_spl_balances(&address)
+                    .await
+                    .map_err(SpectraBridgeError::from)?
+                    .into_iter()
+                    .map(|b| crate::fetch::HeldToken {
+                        contract: b.mint,
+                        balance_raw: b.balance_raw.parse().unwrap_or(0),
+                        decimals: Some(b.decimals),
+                        symbol: None,
+                    })
+                    .collect(),
+                Chain::Tron | Chain::TronNile => {
+                    let mut accounts = if this
+                        .uses_catalog_endpoints
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        this.api_endpoints(
+                            chain,
+                            crate::EndpointApi::TrongridV1,
+                            &["token-discovery"],
+                        )
+                        .await?
+                    } else {
+                        Vec::new()
+                    };
+                    if accounts.is_empty() {
+                        accounts = endpoints
+                            .iter()
+                            .map(|url| format!("{}/v1/accounts", url.trim_end_matches('/')))
+                            .collect();
+                    }
+                    TronClient::with_metadata_cache(
+                        this.endpoints_for(chain.str_id(), &["token-balance"]).await,
+                        chain.str_id(),
+                        this.trc20_metadata.clone(),
+                    )
+                    .fetch_all_trc20_balances(&address, &accounts)
+                    .await
+                    .map_err(SpectraBridgeError::from)?
                 }
-            })
-            .collect())
+                Chain::Sui | Chain::SuiTestnet => SuiClient::new(endpoints)
+                    .fetch_all_coin_balances(&address)
+                    .await
+                    .map_err(SpectraBridgeError::from)?,
+                Chain::Aptos | Chain::AptosTestnet => AptosClient::new(endpoints)
+                    .fetch_all_coin_balances(&address)
+                    .await
+                    .map_err(SpectraBridgeError::from)?,
+                Chain::Ton | Chain::TonTestnet => {
+                    // The v3 API is the only one that enumerates jetton wallets; it
+                    // lives in the chain's Secondary endpoint slot.
+                    let v3 = this
+                        .endpoints_for(
+                            &chain.endpoint_str_id(EndpointSlot::Secondary),
+                            &["token-discovery"],
+                        )
+                        .await;
+                    TonClient::new(this.endpoints_for(chain.str_id(), &["token-balance"]).await)
+                        .with_v3_endpoints(v3)
+                        .fetch_all_jetton_balances(&address)
+                        .await
+                        .map_err(SpectraBridgeError::from)?
+                }
+                // Unreachable: the registry gate above rejects every chain that
+                // has no client arm here, and the test below holds the two together.
+                c => {
+                    return Err(SpectraBridgeError::from(format!(
+                        "discover_token_balances: {c:?} is marked enumerable but has no client"
+                    )));
+                }
+            };
+            let known: std::collections::HashMap<String, crate::tokens::TokenDeploymentEntry> =
+                crate::tokens::list_token_deployments(chain.str_id().to_string())
+                    .into_iter()
+                    .map(|t| (t.contract.clone(), t))
+                    .collect();
+            Ok(held
+                .into_iter()
+                .map(|b| {
+                    let entry = known.get(&b.contract);
+                    // The chain's own count wins over the catalog's, and where
+                    // neither vouches for one, zero is the only honest answer: the
+                    // display then reads as the raw base-unit count it is, next to
+                    // a contract address and no name.
+                    let decimals: u8 = b
+                        .decimals
+                        .or_else(|| entry.and_then(|e| u8::try_from(e.decimals).ok()))
+                        .unwrap_or(0);
+                    TokenBalanceResult {
+                        contract_address: b.contract,
+                        symbol: entry
+                            .map(|e| e.symbol.clone())
+                            .or_else(|| b.symbol.filter(|s| !s.is_empty()))
+                            .unwrap_or_default(),
+                        decimals,
+                        balance_raw: b.balance_raw.to_string(),
+                        balance_display: crate::fetch::evm::format_token_amount(
+                            b.balance_raw,
+                            decimals,
+                        ),
+                        is_known: entry.is_some(),
+                    }
+                })
+                .collect())
+        })
+        .await
     }
 }
 

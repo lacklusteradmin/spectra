@@ -39,31 +39,37 @@ impl WalletService {
         intent: AppRefreshIntent,
         conditions: DeviceConditions,
     ) -> Result<AppRefreshResult, SpectraBridgeError> {
-        let rescanned = match &intent {
-            AppRefreshIntent::DeepRescan { chain_id } => Some(chain_id.clone()),
-            _ => None,
-        };
-        let diagnostics_before = self.diagnostics_fingerprint().await;
-        let mut result = self.run_app_refresh(intent, conditions).await;
-        match &result {
-            Ok(result) => self.record_refresh_outcome(result, rescanned).await,
-            Err(error) => {
-                if let Some(chain_id) = rescanned {
-                    self.record_event(
-                        DiagnosticLogLevel::Error,
-                        "Rescan",
-                        format!("Deep rescan failed: {error}"),
-                        Some(chain_id),
-                        None,
-                    )
-                    .await;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let rescanned = match &intent {
+                AppRefreshIntent::DeepRescan { chain_id } => Some(chain_id.clone()),
+                _ => None,
+            };
+            let diagnostics_before = this.diagnostics_fingerprint().await;
+            let mut result = this.run_app_refresh(intent, conditions).await;
+            match &result {
+                Ok(result) => this.record_refresh_outcome(result, rescanned).await,
+                Err(error) => {
+                    if let Some(chain_id) = rescanned {
+                        this.record_event(
+                            DiagnosticLogLevel::Error,
+                            "Rescan",
+                            format!("Deep rescan failed: {error}"),
+                            Some(chain_id),
+                            None,
+                        )
+                        .await;
+                    }
                 }
             }
-        }
-        if let Ok(result) = result.as_mut() {
-            result.diagnostics_changed = self.diagnostics_fingerprint().await != diagnostics_before;
-        }
-        result
+            if let Ok(result) = result.as_mut() {
+                result.diagnostics_changed =
+                    this.diagnostics_fingerprint().await != diagnostics_before;
+            }
+            result
+        })
+        .await
     }
 }
 

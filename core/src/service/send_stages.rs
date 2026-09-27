@@ -10,7 +10,12 @@ impl WalletService {
         &self,
         request: crate::send::SendExecutionRequest,
     ) -> Result<SendArtifact, SpectraBridgeError> {
-        self.build_send_with_review(request, None).await
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.build_send_with_review(request, None).await
+        })
+        .await
     }
 
     /// Resolve owned edits and persist their review with the prepared transaction.
@@ -18,28 +23,43 @@ impl WalletService {
         &self,
         input: super::send_review::SendReviewInput,
     ) -> Result<SendArtifact, SpectraBridgeError> {
-        let review = self.review_owned_send(input).await?;
-        // This operation completes the review itself; no unused confirmation remains.
-        self.send_reviews.lock().await.remove(&review.id);
-        let advisories = SendArtifactReview {
-            warnings: review.warnings,
-            recipient_warnings: review.recipient_warnings,
-            requires_self_send_confirmation: review.requires_self_send_confirmation,
-        };
-        self.build_send_with_review(review.request, Some(advisories))
-            .await
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let review = this.review_owned_send(input).await?;
+            // This operation completes the review itself; no unused confirmation remains.
+            this.send_reviews.lock().await.remove(&review.id);
+            let advisories = SendArtifactReview {
+                warnings: review.warnings,
+                recipient_warnings: review.recipient_warnings,
+                requires_self_send_confirmation: review.requires_self_send_confirmation,
+            };
+            this.build_send_with_review(review.request, Some(advisories))
+                .await
+        })
+        .await
     }
 
     pub async fn list_sends(&self) -> Result<Vec<SendArtifact>, SpectraBridgeError> {
-        let db = self.bound_database().await?;
-        let stored = tokio::task::spawn_blocking(move || crate::wallet_db::send_list(&db))
-            .await
-            .map_err(|e| e.to_string())??;
-        Ok(stored.into_iter().map(|s| s.view).collect())
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let db = this.bound_database().await?;
+            let stored = tokio::task::spawn_blocking(move || crate::wallet_db::send_list(&db))
+                .await
+                .map_err(|e| e.to_string())??;
+            Ok(stored.into_iter().map(|s| s.view).collect())
+        })
+        .await
     }
 
     pub async fn inspect_send(&self, id: String) -> Result<SendArtifact, SpectraBridgeError> {
-        Ok(self.load_send_artifact(id).await?.view)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            Ok(this.load_send_artifact(id).await?.view)
+        })
+        .await
     }
 
     /// The caller confirms a fingerprint, never supplies replacement transaction fields.
@@ -49,93 +69,102 @@ impl WalletService {
         review_digest: String,
         password: Option<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
-        let password = password.map(Zeroizing::new);
-        let mut stored = self.load_send_artifact(id).await?;
-        if stored.view.stage != SendStage::Prepared || stored.view.review_digest != review_digest {
-            return Err(
-                "Transaction already signed or review does not match; inspect it again".into(),
-            );
-        }
-        let chain = chain_for_id(&stored.view.chain_id)?;
-        super::send_execution::send_chain_for(
-            &self.app_state().await,
-            &stored.view.wallet_id,
-            chain,
-        )?;
-        let signer = self
-            .resolve_send_identity(
-                chain,
-                &stored.view.wallet_id,
-                password.as_ref().map(|p| p.as_str()),
-            )
-            .await?;
-        if crate::send::flow::normalize_address(chain.str_id(), &stored.view.sender)
-            != signer.from_address
-        {
-            return Err("Signer changed; build and review again".into());
-        }
-        let _guard = self.lock_sender(chain, &signer.from_address).await?;
-        let (submission, resources) = match &stored.prepared {
-            PreparedPayload::Evm(p) => {
-                let client = EvmClient::new(
-                    self.endpoints_for(chain.str_id(), &["verification"]).await,
-                    chain.evm_chain_id()?,
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let password = password.map(Zeroizing::new);
+            let mut stored = this.load_send_artifact(id).await?;
+            if stored.view.stage != SendStage::Prepared
+                || stored.view.review_digest != review_digest
+            {
+                return Err(
+                    "Transaction already signed or review does not match; inspect it again".into(),
                 );
-                let nonce = if stored
-                    .request
-                    .evm_overrides
-                    .as_ref()
-                    .and_then(|o| o.nonce)
-                    .is_some()
-                {
-                    let response = client
-                        .call(
-                            "eth_getTransactionCount",
-                            json!([signer.from_address, "latest"]),
-                        )
-                        .await?;
-                    crate::fetch::evm::parse_hex_u64(
-                        response.as_str().ok_or("Missing confirmed nonce")?,
-                    )?
-                } else {
-                    client.fetch_nonce(&signer.from_address).await?
-                };
-                if p.chain_id != chain.evm_chain_id()? || nonce > p.nonce {
-                    return Err("Prepared nonce or network is stale; build and review again".into());
-                }
-                let key = Zeroizing::new(
-                    hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-                );
-                let raw = p.sign(&key)?;
-                use sha3::Digest;
-                (
-                    crate::send::payload::PreparedSubmission {
-                        payload: format!("0x{}", hex::encode(&raw)),
-                        result_field: "txid".into(),
-                        transaction_hash: Some(format!(
-                            "0x{}",
-                            hex::encode(sha3::Keccak256::digest(&raw))
-                        )),
-                        nonce: Some(p.nonce),
-                    },
-                    vec![format!(
-                        "{}:{}:nonce:{}",
-                        chain.str_id(),
-                        signer.from_address,
-                        p.nonce
-                    )],
-                )
             }
-            _ => self.sign_staged_protocol(chain, &stored, &signer).await?,
-        };
-        stored.view.stage = SendStage::Signed;
-        stored.view.signed_payload = Some(submission.payload.clone());
-        stored.view.transaction_hash = submission.transaction_hash.clone();
-        stored.submission = Some(submission);
-        stored.signed_digest = stored.submission_digest()?;
-        stored.view.revision += 1;
-        self.save_send_artifact(&stored, resources).await?;
-        Ok(stored.view)
+            let chain = chain_for_id(&stored.view.chain_id)?;
+            super::send_execution::send_chain_for(
+                &this.app_state().await,
+                &stored.view.wallet_id,
+                chain,
+            )?;
+            let signer = this
+                .resolve_send_identity(
+                    chain,
+                    &stored.view.wallet_id,
+                    password.as_ref().map(|p| p.as_str()),
+                )
+                .await?;
+            if crate::send::flow::normalize_address(chain.str_id(), &stored.view.sender)
+                != signer.from_address
+            {
+                return Err("Signer changed; build and review again".into());
+            }
+            let _guard = this.lock_sender(chain, &signer.from_address).await?;
+            let (submission, resources) = match &stored.prepared {
+                PreparedPayload::Evm(p) => {
+                    let client = EvmClient::new(
+                        this.endpoints_for(chain.str_id(), &["verification"]).await,
+                        chain.evm_chain_id()?,
+                    );
+                    let nonce = if stored
+                        .request
+                        .evm_overrides
+                        .as_ref()
+                        .and_then(|o| o.nonce)
+                        .is_some()
+                    {
+                        let response = client
+                            .call(
+                                "eth_getTransactionCount",
+                                json!([signer.from_address, "latest"]),
+                            )
+                            .await?;
+                        crate::fetch::evm::parse_hex_u64(
+                            response.as_str().ok_or("Missing confirmed nonce")?,
+                        )?
+                    } else {
+                        client.fetch_nonce(&signer.from_address).await?
+                    };
+                    if p.chain_id != chain.evm_chain_id()? || nonce > p.nonce {
+                        return Err(
+                            "Prepared nonce or network is stale; build and review again".into()
+                        );
+                    }
+                    let key = Zeroizing::new(
+                        hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
+                    );
+                    let raw = p.sign(&key)?;
+                    use sha3::Digest;
+                    (
+                        crate::send::payload::PreparedSubmission {
+                            payload: format!("0x{}", hex::encode(&raw)),
+                            result_field: "txid".into(),
+                            transaction_hash: Some(format!(
+                                "0x{}",
+                                hex::encode(sha3::Keccak256::digest(&raw))
+                            )),
+                            nonce: Some(p.nonce),
+                        },
+                        vec![format!(
+                            "{}:{}:nonce:{}",
+                            chain.str_id(),
+                            signer.from_address,
+                            p.nonce
+                        )],
+                    )
+                }
+                _ => this.sign_staged_protocol(chain, &stored, &signer).await?,
+            };
+            stored.view.stage = SendStage::Signed;
+            stored.view.signed_payload = Some(submission.payload.clone());
+            stored.view.transaction_hash = submission.transaction_hash.clone();
+            stored.submission = Some(submission);
+            stored.signed_digest = stored.submission_digest()?;
+            stored.view.revision += 1;
+            this.save_send_artifact(&stored, resources).await?;
+            Ok(stored.view)
+        })
+        .await
     }
 
     /// Actual configured destinations, in the order the service will use them.
@@ -143,12 +172,17 @@ impl WalletService {
         &self,
         chain_id: String,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
-        Ok(self
-            .endpoints_for(chain.str_id(), &["broadcast"])
-            .await
-            .as_ref()
-            .clone())
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = chain_for_id(&chain_id)?;
+            Ok(this
+                .endpoints_for(chain.str_id(), &["broadcast"])
+                .await
+                .as_ref()
+                .clone())
+        })
+        .await
     }
 
     pub async fn broadcast_send(
@@ -156,10 +190,15 @@ impl WalletService {
         id: String,
         endpoints: Vec<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
-        let service = self.clone();
-        tokio::spawn(async move { service.broadcast_send_owned(id, endpoints).await })
-            .await
-            .map_err(|e| e.to_string())?
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let service = this.clone();
+            tokio::spawn(async move { service.broadcast_send_owned(id, endpoints).await })
+                .await
+                .map_err(|e| e.to_string())?
+        })
+        .await
     }
 }
 

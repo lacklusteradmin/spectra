@@ -44,7 +44,7 @@ const MAINTENANCE_RETRY_SECONDS: u64 = 60;
 /// and a wallet has something to fetch, the engine sweeps balances and runs
 /// maintenance ticks at the cadence core plans. A short-lived caller uses
 /// `refresh_now` and never reports conditions.
-#[derive(uniffi::Object)]
+#[derive(Clone, uniffi::Object)]
 pub struct RefreshEngine {
     inner: Arc<Inner>,
 }
@@ -79,57 +79,72 @@ impl RefreshEngine {
     /// Rebuild refresh entries from core-owned wallets and their selected
     /// networks. `wallet_id` scopes the rebuild; returns the entry count.
     pub async fn sync_entries(&self, wallet_id: Option<String>) -> u32 {
-        let state = self.inner.wallet_service.app_state().await;
-        let mut entries = refresh_entries_for(&state);
-        if let Some(wallet_id) = wallet_id {
-            entries.retain(|entry| entry.wallet_id.eq_ignore_ascii_case(&wallet_id));
-        }
-        let count = entries.len() as u32;
-        *self.inner.entries.write().unwrap() = entries;
-        count
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let state = this.inner.wallet_service.app_state().await;
+            let mut entries = refresh_entries_for(&state);
+            if let Some(wallet_id) = wallet_id {
+                entries.retain(|entry| entry.wallet_id.eq_ignore_ascii_case(&wallet_id));
+            }
+            let count = entries.len() as u32;
+            *this.inner.entries.write().unwrap() = entries;
+            count
+        })
+        .await
     }
 
     /// Adopt core's wallets and refresh only when fetch inputs change.
     /// Returns whether they changed. Balance-only updates must not retrigger
     /// a sweep, since sweeps themselves update wallet balances.
     pub async fn reconcile_wallets(&self) -> bool {
-        let state = self.inner.wallet_service.app_state().await;
-        let entries = refresh_entries_for(&state);
-        if !self.replace_entries(entries) {
-            return false;
-        }
-        if !self.has_entries() {
-            self.stop();
-        } else if self.app_is_active() {
-            if self.is_running() {
-                self.trigger_immediate().await;
-            } else {
-                self.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
-                    .await;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let state = this.inner.wallet_service.app_state().await;
+            let entries = refresh_entries_for(&state);
+            if !this.replace_entries(entries) {
+                return false;
             }
-        }
-        self.reconcile_maintenance();
-        true
+            if !this.has_entries() {
+                this.stop();
+            } else if this.app_is_active() {
+                if this.is_running() {
+                    this.trigger_immediate().await;
+                } else {
+                    this.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
+                        .await;
+                }
+            }
+            this.reconcile_maintenance();
+            true
+        })
+        .await
     }
 
     /// What only the device knows. Coming to the foreground restarts the
     /// balance sweep, whose first tick runs at once; leaving it stops both
     /// loops. Other changes only reach the next maintenance tick.
     pub async fn set_device_conditions(&self, conditions: DeviceConditions) {
-        self.forward_tor_status();
-        let was_active = self.app_is_active();
-        let is_active = conditions.app_is_active;
-        *self.inner.conditions.write().unwrap() = Some(conditions);
-        if !is_active {
-            self.stop();
-        } else if !was_active {
-            self.stop();
-            if self.sync_entries(None).await > 0 {
-                self.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
-                    .await;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.forward_tor_status();
+            let was_active = this.app_is_active();
+            let is_active = conditions.app_is_active;
+            *this.inner.conditions.write().unwrap() = Some(conditions);
+            if !is_active {
+                this.stop();
+            } else if !was_active {
+                this.stop();
+                if this.sync_entries(None).await > 0 {
+                    this.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
+                        .await;
+                }
             }
-        }
-        self.reconcile_maintenance();
+            this.reconcile_maintenance();
+        })
+        .await
     }
 
     /// Start the periodic refresh loop.
@@ -137,27 +152,32 @@ impl RefreshEngine {
     /// This method is `async` to ensure it runs inside the UniFFI tokio runtime,
     /// which is required for `tokio::spawn` to work. No-op if already running.
     pub async fn start(&self, interval_secs: u64) {
-        let mut stop_lock = self.inner.stop_tx.lock().unwrap();
-        if stop_lock.is_some() {
-            return; // already running
-        }
-        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
-        *stop_lock = Some(tx);
-        drop(stop_lock);
-
-        let inner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            loop {
-                tokio::select! {
-                    _ = interval.tick() => {
-                        Self::run_cycle(&inner).await;
-                    }
-                    _ = &mut rx => break,
-                }
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let mut stop_lock = this.inner.stop_tx.lock().unwrap();
+            if stop_lock.is_some() {
+                return; // already running
             }
-        });
+            let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+            *stop_lock = Some(tx);
+            drop(stop_lock);
+
+            let inner = Arc::clone(&this.inner);
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            Self::run_cycle(&inner).await;
+                        }
+                        _ = &mut rx => break,
+                    }
+                }
+            });
+        })
+        .await
     }
 
     /// Run one sweep and wait for it to finish.
@@ -167,8 +187,13 @@ impl RefreshEngine {
     /// about to exit has nowhere to receive them: the CLI got "0 refreshed"
     /// while the fetches were still in flight. This is the same cycle, awaited.
     pub async fn refresh_now(&self) {
-        self.inner.pending_trigger.store(true, Ordering::Release);
-        Self::run_cycle(&self.inner).await;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.inner.pending_trigger.store(true, Ordering::Release);
+            Self::run_cycle(&this.inner).await;
+        })
+        .await
     }
 }
 
@@ -839,10 +864,15 @@ impl RefreshEngine {
     /// arrived while the cycle was running). `refresh_now` is the variant that
     /// waits for the sweep instead of spawning it.
     pub async fn trigger_immediate(&self) {
-        let inner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
-            inner.pending_trigger.store(true, Ordering::Release);
-            Self::run_cycle(&inner).await;
-        });
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let inner = Arc::clone(&this.inner);
+            tokio::spawn(async move {
+                inner.pending_trigger.store(true, Ordering::Release);
+                Self::run_cycle(&inner).await;
+            });
+        })
+        .await
     }
 }

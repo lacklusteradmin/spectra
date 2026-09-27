@@ -11,24 +11,29 @@ impl WalletService {
         chain_id: String,
         address: String,
     ) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
-        let raw = self.fetch_history(&chain_id, address).await?;
-        let entries = crate::fetch::history::normalize_chain_history(&chain_id, &raw);
-        Ok(entries
-            .into_iter()
-            .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
-                deployment_id: e.deployment_id,
-                kind: e.kind,
-                status: e.status,
-                asset_display_name: e.asset_display_name,
-                symbol: e.symbol,
-                chain_id: e.chain_id,
-                amount: e.amount,
-                counterparty: e.counterparty,
-                tx_hash: e.tx_hash,
-                block_height: e.block_height,
-                timestamp: e.timestamp,
-            })
-            .collect())
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let raw = this.fetch_history(&chain_id, address).await?;
+            let entries = crate::fetch::history::normalize_chain_history(&chain_id, &raw);
+            Ok(entries
+                .into_iter()
+                .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
+                    deployment_id: e.deployment_id,
+                    kind: e.kind,
+                    status: e.status,
+                    asset_display_name: e.asset_display_name,
+                    symbol: e.symbol,
+                    chain_id: e.chain_id,
+                    amount: e.amount,
+                    counterparty: e.counterparty,
+                    tx_hash: e.tx_hash,
+                    block_height: e.block_height,
+                    timestamp: e.timestamp,
+                })
+                .collect())
+        })
+        .await
     }
 }
 impl WalletService {

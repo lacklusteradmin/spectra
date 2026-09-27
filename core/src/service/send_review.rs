@@ -43,116 +43,126 @@ impl WalletService {
         &self,
         input: SendReviewInput,
     ) -> Result<OwnedSendReview, SpectraBridgeError> {
-        if input.overrides.as_ref().is_some_and(|o| {
-            o.gas_limit.is_some()
-                || o.calldata_hex.is_some()
-                || o.access_list_json.is_some()
-                || o.sign_only.is_some()
-        }) {
-            return Err("Owned send review supports fee and nonce edits only".into());
-        }
-        let mut quote = self
-            .quote_owned_send(
-                input.wallet_id.clone(),
-                input.holding_key.clone(),
-                input.amount.clone(),
-                input.destination.clone(),
-                input.overrides.clone(),
-            )
-            .await?;
-        if let Some(crate::send::flow::SendPreview::Ethereum { preview }) = &mut quote.preview {
-            if input.overrides.as_ref().and_then(|o| o.nonce).is_none() {
-                let state = self.app_state().await;
-                let chain = chain_for_id(&quote.request.chain_id)?;
-                let wallet = state
-                    .wallets
-                    .iter()
-                    .find(|w| w.id == input.wallet_id)
-                    .ok_or("Wallet removed")?;
-                let sender = wallet
-                    .address_on(chain)
-                    .ok_or("Wallet has no sending address")?;
-                preview.nonce = i64::try_from(self.next_send_nonce(chain, sender).await?)
-                    .map_err(|_| "Nonce exceeds supported range")?;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            if input.overrides.as_ref().is_some_and(|o| {
+                o.gas_limit.is_some()
+                    || o.calldata_hex.is_some()
+                    || o.access_list_json.is_some()
+                    || o.sign_only.is_some()
+            }) {
+                return Err("Owned send review supports fee and nonce edits only".into());
             }
-            let fees = quote
-                .request
-                .evm_overrides
-                .get_or_insert_with(Default::default);
-            fees.nonce = Some(preview.nonce);
-            fees.gas_limit = Some(preview.gasLimit);
-            fees.custom_fees = Some(crate::send::ethereum::EvmCustomFeeConfiguration {
-                max_fee_per_gas_gwei: preview.maxFeePerGasGwei,
-                max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei,
-            });
-        }
-        let chain = chain_for_id(&quote.request.chain_id)?;
-        let resolved = self
-            .verify_send_destination(
-                quote.request.chain_id.clone(),
-                input.destination.clone(),
-                quote.request.to_address.clone(),
-            )
-            .await?;
-        let amount = input
-            .amount
-            .trim()
-            .parse::<f64>()
-            .map_err(|_| "Invalid amount")?;
-        let warnings = self
-            .high_risk_send_reasons(
-                input.wallet_id.clone(),
-                input.holding_key.clone(),
-                amount,
-                resolved.address.clone(),
-                input.destination.clone(),
-                resolved.used_ens,
-            )
-            .await;
-        let recipient_warnings = self
-            .evm_recipient_preflight(
-                input.wallet_id.clone(),
-                input.holding_key.clone(),
-                resolved.address.clone(),
-            )
-            .await;
-        let requires_self_send_confirmation = self.is_own_address(chain, &resolved.address).await?;
-        let state = self.app_state().await;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id == input.wallet_id)
-            .ok_or("Wallet removed")?;
-        super::send_execution::send_chain_for(&state, &input.wallet_id, chain)?;
-        let sender = wallet
-            .address_on(chain)
-            .ok_or("Wallet has no sending address")?
-            .to_owned();
-        let requires_wallet_password = wallet.signing.requires_password();
-        let id = hex::encode(rand::random::<[u8; 32]>());
-        let mut reviews = self.send_reviews.lock().await;
-        reviews.retain(|_, r| r.created.elapsed().as_secs() < 120);
-        if reviews.len() >= 32 {
-            return Err("Too many pending send reviews".into());
-        }
-        reviews.insert(
-            id.clone(),
-            ReviewedSend {
-                input: serde_json::to_string(&input).map_err(|e| e.to_string())?,
-                request: quote.request.clone(),
-                sender,
-                created: std::time::Instant::now(),
-            },
-        );
-        Ok(OwnedSendReview {
-            id,
-            request: quote.request,
-            preview: quote.preview,
-            warnings,
-            recipient_warnings,
-            requires_self_send_confirmation,
-            requires_wallet_password,
+            let mut quote = this
+                .quote_owned_send(
+                    input.wallet_id.clone(),
+                    input.holding_key.clone(),
+                    input.amount.clone(),
+                    input.destination.clone(),
+                    input.overrides.clone(),
+                )
+                .await?;
+            if let Some(crate::send::flow::SendPreview::Ethereum { preview }) = &mut quote.preview {
+                if input.overrides.as_ref().and_then(|o| o.nonce).is_none() {
+                    let state = this.app_state().await;
+                    let chain = chain_for_id(&quote.request.chain_id)?;
+                    let wallet = state
+                        .wallets
+                        .iter()
+                        .find(|w| w.id == input.wallet_id)
+                        .ok_or("Wallet removed")?;
+                    let sender = wallet
+                        .address_on(chain)
+                        .ok_or("Wallet has no sending address")?;
+                    preview.nonce = i64::try_from(this.next_send_nonce(chain, sender).await?)
+                        .map_err(|_| "Nonce exceeds supported range")?;
+                }
+                let fees = quote
+                    .request
+                    .evm_overrides
+                    .get_or_insert_with(Default::default);
+                fees.nonce = Some(preview.nonce);
+                fees.gas_limit = Some(preview.gasLimit);
+                fees.custom_fees = Some(crate::send::ethereum::EvmCustomFeeConfiguration {
+                    max_fee_per_gas_gwei: preview.maxFeePerGasGwei,
+                    max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei,
+                });
+            }
+            let chain = chain_for_id(&quote.request.chain_id)?;
+            let resolved = this
+                .verify_send_destination(
+                    quote.request.chain_id.clone(),
+                    input.destination.clone(),
+                    quote.request.to_address.clone(),
+                )
+                .await?;
+            let amount = input
+                .amount
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| "Invalid amount")?;
+            let warnings = this
+                .high_risk_send_reasons(
+                    input.wallet_id.clone(),
+                    input.holding_key.clone(),
+                    amount,
+                    resolved.address.clone(),
+                    input.destination.clone(),
+                    resolved.used_ens,
+                )
+                .await;
+            let recipient_warnings = this
+                .evm_recipient_preflight(
+                    input.wallet_id.clone(),
+                    input.holding_key.clone(),
+                    resolved.address.clone(),
+                )
+                .await;
+            let requires_self_send_confirmation =
+                this.is_own_address(chain, &resolved.address).await?;
+            let warnings = super::send_preflight::without_new_address_for_self_send(
+                warnings,
+                requires_self_send_confirmation,
+            );
+            let state = this.app_state().await;
+            let wallet = state
+                .wallets
+                .iter()
+                .find(|w| w.id == input.wallet_id)
+                .ok_or("Wallet removed")?;
+            super::send_execution::send_chain_for(&state, &input.wallet_id, chain)?;
+            let sender = wallet
+                .address_on(chain)
+                .ok_or("Wallet has no sending address")?
+                .to_owned();
+            let requires_wallet_password = wallet.signing.requires_password();
+            let id = hex::encode(rand::random::<[u8; 32]>());
+            let mut reviews = this.send_reviews.lock().await;
+            reviews.retain(|_, r| r.created.elapsed().as_secs() < 120);
+            if reviews.len() >= 32 {
+                return Err("Too many pending send reviews".into());
+            }
+            reviews.insert(
+                id.clone(),
+                ReviewedSend {
+                    input: serde_json::to_string(&input).map_err(|e| e.to_string())?,
+                    request: quote.request.clone(),
+                    sender,
+                    created: std::time::Instant::now(),
+                },
+            );
+            Ok(OwnedSendReview {
+                id,
+                request: quote.request,
+                preview: quote.preview,
+                warnings,
+                recipient_warnings,
+                requires_self_send_confirmation,
+                requires_wallet_password,
+            })
         })
+        .await
     }
 
     /// The explicit confirmation action consumes the review before any signing.
@@ -163,52 +173,57 @@ impl WalletService {
         input: SendReviewInput,
         password: Option<String>,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
-        let mut reviewed = self
-            .send_reviews
-            .lock()
-            .await
-            .remove(&review_id)
-            .ok_or("Send review missing or already consumed; review again")?;
-        reviewed.validate_input(&input)?;
-        let state = self.app_state().await;
-        let chain = chain_for_id(&reviewed.request.chain_id)?;
-        super::send_execution::send_chain_for(&state, &input.wallet_id, chain)?;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id == input.wallet_id)
-            .ok_or("Wallet removed")?;
-        if wallet.address_on(chain) != Some(reviewed.sender.as_str())
-            || !wallet
-                .holdings
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let mut reviewed = this
+                .send_reviews
+                .lock()
+                .await
+                .remove(&review_id)
+                .ok_or("Send review missing or already consumed; review again")?;
+            reviewed.validate_input(&input)?;
+            let state = this.app_state().await;
+            let chain = chain_for_id(&reviewed.request.chain_id)?;
+            super::send_execution::send_chain_for(&state, &input.wallet_id, chain)?;
+            let wallet = state
+                .wallets
                 .iter()
-                .any(|h| h.deployment_id() == input.holding_key && h.chain() == Some(chain))
-        {
-            return Err("Sending identity changed; review again".into());
-        }
-        let automatic_nonce = input.overrides.as_ref().and_then(|o| o.nonce).is_none();
-        let preflight = self
-            .send_submit_preflight(
-                input.wallet_id,
-                input.holding_key,
+                .find(|w| w.id == input.wallet_id)
+                .ok_or("Wallet removed")?;
+            if wallet.address_on(chain) != Some(reviewed.sender.as_str())
+                || !wallet
+                    .holdings
+                    .iter()
+                    .any(|h| h.deployment_id() == input.holding_key && h.chain() == Some(chain))
+            {
+                return Err("Sending identity changed; review again".into());
+            }
+            let automatic_nonce = input.overrides.as_ref().and_then(|o| o.nonce).is_none();
+            let preflight = this
+                .send_submit_preflight(
+                    input.wallet_id,
+                    input.holding_key,
+                    reviewed.request.to_address.clone(),
+                    input.amount,
+                )
+                .await?;
+            if preflight.token_contract_address != reviewed.request.contract_address
+                || preflight.token_decimals != reviewed.request.token_decimals
+            {
+                return Err("Token identity changed; review again".into());
+            }
+            this.verify_send_destination(
+                reviewed.request.chain_id.clone(),
+                input.destination,
                 reviewed.request.to_address.clone(),
-                input.amount,
             )
             .await?;
-        if preflight.token_contract_address != reviewed.request.contract_address
-            || preflight.token_decimals != reviewed.request.token_decimals
-        {
-            return Err("Token identity changed; review again".into());
-        }
-        self.verify_send_destination(
-            reviewed.request.chain_id.clone(),
-            input.destination,
-            reviewed.request.to_address.clone(),
-        )
-        .await?;
-        reviewed.request.password = password;
-        self.execute_confirmed_send(reviewed.request, reviewed.sender, automatic_nonce)
-            .await
+            reviewed.request.password = password;
+            this.execute_confirmed_send(reviewed.request, reviewed.sender, automatic_nonce)
+                .await
+        })
+        .await
     }
 }
 

@@ -13,47 +13,52 @@ impl WalletService {
         &self,
         scopes: Vec<crate::store::state::ResetScope>,
     ) -> Result<ResetOutcome, SpectraBridgeError> {
-        self.bound_database().await?;
-        let plan = crate::store::reset_dispatch(scopes);
-        let mutation = plan.clone();
-        self.mutate_persisted_state(move |state| {
-            if mutation.reset_wallets_and_secrets {
-                state.wallets.clear();
-                state.selected_wallet_id = None;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.bound_database().await?;
+            let plan = crate::store::reset_dispatch(scopes);
+            let mutation = plan.clone();
+            this.mutate_persisted_state(move |state| {
+                if mutation.reset_wallets_and_secrets {
+                    state.wallets.clear();
+                    state.selected_wallet_id = None;
+                }
+                if mutation.reset_alerts_and_contacts {
+                    state.price_alerts.clear();
+                    state.address_book.clear();
+                }
+                if mutation.reset_settings_and_endpoints {
+                    reduce_state_in_place(state, StateCommand::ResetAppSettings);
+                    reduce_state_in_place(state, StateCommand::ResetTokenPreferences);
+                }
+                if mutation.reset_dashboard_customization {
+                    reduce_state_in_place(state, StateCommand::ResetPinnedDashboardAssets);
+                }
+                if mutation.reset_history_and_cache {
+                    state.diagnostics = Default::default();
+                    state.quotes = Default::default();
+                    state.movement_baseline = None;
+                    state.fiat_rates_from_usd.clear();
+                }
+                vec![crate::store::state::StateEvent::DataReset]
+            })
+            .await?;
+            if plan.reset_history_and_cache {
+                this.apply_transaction_command(crate::service::types::TransactionCommand::Clear)
+                    .await?;
+                this.clear_operational_events(None).await?;
+                this.reset_history(crate::service::history_cursor::HistoryScope::All);
+                this.status_trackers.write().await.clear();
+                *this.refresh_clock.write().await = Default::default();
+                crate::diagnostics::diagnostics_clear_all();
             }
-            if mutation.reset_alerts_and_contacts {
-                state.price_alerts.clear();
-                state.address_book.clear();
-            }
-            if mutation.reset_settings_and_endpoints {
-                reduce_state_in_place(state, StateCommand::ResetAppSettings);
-                reduce_state_in_place(state, StateCommand::ResetTokenPreferences);
-            }
-            if mutation.reset_dashboard_customization {
-                reduce_state_in_place(state, StateCommand::ResetPinnedDashboardAssets);
-            }
-            if mutation.reset_history_and_cache {
-                state.diagnostics = Default::default();
-                state.quotes = Default::default();
-                state.movement_baseline = None;
-                state.fiat_rates_from_usd.clear();
-            }
-            vec![crate::store::state::StateEvent::DataReset]
+            Ok(ResetOutcome {
+                state: this.app_state().await,
+                plan,
+            })
         })
-        .await?;
-        if plan.reset_history_and_cache {
-            self.apply_transaction_command(crate::service::types::TransactionCommand::Clear)
-                .await?;
-            self.clear_operational_events(None).await?;
-            self.reset_history(crate::service::history_cursor::HistoryScope::All);
-            self.status_trackers.write().await.clear();
-            *self.refresh_clock.write().await = Default::default();
-            crate::diagnostics::diagnostics_clear_all();
-        }
-        Ok(ResetOutcome {
-            state: self.app_state().await,
-            plan,
-        })
+        .await
     }
 }
 

@@ -7,36 +7,49 @@ impl WalletService {
         &self,
         cache_dir: String,
     ) -> Result<crate::tor::TorStatus, SpectraBridgeError> {
-        let _writer = self.state_writer.lock().await;
-        self.bound_database().await?;
-        let settings = self.wallet_state.read().await.settings.clone();
-        *self.transport_cache_dir.lock() = Some(cache_dir);
-        self.reconcile_transport(&settings, false);
-        Ok(crate::tor::tor_status())
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let _writer = this.state_writer.lock().await;
+            this.bound_database().await?;
+            let settings = this.wallet_state.read().await.settings.clone();
+            *this.transport_cache_dir.lock() = Some(cache_dir);
+            this.reconcile_transport(&settings, false);
+            Ok(crate::tor::tor_status())
+        })
+        .await
     }
 
     pub async fn reconnect_tor(&self) -> crate::tor::TorStatus {
-        let _writer = self.state_writer.lock().await;
-        let settings = self.wallet_state.read().await.settings.clone();
-        self.reconcile_transport(&settings, true);
-        crate::tor::tor_status()
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let _writer = this.state_writer.lock().await;
+            let settings = this.wallet_state.read().await.settings.clone();
+            this.reconcile_transport(&settings, true);
+            crate::tor::tor_status()
+        })
+        .await
     }
 
     /// Short-lived clients must await bootstrap before their first network request.
     pub async fn await_network_ready(&self) -> Result<(), SpectraBridgeError> {
-        tokio::time::timeout(std::time::Duration::from_secs(120), async {
-            loop {
-                match crate::tor::tor_status() {
-                    crate::tor::TorStatus::Bootstrapping { .. } => {
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await
+        crate::worker::run(async move {
+            tokio::time::timeout(std::time::Duration::from_secs(120), async {
+                loop {
+                    match crate::tor::tor_status() {
+                        crate::tor::TorStatus::Bootstrapping { .. } => {
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await
+                        }
+                        crate::tor::TorStatus::Error { message } => return Err(message.into()),
+                        _ => return Ok(()),
                     }
-                    crate::tor::TorStatus::Error { message } => return Err(message.into()),
-                    _ => return Ok(()),
                 }
-            }
+            })
+            .await
+            .map_err(|_| SpectraBridgeError::from("Tor bootstrap timed out"))?
         })
         .await
-        .map_err(|_| SpectraBridgeError::from("Tor bootstrap timed out"))?
     }
 }
 

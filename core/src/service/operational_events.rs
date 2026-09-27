@@ -96,12 +96,17 @@ impl WalletService {
     /// second level enum, mapped from the first with a fallback that turned an
     /// unknown level into `info`.
     pub async fn operational_events(&self, chain_id: String) -> Vec<DiagnosticLog> {
-        self.diagnostic_state()
-            .await
-            .logs
-            .into_iter()
-            .filter(|l| l.input.chain_id.as_deref() == Some(&chain_id))
-            .take(200)
-            .collect()
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.diagnostic_state()
+                .await
+                .logs
+                .into_iter()
+                .filter(|l| l.input.chain_id.as_deref() == Some(&chain_id))
+                .take(200)
+                .collect()
+        })
+        .await
     }
 }

@@ -136,132 +136,144 @@ impl WalletService {
         &self,
         force: bool,
     ) -> Result<CoreAppState, SpectraBridgeError> {
-        let _guard = self.quote_refresh_lock.lock().await;
-        let state = self.app_state().await;
-        let time = now();
-        if !due(
-            force,
-            time,
-            state.quotes.prices_attempt_at,
-            state.quotes.prices_success_at,
-            60.0,
-        ) {
-            return Ok(state);
-        }
-        let derived = self.wallet_derived_state().await?;
-        let mut coins = derived.unique_price_request_coins.clone();
-        for token_id in state.settings.pinned_dashboard_assets() {
-            if let Some(coin) = self.pinned_prototype(&token_id, &derived).await {
-                coins.push(coin);
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let _guard = this.quote_refresh_lock.lock().await;
+            let state = this.app_state().await;
+            let time = now();
+            if !due(
+                force,
+                time,
+                state.quotes.prices_attempt_at,
+                state.quotes.prices_success_at,
+                60.0,
+            ) {
+                return Ok(state);
             }
-        }
-        let mut requests = HashMap::new();
-        for coin in coins {
-            let Some(chain) = Chain::from_str_id(&coin.chain_id) else {
-                continue;
-            };
-            let network = chain;
-            if network.is_testnet() {
-                continue;
+            let derived = this.wallet_derived_state().await?;
+            let mut coins = derived.unique_price_request_coins.clone();
+            for token_id in state.settings.pinned_dashboard_assets() {
+                if let Some(coin) = this.pinned_prototype(&token_id, &derived).await {
+                    coins.push(coin);
+                }
             }
-            let token = coin.catalog_token().or_else(|| {
-                state
-                    .token_preferences
-                    .iter()
-                    .find(|entry| entry.token.matches_holding(&coin))
-                    .map(|entry| &entry.token)
-            });
-            if let Some(token) = token {
-                if token.coingecko_id.is_empty() && token.coinpaprika_id.is_empty() {
+            let mut requests = HashMap::new();
+            for coin in coins {
+                let Some(chain) = Chain::from_str_id(&coin.chain_id) else {
+                    continue;
+                };
+                let network = chain;
+                if network.is_testnet() {
                     continue;
                 }
-                let key = coin.deployment_id();
-                requests.insert(
-                    key.clone(),
-                    crate::fetch::price::PriceRequestCoin {
-                        holding_key: key,
-                        coingecko_id: token.coingecko_id.clone(),
-                        coinpaprika_id: token.coinpaprika_id.clone(),
-                    },
-                );
+                let token = coin.catalog_token().or_else(|| {
+                    state
+                        .token_preferences
+                        .iter()
+                        .find(|entry| entry.token.matches_holding(&coin))
+                        .map(|entry| &entry.token)
+                });
+                if let Some(token) = token {
+                    if token.coingecko_id.is_empty() && token.coinpaprika_id.is_empty() {
+                        continue;
+                    }
+                    let key = coin.deployment_id();
+                    requests.insert(
+                        key.clone(),
+                        crate::fetch::price::PriceRequestCoin {
+                            holding_key: key,
+                            coingecko_id: token.coingecko_id.clone(),
+                            coinpaprika_id: token.coinpaprika_id.clone(),
+                        },
+                    );
+                }
             }
-        }
-        for alert in state.price_alerts.iter().filter(|a| a.is_enabled) {
-            if let Some(token) = crate::tokens::deployment(&alert.holding_key)
-                .filter(|t| !t.coingecko_id.is_empty() || !t.coinpaprika_id.is_empty())
-            {
-                requests.entry(token.deployment_id.clone()).or_insert(
-                    crate::fetch::price::PriceRequestCoin {
-                        holding_key: token.deployment_id.clone(),
-                        coingecko_id: token.coingecko_id.clone(),
-                        coinpaprika_id: token.coinpaprika_id.clone(),
-                    },
-                );
+            for alert in state.price_alerts.iter().filter(|a| a.is_enabled) {
+                if let Some(token) = crate::tokens::deployment(&alert.holding_key)
+                    .filter(|t| !t.coingecko_id.is_empty() || !t.coinpaprika_id.is_empty())
+                {
+                    requests.entry(token.deployment_id.clone()).or_insert(
+                        crate::fetch::price::PriceRequestCoin {
+                            holding_key: token.deployment_id.clone(),
+                            coingecko_id: token.coingecko_id.clone(),
+                            coinpaprika_id: token.coinpaprika_id.clone(),
+                        },
+                    );
+                }
             }
-        }
 
-        if requests.is_empty() {
-            return Ok(state);
-        }
-        let result =
-            crate::fetch::price::fetch_prices(&requests.into_values().collect::<Vec<_>>()).await;
-        let transition = self
-            .mutate_persisted_state(move |state| {
-                apply_price_result(&mut state.quotes, time, result);
-                vec![StateEvent::QuotesUpdated]
-            })
-            .await?;
-        Ok(transition.state)
+            if requests.is_empty() {
+                return Ok(state);
+            }
+            let result =
+                crate::fetch::price::fetch_prices(&requests.into_values().collect::<Vec<_>>())
+                    .await;
+            let transition = this
+                .mutate_persisted_state(move |state| {
+                    apply_price_result(&mut state.quotes, time, result);
+                    vec![StateEvent::QuotesUpdated]
+                })
+                .await?;
+            Ok(transition.state)
+        })
+        .await
     }
 
     pub async fn refresh_owned_fiat_rates(
         &self,
         force: bool,
     ) -> Result<CoreAppState, SpectraBridgeError> {
-        let _guard = self.quote_refresh_lock.lock().await;
-        let state = self.app_state().await;
-        let time = now();
-        if !force
-            && (state.settings.fiat_currency == crate::store::state::FiatCurrency::Usd
-                || !due(
-                    false,
-                    time,
-                    state.quotes.fiat_attempt_at,
-                    state.quotes.fiat_success_at,
-                    21600.0,
-                ))
-        {
-            return Ok(state);
-        }
-        let codes = crate::store::state::fiat_currency_codes();
-        let result = crate::fetch::price::fetch_fiat_rates(&codes).await;
-        let transition = self
-            .mutate_persisted_state(move |state| {
-                state.quotes.fiat_attempt_at = Some(time);
-                match result {
-                    Ok(fetched) if fetched.values().any(|p| p.is_finite() && *p > 0.0) => {
-                        let fetched = fetched
-                            .into_iter()
-                            .filter(|(_, p)| p.is_finite() && *p > 0.0)
-                            .collect();
-                        state.fiat_rates_from_usd = crate::fetch::price::merge_fiat_rate_updates(
-                            fetched,
-                            state.fiat_rates_from_usd.clone(),
-                            codes,
-                            "USD".into(),
-                        );
-                        state.quotes.fiat_success_at = Some(time);
-                        state.quotes.fiat_error = None;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let _guard = this.quote_refresh_lock.lock().await;
+            let state = this.app_state().await;
+            let time = now();
+            if !force
+                && (state.settings.fiat_currency == crate::store::state::FiatCurrency::Usd
+                    || !due(
+                        false,
+                        time,
+                        state.quotes.fiat_attempt_at,
+                        state.quotes.fiat_success_at,
+                        21600.0,
+                    ))
+            {
+                return Ok(state);
+            }
+            let codes = crate::store::state::fiat_currency_codes();
+            let result = crate::fetch::price::fetch_fiat_rates(&codes).await;
+            let transition = this
+                .mutate_persisted_state(move |state| {
+                    state.quotes.fiat_attempt_at = Some(time);
+                    match result {
+                        Ok(fetched) if fetched.values().any(|p| p.is_finite() && *p > 0.0) => {
+                            let fetched = fetched
+                                .into_iter()
+                                .filter(|(_, p)| p.is_finite() && *p > 0.0)
+                                .collect();
+                            state.fiat_rates_from_usd =
+                                crate::fetch::price::merge_fiat_rate_updates(
+                                    fetched,
+                                    state.fiat_rates_from_usd.clone(),
+                                    codes,
+                                    "USD".into(),
+                                );
+                            state.quotes.fiat_success_at = Some(time);
+                            state.quotes.fiat_error = None;
+                        }
+                        _ => {
+                            state.quotes.fiat_error =
+                                Some("No fiat-rate provider answered; using stored rates".into())
+                        }
                     }
-                    _ => {
-                        state.quotes.fiat_error =
-                            Some("No fiat-rate provider answered; using stored rates".into())
-                    }
-                }
-                vec![StateEvent::QuotesUpdated]
-            })
-            .await?;
-        Ok(transition.state)
+                    vec![StateEvent::QuotesUpdated]
+                })
+                .await?;
+            Ok(transition.state)
+        })
+        .await
     }
 }
 

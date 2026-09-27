@@ -22,20 +22,48 @@ pub struct OwnedSendPreview {
     pub amount_value: Option<f64>,
     pub details: Option<SendPreviewDetails>,
     pub shortcuts: HashMap<u32, String>,
-    /// What the destination's own history says, checked beside the quote.
-    /// `None` when no destination was given.
+    /// What the destination is, checked beside the quote. `None` when no
+    /// destination was given.
     pub recipient: Option<RecipientCheck>,
 }
 
-/// Whether the destination has been used, from raw smallest-unit balances.
-#[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
-#[serde(rename_all = "camelCase", tag = "kind")]
-pub enum RecipientCheck {
-    Checked {
-        activity: super::types::SendDestinationActivity,
-    },
-    /// The destination's balance or history could not be read.
-    Unavailable,
+/// The share of the fee-adjusted maximum each amount shortcut fills in; 100
+/// is the maximum itself. Every quote carries an amount for each of these
+/// that it can afford.
+const SEND_AMOUNT_SHORTCUT_PERCENTAGES: [u32; 4] = [25, 50, 75, 100];
+
+/// What a shortcut fills in. The maximum is exact to the last unit, since
+/// anything less leaves dust behind. A share is cut to the asset's display
+/// precision instead: "0.012490233065563998" is not an amount anyone meant,
+/// and cutting only ever lowers it, so it stays affordable.
+fn shortcut_amount(exact: String, percent: u32, asset_decimals: u32) -> String {
+    if percent >= 100 {
+        return exact;
+    }
+    match crate::formatting::format_asset_amount(exact.clone(), asset_decimals) {
+        Some(text) if !text.below_threshold => text.value,
+        _ => exact,
+    }
+}
+
+/// The amount shortcuts a composer offers, in order, whether or not a quote
+/// has priced them yet — so the controls exist before the first quote does.
+#[uniffi::export]
+pub fn send_amount_shortcut_percentages() -> Vec<u32> {
+    SEND_AMOUNT_SHORTCUT_PERCENTAGES.to_vec()
+}
+
+/// What a quote knows about its destination before anything is built.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipientCheck {
+    /// Whether the destination has been used, from raw smallest-unit
+    /// balances. `None` when its balance or history could not be read.
+    pub activity: Option<super::types::SendDestinationActivity>,
+    /// The destination is an address of one of the user's own wallets on
+    /// this network. Read from local state, so a failed activity read does
+    /// not hide it; the build review asks for confirmation on the same fact.
+    pub is_own_address: bool,
 }
 
 /// What a preview says about the funds, beyond the fee. Amounts are exact
@@ -88,17 +116,20 @@ fn owned_preview(
         super::valuation::display_value_of(state, &chain.native_holding_template(), fee)
     });
     let amount_value = super::valuation::display_value_of(state, holding, amount);
-    let shortcuts = [25, 50, 75, 100]
+    let shortcuts = SEND_AMOUNT_SHORTCUT_PERCENTAGES
         .into_iter()
         .filter_map(|percent| {
-            crate::send::flow::quoted_send_amount(
+            let exact = crate::send::flow::quoted_send_amount(
                 Some(preview.clone()),
                 chain.str_id().into(),
                 is_native,
                 decimals,
                 percent,
-            )
-            .map(|amount| (percent, amount))
+            )?;
+            Some((
+                percent,
+                shortcut_amount(exact, percent, decimals.unwrap_or(gas_decimals)),
+            ))
         })
         .collect();
     let mut details =
@@ -142,39 +173,49 @@ impl WalletService {
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<Option<OwnedSendPreview>, SpectraBridgeError> {
-        let recipient = async {
-            if destination.trim().is_empty() {
-                return None;
-            }
-            Some(
-                match self
-                    .send_destination_risk(
-                        wallet_id.clone(),
-                        holding_key.clone(),
-                        destination.clone(),
-                    )
-                    .await
-                {
-                    Ok(risk) => RecipientCheck::Checked {
-                        activity: risk.activity,
-                    },
-                    Err(_) => RecipientCheck::Unavailable,
-                },
-            )
-        };
-        let quote = self.preview_quote_only(
-            wallet_id.clone(),
-            holding_key.clone(),
-            amount,
-            destination.clone(),
-            explicit_nonce,
-            custom_fees,
-        );
-        let (quote, recipient) = tokio::join!(quote, recipient);
-        Ok(quote?.map(|preview| OwnedSendPreview {
-            recipient,
-            ..preview
-        }))
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let recipient = async {
+                if destination.trim().is_empty() {
+                    return None;
+                }
+                let risk = this.send_destination_risk(
+                    wallet_id.clone(),
+                    holding_key.clone(),
+                    destination.clone(),
+                );
+                let own = async {
+                    let (chain, _) = this
+                        .destination_probe_target(&wallet_id, &holding_key)
+                        .await?;
+                    let address = this
+                        .resolve_send_destination(chain.str_id().into(), destination.clone())
+                        .await?
+                        .address;
+                    this.is_own_address(chain, &address).await
+                };
+                let (risk, own) = tokio::join!(risk, own);
+                Some(RecipientCheck {
+                    activity: risk.ok().map(|risk| risk.activity),
+                    is_own_address: own.unwrap_or(false),
+                })
+            };
+            let quote = this.preview_quote_only(
+                wallet_id.clone(),
+                holding_key.clone(),
+                amount,
+                destination.clone(),
+                explicit_nonce,
+                custom_fees,
+            );
+            let (quote, recipient) = tokio::join!(quote, recipient);
+            Ok(quote?.map(|preview| OwnedSendPreview {
+                recipient,
+                ..preview
+            }))
+        })
+        .await
     }
 }
 
@@ -509,73 +550,81 @@ impl WalletService {
         transaction_id: String,
         cancel: bool,
     ) -> Result<OwnedReplacementDraft, SpectraBridgeError> {
-        let pending = self
-            .replaceable_sends()
-            .await?
-            .into_iter()
-            .find(|p| p.transaction_id.eq_ignore_ascii_case(&transaction_id))
-            .ok_or("transaction is no longer replaceable")?;
-        if !cancel && !pending.can_speed_up {
-            return Err("This token transfer cannot be reconstructed; cancel it instead".into());
-        }
-        let state = self.app_state().await;
-        let chain = Chain::from_str_id(&pending.chain_id).ok_or("invalid transaction network")?;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id.eq_ignore_ascii_case(&pending.wallet_id))
-            .ok_or("wallet does not exist")?;
-        super::send_execution::send_chain_for(&state, &wallet.id, chain)?;
-        let holding = wallet
-            .holdings
-            .iter()
-            .find(|h| h.is_native() && h.chain() == Some(chain))
-            .ok_or("wallet has no native holding on transaction network")?;
-        let destination = if cancel {
-            wallet
-                .address_on(chain)
-                .ok_or("wallet has no address on transaction network")?
-                .into()
-        } else {
-            pending.to_address
-        };
-        // Stored amount precision is retained; eight-decimal formatting lost value.
-        let amount = if cancel {
-            "0".into()
-        } else {
-            pending.amount.to_string()
-        };
-        let nonce = i64::try_from(
-            self.fetch_evm_tx_nonce(pending.chain_id, pending.transaction_hash)
-                .await?,
-        )
-        .map_err(|_| "nonce exceeds supported range")?;
-        let preview = self
-            .preview_owned_evm_send(
-                wallet.id.clone(),
-                holding.deployment_id(),
-                amount.clone(),
-                destination.clone(),
-                Some(nonce),
-                None,
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let pending = this
+                .replaceable_sends()
+                .await?
+                .into_iter()
+                .find(|p| p.transaction_id.eq_ignore_ascii_case(&transaction_id))
+                .ok_or("transaction is no longer replaceable")?;
+            if !cancel && !pending.can_speed_up {
+                return Err(
+                    "This token transfer cannot be reconstructed; cancel it instead".into(),
+                );
+            }
+            let state = this.app_state().await;
+            let chain =
+                Chain::from_str_id(&pending.chain_id).ok_or("invalid transaction network")?;
+            let wallet = state
+                .wallets
+                .iter()
+                .find(|w| w.id.eq_ignore_ascii_case(&pending.wallet_id))
+                .ok_or("wallet does not exist")?;
+            super::send_execution::send_chain_for(&state, &wallet.id, chain)?;
+            let holding = wallet
+                .holdings
+                .iter()
+                .find(|h| h.is_native() && h.chain() == Some(chain))
+                .ok_or("wallet has no native holding on transaction network")?;
+            let destination = if cancel {
+                wallet
+                    .address_on(chain)
+                    .ok_or("wallet has no address on transaction network")?
+                    .into()
+            } else {
+                pending.to_address
+            };
+            // Stored amount precision is retained; eight-decimal formatting lost value.
+            let amount = if cancel {
+                "0".into()
+            } else {
+                pending.amount.to_string()
+            };
+            let nonce = i64::try_from(
+                this.fetch_evm_tx_nonce(pending.chain_id, pending.transaction_hash)
+                    .await?,
             )
-            .await?
-            .ok_or("Unable to estimate replacement fees")?;
-        let bump = crate::send::flow::evm_replacement_fee_bump(
-            Some(preview.maxFeePerGasGwei.to_string()),
-            Some(preview.maxPriorityFeePerGasGwei.to_string()),
-            preview.maxFeePerGasGwei,
-            preview.maxPriorityFeePerGasGwei,
-        );
-        Ok(OwnedReplacementDraft {
-            wallet_id: wallet.id.clone(),
-            holding_key: holding.deployment_id(),
-            destination,
-            amount,
-            nonce,
-            max_fee_gwei: bump.max_fee_gwei,
-            priority_fee_gwei: bump.priority_fee_gwei,
+            .map_err(|_| "nonce exceeds supported range")?;
+            let preview = this
+                .preview_owned_evm_send(
+                    wallet.id.clone(),
+                    holding.deployment_id(),
+                    amount.clone(),
+                    destination.clone(),
+                    Some(nonce),
+                    None,
+                )
+                .await?
+                .ok_or("Unable to estimate replacement fees")?;
+            let bump = crate::send::flow::evm_replacement_fee_bump(
+                Some(preview.maxFeePerGasGwei.to_string()),
+                Some(preview.maxPriorityFeePerGasGwei.to_string()),
+                preview.maxFeePerGasGwei,
+                preview.maxPriorityFeePerGasGwei,
+            );
+            Ok(OwnedReplacementDraft {
+                wallet_id: wallet.id.clone(),
+                holding_key: holding.deployment_id(),
+                destination,
+                amount,
+                nonce,
+                max_fee_gwei: bump.max_fee_gwei,
+                priority_fee_gwei: bump.priority_fee_gwei,
+            })
         })
+        .await
     }
 }
 
@@ -648,6 +697,21 @@ impl WalletService {
             }
         }
         Ok(owned)
+    }
+}
+
+#[cfg(test)]
+mod shortcut_amount_tests {
+    use super::shortcut_amount;
+
+    #[test]
+    fn shares_are_cut_to_display_precision_and_the_maximum_is_exact() {
+        let exact = "0.012490233065563998".to_string();
+        assert_eq!(shortcut_amount(exact.clone(), 25, 18), "0.0124902");
+        assert_eq!(shortcut_amount(exact.clone(), 100, 18), exact);
+        // Dust has no display form; it stays exact rather than become zero.
+        let dust = "0.000000000000000001".to_string();
+        assert_eq!(shortcut_amount(dust.clone(), 25, 18), dust);
     }
 }
 

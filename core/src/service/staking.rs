@@ -8,11 +8,16 @@ impl WalletService {
         &self,
         chain_id: String,
     ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
-        let endpoints = self.staking_endpoints(chain_id.clone()).await?;
-        StakingService::new(vec![endpoints])
-            .fetch_validators(chain_id)
-            .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let endpoints = this.staking_endpoints(chain_id.clone()).await?;
+            StakingService::new(vec![endpoints])
+                .fetch_validators(chain_id)
+                .await
+                .map_err(|e| SpectraBridgeError::from(e.to_string()))
+        })
+        .await
     }
 }
 impl WalletService {

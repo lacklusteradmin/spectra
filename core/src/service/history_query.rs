@@ -126,70 +126,90 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<Option<TransactionEndpoints>, SpectraBridgeError> {
-        let Some(record) = self.transaction(transaction_id).await? else {
-            return Ok(None);
-        };
-        let owned = match &record.wallet_id {
-            Some(wallet_id) => self.known_wallet_addresses(wallet_id.clone()).await?,
-            None => Vec::new(),
-        };
-        Ok(Some(transaction_endpoints_for(&record, &owned)))
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let Some(record) = this.transaction(transaction_id).await? else {
+                return Ok(None);
+            };
+            let owned = match &record.wallet_id {
+                Some(wallet_id) => this.known_wallet_addresses(wallet_id.clone()).await?,
+                None => Vec::new(),
+            };
+            Ok(Some(transaction_endpoints_for(&record, &owned)))
+        })
+        .await
     }
 
     pub async fn history_page(
         &self,
         query: HistoryQuery,
     ) -> Result<HistoryPage, SpectraBridgeError> {
-        if query.limit == 0 || query.limit > 200 {
-            return Err("history query limit must be 1...200".into());
-        }
-        let database = self.bound_database().await?;
-        tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            if query.limit == 0 || query.limit > 200 {
+                return Err("history query limit must be 1...200".into());
+            }
+            let database = this.bound_database().await?;
+            tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))
+                .await
+                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+                .map(|mut page| {
+                    page.records = page
+                        .records
+                        .into_iter()
+                        .map(CorePersistedTransactionRecord::with_actions)
+                        .collect();
+                    page
+                })
+                .map_err(Into::into)
+        })
+        .await
+    }
+    pub async fn transaction_snapshot(&self) -> Result<TransactionSnapshot, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let database = this.bound_database().await?;
+            let more = this.wallets_with_more_history_now().await;
+            let sequence = this.projection_sequence.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::history_snapshot(&database, &sequence)
+            })
             .await
             .map_err(|e| SpectraBridgeError::from(e.to_string()))?
-            .map(|mut page| {
-                page.records = page
-                    .records
+            .map(|mut snapshot| {
+                snapshot.recent_and_pending = snapshot
+                    .recent_and_pending
                     .into_iter()
                     .map(CorePersistedTransactionRecord::with_actions)
                     .collect();
-                page
+                snapshot
             })
-            .map_err(Into::into)
-    }
-    pub async fn transaction_snapshot(&self) -> Result<TransactionSnapshot, SpectraBridgeError> {
-        let database = self.bound_database().await?;
-        let more = self.wallets_with_more_history_now().await;
-        let sequence = self.projection_sequence.clone();
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_snapshot(&database, &sequence)
+            .map_err(SpectraBridgeError::from)
+            .map(|mut snapshot| {
+                snapshot.wallets_with_more_history = more;
+                snapshot
+            })
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))?
-        .map(|mut snapshot| {
-            snapshot.recent_and_pending = snapshot
-                .recent_and_pending
-                .into_iter()
-                .map(CorePersistedTransactionRecord::with_actions)
-                .collect();
-            snapshot
-        })
-        .map_err(SpectraBridgeError::from)
-        .map(|mut snapshot| {
-            snapshot.wallets_with_more_history = more;
-            snapshot
-        })
     }
     pub async fn transaction(
         &self,
         id: String,
     ) -> Result<Option<CorePersistedTransactionRecord>, SpectraBridgeError> {
-        let database = self.bound_database().await?;
-        tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
-            .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))?
-            .map(|record| record.map(CorePersistedTransactionRecord::with_actions))
-            .map_err(Into::into)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let database = this.bound_database().await?;
+            tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
+                .await
+                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+                .map(|record| record.map(CorePersistedTransactionRecord::with_actions))
+                .map_err(Into::into)
+        })
+        .await
     }
 }
 

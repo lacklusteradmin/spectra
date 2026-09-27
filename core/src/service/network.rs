@@ -33,53 +33,59 @@ impl WalletService {
         &self,
         chain_id: String,
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
-        let mut records: Vec<_> = self
-            .endpoint_directory()
-            .await?
-            .into_iter()
-            .filter(|entry| entry.record.chain_id == chain_id)
-            .map(|entry| entry.record)
-            .collect();
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = chain_for_id(&chain_id)?;
+            let mut records: Vec<_> = this
+                .endpoint_directory()
+                .await?
+                .into_iter()
+                .filter(|entry| entry.record.chain_id == chain_id)
+                .map(|entry| entry.record)
+                .collect();
 
-        if let Some(api) = chain.endpoint_api(EndpointSlot::Primary) {
-            for endpoint in self.configured_endpoint_urls(&chain_id).await.iter() {
-                if records.iter().any(|r| &r.endpoint == endpoint) {
-                    continue;
+            if let Some(api) = chain.endpoint_api(EndpointSlot::Primary) {
+                for endpoint in this.configured_endpoint_urls(&chain_id).await.iter() {
+                    if records.iter().any(|r| &r.endpoint == endpoint) {
+                        continue;
+                    }
+                    records.push(crate::AppCoreEndpointRecord {
+                        id: format!("configured:{endpoint}"),
+                        api: Some(api),
+                        chain_id: chain_id.clone(),
+                        endpoint: endpoint.clone(),
+                        capabilities: this
+                            .endpoints
+                            .read()
+                            .await
+                            .capabilities
+                            .get(&chain_id)
+                            .cloned()
+                            .unwrap_or_default(),
+                        probe_url: None,
+                        explorer_label: None,
+                        tx_suffix: String::new(),
+                    });
                 }
-                records.push(crate::AppCoreEndpointRecord {
-                    id: format!("configured:{endpoint}"),
-                    api: Some(api),
+            }
+            let mut out = Vec::with_capacity(records.len());
+            for record in records {
+                let (checked, reachable, detail) =
+                    super::endpoint_health::probe(chain, &record).await;
+                out.push(EndpointProbe {
+                    api: record.api,
                     chain_id: chain_id.clone(),
-                    endpoint: endpoint.clone(),
-                    capabilities: self
-                        .endpoints
-                        .read()
-                        .await
-                        .capabilities
-                        .get(&chain_id)
-                        .cloned()
-                        .unwrap_or_default(),
-                    probe_url: None,
-                    explorer_label: None,
-                    tx_suffix: String::new(),
+                    endpoint: record.endpoint,
+                    capabilities: record.capabilities.clone(),
+                    checked,
+                    reachable,
+                    detail,
                 });
             }
-        }
-        let mut out = Vec::with_capacity(records.len());
-        for record in records {
-            let (checked, reachable, detail) = super::endpoint_health::probe(chain, &record).await;
-            out.push(EndpointProbe {
-                api: record.api,
-                chain_id: chain_id.clone(),
-                endpoint: record.endpoint,
-                capabilities: record.capabilities.clone(),
-                checked,
-                reachable,
-                detail,
-            });
-        }
-        Ok(out)
+            Ok(out)
+        })
+        .await
     }
 }
 

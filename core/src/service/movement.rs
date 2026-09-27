@@ -70,19 +70,25 @@ impl WalletService {
         &self,
         app_is_active: bool,
     ) -> Result<Option<LargeMovementEvaluation>, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let database = service.bound_database().await?;
-            let before = service.wallet_state.read().await.clone();
-            let mut state = before.clone();
-            let result = evaluate(&mut state, app_is_active);
-            if state.movement_baseline != before.movement_baseline {
-                let changes = crate::wallet_db::AppStateChanges::between(Some(&before), &state)?;
-                tokio::task::spawn_blocking(move || changes.save(&database))
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
-                service.publish_state(state).await;
-            }
-            Ok(result)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.write_persisted(move |service| async move {
+                let database = service.bound_database().await?;
+                let before = service.wallet_state.read().await.clone();
+                let mut state = before.clone();
+                let result = evaluate(&mut state, app_is_active);
+                if state.movement_baseline != before.movement_baseline {
+                    let changes =
+                        crate::wallet_db::AppStateChanges::between(Some(&before), &state)?;
+                    tokio::task::spawn_blocking(move || changes.save(&database))
+                        .await
+                        .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
+                    service.publish_state(state).await;
+                }
+                Ok(result)
+            })
+            .await
         })
         .await
     }

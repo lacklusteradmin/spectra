@@ -103,6 +103,7 @@ pub mod tor;
 pub mod validation;
 pub mod wallet_db;
 pub mod wiki;
+mod worker;
 
 #[cfg(test)]
 mod app_boundary_tests;

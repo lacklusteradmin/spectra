@@ -13,8 +13,13 @@ impl WalletService {
         chain_id: String,
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
-        fetch_native_balance_summary(&address, chain, self).await
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = chain_for_id(&chain_id)?;
+            fetch_native_balance_summary(&address, chain, this).await
+        })
+        .await
     }
 }
 impl WalletService {

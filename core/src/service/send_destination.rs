@@ -42,76 +42,76 @@ impl WalletService {
         holding_key: String,
         destination_input: String,
     ) -> Result<SendDestinationRisk, SpectraBridgeError> {
-        let (chain, token) = {
-            let state = self.wallet_state.read().await;
-            let holding = state
-                .wallets
-                .iter()
-                .find(|w| w.id == wallet_id)
-                .and_then(|wallet| {
-                    wallet
-                        .holdings
-                        .iter()
-                        .find(|h| h.deployment_id() == holding_key)
-                })
-                .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                    message: format!("no holding {holding_key} on wallet {wallet_id}"),
-                })?;
-            let (family, token) = destination_probe_asset(holding, &state.token_preferences)?;
-            let chain = super::send_execution::send_chain_for(&state, &wallet_id, family)?;
-            (chain, token)
-        };
-        let chain_id = chain.str_id().to_string();
-        let address = self
-            .resolve_send_destination(chain_id.clone(), destination_input)
-            .await?
-            .address;
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let (chain, token) = this
+                .destination_probe_target(&wallet_id, &holding_key)
+                .await?;
+            let chain_id = chain.str_id().to_string();
+            let address = this
+                .resolve_send_destination(chain_id.clone(), destination_input)
+                .await?
+                .address;
 
-        let balance_read = async {
-            let raw = match token {
-                Some(descriptor) => self
-                    .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor])
-                    .await?
-                    .first()
-                    .ok_or_else(|| SpectraBridgeError::from("token balance unavailable"))?
-                    .balance_raw
-                    .clone(),
-                None => {
-                    self.fetch_native_balance_summary(chain_id.clone(), address.clone())
+            let balance_read = async {
+                let raw = match token {
+                    Some(descriptor) => this
+                        .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor])
                         .await?
-                        .smallest_unit
+                        .first()
+                        .ok_or_else(|| SpectraBridgeError::from("token balance unavailable"))?
+                        .balance_raw
+                        .clone(),
+                    None => {
+                        this.fetch_native_balance_summary(chain_id.clone(), address.clone())
+                            .await?
+                            .smallest_unit
+                    }
+                };
+                if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(SpectraBridgeError::from("invalid destination balance"));
                 }
+                Ok::<_, SpectraBridgeError>(raw.bytes().all(|b| b == b'0'))
             };
-            if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
-                return Err(SpectraBridgeError::from("invalid destination balance"));
-            }
-            Ok::<_, SpectraBridgeError>(raw.bytes().all(|b| b == b'0'))
-        };
-        let history_read = async {
-            // A positive nonce proves activity without an explorer lookup. Zero
-            // alone cannot rule out incoming transfers; ask history in that case.
-            if chain.is_evm() {
-                let client = EvmClient::new(
-                    self.endpoints_for(chain.str_id(), &["verification"]).await,
-                    chain.evm_chain_id()?,
-                );
-                if client.fetch_nonce(&address).await? > 0 {
-                    return Ok(true);
+            let history_read = async {
+                // A positive nonce proves activity without an explorer lookup. Zero
+                // alone cannot rule out incoming transfers; ask history in that case.
+                if chain.is_evm() {
+                    let client = EvmClient::new(
+                        this.endpoints_for(chain.str_id(), &["verification"]).await,
+                        chain.evm_chain_id()?,
+                    );
+                    if client.fetch_nonce(&address).await? > 0 {
+                        return Ok(true);
+                    }
                 }
-            }
-            Ok::<_, SpectraBridgeError>(
-                self.fetch_history_summary(chain_id.clone(), address.clone())
-                    .await?
-                    .entry_count
-                    > 0,
-            )
-        };
-        let (balance_is_zero, has_history) = tokio::try_join!(balance_read, history_read)?;
+                Ok::<_, SpectraBridgeError>(
+                    this.fetch_history_summary(chain_id.clone(), address.clone())
+                        .await?
+                        .entry_count
+                        > 0,
+                )
+            };
+            let (balance, history) = tokio::join!(balance_read, history_read);
+            let balance_is_zero = balance?;
+            // A balance is itself history: something was sent here. Only an
+            // empty address needs the history read to tell used from unused,
+            // so its failure is fatal only then. Otherwise a chain without an
+            // explorer — every testnet — could never be checked at all, even
+            // for an address its RPC shows holding funds.
+            let has_history = match history {
+                Ok(has_history) => has_history,
+                Err(_) if !balance_is_zero => true,
+                Err(error) => return Err(error),
+            };
 
-        Ok(SendDestinationRisk::from_probe(
-            balance_is_zero,
-            has_history,
-        ))
+            Ok(SendDestinationRisk::from_probe(
+                balance_is_zero,
+                has_history,
+            ))
+        })
+        .await
     }
 
     /// Always resolve afresh; no service-lifetime cache for payment destinations.
@@ -120,8 +120,13 @@ impl WalletService {
         chain_id: String,
         input: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
-        resolve_destination(chain_for_id(&chain_id)?, input, |name| {
-            self.resolve_ens_name(name)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            resolve_destination(chain_for_id(&chain_id)?, input, |name| {
+                this.resolve_ens_name(name)
+            })
+            .await
         })
         .await
     }
@@ -133,9 +138,41 @@ impl WalletService {
         input: String,
         expected_address: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
-        let resolved = self.resolve_send_destination(chain_id, input).await?;
-        verify_reviewed_destination(chain, resolved, &expected_address)
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let chain = chain_for_id(&chain_id)?;
+            let resolved = this.resolve_send_destination(chain_id, input).await?;
+            verify_reviewed_destination(chain, resolved, &expected_address)
+        })
+        .await
+    }
+}
+
+impl WalletService {
+    /// The network and asset a destination check for this holding asks about.
+    pub(super) async fn destination_probe_target(
+        &self,
+        wallet_id: &str,
+        holding_key: &str,
+    ) -> Result<(Chain, Option<TokenDescriptor>), SpectraBridgeError> {
+        let state = self.wallet_state.read().await;
+        let holding = state
+            .wallets
+            .iter()
+            .find(|w| w.id == wallet_id)
+            .and_then(|wallet| {
+                wallet
+                    .holdings
+                    .iter()
+                    .find(|h| h.deployment_id() == holding_key)
+            })
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: format!("no holding {holding_key} on wallet {wallet_id}"),
+            })?;
+        let (family, token) = destination_probe_asset(holding, &state.token_preferences)?;
+        let chain = super::send_execution::send_chain_for(&state, wallet_id, family)?;
+        Ok((chain, token))
     }
 }
 

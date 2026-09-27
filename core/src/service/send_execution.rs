@@ -59,11 +59,16 @@ impl WalletService {
         &self,
         request: crate::send::SendExecutionRequest,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
-        let service = self.clone();
-        // The submission and its record finish even if the UI task is cancelled.
-        tokio::spawn(async move { service.execute_send_owned(request, None).await })
-            .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let service = this.clone();
+            // The submission and its record finish even if the UI task is cancelled.
+            tokio::spawn(async move { service.execute_send_owned(request, None).await })
+                .await
+                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+        })
+        .await
     }
 }
 impl WalletService {

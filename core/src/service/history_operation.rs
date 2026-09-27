@@ -27,109 +27,117 @@ impl WalletService {
         limit: Option<u32>,
         interval_secs: f64,
     ) -> Result<Vec<ChainHistoryRefresh>, SpectraBridgeError> {
-        self.bound_database().await?;
-        if !interval_secs.is_finite() || interval_secs < 0.0 {
-            return Err(SpectraBridgeError::InvalidInput {
-                message: "history interval must be finite and nonnegative".into(),
-            });
-        }
-        let state = self.app_state().await;
-        let chains = match &scope {
-            HistoryRefreshScope::Chains { chain_ids } => Some(
-                chain_ids
-                    .iter()
-                    .map(|id| {
-                        Chain::from_str_id(id).ok_or_else(|| SpectraBridgeError::InvalidInput {
-                            message: format!("unknown chain {id}"),
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
-            _ => None,
-        };
-        let mut groups = std::collections::BTreeMap::<String, Vec<HistoryRefreshKey>>::new();
-        for wallet in &state.wallets {
-            let Some(chain) = wallet.family() else {
-                continue;
-            };
-            let selected = match &scope {
-                HistoryRefreshScope::All => true,
-                HistoryRefreshScope::Wallets { wallet_ids } => wallet_ids
-                    .iter()
-                    .any(|id| id.eq_ignore_ascii_case(&wallet.id)),
-                HistoryRefreshScope::Chains { .. } => chains
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .any(|c| *c == chain || Some(*c) == wallet.chain()),
-            };
-            if selected {
-                groups
-                    .entry(chain.str_id().into())
-                    .or_default()
-                    .push(HistoryRefreshKey::new(&wallet.id, &wallet.chain_id));
-            }
-        }
-        drop(state);
-        let mut results = Vec::new();
-        for (chain_id, keys) in groups {
-            let keys = if load_more {
-                keys
-            } else {
-                self.history_refresh_plans(keys, interval_secs).await
-            };
-            let mut ids: Vec<_> = keys.iter().map(|key| key.wallet_id.clone()).collect();
-            if load_more {
-                ids.retain(|id| {
-                    !self
-                        .history_cursor(chain_id.clone(), id.clone())
-                        .is_exhausted
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.bound_database().await?;
+            if !interval_secs.is_finite() || interval_secs < 0.0 {
+                return Err(SpectraBridgeError::InvalidInput {
+                    message: "history interval must be finite and nonnegative".into(),
                 });
             }
-            if ids.is_empty() {
-                continue;
-            }
-            let chain = Chain::from_str_id(&chain_id).unwrap();
-            let result = match chain.history_refresh_kind() {
-                crate::registry::HistoryRefreshKind::Bitcoin => {
-                    self.refresh_bitcoin_history(ids, load_more, limit).await
-                }
-                crate::registry::HistoryRefreshKind::Evm => {
-                    self.refresh_evm_chain_history(chain_id.clone(), ids, load_more, limit)
-                        .await
-                }
-                crate::registry::HistoryRefreshKind::Utxo => {
-                    self.refresh_utxo_chain_history(chain_id.clone(), ids, load_more)
-                        .await
-                }
-                crate::registry::HistoryRefreshKind::Normalized => {
-                    self.refresh_chain_history(chain_id.clone(), ids).await
-                }
+            let state = this.app_state().await;
+            let chains = match &scope {
+                HistoryRefreshScope::Chains { chain_ids } => Some(
+                    chain_ids
+                        .iter()
+                        .map(|id| {
+                            Chain::from_str_id(id).ok_or_else(|| SpectraBridgeError::InvalidInput {
+                                message: format!("unknown chain {id}"),
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                ),
+                _ => None,
             };
-            self.record_history_run(chain, &result).await;
-            match result {
-                Ok(outcome) => {
-                    if !load_more && outcome.wallets_failed == 0 && outcome.wallets_refreshed > 0 {
-                        // Only a fully successful batch consumes its clocks. Partial
-                        // failures remain immediately retryable.
-                        for key in keys {
-                            self.record_history_refresh(key).await;
-                        }
-                    }
-                    results.push(ChainHistoryRefresh {
-                        chain_id,
-                        outcome: Some(outcome),
-                        error: None,
+            let mut groups = std::collections::BTreeMap::<String, Vec<HistoryRefreshKey>>::new();
+            for wallet in &state.wallets {
+                let Some(chain) = wallet.family() else {
+                    continue;
+                };
+                let selected = match &scope {
+                    HistoryRefreshScope::All => true,
+                    HistoryRefreshScope::Wallets { wallet_ids } => wallet_ids
+                        .iter()
+                        .any(|id| id.eq_ignore_ascii_case(&wallet.id)),
+                    HistoryRefreshScope::Chains { .. } => chains
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .any(|c| *c == chain || Some(*c) == wallet.chain()),
+                };
+                if selected {
+                    groups
+                        .entry(chain.str_id().into())
+                        .or_default()
+                        .push(HistoryRefreshKey::new(&wallet.id, &wallet.chain_id));
+                }
+            }
+            drop(state);
+            let mut results = Vec::new();
+            for (chain_id, keys) in groups {
+                let keys = if load_more {
+                    keys
+                } else {
+                    this.history_refresh_plans(keys, interval_secs).await
+                };
+                let mut ids: Vec<_> = keys.iter().map(|key| key.wallet_id.clone()).collect();
+                if load_more {
+                    ids.retain(|id| {
+                        !this
+                            .history_cursor(chain_id.clone(), id.clone())
+                            .is_exhausted
                     });
                 }
-                Err(error) => results.push(ChainHistoryRefresh {
-                    chain_id,
-                    outcome: None,
-                    error: Some(error.to_string()),
-                }),
+                if ids.is_empty() {
+                    continue;
+                }
+                let chain = Chain::from_str_id(&chain_id).unwrap();
+                let result = match chain.history_refresh_kind() {
+                    crate::registry::HistoryRefreshKind::Bitcoin => {
+                        this.refresh_bitcoin_history(ids, load_more, limit).await
+                    }
+                    crate::registry::HistoryRefreshKind::Evm => {
+                        this.refresh_evm_chain_history(chain_id.clone(), ids, load_more, limit)
+                            .await
+                    }
+                    crate::registry::HistoryRefreshKind::Utxo => {
+                        this.refresh_utxo_chain_history(chain_id.clone(), ids, load_more)
+                            .await
+                    }
+                    crate::registry::HistoryRefreshKind::Normalized => {
+                        this.refresh_chain_history(chain_id.clone(), ids).await
+                    }
+                };
+                this.record_history_run(chain, &result).await;
+                match result {
+                    Ok(outcome) => {
+                        if !load_more
+                            && outcome.wallets_failed == 0
+                            && outcome.wallets_refreshed > 0
+                        {
+                            // Only a fully successful batch consumes its clocks. Partial
+                            // failures remain immediately retryable.
+                            for key in keys {
+                                this.record_history_refresh(key).await;
+                            }
+                        }
+                        results.push(ChainHistoryRefresh {
+                            chain_id,
+                            outcome: Some(outcome),
+                            error: None,
+                        });
+                    }
+                    Err(error) => results.push(ChainHistoryRefresh {
+                        chain_id,
+                        outcome: None,
+                        error: Some(error.to_string()),
+                    }),
+                }
             }
-        }
-        Ok(results)
+            Ok(results)
+        })
+        .await
     }
 }
 
