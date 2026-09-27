@@ -22,7 +22,7 @@ when tests finish. The environment must allow binding local ports.
 | `cli-wallets.py` | Wallet imports, mnemonic and passphrase handling, invalid derivation inputs, automatic names, receive addresses and password validation. |
 | `cli-portfolio.py` | Balance refresh and preservation after failed reads; network/token identity; valuation with missing quotes or exchange rates; persisted portfolio inclusion and its effect on totals; price and portfolio movement alerts. |
 | `cli-history.py` | Complete Bitcoin history pagination and duplicate-free repeated refreshes; stored history paging, search, sorting, deduplication and source labels; corrupt-record refusal; individual transaction status rechecks. |
-| `cli-send.py` | Send previews, self-send confirmation, fee refusal, cancellation and replacement drafts, and network mismatch refusal; wrong passwords never broadcast, while a correct password broadcasts once and saves the matching transaction. |
+| `cli-send.py` | Send previews, self-send confirmation, fee refusal, cancellation and replacement drafts, who holds each transfer end and a not-yet-sent address (a wallet or a contact), and network mismatch refusal; wrong passwords never broadcast, while a correct password broadcasts once and saves the matching transaction. |
 | `cli-diagnostics.py` | Offline refresh outcomes, background maintenance policy, failure/recovery logs, diagnostics against the selected network, wrong-chain node refusal, and validator queries through the configured node. |
 | `cli-transport.py` | A stored Tor or custom-proxy policy routes a fresh CLI process through the selected SOCKS proxy. |
 | `cli-endpoints.py` | Typed endpoint persistence, source filters and API selection. |

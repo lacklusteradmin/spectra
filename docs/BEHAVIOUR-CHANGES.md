@@ -16,6 +16,160 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-27 — The send review names the recipient and shows its address whole
+
+- **Before:** the pre-build review printed the typed amount as entered
+  (`0.001`, never localized) and the recipient as one monospaced run that
+  wrapped wherever it ran out of room. The post-build review printed
+  `artifact.amount artifact.asset` — for a token send, the amount followed by
+  the contract address — and the sender and recipient as bare monospaced
+  runs. Neither said whose address it was.
+- **After:** both reviews show the amount with the locale's decimal separator
+  and the asset's symbol (a token's from the wallet's holding of that
+  contract, falling back to what core stored). Each address — the recipient
+  on the pre-build review, sender and recipient after the build — is shown in
+  full, in groups of four with the first and last groups emphasized, wrapping
+  only between groups, with a Copy context menu; beside it is core's
+  `addressHolder` answer: the wallet's own name, another of the user's
+  wallets on the network, or a saved contact.
+- **Why:** the review is the last screen before signing; it has to show every
+  character of the destination in a form a person can check, and "Alice" or
+  "Savings" says more than forty hex digits. A contract address is not a
+  unit.
+- **CLI check:** `spectra address holder --wallet Source <address>` prints
+  the same holder; `scripts/cli-send.py` asserts the wallet, another wallet
+  (in a different case), a contact and an unknown address.
+- **Verification:** see "Transfer ends name who holds them" below.
+
+## 2026-09-27 — Transfer ends name who holds them
+
+- **Before:** `transactionEndpoints` gave each end an address and `isMine`,
+  true only for the transacting wallet. An address of another of the user's
+  wallets, or of a saved contact, looked like a stranger's.
+- **After:** each `TransactionEndpoint` carries `holder`, an
+  `EndpointHolder` — `wallet { name }` or `contact { name }` — or none. Core
+  looks it up in order: the transacting wallet (by its known addresses), the
+  user's other wallets on the record's network (their addresses and keypool
+  rows), then address-book entries for that network, all compared in the
+  chain's normal form. A wallet on another network is not consulted even
+  when it shares the address. The new `addressHolder(walletId, chainId,
+  address)` asks the same question for an address not yet sent to.
+  `isMine` keeps its meaning. `spectra txs --endpoints` prints the holder,
+  and `spectra address holder` is new. The transaction detail shows the
+  holder beside each address, and "Mine" only when there is no holder.
+- **Why:** who is on the other end is a decision about the user's own data,
+  so it is core's, not a Swift join of the address book against a history
+  row.
+- **CLI check:** `python3 scripts/cli-send.py target/debug/spectra
+  SendTests.test_review_and_replacement` — `txs --endpoints` names another
+  wallet (`Other`) and a contact (`Alice`), and `address holder` answers for
+  four addresses. Core unit tests in `history_query::endpoint_tests` cover
+  precedence, normal-form matching and the JSON shape.
+- **Verification:** `make verify` (see the final report of this change).
+
+## 2026-09-27 — History rows use the shared status badge
+
+- **Before:** a history row drew its status as a capsule filled with the
+  status colour at 85% and primary text on it — green on black in light mode
+  — while the transaction detail and the send card used
+  `TransactionStatusBadge` (tinted fill, coloured text).
+- **After:** the history row uses `TransactionStatusBadge` too.
+- **Why:** one status, one look; the filled capsule had the weakest contrast
+  of the three.
+- **CLI check:** none applies; presentation only.
+- **Verification:** `make ios`; checked in the simulator.
+
+## 2026-09-27 — Transaction detail shows each fact once
+
+- **Before:** the transaction detail screen stacked a header, a timeline, an
+  Overview card of up to 22 rows, the mempool actions, an address card, a
+  hash card and a raw-transaction card. Status appeared three times, the
+  amount, time, block and confirmations twice each, and the source address
+  repeated the From address. Derivation paths, gas and payload format sat in
+  the same card as the network and fee, in the same style. The Speed Up /
+  Cancel actions came after the Overview card. Values were secondary text;
+  the status chip had a third style of its own; "Mine" was green. Long
+  hashes and the raw payload wrapped with system hyphens that read as part
+  of the value (`…183e2f-` / `b3666e88c52-`).
+- **After:** hero (signed, coloured amount and the shared
+  `TransactionStatusBadge`) → Speed Up / Cancel when core says the send is
+  replaceable → timeline, the only place status, time, block and
+  confirmations appear → addresses, one line each, cut in the middle with
+  their ends emphasized, tap to copy → Details (network, fee, hash, explorer
+  link) → Technical Details, folded by default, holding gas, fee rate,
+  change output, payload format, paths, a source address only when it
+  differs from From, the change address and the raw transaction. Key/value
+  rows follow docs/IOS-UI.md (accent symbol, secondary label, primary value)
+  and put the value under the label when both do not fit on one line.
+  Identifiers never wrap; the raw payload wraps at any character without a
+  hyphen, and copying goes through the original string. "Mine" is a neutral
+  inset pill. The empty Addresses card is no longer drawn.
+- **Why:** the screen answered "what happened" three times and "what is
+  the fee" once, below twenty rows of internals; a hyphen inserted into a
+  hash is a wrong value on screen.
+- **CLI check:** none applies; the rows read the same `TransactionRecord`
+  and `transactionEndpoints` core already returns. Checked by hand in the
+  simulator on a confirmed Sepolia send, including that copying the hash
+  and the raw transaction yields the exact stored strings.
+- **Verification:** `make ios` Debug simulator build, `make check-ui`,
+  `scripts/unused-strings.sh` ("Confirmations" removed, "Technical Details"
+  added in all three locales).
+
+## 2026-09-27 — The app is covered whenever it is not active
+
+- **Before:** only the app lock hid the app, and only when both Face ID and
+  Auto Lock were on; it blurred the tab view by 8pt under the unlock card.
+  With either setting off, the app switcher snapshot showed the portfolio
+  total, balances and addresses in full.
+- **After:** whenever the scene is not active (app switcher, Control Centre,
+  Notification Centre, a system prompt, background) an opaque cover — the
+  backdrop and the Spectra logo — sits over everything, whatever the lock
+  settings. It lifts as soon as the scene is active again. The app lock is
+  unchanged and independent of it.
+- **Why:** hiding balances from the snapshot is privacy every user needs, not
+  a side effect of opting into Face ID; the lock's blur was also never meant
+  to be the snapshot guard.
+- **CLI check:** none applies; this is Swift view state driven by
+  `scenePhase`. Check by opening the app switcher in the simulator with Face
+  ID off.
+- **Verification:** `make ios` Debug simulator build.
+
+## 2026-09-27 — History keeps its loaded rows across a reload
+
+- **Before:** History reloaded its first 20 rows whenever the transaction or
+  wallet revision changed, and after Load more fetched older on-chain history.
+  A reader who had paged down to row 60 was cut back to 20 by any refresh, and
+  the on-chain rows Load more had just fetched were beyond the cut.
+- **After:** a reload re-reads at least as many rows as were on screen, and
+  after an on-chain fetch one page more, walking core's cursor in queries of
+  at most 200 rows (core's limit). Changing the wallet, type, sort or search
+  still starts again from 20. The on-chain fetch bumps the transaction
+  revision, so the view's own reload races the Load more button's; the extra
+  page is view state both read, not an argument to one of them, so whichever
+  lands last keeps it.
+- **Why:** a refresh should update the list, not discard the reader's place in
+  it; Load more that ends with fewer rows than it started with is broken.
+- **CLI check:** none applies; this is Swift paging state over core's
+  unchanged `historyPage` query.
+- **Verification:** `make ios` Debug simulator build succeeded. Not exercised
+  by hand: the simulator wallet has no history to page through.
+
+## 2026-09-27 — Asset detail shows its value once
+
+- **Before:** the asset detail screen showed the fiat total twice: under the
+  name in the hero card, and again as "Total Value" in a stats card below it,
+  whose only other row was "Total Amount".
+- **After:** the stats card is gone. The hero card shows the fiat total with
+  the held amount (for example `0.5 BTC`) beneath it; the chain breakdown
+  follows directly. The "Total Amount" and "Total Value" strings are removed.
+- **Why:** the second row repeated the hero card, and a card left holding one
+  row reads as a leftover rather than a section.
+- **CLI check:** none applies; this is Swift presentation only.
+  `scripts/unused-strings.sh` reports 0.
+- **Verification:** `make ios` Debug simulator build succeeded;
+  `scripts/check-design-tokens.sh` ok. Rust, CLI and iOS test suites were not
+  run because no logic changed.
+
 ## 2026-09-26 — Exported async methods run on core's own runtime
 
 - **Before:** UniFFI polled every exported async future on the calling

@@ -79,7 +79,9 @@ mod history_bitcoin;
 mod history_cursor;
 pub(crate) mod history_derived;
 mod history_query;
-pub use history_query::{HistoryPage, HistoryQuery, HistoryQueryFilter, TransactionSnapshot};
+pub use history_query::{
+    EndpointHolder, HistoryPage, HistoryQuery, HistoryQueryFilter, TransactionSnapshot,
+};
 mod history_refresh;
 pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
 mod history_operation;

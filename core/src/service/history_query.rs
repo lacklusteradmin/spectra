@@ -55,12 +55,32 @@ pub struct TransactionSnapshot {
     pub wallets_with_more_history: Vec<String>,
 }
 
-/// One end of a stored transfer, and whether it is the wallet's own address.
+/// One end of a stored transfer, whether it is the transacting wallet's own
+/// address, and who holds it when Spectra knows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionEndpoint {
     pub address: String,
+    /// The transacting wallet's own address. Another wallet of the user's is
+    /// not "mine" here; it is named by `holder`.
     pub is_mine: bool,
+    pub holder: Option<EndpointHolder>,
+}
+
+/// Who holds an address, as far as Spectra knows: one of the user's wallets
+/// on the same network, or a saved contact for that network.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum EndpointHolder {
+    Wallet { name: String },
+    Contact { name: String },
+}
+
+/// A holder and the addresses that name it, as `holder_of` looks them up.
+/// Earlier entries win.
+pub(crate) struct KnownHolder {
+    pub holder: EndpointHolder,
+    pub addresses: Vec<String>,
 }
 
 /// The two ends of a stored transfer as the detail sheet shows them. An end
@@ -73,13 +93,16 @@ pub struct TransactionEndpoints {
 }
 
 /// Which ends of `record` to show, judged against the addresses the wallet is
-/// known to hold. Addresses compare in the chain's own normal form.
+/// known to hold, and who holds each end — the first of `known` to list it.
+/// Addresses compare in the chain's own normal form.
 pub(crate) fn transaction_endpoints_for(
     record: &CorePersistedTransactionRecord,
     owned: &[String],
+    known: &[KnownHolder],
 ) -> TransactionEndpoints {
     let normalize = |value: &str| crate::send::flow::normalize_address(&record.chain_id, value);
     let owned: std::collections::HashSet<String> = owned.iter().map(|a| normalize(a)).collect();
+    let holder_of = |value: &str| holder_of(&record.chain_id, value, known);
     let named = |value: &Option<String>| {
         value
             .as_deref()
@@ -111,6 +134,7 @@ pub(crate) fn transaction_endpoints_for(
     };
     let endpoint = |address: String| TransactionEndpoint {
         is_mine: is_mine(&address),
+        holder: holder_of(&address),
         address,
     };
     TransactionEndpoints {
@@ -119,8 +143,45 @@ pub(crate) fn transaction_endpoints_for(
     }
 }
 
+/// The first of `known` to list `address` on `chain_id`, compared in the
+/// chain's own normal form.
+pub(crate) fn holder_of(
+    chain_id: &str,
+    address: &str,
+    known: &[KnownHolder],
+) -> Option<EndpointHolder> {
+    let normalize = |value: &str| crate::send::flow::normalize_address(chain_id, value);
+    let address = normalize(address);
+    known
+        .iter()
+        .find(|k| k.addresses.iter().any(|a| normalize(a) == address))
+        .map(|k| k.holder.clone())
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Who holds `address` on `chain_id`, as seen from the wallet `wallet_id`:
+    /// that wallet, another of the user's wallets on the network, or a saved
+    /// contact — the same answer a stored transfer's ends get, for an address
+    /// that has not been sent to yet.
+    pub async fn address_holder(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+        address: String,
+    ) -> Result<Option<EndpointHolder>, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            let owned = this.known_wallet_addresses(wallet_id.clone()).await?;
+            let known = this
+                .known_holders(Some(&wallet_id), None, &chain_id, &owned)
+                .await;
+            Ok(holder_of(&chain_id, &address, &known))
+        })
+        .await
+    }
+
     /// The ends of a stored transfer and which of them belong to the wallet.
     pub async fn transaction_endpoints(
         &self,
@@ -136,7 +197,15 @@ impl WalletService {
                 Some(wallet_id) => this.known_wallet_addresses(wallet_id.clone()).await?,
                 None => Vec::new(),
             };
-            Ok(Some(transaction_endpoints_for(&record, &owned)))
+            let known = this
+                .known_holders(
+                    record.wallet_id.as_deref(),
+                    Some(&record.wallet_name),
+                    &record.chain_id,
+                    &owned,
+                )
+                .await;
+            Ok(Some(transaction_endpoints_for(&record, &owned, &known)))
         })
         .await
     }
@@ -213,6 +282,75 @@ impl WalletService {
     }
 }
 
+// Not exported: the lookup behind `transaction_endpoints` and `address_holder`.
+impl WalletService {
+    /// Who could hold an address on `chain_id`, most specific first: the
+    /// wallet `wallet_id` (holding `owned`), the user's other wallets on that
+    /// network, then the address book's contacts for it. Another network's
+    /// wallet is left out even when it shares the address, because the
+    /// question is about this network. A wallet since deleted is still named
+    /// by `recorded_name`, the name a stored transfer kept.
+    async fn known_holders(
+        &self,
+        wallet_id: Option<&str>,
+        recorded_name: Option<&str>,
+        chain_id: &str,
+        owned: &[String],
+    ) -> Vec<KnownHolder> {
+        let (own_name, others, contacts) = {
+            let state = self.wallet_state.read().await;
+            let own = wallet_id.and_then(|id| {
+                state
+                    .wallets
+                    .iter()
+                    .find(|w| w.id == id)
+                    .map(|w| w.name.clone())
+                    .or_else(|| recorded_name.map(str::to_string))
+            });
+            let others: Vec<(String, String, Vec<String>)> = state
+                .wallets
+                .iter()
+                .filter(|w| Some(w.id.as_str()) != wallet_id && w.chain_id == chain_id)
+                .map(|w| {
+                    let addresses = w.addresses.iter().map(|a| a.address.clone()).collect();
+                    (w.id.clone(), w.name.clone(), addresses)
+                })
+                .collect();
+            let contacts: Vec<KnownHolder> = state
+                .address_book
+                .iter()
+                .filter(|entry| entry.chain_id == chain_id)
+                .map(|entry| KnownHolder {
+                    holder: EndpointHolder::Contact {
+                        name: entry.name.clone(),
+                    },
+                    addresses: vec![entry.address.clone()],
+                })
+                .collect();
+            (own, others, contacts)
+        };
+        let mut known = Vec::new();
+        if let Some(name) = own_name {
+            known.push(KnownHolder {
+                holder: EndpointHolder::Wallet { name },
+                addresses: owned.to_vec(),
+            });
+        }
+        for (id, name, mut addresses) in others {
+            addresses.extend(
+                self.owned_addresses_for_wallet(id, Some(chain_id.to_string()))
+                    .await,
+            );
+            known.push(KnownHolder {
+                holder: EndpointHolder::Wallet { name },
+                addresses,
+            });
+        }
+        known.extend(contacts);
+        known
+    }
+}
+
 #[cfg(test)]
 mod endpoint_tests {
     use super::*;
@@ -230,21 +368,37 @@ mod endpoint_tests {
     const MINE: &str = "0x1111111111111111111111111111111111111111";
     const THEIRS: &str = "0x2222222222222222222222222222222222222222";
 
+    fn wallet(name: &str, addresses: &[&str]) -> KnownHolder {
+        KnownHolder {
+            holder: EndpointHolder::Wallet { name: name.into() },
+            addresses: addresses.iter().map(|a| a.to_string()).collect(),
+        }
+    }
+    fn contact(name: &str, address: &str) -> KnownHolder {
+        KnownHolder {
+            holder: EndpointHolder::Contact { name: name.into() },
+            addresses: vec![address.into()],
+        }
+    }
+
     #[test]
     fn a_send_runs_from_the_source_to_the_counterparty() {
-        let ends = transaction_endpoints_for(&record("send", THEIRS, Some(MINE)), &[MINE.into()]);
+        let ends =
+            transaction_endpoints_for(&record("send", THEIRS, Some(MINE)), &[MINE.into()], &[]);
         assert_eq!(
             ends.from,
             Some(TransactionEndpoint {
                 address: MINE.into(),
-                is_mine: true
+                is_mine: true,
+                holder: None,
             })
         );
         assert_eq!(
             ends.to,
             Some(TransactionEndpoint {
                 address: THEIRS.into(),
-                is_mine: false
+                is_mine: false,
+                holder: None,
             })
         );
     }
@@ -260,6 +414,7 @@ mod endpoint_tests {
                 None,
             ),
             &[MINE.into()],
+            &[],
         );
         assert_eq!(ends.from, None, "the counterparty is the wallet itself");
         assert!(ends.to.is_some_and(|to| to.is_mine));
@@ -267,8 +422,75 @@ mod endpoint_tests {
 
     #[test]
     fn a_self_send_names_its_address_once() {
-        let ends = transaction_endpoints_for(&record("send", MINE, Some(MINE)), &[MINE.into()]);
+        let ends =
+            transaction_endpoints_for(&record("send", MINE, Some(MINE)), &[MINE.into()], &[]);
         assert!(ends.from.is_some());
         assert_eq!(ends.to, None);
+    }
+
+    /// Each end is named by the first holder that lists it, in normal form:
+    /// the transacting wallet, another of the user's wallets, a contact.
+    #[test]
+    fn each_end_is_named_by_its_holder() {
+        let known = [
+            wallet("Main", &[MINE]),
+            wallet("Savings", &[&THEIRS.to_uppercase().replacen("0X", "0x", 1)]),
+            contact("Alice", THEIRS),
+        ];
+        let ends =
+            transaction_endpoints_for(&record("send", THEIRS, Some(MINE)), &[MINE.into()], &known);
+        let from = ends.from.expect("from");
+        let to = ends.to.expect("to");
+        assert_eq!(
+            from.holder,
+            Some(EndpointHolder::Wallet {
+                name: "Main".into()
+            })
+        );
+        assert_eq!(
+            to.holder,
+            Some(EndpointHolder::Wallet {
+                name: "Savings".into()
+            }),
+            "a wallet outranks a contact"
+        );
+        assert!(
+            !to.is_mine,
+            "another wallet of the user's is not the transacting wallet"
+        );
+    }
+
+    #[test]
+    fn a_contact_names_an_address_no_wallet_holds() {
+        let known = [wallet("Main", &[MINE]), contact("Alice", THEIRS)];
+        let ends =
+            transaction_endpoints_for(&record("send", THEIRS, Some(MINE)), &[MINE.into()], &known);
+        assert_eq!(
+            ends.to.and_then(|to| to.holder),
+            Some(EndpointHolder::Contact {
+                name: "Alice".into()
+            })
+        );
+    }
+
+    #[test]
+    fn an_unknown_address_has_no_holder() {
+        let known = [wallet("Main", &[MINE])];
+        let ends =
+            transaction_endpoints_for(&record("send", THEIRS, Some(MINE)), &[MINE.into()], &known);
+        assert_eq!(ends.to.and_then(|to| to.holder), None);
+    }
+
+    /// Serialized for the CLI and JSON front ends with its kind spelled out.
+    #[test]
+    fn a_holder_serializes_with_its_kind() {
+        let json = serde_json::to_value(EndpointHolder::Contact {
+            name: "Alice".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"kind": "contact", "name": "Alice"})
+        );
     }
 }

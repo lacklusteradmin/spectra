@@ -174,8 +174,25 @@ class SendTests(unittest.TestCase):
                     db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
                         ('pending',wid,'ethereum',row['transactionHash'],1234,json.dumps(row)))
                 ends=run('txs','--endpoints','pending')['endpoints']
-                # Mine means the sending wallet's, not any wallet the user holds.
-                assert ends=={'from':None,'to':{'address':addresses[1],'isMine':False}},ends
+                # Mine means the sending wallet's, not any wallet the user holds;
+                # the user's other wallet on the network is named as the holder.
+                assert ends=={'from':None,'to':{'address':addresses[1],'isMine':False,
+                    'holder':{'kind':'wallet','name':'Other'}}},ends
+                # An address no wallet holds is named by a contact saved for it.
+                contact='0x'+'33'*20
+                run('address','book','add','--chain','Ethereum','--name','Alice','--address',contact)
+                with sqlite3.connect(dbpath) as db:
+                    row2=dict(row,id='to-contact',address=contact,transactionHash='0x'+'bb'*32)
+                    db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
+                        ('to-contact',wid,'ethereum',row2['transactionHash'],1235,json.dumps(row2)))
+                ends=run('txs','--endpoints','to-contact')['endpoints']
+                assert ends['to']=={'address':contact,'isMine':False,'holder':{'kind':'contact','name':'Alice'}},ends
+                # The send review asks the same question before anything is stored.
+                holder=lambda address: run('address','holder','--wallet','Source',address)['holder']
+                assert holder(addresses[0])=={'kind':'wallet','name':'Source'}
+                assert holder(addresses[1].upper().replace('0X','0x'))=={'kind':'wallet','name':'Other'}
+                assert holder(contact)=={'kind':'contact','name':'Alice'}
+                assert holder('0x'+'44'*20) is None
                 draft=run('send','replacement','pending')['draft']; assert draft['amount']=='0.123456789012',draft
                 draft=run('send','replacement','pending','--cancel')['draft']
                 assert draft['amount']=='0' and draft['destination']==addresses[0]

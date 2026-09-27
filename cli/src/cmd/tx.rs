@@ -1148,7 +1148,16 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             for (label, end) in [("from", &endpoints.from), ("to", &endpoints.to)] {
                 if let Some(end) = end {
                     let mine = if end.is_mine { "  (this wallet)" } else { "" };
-                    println!("  {label:<4} {}{mine}", end.address);
+                    let holder = match &end.holder {
+                        Some(spectra_core::service::EndpointHolder::Wallet { name }) => {
+                            format!("  wallet {name}")
+                        }
+                        Some(spectra_core::service::EndpointHolder::Contact { name }) => {
+                            format!("  contact {name}")
+                        }
+                        None => String::new(),
+                    };
+                    println!("  {label:<4} {}{mine}{holder}", end.address);
                 }
             }
         });

@@ -19,6 +19,18 @@ pub enum AddressCommand {
     /// Saved recipients.
     #[command(subcommand)]
     Book(BookCommand),
+    /// Who holds an address on a wallet's network: that wallet, another of
+    /// yours, or a saved contact.
+    Holder(HolderArgs),
+}
+
+#[derive(Args)]
+pub struct HolderArgs {
+    /// The wallet the address is seen from; its network is the one asked about.
+    #[arg(long)]
+    wallet: String,
+    /// The address to name.
+    address: String,
 }
 
 #[derive(Args)]
@@ -68,7 +80,28 @@ pub fn run(ctx: &Ctx, out: Out, command: AddressCommand) -> CliResult<()> {
         AddressCommand::Book(BookCommand::List) => book_list(ctx, out),
         AddressCommand::Book(BookCommand::Add(args)) => book_add(ctx, out, args),
         AddressCommand::Book(BookCommand::Remove(args)) => book_remove(ctx, out, args),
+        AddressCommand::Holder(args) => holder(ctx, out, args),
     }
+}
+
+fn holder(ctx: &Ctx, out: Out, args: HolderArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let holder = ctx.rt.block_on(ctx.service()?.address_holder(
+        wallet.id,
+        wallet.chain_id,
+        args.address.trim().to_string(),
+    ))?;
+    out.text(|| match &holder {
+        Some(spectra_core::service::EndpointHolder::Wallet { name }) => {
+            println!("  wallet {}", name.bold())
+        }
+        Some(spectra_core::service::EndpointHolder::Contact { name }) => {
+            println!("  contact {}", name.bold())
+        }
+        None => println!("  {}", out::hint("unknown")),
+    });
+    out.emit(serde_json::json!({ "ok": true, "holder": holder }));
+    Ok(())
 }
 
 /// Exit 3 on a refusal, so a script can assert it rather than parse a message.
