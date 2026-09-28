@@ -16,6 +16,55 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-27 — Receive pages say the network once and have no page header
+
+- **Before:** under the navigation title ("Wallet" / "Address") each receive
+  page repeated itself in a large header — "Choose Wallet" with "Pick where
+  the incoming transfer should land.", "Receive Address" with "Scan the code,
+  or copy the address to share it." The address card named the network three
+  times: a tinted network label, the "Receive only … on this network" warning,
+  and the `symbol · network` line under the wallet name.
+- **After:** no page header on either page, and both navigation titles read
+  "Receive" — the word on the button that opened the flow — instead of
+  "Wallet" and "Address", which alone did not say what the page was for.
+  The address card opens with the warning; the wallet line under the code
+  reads the wallet name over the network name alone (`Ethereum Sepolia`, not
+  `tETH · Ethereum Sepolia`) beside the chain's mark rather than the gas
+  token's. The three header strings are gone from every locale.
+- **Why:** the header restated the title, and its subtitle described what the
+  wallet list and the QR code and Copy button already make plain; the
+  network label repeated the sentence directly under it. The gas token's
+  symbol and mark suggested the address takes only that token, when it takes
+  any asset on the chain.
+- **CLI check:** none applies — presentation only.
+- **Verification:** simulator build, address page before/after screenshots;
+  `scripts/unused-strings.sh` clean. Suites not run.
+
+## 2026-09-27 — Receive has no bottom action bar or step indicator
+
+- **Before:** the receive flow pinned a bottom bar under its content. On the
+  wallet step its primary button read "Continue" and only moved on once a
+  wallet row had been ticked; on the address step it read "Copy Address",
+  beside a back chevron. A glass "Wallet / Address" step indicator sat above
+  both steps. Opening receive with a single wallet preselected it but still
+  stopped on the wallet step.
+- **After:** no bottom bar and no step indicator; the navigation title names
+  the step. Tapping a wallet row opens its address; "Copy Address" is the
+  first button in the address page's action card, above Share and Save. The
+  address is pushed onto the navigation stack, so back or an edge swipe
+  returns to the wallet list. With a single wallet, receive opens on its address and back leaves
+  the flow.
+- **Why:** the bar and the indicator repeated what the page and navigation
+  bar already offered — a wallet row is the choice, so a second tap on
+  Continue was ceremony, and copy sat apart from the other address actions.
+  The address is a pushed page, so the system back button and edge swipe
+  return to the list.
+- **CLI check:** none applies; this is Swift navigation only. Receive address
+  resolution is unchanged and covered by `spectra` receive-address acceptance.
+- **Verification:** simulator build and walk-through (single wallet opens on
+  the address; copy fills the pasteboard; list → address → back → list →
+  back → home; X closes from the address step). Suites not run.
+
 ## 2026-09-27 — Unconfirmed transactions sort first; Dogecoin nets its legs
 
 - **Before:** an unconfirmed transaction the chain had not dated was stored
