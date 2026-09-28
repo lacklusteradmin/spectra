@@ -12,7 +12,7 @@ name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
-artwork_name = "bitcoin"
+artwork_name = "bitcointestnet"
 tags = []
 
 [[deployments]]
@@ -29,7 +29,7 @@ name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
-artwork_name = "bitcoin"
+artwork_name = "bitcointestnet"
 tags = []
 
 [[deployments]]
@@ -46,7 +46,7 @@ name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
-artwork_name = "bitcoin"
+artwork_name = "bitcoinsignet"
 tags = []
 
 [[deployments]]

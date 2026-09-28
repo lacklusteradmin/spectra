@@ -16,6 +16,36 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-28 — Deleting a wallet asks once
+
+- **Before:** confirming Delete Wallet on the wallet's Advanced page stored
+  the wallet in `walletPendingDeletion` and then asked for Face ID. That same
+  field presented a second "Delete Wallet?" alert from the dashboard, so a
+  refused or cancelled Face ID left the deletion pending and the dashboard
+  asked again — with a message that told a private-key wallet to note its
+  seed phrase. The watch-only message read "…until you still have this
+  address."
+- **After:** `deleteWallet(_:)` takes the confirmed wallet directly; nothing
+  is held between the confirmation and the authentication, and the dashboard
+  alert is gone. The watch-only message reads "…unless you still have this
+  address."
+- **Why:** one confirmation, on the page that owns it; the pending field was
+  a second path to the same action with its own, wrong, copy.
+- **CLI check:** none applies — the prompt is the app's; `spectra wallet
+  delete` asks its own confirmation once and removes the wallet the same way.
+- **Verification:** `make test-ios`.
+
+## 2026-09-28 — Holdings and Chain Breakdown no longer count their rows
+
+- **Before:** the wallet detail's Holdings header and the asset detail's
+  Chain Breakdown header each carried a tinted capsule with the number of
+  rows listed beneath it.
+- **After:** each header is its title alone.
+- **Why:** the count restated the list directly under it; a badge reads as
+  something to act on, and there was nothing to act on.
+- **CLI check:** none applies — presentation only.
+- **Verification:** `make test-ios`.
+
 ## 2026-09-27 — Receive pages say the network once and have no page header
 
 - **Before:** under the navigation title ("Wallet" / "Address") each receive

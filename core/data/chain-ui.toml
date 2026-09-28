@@ -374,7 +374,7 @@ chain_id = "bitcoin-testnet"
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
 category = "bitcoin-family"
 color = "orange"
-artwork_name = "bitcoin"
+artwork_name = "bitcointestnet"
 address_prefix_hint = ""
 
 [[chains]]
@@ -382,7 +382,7 @@ chain_id = "bitcoin-testnet-4"
 search_keywords = ["Bitcoin Testnet4", "testnet4", "tBTC"]
 category = "bitcoin-family"
 color = "orange"
-artwork_name = "bitcoin"
+artwork_name = "bitcointestnet"
 address_prefix_hint = ""
 
 [[chains]]
@@ -390,7 +390,7 @@ chain_id = "bitcoin-signet"
 search_keywords = ["Bitcoin Signet", "signet", "tBTC"]
 category = "bitcoin-family"
 color = "orange"
-artwork_name = "bitcoin"
+artwork_name = "bitcoinsignet"
 address_prefix_hint = ""
 
 [[chains]]
