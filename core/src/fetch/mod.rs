@@ -99,3 +99,26 @@ pub(crate) fn checked_token_decimals(value: u128) -> Result<u8, String> {
     }
     Ok(value as u8)
 }
+
+/// A history entry's time, in the provider's own unit: `None` only while the
+/// chain has not given the transaction one — it is not yet in a block.
+///
+/// A confirmed transaction always has a time, so one that arrives without it
+/// was read wrongly, and the fetch fails naming it. Clients used to put 0 in
+/// its place, which the history showed as 31 December 1969.
+pub(crate) fn history_time(
+    confirmed: bool,
+    time: Option<u64>,
+    txid: &str,
+) -> Result<Option<u64>, String> {
+    match time.filter(|t| *t > 0) {
+        None if !confirmed => Ok(None),
+        time => confirmed_history_time(time, txid).map(Some),
+    }
+}
+
+/// The time of a transaction from a source that lists only confirmed ones.
+pub(crate) fn confirmed_history_time(time: Option<u64>, txid: &str) -> Result<u64, String> {
+    time.filter(|t| *t > 0)
+        .ok_or_else(|| format!("history: confirmed transaction {txid} has no time"))
+}

@@ -889,3 +889,72 @@ fn history_pages_can_hide_small_amounts() {
     let cursor = page(false, None).unwrap().next_cursor;
     assert!(page(true, cursor).is_err());
 }
+
+/// An undated pending transaction is the newest row, in both directions and
+/// across pages, and an undated confirmed one the oldest; neither counts as
+/// the wallet's earliest dated transaction.
+#[test]
+fn undated_pending_transactions_sort_as_the_newest() {
+    let db = tmp_db();
+    app_state_save(
+        &db,
+        &CoreAppState {
+            wallets: vec![wallet("w1", "bitcoin")],
+            ..CoreAppState::default()
+        },
+    )
+    .unwrap();
+    let unknown = -62_135_596_800.0;
+    let rows: Vec<HistoryRecord> = [
+        ("dated", "confirmed", 1_700_000_000.0),
+        ("undated-pending", "pending", unknown),
+        ("undated-confirmed", "confirmed", unknown),
+        ("recent", "pending", 1_800_000_000.0),
+    ]
+    .iter()
+    .map(|(id, status, time)| {
+        let mut payload = history_record(id, "w1").payload;
+        payload.status = serde_json::from_value(serde_json::json!(status)).unwrap();
+        payload.created_at_unix = *time;
+        history_record_from_payload(payload)
+    })
+    .collect();
+    history_upsert_batch(&db, &rows).unwrap();
+    let ids = |oldest_first: bool| {
+        let mut ids = Vec::new();
+        let mut cursor = None;
+        loop {
+            let page = history_page(
+                &db,
+                &crate::service::HistoryQuery {
+                    oldest_first,
+                    cursor,
+                    limit: 1,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            ids.extend(page.records.into_iter().map(|r| r.id));
+            match page.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break ids,
+            }
+        }
+    };
+    assert_eq!(
+        ids(false),
+        ["undated-pending", "recent", "dated", "undated-confirmed"]
+    );
+    assert_eq!(
+        ids(true),
+        ["undated-confirmed", "dated", "recent", "undated-pending"]
+    );
+    let undated = history_find(&db, "undated-pending").unwrap().unwrap();
+    assert_eq!(undated.created_at_unix, unknown, "still reads as undated");
+    let sequence = std::sync::atomic::AtomicU64::new(0);
+    let snapshot = history_snapshot(&db, &sequence).unwrap();
+    assert_eq!(
+        snapshot.earliest[0].earliest_created_at_unix,
+        1_700_000_000.0
+    );
+}

@@ -23,6 +23,9 @@ struct BlockcypherBalance {
 struct BlockcypherAddress {
     #[serde(default)]
     txrefs: Vec<BlockcypherTxref>,
+    /// Refs of transactions still in the mempool: no block and no time.
+    #[serde(default)]
+    unconfirmed_txrefs: Vec<BlockcypherTxref>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +58,8 @@ pub struct DogeBalance {
 pub struct DogeHistoryEntry {
     pub txid: String,
     pub block_height: u64,
-    pub timestamp: u64,
+    /// `None` while the transaction is unconfirmed.
+    pub timestamp: Option<u64>,
     pub amount_koin: i64, // negative = outgoing
     pub fee_koin: u64,
     pub is_incoming: bool,
@@ -149,29 +153,7 @@ impl DogecoinClient {
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<DogeHistoryEntry>, String> {
         let info: BlockcypherAddress = self.get(&format!("/addrs/{address}?limit=50")).await?;
-        let mut seen = std::collections::HashSet::new();
-        let mut entries: Vec<DogeHistoryEntry> = info
-            .txrefs
-            .into_iter()
-            .filter(|r| seen.insert(r.tx_hash.clone()))
-            .map(|r| {
-                let is_incoming = r.tx_input_n < 0;
-                DogeHistoryEntry {
-                    txid: r.tx_hash,
-                    block_height: if r.block_height > 0 {
-                        r.block_height as u64
-                    } else {
-                        0
-                    },
-                    timestamp: parse_blockcypher_time(r.confirmed.as_deref()),
-                    amount_koin: if is_incoming { r.value } else { -r.value.abs() },
-                    fee_koin: 0,
-                    is_incoming,
-                }
-            })
-            .collect();
-        entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_height));
-        Ok(entries)
+        doge_history_from_txrefs(info.unconfirmed_txrefs.into_iter().chain(info.txrefs))
     }
 
     pub async fn fetch_tx_status(
@@ -191,39 +173,79 @@ impl DogecoinClient {
             txid: tx.hash,
             confirmed,
             block_height: tx.block_height.map(|h| if h > 0 { h as u64 } else { 0 }),
-            block_time: Some(parse_blockcypher_time(tx.confirmed.as_deref())),
+            block_time: blockcypher_time(tx.confirmed.as_deref()),
             confirmations: tx.confirmations,
         })
     }
 }
 
-/// Parse a BlockCypher RFC 3339 timestamp string to a Unix timestamp.
-/// Returns 0 on parse failure — timestamps are display-only.
-fn parse_blockcypher_time(s: Option<&str>) -> u64 {
-    fn inner(s: &str) -> Option<u64> {
-        let b = s.as_bytes();
-        if b.len() < 19 {
-            return None;
+/// One entry per transaction, netting its refs.
+///
+/// BlockCypher lists a ref per input the address funded (`tx_input_n` ≥ 0)
+/// and per output paying it (`tx_input_n` = -1), so a transaction appears once
+/// per leg. Only the first ref of each hash was kept: a send read as its
+/// spent input alone, or as its change, depending on which leg came first.
+fn doge_history_from_txrefs(
+    refs: impl IntoIterator<Item = BlockcypherTxref>,
+) -> Result<Vec<DogeHistoryEntry>, String> {
+    let mut order: Vec<String> = Vec::new();
+    let mut legs: std::collections::HashMap<String, Vec<BlockcypherTxref>> =
+        std::collections::HashMap::new();
+    for r in refs {
+        if !legs.contains_key(&r.tx_hash) {
+            order.push(r.tx_hash.clone());
         }
-        let year: i64 = std::str::from_utf8(&b[0..4]).ok()?.parse().ok()?;
-        let month: i64 = std::str::from_utf8(&b[5..7]).ok()?.parse().ok()?;
-        let day: i64 = std::str::from_utf8(&b[8..10]).ok()?.parse().ok()?;
-        let hour: i64 = std::str::from_utf8(&b[11..13]).ok()?.parse().ok()?;
-        let min: i64 = std::str::from_utf8(&b[14..16]).ok()?.parse().ok()?;
-        let sec: i64 = std::str::from_utf8(&b[17..19]).ok()?.parse().ok()?;
-        // Days since Unix epoch using civil calendar (Euclidean algorithm).
-        let m_adj = if month <= 2 { month + 9 } else { month - 3 };
-        let y_adj = if month <= 2 { year - 1 } else { year };
-        let era = y_adj.div_euclid(400);
-        let yoe = y_adj - era * 400;
-        let doy = (153 * m_adj + 2) / 5 + day - 1;
-        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-        let days = era * 146097 + doe - 719468;
-        let ts = days * 86400 + hour * 3600 + min * 60 + sec;
-        if ts < 0 { None } else { Some(ts as u64) }
+        legs.entry(r.tx_hash.clone()).or_default().push(r);
     }
-    s.and_then(|s| if s.is_empty() { None } else { inner(s) })
-        .unwrap_or(0)
+    let mut entries = Vec::new();
+    for hash in order {
+        let refs = &legs[&hash];
+        let net: i64 = refs
+            .iter()
+            .map(|r| if r.tx_input_n < 0 { r.value } else { -r.value })
+            .sum();
+        if net == 0 {
+            continue;
+        }
+        let block_height = refs
+            .iter()
+            .map(|r| r.block_height)
+            .max()
+            .unwrap_or(0)
+            .max(0) as u64;
+        let timestamp = super::history_time(
+            block_height > 0,
+            refs.iter()
+                .find_map(|r| blockcypher_time(r.confirmed.as_deref())),
+            &hash,
+        )?;
+        entries.push(DogeHistoryEntry {
+            txid: hash,
+            block_height,
+            timestamp,
+            amount_koin: net,
+            fee_koin: 0,
+            is_incoming: net > 0,
+        });
+    }
+    // Unconfirmed first, then newest block first.
+    entries.sort_by_key(|entry| {
+        std::cmp::Reverse(if entry.block_height == 0 {
+            u64::MAX
+        } else {
+            entry.block_height
+        })
+    });
+    Ok(entries)
+}
+
+/// A BlockCypher RFC 3339 time as Unix seconds, or `None` when there is none
+/// or it does not parse. This had its own parser, which answered 0 — the
+/// Unix epoch — for anything it could not read.
+fn blockcypher_time(s: Option<&str>) -> Option<u64> {
+    super::history::parse_iso8601_timestamp(s?)
+        .filter(|t| *t > 0.0)
+        .map(|t| t as u64)
 }
 
 fn format_doge(koin: u64) -> String {
@@ -235,4 +257,49 @@ fn format_doge(koin: u64) -> String {
     let frac_str = format!("{:08}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    fn leg(
+        hash: &str,
+        input: i32,
+        value: i64,
+        height: i64,
+        time: Option<&str>,
+    ) -> BlockcypherTxref {
+        serde_json::from_value(serde_json::json!({
+            "tx_hash": hash, "tx_input_n": input, "tx_output_n": if input < 0 { 0 } else { -1 },
+            "value": value, "block_height": height, "confirmed": time
+        }))
+        .unwrap()
+    }
+
+    /// BlockCypher `/addrs` refs: one per leg, unconfirmed ones without a time.
+    #[test]
+    fn a_transactions_legs_net_into_one_entry() {
+        let t = Some("2026-09-22T19:10:21Z");
+        let entries = doge_history_from_txrefs([
+            leg("pending", -1, 500, -1, None),
+            leg("send", 0, 1_000_000_000, 6_385_234, t),
+            leg("send", -1, 400_000_000, 6_385_234, t),
+            leg("receive", -1, 951_727_163, 6_385_200, t),
+        ])
+        .unwrap();
+        let got: Vec<(&str, i64, Option<u64>)> = entries
+            .iter()
+            .map(|e| (e.txid.as_str(), e.amount_koin, e.timestamp))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("pending", 500, None),
+                ("send", -600_000_000, Some(1_790_104_221)),
+                ("receive", 951_727_163, Some(1_790_104_221)),
+            ]
+        );
+        assert!(doge_history_from_txrefs([leg("bad", -1, 1, 5, None)]).is_err());
+    }
 }

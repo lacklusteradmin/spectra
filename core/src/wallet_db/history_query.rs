@@ -214,7 +214,7 @@ pub(crate) fn history_snapshot(
                 records.push(record);
             }
         }
-        let mut first = tx.prepare(&format!("SELECT h.wallet_id, min(h.created_at) FROM history_records h WHERE {VISIBLE} GROUP BY h.wallet_id")).map_err(|e| e.to_string())?;
+        let mut first = tx.prepare(&format!("SELECT h.wallet_id, min(h.created_at) FROM history_records h WHERE {VISIBLE} AND json_extract(h.payload, '$.createdAtUnix') > 0 GROUP BY h.wallet_id")).map_err(|e| e.to_string())?;
         let earliest = first
             .query_map([], |r| {
                 Ok(crate::store::WalletEarliestTransactionDate {

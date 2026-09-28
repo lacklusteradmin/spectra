@@ -192,13 +192,14 @@ impl TronClient {
             .cloned()
             .unwrap_or_default();
 
+        // Tronscan lists only transactions already in a block.
         let mut entries: Vec<TronTransfer> = trx_data
             .into_iter()
-            .filter_map(|tx| {
+            .map(|tx| {
                 // Only include Transfer (contractType 1) transactions.
                 let contract_type = tx.get("contractType").and_then(|v| v.as_u64()).unwrap_or(0);
                 if contract_type != 1 {
-                    return None;
+                    return Ok(None);
                 }
                 let txid = tx
                     .get("hash")
@@ -206,7 +207,10 @@ impl TronClient {
                     .unwrap_or("")
                     .to_string();
                 let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
-                let timestamp_ms = tx.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
+                let timestamp_ms = super::confirmed_history_time(
+                    tx.get("timestamp").and_then(|v| v.as_u64()),
+                    &txid,
+                )?;
                 let from = tx
                     .pointer("/contractData/owner_address")
                     .and_then(|v| v.as_str())
@@ -224,7 +228,7 @@ impl TronClient {
                 let is_incoming = to.eq_ignore_ascii_case(address);
                 let trx = amount_sun as f64 / 1_000_000.0;
                 let amount_display = format_trx_f64(trx);
-                Some(TronTransfer {
+                Ok(Some(TronTransfer {
                     contract: None,
                     txid,
                     block_number,
@@ -234,8 +238,11 @@ impl TronClient {
                     amount_display,
                     symbol: "TRX".to_string(),
                     is_incoming,
-                })
+                }))
             })
+            .collect::<Result<Vec<Option<TronTransfer>>, String>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         // --- TRC-20 token transfers ---
@@ -263,7 +270,8 @@ impl TronClient {
                 .unwrap_or("")
                 .to_string();
             let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
-            let timestamp_ms = tx.get("block_ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            let timestamp_ms =
+                super::confirmed_history_time(tx.get("block_ts").and_then(|v| v.as_u64()), &txid)?;
             let from = tx
                 .get("from_address")
                 .and_then(|v| v.as_str())

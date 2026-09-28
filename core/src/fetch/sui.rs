@@ -24,7 +24,8 @@ pub struct SuiBalance {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuiHistoryEntry {
     pub digest: String,
-    pub timestamp_ms: u64,
+    /// `None` until the transaction is in a checkpoint, which is what dates it.
+    pub timestamp_ms: Option<u64>,
     pub is_incoming: bool,
     pub amount_mist: u64,
     /// The sender when incoming; the largest other recipient when outgoing.
@@ -131,7 +132,7 @@ impl SuiClient {
                     .unwrap_or_default(),
             );
         }
-        Ok(sui_history_from_blocks(&blocks, address))
+        sui_history_from_blocks(&blocks, address)
     }
 
     /// A coin type's own decimals, as the node reports them.
@@ -216,7 +217,10 @@ const SUI_COIN_TYPE: &str = "0x2::sui::SUI";
 /// a transfer, so it is added back: a transaction that only paid gas moved
 /// nothing and yields no entry. Gas can be negative when a storage rebate
 /// exceeds the cost, and the same arithmetic holds.
-fn sui_history_from_blocks(blocks: &[Value], address: &str) -> Vec<SuiHistoryEntry> {
+fn sui_history_from_blocks(
+    blocks: &[Value],
+    address: &str,
+) -> Result<Vec<SuiHistoryEntry>, String> {
     let address = address.to_lowercase();
     let owner_of = |change: &Value| {
         change
@@ -291,21 +295,26 @@ fn sui_history_from_blocks(blocks: &[Value], address: &str) -> Vec<SuiHistoryEnt
                 .unwrap_or_default();
             (address.clone(), recipient)
         };
-        entries.push(SuiHistoryEntry {
-            digest: digest.to_string(),
-            timestamp_ms: block
+        let timestamp_ms = super::history_time(
+            block.get("checkpoint").is_some_and(|c| !c.is_null()),
+            block
                 .get("timestampMs")
                 .and_then(Value::as_str)
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0),
+                .and_then(|s| s.parse().ok()),
+            digest,
+        )?;
+        entries.push(SuiHistoryEntry {
+            digest: digest.to_string(),
+            timestamp_ms,
             is_incoming,
             amount_mist,
             from,
             to,
         });
     }
-    entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms));
-    entries
+    // Undated transactions are the newest.
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms.unwrap_or(u64::MAX)));
+    Ok(entries)
 }
 
 fn format_sui(mist: u64) -> String {
@@ -335,6 +344,7 @@ mod history_tests {
         json!({
             "digest": digest,
             "timestampMs": "1790242671829",
+            "checkpoint": "1",
             "transaction": {"data": {"sender": sender, "gasData": {"owner": sender}}},
             "effects": {"gasUsed": {
                 "computationCost": gas[0], "storageCost": gas[1], "storageRebate": gas[2]
@@ -368,7 +378,7 @@ mod history_tests {
                 change(ME, SUI_COIN_TYPE, "-2500100001097880"),
             ]),
         );
-        let entries = sui_history_from_blocks(&[received, sent.clone(), sent], ME);
+        let entries = sui_history_from_blocks(&[received, sent.clone(), sent], ME).unwrap();
         assert_eq!(
             entries.len(),
             2,
@@ -387,6 +397,25 @@ mod history_tests {
         assert_eq!(outgoing.to, THEM);
     }
 
+    /// A block not yet in a checkpoint has no time and is undated; one in a
+    /// checkpoint without a time was read wrongly.
+    #[test]
+    fn only_an_uncheckpointed_block_is_undated() {
+        let mut pending = block(
+            "pending",
+            THEM,
+            ["0", "0", "0"],
+            json!([change(ME, SUI_COIN_TYPE, "5")]),
+        );
+        let fields = pending.as_object_mut().unwrap();
+        fields.remove("timestampMs");
+        fields.remove("checkpoint");
+        let entries = sui_history_from_blocks(std::slice::from_ref(&pending), ME).unwrap();
+        assert_eq!(entries[0].timestamp_ms, None);
+        pending["checkpoint"] = json!("9");
+        assert!(sui_history_from_blocks(&[pending], ME).is_err());
+    }
+
     /// A transaction whose only SUI effect is gas — here a net storage rebate
     /// while another coin moved — transfers no SUI.
     #[test]
@@ -401,6 +430,10 @@ mod history_tests {
                 change(THEM, "0x6::cetus::CETUS", "2699970876000000"),
             ]),
         );
-        assert!(sui_history_from_blocks(&[rebate_only], ME).is_empty());
+        assert!(
+            sui_history_from_blocks(&[rebate_only], ME)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

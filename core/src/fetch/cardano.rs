@@ -83,7 +83,7 @@ pub(crate) struct KoiosTxInfo {
     #[serde(default)]
     pub(crate) block_height: u64,
     #[serde(default)]
-    pub(crate) tx_timestamp: u64,
+    pub(crate) tx_timestamp: Option<u64>,
     #[serde(default)]
     pub(crate) fee: String,
     #[serde(default)]
@@ -113,32 +113,34 @@ pub(crate) struct KoiosPaymentAddr {
 fn cardano_history_from_transactions(
     txs: Vec<KoiosTxInfo>,
     address: &str,
-) -> Vec<CardanoHistoryEntry> {
+) -> Result<Vec<CardanoHistoryEntry>, String> {
     let paid = |ios: &[KoiosTxIo]| -> i128 {
         ios.iter()
             .filter(|io| io.payment_addr.bech32 == address)
             .map(|io| io.value.parse::<i128>().unwrap_or(0))
             .sum()
     };
-    let mut entries: Vec<CardanoHistoryEntry> = txs
-        .into_iter()
-        .filter_map(|tx| {
-            let net = paid(&tx.outputs) - paid(&tx.inputs);
-            if net == 0 {
-                return None;
-            }
-            Some(CardanoHistoryEntry {
-                txid: tx.tx_hash,
-                block: tx.block_height.to_string(),
-                block_time: tx.tx_timestamp,
-                is_incoming: net > 0,
-                amount_lovelace: i64::try_from(net).ok()?,
-                fee_lovelace: tx.fee.parse().unwrap_or(0),
-            })
-        })
-        .collect();
+    // Koios lists only transactions already in a block.
+    let mut entries = Vec::new();
+    for tx in txs {
+        let net = paid(&tx.outputs) - paid(&tx.inputs);
+        let Ok(amount_lovelace) = i64::try_from(net) else {
+            continue;
+        };
+        if net == 0 {
+            continue;
+        }
+        entries.push(CardanoHistoryEntry {
+            block_time: super::confirmed_history_time(tx.tx_timestamp, &tx.tx_hash)?,
+            txid: tx.tx_hash,
+            block: tx.block_height.to_string(),
+            is_incoming: net > 0,
+            amount_lovelace,
+            fee_lovelace: tx.fee.parse().unwrap_or(0),
+        });
+    }
     entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_time));
-    entries
+    Ok(entries)
 }
 
 // ── Client
@@ -272,7 +274,7 @@ impl CardanoClient {
                 },
             )
             .await?;
-        Ok(cardano_history_from_transactions(tx_infos, address))
+        cardano_history_from_transactions(tx_infos, address)
     }
 
     /// Fetch current slot from the latest block.
@@ -326,7 +328,7 @@ mod history_tests {
             ]
         }]))
         .unwrap();
-        let entries = cardano_history_from_transactions(txs, ME);
+        let entries = cardano_history_from_transactions(txs, ME).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].txid, "send");
         assert!(!entries[0].is_incoming);

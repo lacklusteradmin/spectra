@@ -16,6 +16,65 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-27 — Unconfirmed transactions sort first; Dogecoin nets its legs
+
+- **Before:** an unconfirmed transaction the chain had not dated was stored
+  under the unknown sentinel and so sorted as the oldest row, at the bottom
+  of the history, in the "Older" group. The unknown sentinel also counted as
+  a wallet's earliest transaction. Dogecoin's client kept only the first
+  BlockCypher ref of each transaction — one ref per input and per output —
+  so a send read as its spent input alone or as its change, and it ignored
+  `unconfirmed_txrefs`.
+- **After:** the history index sorts an undated pending record after every
+  dated one (as 9999-12-31), so it is first newest-first and last
+  oldest-first; its stored time stays unknown and it still reads "Unknown
+  date", and once confirmed the dated record replaces the key. The history
+  page groups these rows under "Unconfirmed", above "Today". A wallet's
+  earliest transaction ignores undated rows. Dogecoin nets each
+  transaction's refs into one entry and includes mempool refs as undated
+  pending entries.
+- **Why:** a transaction still waiting for a block is the newest thing in the
+  wallet; and a transaction's amount is what it moved for the address, not
+  one of its legs.
+- **CLI check:** `spectra txs --page` lists an undated pending record first
+  (`--oldest-first` last): `wallet_db::tests::undated_pending_transactions_sort_as_the_newest`.
+  `spectra history <dogecoin wallet>`;
+  `dogecoin::history_tests::a_transactions_legs_net_into_one_entry`.
+- **Verification:** `make verify`.
+
+## 2026-09-27 — An undated transaction says so; a misread date is an error
+
+- **Before:** a history client that found no time put 0 in its place, and the
+  history showed the Unix epoch — 31 December 1969 west of UTC. That covered
+  three different things: a transaction not yet in a block, which has no
+  time; a Solana block whose `blockTime` the node does not have; and a
+  provider field the client read wrongly (Sui without `timestampMs`, Kaspa's
+  camelCase fields). Normalization also turned an unreadable time string into
+  0, and Dogecoin had its own RFC 3339 parser that answered 0 on failure.
+- **After:** each client reports an unconfirmed transaction's time as absent —
+  Blockbook, Bitcoin SV, Decred and Dogecoin by block height, Sui by whether
+  the transaction is in a checkpoint — and a Solana block without
+  `blockTime` likewise. A confirmed transaction without a readable time fails
+  the fetch, naming it (`history: confirmed transaction … has no time`);
+  sources that list only confirmed transactions (EVM explorers, Tron, XRP,
+  Stellar, Cardano, Kaspa, Aptos, NEAR, ICP, Monero) require one.
+  Normalization reads null as undated and refuses anything else that is not
+  a positive number; Stellar's and Dogecoin's RFC 3339 times are parsed in
+  their clients with the shared strict parser. An undated record is stored
+  with the unknown sentinel the EVM, UTXO and Bitcoin paths already used, and
+  the history shows "Unknown date" for it.
+- **Why:** a missing time is either not known yet or a bug. Showing 1969
+  hid both; now the first says so and the second is reported where it
+  happens.
+- **CLI check:** `spectra history <wallet>` shows no 1970 dates for the
+  chains in the previous entry. Core tests:
+  `normalize_chain_history_tests::only_null_is_an_unknown_time`,
+  `sui::history_tests::only_an_uncheckpointed_block_is_undated`,
+  `history_refresh::tests::an_undated_entry_is_stored_as_unknown`. Rows
+  written by earlier builds keep their stored time; a History & Cache reset
+  clears them.
+- **Verification:** `make verify`.
+
 ## 2026-09-27 — History can hide small amounts
 
 - **Before:** the history page showed every stored transfer. A large watched

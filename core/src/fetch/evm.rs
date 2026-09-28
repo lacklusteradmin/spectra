@@ -631,11 +631,14 @@ impl EvmClient {
                     .unwrap_or(0)
                     .saturating_mul(tx.gas_used.parse::<u128>().unwrap_or(0))
                     .to_string();
+                // The explorer lists only mined transactions.
+                let timestamp =
+                    super::confirmed_history_time(tx.time_stamp.parse().ok(), &tx.hash)?;
                 Ok(EvmHistoryEntry {
                     status: status.into(),
                     txid: tx.hash,
                     block_number: tx.block_number.parse().unwrap_or(0),
-                    timestamp: tx.time_stamp.parse().unwrap_or(0),
+                    timestamp,
                     from: tx.from.clone(),
                     to: tx.to.clone(),
                     value_wei: tx.value,
@@ -694,12 +697,14 @@ impl EvmClient {
         let items: Vec<TxItem> = serde_json::from_value(serde_json::Value::Array(rows))
             .map_err(|e| format!("token transfer parse: {e}"))?;
 
-        let entries = items
+        items
             .into_iter()
             .map(|tx| {
                 let decimals: u8 = tx.token_decimal.parse().unwrap_or(18);
                 let amount_display = format_evm_decimals(&tx.value, decimals);
-                EvmTokenTransferEntry {
+                let timestamp =
+                    super::confirmed_history_time(tx.time_stamp.parse().ok(), &tx.hash)?;
+                Ok(EvmTokenTransferEntry {
                     contract: tx.contract_address.to_lowercase(),
                     symbol: tx.token_symbol.clone(),
                     token_name: tx.token_name.clone(),
@@ -711,12 +716,10 @@ impl EvmClient {
                     txid: tx.hash,
                     block_number: tx.block_number.parse().unwrap_or(0),
                     log_index: tx.log_index.parse().unwrap_or(0),
-                    timestamp: tx.time_stamp.parse().unwrap_or(0),
-                }
+                    timestamp,
+                })
             })
-            .collect();
-
-        Ok(entries)
+            .collect()
     }
 }
 

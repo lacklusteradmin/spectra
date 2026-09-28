@@ -158,7 +158,7 @@ impl NearClient {
             .get("txns")
             .and_then(Value::as_array)
             .ok_or("NEAR history: response has no txns")?;
-        Ok(near_history_from_receipts(receipts, account_id))
+        near_history_from_receipts(receipts, account_id)
     }
 
     // ── NEP-141 (fungible token) support
@@ -266,10 +266,15 @@ fn format_near(yocto: &str) -> String {
 /// A receipt with no deposit — a function call, a key change — moves no NEAR
 /// and is not an entry. Nor is one from `system`: that is the protocol
 /// refunding unused gas, part of a fee rather than a transfer.
-fn near_history_from_receipts(receipts: &[Value], account_id: &str) -> Vec<NearHistoryEntry> {
-    receipts
+///
+/// Every listed receipt has executed in a block, so each has a time.
+fn near_history_from_receipts(
+    receipts: &[Value],
+    account_id: &str,
+) -> Result<Vec<NearHistoryEntry>, String> {
+    let entries: Result<Vec<Option<NearHistoryEntry>>, String> = receipts
         .iter()
-        .filter_map(|receipt| {
+        .map(|receipt| {
             let text = |field: &str| receipt.get(field).and_then(Value::as_str).unwrap_or("");
             let from = text("predecessor_account_id");
             let to = text("receiver_account_id");
@@ -279,27 +284,34 @@ fn near_history_from_receipts(receipts: &[Value], account_id: &str) -> Vec<NearH
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             if !succeeded || from == "system" || (from == account_id) == (to == account_id) {
-                return None;
+                return Ok(None);
             }
             // Nearblocks reports the deposit as a JSON number, in exponent
             // form once it is large.
-            let deposit = receipt.pointer("/actions_agg/deposit")?;
-            let amount = deposit
-                .as_f64()
-                .or_else(|| deposit.as_str().and_then(|s| s.parse().ok()))?;
+            let Some(amount) = receipt.pointer("/actions_agg/deposit").and_then(|deposit| {
+                deposit
+                    .as_f64()
+                    .or_else(|| deposit.as_str().and_then(|s| s.parse().ok()))
+            }) else {
+                return Ok(None);
+            };
             if amount <= 0.0 {
-                return None;
+                return Ok(None);
             }
-            Some(NearHistoryEntry {
-                txid: text("transaction_hash").to_string(),
-                timestamp_ns: text("block_timestamp").parse().unwrap_or(0),
+            let txid = text("transaction_hash");
+            let timestamp_ns =
+                super::confirmed_history_time(text("block_timestamp").parse().ok(), txid)?;
+            Ok(Some(NearHistoryEntry {
+                txid: txid.to_string(),
+                timestamp_ns,
                 from: from.to_string(),
                 to: to.to_string(),
                 amount_yocto: format!("{amount}"),
                 is_incoming: to == account_id,
-            })
+            }))
         })
-        .collect()
+        .collect();
+    Ok(entries?.into_iter().flatten().collect())
 }
 
 #[cfg(test)]
@@ -329,7 +341,7 @@ mod history_tests {
             receipt("me.near", "them.near", json!(1e24), false),
             receipt("me.near", "me.near", json!(1e24), true),
         ];
-        let entries = near_history_from_receipts(&receipts, "me.near");
+        let entries = near_history_from_receipts(&receipts, "me.near").unwrap();
         assert_eq!(entries.len(), 2, "{entries:?}");
         assert!(entries[0].is_incoming);
         assert_eq!(entries[0].from, "near");

@@ -133,8 +133,6 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
             HistoryShape::confirmed_native("amount_drops").with_counterparty("from", "to")
         }
 
-        // Stellar's timestamp may be ISO-8601 rather than a number; every
-        // shape accepts either.
         Chain::Stellar => {
             HistoryShape::confirmed_native("amount_stroops").with_counterparty("from", "to")
         }
@@ -332,19 +330,17 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
                 },
             };
 
-            let raw_time = &entry[shape.time];
-            // A number is in the shape's own unit — `timestamp_ms`,
-            // `timestamp_ns` — and needs the divisor. A string is RFC 3339 and
-            // parses straight to seconds, so applying the divisor to it too
-            // would put a nanosecond chain's dates in 1970. An unreadable
-            // stamp still yields the row: a transaction with a wrong date is
-            // worth more than a transaction the history does not show.
-            let timestamp = match raw_time.as_f64() {
-                Some(units) => units / shape.time_divisor,
-                None => raw_time
-                    .as_str()
-                    .and_then(parse_iso8601_timestamp)
-                    .unwrap_or(0.0),
+            // A number in the shape's own unit — `timestamp_ms`,
+            // `timestamp_ns` — or null while the chain has not given the
+            // transaction a time; 0 then marks it unknown, and the stored
+            // record says so. Each client refuses a confirmed transaction
+            // without a time, so nothing else reaches here.
+            let timestamp = match entry.get(shape.time)? {
+                Value::Null => 0.0,
+                raw => raw
+                    .as_f64()
+                    .filter(|units| *units > 0.0)
+                    .map(|units| units / shape.time_divisor)?,
             };
 
             Some(ChainHistoryEntry {
@@ -406,7 +402,7 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
 ///
 /// It also answered `0.0` for anything it could not read, which is a real date
 /// and not a refusal.
-fn parse_iso8601_timestamp(s: &str) -> Option<f64> {
+pub(crate) fn parse_iso8601_timestamp(s: &str) -> Option<f64> {
     let s = s.trim();
     // Every byte index below is sound exactly because of this check: a
     // timestamp is ASCII by definition, and anything else is not one.
@@ -604,7 +600,7 @@ mod normalize_chain_history_tests {
         ),
         (
             "stellar",
-            r#"[{"txid":"e1","timestamp":"2023-11-14T22:13:20Z","from":"GFrom","to":"GTo","amount_stroops":3000000,"is_incoming":false}]"#,
+            r#"[{"txid":"e1","timestamp":1700000000,"from":"GFrom","to":"GTo","amount_stroops":3000000,"is_incoming":false}]"#,
             r#"[{"kind":"send","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_id":"stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
         ),
         (
@@ -819,14 +815,30 @@ mod normalize_chain_history_tests {
         assert!(normalize_chain_history("bitcoin", r#"[{"no_txid":1}]"#).is_empty());
     }
 
-    /// Stellar reports ISO-8601 where every other chain reports a number.
+    /// Null is a transaction the chain has not dated yet, and normalizes to
+    /// the unknown 0. A missing field, a zero or a string is a reading gone
+    /// wrong, and yields no row rather than the Unix epoch.
     #[test]
-    fn iso8601_timestamps_parse() {
-        let rows = normalize_chain_history(
-            "stellar",
-            r#"[{"txid":"e","timestamp":"2023-11-14T22:13:20Z","amount_stroops":1,"is_incoming":true}]"#,
+    fn only_null_is_an_unknown_time() {
+        let row = |time: &str| {
+            normalize_chain_history(
+                "litecoin",
+                &format!(
+                    r#"[{{"txid":"t","amount_sat":1,"block_height":null,"is_incoming":true{time}}}]"#
+                ),
+            )
+        };
+        assert_eq!(row(r#","timestamp":null"#)[0].timestamp, 0.0);
+        assert_eq!(
+            row(r#","timestamp":1700000000"#)[0].timestamp,
+            1_700_000_000.0
         );
-        assert_eq!(rows[0].timestamp, 1_700_000_000.0);
+        assert!(row("").is_empty(), "missing");
+        assert!(row(r#","timestamp":0"#).is_empty(), "zero");
+        assert!(
+            row(r#","timestamp":"2023-11-14T22:13:20Z""#).is_empty(),
+            "string"
+        );
     }
 }
 

@@ -139,7 +139,7 @@ impl IcpClient {
             .cloned()
             .unwrap_or_default();
 
-        Ok(icp_history_from_transactions(&txs, account_address))
+        icp_history_from_transactions(&txs, account_address)
     }
 }
 
@@ -151,17 +151,21 @@ impl IcpClient {
 /// transaction had and the direction whether the positive one named the
 /// account, so a mint, a burn or an approval — which has neither — read as a
 /// 0 ICP send.
-fn icp_history_from_transactions(txs: &[Value], account_address: &str) -> Vec<IcpHistoryEntry> {
+///
+/// Every ledger block has a time, so a transaction without one was misread.
+fn icp_history_from_transactions(
+    txs: &[Value],
+    account_address: &str,
+) -> Result<Vec<IcpHistoryEntry>, String> {
     let mut entries = Vec::new();
     for item in txs {
         let block_index: u64 = item
             .pointer("/block_identifier/index")
             .and_then(Value::as_u64)
             .unwrap_or(0);
-        let timestamp_ns: u64 = item
+        let timestamp = item
             .pointer("/transaction/metadata/timestamp")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
+            .and_then(Value::as_u64);
         let mut delta: i128 = 0;
         let mut counterparty = String::new();
         let mut fee_e8s: u64 = 0;
@@ -193,6 +197,7 @@ fn icp_history_from_transactions(txs: &[Value], account_address: &str) -> Vec<Ic
         let Ok(amount_e8s) = u64::try_from(delta.unsigned_abs()) else {
             continue;
         };
+        let timestamp_ns = super::confirmed_history_time(timestamp, &block_index.to_string())?;
         let is_incoming = delta > 0;
         let (from, to) = if is_incoming {
             (counterparty, account_address.to_string())
@@ -209,7 +214,7 @@ fn icp_history_from_transactions(txs: &[Value], account_address: &str) -> Vec<Ic
             is_incoming,
         });
     }
-    entries
+    Ok(entries)
 }
 
 fn format_icp(e8s: u64) -> String {
@@ -267,7 +272,7 @@ mod history_tests {
                 json!([op("TRANSACTION", THEM, "-9"), op("TRANSACTION", THEM, "9")]),
             ),
         ];
-        let entries = icp_history_from_transactions(&txs, ME);
+        let entries = icp_history_from_transactions(&txs, ME).unwrap();
         let got: Vec<(u64, bool, u64, &str)> = entries
             .iter()
             .map(|e| {

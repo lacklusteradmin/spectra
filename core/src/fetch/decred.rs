@@ -91,7 +91,8 @@ pub struct DcrUtxo {
 pub struct DcrHistoryEntry {
     pub txid: String,
     pub block_height: i64,
-    pub timestamp: u64,
+    /// `None` while the transaction is unconfirmed.
+    pub timestamp: Option<u64>,
     pub amount_atoms: i64,
     pub fee_atoms: u64,
     pub is_incoming: bool,
@@ -181,10 +182,10 @@ impl DecredClient {
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<DcrHistoryEntry>, String> {
         let list: InsightTxList = self.get(&format!("/txs?address={address}")).await?;
-        Ok(list
+        let entries: Result<Vec<Option<DcrHistoryEntry>>, String> = list
             .txs
             .into_iter()
-            .filter_map(|tx| {
+            .map(|tx| {
                 let owned_in: i64 = tx
                     .vin
                     .iter()
@@ -216,16 +217,18 @@ impl DecredClient {
                     .sum();
                 let net = owned_out - owned_in;
                 let fee_atoms = (tx.fees * 1e8).round() as u64;
-                (net != 0).then_some(DcrHistoryEntry {
+                let timestamp = super::history_time(tx.blockheight > 0, Some(tx.time), &tx.txid)?;
+                Ok((net != 0).then_some(DcrHistoryEntry {
                     txid: tx.txid,
                     block_height: tx.blockheight,
-                    timestamp: tx.time,
+                    timestamp,
                     amount_atoms: net,
                     fee_atoms,
                     is_incoming: net > 0,
-                })
+                }))
             })
-            .collect())
+            .collect();
+        Ok(entries?.into_iter().flatten().collect())
     }
 
     pub async fn fetch_tx_status(

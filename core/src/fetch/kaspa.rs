@@ -202,9 +202,10 @@ impl KaspaClient {
                 "/addresses/{address}/full-transactions-page?limit=50&resolve_previous_outpoints=light"
             ))
             .await?;
-        Ok(txs
+        // Every listed transaction is in a block, so each has a time.
+        let entries: Result<Vec<Option<KasHistoryEntry>>, String> = txs
             .into_iter()
-            .filter_map(|tx| {
+            .map(|tx| {
                 let owned_in: i64 = tx
                     .inputs
                     .iter()
@@ -228,15 +229,18 @@ impl KaspaClient {
                     .map(|o| o.amount as i64)
                     .sum();
                 let net = owned_out - owned_in;
-                (net != 0).then(|| KasHistoryEntry {
+                let timestamp =
+                    super::confirmed_history_time(Some(tx.block_time), &tx.transaction_id)?;
+                Ok((net != 0).then_some(KasHistoryEntry {
                     txid: tx.transaction_id,
                     block_daa_score: tx.accepting_block_blue_score.unwrap_or(0),
-                    timestamp: tx.block_time,
+                    timestamp,
                     amount_sompi: net,
                     is_incoming: net > 0,
-                })
+                }))
             })
-            .collect())
+            .collect();
+        Ok(entries?.into_iter().flatten().collect())
     }
 
     pub async fn fetch_tx_status(

@@ -136,7 +136,11 @@ impl MoneroClient {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let timestamp = tx.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
+                    // `in` and `out` hold only mined transfers.
+                    let timestamp = super::confirmed_history_time(
+                        tx.get("timestamp").and_then(|v| v.as_u64()),
+                        &txid,
+                    )?;
                     let amount = tx.get("amount").and_then(|v| v.as_u64()).unwrap_or(0);
                     let fee = tx.get("fee").and_then(|v| v.as_u64()).unwrap_or(0);
                     let confirmations = tx

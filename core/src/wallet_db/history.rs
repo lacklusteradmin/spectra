@@ -20,7 +20,26 @@ pub struct HistoryRecord {
 
 // ── History record CRUD ───────────────────────────────────────────────────────
 
-/// Index the same Unix timestamp carried by the stored payload.
+/// Where an undated pending transaction sorts: 9999-12-31T23:59:59Z.
+const UNDATED_PENDING_SORT_KEY: f64 = 253_402_300_799.0;
+
+/// The instant a record sorts by, which is its own time when it has one.
+///
+/// A pending transaction the chain has not dated yet is the newest thing in
+/// the history, so it sorts after every dated one: first when newest-first,
+/// last when oldest-first. Its payload keeps the unknown time, so it still
+/// reads as undated; once it confirms, the dated record replaces the key.
+/// Before this every undated row sorted as the oldest, under the sentinel.
+fn history_sort_key(payload: &CorePersistedTransactionRecord) -> f64 {
+    let undated = payload.created_at_unix <= 0.0;
+    if undated && payload.status == crate::store::wallet_domain::CoreTransactionStatus::Pending {
+        UNDATED_PENDING_SORT_KEY
+    } else {
+        payload.created_at_unix
+    }
+}
+
+/// Index a record under its sort key; the payload keeps its own time.
 pub fn history_record_from_payload(
     payload: crate::store::persistence_models::CorePersistedTransactionRecord,
 ) -> HistoryRecord {
@@ -29,7 +48,7 @@ pub fn history_record_from_payload(
         wallet_id: payload.wallet_id.as_deref().map(str::to_lowercase),
         chain_id: payload.chain_id.clone(),
         tx_hash: payload.transaction_hash.as_deref().map(str::to_lowercase),
-        created_at: payload.created_at_unix,
+        created_at: history_sort_key(&payload),
         payload,
     }
 }

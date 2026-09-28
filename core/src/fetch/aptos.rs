@@ -229,7 +229,7 @@ impl AptosClient {
             .get(&format!("/accounts/{address}/transactions?limit=50"))
             .await?;
 
-        Ok(aptos_history_from_transactions(&txs, address))
+        aptos_history_from_transactions(&txs, address)
     }
 }
 
@@ -278,36 +278,46 @@ fn aptos_native_transfer(tx: &Value) -> Option<(String, u64)> {
     Some((to.as_str()?.to_string(), amount.as_str()?.parse().ok()?))
 }
 
-fn aptos_history_from_transactions(txs: &[Value], address: &str) -> Vec<AptosHistoryEntry> {
+/// Committed user transactions only, so each has a time.
+fn aptos_history_from_transactions(
+    txs: &[Value],
+    address: &str,
+) -> Result<Vec<AptosHistoryEntry>, String> {
     let number = |tx: &Value, field: &str| -> u64 {
         tx.get(field)
             .and_then(Value::as_str)
             .and_then(|s| s.parse().ok())
             .unwrap_or(0)
     };
-    txs.iter()
-        .filter_map(|tx| {
-            let (to, amount_octas) = aptos_native_transfer(tx)?;
-            if amount_octas == 0 {
-                return None;
-            }
-            Some(AptosHistoryEntry {
-                txid: tx.get("hash")?.as_str()?.to_string(),
-                version: number(tx, "version"),
-                timestamp_us: number(tx, "timestamp"),
-                from: tx
-                    .get("sender")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                is_incoming: to.eq_ignore_ascii_case(address),
-                to,
-                amount_octas,
-                gas_used: number(tx, "gas_used"),
-                gas_unit_price: number(tx, "gas_unit_price"),
-            })
-        })
-        .collect()
+    let mut entries = Vec::new();
+    for tx in txs {
+        let Some((to, amount_octas)) = aptos_native_transfer(tx) else {
+            continue;
+        };
+        let Some(txid) = tx.get("hash").and_then(Value::as_str) else {
+            continue;
+        };
+        if amount_octas == 0 {
+            continue;
+        }
+        let timestamp_us = super::confirmed_history_time(Some(number(tx, "timestamp")), txid)?;
+        entries.push(AptosHistoryEntry {
+            txid: txid.to_string(),
+            version: number(tx, "version"),
+            timestamp_us,
+            from: tx
+                .get("sender")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            is_incoming: to.eq_ignore_ascii_case(address),
+            to,
+            amount_octas,
+            gas_used: number(tx, "gas_used"),
+            gas_unit_price: number(tx, "gas_unit_price"),
+        });
+    }
+    Ok(entries)
 }
 
 fn format_apt(octas: u64) -> String {
@@ -397,7 +407,7 @@ mod history_tests {
                 true,
             ),
         ];
-        let entries = aptos_history_from_transactions(&txs, ME);
+        let entries = aptos_history_from_transactions(&txs, ME).unwrap();
         let hashes: Vec<&str> = entries.iter().map(|e| e.txid.as_str()).collect();
         assert_eq!(hashes, ["apt", "coin", "fa"]);
         assert!(entries.iter().all(|e| e.to == THEM && !e.is_incoming));

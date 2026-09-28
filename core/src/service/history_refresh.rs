@@ -142,7 +142,15 @@ fn record_for(
         signed_transaction_payload_format: None,
         failure_reason: None,
         transaction_history_source: Some("rust".to_string()),
-        created_at_unix: entry.timestamp,
+        // A provider that gives no time (an unconfirmed transaction, a
+        // Solana block without `blockTime`) gives 0, which was stored as the
+        // Unix epoch and shown as 31 December 1969. Unknown is the sentinel
+        // every other history path already stores.
+        created_at_unix: if entry.timestamp > 0.0 {
+            entry.timestamp
+        } else {
+            SENTINEL_CREATED_AT_UNIX
+        },
     }
 }
 

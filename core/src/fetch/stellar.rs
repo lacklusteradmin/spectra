@@ -21,7 +21,8 @@ pub struct StellarBalance {
 pub struct StellarHistoryEntry {
     pub txid: String,
     pub ledger: u64,
-    pub timestamp: String,
+    /// Unix seconds, from Horizon's RFC 3339 `created_at`.
+    pub timestamp: u64,
     pub from: String,
     pub to: String,
     pub amount_stroops: i64,
@@ -167,10 +168,7 @@ impl StellarClient {
                 "/accounts/{address}/payments?limit=50&order=desc&include_failed=false"
             ))
             .await?;
-        Ok(stellar_history_from_payments(
-            payments.embedded.records,
-            address,
-        ))
+        stellar_history_from_payments(payments.embedded.records, address)
     }
 }
 
@@ -184,28 +182,36 @@ impl StellarClient {
 fn stellar_history_from_payments(
     records: Vec<HorizonPaymentRecord>,
     address: &str,
-) -> Vec<StellarHistoryEntry> {
-    records
+) -> Result<Vec<StellarHistoryEntry>, String> {
+    let entries: Result<Vec<Option<StellarHistoryEntry>>, String> = records
         .into_iter()
-        .filter_map(|r| {
+        .map(|r| {
             let (from, to, amount) = match r.op_type.as_str() {
                 "payment" if r.asset_type == "native" => (r.from, r.to, r.amount),
                 "create_account" => (r.funder, r.account, r.starting_balance),
-                _ => return None,
+                _ => return Ok(None),
             };
-            let amount_stroops = parse_stellar_amount(&amount).ok()?;
-            Some(StellarHistoryEntry {
+            let amount_stroops = parse_stellar_amount(&amount)?;
+            // Horizon lists only operations already in a ledger.
+            let timestamp = super::confirmed_history_time(
+                super::history::parse_iso8601_timestamp(&r.created_at)
+                    .filter(|t| *t > 0.0)
+                    .map(|t| t as u64),
+                &r.transaction_hash,
+            )?;
+            Ok(Some(StellarHistoryEntry {
                 txid: r.transaction_hash,
                 ledger: 0,
-                timestamp: r.created_at,
+                timestamp,
                 is_incoming: to == address,
                 from,
                 to,
                 amount_stroops,
                 fee_charged: 0,
-            })
+            }))
         })
-        .collect()
+        .collect();
+    Ok(entries?.into_iter().flatten().collect())
 }
 
 pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, String> {
@@ -242,7 +248,8 @@ mod history_tests {
             ]
         }))
         .unwrap();
-        let entries = stellar_history_from_payments(records.records, ME);
+        let entries = stellar_history_from_payments(records.records, ME).unwrap();
+        assert_eq!(entries[0].timestamp, 1_754_445_901, "2025-08-06T02:05:01Z");
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].txid, "created");
         assert!(entries[0].is_incoming);

@@ -124,8 +124,8 @@ class HistoryTests(unittest.TestCase):
             with sqlite3.connect(dbpath) as db:
                 wid = db.execute('SELECT id FROM wallets').fetchone()[0]
                 for i in range(55):
-                    row = dict(id=f'tx-{i:03}', walletId=wid, walletName='Éther 测试', kind='receive', status='confirmed', chainId='ethereum', symbol='ETH', assetDisplayName='Ether', deploymentId='ethereum:native', amount='1', address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAtUnix=i)
-                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'ethereum',row['transactionHash'],i,json.dumps(row)))
+                    row = dict(id=f'tx-{i:03}', walletId=wid, walletName='Éther 测试', kind='receive', status='confirmed', chainId='ethereum', symbol='ETH', assetDisplayName='Ether', deploymentId='ethereum:native', amount='1', address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAtUnix=i+1)
+                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'ethereum',row['transactionHash'],i+1,json.dumps(row)))
                 # A duplicate provider record must not consume a page slot or hide the confirmed row.
                 row.update(id='duplicate', kind='send', status='pending')
                 db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'ethereum',row['transactionHash'],799,json.dumps(row)))
@@ -144,7 +144,8 @@ class HistoryTests(unittest.TestCase):
             assert len(summary['recentAndPending']) == 50
             assert 'duplicate' not in {r['id'] for r in summary['recentAndPending']}
             assert summary['replaceable'] == []
-            assert summary['earliest'][0]['earliestCreatedAtUnix'] == 0
+            # Times start at 1: 0 is a transaction without one.
+            assert summary['earliest'][0]['earliestCreatedAtUnix'] == 1
             assert 'tx-000' not in {r['id'] for r in summary['recentAndPending']}
             old_record = run('txs','--record','tx-000')['record']
             assert old_record['id'] == 'tx-000' and old_record['status'] == 'confirmed', old_record

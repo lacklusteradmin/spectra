@@ -96,7 +96,8 @@ pub struct BlockbookUtxoEntry {
 pub struct BlockbookHistoryEntry {
     pub txid: String,
     pub block_height: u64,
-    pub timestamp: u64,
+    /// `None` while the transaction is unconfirmed.
+    pub timestamp: Option<u64>,
     /// Net value change for the queried address. Negative = outgoing.
     pub amount_sat: i64,
     pub fee_sat: u64,
@@ -225,10 +226,10 @@ impl BlockbookClient {
             ))
             .await?;
 
-        Ok(list
+        let entries: Result<Vec<Option<BlockbookHistoryEntry>>, String> = list
             .transactions
             .into_iter()
-            .filter_map(|tx| {
+            .map(|tx| {
                 // The transaction's `value` is its total output — every
                 // party's, change included — so the address's own inputs and
                 // outputs are summed instead.
@@ -246,16 +247,19 @@ impl BlockbookClient {
                 };
                 let amount_sat = own(&tx.vout) - own(&tx.vin);
                 let fee_sat: u64 = tx.fees.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0);
-                (amount_sat != 0).then(|| BlockbookHistoryEntry {
+                let block_height = tx.block_height.unwrap_or(0);
+                let timestamp = super::history_time(block_height > 0, tx.block_time, &tx.txid)?;
+                Ok((amount_sat != 0).then_some(BlockbookHistoryEntry {
                     txid: tx.txid,
-                    block_height: tx.block_height.unwrap_or(0),
-                    timestamp: tx.block_time.unwrap_or(0),
+                    block_height,
+                    timestamp,
                     amount_sat,
                     fee_sat,
                     is_incoming: amount_sat > 0,
-                })
+                }))
             })
-            .collect())
+            .collect();
+        Ok(entries?.into_iter().flatten().collect())
     }
 
     /// Fetch confirmation status for a single txid via `/api/v2/tx/{txid}`.

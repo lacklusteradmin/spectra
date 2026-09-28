@@ -132,7 +132,8 @@ impl super::SignedSubmission for BsvSendResult {
 pub struct BsvHistoryEntry {
     pub txid: String,
     pub block_height: u64,
-    pub timestamp: u64,
+    /// `None` while the transaction is unconfirmed.
+    pub timestamp: Option<u64>,
     /// Best-effort net value change for the queried address in sats.
     /// Positive = incoming (sum of vout values paid to this address).
     /// Negative = outgoing (vin addresses include this address).
@@ -216,7 +217,7 @@ impl BitcoinSvClient {
             let tx: WocTxDetail = self.get(&format!("/tx/hash/{}", item.tx_hash)).await?;
             details.push((item, tx));
         }
-        Ok(bsv_history_from_details(details, address))
+        bsv_history_from_details(details, address)
     }
 
     /// Fetch confirmation status for a single txid via WoC `/tx/hash/{txid}`.
@@ -268,7 +269,7 @@ fn format_bsv(sat: u64) -> String {
 fn bsv_history_from_details(
     details: Vec<(WocHistoryItem, WocTxDetail)>,
     address: &str,
-) -> Vec<BsvHistoryEntry> {
+) -> Result<Vec<BsvHistoryEntry>, String> {
     let sats = |value: f64| {
         let sats = (value * 100_000_000.0).round();
         if sats.is_finite() && sats >= 0.0 {
@@ -297,9 +298,9 @@ fn bsv_history_from_details(
                 .map(move |vout| ((txid.clone(), vout.n), sats(vout.value)))
         })
         .collect();
-    details
+    let entries: Result<Vec<Option<BsvHistoryEntry>>, String> = details
         .into_iter()
-        .filter_map(|(item, tx)| {
+        .map(|(item, tx)| {
             let received: i64 = tx
                 .vout
                 .iter()
@@ -312,15 +313,19 @@ fn bsv_history_from_details(
                 .filter_map(|vin| owned.get(&(vin.txid.clone(), vin.vout)))
                 .sum();
             let amount_sat = received - spent;
-            (amount_sat != 0).then(|| BsvHistoryEntry {
+            let block_height = tx.blockheight.unwrap_or(item.height).max(0) as u64;
+            let timestamp =
+                super::history_time(block_height > 0, tx.blocktime.or(tx.time), &item.tx_hash)?;
+            Ok((amount_sat != 0).then_some(BsvHistoryEntry {
                 txid: item.tx_hash,
-                block_height: tx.blockheight.unwrap_or(item.height).max(0) as u64,
-                timestamp: tx.blocktime.or(tx.time).unwrap_or(0),
+                block_height,
+                timestamp,
                 amount_sat,
                 is_incoming: amount_sat > 0,
-            })
+            }))
         })
-        .collect()
+        .collect();
+    Ok(entries?.into_iter().flatten().collect())
 }
 
 #[cfg(test)]
@@ -371,7 +376,7 @@ mod history_tests {
                 serde_json::json!([out(0, 0.3998, THEM)]),
             ),
         ];
-        let entries = bsv_history_from_details(details, ME);
+        let entries = bsv_history_from_details(details, ME).unwrap();
         let got: Vec<(&str, i64, bool)> = entries
             .iter()
             .map(|e| (e.txid.as_str(), e.amount_sat, e.is_incoming))

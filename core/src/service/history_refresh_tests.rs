@@ -105,6 +105,42 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
     );
 }
 
+/// An entry the chain has not dated yet is stored as the unknown sentinel the
+/// other history paths use, not as the Unix epoch.
+#[test]
+fn an_undated_entry_is_stored_as_unknown() {
+    let state = CoreAppState {
+        wallets: vec![wallet(
+            "w1",
+            Chain::Litecoin,
+            &[(Chain::Litecoin, "ltc1me")],
+        )],
+        ..Default::default()
+    };
+    let target = &targets(&state, Chain::Litecoin, &[])[0];
+    let entry = |timestamp| crate::fetch::history_decode::NormalizedHistoryItem {
+        deployment_id: Some("litecoin:native".to_string()),
+        kind: "receive".to_string(),
+        status: "pending".to_string(),
+        asset_display_name: "Litecoin".to_string(),
+        symbol: "LTC".to_string(),
+        chain_id: "litecoin".to_string(),
+        amount: 1.0,
+        counterparty: String::new(),
+        tx_hash: "abc".to_string(),
+        block_height: None,
+        timestamp,
+    };
+    assert_eq!(
+        record_for(target, Chain::Litecoin, entry(0.0)).created_at_unix,
+        SENTINEL_CREATED_AT_UNIX
+    );
+    assert_eq!(
+        record_for(target, Chain::Litecoin, entry(1_700_000_000.0)).created_at_unix,
+        1_700_000_000.0
+    );
+}
+
 /// A wallet on a testnet fetches the address for that network.
 #[test]
 fn a_target_follows_the_network_the_wallet_is_on() {

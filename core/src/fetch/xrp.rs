@@ -133,7 +133,7 @@ impl XrpClient {
             .cloned()
             .unwrap_or_default();
 
-        Ok(xrp_history_from_transactions(&txs, address))
+        xrp_history_from_transactions(&txs, address)
     }
 }
 
@@ -145,7 +145,10 @@ impl XrpClient {
 /// upper bound larger than what was delivered. A payment that moved no XRP
 /// for this account — an issued currency passing through — yields no entry,
 /// and neither does a failed one, which only burned its fee.
-fn xrp_history_from_transactions(txs: &[Value], address: &str) -> Vec<XrpHistoryEntry> {
+fn xrp_history_from_transactions(
+    txs: &[Value],
+    address: &str,
+) -> Result<Vec<XrpHistoryEntry>, String> {
     let drops = |value: Option<&Value>| -> Option<i128> {
         value.and_then(Value::as_str).and_then(|s| s.parse().ok())
     };
@@ -211,19 +214,23 @@ fn xrp_history_from_transactions(txs: &[Value], address: &str) -> Vec<XrpHistory
         let Ok(amount_drops) = u64::try_from(transfer.unsigned_abs()) else {
             continue;
         };
-        entries.push(XrpHistoryEntry {
-            txid: tx
-                .get("hash")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            ledger_index: tx.get("ledger_index").and_then(Value::as_u64).unwrap_or(0),
-            // XRP epoch: 2000-01-01, Unix epoch difference = 946684800
-            timestamp: tx
-                .get("date")
+        let txid = tx
+            .get("hash")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        // `account_tx` up to the validated ledger lists only validated
+        // transactions. XRP epoch: 2000-01-01, Unix epoch difference = 946684800.
+        let timestamp = super::confirmed_history_time(
+            tx.get("date")
                 .and_then(Value::as_u64)
-                .map(|d| d + 946_684_800)
-                .unwrap_or(0),
+                .map(|d| d + 946_684_800),
+            &txid,
+        )?;
+        entries.push(XrpHistoryEntry {
+            txid,
+            ledger_index: tx.get("ledger_index").and_then(Value::as_u64).unwrap_or(0),
+            timestamp,
             from,
             to,
             amount_drops,
@@ -231,7 +238,7 @@ fn xrp_history_from_transactions(txs: &[Value], address: &str) -> Vec<XrpHistory
             is_incoming: transfer > 0,
         });
     }
-    entries
+    Ok(entries)
 }
 
 fn format_xrp(drops: u64) -> String {
@@ -320,7 +327,7 @@ mod history_tests {
                 json!([account_root(ME, "15999988", "15999976")]),
             ),
         ];
-        let entries = xrp_history_from_transactions(&txs, ME);
+        let entries = xrp_history_from_transactions(&txs, ME).unwrap();
         assert_eq!(entries.len(), 2, "{entries:?}");
         assert_eq!(entries[0].txid, "sent");
         assert!(!entries[0].is_incoming);
