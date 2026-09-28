@@ -13,7 +13,6 @@ pub enum EndpointApi {
     XrplJsonRpc,
     SubstrateJsonRpc,
     TronJsonRpc,
-    MoneroWalletRpc,
     MoneroDaemonRpc,
     Esplora,
     Blockbook,
@@ -36,7 +35,6 @@ pub enum EndpointApi {
     Xrpscan,
     Nearblocks,
     SubstrateSidecar,
-    MoneroLightWallet,
     Insight,
     KaspaRest,
 }
@@ -52,7 +50,6 @@ impl EndpointApi {
             Self::SubstrateJsonRpc => "substrate-json-rpc",
             Self::TronJsonRpc => "tron-json-rpc",
             Self::MoneroDaemonRpc => "monero-daemon-rpc",
-            Self::MoneroWalletRpc => "monero-wallet-rpc",
             Self::Esplora => "esplora",
             Self::Blockbook => "blockbook",
             Self::Blockchair => "blockchair",
@@ -74,7 +71,6 @@ impl EndpointApi {
             Self::Xrpscan => "xrpscan",
             Self::Nearblocks => "nearblocks",
             Self::SubstrateSidecar => "substrate-sidecar",
-            Self::MoneroLightWallet => "monero-light-wallet",
             Self::Insight => "insight",
             Self::KaspaRest => "kaspa-rest",
         }
@@ -249,8 +245,8 @@ pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<St
         Nearblocks => &["history"],
         SubstrateJsonRpc => &["fee", "broadcast", "verification", "staking"],
         // Catalog reference APIs without a production request adapter.
-        TronJsonRpc | MoneroWalletRpc | MoneroLightWallet | Blockchair | BlockchainInfo
-        | BchRestV2 | SochainV2 | Xrpscan | SubstrateSidecar => &[],
+        TronJsonRpc | Blockchair | BlockchainInfo | BchRestV2 | SochainV2 | Xrpscan
+        | SubstrateSidecar => &[],
     };
     values
         .iter()

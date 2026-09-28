@@ -183,7 +183,7 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
             }
             vec![Check::get(url.into(), Response::Field(if api == Blockchair { "/data/blocks" } else { "/blocks" }))]
         }
-        SochainV2 | Tronscan | MoneroWalletRpc | MoneroLightWallet => {
+        SochainV2 | Tronscan => {
             return Err("no read-only health check for this API".into());
         }
     };

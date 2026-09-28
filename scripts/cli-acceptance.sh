@@ -95,11 +95,6 @@ contains "resolves a network by name"  '"nativeSymbol":"BTC"' \
     spectra --json chains --filter bitcoin
 contains "hides testnets by default"   '"chains":[]' \
     spectra --json chains --filter "bitcoin testnet"
-# The network card's sentence: one variant per behaviour, not one string per chain.
-contains "Monero signs on device" '"sendBroadcastMode":"signsAndBroadcasts"' \
-    spectra --json chains --filter monero
-contains "Bittensor claims in-app signing like its peers" '"sendBroadcastMode":"signsAndBroadcasts"' \
-    spectra --json chains --filter bittensor
 
 # ── Address validation ──────────────────────────────────────────────────────
 #
@@ -1029,6 +1024,9 @@ check "adds a typed custom endpoint" $OK \
     spectra endpoints --chain monero --api monero-daemon-rpc --capabilities fee,broadcast,verification --add https://wallet.example
 contains "a second process reads the custom endpoint" '"endpoint":"https://wallet.example"' \
     spectra --json endpoints --catalog --source custom --chain monero
+# Monero scans and signs on device; there is no wallet-RPC adapter to point at.
+check "Monero wallet RPC is not an endpoint API" $REJECTED \
+    spectra endpoints --chain monero --api monero-wallet-rpc --capabilities fee --add https://wallet-rpc.example
 # Fee priority was stored per chain and spent by no send path; it is gone
 # rather than kept as a choice that changes nothing.
 check "fee priority is not a setting"      $REJECTED \

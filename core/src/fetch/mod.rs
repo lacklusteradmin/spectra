@@ -25,7 +25,6 @@ pub mod dogecoin;
 pub mod evm;
 pub mod icp;
 pub mod kaspa;
-pub mod monero;
 pub mod near;
 pub mod polkadot;
 pub mod solana;

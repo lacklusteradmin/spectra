@@ -37,9 +37,8 @@ pub(crate) use crate::fetch::{
     aptos::AptosClient, bitcoin::BitcoinClient, bitcoin::UtxoTxStatus, bitcoin_sv::BitcoinSvClient,
     bittensor::BittensorClient, blockbook::BlockbookClient, cardano::CardanoClient,
     decred::DecredClient, dogecoin::DogecoinClient, evm::EvmClient, icp::IcpClient,
-    kaspa::KaspaClient, monero::MoneroClient, near::NearClient, polkadot::PolkadotClient,
-    solana::SolanaClient, stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient,
-    xrp::XrpClient,
+    kaspa::KaspaClient, near::NearClient, polkadot::PolkadotClient, solana::SolanaClient,
+    stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient, xrp::XrpClient,
 };
 pub(crate) use crate::registry::{Chain, EndpointSlot};
 pub(crate) use crate::store::secret_store::SecretStore;

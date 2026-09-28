@@ -390,13 +390,6 @@ impl Chain {
             || self.send_execution_shape().fee_fallback > 0.0
     }
 
-    /// How core moves a send here. Only meaningful where
-    /// [`Chain::has_send_preview`] is true; that is the gate on the card this
-    /// answers for.
-    pub fn send_broadcast_mode(self) -> SendBroadcastMode {
-        SendBroadcastMode::SignsAndBroadcasts
-    }
-
     /// This chain's send builder can sign a transaction and stop, without
     /// putting it on the chain.
     ///
@@ -1232,19 +1225,6 @@ pub enum SendFeeField {
     None,
 }
 
-/// How core moves a send on this chain — which is what the send screen's
-/// network card tells the user it is about to do. There are two behaviours,
-/// so two variants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum SendBroadcastMode {
-    /// Core signs on the device and broadcasts to this chain's endpoints.
-    SignsAndBroadcasts,
-    /// Core prepares the transfer against the configured backend, which also
-    /// quotes the fee. Monero has no in-process wallet to sign with, so the
-    /// backend does both halves and the card must not claim otherwise.
-    PreparesWithBackend,
-}
-
 /// How a chain's fee enters a send, beyond the amount and the destination.
 #[derive(Debug, Clone, Copy)]
 pub struct SendExecutionShape {
@@ -1306,16 +1286,6 @@ mod tests {
     fn non_evm_chains_have_no_eip155_identity() {
         for chain in Chain::all().filter(|chain| !chain.is_evm()) {
             assert!(chain.evm_chain_id().is_err(), "{}", chain.str_id());
-        }
-    }
-
-    #[test]
-    fn sends_are_signed_on_device() {
-        for chain in Chain::all().filter(|c| c.has_send_preview()) {
-            assert_eq!(
-                chain.send_broadcast_mode(),
-                SendBroadcastMode::SignsAndBroadcasts
-            );
         }
     }
 
@@ -1631,8 +1601,6 @@ pub struct ChainIdentity {
     pub has_send_preview: bool,
     /// The chain can hold tracked tokens.
     pub hosts_tokens: bool,
-    /// How core moves a send here, which is what the network card says.
-    pub send_broadcast_mode: SendBroadcastMode,
     /// The mainnet this chain belongs to, or itself.
     pub mainnet_counterpart: Chain,
     /// The networks this chain's family offers, mainnet first.
@@ -1663,7 +1631,6 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),
             hosts_tokens: chain.hosts_tokens(),
-            send_broadcast_mode: chain.send_broadcast_mode(),
             mainnet_counterpart: chain.mainnet_counterpart(),
             network_choices: chain
                 .network_choices()

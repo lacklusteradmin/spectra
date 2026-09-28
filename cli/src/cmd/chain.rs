@@ -131,12 +131,6 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // The setup picker's short list, as a rank, so the order comes
                 // with it.
                 "popularRank": chain.entry().popular_rank,
-                // What the send screen's network card says core will do with
-                // a send here.
-                "sendBroadcastMode": chain.has_send_preview().then(|| match chain.send_broadcast_mode() {
-                    spectra_core::registry::SendBroadcastMode::SignsAndBroadcasts => "signsAndBroadcasts",
-                    spectra_core::registry::SendBroadcastMode::PreparesWithBackend => "preparesWithBackend",
-                }),
                 // Explorer history source for EVM chains only. Other families use
                 // different history routes.
                 "historySource": chain.is_evm().then(|| match chain.evm_history_source() {

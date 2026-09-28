@@ -16,6 +16,33 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-28 — Monero's wallet-RPC remnants are gone
+
+- **Before:** `SendBroadcastMode` crossed the FFI on every `ChainIdentity`,
+  `spectra --json chains` printed it as `sendBroadcastMode`, and the send
+  network card switched over it. Its `PreparesWithBackend` variant, documented
+  as "Monero has no in-process wallet to sign with", was no longer constructed
+  once Monero began signing locally, so `send_broadcast_mode()` returned
+  `SignsAndBroadcasts` for every chain. `EndpointApi` still carried
+  `monero-wallet-rpc` and `monero-light-wallet`, and balance, history and
+  broadcast kept `MoneroWalletRpc` branches backed by `fetch/monero.rs` and
+  `send/monero.rs`; Monero routes through `monero-daemon-rpc`, so none was
+  reachable.
+- **After:** the enum, the `ChainIdentity.send_broadcast_mode` field, the CLI
+  `sendBroadcastMode` key and the backend-preparation sentence with its three
+  translations are removed; the card always says Spectra signs and broadcasts
+  the chain's transfers in-app. Both Monero API variants, their dispatch arms
+  and the wallet-RPC client are removed, so a custom endpoint declaring either
+  API is refused.
+- **Why:** a one-variant choice is a constant, and every removed piece
+  described a server-side Monero wallet that the local scan/sign engine
+  replaced on 2026-09-22.
+- **CLI check:** `spectra --json chains --filter monero` has no
+  `sendBroadcastMode` key; `spectra endpoints --chain monero --api
+  monero-wallet-rpc --capabilities fee --add URL` exits 3.
+- **Verification:** all four suites passed: rustfmt/clippy, 862 core tests plus
+  the transport test, 442 CLI acceptance checks and 96 iPhone simulator tests.
+
 ## 2026-09-28 — Fee priority is gone: no send path spent it
 
 - **Before:** every non-EVM send page and the Bitcoin-family diagnostics

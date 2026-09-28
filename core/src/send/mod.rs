@@ -32,7 +32,6 @@ pub mod icp;
 mod icp_stages;
 pub mod kaspa;
 pub mod litecoin;
-pub mod monero;
 pub(crate) mod monero_local;
 pub mod mweb;
 pub mod near;

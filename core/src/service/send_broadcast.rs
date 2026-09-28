@@ -205,12 +205,6 @@ impl WalletService {
                     .map_err(|e| e.to_string())?;
                 Ok(json!({"txid":hex::encode(tx.hash())}).to_string())
             }
-            Api::MoneroWalletRpc => {
-                let client = MoneroClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.relay_prepared(&payload).await?,
-                )?)
-            }
 
             Api::KaspaRest => {
                 let client = KaspaClient::new(eps);

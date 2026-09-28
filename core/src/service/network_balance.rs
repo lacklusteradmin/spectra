@@ -168,11 +168,6 @@ async fn fetch_native_balance_summary(
             .await?
             .e8s
             .to_string(),
-        Api::MoneroWalletRpc => MoneroClient::new(endpoints)
-            .fetch_balance(0)
-            .await?
-            .piconeros
-            .to_string(),
         Api::Insight => DecredClient::new(endpoints)
             .fetch_balance(address)
             .await?

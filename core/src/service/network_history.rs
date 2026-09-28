@@ -301,9 +301,6 @@ async fn fetch_history(
             )
         }
         Api::IcpRosetta => json_response(&IcpClient::new(endpoints).fetch_history(address).await?),
-        Api::MoneroWalletRpc => {
-            json_response(&MoneroClient::new(endpoints).fetch_history(0).await?)
-        }
 
         Api::Insight => json_response(&DecredClient::new(endpoints).fetch_history(address).await?),
         Api::KaspaRest => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),

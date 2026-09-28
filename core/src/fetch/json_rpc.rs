@@ -15,9 +15,6 @@ pub(crate) async fn call(
 ) -> Result<Value, String> {
     let body = match api {
         EndpointApi::XrplJsonRpc => json!({"method": method, "params": [params]}),
-        EndpointApi::MoneroWalletRpc => {
-            json!({"jsonrpc": "2.0", "id": "0", "method": method, "params": params})
-        }
         EndpointApi::NearJsonRpc => {
             json!({"jsonrpc": "2.0", "id": "1", "method": method, "params": params})
         }
@@ -83,10 +80,6 @@ mod tests {
             (
                 EndpointApi::NearJsonRpc,
                 json!({"jsonrpc":"2.0","id":"1","method":"probe","params":{}}),
-            ),
-            (
-                EndpointApi::MoneroWalletRpc,
-                json!({"jsonrpc":"2.0","id":"0","method":"probe","params":{}}),
             ),
             (
                 EndpointApi::XrplJsonRpc,
