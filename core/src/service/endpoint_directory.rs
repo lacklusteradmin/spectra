@@ -33,7 +33,7 @@ impl CustomEndpoint {
             .endpoint_records
             .iter()
             .filter(|r| r.chain_id == chain.str_id())
-            .filter_map(|r| r.api)
+            .map(|r| r.api)
             .chain(
                 [
                     EndpointSlot::Primary,
@@ -92,13 +92,11 @@ impl CustomEndpoint {
                 self.api.as_str(),
                 self.endpoint
             ),
-            api: Some(self.api),
+            api: self.api,
             chain_id: self.chain_id.clone(),
             endpoint: self.endpoint.clone(),
             capabilities: self.capabilities.clone(),
             probe_url: None,
-            explorer_label: None,
-            tx_suffix: String::new(),
         })
     }
 }
@@ -124,10 +122,7 @@ impl WalletService {
                 .iter()
                 .cloned()
                 .map(|record| EndpointDirectoryEntry {
-                    api_name: record
-                        .api
-                        .map(|api| api.as_str().into())
-                        .unwrap_or_default(),
+                    api_name: record.api.as_str().into(),
                     record,
                     is_built_in: true,
                 })
@@ -181,7 +176,7 @@ impl WalletService {
                     }
                     matching.iter().any(|e| {
                         e.record.chain_id == network
-                            && e.record.api == chain.endpoint_api(slot)
+                            && Some(e.record.api) == chain.endpoint_api(slot)
                             && required
                                 .iter()
                                 .all(|c| e.record.capabilities.iter().any(|v| v == c))
@@ -201,7 +196,7 @@ impl WalletService {
         let mut urls = self.custom_api_endpoints(chain, api, required).await;
         for record in &crate::app_core::endpoint_catalog()?.endpoint_records {
             if record.chain_id == chain.str_id()
-                && record.api == Some(api)
+                && record.api == api
                 && required
                     .iter()
                     .all(|c| record.capabilities.iter().any(|v| v == c))
@@ -584,10 +579,7 @@ mod tests {
                 .capabilities,
             ["balance"]
         );
-        assert!(
-            own.iter()
-                .all(|r| r.record.probe_url.is_none() && r.record.explorer_label.is_none())
-        );
+        assert!(own.iter().all(|r| r.record.probe_url.is_none()));
         assert!(
             !reopened
                 .send_endpoints("ethereum".into())

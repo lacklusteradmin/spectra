@@ -96,8 +96,7 @@ pub(crate) fn validate_configured_endpoint(
         .collect();
     if !matching.is_empty()
         && !matching.iter().any(|record| {
-            record.api == expected
-                && expected.is_some()
+            Some(record.api) == expected
                 && (slot != crate::registry::EndpointSlot::Primary
                     || record
                         .capabilities

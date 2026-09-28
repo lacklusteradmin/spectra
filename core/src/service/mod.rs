@@ -309,7 +309,7 @@ impl WalletService {
                     .endpoint_records
                     .iter()
                     .find(|row| row.chain_id == chain.str_id() && row.endpoint == *url)
-                    .and_then(|row| row.api)
+                    .map(|row| row.api)
             })
             .or_else(|| chain.endpoint_api(EndpointSlot::Primary))
             .ok_or_else(|| format!("No fetch API for {}", chain.str_id()))?;
@@ -371,7 +371,7 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
                 endpoints: records
                     .iter()
                     .filter(|record| {
-                        record.api == Some(api)
+                        record.api == api
                             && (slot != EndpointSlot::Primary
                                 || record
                                     .capabilities
@@ -406,7 +406,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
                     .into_iter()
                     .find(|record| &record.endpoint == endpoint)
                     .unwrap();
-                assert_eq!(record.api, chain.endpoint_api(EndpointSlot::Primary));
+                assert_eq!(Some(record.api), chain.endpoint_api(EndpointSlot::Primary));
                 assert!(
                     record
                         .capabilities

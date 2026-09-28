@@ -625,7 +625,7 @@ impl Chain {
             .and_then(|catalog| {
                 catalog.endpoint_records.iter().find(|record| {
                     record.chain_id == self.str_id()
-                        && record.api == Some(crate::EndpointApi::Blockscout)
+                        && record.api == crate::EndpointApi::Blockscout
                         && record.capabilities.iter().any(|cap| cap == "history")
                 })
             })

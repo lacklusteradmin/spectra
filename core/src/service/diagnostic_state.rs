@@ -374,7 +374,7 @@ mod tests {
         diagnostics_record("litecoin".into(), row("w3", " "));
         diagnostics_record_history_run("litecoin".into());
         let probe = |endpoint: &str| EndpointProbe {
-            api: None,
+            api: crate::EndpointApi::Esplora,
             chain_id: String::new(),
             endpoint: endpoint.into(),
             capabilities: Vec::new(),

@@ -942,7 +942,7 @@ impl WalletService {
         let catalog = crate::app_core::endpoint_catalog()?;
         let known = catalog.endpoint_records.iter().any(|r| {
             r.chain_id == chain.str_id()
-                && r.api == chain.endpoint_api(EndpointSlot::Primary)
+                && Some(r.api) == chain.endpoint_api(EndpointSlot::Primary)
                 && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
         });
         let eps = Arc::new(vec![endpoint.to_string()]);

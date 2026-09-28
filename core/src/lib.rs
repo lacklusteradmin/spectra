@@ -83,6 +83,11 @@ pub use endpoint_api::{EndpointApi, endpoint_capability_options};
 mod app_core;
 pub use app_core::*;
 
+mod explorers;
+pub use explorers::{
+    TransactionExplorer, TransactionExplorerLink, transaction_explorer_link, transaction_explorers,
+};
+
 pub mod chains;
 pub mod decimal;
 pub mod derivation;

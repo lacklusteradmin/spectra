@@ -2,8 +2,8 @@
 # `chain_id` references a concrete chains.id in chains.toml. Mainnets and
 # testnets are peers; display names and settings groups are derived from registry.
 #
-# `api` specifies the request/response contract; omit it for browser links.
-# Browser links have no capabilities; explorer_label enables a transaction button.
+# `api` specifies the request/response contract. Transaction explorer pages are
+# not services the app talks to; they live in explorers.toml.
 #
 #   capabilities  what it is used *for*, and a claim that has to be true
 #     balance history token-history token-discovery token-balance
@@ -64,13 +64,6 @@ chain_id = "bitcoin"
 endpoint = "https://mempool.emzy.de/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://mempool.emzy.de/api/blocks/tip/height"
-
-[[endpoints]]
-id = "bitcoin.explorer.tx"
-chain_id = "bitcoin"
-endpoint = "https://mempool.space/tx/"
-capabilities = []
-explorer_label = "Open In Mempool"
 
 [[endpoints]]
 id = "bitcoin.testnet.blockstream"
@@ -161,26 +154,12 @@ capabilities = ["verification"]
 probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
 
 [[endpoints]]
-id = "bitcoincash.explorer.tx"
-chain_id = "bitcoin-cash"
-endpoint = "https://blockchair.com/bitcoin-cash/transaction/"
-capabilities = []
-explorer_label = "Open In Blockchair"
-
-[[endpoints]]
 id = "bitcoinsv.whatsonchain.api"
 api = "whatsonchain"
 chain_id = "bitcoin-sv"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main"
 capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
-
-[[endpoints]]
-id = "bitcoinsv.explorer.tx"
-chain_id = "bitcoin-sv"
-endpoint = "https://whatsonchain.com/tx/"
-capabilities = []
-explorer_label = "Open In WhatsOnChain"
 
 [[endpoints]]
 id = "litecoin.litecoinspace.api"
@@ -199,26 +178,12 @@ capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"
 probe_url = "https://api.blockcypher.com/v1/ltc/main"
 
 [[endpoints]]
-id = "litecoin.explorer.tx"
-chain_id = "litecoin"
-endpoint = "https://litecoinspace.org/tx/"
-capabilities = []
-explorer_label = "Open In LitecoinSpace"
-
-[[endpoints]]
 id = "dogecoin.mainnet.blockcypher"
 api = "blockcypher"
 chain_id = "dogecoin"
 endpoint = "https://api.blockcypher.com/v1/doge/main"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://api.blockcypher.com/v1/doge/main"
-
-[[endpoints]]
-id = "dogecoin.explorer.tx"
-chain_id = "dogecoin"
-endpoint = "https://dogechain.info/tx/"
-capabilities = []
-explorer_label = "Open In Dogechain"
 
 [[endpoints]]
 id = "tron.trongrid.accounts.io"
@@ -242,13 +207,6 @@ api = "tron-json-rpc"
 chain_id = "tron"
 endpoint = "https://tron-rpc.publicnode.com/jsonrpc"
 capabilities = ["fee", "broadcast", "verification", "token-balance"]
-
-[[endpoints]]
-id = "tron.explorer.tx"
-chain_id = "tron"
-endpoint = "https://tronscan.org/#/transaction/"
-capabilities = []
-explorer_label = "Open In TronScan"
 
 [[endpoints]]
 id = "solana.rpc.mainnet"
@@ -305,13 +263,6 @@ capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 probe_url = "https://xrplcluster.com/"
 
 [[endpoints]]
-id = "xrp.explorer.tx"
-chain_id = "xrp"
-endpoint = "https://livenet.xrpl.org/transactions/"
-capabilities = []
-explorer_label = "Open In XRP Explorer"
-
-[[endpoints]]
 id = "cardano.koios.primary"
 api = "koios"
 chain_id = "cardano"
@@ -326,13 +277,6 @@ chain_id = "cardano"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
 capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
 probe_url = "https://graph.xray.app/output/services/koios/mainnet/api/v1/tip"
-
-[[endpoints]]
-id = "cardano.explorer.tx"
-chain_id = "cardano"
-endpoint = "https://cexplorer.io/tx/"
-capabilities = []
-explorer_label = "Open In Cardano Explorer"
 
 [[endpoints]]
 id = "aptos.rpc.aptoslabs"
@@ -351,14 +295,6 @@ capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "toke
 probe_url = "https://mainnet.aptoslabs.com/v1/spec"
 
 [[endpoints]]
-id = "aptos.explorer.tx"
-chain_id = "aptos"
-endpoint = "https://explorer.aptoslabs.com/txn/"
-capabilities = []
-explorer_label = "Open In Aptos Explorer"
-tx_suffix = "?network=mainnet"
-
-[[endpoints]]
 id = "ton.api.v2"
 api = "toncenter-v2"
 chain_id = "ton"
@@ -373,13 +309,6 @@ chain_id = "ton"
 endpoint = "https://toncenter.com/api/v3"
 capabilities = ["balance", "history", "token-balance", "token-discovery", "token-history"]
 probe_url = "https://toncenter.com/api/v3/jetton/wallets"
-
-[[endpoints]]
-id = "ton.explorer.tx"
-chain_id = "ton"
-endpoint = "https://tonviewer.com/"
-capabilities = []
-explorer_label = "Open In Tonviewer"
 
 [[endpoints]]
 id = "sui.rpc.publicnode"
@@ -438,13 +367,6 @@ capabilities = ["history"]
 probe_url = "https://api.nearblocks.io/v1/stats"
 
 [[endpoints]]
-id = "near.explorer.tx"
-chain_id = "near"
-endpoint = "https://nearblocks.io/txns/"
-capabilities = []
-explorer_label = "Open In NearBlocks"
-
-[[endpoints]]
 id = "polkadot.sidecar.parity"
 api = "substrate-sidecar"
 chain_id = "polkadot"
@@ -470,13 +392,6 @@ endpoint = "https://rpc.polkadot.io"
 capabilities = ["fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
-id = "polkadot.explorer.tx"
-chain_id = "polkadot"
-endpoint = "https://polkadot.subscan.io/extrinsic/"
-capabilities = []
-explorer_label = "Open In Subscan"
-
-[[endpoints]]
 id = "stellar.horizon.primary"
 api = "horizon"
 chain_id = "stellar"
@@ -493,25 +408,11 @@ capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 probe_url = "https://horizon.stellar.lobstr.co/fee_stats"
 
 [[endpoints]]
-id = "stellar.explorer.tx"
-chain_id = "stellar"
-endpoint = "https://stellar.expert/explorer/public/tx/"
-capabilities = []
-explorer_label = "Open In Stellar Expert"
-
-[[endpoints]]
 id = "monero.daemon.cake"
 api = "monero-daemon-rpc"
 chain_id = "monero"
 endpoint = "http://xmr-node.cakewallet.com:18081"
 capabilities = ["fee", "broadcast"]
-
-[[endpoints]]
-id = "monero.explorer.tx"
-chain_id = "monero"
-endpoint = "https://xmrchain.net/tx/"
-capabilities = []
-explorer_label = "Open In Monero Explorer"
 
 [[endpoints]]
 id = "icp.rosetta"
@@ -520,13 +421,6 @@ chain_id = "internet-computer"
 endpoint = "https://rosetta-api.internetcomputer.org"
 capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 probe_url = "https://rosetta-api.internetcomputer.org/network/list"
-
-[[endpoints]]
-id = "icp.explorer.tx"
-chain_id = "internet-computer"
-endpoint = "https://dashboard.internetcomputer.org/transaction/"
-capabilities = []
-explorer_label = "Open In ICP Dashboard"
 
 [[endpoints]]
 id = "ethereum.rpc.publicnode"
@@ -549,13 +443,6 @@ chain_id = "ethereum"
 endpoint = "https://eth.blockscout.com"
 # Keyless. Etherscan-V1 request shape; 3/3 in the 2026-09 sweep.
 capabilities = ["history", "token-history"]
-
-[[endpoints]]
-id = "ethereum.explorer.tx"
-chain_id = "ethereum"
-endpoint = "https://etherscan.io/tx/"
-capabilities = []
-explorer_label = "Open In Etherscan"
 
 [[endpoints]]
 id = "ethereum.sepolia.rpc.publicnode"
@@ -588,13 +475,6 @@ endpoint = "https://etc.blockscout.com"
 capabilities = ["history", "token-history"]
 
 [[endpoints]]
-id = "ethereumclassic.explorer.tx"
-chain_id = "ethereum-classic"
-endpoint = "https://blockscout.com/etc/mainnet/tx/"
-capabilities = []
-explorer_label = "Open In Blockscout"
-
-[[endpoints]]
 id = "arbitrum.rpc.publicnode"
 api = "evm-json-rpc"
 chain_id = "arbitrum"
@@ -616,13 +496,6 @@ endpoint = "https://1rpc.io/arb"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
-id = "arbitrum.explorer.tx"
-chain_id = "arbitrum"
-endpoint = "https://arbiscan.io/tx/"
-capabilities = []
-explorer_label = "Open In Arbiscan"
-
-[[endpoints]]
 id = "optimism.rpc.mainnet"
 api = "evm-json-rpc"
 chain_id = "optimism"
@@ -642,13 +515,6 @@ api = "evm-json-rpc"
 chain_id = "optimism"
 endpoint = "https://1rpc.io/op"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "optimism.explorer.tx"
-chain_id = "optimism"
-endpoint = "https://optimistic.etherscan.io/tx/"
-capabilities = []
-explorer_label = "Open In Optimism Etherscan"
 
 [[endpoints]]
 id = "bnb.rpc.primary"
@@ -679,13 +545,6 @@ endpoint = "https://bsc-dataseed1.ninicoin.io"
 capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
-id = "bnb.explorer.tx"
-chain_id = "bnb"
-endpoint = "https://bscscan.com/tx/"
-capabilities = []
-explorer_label = "Open In BscScan"
-
-[[endpoints]]
 id = "avalanche.rpc.primary"
 api = "evm-json-rpc"
 chain_id = "avalanche"
@@ -707,31 +566,11 @@ endpoint = "https://1rpc.io/avax/c"
 capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
-id = "avalanche.explorer.tx"
-chain_id = "avalanche"
-endpoint = "https://snowtrace.io/tx/"
-capabilities = []
-explorer_label = "Open In Snowtrace"
-
-[[endpoints]]
 id = "hyperliquid.rpc.primary"
 api = "evm-json-rpc"
 chain_id = "hyperliquid"
 endpoint = "https://rpc.hyperliquid.xyz/evm"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "hyperliquid.explorer.web"
-chain_id = "hyperliquid"
-endpoint = "https://hyperevmscan.io"
-capabilities = []
-
-[[endpoints]]
-id = "hyperliquid.explorer.tx"
-chain_id = "hyperliquid"
-endpoint = "https://app.hyperliquid.xyz/explorer/tx/"
-capabilities = []
-explorer_label = "Open In Hyperliquid Explorer"
 
 [[endpoints]]
 id = "base.rpc.publicnode"
@@ -755,13 +594,6 @@ endpoint = "https://1rpc.io/base"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
-id = "base.explorer.tx"
-chain_id = "base"
-endpoint = "https://basescan.org/tx/"
-capabilities = []
-explorer_label = "Open In BaseScan"
-
-[[endpoints]]
 id = "linea.rpc.linea-rpc"
 api = "evm-json-rpc"
 chain_id = "linea"
@@ -781,13 +613,6 @@ api = "evm-json-rpc"
 chain_id = "linea"
 endpoint = "https://1rpc.io/linea"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "linea.explorer.tx"
-chain_id = "linea"
-endpoint = "https://lineascan.build/tx/"
-capabilities = []
-explorer_label = "Open In LineaScan"
 
 [[endpoints]]
 id = "scroll.rpc.scroll-rpc"
@@ -811,13 +636,6 @@ endpoint = "https://1rpc.io/scroll"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
-id = "scroll.explorer.tx"
-chain_id = "scroll"
-endpoint = "https://scrollscan.com/tx/"
-capabilities = []
-explorer_label = "Open In ScrollScan"
-
-[[endpoints]]
 id = "blast.rpc.blast-rpc"
 api = "evm-json-rpc"
 chain_id = "blast"
@@ -830,13 +648,6 @@ api = "evm-json-rpc"
 chain_id = "blast"
 endpoint = "https://rpc.blast.io"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "blast.explorer.tx"
-chain_id = "blast"
-endpoint = "https://blastscan.io/tx/"
-capabilities = []
-explorer_label = "Open In BlastScan"
 
 [[endpoints]]
 id = "mantle.rpc.mantle-rpc"
@@ -853,13 +664,6 @@ endpoint = "https://rpc.mantle.xyz"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
-id = "mantle.explorer.tx"
-chain_id = "mantle"
-endpoint = "https://mantlescan.xyz/tx/"
-capabilities = []
-explorer_label = "Open In MantleScan"
-
-[[endpoints]]
 id = "polygon.rpc.publicnode"
 api = "evm-json-rpc"
 chain_id = "polygon"
@@ -874,40 +678,12 @@ endpoint = "https://1rpc.io/matic"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
-id = "polygon.explorer.tx"
-chain_id = "polygon"
-endpoint = "https://polygonscan.com/tx/"
-capabilities = []
-explorer_label = "Open In PolygonScan"
-
-[[endpoints]]
-id = "zcash.explorer.tx"
-chain_id = "zcash"
-endpoint = "https://zcashblockexplorer.com/transactions/"
-capabilities = []
-explorer_label = "Open In Zcash Block Explorer"
-
-[[endpoints]]
-id = "bitcoinGold.explorer.tx"
-chain_id = "bitcoin-gold"
-endpoint = "https://explorer.bitcoingold.org/insight/tx/"
-capabilities = []
-explorer_label = "Open In BTG Explorer"
-
-[[endpoints]]
 id = "decred.mainnet.dcrdata"
 api = "insight"
 chain_id = "decred"
 endpoint = "https://dcrdata.decred.org/insight/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 probe_url = "https://dcrdata.decred.org/insight/api/status"
-
-[[endpoints]]
-id = "decred.explorer.tx"
-chain_id = "decred"
-endpoint = "https://dcrdata.decred.org/tx/"
-capabilities = []
-explorer_label = "Open In dcrdata"
 
 [[endpoints]]
 id = "kaspa.mainnet.kaspaorg"
@@ -918,26 +694,12 @@ capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"
 probe_url = "https://api.kaspa.org/info/network"
 
 [[endpoints]]
-id = "kaspa.explorer.tx"
-chain_id = "kaspa"
-endpoint = "https://explorer.kaspa.org/txs/"
-capabilities = []
-explorer_label = "Open In Kaspa Explorer"
-
-[[endpoints]]
 id = "sei.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "sei"
 endpoint = "https://evm-rpc.sei-apis.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://evm-rpc.sei-apis.com"
-
-[[endpoints]]
-id = "sei.explorer.tx"
-chain_id = "sei"
-endpoint = "https://seitrace.com/tx/"
-capabilities = []
-explorer_label = "Open In Seitrace"
 
 [[endpoints]]
 id = "celo.mainnet.evm"
@@ -948,26 +710,12 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://forno.celo.org"
 
 [[endpoints]]
-id = "celo.explorer.tx"
-chain_id = "celo"
-endpoint = "https://celoscan.io/tx/"
-capabilities = []
-explorer_label = "Open In CeloScan"
-
-[[endpoints]]
 id = "cronos.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "cronos"
 endpoint = "https://evm.cronos.org"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://evm.cronos.org"
-
-[[endpoints]]
-id = "cronos.explorer.tx"
-chain_id = "cronos"
-endpoint = "https://cronoscan.com/tx/"
-capabilities = []
-explorer_label = "Open In CronoScan"
 
 [[endpoints]]
 id = "opBNB.mainnet.evm"
@@ -978,26 +726,12 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://opbnb-mainnet-rpc.bnbchain.org"
 
 [[endpoints]]
-id = "opBNB.explorer.tx"
-chain_id = "opbnb"
-endpoint = "https://opbnbscan.com/tx/"
-capabilities = []
-explorer_label = "Open In opBNBScan"
-
-[[endpoints]]
 id = "zkSyncEra.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "zksync-era"
 endpoint = "https://mainnet.era.zksync.io"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://mainnet.era.zksync.io"
-
-[[endpoints]]
-id = "zkSyncEra.explorer.tx"
-chain_id = "zksync-era"
-endpoint = "https://explorer.zksync.io/tx/"
-capabilities = []
-explorer_label = "Open In zkSync Explorer"
 
 [[endpoints]]
 id = "sonic.mainnet.evm"
@@ -1008,26 +742,12 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://rpc.soniclabs.com"
 
 [[endpoints]]
-id = "sonic.explorer.tx"
-chain_id = "sonic"
-endpoint = "https://sonicscan.org/tx/"
-capabilities = []
-explorer_label = "Open In SonicScan"
-
-[[endpoints]]
 id = "berachain.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "berachain"
 endpoint = "https://rpc.berachain.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://rpc.berachain.com"
-
-[[endpoints]]
-id = "berachain.explorer.tx"
-chain_id = "berachain"
-endpoint = "https://berascan.com/tx/"
-capabilities = []
-explorer_label = "Open In BeraScan"
 
 [[endpoints]]
 id = "unichain.mainnet.evm"
@@ -1038,33 +758,12 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://mainnet.unichain.org"
 
 [[endpoints]]
-id = "unichain.explorer.tx"
-chain_id = "unichain"
-endpoint = "https://uniscan.xyz/tx/"
-capabilities = []
-explorer_label = "Open In UniScan"
-
-[[endpoints]]
 id = "ink.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "ink"
 endpoint = "https://rpc-gel.inkonchain.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://rpc-gel.inkonchain.com"
-
-[[endpoints]]
-id = "ink.explorer.tx"
-chain_id = "ink"
-endpoint = "https://explorer.inkonchain.com/tx/"
-capabilities = []
-explorer_label = "Open In Ink Explorer"
-
-[[endpoints]]
-id = "dash.explorer.tx"
-chain_id = "dash"
-endpoint = "https://insight.dash.org/insight/tx/"
-capabilities = []
-explorer_label = "Open In Dash Insight"
 
 [[endpoints]]
 id = "xLayer.mainnet.evm"
@@ -1075,26 +774,12 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 probe_url = "https://rpc.xlayer.tech"
 
 [[endpoints]]
-id = "xLayer.explorer.tx"
-chain_id = "x-layer"
-endpoint = "https://www.okx.com/web3/explorer/xlayer/tx/"
-capabilities = []
-explorer_label = "Open In OKX X Layer Explorer"
-
-[[endpoints]]
 id = "bittensor.mainnet.opentensor"
 api = "substrate-json-rpc"
 chain_id = "bittensor"
 endpoint = "https://entrypoint-finney.opentensor.ai"
 capabilities = ["fee", "broadcast", "verification"]
 probe_url = "https://entrypoint-finney.opentensor.ai"
-
-[[endpoints]]
-id = "bittensor.explorer.tx"
-chain_id = "bittensor"
-endpoint = "https://taostats.io/extrinsic/"
-capabilities = []
-explorer_label = "Open In Taostats"
 
 # Verified keyless address-history services; shared by routing and diagnostics.
 

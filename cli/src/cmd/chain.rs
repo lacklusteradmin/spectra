@@ -64,7 +64,7 @@ pub fn service_for_chain(
     let records =
         spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), filter_mask)?;
     let api = chain.endpoint_api(spectra_core::registry::EndpointSlot::Primary);
-    if !records.iter().any(|row| row.api == api) {
+    if !records.iter().any(|row| Some(row.api) == api) {
         return Err(CliError::failure(format!(
             "no compatible endpoints registered for {}",
             chain.chain_display_name()
@@ -166,7 +166,7 @@ pub struct EndpointsArgs {
 }
 
 /// Check read methods for every API, including testnets and history indexers.
-/// Missing providers and unchecked APIs are reported separately from web links.
+/// Networks with no API at all are reported separately from unchecked ones.
 pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     let chains: Vec<Chain> = match &args.chain {
         Some(name) => vec![super::resolve_chain(name)?],
@@ -223,11 +223,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 );
                 println!(
                     "  {} · {}",
-                    record
-                        .record
-                        .api
-                        .map(|api| api.as_str())
-                        .unwrap_or("web link"),
+                    record.record.api.as_str(),
                     record.record.capabilities.join(" · ")
                 );
             }
@@ -250,7 +246,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             "endpoints": records.iter().map(|r| serde_json::json!({
                 "chainId": r.record.chain_id, "endpoint": r.record.endpoint,
                 "api": r.record.api, "capabilities": r.record.capabilities, "isBuiltIn": r.is_built_in,
-                "supportedCapabilities": r.record.api.map(|api| spectra_core::endpoint_capability_options(r.record.chain_id.clone(), api)).unwrap_or_default(),
+                "supportedCapabilities": spectra_core::endpoint_capability_options(r.record.chain_id.clone(), r.record.api),
             })).collect::<Vec<_>>(),
         }));
         return Ok(());
@@ -263,7 +259,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         let probes = ctx
             .rt
             .block_on(service.probe_chain_endpoints(chain.str_id().to_string()))?;
-        if !probes.iter().any(|probe| probe.api.is_some()) {
+        if probes.is_empty() {
             networks_without_apis.push(chain.str_id());
         }
         rows.extend(probes);
@@ -271,10 +267,6 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
 
     let unreachable = rows.iter().filter(|r| r.checked && !r.reachable).count();
     let unchecked = rows.iter().filter(|r| !r.checked).count();
-    let unchecked_apis = rows
-        .iter()
-        .filter(|r| r.api.is_some() && !r.checked)
-        .count();
 
     out.text(|| {
         println!();
@@ -307,9 +299,9 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         );
     });
     out.emit(serde_json::json!({
-        "ok": unreachable == 0 && unchecked_apis == 0 && rows.len() > unchecked,
+        "ok": unreachable == 0 && unchecked == 0 && !rows.is_empty(),
         "networksWithoutApis": networks_without_apis,
-        "uncheckedApis": unchecked_apis,
+        "uncheckedApis": unchecked,
         "total": rows.len(),
         "unreachable": unreachable,
         "unchecked": unchecked,
@@ -317,6 +309,58 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             "chainId": r.chain_id, "chain": r.chain_id, "endpoint": r.endpoint,
             "api": r.api, "capabilities": r.capabilities,
             "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
+        })).collect::<Vec<_>>(),
+    }));
+    Ok(())
+}
+
+#[derive(Args)]
+pub struct ExplorersArgs {
+    /// Only this chain's explorer.
+    #[arg(long)]
+    chain: Option<String>,
+    /// Print the explorer page for this transaction hash.
+    #[arg(long, requires = "chain")]
+    tx: Option<String>,
+}
+
+/// The pages a transaction's detail screen links to. Nothing is requested.
+pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
+    let chain = args.chain.as_deref().map(resolve_chain).transpose()?;
+    if let (Some(chain), Some(hash)) = (chain, args.tx) {
+        if chain.transaction_explorer().is_none() {
+            return Err(CliError::failure(format!(
+                "{} has no transaction explorer",
+                chain.chain_display_name()
+            )));
+        }
+        let url = spectra_core::transaction_explorer_link(chain.str_id().into(), hash)
+            .map(|link| link.url)
+            .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?;
+        out.text(|| println!("{url}"));
+        out.emit(serde_json::json!({"ok": true, "chainId": chain.str_id(), "url": url}));
+        return Ok(());
+    }
+    let explorers: Vec<_> = spectra_core::transaction_explorers()
+        .into_iter()
+        .filter(|e| chain.is_none_or(|chain| chain.str_id() == e.chain_id))
+        .collect();
+    out.text(|| {
+        println!();
+        for e in &explorers {
+            println!(
+                "  {:<22} {:<24} {}",
+                super::chain_name(&e.chain_id),
+                e.name,
+                out::hint(&e.tx_url)
+            );
+        }
+        println!();
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "explorers": explorers.iter().map(|e| serde_json::json!({
+            "chainId": e.chain_id, "name": e.name, "txUrl": e.tx_url,
         })).collect::<Vec<_>>(),
     }));
     Ok(())

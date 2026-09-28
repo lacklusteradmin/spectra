@@ -1,0 +1,226 @@
+# Transaction explorers: the web page a transaction's detail screen links to,
+# at most one per network. `chain_id` references a concrete chains.id in
+# chains.toml; `{hash}` in `tx_url` is replaced by the transaction hash.
+#
+# Spectra never requests these pages. Anything it does request is an API and
+# belongs in endpoints.toml.
+
+[[explorers]]
+chain_id = "bitcoin"
+name = "Mempool"
+tx_url = "https://mempool.space/tx/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-cash"
+name = "Blockchair"
+tx_url = "https://blockchair.com/bitcoin-cash/transaction/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-sv"
+name = "WhatsOnChain"
+tx_url = "https://whatsonchain.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "litecoin"
+name = "LitecoinSpace"
+tx_url = "https://litecoinspace.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "dogecoin"
+name = "Dogechain"
+tx_url = "https://dogechain.info/tx/{hash}"
+
+[[explorers]]
+chain_id = "tron"
+name = "TronScan"
+tx_url = "https://tronscan.org/#/transaction/{hash}"
+
+[[explorers]]
+chain_id = "xrp"
+name = "XRP Explorer"
+tx_url = "https://livenet.xrpl.org/transactions/{hash}"
+
+[[explorers]]
+chain_id = "cardano"
+name = "Cardano Explorer"
+tx_url = "https://cexplorer.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "aptos"
+name = "Aptos Explorer"
+tx_url = "https://explorer.aptoslabs.com/txn/{hash}?network=mainnet"
+
+[[explorers]]
+chain_id = "ton"
+name = "Tonviewer"
+tx_url = "https://tonviewer.com/{hash}"
+
+[[explorers]]
+chain_id = "near"
+name = "NearBlocks"
+tx_url = "https://nearblocks.io/txns/{hash}"
+
+[[explorers]]
+chain_id = "polkadot"
+name = "Subscan"
+tx_url = "https://polkadot.subscan.io/extrinsic/{hash}"
+
+[[explorers]]
+chain_id = "stellar"
+name = "Stellar Expert"
+tx_url = "https://stellar.expert/explorer/public/tx/{hash}"
+
+[[explorers]]
+chain_id = "monero"
+name = "Monero Explorer"
+tx_url = "https://xmrchain.net/tx/{hash}"
+
+[[explorers]]
+chain_id = "internet-computer"
+name = "ICP Dashboard"
+tx_url = "https://dashboard.internetcomputer.org/transaction/{hash}"
+
+[[explorers]]
+chain_id = "ethereum"
+name = "Etherscan"
+tx_url = "https://etherscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "ethereum-classic"
+name = "Blockscout"
+tx_url = "https://blockscout.com/etc/mainnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "arbitrum"
+name = "Arbiscan"
+tx_url = "https://arbiscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "optimism"
+name = "Optimism Etherscan"
+tx_url = "https://optimistic.etherscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "bnb"
+name = "BscScan"
+tx_url = "https://bscscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "avalanche"
+name = "Snowtrace"
+tx_url = "https://snowtrace.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "hyperliquid"
+name = "Hyperliquid Explorer"
+tx_url = "https://app.hyperliquid.xyz/explorer/tx/{hash}"
+
+[[explorers]]
+chain_id = "base"
+name = "BaseScan"
+tx_url = "https://basescan.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "linea"
+name = "LineaScan"
+tx_url = "https://lineascan.build/tx/{hash}"
+
+[[explorers]]
+chain_id = "scroll"
+name = "ScrollScan"
+tx_url = "https://scrollscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "blast"
+name = "BlastScan"
+tx_url = "https://blastscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "mantle"
+name = "MantleScan"
+tx_url = "https://mantlescan.xyz/tx/{hash}"
+
+[[explorers]]
+chain_id = "polygon"
+name = "PolygonScan"
+tx_url = "https://polygonscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "zcash"
+name = "Zcash Block Explorer"
+tx_url = "https://zcashblockexplorer.com/transactions/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-gold"
+name = "BTG Explorer"
+tx_url = "https://explorer.bitcoingold.org/insight/tx/{hash}"
+
+[[explorers]]
+chain_id = "decred"
+name = "dcrdata"
+tx_url = "https://dcrdata.decred.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "kaspa"
+name = "Kaspa Explorer"
+tx_url = "https://explorer.kaspa.org/txs/{hash}"
+
+[[explorers]]
+chain_id = "sei"
+name = "Seitrace"
+tx_url = "https://seitrace.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "celo"
+name = "CeloScan"
+tx_url = "https://celoscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "cronos"
+name = "CronoScan"
+tx_url = "https://cronoscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "opbnb"
+name = "opBNBScan"
+tx_url = "https://opbnbscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "zksync-era"
+name = "zkSync Explorer"
+tx_url = "https://explorer.zksync.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "sonic"
+name = "SonicScan"
+tx_url = "https://sonicscan.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "berachain"
+name = "BeraScan"
+tx_url = "https://berascan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "unichain"
+name = "UniScan"
+tx_url = "https://uniscan.xyz/tx/{hash}"
+
+[[explorers]]
+chain_id = "ink"
+name = "Ink Explorer"
+tx_url = "https://explorer.inkonchain.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "dash"
+name = "Dash Insight"
+tx_url = "https://insight.dash.org/insight/tx/{hash}"
+
+[[explorers]]
+chain_id = "x-layer"
+name = "OKX X Layer Explorer"
+tx_url = "https://www.okx.com/web3/explorer/xlayer/tx/{hash}"
+
+[[explorers]]
+chain_id = "bittensor"
+name = "Taostats"
+tx_url = "https://taostats.io/extrinsic/{hash}"

@@ -313,7 +313,7 @@ contains "a multi-address watch import creates one wallet each" '"count":2' \
     --address bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --name "Watch Pair"
 
 section "a chain with no derivation path"
-# Settings exposes the complete catalog, including auxiliary APIs and web links.
+# Settings exposes the complete catalog, including auxiliary APIs.
 check "settings includes every Bitcoin endpoint" 0 python3 - "$BIN" "$DATA_DIR" <<'PYSETTINGS'
 import json, subprocess, sys
 for chain in ("bitcoin", "ethereum", "ethereum-sepolia", "monero"):
@@ -392,6 +392,33 @@ contains "TON v2 only claims native history" '"capabilities":["balance","history
     spectra --json endpoints --catalog --chain TON
 contains "TON v3 exposes jetton balances and transfers" '"capabilities":["balance","history","token-balance","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain TON
+
+section "transaction explorers"
+# Explorer pages are links, not endpoints: they live in explorers.toml, and the
+# endpoint catalog is APIs only.
+check "every catalog endpoint declares an API and a use" 0 python3 - "$BIN" "$DATA_DIR" <<'PYEXPLORERS'
+import json, subprocess, sys
+binary, directory = sys.argv[1:]
+run = lambda *a: json.loads(subprocess.check_output([binary, "--data-dir", directory, "--json", *a]))
+records = run("endpoints", "--catalog")["endpoints"]
+assert all(r["api"] and r["capabilities"] for r in records)
+explorers = run("explorers")["explorers"]
+assert len({e["chainId"] for e in explorers}) == len(explorers)
+assert all(e["txUrl"].startswith("https://") and e["txUrl"].count("{hash}") == 1 for e in explorers)
+pages = {e["txUrl"].split("{hash}")[0] for e in explorers}
+assert not any(r["endpoint"].startswith(page) for r in records for page in pages)
+PYEXPLORERS
+contains "an explorer link puts the hash where its page wants it" \
+    '"url":"https://explorer.aptoslabs.com/txn/0xabc?network=mainnet"' \
+    spectra --json explorers --chain Aptos --tx 0xabc
+contains "and names the explorer" '"name":"Etherscan"' \
+    spectra --json explorers --chain Ethereum
+check "a network without an explorer has no link" 1 \
+    spectra --json explorers --chain Solana --tx abc
+check "a blank hash is refused" $USAGE \
+    spectra --json explorers --chain Ethereum --tx " "
+check "--tx needs a chain" $USAGE \
+    spectra --json explorers --tx abc
 
 section "endpoint network identity"
 contains "Sepolia endpoints carry their concrete network ID" '"chainId":"ethereum-sepolia"' \

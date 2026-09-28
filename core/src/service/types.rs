@@ -124,7 +124,7 @@ pub enum SeedPhraseReveal {
 /// One endpoint and whether it answered.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct EndpointProbe {
-    pub api: Option<crate::EndpointApi>,
+    pub api: crate::EndpointApi,
     pub chain_id: String,
     pub endpoint: String,
     /// Operations the endpoint declares.

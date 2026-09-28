@@ -16,6 +16,39 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-28 — Transaction explorers moved out of the endpoint catalog
+
+- **Before:** `endpoints.toml` held 44 transaction-explorer pages beside the
+  APIs, as rows with no `api`, `capabilities = []`, an `explorer_label` such
+  as "Open In Etherscan" and, for Aptos only, a `tx_suffix`. Loading had to
+  refuse capabilities on a link and link fields on an API, and every consumer
+  of `AppCoreEndpointRecord.api` handled `None`. The explorer URLs, plus an
+  unused `hyperliquid.explorer.web` link, were listed on the Endpoints screen,
+  in `spectra endpoints --catalog` and in the settings groups, and
+  `spectra endpoints` counted each one as an endpoint "with no probe". Swift
+  built the transaction URL by concatenating prefix, hash and suffix, and
+  showed the English label untranslated.
+- **After:** `explorers.toml` holds one row per network: `chain_id`, the
+  explorer's `name` and a `tx_url` template with `{hash}`, checked at load
+  (known network, one row each, HTTPS, exactly one `{hash}`).
+  `Chain::transaction_explorer`, `transaction_explorers()` and
+  `transaction_explorer_link()` (name and finished URL) replace
+  `AppCoreChainEndpoints.transaction_explorer`, `AppCoreExplorerEntry` and
+  the record's `explorer_label`/`tx_suffix`. Every endpoint row must declare
+  an `api` and at least one capability, so `AppCoreEndpointRecord.api` and
+  `EndpointProbe.api` are no longer optional. The Endpoints screen lists APIs
+  only; a new Settings → Explorers screen lists the explorers, and the
+  button reads a localized "Open In %@". The Hyperliquid web link is gone.
+- **Why:** an explorer is a page the app opens, never a service it
+  requests. Keeping two models in one table cost two cross-field rules, an
+  optional API everywhere and a suffix field for one chain; separated, the
+  types say it.
+- **CLI check:** `spectra --json explorers --chain Aptos --tx 0xabc` prints
+  `https://explorer.aptoslabs.com/txn/0xabc?network=mainnet`;
+  `spectra --json endpoints --catalog` has no row without an `api`.
+- **Verification:** all four suites passed: rustfmt/clippy, 863 core tests plus
+  the transport test, 448 CLI acceptance checks and 96 iPhone simulator tests.
+
 ## 2026-09-28 — Monero's wallet-RPC remnants are gone
 
 - **Before:** `SendBroadcastMode` crossed the FFI on every `ChainIdentity`,

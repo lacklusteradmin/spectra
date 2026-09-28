@@ -125,9 +125,7 @@ impl Check {
 
 fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, String> {
     use EndpointApi::*;
-    let Some(api) = record.api else {
-        return Ok(vec![]);
-    };
+    let api = record.api;
     let base = record.endpoint.trim_end_matches('/');
     let get = |suffix: &str, field| Check::get(format!("{base}{suffix}"), Response::Field(field));
     let rpc = |method: &str| Check::rpc(base, method, json!([]), Response::RpcValue);
@@ -194,9 +192,6 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
 }
 
 pub(super) async fn probe(chain: Chain, record: &AppCoreEndpointRecord) -> (bool, bool, String) {
-    if record.api.is_none() {
-        return (false, false, "an explorer link, not an API".into());
-    }
     let checks = match checks(chain, record) {
         Ok(checks) => checks,
         Err(error) => return (false, false, error),

@@ -52,15 +52,11 @@ struct TomlEndpointFile {
 struct TomlEndpoint {
     id: String,
     chain_id: String,
-    api: Option<EndpointApi>,
+    api: EndpointApi,
     endpoint: String,
     capabilities: Vec<String>,
     #[serde(default)]
     probe_url: Option<String>,
-    #[serde(default)]
-    explorer_label: Option<String>,
-    #[serde(default)]
-    tx_suffix: String,
 }
 
 impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
@@ -69,15 +65,9 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
     fn try_from(e: TomlEndpoint) -> Result<Self, Self::Error> {
         crate::registry::Chain::from_str_id(&e.chain_id)
             .ok_or_else(|| format!("{}: unknown endpoint chain_id {:?}", e.id, e.chain_id))?;
-        if e.api.is_none() && !e.capabilities.is_empty() {
+        if e.capabilities.is_empty() {
             return Err(format!(
-                "{}: web links cannot declare API capabilities",
-                e.id
-            ));
-        }
-        if e.api.is_some() && (e.explorer_label.is_some() || !e.tx_suffix.is_empty()) {
-            return Err(format!(
-                "{}: APIs cannot declare explorer link fields",
+                "{}: an endpoint must declare what it is used for",
                 e.id
             ));
         }
@@ -88,8 +78,6 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
             endpoint: e.endpoint,
             capabilities: e.capabilities,
             probe_url: e.probe_url,
-            explorer_label: e.explorer_label,
-            tx_suffix: e.tx_suffix,
         })
     }
 }
@@ -98,7 +86,7 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreEndpointRecord {
     pub id: String,
-    pub api: Option<EndpointApi>,
+    pub api: EndpointApi,
     pub chain_id: String,
     pub endpoint: String,
     /// What this endpoint is used for. A capability is a claim about the
@@ -106,11 +94,6 @@ pub struct AppCoreEndpointRecord {
     pub capabilities: Vec<String>,
     #[serde(rename = "probeURL")]
     pub probe_url: Option<String>,
-    pub explorer_label: Option<String>,
-    /// Appended after the transaction hash, for an explorer whose URL needs
-    /// more than a prefix. Aptos wants `?network=mainnet`; nothing else does.
-    #[serde(default)]
-    pub tx_suffix: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -119,16 +102,6 @@ pub struct AppCoreGroupedSettingsEntry {
     pub chain_id: String,
     pub title: String,
     pub endpoints: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreExplorerEntry {
-    pub endpoint: String,
-    pub label: String,
-    /// Appended after the transaction hash. Empty for every explorer but
-    /// Aptos's.
-    pub tx_suffix: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -179,7 +152,6 @@ pub struct AppCoreChainEndpoints {
     pub chain_id: String,
     /// What the settings screen shows, grouped by network.
     pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
-    pub transaction_explorer: Option<AppCoreExplorerEntry>,
 }
 
 /// The endpoint catalog, one row per chain, in catalog order.
@@ -187,13 +159,9 @@ pub struct AppCoreChainEndpoints {
 pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBridgeError> {
     let catalog = endpoint_catalog()?;
     Ok(crate::registry::Chain::all()
-        .map(|chain| {
-            let id = chain.str_id().to_string();
-            AppCoreChainEndpoints {
-                grouped_settings: grouped_settings_entries(catalog, chain),
-                transaction_explorer: transaction_explorer_entry(catalog, &id),
-                chain_id: id,
-            }
+        .map(|chain| AppCoreChainEndpoints {
+            chain_id: chain.str_id().to_string(),
+            grouped_settings: grouped_settings_entries(catalog, chain),
         })
         .collect())
 }
@@ -317,22 +285,6 @@ fn grouped_settings_entries(
             })
         })
         .collect()
-}
-
-fn transaction_explorer_entry(
-    catalog: &AppCoreCatalog,
-    chain_id: &str,
-) -> Option<AppCoreExplorerEntry> {
-    endpoint_records_for_chain(catalog, chain_id, 0)
-        .into_iter()
-        .filter(|record| record.api.is_none())
-        .find_map(|record| {
-            record.explorer_label.map(|label| AppCoreExplorerEntry {
-                endpoint: record.endpoint,
-                label,
-                tx_suffix: record.tx_suffix,
-            })
-        })
 }
 
 #[cfg(test)]
@@ -626,7 +578,7 @@ mod endpoint_network_index_tests {
     fn rpc_endpoints(chain_id: &str) -> Vec<String> {
         endpoint_records_for_chain(endpoint_catalog().expect("catalog"), chain_id, 0)
             .into_iter()
-            .filter(|r| r.api == Some(EndpointApi::EvmJsonRpc))
+            .filter(|r| r.api == EndpointApi::EvmJsonRpc)
             .map(|r| r.endpoint)
             .collect()
     }
@@ -670,27 +622,6 @@ mod endpoint_network_index_tests {
     }
 
     #[test]
-    fn showing_explorer_links_does_not_make_them_backend_choices() {
-        let monero = chain_endpoints()
-            .unwrap()
-            .into_iter()
-            .find(|row| row.chain_id == "monero")
-            .unwrap();
-        let explorer = monero.transaction_explorer.unwrap().endpoint;
-        assert!(monero.grouped_settings[0].endpoints.contains(&explorer));
-        let services: Vec<_> = endpoint_records_for_chain(endpoint_catalog().unwrap(), "monero", 0)
-            .into_iter()
-            .filter(|r| r.api.is_some())
-            .collect();
-        assert!(
-            services
-                .iter()
-                .any(|r| r.api == Some(EndpointApi::MoneroDaemonRpc))
-        );
-        assert!(!services.iter().any(|r| r.endpoint == explorer));
-    }
-
-    #[test]
     fn every_record_belongs_to_exactly_its_network() {
         let catalog = endpoint_catalog().expect("catalog");
         for chain in crate::registry::Chain::all() {
@@ -720,7 +651,7 @@ mod endpoint_network_index_tests {
 chain_id = "ethereum-sepolia"
 api = "evm-json-rpc"
 endpoint = "https://example.com"
-capabilities = []"#;
+capabilities = ["balance"]"#;
         let row = toml::from_str::<TomlEndpoint>(valid).unwrap();
         assert_eq!(
             AppCoreEndpointRecord::try_from(row).unwrap().chain_id,
@@ -729,35 +660,18 @@ capabilities = []"#;
         assert!(
             toml::from_str::<TomlEndpoint>(&valid.replace("evm-json-rpc", "made-up-api")).is_err()
         );
-        let missing =
-            toml::from_str::<TomlEndpoint>(&valid.replace("api = \"evm-json-rpc\"\n", "")).unwrap();
-        assert!(AppCoreEndpointRecord::try_from(missing).is_ok());
-        let link_with_api =
-            toml::from_str::<TomlEndpoint>(&format!("{valid}\nexplorer_label = \"Explorer\""))
-                .unwrap();
-        assert!(AppCoreEndpointRecord::try_from(link_with_api).is_err());
-        let link = format!(
-            "{}\nexplorer_label = \"Explorer\"",
-            valid.replace("api = \"evm-json-rpc\"\n", "")
-        );
         assert!(
-            AppCoreEndpointRecord::try_from(toml::from_str::<TomlEndpoint>(&link).unwrap()).is_ok()
+            toml::from_str::<TomlEndpoint>(&valid.replace("api = \"evm-json-rpc\"\n", "")).is_err()
         );
-        let link_with_capability =
-            link.replace("capabilities = []", "capabilities = [\"balance\"]");
-        assert!(
-            AppCoreEndpointRecord::try_from(
-                toml::from_str::<TomlEndpoint>(&link_with_capability).unwrap()
-            )
-            .is_err()
-        );
+        let unused = toml::from_str::<TomlEndpoint>(&valid.replace("[\"balance\"]", "[]")).unwrap();
+        assert!(AppCoreEndpointRecord::try_from(unused).is_err());
 
         for bad in ["Ethereum Sepolia", "unknown-network", ""] {
             let row =
                 toml::from_str::<TomlEndpoint>(&valid.replace("ethereum-sepolia", bad)).unwrap();
             assert!(AppCoreEndpointRecord::try_from(row).is_err());
         }
-        for field in ["chain_id", "group_title", "kind"] {
+        for field in ["chain_id", "group_title", "kind", "explorer_label"] {
             assert!(
                 toml::from_str::<TomlEndpoint>(&format!("{valid}\n{field} = \"Ethereum\" "))
                     .is_err()
@@ -797,7 +711,7 @@ mod endpoint_capabilities {
             let Some(chain) = Chain::from_str_id(&record.chain_id) else {
                 continue;
             };
-            if !chain.is_evm() || record.api != Some(crate::EndpointApi::EvmJsonRpc) {
+            if !chain.is_evm() || record.api != crate::EndpointApi::EvmJsonRpc {
                 continue;
             }
             assert!(
@@ -859,20 +773,6 @@ mod endpoint_capabilities {
         assert!(selected("near", "token-discovery").is_empty());
         assert!(selected("near", "token-balance").contains(&"near.rpc.mainnet".into()));
     }
-
-    /// A web link is a URL for a person, so it claims nothing.
-    #[test]
-    fn a_web_link_has_no_capabilities() {
-        for record in records().iter().filter(|r| r.api.is_none()) {
-            assert!(
-                record.capabilities.is_empty(),
-                "{} {} is a link and claims {:?}",
-                record.chain_id,
-                record.endpoint,
-                record.capabilities
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -890,7 +790,7 @@ mod catalog_endpoints_carry_their_api {
     #[test]
     fn a_node_and_an_indexer_declare_different_capabilities() {
         let node = record("https://ethereum-rpc.publicnode.com");
-        assert_eq!(node.api, Some(crate::EndpointApi::EvmJsonRpc));
+        assert_eq!(node.api, crate::EndpointApi::EvmJsonRpc);
         assert!(node.capabilities.contains(&"balance".to_string()));
         assert!(
             !node.capabilities.contains(&"history".to_string()),

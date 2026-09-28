@@ -28,7 +28,7 @@ impl WalletService {
     // wrappers below call into those internal helpers.
 
     /// Run read-only protocol checks for every API on this concrete network.
-    /// Explorer links remain unchecked; a pass never promises broadcast support.
+    /// A pass never promises broadcast support.
     pub async fn probe_chain_endpoints(
         &self,
         chain_id: String,
@@ -52,7 +52,7 @@ impl WalletService {
                     }
                     records.push(crate::AppCoreEndpointRecord {
                         id: format!("configured:{endpoint}"),
-                        api: Some(api),
+                        api,
                         chain_id: chain_id.clone(),
                         endpoint: endpoint.clone(),
                         capabilities: this
@@ -64,8 +64,6 @@ impl WalletService {
                             .cloned()
                             .unwrap_or_default(),
                         probe_url: None,
-                        explorer_label: None,
-                        tx_suffix: String::new(),
                     });
                 }
             }

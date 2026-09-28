@@ -6,12 +6,10 @@ fn record(chain: Chain, api: EndpointApi, endpoint: String) -> AppCoreEndpointRe
     AppCoreEndpointRecord {
         id: "test".into(),
         chain_id: chain.str_id().into(),
-        api: Some(api),
+        api,
         endpoint,
         capabilities: vec!["history".into()],
         probe_url: None,
-        explorer_label: None,
-        tx_suffix: String::new(),
     }
 }
 
@@ -21,9 +19,6 @@ fn every_builtin_api_has_a_probe_on_its_own_origin() {
         .unwrap()
         .endpoint_records
     {
-        if record.api.is_none() {
-            continue;
-        }
         let chain = Chain::from_str_id(&record.chain_id).unwrap();
         let checks = checks(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
         assert!(!checks.is_empty());
