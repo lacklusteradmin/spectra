@@ -4,7 +4,7 @@
 //! against Keychain / Keystore. These two implementations exist so the *same*
 //! core code paths run with no mobile platform underneath:
 //!
-//! - [`InMemorySecretStore`] — tests, and anything that wants a throwaway store.
+//! - `InMemorySecretStore` — tests only.
 //! - [`FileSecretStore`] — the CLI, and any other headless Rust consumer.
 //!
 //! Both are plain Rust and neither crosses the FFI. Their reason to exist is
@@ -24,10 +24,7 @@
 //! hardware backing and no at-rest protection the way Keychain does. It is the
 //! right backend for a developer CLI and the wrong one for a shipping app.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-
-use parking_lot::Mutex;
 
 use super::secret_store::{SecretClass, SecretStore, SecretStoreError};
 
@@ -73,11 +70,13 @@ fn encode_key(key: &str) -> Result<String, SecretStoreError> {
 ///
 /// Use it in tests: it lets a test drive any core path that needs secret I/O
 /// without touching the filesystem or a Keychain.
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct InMemorySecretStore {
-    entries: Mutex<BTreeMap<(&'static str, String), String>>,
+    entries: parking_lot::Mutex<std::collections::BTreeMap<(&'static str, String), String>>,
 }
 
+#[cfg(test)]
 impl InMemorySecretStore {
     pub fn new() -> Self {
         Self::default()
@@ -93,6 +92,7 @@ impl InMemorySecretStore {
     }
 }
 
+#[cfg(test)]
 impl SecretStore for InMemorySecretStore {
     fn load_secret(&self, kind: SecretClass, key: String) -> Result<String, SecretStoreError> {
         self.entries

@@ -97,8 +97,7 @@ impl SendDestinationRisk {
 ///
 /// `used_ens` is not decoration: it is one of the high-risk signals, and it is
 /// the difference between showing the user the string they typed and showing
-/// them the address it stood for. A caller that resolved the name itself had
-/// to remember to say so; one that asks for a destination is told.
+/// them the address it stood for.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SendDestinationResolution {
     /// Normalized for the chain, so it compares equal to a stored address.
@@ -164,17 +163,11 @@ pub enum TransactionCommand {
     Upsert {
         records: Vec<crate::store::persistence_models::CorePersistedTransactionRecord>,
     },
-    /// Merge a freshly fetched page into what is already stored.
-    ///
-    /// Core reads its own records to merge against, so only the incoming page
-    /// crosses the FFI. Previously a front end shipped its entire history over,
-    /// received the merged list back, and diffed it — the whole history moved
-    /// three times per refresh.
     /// Merge freshly fetched history for a chain into what is stored.
     ///
-    /// The merge strategy is not a parameter: it is a property of the chain and
-    /// comes from `registry::Chain`. Callers used to pass it, which is how a
-    /// chain could be wired to the wrong one.
+    /// Core reads its own records to merge against, so only the incoming page
+    /// crosses the FFI. The merge strategy is not a parameter: it is a
+    /// property of the chain and comes from `registry::Chain`.
     Merge {
         incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
         chain_id: String,

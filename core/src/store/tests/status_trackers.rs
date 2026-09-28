@@ -47,11 +47,8 @@ async fn a_polled_transaction_waits_out_its_interval() {
     );
 }
 
-/// Applying a resolution writes the record and reports the change.
-///
-/// Core used to hand back a decision and the caller built the new record
-/// and stored it, so nothing on either side asserted that what came out of
-/// the planner reached the database. It does now, and this reads it back.
+/// Applying a resolution writes the record and reports the change; this reads
+/// it back from the database.
 #[tokio::test]
 async fn applying_a_resolution_stores_it_and_reports_the_change() {
     use crate::store::ResolvedPendingStatus;
@@ -136,8 +133,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
 /// both old and has failed to resolve repeatedly.
 ///
 /// Goes through the store: the service reads its own transactions to find
-/// the candidates, so a test that handed it a synthetic input list would
-/// no longer exercise the path the app takes.
+/// the candidates, which is the path the app takes.
 #[tokio::test]
 async fn stale_pending_needs_both_age_and_repeated_failures() {
     let service = WalletService::new(Vec::new()).expect("service");
@@ -189,10 +185,8 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
     );
 }
 
-/// Pruning drops trackers for transactions core does not hold.
-///
-/// It took the ids to keep, which meant the front end filtered core's own
-/// transaction table and told core the answer.
+/// Pruning drops trackers for transactions core does not hold, judged from
+/// core's own table.
 #[tokio::test]
 async fn pruning_drops_trackers_for_transactions_that_no_longer_exist() {
     let service = WalletService::new(Vec::new()).expect("service");

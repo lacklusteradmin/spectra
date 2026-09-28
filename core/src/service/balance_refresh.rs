@@ -258,13 +258,11 @@ mod tests {
         );
         assert_eq!(service.app_state().await.wallets[0].holdings[0].amount, "0");
         assert_eq!(
-            crate::wallet_db::wallet_load(
-                &crate::wallet_db::WalletDatabase::new(path.to_str().unwrap()),
-                "w"
-            )
-            .unwrap()
-            .unwrap()
-            .holdings[0]
+            crate::wallet_db::wallet_load_all(&crate::wallet_db::WalletDatabase::new(
+                path.to_str().unwrap()
+            ))
+            .unwrap()[0]
+                .holdings[0]
                 .amount,
             "0"
         );

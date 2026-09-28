@@ -5,12 +5,9 @@ use super::*;
 ///
 /// A token read has three outcomes and they are not interchangeable: a
 /// balance, a legitimate zero, and "the chain did not say". Reporting the
-/// third as zero is what this code used to do, and a zero is a claim about
-/// funds — a max-send computes from it and a user reads it as "gone". So
-/// the fabricated zeros went. Collecting the batch into one `Result` went
-/// too far the other way: one self-destructed contract failed every other
-/// token with it, and the only caller does `try?`, so a wallet's whole
-/// token list silently stopped updating until that contract was removed.
+/// third as zero would be a claim about funds — a max-send computes from it
+/// and a user reads it as "gone". Failing the whole batch would let one
+/// self-destructed contract stop every other token from updating.
 ///
 /// A token missing from this list is not updated by the caller, which
 /// leaves its last known balance in place — the one answer that claims
@@ -409,11 +406,7 @@ impl WalletService {
                     .collect();
                 readable_tokens(rows)
             }
-            // The EVM family. This was `fetch_evm_token_balances_batch_typed`,
-            // a second method with the *same* signature and the complementary
-            // set of chains — so a caller holding a chain had to know which
-            // family it was in to pick the right one, which is exactly what
-            // the chain id already says.
+            // The EVM family.
             c if c.is_evm() => {
                 let client = EvmClient::new(endpoints, c.evm_chain_id()?);
                 let mut results = Vec::with_capacity(tokens.len());
@@ -538,14 +531,9 @@ mod decimals_come_from_the_chain {
     use crate::service::{ChainEndpoints, TokenDescriptor, WalletService};
     use serde_json::json;
 
-    /// A balance's decimals are the contract's, not the caller's.
-    ///
-    /// Tron read its contract and Solana its mint; the EVM family, NEAR, TON,
-    /// Sui and Aptos passed the caller's number straight through. Where the
-    /// catalog disagreed with the contract, the catalog was the one that could
-    /// only be wrong — and `balance_display` was formatted with one number
-    /// while `decimals` reported the other, so the two no longer described the
-    /// same balance.
+    /// A balance's decimals are the contract's, not the caller's: where the
+    /// catalog disagrees with the contract, the catalog is the one that can
+    /// only be wrong.
     ///
     /// A provider failure must remain an error, not an invented zero balance.
     #[tokio::test]

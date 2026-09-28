@@ -5,7 +5,7 @@
 # `pub fn` in a lib crate is API to rustc, so `dead_code` never fires on one,
 # and `#[uniffi::export]` never named it, so the bindings never mentioned it
 # either. Between the two gates a function can lose its last caller and keep
-# compiling for as long as the file does. Three had, when this was written.
+# compiling for as long as the file does.
 #
 # A function is reachable when something other than its own definition, a
 # `use` line, or a comment names it — in Rust anywhere in the workspace, in

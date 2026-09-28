@@ -50,11 +50,7 @@ pub struct CoreTransactionRecord {
 /// What a stored `transaction_history_source` names.
 ///
 /// The id is core's own — five producers write one — so core says what each
-/// means. The app held a six-arm switch over provider ids instead, and it was
-/// wrong in both directions: five of its six arms name a provider no producer
-/// emits, and none of them covers `rust`, `rust.hd`, `etherscan` or the
-/// `<chain-id>.providers` aggregate, which fell through to the raw id. A
-/// detail row read "History Source: rust".
+/// means.
 ///
 /// An enum rather than a display string because only the first variant is a
 /// proper noun; the other two are sentences, and sentences are the app's to
@@ -663,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn merges_standard_utxo_transactions_with_swift_compatible_precedence() {
+    fn merges_standard_utxo_transactions_by_field_precedence() {
         let existing = sample_transaction("bitcoin");
         let mut incoming = sample_transaction("bitcoin");
         incoming.id = "tx-2".to_string();

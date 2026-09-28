@@ -111,13 +111,9 @@ impl WalletService {
     /// Fetch the display-currency cross rates and store them.
     ///
     /// The rates are core's state: every quoted amount passes through them and
-    /// they are what the app shows while a refresh is in flight. iOS fetched
-    /// them, merged them with `price_merge_fiat_rate_updates`, and wrote the
-    /// result to its own SQLite blob — so the CLI could neither read nor
-    /// refresh them, and a launch could seed the merge from an older
-    /// `UserDefaults` copy that still won the race. The fetch, the merge and
-    /// the write are one operation here; a provider failure leaves the stored
-    /// rates alone and says so.
+    /// they are what the app shows while a refresh is in flight. The fetch,
+    /// the merge and the write are one operation; a provider failure leaves
+    /// the stored rates alone and says so.
     pub async fn refresh_fiat_rates(
         &self,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {

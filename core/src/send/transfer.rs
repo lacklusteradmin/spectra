@@ -1,10 +1,6 @@
 use crate::registry::SendRule;
 
-/// Whether a holding can be sent.
-///
-/// Expressed against the coin core actually holds. It replaced a twin that
-/// took an index-and-flags record the caller assembled; that twin and the
-/// planner it served are gone.
+/// Whether a holding can be sent, judged against the coin core actually holds.
 pub(crate) fn can_send_coin(
     coin: &crate::store::wallet_domain::AssetHolding,
     has_signing_material: bool,

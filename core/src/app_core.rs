@@ -127,9 +127,7 @@ pub struct AppCoreExplorerEntry {
     pub endpoint: String,
     pub label: String,
     /// Appended after the transaction hash. Empty for every explorer but
-    /// Aptos's, which was a `chain_id == "aptos"` branch inside
-    /// `core_transaction_explorer_url` — the one thing that export did that a
-    /// caller holding this record could not.
+    /// Aptos's.
     pub tx_suffix: String,
 }
 
@@ -145,11 +143,6 @@ static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::ne
 
 /// The derivation path a wallet on `chain` will use: the caller's, normalized,
 /// or the chain's catalog default when the caller named none.
-///
-/// Returned a four-field record before. `chain` was the argument handed back,
-/// and `account_index` and `flavor` were derived from the normalized path for
-/// nobody — Swift stored the flavor in a struct with no reader, and the CLI and
-/// both in-crate callers took `normalized_path` and dropped the rest.
 #[uniffi::export]
 pub fn resolve_derivation_path(
     chain_id: String,
@@ -469,11 +462,8 @@ pub(crate) fn format_derivation_path_segments(segments: &[DerivationPathSegment]
     }
 }
 
-/// Default derivation paths for every mainnet chain at `account`.
-///
-/// Driven off `registry::Chain` rather than a hand-written list. The list this
-/// replaced named 44 chains and had to be edited alongside `chains.toml`, the
-/// Rust record and the Swift enum every time a chain was added.
+/// Default derivation paths for every mainnet chain at `account`, driven off
+/// `registry::Chain`.
 ///
 /// Paths are keyed by concrete network. A missing template means that the
 /// chain derives without a configurable BIP-32 path.
@@ -517,10 +507,8 @@ fn default_path_from_catalog_for_account(chain_id: &str, account: u32) -> Result
     }
     // A chain the registry knows and the catalog gives no path for derives
     // without one — that is what `derivation_path = []` says, and Monero is
-    // the mainnet that says it. Erroring here made "the answer is none"
-    // indistinguishable from "the catalog row is broken", and every caller in
-    // the import pipeline treated it as the second: the CLI refused the
-    // import, and iOS dropped the chain out of the batch it was deriving.
+    // the mainnet that says it. That is an answer, not a broken catalog row,
+    // so it is not an error.
     match Chain::from_str_id(chain_id) {
         Some(chain) if !chain.uses_derivation_path() => Ok(String::new()),
         _ => Err(format!("Missing default derivation path for {chain_id}.")),
@@ -820,12 +808,6 @@ mod endpoint_capabilities {
     /// indexed by block rather than by address. Answering it means scanning
     /// every block ever produced, which is why the job belongs to a separate
     /// indexer.
-    ///
-    /// Forty-six EVM RPC records claimed the `history` capability anyway. It
-    /// went unnoticed because nothing reads the field to decide where EVM
-    /// history comes from — `Chain::evm_history_source` does — but it was a
-    /// false statement in the data, and the next thing to trust the field
-    /// would have inherited it.
     ///
     /// Non-EVM chains are a different matter and deliberately not covered
     /// here: Solana's `getSignaturesForAddress` and XRP's `account_tx` are

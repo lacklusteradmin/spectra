@@ -119,8 +119,7 @@ mod tests {
         assert_eq!(decrypted, plaintext);
     }
 
-    /// A minted key is one the envelope accepts, and two are never the same:
-    /// the caller no longer chooses the length or the source.
+    /// A minted key is one the envelope accepts, and two are never the same.
     #[test]
     fn a_minted_master_key_seals_and_is_fresh_each_time() {
         let key = new_seed_envelope_master_key().unwrap();

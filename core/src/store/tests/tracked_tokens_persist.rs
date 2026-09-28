@@ -28,12 +28,11 @@ fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
     }
 }
 
-/// A precision no token has is refused, where it used to be clamped.
+/// A precision no token has is refused rather than clamped.
 ///
 /// A clamp stores a number the user did not type and reads every later
 /// balance at that scale; nothing downstream can tell it from a real one.
-/// The round trip is checked on the entry that *was* accepted, so this
-/// still covers what the clamp test covered.
+/// The round trip is checked on the entry that was accepted.
 #[test]
 fn an_impossible_precision_is_refused_rather_than_clamped() {
     let db = tmp_db();

@@ -1,9 +1,6 @@
-//! The settings core owns.
-//!
-//! These lived in a `PersistedAppSettings` record iOS wrote as one blob and no
-//! other front end could read. They decide what gets fetched, what a send costs
-//! and when an alert fires, so a CLI that could not read or set them was not
-//! driving the same core the app was.
+//! The settings core owns. They decide what gets fetched, what a send costs
+//! and when an alert fires, so the CLI reads and sets the same ones the app
+//! does.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
@@ -161,8 +158,7 @@ const FIELDS: &[Field] = &[
 /// A setting keyed by chain rather than global, named `<prefix><chain>`.
 ///
 /// These cannot be rows in `FIELDS` — there would have to be seventy-eight of
-/// each, regenerated whenever `chains.toml` changes. Each one replaced a
-/// scalar field that served a single hard-coded chain.
+/// each, regenerated whenever `chains.toml` changes.
 struct ChainKeyedField {
     prefix: &'static str,
     read: fn(&AppSettings, &str) -> String,

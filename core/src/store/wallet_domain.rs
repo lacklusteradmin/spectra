@@ -24,8 +24,7 @@ pub enum CoreTransactionStatus {
 }
 
 impl CoreTransactionStatus {
-    /// The stored and wire spelling. Four functions used to spell these three
-    /// words, two of them disagreeing about what a missing status meant.
+    /// The stored and wire spelling.
     pub fn as_raw(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -68,10 +67,6 @@ pub enum CoreSeedDerivationPreset {
 
 impl CoreSeedDerivationPreset {
     /// The BIP-44 account a preset's default paths use.
-    ///
-    /// Stated once. The wallet record stored the preset as a string, and three
-    /// services each matched `"account1"` and `"account2"` back into an index
-    /// while the app kept a fourth copy to call the export with.
     pub fn account_index(self) -> u32 {
         match self {
             Self::Standard => 0,
@@ -306,12 +301,7 @@ pub struct WalletView {
     pub id: String,
     pub name: String,
     /// The network this wallet is on, as a registry chain id — the chain's
-    /// own id on a family with one network. Replaced a
-    /// `CoreBitcoinNetworkMode` and a `CoreDogecoinNetworkMode` field, which
-    /// were two enums spelling out chains the registry already has.
-    ///
-    /// Was optional, though every wallet core produces has one, so each
-    /// reader supplied its own fallback.
+    /// own id on a family with one network.
     pub chain_id: String,
     /// `Chain::address_slot()` → address for this wallet.
     ///
@@ -504,14 +494,12 @@ pub struct CoreTokenPreferenceEntry {
 }
 
 impl CoreTokenPreferenceEntry {
-    /// Identity: a token *is* its contract on its chain. The id used to be a
-    /// stored `builtin:{chain}:{contract}` string, regenerated on every launch.
+    /// Identity: a token *is* its contract on its chain.
     pub fn id(&self) -> String {
         format!("{}|{}", self.token.chain_id, self.token.contract)
     }
 
-    /// The category the catalog's tags imply. It was stored beside the tags it
-    /// is computed from, which is a second encoding of one fact.
+    /// The category the catalog's tags imply, computed rather than stored.
     pub fn category_from_tags(tags: &[String]) -> CoreTokenPreferenceCategory {
         tags.iter()
             .find_map(|tag| match tag.as_str() {
@@ -543,11 +531,8 @@ pub struct CoreDashboardAssetHolding {
 /// Arbitrum are one row.
 ///
 /// `holdings` is **where the user holds it**, largest value first, and it is
-/// empty for a pinned asset they hold nowhere. It used to carry a synthesized
-/// holding in that case so the row had something to name itself with, which
-/// said the user held zero of the asset on whichever chain the catalog listed
-/// first — a place they had never been shown and could not have chosen. The
-/// naming job is `identity`'s now, and `holdings` states only what is true.
+/// empty for a pinned asset they hold nowhere. Naming the row is `identity`'s
+/// job, and `holdings` states only what is true.
 ///
 /// Valuation is derived with the holdings in the same snapshot; it is not
 /// persisted beside them. None means at least one place is unpriced.
@@ -622,8 +607,7 @@ mod roundtrip_tests {
         let decoded: CoreTokenPreferenceEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, entry);
 
-        // Identity is the token's, not a stored string. It used to be a
-        // `builtin:{chain}:{contract}` id regenerated on every launch.
+        // Identity is the token's, not a stored string.
         assert_eq!(entry.id(), "bnb-chain|0x55d39897");
         // And the category the tags imply, rather than a second copy of it.
         assert_eq!(

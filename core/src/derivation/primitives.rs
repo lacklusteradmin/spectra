@@ -421,8 +421,7 @@ mod mnemonic_language_tests {
 
     #[test]
     fn a_phrase_with_no_wordlist_chosen_is_read_in_its_own_language() {
-        // Assuming English here refused every other language's mnemonic, and
-        // an import that derives nothing used to store a blank wallet.
+        // A mnemonic in any supported language parses, not only English.
         assert!(seed(CHINESE, None).is_ok());
         assert!(seed(ENGLISH, None).is_ok());
     }

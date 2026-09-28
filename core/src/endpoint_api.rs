@@ -79,18 +79,6 @@ impl EndpointApi {
             Self::KaspaRest => "kaspa-rest",
         }
     }
-
-    pub(crate) fn rpc_health_method(self) -> Option<&'static str> {
-        match self {
-            Self::EvmJsonRpc | Self::TronJsonRpc => Some("eth_chainId"),
-            Self::SolanaJsonRpc => Some("getHealth"),
-            Self::MoneroDaemonRpc => Some("get_info"),
-            Self::SuiJsonRpc => Some("sui_getLatestCheckpointSequenceNumber"),
-            Self::NearJsonRpc => Some("status"),
-            Self::SubstrateJsonRpc => Some("chain_getHeader"),
-            _ => None,
-        }
-    }
 }
 
 /// A custom URL is interpreted using its slot's API. If it is already in the

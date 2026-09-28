@@ -28,13 +28,9 @@ pub fn is_valid_send_address(chain_id: String, address: String) -> bool {
     let Some(kind) = chain_kind(&chain_id) else {
         return false;
     };
-    // Normalized first, because the authoritative path already does.
-    // `AddAddressBookEntry` normalizes and *then* validates, while every
-    // caller of this validated the raw string — and on Sui the two disagree:
-    // a 64-hex address typed without its `0x` prefix is invalid raw and valid
-    // once `AddressNormalization::LowercaseHexPrefixed` has added the prefix.
-    // So the composer refused an address the store would have accepted.
-    //
+    // Normalized first, as `AddAddressBookEntry` does: on Sui a 64-hex address
+    // typed without its `0x` prefix is invalid raw and valid once
+    // `AddressNormalization::LowercaseHexPrefixed` has added the prefix.
     // Answering about the normalized form makes the two orders agree by
     // construction, and it is the form that gets stored and sent either way.
     validate_address(AddressValidationRequest {
@@ -261,8 +257,7 @@ pub(crate) fn compute_send_preview_details(
     //
     // Several shapes carry fields this deliberately drops (Tron and friends
     // populate `estimatedTransactionBytes`, but the send sheet does not show
-    // byte counts for account-model chains). That selection is preserved
-    // exactly as it was.
+    // byte counts for account-model chains).
     let (spendable, fee_rate, tx_bytes, input_count, uses_change, max_sendable, est_fee) =
         match preview {
             SendPreview::Utxo { preview: p } => (
@@ -538,12 +533,8 @@ pub struct HighRiskSendRequest {
 /// A reason a send looks risky. Front ends word each one; which ones exist,
 /// and what each carries, are core's.
 ///
-/// Was a record with a free-string `code` and five optional fields any code
-/// might or might not fill. The app switched on the string with a `default`
-/// that returned nothing, so a warning core added later would have vanished
-/// from the confirmation sheet without a compiler error or a test failing —
-/// on the screen whose job is to show every reason to stop. An enum makes a
-/// new reason a compile error on every front end that has not worded it.
+/// An enum, so a new reason is a compile error on every front end that has
+/// not worded it — on the screen whose job is to show every reason to stop.
 ///
 /// The serialized form keeps `code` beside each variant's fields, which is
 /// what `spectra send quote` prints.
@@ -565,9 +556,6 @@ pub enum HighRiskSendWarning {
     /// A chain that is not EVM, and a destination shaped like an EVM address.
     EthOnUtxo { chain: String },
     /// A destination shaped like another chain's address on `chain`.
-    ///
-    /// `non_tron`, `non_solana`, `non_xrp` and `non_monero` before: four codes
-    /// for one reason, each worded with its chain's name baked in.
     ForeignAddressFormat { chain: String },
     /// The holding's chain is not the wallet's.
     ChainMismatch,
@@ -1013,8 +1001,8 @@ pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String
     Some(raw.to_string())
 }
 
-// Lifted from Swift `evmHasContractCode`: a nonempty `eth_getCode` result
-// (anything other than "0x" or "0x0") indicates deployed bytecode.
+// A nonempty `eth_getCode` result (anything other than "0x" or "0x0")
+// indicates deployed bytecode.
 
 pub fn evm_has_contract_code(code: String) -> bool {
     let trimmed = code.trim();
@@ -1070,33 +1058,13 @@ pub fn evm_replacement_fee_bump(
 mod flow_helpers_tests {
     use super::*;
 
-    /// `chain_kind` used to carry its own display-name table, and that table
-    /// omitted 22 mainnet chains — Base, Polygon, Zcash, Kaspa, Dash and the
-    /// newer EVM rollups among them. `chain_kind` returned `None` for each, so
-    /// `is_valid_send_address` rejected *every* address on those chains and the
-    /// send flow could not be completed at all. It now reads the registry.
+    /// `chain_kind` reads the registry, so every mainnet has addresses the
+    /// send flow accepts.
     #[test]
-    fn send_validation_covers_the_chains_the_old_table_omitted() {
+    fn every_evm_chain_accepts_an_evm_address() {
         let evm = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
-        let previously_broken_evm = [
-            "base",
-            "polygon",
-            "linea",
-            "scroll",
-            "blast",
-            "mantle",
-            "sei",
-            "celo",
-            "cronos",
-            "opbnb",
-            "zksync-era",
-            "sonic",
-            "berachain",
-            "unichain",
-            "ink",
-            "x-layer",
-        ];
-        for chain in previously_broken_evm {
+        for chain in crate::registry::Chain::mainnets().filter(|c| c.is_evm()) {
+            let chain = chain.str_id();
             assert_eq!(
                 chain_kind(chain),
                 Some("evm"),
@@ -1108,7 +1076,7 @@ mod flow_helpers_tests {
             );
         }
 
-        // Non-EVM chains the old table also missed.
+        // Non-EVM chains too.
         for (chain, kind) in [
             ("zcash", "zcash"),
             ("bitcoin-gold", "bitcoinGold"),
@@ -1221,24 +1189,10 @@ mod flow_helpers_tests {
 
 /// Whether a send is addressed to a private extension-block output, which the
 /// composer badges.
-///
-/// The app decided it by comparing the chain's name with "Litecoin" and the
-/// address with two prefixes — the rule `extra_output_overhead_bytes` already
-/// held in core, restated beside a string.
 #[uniffi::export]
 pub fn is_extension_block_send_destination(chain_id: String, destination: String) -> bool {
     crate::registry::Chain::from_str_id(&chain_id)
         .is_some_and(|chain| chain.is_extension_block_destination(&destination))
-}
-
-/// Extra transaction bytes a destination costs beyond a plain output, by chain.
-///
-/// Not exported: the preview core builds prices these bytes itself. The front
-/// end fetched the number to do that arithmetic on its side.
-pub fn extra_output_overhead_bytes(chain_id: String, destination: String) -> u64 {
-    crate::registry::Chain::from_str_id(&chain_id)
-        .map(|c| c.extra_output_overhead_bytes(&destination))
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -1267,13 +1221,9 @@ mod validating_and_normalising_cannot_disagree {
         .collect()
     }
 
-    /// The third caller of the same question.
-    ///
-    /// The fix above landed in `is_valid_send_address` and the high-risk check
-    /// kept validating the raw string, so a Sui address typed without its `0x`
-    /// was accepted by the composer, accepted by the store, and called
-    /// `invalid_format` by the warning sheet at the same time. Both orders,
-    /// one answer — including here.
+    /// The third caller of the same question: the high-risk check validates
+    /// the normalised address, as the composer and the store do. Both orders,
+    /// one answer.
     #[test]
     fn the_high_risk_check_asks_the_same_question_the_composer_does() {
         let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
@@ -1477,8 +1427,7 @@ mod scanned_payload_tests {
     const BTC: &str = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
     const EVM: &str = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
 
-    /// The shapes a wallet actually puts in a QR code. Every one of these was
-    /// pasted into the send field verbatim before the scanner asked core.
+    /// The shapes a wallet actually puts in a QR code.
     #[test]
     fn payment_uris_reduce_to_the_address_they_carry() {
         let cases = [
@@ -1591,8 +1540,8 @@ mod high_risk_warning_shape {
         })
     }
 
-    /// Four chain-named codes were one reason. It is one variant now, and the
-    /// chain it was raised on travels with it rather than being in its name.
+    /// A foreign address is one reason, and the chain it was raised on travels
+    /// with it rather than being in its name.
     #[test]
     fn a_foreign_address_is_one_reason_that_names_its_chain() {
         for chain in ["tron", "solana", "xrp", "monero"] {

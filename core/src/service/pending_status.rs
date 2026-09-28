@@ -1,14 +1,10 @@
 //! Polling a chain's pending transactions for a final status.
 //!
-//! How a chain resolves pending transactions is a registry fact, and the three shapes it
-//! takes — a UTXO status endpoint, an address history that names confirmed
-//! txids, an EVM receipt — were three loops on the front end's side of the
-//! boundary. Each one selected the records to poll from its own projection of
-//! core's store, asked core whether each was due, fetched, told core the
-//! outcome, collected the resolutions and handed them back to be applied: five
-//! crossings per transaction. Core owns the store, the schedule and the fetch,
-//! so it owns the loop; what comes back is what changed, which is what a front
-//! end needs to write an event and a notification.
+//! How a chain resolves pending transactions is a registry fact, and it takes
+//! three shapes — a UTXO status endpoint, an address history that names
+//! confirmed txids, an EVM receipt. Core owns the store, the schedule and the
+//! fetch, so it owns the loop; what comes back is what changed, which is what
+//! a front end needs to write an event and a notification.
 
 use crate::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
@@ -719,7 +715,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn audit_fix5_owned_pending_maintenance_uses_recorded_network_after_settings_change() {
+    async fn owned_pending_maintenance_uses_recorded_network_after_settings_change() {
         use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
         let mainnet = MockServer::start().await;
         let sepolia = MockServer::start().await;

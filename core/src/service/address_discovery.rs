@@ -168,14 +168,9 @@ impl WalletService {
     /// Walk a wallet's external addresses and record the ones that have been
     /// used, returning every address the wallet is known to hold on `chain_id`.
     ///
-    /// This was `AppState.discoverUTXOAddresses` and the four methods under it
-    /// — a derive-and-probe loop in the front end that needed the seed phrase
-    /// in Swift's hands to run. Core reads the seed, the derivation path, the
-    /// keypool bound, the balance and the history already; the loop was the
-    /// last thing keeping the phrase on that side.
-    ///
-    /// The gap limit and the ceiling are core's now. They were
-    /// `AppState.utxoDiscoveryGapLimit` and `utxoDiscoveryMaxIndex`.
+    /// Core reads the seed, the derivation path, the keypool bound, the
+    /// balance and the history, so the seed phrase never leaves core for this.
+    /// The gap limit and the ceiling are core's too.
     pub async fn discover_utxo_addresses(
         &self,
         wallet_id: String,
@@ -359,11 +354,8 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Has this address ever been used on chain?
-    ///
-    /// Swift asked this three ways: Bitcoin looked at UTXOs and a confirmed
-    /// balance and never at history, while the other four looked at balance
-    /// and history and never at the UTXO count. It is one question.
+    /// Has this address ever been used on chain? One question, asked the same
+    /// way for every UTXO chain.
     pub(crate) async fn utxo_address_has_activity(
         &self,
         chain: crate::registry::Chain,
@@ -530,8 +522,7 @@ impl UtxoDerivation {
 
 /// Append an address if it is valid for the chain and not already listed.
 ///
-/// Validation is the registry's, judged against the chain the wallet is on —
-/// the Swift original ran the same check through `isValidAddressForPolicy`.
+/// Validation is the registry's, judged against the chain the wallet is on.
 fn push_utxo_address(
     chain_id: &str,
     address: &str,

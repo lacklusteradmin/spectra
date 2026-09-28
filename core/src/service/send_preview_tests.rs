@@ -5,10 +5,8 @@ mod fee_estimates_are_typed {
     use crate::service::WalletService;
 
     /// The static-fee chains quote the catalog's number, scaled by their own
-    /// decimals. This went through a serialized `FeePreview` and a
-    /// `serde_json::from_str` in the caller before; the numbers are the same
-    /// ones, reached without the round trip. No network: `static_fee_units`
-    /// is catalog data, so these arms never build a client.
+    /// decimals. No network: `static_fee_units` is catalog data, so these arms
+    /// never build a client.
     #[tokio::test]
     async fn a_static_fee_chain_quotes_the_catalog_scaled_by_its_decimals() {
         let service = WalletService::new(Vec::new()).expect("service");
@@ -184,13 +182,28 @@ mod a_destination_probe_refuses_before_it_guesses {
 mod destination_resolution_tests {
     use crate::service::WalletService;
 
+    /// A reviewed destination binds the send: the same address verifies, a
+    /// different one requires a new review.
+    #[tokio::test]
+    async fn a_changed_destination_requires_a_new_review() {
+        let service = WalletService::new(Vec::new()).expect("service");
+        let reviewed = "0x1111111111111111111111111111111111111111";
+        let changed = "0x2222222222222222222222222222222222222222";
+        let same = service
+            .verify_send_destination("ethereum".into(), reviewed.into(), reviewed.into())
+            .await
+            .expect("the reviewed address verifies");
+        assert_eq!(same.address, reviewed);
+        assert!(
+            service
+                .verify_send_destination("ethereum".into(), changed.into(), reviewed.into())
+                .await
+                .is_err()
+        );
+    }
+
     /// A valid address comes back in the chain's own form, and says no name
-    /// was involved.
-    ///
-    /// The EVM branch this replaces lowercased through `normalizeEVMAddress`,
-    /// which is the same answer here — but it was Swift's spelling of a
-    /// registry rule, applied on EVM chains only. Offline: no branch that
-    /// touches the network is reached.
+    /// was involved. Offline: no branch that touches the network is reached.
     #[tokio::test]
     async fn a_valid_address_is_normalized_and_not_a_name() {
         let service = WalletService::new(Vec::new()).expect("service");
@@ -221,7 +234,7 @@ mod destination_resolution_tests {
 
     /// A `.eth` name on a chain that does not run the registry is refused
     /// before any lookup, which is the stricter of the two readings and what
-    /// `Chain::resolves_ens_names` now states once.
+    /// `Chain::resolves_ens_names` states.
     ///
     /// Offline by construction: the refusal happens before the resolver is
     /// called, so a network-less test proves the branch and not the timeout.
@@ -431,8 +444,7 @@ mod failed_reads {
 }
 
 /// A send preview's "spendable" is a fact about the asset the amount field
-/// moves, not about whatever the chain pays gas in. Both previews here used to
-/// answer with the gas coin's own arithmetic whatever was being sent.
+/// moves, not about whatever the chain pays gas in.
 #[cfg(test)]
 mod a_preview_quotes_the_asset_it_moves {
     use super::*;

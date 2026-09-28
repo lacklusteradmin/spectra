@@ -166,7 +166,7 @@ mod tests {
         // (amount, asset decimals, expected places)
         let cases = [
             // A small balance keeps its significant digits instead of rounding
-            // to nothing — at the old fixed three places this read "<0.001".
+            // to nothing.
             (0.00042_f64, 8_u32, 8_u32),
             (0.000015, 18, 8),
             // A large one spends its budget left of the point.

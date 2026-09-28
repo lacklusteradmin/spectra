@@ -63,13 +63,9 @@ async fn imported_wallets_land_in_core_state() {
 }
 
 /// A seed import stores an address for every network of the family, so
-/// switching to a testnet is a read rather than a derivation.
-///
-/// The app used to re-derive the testnet address from the seed on every
-/// read, which a password-sealed wallet cannot do — it fell back to the
-/// mainnet address and showed that on testnet instead. The addresses
-/// survive into the stored record, which is what makes the switch work
-/// after a restart.
+/// switching to a testnet is a read rather than a derivation — which a
+/// password-sealed wallet could not do. The addresses survive into the stored
+/// record, which is what makes the switch work after a restart.
 #[tokio::test]
 async fn a_seed_import_stores_one_address_per_network_of_its_family() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());

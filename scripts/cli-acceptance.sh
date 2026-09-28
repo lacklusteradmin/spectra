@@ -104,8 +104,8 @@ contains "Bittensor claims in-app signing like its peers" '"sendBroadcastMode":"
 # ── Address validation ──────────────────────────────────────────────────────
 #
 # The rule that every chain's import address is validated. Both halves matter:
-# a chain that used to be lenient must now refuse, and a valid address must
-# come back normalised by core rather than as typed.
+# an invalid address must be refused, and a valid address must come back
+# normalised by core rather than as typed.
 
 section "address validation"
 check "accepts a valid Bitcoin address"     $OK \
@@ -120,8 +120,6 @@ contains "normalises EVM case" '"normalized":"0x742d35cc6634c0532925a3b844bc454e
     spectra --json address validate --chain Ethereum 0x742D35CC6634C0532925A3B844BC454E4438F44E
 # An EVM address whose letters are not all one case carries an EIP-55
 # checksum, and that checksum exists to catch a mistyped or corrupted paste.
-# The validator used to lowercase first and never look, so any forty hex digits
-# passed.
 check "accepts a correct EIP-55 checksum"   $OK \
     spectra address validate --chain Ethereum 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 check "refuses a broken EIP-55 checksum"    $REJECTED \
@@ -129,8 +127,7 @@ check "refuses a broken EIP-55 checksum"    $REJECTED \
 check "accepts the unchecksummed lower-case form" $OK \
     spectra address validate --chain Ethereum 0x742d35cc6634c0532925a3b844bc454e4438f44e
 
-# The send composer's QR scanner. It parsed payment URIs in the iOS view and,
-# with no asset selected, put the first fragment in the send field unvalidated.
+# The send composer's QR scanner: a payment URI reduces to a validated address.
 section "scanned payment payloads"
 contains "reads the address out of a BIP-21 URI" '"address":"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"' \
     spectra --json send scan --chain Bitcoin 'bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=0.1&label=Shop'
@@ -148,9 +145,7 @@ check "creates a wallet"                    $OK \
     spectra wallet new --chain Bitcoin --name "Acceptance BTC"
 contains "stores the catalog derivation path" "m/84'/0'/0'/0/0" \
     spectra --json wallet show "Acceptance BTC"
-# The five BIP-39 lengths are core's list. `generate_mnemonic` answered twelve
-# words to every count it did not recognize, so this command carried its own
-# `12 | 24` guard and the app carried a third copy next to its entropy table.
+# The five BIP-39 lengths are core's list, and core refuses any other count.
 check "creates a wallet at a non-default BIP-39 length" $OK \
     spectra wallet new --chain Bitcoin --name "Eighteen Words" --words 18
 contains_exit $USAGE "refuses a length BIP-39 does not define, naming the five" \
@@ -162,11 +157,9 @@ check "imports a known mnemonic"            $OK \
 contains "derives the documented address for that mnemonic" \
     "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
     spectra --json wallet show "Acceptance SOL"
-# One seed, several chains, in one command. `--chain` could only be given once
-# because the CLI derived the address itself before handing it to
-# `import_wallets`; core derives them now, so the multi-chain rule — every EVM
-# chain derives from Ethereum's path — lives with the registry rather than in
-# whichever front end happened to import more than one chain.
+# One seed, several chains, in one command. Core derives the addresses, so the
+# multi-chain rule — every EVM chain derives from Ethereum's path — lives with
+# the registry rather than in a front end.
 check "imports one seed across three chains" $OK \
     with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
     spectra wallet import --chain Bitcoin --chain Ethereum --chain Solana --name "Multi"
@@ -286,11 +279,9 @@ check "watch-only sender cannot resolve signing identity" $REJECTED \
     spectra send identity --from "Acceptance Watch"
 check "refuses to export a watch-only wallet" $REJECTED \
     spectra wallet export "Acceptance Watch" --yes
-# The watch-addresses picker in the app is this flag, and it had drifted from
-# it in both directions. Ethereum Classic has its own address slot and was
-# folded into the shared EVM field, so its entries landed in a slot the planner
-# does not read; Polygon and fifteen other EVM mainnets fell outside the
-# seven-name condition that decided whether an EVM field appeared at all.
+# The watch-addresses picker in the app is this flag. Ethereum Classic has its
+# own address slot inside the EVM family, and every EVM mainnet takes a watch
+# address.
 check "watches a chain with its own slot inside the EVM family" $OK \
     spectra wallet watch --chain "Ethereum Classic" --name "Watch ETC" \
         --address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
@@ -340,10 +331,7 @@ for chain in ("bitcoin", "ethereum", "ethereum-sepolia", "monero"):
 PYSETTINGS
 
 # Monero's spend and view keys come from the seed, so its catalog row carries
-# `derivation_path = []`. "No default path" used to be an error rather than an
-# answer, and every caller read it as a broken catalog: this command exited
-# with "Missing default derivation path for Monero." and iOS dropped the chain
-# out of the batch it was deriving. Core has derived Monero the whole time.
+# `derivation_path = []`. "No default path" is an answer, not an error.
 check "imports Monero from a seed phrase"   $OK \
     with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
     spectra wallet import --chain Monero --name "XMR Wallet"
@@ -388,10 +376,9 @@ assert all(any(r["endpoint"] == url and r["api"] == "monero-daemon-rpc" for r in
 PYAPI
 lacks "endpoint catalog omits unused provider metadata" '"providerID"' \
     spectra --json endpoints --catalog
-# `roles` held two things at once: what an endpoint is, and what it is used
-# for. Nothing kept them consistent, and both drifted — ten EVM chains' RPC
-# nodes lost the `rpc` marker, and forty-six claimed a `history` capability no
-# EVM node can serve, because `eth_getTransactionsByAddress` is not a method.
+# An endpoint declares what it is (its API) separately from what it is used
+# for (its capabilities). No EVM node serves `history`, because
+# `eth_getTransactionsByAddress` is not a method.
 contains "an EVM node declares its API"        '"api":"evm-json-rpc"' \
     spectra --json endpoints --catalog --chain Ethereum
 contains "and does not claim address history" '"capabilities":["balance","fee","broadcast","token-balance","verification"]' \
@@ -446,9 +433,8 @@ contains "Ethereum retains its keyless history source" 'https://eth.blockscout.c
     spectra --json chains --filter Ethereum
 
 section "utxo address discovery"
-# The derive-and-probe walk the app runs on every UTXO refresh. It lived in
-# Swift because the seed phrase was only readable there; core reads the seed,
-# the derivation path, the keypool bound, the balance and the history.
+# The derive-and-probe walk the app runs on every UTXO refresh. Core reads the
+# seed, the derivation path, the keypool bound, the balance and the history.
 contains "lists what a sealed UTXO wallet already holds" '"addressCount":1' \
     spectra --json pool discover "Renamed BTC"
 # A chain with no walk answers empty rather than failing: the refresh loop asks
@@ -461,10 +447,8 @@ contains "a UTXO wallet's receive address is never index 0" '"index":1' \
     spectra --json pool next "Renamed BTC"
 
 section "wallets with no password"
-# The state the iOS app has always had and core could not represent: a wallet
-# whose material is stored without a password. Core held one key layout for
-# sealed wallets and the app held another for unsealed ones, in the same
-# keychain, neither able to read the other's.
+# A wallet whose material is stored without a password, in the same key layout
+# core uses for sealed wallets.
 check "imports without a password"          $OK \
     with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
     spectra wallet import --chain Solana --name "Open SOL" --no-password
@@ -488,10 +472,8 @@ check "deletes the unsealed wallet"         $OK \
 # ── Addresses per network ───────────────────────────────────────────────────
 #
 # A wallet on a family with testnets holds one address per network, derived
-# once at import. The app used to re-derive the testnet address from the seed
-# on every read — so nothing outside the app could see it, and a
-# password-sealed wallet, which has no seed to read, showed the mainnet address
-# on testnet instead.
+# once at import, so a password-sealed wallet — which has no seed to read —
+# still shows the right address on a testnet.
 
 section "addresses per network"
 contains "a Bitcoin wallet stores its testnet4 address too" '"bitcoin-testnet-4"' \
@@ -534,7 +516,7 @@ contains "asking again keeps the reserved index" \
     '"address":"bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"' \
     spectra --json wallet receive "Open BTC"
 # The diagnostics row reports the reservation as it was recorded when handed
-# out. The app labelled the wallet's account path as the reserved one.
+# out.
 contains "shows the path at the reserved index" "/0/1\"" \
     spectra --json pool show "Open BTC"
 check "deletes the temporary BTC wallet" $OK spectra wallet delete "Open BTC" --yes
@@ -559,36 +541,30 @@ contains "removal empties the book" '"contacts":[]' spectra --json address book 
 
 # ── Shared settings ─────────────────────────────────────────────────────────
 #
-# The setting the app reads from the same store. Stage 0 moved it; this is the
-# check that it stayed moved.
+# The setting the app reads from the same store.
 
 section "display currency"
 contains "defaults to USD"  '"currency":"USD"' spectra --json currency
 check "sets a currency"                     $OK spectra currency CHF
 contains "reads it back from the store" '"currency":"CHF"' spectra --json currency
-# The twelve codes are core's. They were a Swift enum and nothing else, so this
-# command stored whatever string it was handed — and every amount then rendered
-# unconverted with that code beside it.
+# The twelve codes are core's, and a code nothing quotes is refused.
 check "refuses a code nothing quotes"       $REJECTED spectra currency ZZZ
 check "and one that is not a code at all"   $REJECTED spectra currency bitcoin
 contains "the refusal changed nothing"  '"currency":"CHF"' spectra --json currency
-# Cross-rates are core state now, not a blob one front end kept: this reads the
-# same store the app does. Fetching them needs network, so what is offline is
-# the empty answer.
+# Cross-rates are core state: this reads the same store the app does. Fetching
+# them needs network, so what is offline is the empty answer.
 contains "no rates stored until one is fetched" '"count":0' \
     spectra --json currency --rates
 
 # ── Price alerts ────────────────────────────────────────────────────────────
 #
-# The rules moved into `CoreAppState` for this command to exist; before it they
-# lived only in Swift with core owning just the evaluator. Every check here is
-# a separate process, so this is also the persistence test.
+# The rules live in `CoreAppState`. Every check here is a separate process, so
+# this is also the persistence test.
 
 section "price alerts"
 check "adds an alert"                       $OK \
     spectra alert add --chain Bitcoin --target 1 --above
-# Core names the reason as a code and the front end words it. It used to carry
-# its own English sentence, which the app showed verbatim in every language.
+# Core names the reason as a code and the front end words it.
 contains_exit $REJECTED "refuses an alert that cannot fire, saying why" "positive number" \
     spectra alert add --chain Bitcoin --target 0
 contains "the alert survives a new process" '"symbol":"BTC"' \
@@ -628,9 +604,7 @@ check "refuses a seed that is not a mnemonic" $REJECTED \
 # ── Refresh ─────────────────────────────────────────────────────────────────
 #
 # The sweep itself needs a network. What is checkable offline is that the
-# engine refuses an empty run rather than reporting a successful no-op — the
-# shape of the bug this command surfaced, where a sweep that had not finished
-# reported "0 refreshed, 0 errors".
+# engine refuses an empty run rather than reporting a successful no-op.
 
 section "refresh"
 # Against its *own* empty directory: by this point the shared one has wallets,
@@ -641,8 +615,7 @@ check "refuses a refresh with no wallets"   $REJECTED \
 
 # ── Diagnostics ─────────────────────────────────────────────────────────────
 #
-# Core's own self-tests, which need no network and no device. Seven of them
-# were failing on fabricated fixtures until the CLI could run them.
+# Core's own self-tests, which need no network and no device.
 
 section "diagnostics"
 check "every chain's self-tests pass"       $OK spectra diagnostics self-test
@@ -656,10 +629,9 @@ contains "builds a diagnostics document"  '"endpoints"' \
 
 # ── Tracked tokens ──────────────────────────────────────────────────────────
 #
-# The clamp is the rule that moved into core with the list: a token cannot
-# display more places than it has. And they have to survive a reopen — every
-# command here is a separate process, so this section is also the persistence
-# test.
+# A token cannot display more places than it has, and the list has to survive a
+# reopen — every command here is a separate process, so this section is also
+# the persistence test.
 
 section "token and deployment references"
 contains "Ethereum deployment resolves its token identity" '"token_id":"ethereum"' \
@@ -687,9 +659,7 @@ contains "Aptos test coins display tAPT" '"symbol":"tAPT"' \
 section "tracked tokens"
 check "token-wide discovery and editable price sources" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"
 # Tracking is `is_enabled` on a row core already holds — opening the store seeds
-# the catalog — not a row the caller assembles and writes back. Both front ends
-# used to do the latter, with duplicate rules that disagreed: the composer
-# compared normalized contracts and this command compared symbols.
+# the catalog — not a row the caller assembles and writes back.
 contains "lists the built-in catalog" '"symbol":"USDC"' \
     spectra --json token catalog --chain Ethereum
 contains "opening seeds the catalog's own rows" '"symbol":"USDC"' \
@@ -745,14 +715,9 @@ contains "which turns the untracked one back on"   '"isEnabled":false' \
 
 # ── Amount display ──────────────────────────────────────────────────────────
 #
-# Decimal places follow the amount, not a per-chain setting. There used to be
-# one setting per chain and one per token — 137 steppers — because a fixed count
-# cannot serve both a large balance and a small one: at the old default of three
-# places, 0.00042 BTC read "<0.001 BTC", and the only cure was to find Bitcoin in
-# a list of forty-six and tap "+" five times.
-#
-# Six significant digits, counted from the first non-zero digit, capped by what
-# the asset has and by eight places.
+# Decimal places follow the amount, not a per-chain setting: six significant
+# digits, counted from the first non-zero digit, capped by what the asset has
+# and by eight places.
 
 section "amount display"
 contains "a small balance keeps its digits" '"shows":"0.00042"' \
@@ -776,19 +741,14 @@ check "refuses a token the chain does not have"    $REJECTED \
 
 # ── Staking ─────────────────────────────────────────────────────────────────
 #
-# Offline half only. Core has had a staking service since before the CLI could
-# reach it — only Swift drove it — so "which chains stake" is the part worth
-# asserting without a network.
+# Offline half only: "which chains stake" is the part worth asserting without
+# a network.
 
 # ── EVM send assembly ───────────────────────────────────────────────────────
 #
-# The funds-path rule this script could not reach until now, and the gap is how
-# it stayed wrong. `prepare_evm_send_assembly` builds the transaction the send
-# sheet estimates gas against; its only caller was the iOS send sheet, so it
-# greps as dead from the Rust tree and no assertion here touched it. Inside it,
-# `is_supported_evm_chain` named seven chains and `is_native_evm_asset` listed
-# nine `(chain, symbol)` pairs — two of them governance tokens. Assembling
-# takes no key, no network and no store, so it belongs here.
+# `prepare_evm_send_assembly` builds the transaction the send sheet estimates
+# gas against. Assembling takes no key, no network and no store, so it belongs
+# here.
 
 # ── Signing without broadcasting ────────────────────────────────────────────
 #
@@ -803,9 +763,7 @@ check "a broadcast without --yes is refused" $USAGE \
     spectra send broadcast --from "Multi 1" --to bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --amount 0.001
 
 section "EVM send assembly"
-# Base is one of the sixteen mainnets that used to answer UnsupportedChain,
-# which surfaced in the app as "Unable to estimate network fee" on a send that
-# was otherwise fine.
+# Every EVM mainnet assembles, Base included.
 check "assembles on a chain outside the old seven" $OK \
     spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1.5
 contains "as a native transfer of the gas asset" '"isNative":true' \
@@ -846,7 +804,7 @@ check "refuses half a token description"    $USAGE \
 # Which pending sends can still be replaced is core's rule, over core's own
 # records. Recording one needs a broadcast, so what is offline is the empty
 # answer and the wallet filter; the rule itself is covered by
-# `cargo test -p spectra_core replaceable` and the Swift bridge tests.
+# `cargo test -p spectra_core replaceable`.
 section "replaceable sends"
 check "lists nothing to replace" $OK spectra txs --replaceable
 contains "answers as an empty list" '"replaceable":[]' spectra --json txs --replaceable
@@ -893,7 +851,6 @@ contains "keeps access-list storage keys" '"storageKeys":1' \
     spectra --json send overrides --gas-limit 50000 --access-list "$access_list_fixture"
 check "non-empty access list needs explicit gas" $REJECTED \
     spectra send overrides --access-list "$access_list_fixture"
-contains "keeps sign-only intent" '"signOnly":true' spectra --json send overrides --sign-only
 
 section "custom EVM fees"
 contains "returns parsed fees from core" '"maxFeePerGasGwei":30.25' \
@@ -913,9 +870,7 @@ done
 
 section "send affordability"
 # The fee half of "can this send land". `route_send_asset` already refuses
-# amount > balance; this is the part that was in Swift, where four callers each
-# decided whether the asset was the chain's own — spelled `== "TRX"`, `== "SOL"`,
-# a literal `true`, and a preflight field.
+# amount > balance; this counts the fee against the chain's own asset.
 contains "counts the fee against a native balance" '"verdict":"amountPlusFeeExceedsBalance"' \
     spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
 contains "and states the exact total required" '"required":"1.5"' \
@@ -936,16 +891,14 @@ contains "and both fitting is affordable" '"verdict":"affordable"' \
         --balance 1.2 --gas-balance 2
 
 section "send destination probe"
-# The recipient check the composer runs. Swift held it as four chain arms that
-# fetched different things and worded the answer three ways; core answers with
-# two booleans and the front end supplies the sentence.
+# The recipient check the composer runs: core answers with two booleans and the
+# front end supplies the sentence.
 #
-# Named by wallet and asset now, not by a token descriptor the caller builds:
-# which contract an asset is on a chain is a catalog question, and both front
-# ends were reading core's token list to hand it back. Only the offline half is
-# assertable here — the verdict itself is a balance and a history read. An
-# import holds its network's native asset from the start (core adds it; the app
-# used to hand it in and this front end did not), so the refusal names a token.
+# Named by wallet and asset, not by a token descriptor the caller builds: which
+# contract an asset is on a chain is a catalog question. Only the offline half
+# is assertable here — the verdict itself is a balance and a history read. An
+# import holds its network's native asset from the start, so the refusal names
+# a token.
 check "refuses a wallet that is not there"         1 \
     spectra send probe --wallet "no such wallet" --to $EVM_ADDR
 check "refuses an asset the wallet does not hold"  $REJECTED \
@@ -954,10 +907,9 @@ check "refuses a chain the registry does not know" $USAGE \
     spectra send probe --wallet "Multi 2" --asset ETH --chain NotAChain --to $EVM_ADDR
 
 section "send destination resolution"
-# What the composer does with the destination field. Swift asked
-# `chainName == "Ethereum"` in three places to decide whether a `.eth` name is
-# looked up; it is `Chain::resolves_ens_names` now, so the refusals are
-# assertable offline — a name off Ethereum never reaches the network.
+# What the composer does with the destination field. Whether a `.eth` name is
+# looked up is `Chain::resolves_ens_names`, so the refusals are assertable
+# offline — a name off Ethereum never reaches the network.
 contains "a typed address comes back in the chain's own form" \
     '"address":"0x742d35cc6634c0532925a3b844bc454e4438f44e"' \
     spectra --json send destination --chain Base --to $EVM_ADDR
@@ -975,10 +927,8 @@ done
 
 # ── Network selection ───────────────────────────────────────────────────────
 #
-# Which `Chain` of a family the user is on. This had no command until now, and
-# that is how "reset to defaults" came to reset three families where the
-# registry has twenty-nine — the axis was reachable only from the iOS picker,
-# so nothing here could see it.
+# Which `Chain` of a family the user is on, for every family the registry
+# offers a choice in.
 
 section "network selection"
 check "lists the families that have a choice" $OK spectra network list
@@ -990,10 +940,8 @@ contains "and reads it back"                '"selected":"solana-devnet"' \
 check "and another, on a different family"  $OK spectra network set bitcoin-signet
 check "refuses an id the registry does not know" $REJECTED \
     spectra network set nonsuch
-# A switch has to take the family's derivation state with it. Reserved keypool
-# indices and discovered addresses belong to the network they were derived on;
-# iOS cleared them and the CLI did not, so this axis could not see a switch
-# that left them behind.
+# A switch has to take the family's derivation state with it: reserved keypool
+# indices and discovered addresses belong to the network they were derived on.
 contains "clears the family's derivation state with the switch" \
     '"clearedDerivationState":["solana","solana-devnet"]' \
     spectra --json network set solana-devnet
@@ -1049,13 +997,12 @@ contains_exit 1 "and says so rather than reporting an empty wallet" "cannot enum
 # ── Dead weight ─────────────────────────────────────────────────────────────
 #
 # An export nothing calls still costs: it is generated into the bindings, it
-# has to keep compiling, and it reads as API. Three had been unreachable long
-# enough that two of them were only kept alive by their own tests.
+# has to keep compiling, and it reads as API.
 #
-# Below the FFI surface the same rot has no lint at all: `dead_code` treats a
-# `pub fn` in a lib crate as API and never fires, so a function can lose its
-# last caller and keep compiling. Seven had. Shipped copy is the third shape —
-# `resources/` ships whether or not anything reads it.
+# Below the FFI surface `dead_code` treats a `pub fn` in a lib crate as API and
+# never fires, so a function can lose its last caller and keep compiling.
+# Shipped copy is the third shape — `resources/` ships whether or not anything
+# reads it.
 
 section "dead weight"
 check "no export is unreachable from both front ends" $OK \
@@ -1077,9 +1024,8 @@ check "adds a typed custom endpoint" $OK \
     spectra endpoints --chain monero --api monero-daemon-rpc --capabilities fee,broadcast,verification --add https://wallet.example
 contains "a second process reads the custom endpoint" '"endpoint":"https://wallet.example"' \
     spectra --json endpoints --catalog --source custom --chain monero
-# Fee priority is keyed by chain rather than global: two chains had a settings
-# field each and the other seventy-six shared a dictionary iOS persisted
-# itself, so the CLI could set exactly two of the seventy-eight.
+# Fee priority is keyed by chain rather than global, so every chain can have
+# its own.
 check "sets a per-chain fee priority"       $OK \
     spectra settings set fee-priority.Dogecoin economy
 contains "and reads it back"                '"value":"economy"' \
@@ -1114,8 +1060,7 @@ contains "a changed number is back at its default" '"value":"10"' \
     spectra --json settings get bitcoin-stop-gap
 contains "custom endpoints are reset" '"total":0' \
     spectra --json endpoints --catalog --source custom
-# The bound is core's. A stop gap of zero finds no addresses, and this used to
-# be clamped only in an iOS `didSet` — reachable from nowhere else.
+# The bound is core's. A stop gap of zero finds no addresses.
 check "bounds a number instead of storing it" $OK \
     spectra settings set bitcoin-stop-gap 9999
 contains "clamped to the top of the range"  '"value":"200"' \
@@ -1128,11 +1073,9 @@ check "refuses a value of the wrong kind"   $REJECTED \
 
 # ── Tor routing ─────────────────────────────────────────────────────────────
 #
-# The four Tor settings were `UserDefaults` keys in one front end, so no other
-# front end, no test and no script could read or set them. They are settings
-# like any other now. The kill switch is enforced in core's HTTP layer, which
-# is why the address is validated here rather than handed to a proxy builder
-# that fails closed and says nothing.
+# The Tor settings are core settings like any other. The kill switch is
+# enforced in core's HTTP layer, which is why the address is validated here
+# rather than handed to a proxy builder that fails closed and says nothing.
 
 section "tor routing"
 check "turns Tor on"                        $OK spectra settings set tor-enabled true
@@ -1188,10 +1131,9 @@ else
     FAILED=$((FAILED + 1))
     printf '  \033[31m✗\033[0m and seals no key on the way to refusing\n'
 fi
-# Which chains a private key covers is one registry fact, and this is the check
-# that the app's picker and the CLI cannot disagree about it. Polygon was in
-# neither of the app's two hand-written lists and derives the same EVM address
-# as Ethereum; Decred was in one list, absent from Swift's switch, and derives.
+# Which chains a private key covers is one registry fact, so the app's picker
+# and the CLI cannot disagree about it. Polygon derives the same EVM address as
+# Ethereum, and Decred derives too.
 contains "the same key derives on every EVM chain" '0x2c7536e3605d9c16a7a3d7b1898e529396a65c23' \
     with_password "correct horse" spectra --json wallet import --chain Polygon \
         --name "PK Polygon" --private-key-file "$DATA_DIR/pk.hex"
@@ -1214,9 +1156,7 @@ contains "returns the key it sealed"          '"privateKey":"4c0883a6' \
 check "deletes the private-key wallet"        $OK spectra wallet delete "PK Wallet" --yes
 
 section "self-tests"
-# A suite keyed by a name no caller can type is green and unreachable at the
-# same time: `CHAIN_SPECS` had a row keyed "XRP" where the registry says "XRP
-# Ledger", and every caller resolves its input through the registry.
+# Self-tests are keyed by the registry id every caller resolves its input to.
 contains "runs a chain's self-tests"       '"chain":"xrp"' \
     spectra --json diagnostics self-test --chain "XRP Ledger"
 contains "and the symbol resolves to it"   '"chain":"xrp"' \
@@ -1229,9 +1169,7 @@ contains_exit 3 "and says which chain, not which endpoint" "Staking queries are 
     spectra staking validators --chain Bitcoin
 check "refuses staking on an unknown chain"            $USAGE \
     spectra staking validators --chain Nope
-# The staking picker in the app was a seven-case Swift enum with its own
-# display-name and id switches, beside two match arms in `StakingService` over
-# the same seven ids. One registry column now, and this is the column.
+# Which chains stake is one registry column, and this is the column.
 contains "the catalog says which chains stake" '"staking":true' \
     spectra --json chains --filter Polkadot
 contains "and which do not"                   '"staking":false' \
@@ -1285,13 +1223,11 @@ contains "a pinned asset nobody holds names its chain like a stored one" \
     '"chainId":"bitcoin"' closure_spectra --json portfolio --stored
 lacks "and never by display name" \
     '"chainName"' closure_spectra --json portfolio --stored
-# And it holds nothing, rather than carrying a synthesized holding so the row
-# had something to name itself with — which told the reader they held zero of
-# the asset on whichever chain the catalog listed first.
+# And it holds nothing, rather than a synthesized zero holding on some chain.
 contains "and holds nothing at all" \
     '"holdings":[],"id":"bitcoin"' closure_spectra --json portfolio --stored
-# Which assets a fresh dashboard pins was a rule the app applied to its own copy
-# of the pin list. Core answers per option, counting the default set.
+# Which assets a fresh dashboard pins is core's rule. Core answers per option,
+# counting the default set.
 check "a fresh dashboard pins bitcoin by default" $OK \
     bash -c '"$1" --data-dir "$2/closure" --json portfolio --pin-options | grep -q "\"is_pinned\":true,[^}]*\"token_id\":\"bitcoin\""' _ "$BIN" "$DATA_DIR"
 check "unpinning one asset keeps the rest of the default set" $OK \

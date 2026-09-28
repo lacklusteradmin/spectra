@@ -4,12 +4,9 @@ mod token_decimals_come_from_the_contract {
     use crate::registry::Chain;
     use crate::service::WalletService;
 
-    /// Which families core can ask, and which still take the caller's word.
-    ///
-    /// `build_execute_send_payload` used `req.token_decimals.unwrap_or(6)`, so
-    /// a caller that supplied nothing denominated its transfer at six places
-    /// whatever the contract said. It reads `decimals()` off the token now,
-    /// and only a family without a reader may fall back to caller precision.
+    /// Which families core can ask, and which still take the caller's word:
+    /// a token's `decimals()` is read off the contract, and only a family
+    /// without a reader may fall back to caller precision.
     ///
     /// This asserts the gate, not the network read: a chain the helper has no
     /// client for must answer `None` without attempting a call, which is what
@@ -75,14 +72,8 @@ pub(super) mod request_fixture {
 mod sign_only_tests {
     use super::request_fixture::req;
 
-    /// "Sign and stop" is one question however it was asked.
-    ///
-    /// It had two routes and four readers, and they disagreed: the refusal
-    /// read both routes, the result field read only `sign_only`, and the
-    /// Bitcoin builder read only `sign_only` too. So a caller asking through
-    /// the EVM overrides — the route that existed first, and the one the
-    /// field's own doc comment still points at — got a signed transaction
-    /// back with `signed_payload: None`.
+    /// "Sign and stop" is one question however it was asked: through the
+    /// request's own field or through the EVM overrides.
     #[test]
     fn either_route_asks_the_same_thing() {
         let plain = req("ethereum", "ethereum");
@@ -137,13 +128,9 @@ mod send_chain_tests {
         }
     }
 
-    /// A send is signed for the network the wallet is on.
-    ///
-    /// It used to be signed for the family's mainnet whatever network was
-    /// selected: with the app on Sepolia, a send still signed chain id 1 and
-    /// read mainnet endpoints, so what the user believed was a testnet
-    /// transaction was a valid mainnet one. `spectra send broadcast
-    /// --sign-only` prints the signed chain id, which is how it was found.
+    /// A send is signed for the network the wallet is on, never the family's
+    /// mainnet. `spectra send broadcast --sign-only` prints the signed chain
+    /// id.
     #[test]
     fn a_send_requires_the_explicit_network_and_never_retargets() {
         let mut state = CoreAppState {

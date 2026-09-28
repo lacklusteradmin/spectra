@@ -247,9 +247,8 @@ pub enum SimpleChain {
     Bittensor,
 }
 
-// Unified record builders: return the final UniFFI preview Record directly so
-// Swift stops hand-wiring per-chain wrapping code. Each consumes the same raw
-// inputs the old Swift helpers used; decode + wrap happens in Rust.
+// Unified record builders: return the final UniFFI preview record directly;
+// decoding and wrapping happen in Rust.
 
 pub fn build_evm_send_preview_record(
     input: crate::send::ethereum::EvmPreviewDecodeInput,

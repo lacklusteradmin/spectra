@@ -110,13 +110,10 @@ impl WalletService {
         Ok(address.filter(|a| !a.is_empty()))
     }
 
-    // Not exported: the pending-status poll is core's own loop now, and it
-    // is the only caller. It was an export because a front end drove the
-    // loop and asked for each piece.
     /// Fetch confirmation status for a UTXO chain transaction.
-    /// Returns a typed record so Swift can read `confirmed`/`block_height`/
-    /// `confirmations` fields without bouncing through JSON.
-    /// Supported chain_ids: 0 (BTC), 3 (DOGE), 5 (LTC), 6 (BCH), 22 (BSV).
+    ///
+    /// Not exported: the pending-status poll is core's own loop, and its only
+    /// caller.
     pub async fn fetch_utxo_tx_status(
         &self,
         chain_id: String,
@@ -166,9 +163,6 @@ impl WalletService {
         Ok(status)
     }
 
-    // Not exported: the pending-status poll is core's own loop now, and it
-    // is the only caller. It was an export because a front end drove the
-    // loop and asked for each piece.
     /// Where a broadcast EVM transaction has got to.
     ///
     /// `Ok(None)` means the node has no receipt yet, which is what pending
@@ -177,9 +171,8 @@ impl WalletService {
     /// the distinction matters, because a history summary can only say the
     /// hash appeared and would show a reverted send as successful.
     ///
-    /// There was a `classify_evm_receipt_json` beside this that took the
-    /// receipt as a JSON string and re-parsed it for three fields core had
-    /// already decoded. It had no callers; the projection is direct now.
+    /// Not exported: the pending-status poll is core's own loop, and its only
+    /// caller.
     pub async fn evm_transaction_status(
         &self,
         chain_id: String,

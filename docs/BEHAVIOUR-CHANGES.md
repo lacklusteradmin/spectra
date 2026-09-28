@@ -16,6 +16,26 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-28 — `send overrides` no longer echoes `--sign-only`
+
+- **Before:** `spectra send overrides --sign-only` accepted the flag and
+  printed `"signOnly":true`. The value went into `EvmSendOverrides.sign_only`,
+  which nothing read: sign-only sends are decided by
+  `SendExecutionRequest::wants_sign_only`, from the request's own inputs.
+- **After:** `send overrides` has no `--sign-only` flag and no `signOnly`
+  field. It still validates nonce, gas limit, calldata and access list.
+  `send broadcast --sign-only` is unchanged.
+- **Why:** the flag reported an intent that went nowhere. It was the only
+  reader of a dead field, removed with the rest of the unwired send options
+  (Bitcoin extra outputs, coin-selection strategy and both `sign_only`
+  fields).
+- **CLI check:** `spectra --json send overrides --gas-limit 50000` prints no
+  `signOnly`; `spectra send overrides --sign-only` is refused as an unknown
+  argument.
+- **Verification:** `make verify` passed: rustfmt/clippy, 865 core tests plus the
+  transport test, 444 CLI acceptance checks and 133 iPhone
+  simulator tests.
+
 ## 2026-09-28 — Deleting a wallet asks once
 
 - **Before:** confirming Delete Wallet on the wallet's Advanced page stored

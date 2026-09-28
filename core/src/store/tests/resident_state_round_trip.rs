@@ -77,12 +77,9 @@ fn alerts_contacts_and_currency_survive_reopening() {
 
 /// Resetting puts every field back to core's own default.
 ///
-/// The defaults were duplicated in Swift: `resetSettingsAndEndpointsState`
-/// assigned twelve literals and `AppUserPreferences.resetToDefaults`
-/// another seven, none of which any test could compare against
-/// `AppSettings::default()`. Written by mutating *every* field first, so a
-/// new field added to `AppSettings` and forgotten in the reducer fails
-/// here rather than silently surviving a reset.
+/// Written by mutating *every* field first, so a new field added to
+/// `AppSettings` and forgotten in the reducer fails here rather than silently
+/// surviving a reset.
 #[test]
 fn resetting_settings_restores_every_default() {
     use crate::store::state::{
@@ -161,12 +158,9 @@ fn resetting_settings_restores_every_default() {
     assert!(reduce_state_in_place(&mut state, StateCommand::ResetAppSettings).is_empty());
 }
 
-/// Every settings field survives a save and a reload.
-///
-/// Eighteen of them arrived from a blob iOS wrote separately, and the
-/// blob's own fields were never in this test because they were never in
-/// this state. Written field by field so a new one that is added to
-/// `AppSettings` and forgotten in `apply_app_setting` fails here.
+/// Every settings field survives a save and a reload. Written field by field
+/// so a new one that is added to `AppSettings` and forgotten in
+/// `apply_app_setting` fails here.
 #[test]
 fn every_settings_field_round_trips() {
     use crate::store::state::{AppSettingUpdate as U, FeePriority};
@@ -182,8 +176,7 @@ fn every_settings_field_round_trips() {
             api: "evm-json-rpc".into(),
             endpoint: "https://rpc.example".into(),
         },
-        // The second one is the point: this was a single String, so a
-        // second chain's override had nowhere to go.
+        // The second one is the point: each chain keeps its own override.
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
                 "base".into(),
@@ -247,12 +240,9 @@ fn every_settings_field_round_trips() {
     );
 }
 
-/// A value outside its range is bounded rather than stored.
-///
-/// These bounds were `didSet` clamps in the iOS layer — the only copy, so
-/// a stop gap of zero was only impossible where someone had remembered to
-/// check. A zero stop gap finds no addresses; a one-minute refresh
-/// interval hammers whatever endpoint is configured.
+/// A value outside its range is bounded rather than stored. A zero stop gap
+/// finds no addresses; a one-minute refresh interval hammers whatever
+/// endpoint is configured.
 #[test]
 fn a_setting_outside_its_range_is_bounded() {
     use crate::store::state::AppSettingUpdate as U;

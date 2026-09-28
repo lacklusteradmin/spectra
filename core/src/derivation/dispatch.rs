@@ -127,16 +127,13 @@ pub fn derive_for_chain_id(
 
 /// Derive an address from a raw private key, whatever the chain.
 ///
-/// The counterpart of [`core_derive_for_chain`], and it replaces the same
-/// shape: Swift held a thirty-arm switch listing which chains derive by which
-/// algorithm, calling six per-chain exports that existed only to be called from
-/// it. Which family a chain belongs to is a registry fact, so the arms are
-/// predicates on `Chain` rather than a typed-out list — and testnets fall out
-/// of `mainnet_counterpart` instead of needing a case each.
+/// Which family a chain belongs to is a registry fact, so the arms are
+/// predicates on `Chain` rather than a typed-out list, and testnets fall out
+/// of `mainnet_counterpart`.
 ///
 /// `Ok(None)` means the chain has no private-key derivation, which is not an
-/// error — but it is no longer something a user can reach either. The import
-/// picker is built from [`Chain::derives_from_private_key`], which
+/// error. The import picker is built from
+/// [`crate::registry::Chain::derives_from_private_key`], which
 /// `the_registry_flag_and_the_dispatcher_agree_on_every_chain` pins to this
 /// match, so a chain that lands here was named by a caller rather than chosen
 /// in the app.
@@ -191,10 +188,8 @@ mod dispatch_export_tests {
     ///
     /// This match decides *which algorithm*; the registry flag decides
     /// *whether one exists*, and the import flow reads the flag to know what to
-    /// offer. Before they were bound together there were four lists — the
-    /// picker's, the submit gate's, Swift's switch and this match — and no two
-    /// agreed, so a chain could be offered, accepted, and then produce no
-    /// address. Walking every chain is what none of the four could do.
+    /// offer. Walking every chain keeps a chain from being offered, accepted
+    /// and then producing no address.
     #[test]
     fn the_registry_flag_and_the_dispatcher_agree_on_every_chain() {
         const KEY: &str = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
@@ -257,12 +252,9 @@ mod dispatch_export_tests {
         const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let mut missing = Vec::new();
         for chain in crate::registry::Chain::all() {
-            // Every chain, with no `continue`. It used to skip the ones the
-            // catalog gives no path for, which is exactly the set this test
-            // most needed to cover: Monero was the only member, and it was
-            // unreachable from every front end for as long as the skip was
-            // here. `default_path_from_catalog` answers "" for those now, and
-            // the arms that ignore the path do not mind receiving one.
+            // Every chain, with no `continue`: a chain the catalog gives no
+            // path for answers "", and the arms that ignore the path do not
+            // mind receiving one.
             let path = crate::app_core::default_path_for_chain(chain.str_id())
                 .expect("a registry chain always has an answer, even when it is none");
             let result = derive_for_chain_id(

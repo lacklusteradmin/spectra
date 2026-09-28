@@ -81,18 +81,6 @@ pub struct EvmSendResult {
     pub max_priority_fee_per_gas_wei: String,
 }
 
-impl super::SignedSubmission for EvmSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.raw_tx_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
-}
-
 /// Balance of an ERC-20 token held at a given address.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct Erc20Balance {
@@ -725,10 +713,8 @@ impl EvmClient {
 
 // ── ERC-20 ABI helpers (shared with send.rs)
 
-/// The `transfer(address,uint256)` selector as its hex spelling.
-///
-/// [`is_erc20_transfer`] and the assembler in [`crate::send::ethereum`] both
-/// need it, and `a9059cbb` was written out by hand in the second of them.
+/// The `transfer(address,uint256)` selector as its hex spelling, for
+/// [`is_erc20_transfer`] and the assembler in [`crate::send::ethereum`].
 pub(crate) fn erc20_transfer_selector_hex() -> String {
     hex::encode(SEL_TRANSFER)
 }
@@ -872,9 +858,8 @@ mod a_refusal_is_not_an_empty_history {
     /// The payloads are the ones these explorers actually return — captured
     /// from `api.etherscan.io` and `base.blockscout.com` rather than guessed.
     ///
-    /// All three answer `status: "0"`, which is why the call sites used to
-    /// return an empty list for every one of them and an EVM wallet with no
-    /// API key showed "no transactions" instead of an error.
+    /// All three answer `status: "0"`; each must surface as an error, not as
+    /// an empty history.
     #[test]
     fn the_three_shapes_that_all_say_status_zero() {
         // Etherscan V2 with no key. The V2 API has no keyless tier at all, so

@@ -1,11 +1,7 @@
 //! Fetching one chain's history for the wallets core holds, and merging it.
 //!
-//! The fetch, the record it becomes and the merge used to be three steps on
-//! the front end's side of the boundary: it planned which wallets to fetch for
-//! (from its own projection of core's wallets), built a transaction record per
-//! entry — minting the id, naming the wallet, stamping the source — and handed
-//! the result back to be merged. Core owns all three; a caller asks for a
-//! chain and is told what changed.
+//! Core plans which wallets to fetch for, builds each transaction record and
+//! merges the result; a caller asks for a chain and is told what changed.
 
 use futures::{StreamExt as _, stream};
 
@@ -143,9 +139,8 @@ fn record_for(
         failure_reason: None,
         transaction_history_source: Some("rust".to_string()),
         // A provider that gives no time (an unconfirmed transaction, a
-        // Solana block without `blockTime`) gives 0, which was stored as the
-        // Unix epoch and shown as 31 December 1969. Unknown is the sentinel
-        // every other history path already stores.
+        // Solana block without `blockTime`) gives 0. That is stored as unknown,
+        // the sentinel every other history path stores, not as the Unix epoch.
         created_at_unix: if entry.timestamp > 0.0 {
             entry.timestamp
         } else {
@@ -246,8 +241,7 @@ pub(super) const SENTINEL_CREATED_AT_UNIX: f64 = -62_135_596_800.0;
 ///
 /// The screen is a front end's, so the rows cross the boundary rather than
 /// being written here — but what they say (which source answered, how many
-/// records, what failed) is the refresh's own account of itself, and the front
-/// end used to assemble it from the pieces it happened to hold.
+/// records, what failed) is the refresh's own account of itself.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct HistoryWalletDiagnostics {
     pub wallet_id: String,
@@ -266,10 +260,6 @@ const MIN_EVM_PAGE_SIZE: u32 = 20;
 const MAX_EVM_PAGE_SIZE: u32 = 500;
 
 /// The tokens this chain's history should decode, as the user has them.
-///
-/// Token preferences are core state; the front end used to filter its mirror
-/// of them, normalise each contract and build the descriptor list to hand
-/// back.
 fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::TokenDescriptor> {
     let hosting = chain.mainnet_counterpart();
     if !hosting.hosts_tokens() {
@@ -295,13 +285,8 @@ fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::
 }
 
 impl WalletService {
-    /// Fetch one EVM chain's history page for its wallets and merge it.
-    ///
-    /// The front end drove this in eight steps: plan the wallets, group them by
-    /// normalized address, reset or advance each group's page, build the token
-    /// descriptor list from its mirror of the token preferences, fetch, plan
-    /// the records, convert them, and merge. All eight are core's; what comes
-    /// back is what changed and what to put on the diagnostics screen.
+    /// Fetch one EVM chain's history page for its wallets and merge it; what
+    /// comes back is what changed and what to put on the diagnostics screen.
     ///
     /// `load_more` advances each group's page instead of restarting at the
     /// first, and leaves a group that already reported a short page alone.
@@ -506,11 +491,7 @@ impl WalletService {
     ///
     /// A UTXO wallet spends from many addresses, so one transaction shows up
     /// once per address it touched; the records are netted per transaction
-    /// before they are stored. The front end drove this: it asked core for
-    /// each wallet's known addresses, handed them back inside a planning
-    /// request, fetched per address, called the aggregator, built the records
-    /// and sent them to be merged. Core has the addresses — they are its
-    /// keypool — and does the rest with them.
+    /// before they are stored. The addresses are core's own keypool.
     ///
     /// These providers return a whole history in one call, so the first page is
     /// also the last; `load_more` therefore has nothing to fetch for a wallet

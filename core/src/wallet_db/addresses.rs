@@ -42,39 +42,6 @@ pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> R
     })
 }
 
-/// Load all owned addresses for a (wallet, chain) pair.
-pub fn address_load_all(
-    database: &WalletDatabase,
-    wallet_id: &str,
-    chain_id: &str,
-) -> Result<Vec<OwnedAddressRecord>, String> {
-    with_conn(database, |conn| {
-        let mut stmt = conn
-            .prepare(
-                "SELECT address, derivation_path, branch, branch_index
-                 FROM wallet_owned_addresses WHERE wallet_id = ?1 AND chain_id = ?2",
-            )
-            .map_err(|e| format!("address_load_all prepare: {e}"))?;
-        let rows = stmt
-            .query_map(params![wallet_id, chain_id], |row| {
-                Ok(OwnedAddressRecord {
-                    wallet_id: wallet_id.to_string(),
-                    chain_id: chain_id.to_string(),
-                    address: row.get(0)?,
-                    derivation_path: row.get(1)?,
-                    branch: row.get(2)?,
-                    branch_index: row.get(3)?,
-                })
-            })
-            .map_err(|e| format!("address_load_all query: {e}"))?;
-        let mut records = Vec::new();
-        for row in rows {
-            records.push(row.map_err(|e| format!("address_load_all row: {e}"))?);
-        }
-        Ok(records)
-    })
-}
-
 /// Used at startup to bulk-restore the in-memory map.
 pub fn address_load_all_chains(
     database: &WalletDatabase,
@@ -103,38 +70,5 @@ pub fn address_load_all_chains(
             records.push(row.map_err(|e| format!("address_load_all_chains row: {e}"))?);
         }
         Ok(records)
-    })
-}
-
-/// Remove all owned address records for a deleted wallet.
-pub fn address_delete_for_wallet(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
-    with_conn(database, |conn| {
-        conn.execute(
-            "DELETE FROM wallet_owned_addresses WHERE wallet_id = ?1",
-            params![wallet_id],
-        )
-        .map_err(|e| format!("address_delete_for_wallet: {e}"))?;
-        Ok(())
-    })
-}
-
-/// Remove all owned address records for a chain (e.g. after a rescan).
-pub fn address_delete_for_chain(database: &WalletDatabase, chain_id: &str) -> Result<(), String> {
-    with_conn(database, |conn| {
-        conn.execute(
-            "DELETE FROM wallet_owned_addresses WHERE chain_id = ?1",
-            params![chain_id],
-        )
-        .map_err(|e| format!("address_delete_for_chain: {e}"))?;
-        Ok(())
-    })
-}
-
-/// Wipe the owned address table (full reset).
-pub fn address_delete_all(database: &WalletDatabase) -> Result<(), String> {
-    with_conn(database, |conn| {
-        conn.execute("DELETE FROM wallet_owned_addresses", [])
-            .map_err(|e| format!("address_delete_all: {e}"))?;
-        Ok(())
     })
 }

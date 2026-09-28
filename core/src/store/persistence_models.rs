@@ -51,11 +51,8 @@ pub struct CorePersistedTransactionRecord {
     pub wallet_id: Option<String>,
     /// Swift `TransactionKind`: `"send"` or `"receive"`.
     pub kind: CoreTransactionKind,
-    /// Whether the transaction is pending, confirmed or failed.
-    ///
-    /// Not optional: a record with no status used to mean "legacy row, decide
-    /// by kind at the read site", and every read site that forgot got a
-    /// different answer — the app read it one way and core another.
+    /// Whether the transaction is pending, confirmed or failed. Not optional,
+    /// so every reader gets the same answer.
     pub status: CoreTransactionStatus,
     pub wallet_name: String,
     pub asset_display_name: String,
@@ -115,9 +112,7 @@ mod tests {
     #[test]
     fn transaction_record_roundtrip_omits_none_fields() {
         // Minimal encoded shape for a received record: no null fields, and
-        // createdAtUnix as seconds since 1970-01-01 UTC. `status` is one of the
-        // required fields — it was optional, and absence meant "decide by
-        // kind at the read site", which the app and core decided differently.
+        // createdAtUnix as seconds since 1970-01-01 UTC. `status` is required.
         let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainId":"bitcoin","amount":"0.5","address":"bc1qreceive","createdAtUnix":745200000.0}"#;
         let decoded: CorePersistedTransactionRecord = serde_json::from_str(json).unwrap();
         assert_eq!(decoded.kind, CoreTransactionKind::Receive);

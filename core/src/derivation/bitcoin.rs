@@ -404,7 +404,7 @@ pub(crate) fn encode_address_inner(
     }
 }
 
-/// Tuple-returning form used by `chain_dispatch`.
+/// Tuple-returning form of the seed derivation.
 pub(crate) fn derive_from_seed_phrase(
     params: BitcoinNetworkParams,
     script_type: BitcoinScriptType,

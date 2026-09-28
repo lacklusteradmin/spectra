@@ -2,7 +2,7 @@
 //!
 //! Uses the Solana JSON-RPC API for balance, history, and broadcast.
 //! Transaction serialization follows the compact (v0) wire format:
-//!   [signatures] [message header] [accounts] [recent_blockhash] [instructions]
+//!   signatures | message header | accounts | recent_blockhash | instructions
 //!
 //! Ed25519 signing is performed using the `ed25519-dalek` crate.
 
@@ -43,18 +43,6 @@ pub struct SolanaSendResult {
     pub signature: String,
     #[serde(default)]
     pub signed_tx_base64: String,
-}
-
-impl super::SignedSubmission for SolanaSendResult {
-    fn submission_id(&self) -> &str {
-        &self.signature
-    }
-    fn signed_payload(&self) -> &str {
-        &self.signed_tx_base64
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Base64
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -574,7 +562,7 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<([u8; 32], u8),
 mod audit_fix5_mint_tests {
     use super::*;
     #[test]
-    fn audit_fix5_mint_program_precision_and_extensions_are_validated() {
+    fn mint_program_precision_and_extensions_are_validated() {
         let account = |owner: &str| json!({"owner":owner,"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":9,"extensions":[]}}}});
         let legacy = account("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
         let mut token2022 = account("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");

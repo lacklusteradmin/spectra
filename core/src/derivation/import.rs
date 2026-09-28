@@ -214,11 +214,10 @@ pub fn derive_private_key_import_address(
 /// display name.
 ///
 /// Every network, not just the mainnet: a wallet on Bitcoin Testnet4 has a
-/// different key and a different address, and it used to be derived on demand
-/// by whichever front end was rendering — from the seed, per read, which a
-/// password-sealed wallet cannot do at all. Deriving them here means the seed
-/// is needed once, at import, and the address for a network the user switches
-/// to later is already stored under that network's own slot.
+/// different key and a different address. Deriving them here means the seed
+/// is needed once, at import — a password-sealed wallet cannot derive on each
+/// read — and the address for a network the user switches to later is
+/// already stored under that network's own slot.
 ///
 /// The path comes from `CoreSeedDerivationPaths::path_for` for the concrete
 /// network. A chain whose derivation fails is skipped
@@ -295,10 +294,10 @@ pub struct WalletImportOutcome {
 /// Which network the import's addresses should be validated against.
 ///
 /// Only two chains have a user-selectable network mode, and both put their
-/// testnet addresses in the *mainnet* slot: `ImportDraft` is keyed by mainnet
-/// display name, so there is no "Bitcoin Testnet" row to carry them. Without
-/// this, validating the `bitcoin` slot as mainnet refuses a testnet wallet the
-/// app has always allowed.
+/// testnet addresses in the *mainnet* slot: the import form is keyed by
+/// mainnet display name, so there is no "Bitcoin Testnet" row to carry them.
+/// Without this, validating the `bitcoin` slot as mainnet refuses a testnet
+/// wallet.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ImportNetworks {
     /// `mainnet id -> selected id`, absent meaning mainnet. Two mode fields
@@ -401,11 +400,8 @@ fn validated_address_in_slot(
 /// Drop any address that does not validate for its chain, reporting what was
 /// dropped.
 ///
-/// One rule for every chain. The iOS import path applied validation to some
-/// chains and not others — twenty-one kept whatever was typed, three required
-/// it to parse — which meant an unparseable address could be stored for a
-/// wallet depending only on which chain it was. Storing a malformed address is
-/// worse than storing none: it renders as the wallet's receive address.
+/// One rule for every chain. Storing a malformed address is worse than
+/// storing none: it renders as the wallet's receive address.
 pub(crate) fn validated_addresses(
     addresses: &WalletImportAddresses,
     networks: &ImportNetworks,
@@ -848,7 +844,7 @@ mod tests {
             watch_only_entries: WalletImportWatchOnlyEntries::default(),
         };
 
-        // Including chains the old hand-written match never listed.
+        // Every EVM chain, not only Ethereum.
         for chain in ["ethereum", "arbitrum", "base", "polygon", "ink", "x-layer"] {
             let plan = plan_wallet_import(request(chain)).expect("plan");
             assert_eq!(

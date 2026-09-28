@@ -265,14 +265,6 @@ pub struct CoreTokenPreferenceKey {
 /// Presentation preferences (theme, which rows are pinned, diagnostic
 /// verbosity) are *not* domain state and stay on the platform. Do not add a
 /// field here that only one front end reads.
-///
-/// Eighteen of these fields arrived from `PersistedAppSettings`, a
-/// twenty-three field blob iOS loaded whole at launch and wrote back whole on
-/// every change. Four of that blob's fields stayed on iOS, where they belong —
-/// hiding balances, Face ID, auto-lock and biometric-gated sends are one front
-/// end's presentation and one platform's capability. The rest decide what gets
-/// fetched, what a send costs and when an alert fires, and the CLI had no way
-/// to read or set any of them.
 pub struct AppSettings {
     pub custom_endpoints: Vec<crate::service::CustomEndpoint>,
     /// The currency amounts are displayed in.
@@ -283,10 +275,7 @@ pub struct AppSettings {
     /// Which network the user selected for each chain family that offers a
     /// choice, as `mainnet str_id -> selected str_id`.
     ///
-    /// Absent means mainnet, so the map is empty for most users. One field
-    /// rather than one per family: the three that had a choice were three
-    /// settings, three enums and three hand-written pricing cases, and adding
-    /// a fourth meant touching all of them.
+    /// Absent means mainnet, so the map is empty for most users.
     pub selected_chain_by_family: std::collections::HashMap<String, String>,
 
     // ── Providers ─────────────────────────────────────────────────────────
@@ -300,11 +289,6 @@ pub struct AppSettings {
     /// Confirmation preference per chain, as `chain display name -> one of
     /// "economy" / "normal" / "priority"`. Absent means `normal`, so the map
     /// is empty until the user picks something.
-    //
-    /// One field rather than one per chain: Bitcoin and Dogecoin each had
-    /// their own settings field and their own Swift enum, while the other
-    /// seventy-six shared a dictionary iOS persisted itself — three stores for
-    /// one preference, and the front ends disagreed about which was canonical.
     pub fee_priority_by_chain: std::collections::HashMap<String, FeePriority>,
 
     // ── Network and refresh policy ────────────────────────────────────────
@@ -379,9 +363,8 @@ impl ResetScope {
 
 /// How hard background refresh may work, traded against battery and data.
 ///
-/// A free string before. Any trimmed value was stored, and the policy matched
-/// the three names with a wildcard that read everything else — a typo from
-/// the command line included — as `aggressive`.
+/// A closed set, so a typo from the command line is refused rather than read
+/// as `aggressive`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
 pub enum BackgroundSyncProfile {
@@ -469,17 +452,9 @@ impl AppSettings {
 
 /// The display currencies this app quotes in.
 ///
-/// The list was a twelve-case Swift enum and nothing else, so
-/// `SetFiatCurrency` stored whatever string it was handed — `spectra currency
-/// ZZZ` set the display currency to `ZZZ`, which no rate table has, and every
-/// amount then rendered unconverted. The codes are the domain's, so they are
-/// here, and the reducer refuses one that is not in them.
-///
-/// An enum across the boundary too. `SetFiatCurrency` took a code and refused
-/// the ones not listed, and the app kept a twelve-case enum of its own with
-/// the same codes as raw values, so there were two lists and a string between
-/// them. Parsing a typed code is now the front end's job, and the reducer
-/// cannot be handed a currency that does not exist.
+/// The codes are the domain's, so they are here: the reducer cannot be handed
+/// a currency that does not exist, and parsing a typed code is the front
+/// end's job.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
 )]
@@ -550,12 +525,8 @@ pub fn fiat_currency_codes() -> Vec<String> {
         .collect()
 }
 
-/// What a dashboard pins before the user has pinned anything.
-///
-/// A product default, and one every front end has to agree on: iOS held this
-/// list, so its pin cards showed four assets that core's own grouping did not
-/// order first, did not mark pinned, and gave no row to when the wallet held
-/// none of them.
+/// What a dashboard pins before the user has pinned anything: a product
+/// default every front end has to agree on.
 pub const DEFAULT_PINNED_DASHBOARD_ASSETS: [&str; 4] =
     ["bitcoin", "ethereum", "tether", "usd-coin"];
 
@@ -763,9 +734,6 @@ pub enum StateCommand {
     /// Restore the default dashboard pins explicitly.
     ResetPinnedDashboardAssets,
     /// Pin or unpin one asset against the saved selection.
-    ///
-    /// The app built the whole list itself for this, starting from its own
-    /// copy of that default rule.
     SetDashboardAssetPinned {
         token_id: String,
         is_pinned: bool,
@@ -856,10 +824,7 @@ pub enum StateCommand {
 
 /// What a state change did, or why it was refused.
 ///
-/// A record of a free-string `kind` and an optional `subject_id` before, so a
-/// refusal's reason was a string inside a string, every front end matched on
-/// spellings like `"addressBookRejected"`, and a misspelling compiled. The
-/// serialized form keeps `kind` beside each variant's fields.
+/// The serialized form keeps `kind` beside each variant's fields.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 #[serde(
     tag = "kind",
@@ -964,9 +929,7 @@ pub(crate) const MAX_TOKEN_SYMBOL_CHARS: usize = 12;
 /// Where a (chain, contract) pair sits in the preference list, if at all.
 ///
 /// Matched on the *normalized* contract, which is the chain's own rule — a TON
-/// jetton address is case-significant and an EVM one is not. Swift compared
-/// normalized identifiers and the CLI compared symbols case-insensitively, so
-/// the two front ends disagreed about what a duplicate even was.
+/// jetton address is case-significant and an EVM one is not.
 fn token_preference_index(state: &CoreAppState, chain_id: &str, contract: &str) -> Option<usize> {
     let hosting = token_hosting_chain(chain_id)?;
     token_preference_row(state, hosting, contract)
@@ -1011,8 +974,7 @@ fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
 /// Chain, then the catalog's own rows before the user's, then symbol.
 ///
 /// The same order `merge_built_in_token_preferences` produces, so a list
-/// that has just been added to still matches the one a reload builds. Swift
-/// re-sorted with its own copy of this comparator after every insert.
+/// that has just been added to still matches the one a reload builds.
 fn sort_token_preferences(entries: &mut [crate::store::wallet_domain::CoreTokenPreferenceEntry]) {
     entries.sort_by(|lhs, rhs| {
         lhs.token
@@ -1033,11 +995,8 @@ pub fn app_settings_defaults() -> AppSettings {
 /// `settings` with `update` applied by the reducer's own rule, or unchanged
 /// when the rule refuses it.
 ///
-/// For a front end to show an edit before the command that stores it returns.
-/// Its settings screen was eighteen mirrored properties, a hand-written diff
-/// against core's last answer and a hand-written adoption back, because
-/// showing the value core would store meant knowing core's trims and clamps.
-/// Asking the rule is cheaper than copying it.
+/// For a front end to show an edit before the command that stores it returns,
+/// without copying core's trims and clamps.
 #[uniffi::export]
 pub fn app_settings_applying(settings: AppSettings, update: AppSettingUpdate) -> AppSettings {
     let mut settings = settings;

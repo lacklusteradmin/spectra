@@ -50,7 +50,7 @@ fn symbols_and_market_ids_never_identify_a_holding() {
 
 #[test]
 fn every_testnet_has_an_independent_unpriced_native_token() {
-    for network in Chain::testnets() {
+    for network in Chain::all().filter(|c| c.is_testnet()) {
         let mut holding = native(network);
         holding.coingecko_id = network.mainnet_counterpart().coingecko_id().into();
         holding.canonicalize().unwrap();

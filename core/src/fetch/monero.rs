@@ -49,18 +49,6 @@ pub struct MoneroSendResult {
     pub amount_piconeros: u64,
 }
 
-impl super::SignedSubmission for MoneroSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        ""
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::None
-    }
-}
-
 // ── Client (wallet-rpc)
 
 pub struct MoneroClient {
@@ -168,16 +156,6 @@ impl MoneroClient {
 
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp));
         Ok(entries)
-    }
-
-    /// Create a new wallet account (for HD wallet sub-account).
-    pub async fn create_account(&self, label: &str) -> Result<u32, String> {
-        let result = self.call("create_account", json!({"label": label})).await?;
-        result
-            .get("account_index")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as u32)
-            .ok_or_else(|| "create_account: missing account_index".to_string())
     }
 }
 

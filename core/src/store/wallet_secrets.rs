@@ -264,18 +264,6 @@ fn is_stored(
     }
 }
 
-/// Whether this wallet signs from a stored private key rather than a phrase.
-///
-/// Answered from the store rather than from a field on the wallet: the two
-/// could disagree, and the store is the one that decides whether a signature
-/// is possible.
-pub fn is_private_key_backed(
-    store: &dyn SecretStore,
-    wallet_id: &str,
-) -> Result<bool, WalletSecretError> {
-    is_stored(store, wallet_id, Blob::PrivateKey)
-}
-
 /// Whether this wallet's material is encrypted under a password.
 ///
 /// Answered off the **verifier**, not the seed blob: both states store a seed
@@ -285,21 +273,11 @@ pub fn is_sealed(store: &dyn SecretStore, wallet_id: &str) -> Result<bool, Walle
     is_stored(store, wallet_id, Blob::Verifier)
 }
 
-/// Whether this wallet has any signing material at all.
-pub fn has_signing_material(
-    store: &dyn SecretStore,
-    wallet_id: &str,
-) -> Result<bool, WalletSecretError> {
-    Ok(is_stored(store, wallet_id, Blob::Seed)? || is_private_key_backed(store, wallet_id)?)
-}
-
 /// Store material for a wallet with no password.
 ///
-/// The other half of [`seal`]. The app has always had two kinds of wallet —
-/// one with a password and one without — and only the first had a home here,
-/// so the second was written by the front end under a key scheme of its own.
-/// Salt and verifier are removed rather than left behind: a stale verifier
-/// would make [`is_sealed`] answer yes for material that is not encrypted.
+/// The other half of [`seal`]. Salt and verifier are removed rather than left
+/// behind: a stale verifier would make [`is_sealed`] answer yes for material
+/// that is not encrypted.
 fn store_unsealed(
     store: &dyn SecretStore,
     wallet_id: &str,
@@ -425,6 +403,20 @@ mod tests {
     use super::*;
     use crate::store::secret_backends::InMemorySecretStore;
 
+    fn is_private_key_backed(
+        store: &dyn SecretStore,
+        wallet_id: &str,
+    ) -> Result<bool, WalletSecretError> {
+        is_stored(store, wallet_id, Blob::PrivateKey)
+    }
+
+    fn has_signing_material(
+        store: &dyn SecretStore,
+        wallet_id: &str,
+    ) -> Result<bool, WalletSecretError> {
+        Ok(is_stored(store, wallet_id, Blob::Seed)? || is_private_key_backed(store, wallet_id)?)
+    }
+
     const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     #[test]
@@ -454,7 +446,7 @@ mod tests {
         assert!(!is_sealed(&store, "missing").unwrap());
     }
 
-    /// The state the app has always had and core did not.
+    /// A wallet with no password stores and reads back without one.
     #[test]
     fn a_wallet_with_no_password_stores_and_reads_back_without_one() {
         let store = InMemorySecretStore::new();

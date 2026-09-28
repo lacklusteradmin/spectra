@@ -10,13 +10,6 @@ static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 static CHAIN_UI_TOML: &str = include_str!("../data/chain-ui.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
-/// A catalog entry's brand colour, from a closed palette.
-///
-/// Was a free `String` on chains, tokens and the wiki, rendered by a Swift
-/// switch whose `default` was the app's accent colour — so a misspelt or new
-/// name in a TOML file drew in the wrong colour and nothing failed. Per-chain
-/// presentation facts belong to the catalog; this makes the catalog's the only
-/// spelling, checked when the file is parsed, and the app's switch exhaustive.
 /// The setup picker's section for a chain. A display grouping only: it never
 /// decides a protocol capability (`is_evm` is the registry's). Parsed from the
 /// catalog, so a misspelt section fails when the file loads rather than
@@ -30,6 +23,9 @@ pub enum ChainCategory {
     Other,
 }
 
+/// A catalog entry's brand colour, from a closed palette. Checked when the
+/// file is parsed, so a misspelt name fails there instead of drawing in the
+/// wrong colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
 pub enum CatalogColor {
@@ -116,9 +112,6 @@ struct TomlWikiChain {
 
 /// The prompt shown above a contract-address field, from the standard the
 /// chain hosts.
-///
-/// Was a column: seventy-eight rows carrying one of seven strings, computable
-/// from the `token_standard` beside it.
 fn contract_address_prompt_for(token_standard: &str) -> String {
     match token_standard {
         "" => "",
@@ -189,11 +182,10 @@ pub struct ChainEntry {
 /// in coins, and this is one level down from there.
 ///
 /// Kept out of [`ChainEntry`] so that nothing in the send, derive or fetch
-/// paths can read it — sixty-one percent of the catalog's bytes used to travel
-/// the FFI on every `list_all_chains()` call to serve one screen.
+/// paths can read it, and so the prose does not cross the FFI with every
+/// `list_all_chains()` call.
 ///
-/// There is a row per chain and none per network, so the wiki no longer filters
-/// networks out by testing `family` for emptiness. The table is the filter.
+/// There is a row per chain and none per network: the table is the filter.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainWikiEntry {
     pub id: String,
@@ -536,10 +528,6 @@ mod explicit_network_catalog {
     }
 
     /// A testnet asset has no price and hosts no tokens, structurally.
-    ///
-    /// The coingecko id used to be copied from the mainnet — Sepolia's said
-    /// `"ethereum"` — and something else had to override it. A field that can
-    /// only ever be wrong.
     #[test]
     fn a_network_never_inherits_a_price_or_a_token_standard() {
         for chain in Chain::all().filter(|c| c.is_testnet()) {
@@ -588,12 +576,6 @@ mod explicit_network_catalog {
 
     /// The wiki documents chains, not networks, and it says so by having a
     /// table rather than by testing a field for emptiness.
-    ///
-    /// The editorial block used to be six columns on the chain row, which
-    /// meant the network loop had to remember to blank all six — and when it
-    /// did not, thirty-two testnets appeared in the wiki as duplicate chains.
-    /// That is not a bug you can have when networks have no wiki row to
-    /// inherit.
     #[test]
     fn the_wiki_covers_every_chain_and_no_network() {
         let ids: std::collections::HashSet<&str> = WIKI.iter().map(|w| w.id.as_str()).collect();

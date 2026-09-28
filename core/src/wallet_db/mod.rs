@@ -10,7 +10,6 @@ mod history_query;
 pub(crate) use history_query::*;
 mod keypool;
 mod state;
-mod teardown;
 mod wallets;
 pub use addresses::*;
 pub use connection::WalletDatabase;
@@ -19,7 +18,6 @@ use connection::with_conn;
 pub use history::*;
 pub use keypool::*;
 pub use state::*;
-pub use teardown::*;
 pub use wallets::*;
 #[cfg(test)]
 mod tests;

@@ -43,11 +43,6 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
     // test binary has one runtime *per test*, each dropped when its test ends,
     // so a later test reusing a pooled connection gets "runtime dropped the
     // dispatch task" — a failure with nothing to do with what it was testing.
-    //
-    // That is what made `concurrent_balance_reads_share_metadata…` flaky: it
-    // opens eight connections at once, so it was the likeliest test to draw a
-    // stale one, and it failed only in a full release run, where tests finish
-    // fast enough to leave idle connections behind.
     #[cfg(test)]
     {
         builder = builder.pool_max_idle_per_host(0);

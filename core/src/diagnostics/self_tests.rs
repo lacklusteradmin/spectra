@@ -186,11 +186,8 @@ async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, Stri
 /// Check that an endpoint serves the chain it was configured for, and that it
 /// has a block height.
 ///
-/// This was `self_tests_run_ethereum_rpc`, which compared the reported id with
-/// a literal `1` and labelled every row "Ethereum" — one chain of the 23 in the
-/// family, and the only one whose diagnostics screen offered the check. The id
-/// to expect is `Chain::evm_chain_id`, so every EVM chain can be asked whether
-/// the node it is pointed at is the node it means.
+/// The id to expect is `Chain::evm_chain_id`, so every EVM chain can be asked
+/// whether the node it is pointed at is the node it means.
 pub(crate) async fn self_tests_run_evm_rpc(
     chain_id: String,
     rpc_url: String,

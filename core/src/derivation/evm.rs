@@ -145,12 +145,8 @@ fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
 
 /// Derive an EVM wallet from a seed phrase.
 ///
-/// One function for the family. It was a macro stamping out thirty-three
-/// exports — `derive_ethereum`, `derive_arbitrum`, `derive_x_layer` — whose
-/// bodies were the same call, because an EVM address does not depend on which
-/// EVM chain it is for. Nothing outside this crate ever called one: Swift went
-/// through `core_derive_for_chain`, and the dispatcher's thirty-three arms
-/// picked between identical functions.
+/// One function for the family: an EVM address does not depend on which EVM
+/// chain it is for.
 pub fn derive_evm(
     seed_phrase: String,
     derivation_path: String,

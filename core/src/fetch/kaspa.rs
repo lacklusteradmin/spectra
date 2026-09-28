@@ -111,18 +111,6 @@ pub struct KasSendResult {
     pub raw_tx_hex: String,
 }
 
-impl super::SignedSubmission for KasSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.raw_tx_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiBroadcastResponse {
@@ -184,14 +172,6 @@ impl KaspaClient {
                 }
             })
             .collect())
-    }
-
-    /// Kaspa fees are paid as a flat additive `sompi` amount and are quite
-    /// small. The current network default is ~1000 sompi for a typical
-    /// 2-input/2-output Schnorr P2PK send. This is a fixed-rate stub; callers
-    /// can override via the `fee_sat` request field.
-    pub async fn fetch_fee_rate(&self, _blocks: u32) -> u64 {
-        1
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<KasHistoryEntry>, String> {

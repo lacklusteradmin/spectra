@@ -92,9 +92,8 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
 
     // A switch invalidates what the family derived on the network it left:
     // reserved keypool indices belong to that network, and so do the addresses
-    // discovered under them. iOS did this and the CLI did not, which is the
-    // divergence this command exists to close — the reset is part of the
-    // switch, not something a front end remembers to do afterwards.
+    // discovered under them. The reset is part of the switch, not something a
+    // front end remembers to do afterwards.
     let cleared: Vec<String> = family
         .network_choices()
         .iter()

@@ -78,11 +78,6 @@ pub(crate) fn apply_policy(tor_enabled: bool, kill_switch: bool) {
 /// True when the user asked for Tor with the kill switch on and Tor is not
 /// carrying traffic — the moment a request would otherwise go out in the
 /// clear.
-///
-/// The switch had no reader at all: it was a toggle in one front end's
-/// settings, written to `UserDefaults`, and the screen's own footer promised
-/// that "network requests are paused if the Tor circuit drops instead of
-/// falling back to a direct connection". Nothing paused anything.
 pub(crate) fn kill_switch_engaged() -> bool {
     // The loads short-circuit before the status lock, so a request pays only
     // an atomic read when the switch is off — which is every request until a

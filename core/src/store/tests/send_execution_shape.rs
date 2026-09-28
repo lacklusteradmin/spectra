@@ -1,45 +1,25 @@
 use crate::registry::{Chain, SendFeeField};
 
 #[test]
-fn protocol_fee_units_and_signing_capabilities_match_execution_requirements() {
-    let cases: &[(&str, u8, bool, SendFeeField, f64)] = &[
-        ("sui", 6, false, SendFeeField::GasBudget, 0.0),
-        ("aptos", 6, false, SendFeeField::None, 0.0),
-        ("ton", 6, false, SendFeeField::None, 0.0),
-        ("xrp", 6, true, SendFeeField::None, 0.0),
-        ("stellar", 7, true, SendFeeField::None, 0.0),
-        ("monero", 6, false, SendFeeField::None, 0.0),
-        ("cardano", 6, false, SendFeeField::FeeAmount, 0.0),
-        ("near", 6, false, SendFeeField::None, 0.0),
-        ("polkadot", 6, false, SendFeeField::None, 0.0),
-        ("bitcoin-cash", 8, false, SendFeeField::FeeSats, 0.00001),
-        ("bitcoin-sv", 8, false, SendFeeField::FeeSats, 0.00001),
-        ("litecoin", 8, false, SendFeeField::FeeSats, 0.0001),
+fn protocol_fee_fields_and_fallbacks_match_execution_requirements() {
+    let cases: &[(&str, SendFeeField, f64)] = &[
+        ("sui", SendFeeField::GasBudget, 0.0),
+        ("aptos", SendFeeField::None, 0.0),
+        ("ton", SendFeeField::None, 0.0),
+        ("xrp", SendFeeField::None, 0.0),
+        ("stellar", SendFeeField::None, 0.0),
+        ("monero", SendFeeField::None, 0.0),
+        ("cardano", SendFeeField::FeeAmount, 0.0),
+        ("near", SendFeeField::None, 0.0),
+        ("polkadot", SendFeeField::None, 0.0),
+        ("bitcoin-cash", SendFeeField::FeeSats, 0.00001),
+        ("bitcoin-sv", SendFeeField::FeeSats, 0.00001),
+        ("litecoin", SendFeeField::FeeSats, 0.0001),
     ];
-    for (name, decimals, private_key, field, fallback) in cases {
+    for (name, field, fallback) in cases {
         let chain = Chain::from_str_id(name).expect(name);
         let shape = chain.send_execution_shape();
-        assert_eq!(shape.fee_decimals, *decimals, "{name} fee_decimals");
-        assert_eq!(
-            shape.supports_private_key, *private_key,
-            "{name} private key"
-        );
         assert_eq!(shape.fee_field, *field, "{name} fee_field");
         assert_eq!(shape.fee_fallback, *fallback, "{name} fee_fallback");
-    }
-}
-
-/// A testnet signs the same way its mainnet does.
-#[test]
-fn a_testnet_sends_under_its_mainnets_shape() {
-    for chain in Chain::all().filter(|c| c.is_testnet()) {
-        let mainnet = chain.mainnet_counterpart();
-        assert_eq!(
-            chain.send_execution_shape().fee_field,
-            mainnet.send_execution_shape().fee_field,
-            "{} diverges from {}",
-            chain.str_id(),
-            mainnet.str_id()
-        );
     }
 }

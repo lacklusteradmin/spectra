@@ -39,18 +39,6 @@ pub struct AptosSendResult {
     pub signed_body_json: String,
 }
 
-impl super::SignedSubmission for AptosSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.signed_body_json
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Json
-    }
-}
-
 // ── Client
 
 pub struct AptosClient {
@@ -236,10 +224,8 @@ impl AptosClient {
 /// The recipient and octas of a successful user transaction that moves APT
 /// through one of the framework's transfer entry functions.
 ///
-/// Any function whose name contained `transfer` used to count, with its
-/// first two arguments read as recipient and amount: a token's transfer was
-/// filed as APT, and a fungible-asset transfer — whose first argument is the
-/// asset — produced an empty recipient and 0 APT.
+/// Only those functions count: a token's transfer is not APT, and a
+/// fungible-asset transfer's first argument is the asset, not the recipient.
 fn aptos_native_transfer(tx: &Value) -> Option<(String, u64)> {
     if tx.get("type").and_then(Value::as_str) != Some("user_transaction")
         || tx.get("success").and_then(Value::as_bool) != Some(true)

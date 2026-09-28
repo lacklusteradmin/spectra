@@ -44,26 +44,6 @@ pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletState) -> Result<
     })
 }
 
-pub fn wallet_load(
-    database: &WalletDatabase,
-    wallet_id: &str,
-) -> Result<Option<WalletState>, String> {
-    with_conn(database, |conn| {
-        let result = conn.query_row(
-            "SELECT payload FROM wallets WHERE id = ?1",
-            params![wallet_id],
-            |row| row.get::<_, String>(0),
-        );
-        match result {
-            Ok(payload) => serde_json::from_str(&payload)
-                .map(Some)
-                .map_err(|e| format!("wallet_load decode {wallet_id}: {e}")),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(format!("wallet_load: {e}")),
-        }
-    })
-}
-
 /// Load wallets in stored display order; refuse undecodable records without modifying them.
 pub fn wallet_load_all(database: &WalletDatabase) -> Result<Vec<WalletState>, String> {
     with_conn(database, |conn| {
@@ -84,15 +64,5 @@ pub fn wallet_load_all(database: &WalletDatabase) -> Result<Vec<WalletState>, St
             );
         }
         Ok(wallets)
-    })
-}
-
-/// Delete one wallet row. Does not touch that wallet's keypool, owned addresses
-/// or history — use [`delete_wallet_data`] for the full teardown.
-pub fn wallet_delete(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
-    with_conn(database, |conn| {
-        conn.execute("DELETE FROM wallets WHERE id = ?1", params![wallet_id])
-            .map_err(|e| format!("wallet_delete: {e}"))?;
-        Ok(())
     })
 }

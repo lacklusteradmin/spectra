@@ -16,14 +16,9 @@ fn the_two_exceptions_and_the_default() {
     assert_eq!(rule("polkadot"), SendRule::Any);
 }
 
-/// One rule for the EVM family.
-///
-/// This replaces `send_rule_asymmetry_across_evm_chains`, which asserted
-/// that exactly three of twenty-three EVM chains gated non-native sends —
-/// a test whose only job was to stop anyone fixing the split. Arbitrum and
-/// Ethereum answer the same way now, and the two deliberate exceptions
-/// (`EthereumClassic`, `Hyperliquid`) are native-only, which is stricter
-/// still.
+/// One rule for the EVM family: Arbitrum and Ethereum answer the same way,
+/// and the two deliberate exceptions (`EthereumClassic`, `Hyperliquid`) are
+/// native-only, which is stricter still.
 #[test]
 fn every_evm_chain_gates_non_native_sends_the_same_way() {
     for chain in Chain::all().filter(|c| c.is_evm()) {

@@ -38,13 +38,10 @@ pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -
 /// The built-in token catalog, as preference entries.
 ///
 /// Built from `tokens.toml` — the same catalog `list_all_builtin_token_deployments`
-/// serves. A caller used to fetch that list, reshape each row into a
-/// preference entry, and hand it back for merging; the reshaping is here now,
-/// where the catalog already is.
+/// serves.
 ///
 /// `id` is derived from chain and contract rather than minted at random: a
-/// built-in's identity *is* its contract, and the old ids were regenerated on
-/// every launch anyway.
+/// built-in's identity *is* its contract.
 pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     let mut entries: Vec<_> = crate::tokens::catalog()
         .iter()
@@ -379,10 +376,7 @@ impl TransactionStatusTrackerState {
 /// How often a pending send is re-polled, and when it is given up on.
 ///
 /// Policy, so it lives with the tracker table it schedules rather than crossing
-/// the boundary. These were six constants on the iOS side, packed into this
-/// record and handed to core on every one of five calls — so the schedule core
-/// applied was whatever the caller last said it was, and a second front end
-/// would have had to know the same six numbers to get the same behaviour.
+/// the boundary.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionStatusPollConfig {
@@ -570,12 +564,6 @@ impl EvmReceiptCost {
 /// records themselves are already stored.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-///
-/// Statuses are the typed enum. They were strings, with an `emit_event_code`
-/// string beside them that restated "the status changed to confirmed or
-/// failed" and a `send_status_notification` flag that restated
-/// `status_changed`, so a front end parsed the status back out of a string and
-/// had three fields to disagree about one fact.
 pub struct TransactionStatusChange {
     pub id: String,
     pub chain_id: String,

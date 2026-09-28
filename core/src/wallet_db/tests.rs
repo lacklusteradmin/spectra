@@ -1,12 +1,7 @@
 use super::*;
 
-/// A database no other test can be holding.
-///
-/// This used to key on `subsec_nanos()` alone. Thirteen tests share the
-/// helper and the runner runs them in parallel, so two could land on the
-/// same nanosecond and read each other's rows — which is exactly how
-/// `app_state_round_trips` failed in a full run and passed on its own.
-/// Process, thread and a counter cannot collide.
+/// A database no other test can be holding. Tests run in parallel, so the name
+/// is keyed on process, thread and a counter, which cannot collide.
 fn tmp_db() -> std::sync::Arc<WalletDatabase> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
@@ -17,6 +12,22 @@ fn tmp_db() -> std::sync::Arc<WalletDatabase> {
     ));
     let _ = std::fs::remove_file(&path);
     WalletDatabase::new(path.to_str().unwrap())
+}
+
+fn keypool_of(db: &WalletDatabase, wallet_id: &str, chain_id: &str) -> Option<KeypoolState> {
+    keypool_load_all(db)
+        .unwrap()
+        .get(chain_id)
+        .and_then(|wallets| wallets.get(wallet_id))
+        .cloned()
+}
+
+fn addresses_of(db: &WalletDatabase, wallet_id: &str, chain_id: &str) -> Vec<OwnedAddressRecord> {
+    address_load_all_chains(db)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.wallet_id == wallet_id && r.chain_id == chain_id)
+        .collect()
 }
 
 #[test]
@@ -141,7 +152,7 @@ fn keypool_round_trip() {
         reserved_receive_index: Some(4),
     };
     keypool_save(&db, "wallet-1", "bitcoin", &state).unwrap();
-    let loaded = keypool_load(&db, "wallet-1", "bitcoin").unwrap().unwrap();
+    let loaded = keypool_of(&db, "wallet-1", "bitcoin").unwrap();
     assert_eq!(loaded.next_external_index, 5);
     assert_eq!(loaded.next_change_index, 2);
     assert_eq!(loaded.reserved_receive_index, Some(4));
@@ -162,7 +173,7 @@ fn keypool_upsert_updates_existing() {
         reserved_receive_index: Some(9),
     };
     keypool_save(&db, "wallet-1", "dogecoin", &updated).unwrap();
-    let loaded = keypool_load(&db, "wallet-1", "dogecoin").unwrap().unwrap();
+    let loaded = keypool_of(&db, "wallet-1", "dogecoin").unwrap();
     assert_eq!(loaded.next_external_index, 10);
     assert_eq!(loaded.reserved_receive_index, Some(9));
 }
@@ -210,36 +221,6 @@ fn keypool_load_all_groups_by_chain() {
 }
 
 #[test]
-fn keypool_delete_for_wallet() {
-    let db = tmp_db();
-    keypool_save(
-        &db,
-        "w1",
-        "bitcoin",
-        &KeypoolState {
-            next_external_index: 5,
-            next_change_index: 1,
-            reserved_receive_index: None,
-        },
-    )
-    .unwrap();
-    keypool_save(
-        &db,
-        "w2",
-        "bitcoin",
-        &KeypoolState {
-            next_external_index: 3,
-            next_change_index: 0,
-            reserved_receive_index: None,
-        },
-    )
-    .unwrap();
-    super::keypool_delete_for_wallet(&db, "w1").unwrap();
-    assert!(keypool_load(&db, "w1", "bitcoin").unwrap().is_none());
-    assert!(keypool_load(&db, "w2", "bitcoin").unwrap().is_some());
-}
-
-#[test]
 fn address_round_trip() {
     let db = tmp_db();
     let rec = OwnedAddressRecord {
@@ -251,90 +232,10 @@ fn address_round_trip() {
         branch_index: Some(0),
     };
     address_save(&db, &rec).unwrap();
-    let records = address_load_all(&db, "w1", "bitcoin").unwrap();
+    let records = addresses_of(&db, "w1", "bitcoin");
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].address, "bc1qtest");
     assert_eq!(records[0].branch.as_deref(), Some("external"));
-}
-
-/// A network switch has to take both of a chain's derivation tables. The
-/// caller used to issue the two deletes separately and could leave one
-/// behind; the point of the combined call is that it cannot.
-#[test]
-fn chain_derivation_delete_takes_keypool_and_addresses_together() {
-    let db = tmp_db();
-    for chain in ["bitcoin", "litecoin"] {
-        keypool_save(
-            &db,
-            "w1",
-            chain,
-            &KeypoolState {
-                next_external_index: 4,
-                next_change_index: 2,
-                reserved_receive_index: Some(4),
-            },
-        )
-        .unwrap();
-        address_save(
-            &db,
-            &OwnedAddressRecord {
-                wallet_id: "w1".to_string(),
-                chain_id: chain.to_string(),
-                address: format!("{chain}-addr"),
-                derivation_path: None,
-                branch: None,
-                branch_index: None,
-            },
-        )
-        .unwrap();
-    }
-
-    super::chain_derivation_delete_for_chain(&db, "bitcoin").unwrap();
-
-    assert!(keypool_load(&db, "w1", "bitcoin").unwrap().is_none());
-    assert!(address_load_all(&db, "w1", "bitcoin").unwrap().is_empty());
-    // The chain that did not switch keeps both halves.
-    assert!(keypool_load(&db, "w1", "litecoin").unwrap().is_some());
-    assert_eq!(address_load_all(&db, "w1", "litecoin").unwrap().len(), 1);
-}
-
-/// Deleting a chain nothing was derived on is a no-op, not an error: the
-/// switch still has to go through.
-#[test]
-fn chain_derivation_delete_is_a_no_op_for_an_unused_chain() {
-    let db = tmp_db();
-    super::chain_derivation_delete_for_chain(&db, "dogecoin").unwrap();
-}
-
-#[test]
-fn delete_wallet_data_removes_both_tables() {
-    let db = tmp_db();
-    keypool_save(
-        &db,
-        "w1",
-        "dogecoin",
-        &KeypoolState {
-            next_external_index: 1,
-            next_change_index: 0,
-            reserved_receive_index: None,
-        },
-    )
-    .unwrap();
-    address_save(
-        &db,
-        &OwnedAddressRecord {
-            wallet_id: "w1".to_string(),
-            chain_id: "dogecoin".to_string(),
-            address: "D1test".to_string(),
-            derivation_path: None,
-            branch: None,
-            branch_index: None,
-        },
-    )
-    .unwrap();
-    delete_wallet_data(&db, "w1").unwrap();
-    assert!(keypool_load(&db, "w1", "dogecoin").unwrap().is_none());
-    assert!(address_load_all(&db, "w1", "dogecoin").unwrap().is_empty());
 }
 
 use crate::store::state::{AppSettings, WalletAddress};
@@ -438,7 +339,7 @@ fn app_state_round_trips() {
         settings: AppSettings {
             fiat_currency: crate::store::state::FiatCurrency::Cny,
             pinned_dashboard_token_ids: vec!["bitcoin".to_string()],
-            // Every other field is a settings field the blob used to hold;
+            // Every other field is a settings field;
             // `every_settings_field_round_trips` covers them together.
             ..AppSettings::default()
         },
@@ -509,7 +410,7 @@ fn app_state_save_prunes_removed_wallets() {
     let loaded = app_state_load(&db).unwrap();
     assert_eq!(loaded.wallets.len(), 1);
     assert_eq!(loaded.wallets[0].id, "w2");
-    assert!(wallet_load(&db, "w1").unwrap().is_none());
+    assert!(!wallet_load_all(&db).unwrap().iter().any(|w| w.id == "w1"));
     // Clearing the selection must clear the stored row, not leave the stale
     // id behind.
     assert_eq!(loaded.selected_wallet_id, None);
@@ -583,10 +484,7 @@ fn wallet_upsert_appends_then_updates_in_place() {
 }
 
 /// `history_fetch_for_wallet` filters in SQL, not by fetching every row and
-/// discarding most of them in Rust.
-///
-/// It used to be implemented as `history_fetch_all(..).filter(..)`. A
-/// wallet's worth of rows is what a caller
+/// discarding most of them in Rust: a wallet's worth of rows is what a caller
 /// asking for one should pay for.
 #[test]
 fn scoped_history_fetches_return_only_their_own_rows() {
@@ -612,27 +510,64 @@ fn scoped_history_fetches_return_only_their_own_rows() {
     );
 }
 
+/// Removing a wallet takes its row, derivation state and history, and leaves
+/// every other wallet's alone.
 #[test]
-fn delete_wallet_data_removes_the_wallet_row_and_its_history() {
+fn removing_a_wallet_takes_its_rows_and_leaves_the_others() {
     let db = tmp_db();
-    app_state_save(
-        &db,
-        &CoreAppState {
-            wallets: vec![wallet("w1", "bitcoin"), wallet("w2", "bitcoin")],
-            ..CoreAppState::default()
-        },
-    )
-    .unwrap();
+    let before = CoreAppState {
+        wallets: vec![wallet("w1", "bitcoin"), wallet("w2", "bitcoin")],
+        ..CoreAppState::default()
+    };
+    app_state_save(&db, &before).unwrap();
+    for id in ["w1", "w2"] {
+        keypool_save(
+            &db,
+            id,
+            "bitcoin",
+            &KeypoolState {
+                next_external_index: 1,
+                next_change_index: 0,
+                reserved_receive_index: None,
+            },
+        )
+        .unwrap();
+        address_save(
+            &db,
+            &OwnedAddressRecord {
+                wallet_id: id.to_string(),
+                chain_id: "bitcoin".to_string(),
+                address: format!("{id}-addr"),
+                derivation_path: None,
+                branch: None,
+                branch_index: None,
+            },
+        )
+        .unwrap();
+    }
     history_upsert_batch(
         &db,
         &[history_record("tx1", "w1"), history_record("tx2", "w2")],
     )
     .unwrap();
 
-    delete_wallet_data(&db, "w1").unwrap();
+    let mut after = before.clone();
+    after.wallets.remove(0);
+    AppStateChanges::between(Some(&before), &after)
+        .unwrap()
+        .save(&db)
+        .unwrap();
 
-    assert!(wallet_load(&db, "w1").unwrap().is_none());
-    assert!(wallet_load(&db, "w2").unwrap().is_some());
+    let wallets: Vec<String> = wallet_load_all(&db)
+        .unwrap()
+        .into_iter()
+        .map(|w| w.id)
+        .collect();
+    assert_eq!(wallets, vec!["w2"]);
+    assert!(keypool_of(&db, "w1", "bitcoin").is_none());
+    assert!(keypool_of(&db, "w2", "bitcoin").is_some());
+    assert!(addresses_of(&db, "w1", "bitcoin").is_empty());
+    assert_eq!(addresses_of(&db, "w2", "bitcoin").len(), 1);
     let remaining: Vec<String> = history_fetch_all(&db)
         .unwrap()
         .into_iter()
@@ -726,17 +661,10 @@ fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
         history_record_on("new", "w1", "bitcoin"),
         history_record_on("reject", "w1", "bitcoin"),
     ];
-    for replace in [false, true] {
-        let result = if replace {
-            history_replace_all(&db, &batch)
-        } else {
-            history_upsert_batch(&db, &batch)
-        };
-        assert!(result.is_err());
-        let rows = history_fetch_all(&db).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].id, "original");
-    }
+    assert!(history_upsert_batch(&db, &batch).is_err());
+    let rows = history_fetch_all(&db).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, "original");
     with_conn(&db, |conn| {
         conn.execute_batch("DROP TRIGGER reject_history")
             .map_err(|e| e.to_string())
@@ -800,27 +728,20 @@ fn failed_history_commit_rolls_back_and_allows_retry() {
             CREATE TRIGGER fail_history_commit AFTER INSERT ON history_records BEGIN INSERT INTO commit_child VALUES (1); END;")
             .map_err(|e| e.to_string())
     }).unwrap();
-    for replace in [false, true] {
-        let result = if replace {
-            history_replace_all(&db, std::slice::from_ref(&row))
-        } else {
-            history_upsert_batch(&db, std::slice::from_ref(&row))
-        };
-        assert!(result.is_err());
-        assert!(history_fetch_all(&db).unwrap().is_empty());
-        with_conn(&db, |conn| {
-            assert!(
-                conn.is_autocommit(),
-                "failed commit must not strand an open transaction"
-            );
-            let count: i64 = conn
-                .query_row("SELECT count(*) FROM commit_child", [], |r| r.get(0))
-                .unwrap();
-            assert_eq!(count, 0);
-            Ok(())
-        })
-        .unwrap();
-    }
+    assert!(history_upsert_batch(&db, std::slice::from_ref(&row)).is_err());
+    assert!(history_fetch_all(&db).unwrap().is_empty());
+    with_conn(&db, |conn| {
+        assert!(
+            conn.is_autocommit(),
+            "failed commit must not strand an open transaction"
+        );
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM commit_child", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+        Ok(())
+    })
+    .unwrap();
     with_conn(&db, |conn| {
         conn.execute_batch("INSERT INTO commit_parent VALUES (1)")
             .map_err(|e| e.to_string())

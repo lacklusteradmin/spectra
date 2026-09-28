@@ -44,18 +44,6 @@ pub struct CardanoSendResult {
     pub cbor_hex: String,
 }
 
-impl super::SignedSubmission for CardanoSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.cbor_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
-}
-
 // ── Koios response types (shared within the chain module)
 
 #[derive(Debug, Deserialize)]
@@ -106,10 +94,6 @@ pub(crate) struct KoiosPaymentAddr {
 
 /// Each transaction's net effect on `address`: what its outputs paid the
 /// address less what its inputs spent from it.
-///
-/// This was the transaction's total output, always as a receipt — every
-/// output of every party, so a send read as receiving the recipient's amount
-/// and the change together.
 fn cardano_history_from_transactions(
     txs: Vec<KoiosTxInfo>,
     address: &str,

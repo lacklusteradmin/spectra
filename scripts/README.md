@@ -98,24 +98,7 @@ SDK versions and installation/run commands.
 | `generate-protocol-vectors.cjs` | Generates protocol reference data using the TON and NEAR SDKs. |
 | `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
 
-## Former test files
-
-Thirteen separate fixture files, previously named after development stages and
-follow-up batches, were consolidated into five feature suites. Older plans and
-change records refer to the paths used at the time; this table locates their
-current coverage.
-
-| Former file | Current location |
-|---|---|
-| `cli-stage3.sh` | Recovery checks in `cli-diagnostics.py`, balance refresh in `cli-portfolio.py`, and missing-transaction rebroadcast refusal in the main acceptance script. Empty-wallet shape assertions were removed. |
-| `cli-stage3-followup.sh` | Persisted rename in the main acceptance script, portfolio inclusion in `cli-portfolio.py`, maintenance policy in `cli-diagnostics.py`, and transaction recheck/send checks in their respective suites. Separate empty quote-cache and maintenance-scope checks were removed. |
-| `cli-shell-ownership.py` | Naming and receive addresses in wallets; movement alerts in portfolio; staking node queries in diagnostics. |
-| `cli-shell-boundary.py` | Import parameters in wallets; offline refresh in diagnostics. |
-| `cli-shell-five-fixes.py` | Password validation in wallets; network diagnostics in diagnostics; password-protected broadcasts in send. |
-| `cli-projection-boundary.py` | Valuation in portfolio; history paging, search and deduplication in history. |
-| `cli-balance-refresh.py`, `cli-network-token-identity.py` | `cli-portfolio.py`. |
-| `cli-bitcoin-history.py`, `cli-history-corruption.py`, `cli-history-source.py`, `cli-transaction-recheck.py` | `cli-history.py`. |
-| `cli-owned-send.py` | Send scenarios in `cli-send.py`; price alerts in `cli-portfolio.py`. |
+## Test organisation
 
 CLI integration tests check behavior across processes and persisted results.
 Rust unit tests cover pure-function details. Group new scenarios by feature,

@@ -11,13 +11,6 @@
 //!
 //! All calls use `with_fallback` so that if the primary endpoint is
 //! unreachable the next one is tried automatically.
-//!
-//! ## Transaction signing
-//!
-//! Private keys are derived in `main.rs` (the derivation runtime) and
-//! passed into `sign_and_broadcast` as a hex-encoded 32-byte scalar.
-//! We use the `bitcoin` 0.32 crate for transaction and address types,
-//! and `secp256k1` 0.29 for signing. Keys are zeroized after use.
 
 use std::sync::Arc;
 
@@ -122,24 +115,6 @@ pub struct BitcoinHistoryEntry {
     /// negative = sent).
     pub net_sats: i64,
     pub fee_sats: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct BitcoinSendResult {
-    pub txid: String,
-    pub raw_tx_hex: String,
-}
-
-impl super::SignedSubmission for BitcoinSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.raw_tx_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
 }
 
 /// Satoshis per virtual byte, as returned by `GET /fee-estimates`.

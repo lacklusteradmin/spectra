@@ -124,17 +124,15 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // hand-written eighteen-section list against this flag and
                 // disagreed with it in both directions.
                 "watchOnlyImport": chain.supports_watch_only_import(),
-                // And the staking tab's, which was a seven-case Swift enum and
-                // two match arms in `StakingService` before it was a column.
+                // Whether the staking tab offers this chain.
                 "staking": chain.supports_staking(),
                 "supportsSeparateSigning": chain.supports_sign_only(),
                 "sendUnavailableReason": chain.transparent_send_unavailable_reason(),
-                // The setup picker's short list, which was eight ids typed
-                // into the Swift view — a rank, so the order comes with it.
+                // The setup picker's short list, as a rank, so the order comes
+                // with it.
                 "popularRank": chain.entry().popular_rank,
                 // What the send screen's network card says core will do with
-                // a send here — twelve per-chain sentences in the iOS view
-                // before it was a column, one of which described Monero.
+                // a send here.
                 "sendBroadcastMode": chain.has_send_preview().then(|| match chain.send_broadcast_mode() {
                     spectra_core::registry::SendBroadcastMode::SignsAndBroadcasts => "signsAndBroadcasts",
                     spectra_core::registry::SendBroadcastMode::PreparesWithBackend => "preparesWithBackend",

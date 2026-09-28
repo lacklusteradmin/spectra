@@ -29,7 +29,6 @@ const UNDATED_PENDING_SORT_KEY: f64 = 253_402_300_799.0;
 /// the history, so it sorts after every dated one: first when newest-first,
 /// last when oldest-first. Its payload keeps the unknown time, so it still
 /// reads as undated; once it confirms, the dated record replaces the key.
-/// Before this every undated row sorted as the oldest, under the sentinel.
 fn history_sort_key(payload: &CorePersistedTransactionRecord) -> f64 {
     let undated = payload.created_at_unix <= 0.0;
     if undated && payload.status == crate::store::wallet_domain::CoreTransactionStatus::Pending {
@@ -313,42 +312,6 @@ pub fn history_delete(database: &WalletDatabase, ids: &[String]) -> Result<(), S
         }
         tx.commit()
             .map_err(|e| format!("history_delete commit: {e}"))
-    })
-}
-
-/// Atomically delete all records then insert the provided batch (full replacement).
-pub fn history_replace_all(
-    database: &WalletDatabase,
-    records: &[HistoryRecord],
-) -> Result<(), String> {
-    with_conn(database, |conn| {
-        let tx =
-            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
-                .map_err(|e| format!("history_replace_all begin: {e}"))?;
-        tx.execute("DELETE FROM history_records", [])
-            .map_err(|e| format!("history_replace_all delete: {e}"))?;
-        {
-            let mut statement = tx.prepare_cached(
-                "INSERT INTO history_records (id, wallet_id, chain_id, tx_hash, created_at, payload)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-            ).map_err(|e| format!("history_replace_all prepare: {e}"))?;
-            for rec in records {
-                let payload_json = serde_json::to_string(&rec.payload)
-                    .map_err(|e| format!("history_replace_all encode payload: {e}"))?;
-                statement
-                    .execute(params![
-                        rec.id,
-                        rec.wallet_id,
-                        rec.chain_id,
-                        rec.tx_hash,
-                        rec.created_at,
-                        payload_json
-                    ])
-                    .map_err(|e| format!("history_replace_all insert: {e}"))?;
-            }
-        }
-        tx.commit()
-            .map_err(|e| format!("history_replace_all commit: {e}"))
     })
 }
 

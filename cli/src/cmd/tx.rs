@@ -715,8 +715,6 @@ pub struct OverridesArgs {
     /// JSON array of {address, storageKeys}; non-empty lists require --gas-limit.
     #[arg(long)]
     access_list: Option<String>,
-    #[arg(long)]
-    sign_only: bool,
 }
 
 fn overrides(out: Out, args: OverridesArgs) -> CliResult<()> {
@@ -730,7 +728,6 @@ fn overrides(out: Out, args: OverridesArgs) -> CliResult<()> {
         gas_limit: args.gas_limit,
         calldata_hex: args.calldata,
         access_list_json: args.access_list,
-        sign_only: Some(args.sign_only),
         ..Default::default()
     }
     .resolve(chain)?;
@@ -747,7 +744,6 @@ fn overrides(out: Out, args: OverridesArgs) -> CliResult<()> {
         "calldataBytes": resolved.calldata.as_ref().map(Vec::len),
         "accessListEntries": resolved.access_list.len(),
         "storageKeys": resolved.access_list.iter().map(|entry| entry.storage_keys.len()).sum::<usize>(),
-        "signOnly": resolved.sign_only,
     }));
     Ok(())
 }
@@ -1379,8 +1375,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
 /// The pending sends core says can still be replaced, and how.
 ///
 /// The rule — an EVM chain, a send, still pending, with a hash to read its
-/// nonce by — is `replaceable_sends`, derived where the records are. iOS asked
-/// it of its own projection, and asked it of the chain *named* "Ethereum".
+/// nonce by — is `replaceable_sends`, derived where the records are.
 fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
     let service = ctx.service()?;
     let wallet_id = match &args.wallet {

@@ -44,7 +44,7 @@ fn b3(tag: u8, data: &[u8]) -> [u8; 32] {
         .into()
 }
 
-/// BLAKE3(parts[0] | parts[1] | …) → 32 bytes, no tag prefix.
+/// BLAKE3 of `parts` concatenated → 32 bytes, no tag prefix.
 fn b3_cat(parts: &[&[u8]]) -> [u8; 32] {
     let mut h = blake3::Hasher::new();
     for p in parts {

@@ -1,6 +1,5 @@
-// Typed decode helpers for chain-history JSON shapes. Swift calls these via
-// UniFFI to get native records instead of re-parsing JSON. Also exposes the
-// small `HistoryChainID` enum-like mapping used across the history layer.
+// Typed decode helpers for chain-history JSON shapes, so front ends get native
+// records instead of re-parsing JSON.
 
 // ────────────────────────────────────────────────────────────────────
 // Normalized chain history — typed item produced by
@@ -24,7 +23,7 @@ pub struct NormalizedHistoryItem {
 
 // ────────────────────────────────────────────────────────────────────
 // EVM history page decode — shape produced by
-// `fetch_evm_history_page_json` (an object with `tokens` and `native`).
+// `WalletService::fetch_evm_history_page` (tokens and native).
 // ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -246,9 +245,7 @@ pub struct AggregatedTransaction {
 /// A UTXO transaction can touch several of a wallet's addresses; without this
 /// it appears once per address, with each leg's amount instead of the net.
 /// Nothing here is chain-specific — it groups `NormalizedHistoryItem` by hash
-/// and signs each leg against `own_addresses` — but it was named
-/// `history_aggregate_dogecoin` and called only by Dogecoin's refresh, so
-/// Litecoin, Bitcoin Cash and Bitcoin SV went down the single-address path.
+/// and signs each leg against `own_addresses`.
 pub fn history_aggregate_by_transaction(
     input: MultiAddressAggregateInput,
 ) -> Vec<AggregatedTransaction> {
@@ -337,9 +334,8 @@ pub struct EvmNativeAsset {
 /// Native asset name/symbol for an EVM `chain_id`. Returns `None` when
 /// the chain name is not a known EVM chain.
 pub fn history_evm_native_asset(chain_id: String) -> Option<EvmNativeAsset> {
-    // Both halves are catalog columns. Nine names were written out here and the
-    // other twenty-four EVM networks returned `None`, so a history row on Base,
-    // Polygon, Linea and the rest had no asset to name.
+    // Both halves are catalog columns, so every EVM network has an asset to
+    // name.
     let chain = crate::registry::Chain::from_str_id(&chain_id)?;
     if !chain.is_evm() {
         return None;
@@ -487,21 +483,11 @@ mod tests {
 
     /// Every chain the registry knows can be paged, and iOS's "load more"
     /// covers every chain that can be paged.
-    ///
-    /// This function is what `canLoadMoreHistory` asks, so it decides which
-    /// wallets are offered a "Load more". The dispatch that answers the tap
-    /// used to be three hand-written lists — five UTXO names, twelve EVM names
-    /// and Tron — so the button appeared and did nothing on the twenty-odd
-    /// chains outside them. It iterates the registry now; this is the half that
-    /// says the registry is the right thing to iterate.
     #[test]
     fn every_chain_can_be_paged() {
         use crate::registry::Chain;
 
-        // The export this used to call was `Chain::from_str_id(name)
-        // .map(str_id)` and nothing else — the caller already had that lookup.
-        // What is worth asserting is the lookup itself round-trips for every
-        // chain, which is what the paging needs.
+        // The lookup the paging needs round-trips for every chain.
         for chain in Chain::all() {
             assert_eq!(
                 Chain::from_str_id(chain.str_id()).map(|c| c.str_id()),
@@ -519,12 +505,6 @@ mod aggregation_is_not_chain_specific {
     use super::*;
 
     /// One record per transaction, netted across the wallet's own addresses.
-    ///
-    /// This was `history_aggregate_dogecoin` and Dogecoin's refresh was its
-    /// only caller, so Litecoin, Bitcoin Cash and Bitcoin SV — which also walk
-    /// many addresses — went down the single-address path and only ever had
-    /// their first address's history fetched. Nothing in the body was ever
-    /// about Dogecoin.
     #[test]
     fn two_legs_of_one_transaction_become_one_record() {
         let leg = |addr: &str, kind: &str, amount: f64| NormalizedHistoryItem {

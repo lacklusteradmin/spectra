@@ -66,10 +66,6 @@ pub(super) fn decode_private_key(
 /// The fee to sign with: whatever the preview settled on, and otherwise the
 /// chain's own [`Chain::static_fee_units`] — which is where the fee the user
 /// was shown comes from.
-///
-/// Three tables used to answer this question: a literal per signing arm, a
-/// second literal per arm of the former parameter dispatcher, and the registry. Litecoin
-/// and Bitcoin Cash disagreed across them.
 pub(super) fn fee_or_static(
     chain: crate::registry::Chain,
     fee: Option<u64>,
@@ -129,32 +125,20 @@ pub(super) fn format_decimals(raw: u128, decimals: u8) -> String {
 // ── Balance projection ────────────────────────────────────────────────────
 
 /// The native balance in display units, from the typed summary.
-///
-/// This read a `serde_json::Value` before — `fetch_balance` serialized a
-/// chain's typed balance struct to JSON and this dug the number back out by
-/// field name, which is why `Chain::native_balance_field` existed: a table of
-/// twenty JSON key names (`lamports`, `stroops`, `planck`, `nanotons`, …)
-/// whose only job was to undo a serialization that had just happened in the
-/// same call. `fetch_native_balance_summary` already returns the same numbers
-/// typed, so both the second 24-arm dispatch and the field-name table are
-/// gone; what is left is the arithmetic they were wrapped around.
 pub(super) fn summary_display_balance(
     chain_id: &str,
     summary: &crate::service::types::NativeBalanceSummary,
 ) -> Result<f64, SpectraBridgeError> {
-    // A balance nobody could read is not a balance of zero. Every one of these
-    // used to answer `0.0`, and the one caller subtracts a fee from the result
-    // and offers the difference as the send sheet's maximum: an unreadable
-    // amount showed the holder an empty wallet, and an unknown chain showed
-    // every holder one.
+    // A balance nobody could read is not a balance of zero: the caller
+    // subtracts a fee from the result and offers the difference as the send
+    // sheet's maximum.
     let unreadable = |field: &str, value: &str| {
         SpectraBridgeError::from(format!("{chain_id} {field}: not a number: {value:?}"))
     };
     let chain = chain_for_id(chain_id)?;
     // NEAR's smallest unit is 10^24 yocto. Dividing that through an f64 loses
     // precision well before the decimal point, so the client's own display
-    // string is the better source — the one chain where the old JSON version
-    // also preferred `near_display` over dividing `yocto_near` itself.
+    // string is the better source.
     if chain == Chain::Near {
         return summary
             .amount_display
@@ -171,10 +155,6 @@ pub(super) fn summary_display_balance(
 
 /// The same scaling for a token, whose decimals come off its contract rather
 /// than the catalog.
-///
-/// Both send previews that quote a token holding used to divide by a literal:
-/// the EVM one never read a token balance at all, and the Tron one divided
-/// every TRC-20 by `1e6`. A contract's decimals are the contract's.
 pub(super) fn token_display_balance(raw: u128, decimals: u8) -> f64 {
     raw as f64 / 10f64.powi(i32::from(decimals))
 }
@@ -182,14 +162,6 @@ pub(super) fn token_display_balance(raw: u128, decimals: u8) -> f64 {
 // ── Fee estimate ──────────────────────────────────────────────────────────
 
 /// A chain's fee, quoted in that chain's own native unit.
-///
-/// Was a `FeePreview<'a>` serialized to JSON by `fee_preview` /
-/// `fee_preview_str` so that the one caller could parse it back and read
-/// three of its fields by name. The struct is the value now; nothing
-/// serializes it on the way between two functions in the same call.
-///
-/// Two of `FeePreview`'s five fields are gone with the JSON: `chain_id` and
-/// `unit` were serialized on every call and read by nobody.
 #[derive(Debug, Clone)]
 pub(crate) struct NativeFeeEstimate {
     /// Smallest units, as a decimal string — some chains' fees do not fit u64.
@@ -282,10 +254,7 @@ mod display_balance_from_a_typed_summary {
         }
     }
 
-    /// Every chain divides its smallest unit by its own decimals — the same
-    /// arithmetic the JSON version did after digging the number out by field
-    /// name. The point of this test is that the *numbers* did not move when
-    /// the field-name table went away.
+    /// Every chain divides its smallest unit by its own decimals.
     #[test]
     fn each_chain_divides_by_its_own_decimals() {
         // (chain_id, smallest unit, expected display)

@@ -4,11 +4,6 @@
 //! `Option<String>` the UI shows inline, where `None` means valid.
 //! [`address`] holds the per-chain address and identifier rules, which
 //! answer the same question about a much larger input.
-//!
-//! Address validation used to live under `derivation` because it borrows
-//! that module's parsers. Validating an address is not deriving one, and the
-//! split meant a caller had to know which of two modules named `validation`
-//! held the rule it wanted.
 
 pub mod address;
 
@@ -20,12 +15,6 @@ pub struct SeedPhraseLength {
 }
 
 /// The five lengths BIP-39 defines, shortest first.
-///
-/// One exported list because there were four: `generate_mnemonic` matched on
-/// its own counts, [`seed_phrase_length_warning`] listed them again, the CLI
-/// kept a third to avoid asking for a count core would silently substitute,
-/// and the app's length picker carried a fourth alongside a hand-written
-/// 12 → 128 entropy table.
 #[uniffi::export]
 pub fn seed_phrase_lengths() -> Vec<SeedPhraseLength> {
     STANDARD_SEED_PHRASE_WORD_COUNTS
@@ -296,7 +285,7 @@ mod seed_phrase_length_tests {
     #[test]
     fn a_non_standard_length_is_refused_rather_than_substituted() {
         // Twelve words in answer to a request for eighteen is a weaker wallet
-        // than the caller asked for, and neither front end could see it.
+        // than the caller asked for.
         let refusal = crate::service::generate_mnemonic(13).expect_err("13 is not a length");
         assert!(refusal.to_string().contains("12, 15, 18, 21 or 24"));
         for length in seed_phrase_lengths() {

@@ -105,18 +105,6 @@ pub struct DcrSendResult {
     pub raw_tx_hex: String,
 }
 
-impl super::SignedSubmission for DcrSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.raw_tx_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
-}
-
 #[derive(Debug, Deserialize)]
 struct InsightBroadcastResponse {
     txid: String,
@@ -171,13 +159,6 @@ impl DecredClient {
                 }
             })
             .collect())
-    }
-
-    /// Decred fees vary with size; dcrdata exposes a recommended atoms/byte
-    /// rate. We hardcode 10 atoms/byte (≈ standard wallet default) and let
-    /// callers override via `fee_sat` on the send request if needed.
-    pub async fn fetch_fee_rate(&self, _blocks: u32) -> u64 {
-        10
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<DcrHistoryEntry>, String> {

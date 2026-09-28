@@ -1,12 +1,4 @@
 //! Views of the transaction store, derived where the store is.
-//!
-//! Three exports used to take the transaction list as an argument —
-//! `core_normalize_history`, `core_earliest_transaction_dates`,
-//! `core_active_wallet_transaction_ids` — so a caller converted its projection
-//! of core's own records into three different FFI input shapes and handed them
-//! back for core to reduce. A fourth, `core_normalized_history_signature`,
-//! existed only to let that caller decide whether the round trip was worth
-//! making; core decides that where the data is, so it is gone.
 
 use crate::SpectraBridgeError;
 use crate::service::WalletService;
@@ -15,12 +7,8 @@ use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// The pending sends a caller may replace by resubmitting their nonce,
-    /// newest first.
-    ///
-    /// Swift asked this of its own transaction projection, and asked it of the
-    /// chain *named* "Ethereum" — so a pending Arbitrum or Base send, which
-    /// replaces exactly the way a mainnet one does, offered neither speed-up
-    /// nor cancel. The family is the registry's, and the rule is here.
+    /// newest first. Every EVM chain replaces the way Ethereum does: the
+    /// family is the registry's.
     pub async fn replaceable_sends(&self) -> Result<Vec<ReplaceableSend>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
@@ -36,9 +24,7 @@ impl WalletService {
 /// `can_speed_up` is the part a front end must not decide for itself. A
 /// replacement re-signs the *same* transfer at the same nonce, and only a
 /// native transfer can be rebuilt from a stored record — a token transfer's
-/// contract is not in it. Swift composed a native transfer of the token's
-/// amount to the token's recipient instead, so speeding up a 100 USDC send
-/// offered to send 100 ETH. Cancelling needs none of that: it is a zero-value
+/// contract is not in it. Cancelling needs none of that: it is a zero-value
 /// self-transfer at the same nonce, so it is offered for every row here.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record)]
 pub struct ReplaceableSend {
@@ -377,11 +363,26 @@ mod replaceable_tests {
         );
     }
 
-    /// An unopened store cannot answer whether it has replaceable sends.
+    /// An unopened store cannot answer any history read: an empty success
+    /// would read as "no transactions".
     #[tokio::test]
     async fn an_unopened_store_is_an_error() {
         let service = WalletService::new(vec![]).unwrap();
         assert!(service.replaceable_sends().await.is_err());
+        assert!(service.transaction_snapshot().await.is_err());
+        assert!(
+            service
+                .history_page(crate::service::HistoryQuery::default())
+                .await
+                .is_err()
+        );
+        assert!(
+            service
+                .poll_pending_transactions("ethereum".into())
+                .await
+                .is_err(),
+            "unopened storage must not read as no pending transactions"
+        );
     }
 }
 

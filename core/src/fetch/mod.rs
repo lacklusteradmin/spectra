@@ -1,8 +1,4 @@
 //! Chain read clients, refresh policy and network helpers.
-//!
-//! Protocol send results expose their native transaction identifiers and signed
-//! payload encodings through [`SignedSubmission`]. Concrete result types stay
-//! distinct so protocol-specific fields and FFI records remain explicit.
 
 pub(crate) mod bitcoin_history;
 pub mod history;
@@ -40,41 +36,6 @@ pub mod tron;
 pub(crate) mod tron_metadata_cache;
 pub mod xrp;
 
-/// Encoding of the signed payload that a `*SendResult` carries. Lets
-/// generic broadcast / rebroadcast code know how to hand the payload back
-/// to the chain's submit RPC.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SignedPayloadFormat {
-    /// 0x-prefixed hex of raw signed bytes (Bitcoin family, Polkadot, EVM,
-    /// XRP, Cardano CBOR, …).
-    Hex,
-    /// Base64-encoded signed bytes (Stellar XDR, NEAR, TON BOC, Solana).
-    Base64,
-    /// JSON-encoded signed transaction body (Tron, Aptos).
-    Json,
-    /// No portable payload — submission-style chains return only an
-    /// identifier (ICP block index, Monero RPC echo).
-    None,
-}
-
-/// Common shape of every `*SendResult`. Chain-specific result types
-/// implement this so dispatch code at the service layer doesn't need to
-/// match on the concrete type.
-pub trait SignedSubmission {
-    /// Canonical identifier the chain assigns the broadcast — txid, signature,
-    /// digest, message hash, etc. Empty for chains that don't surface one
-    /// before confirmation (none currently).
-    fn submission_id(&self) -> &str;
-
-    /// Signed bytes in the chain's native broadcast encoding (see
-    /// [`SignedPayloadFormat`]). Empty when the chain doesn't expose a
-    /// rebroadcastable payload.
-    fn signed_payload(&self) -> &str;
-
-    /// Encoding of [`Self::signed_payload`].
-    fn signed_payload_format(&self) -> SignedPayloadFormat;
-}
-
 /// One token holding an address turned out to have, as the chain itself
 /// reports it.
 ///
@@ -104,8 +65,7 @@ pub(crate) fn checked_token_decimals(value: u128) -> Result<u8, String> {
 /// chain has not given the transaction one — it is not yet in a block.
 ///
 /// A confirmed transaction always has a time, so one that arrives without it
-/// was read wrongly, and the fetch fails naming it. Clients used to put 0 in
-/// its place, which the history showed as 31 December 1969.
+/// was read wrongly, and the fetch fails naming it rather than dating it 1970.
 pub(crate) fn history_time(
     confirmed: bool,
     time: Option<u64>,

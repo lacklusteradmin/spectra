@@ -296,8 +296,7 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
 /// The stored USD cross-rates, optionally refreshed first.
 ///
 /// The rates are core's state, so this reads them from the same store the app
-/// does. iOS held them in a blob of its own, which is why they had no CLI at
-/// all.
+/// does.
 fn rates(ctx: &Ctx, out: Out, refresh: bool) -> CliResult<()> {
     let service = ctx.service()?;
     if refresh {

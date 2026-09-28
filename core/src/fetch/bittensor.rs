@@ -30,18 +30,6 @@ pub struct TaoSendResult {
     pub extrinsic_hex: String,
 }
 
-impl super::SignedSubmission for TaoSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.extrinsic_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
-}
-
 pub struct BittensorClient {
     pub(crate) rpc_endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,

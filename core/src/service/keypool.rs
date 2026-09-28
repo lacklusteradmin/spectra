@@ -3,67 +3,13 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Record an address this wallet owns.
-    ///
-    /// Core holds the table rather than mirroring a caller's: the keypool
-    /// baseline is derived from it, and a baseline computed from a stale copy
-    /// reissues an address that was already handed out.
-    pub async fn register_owned_address(
-        &self,
-        wallet_id: String,
-        chain_id: String,
-        address: String,
-        derivation_path: Option<String>,
-        branch: Option<String>,
-        branch_index: Option<i64>,
-    ) -> Result<(), SpectraBridgeError> {
-        let this = self.clone();
-        crate::worker::run(async move {
-            let this = &this;
-            this.write_persisted(move |service| async move {
-                let address = address.trim().to_string();
-                if address.is_empty() || wallet_id.is_empty() {
-                    return Ok(());
-                }
-                let record = crate::wallet_db::OwnedAddressRecord {
-                    wallet_id,
-                    chain_id: chain_id.clone(),
-                    address,
-                    derivation_path,
-                    branch,
-                    branch_index,
-                };
-                // The row goes to storage first and becomes visible second, under
-                // the lock that the reservation paths also take. This used to clone
-                // the whole table, mutate the copy and write it back — a shape that
-                // drops any write landing in between.
-                let mut tables = service.keypool.write().await;
-                if let Some(database) = service.state_binding.connection().await {
-                    let to_save = record.clone();
-                    tokio::task::spawn_blocking(move || {
-                        crate::wallet_db::address_save(&database, &to_save)
-                    })
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
-                }
-                tables.remember_owned(record);
-                Ok(())
-            })
-            .await
-        })
-        .await
-    }
-
     /// Every wallet's keypool on a chain, with the address its reserved receive
     /// index was handed out as — for a diagnostics screen.
     ///
-    /// The app assembled these rows itself: it walked its wallet projection,
-    /// asked for each keypool, re-derived the receive address, and labelled the
-    /// row with the wallet's *account* path under the name "reserved receive
-    /// path" — the helper took the reserved index and ignored it. The reserved
-    /// row is read here from the owned-address table, which recorded the
-    /// address and its path at the moment the index was handed out, so what
-    /// the screen shows is what the user was given rather than a recomputation.
+    /// The reserved row is read from the owned-address table, which recorded
+    /// the address and its path at the moment the index was handed out, so
+    /// what the screen shows is what the user was given rather than a
+    /// recomputation.
     pub async fn keypool_diagnostics(
         &self,
         chain_id: String,
@@ -216,11 +162,57 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Record an address this wallet owns.
+    ///
+    /// Core holds the table rather than mirroring a caller's: the keypool
+    /// baseline is derived from it, and a baseline computed from a stale copy
+    /// reissues an address that was already handed out.
+    pub(crate) async fn register_owned_address(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+        address: String,
+        derivation_path: Option<String>,
+        branch: Option<String>,
+        branch_index: Option<i64>,
+    ) -> Result<(), SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let this = &this;
+            this.write_persisted(move |service| async move {
+                let address = address.trim().to_string();
+                if address.is_empty() || wallet_id.is_empty() {
+                    return Ok(());
+                }
+                let record = crate::wallet_db::OwnedAddressRecord {
+                    wallet_id,
+                    chain_id: chain_id.clone(),
+                    address,
+                    derivation_path,
+                    branch,
+                    branch_index,
+                };
+                // The row goes to storage first and becomes visible second, under
+                // the lock that the reservation paths also take.
+                let mut tables = service.keypool.write().await;
+                if let Some(database) = service.state_binding.connection().await {
+                    let to_save = record.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::wallet_db::address_save(&database, &to_save)
+                    })
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                }
+                tables.remember_owned(record);
+                Ok(())
+            })
+            .await
+        })
+        .await
+    }
+
     /// Every address this wallet is known to hold, on any chain: its stored
     /// addresses, the ends of transactions it made, and the owned-address rows.
-    ///
-    /// The app assembled this list from its own projections and sent it here
-    /// to be deduplicated — the only part it did not already have.
     pub(crate) async fn known_wallet_addresses(
         &self,
         wallet_id: String,
@@ -268,18 +260,12 @@ impl WalletService {
     /// The keypool state for a wallet on a chain, merged with the baseline.
     ///
     /// The baseline is core's own: it comes from the transactions, owned
-    /// addresses and wallet addresses core already holds. A caller used to
-    /// compute it and pass it in, which meant the guarantee this lock provides
-    /// depended on the caller's copy of three tables being current.
+    /// addresses and wallet addresses core already holds.
     ///
     /// Internal: front ends read it as part of `keypool_diagnostics`.
     ///
-    /// A read. There were two of these — one that merged the baseline with the
-    /// stored record and *persisted* the merge, and one that merged without
-    /// persisting — returning the same value either way. The persist was a
-    /// cache write of a pure function's result, and it made a read take the
-    /// write lock. `reserve_*` recomputes the merge before it writes, so
-    /// nothing depended on it.
+    /// A read: it does not persist the merge, so it does not take the write
+    /// lock. `reserve_*` recomputes the merge before it writes.
     pub async fn keypool_state(
         &self,
         wallet_id: String,
@@ -444,15 +430,8 @@ pub(super) fn keypool_key(wallet_id: &str, chain_id: &str) -> String {
 /// One type because the two maps are one fact. `owned` is where a chain's
 /// baseline comes from — the highest index already issued — and `indices` is
 /// where the next one is taken from, so a reader of one that cannot see the
-/// other can hand out an address somebody already holds.
-///
-/// They were two `pub(crate)` fields on `WalletService` behind two locks,
-/// taken separately by three files: `open_state` replaced both, wallet
-/// deletion retained one and then the other, and registering an owned address
-/// cloned the table, mutated the copy and wrote it back. Every one of those is
-/// safe, and none of them is safe *by itself* — what serializes them is the
-/// `state_writer` mutex two layers up, which nothing here can see. One lock
-/// over both tables is the same guarantee where it can be checked.
+/// other can hand out an address somebody already holds. One lock over both
+/// tables makes that guarantee checkable here.
 #[derive(Default)]
 pub(crate) struct Keypool {
     tables: AsyncRwLock<KeypoolTables>,
@@ -526,8 +505,7 @@ impl KeypoolTables {
     ///
     /// Both tables in one call, because forgetting an index without forgetting
     /// the addresses it issued — or the reverse — is how the same address gets
-    /// handed out twice. The caller used to do this as two `retain`s under two
-    /// separately acquired locks.
+    /// handed out twice.
     pub(crate) fn forget(&mut self, removed_wallets: &[String], reset_chains: &[String]) {
         self.indices.retain(|key, _| {
             key.split_once('|').is_none_or(|(wallet_id, chain_id)| {
@@ -558,8 +536,8 @@ impl KeypoolTables {
 /// Largest index the keypool can hand out: the last non-hardened BIP-32 child.
 ///
 /// It is also exactly `i32::MAX`, which is what makes the narrowing below
-/// lossless — the keypool carries indices as `i64` in SQLite and as `i32`
-/// across the FFI, and the two used to be bridged with a plain `as`.
+/// lossless: the keypool carries indices as `i64` in SQLite and as `i32`
+/// across the FFI.
 const MAX_KEYPOOL_INDEX: i64 = (crate::derivation::primitives::HARDENED_OFFSET - 1) as i64;
 
 /// The index after `index`, or an error at the end of the keypool.
@@ -765,8 +743,7 @@ mod the_keypool_forgets_indices_and_addresses_together {
     }
 
     /// Registering the same address twice updates the row rather than issuing
-    /// a duplicate. The call site used to clone the table, mutate the copy and
-    /// write it back, which drops any write that landed in between.
+    /// a duplicate.
     #[test]
     fn remembering_an_address_twice_replaces_rather_than_duplicates() {
         let mut tables = KeypoolTables::default();

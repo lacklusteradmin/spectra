@@ -118,12 +118,8 @@ pub struct SendPreflight {
     /// The token this send moves, as core resolved it, or `None` for a native
     /// asset.
     ///
-    /// Every submit branch used to resolve this again on the caller's side,
-    /// from its own mirror of the token preferences, with its own refusal
-    /// message — and Tron's hard-coded six decimals for every token on it,
-    /// right for USDT and wrong for the four eighteen-decimal ones in the
-    /// catalog. The token is core's; a send that names one core cannot
-    /// identify is refused here rather than sent with a guessed scale.
+    /// The token is core's; a send that names one core cannot identify is
+    /// refused here rather than sent with a guessed scale.
     pub token_contract_address: Option<String>,
     pub token_decimals: Option<u32>,
     /// The gas-asset balance this send needs before it can land, where the
@@ -273,13 +269,8 @@ pub struct SendAffordabilityInput {
 
 /// Can this send land?
 ///
-/// This was `AppState.validateSendBalance`, a nine-parameter method returning
-/// a formatted sentence, with four callers that each supplied `isNativeAsset`,
-/// the native symbol, the fee decimals and a chain label by hand. Those are
-/// four registry facts, and the four callers spelled the first one four
-/// different ways — `== "TRX"`, `== "SOL"`, a literal `true`, and a preflight
-/// field — while two of them wrote `6` for the fee decimals rather than asking
-/// `send_execution_shape`. Naming the chain is enough.
+/// Naming the chain is enough: whether the asset is native, its symbol and
+/// the fee are registry facts.
 ///
 /// The verdict is an enum, not a sentence: the wording is localized in the
 /// front end's own bundle.
@@ -472,14 +463,8 @@ mod tests {
     };
 
     /// Every chain the router sends down the shared preview path has a shape
-    /// for it.
-    ///
-    /// Swift's dispatch used to name those eleven chains one arm at a time, and
-    /// a twelfth entry in a `[String: SimpleChain]` table decided whether the
-    /// call went out at all. Both are gone: the arm says "the chain this coin is
-    /// on" and core derives the shape. What has to hold for that to be safe is
-    /// this — a routing kind outside the seven with a preview path of their own
-    /// is a chain `simple_preview_chain` answers for.
+    /// for it: a routing kind outside the seven with a preview path of their
+    /// own is a chain `simple_preview_chain` answers for.
     #[test]
     fn every_shared_path_routing_kind_has_a_preview_shape() {
         use crate::registry::Chain;
@@ -590,11 +575,6 @@ mod tests {
 
     /// Every EVM chain runs the EVM destination checks, and every one that is
     /// not Ethereum flags an ENS name.
-    ///
-    /// Two nested lists gated this: an outer `is_evm` naming seven of the
-    /// twenty-three EVM mainnets, and inside it an `is_l2` naming five. So a
-    /// Bitcoin address pasted while sending on Base raised nothing at all, and
-    /// an ENS name on Base raised nothing either.
     #[test]
     fn every_evm_chain_runs_the_evm_destination_checks() {
         use crate::registry::Chain;
@@ -641,8 +621,7 @@ mod tests {
         }
     }
 
-    /// Every EVM chain can name the asset its history is denominated in. Nine
-    /// chain names were written out; the other twenty-four returned `None`.
+    /// Every EVM chain can name the asset its history is denominated in.
     #[test]
     fn every_evm_chain_names_its_native_asset() {
         use crate::registry::Chain;
@@ -664,9 +643,6 @@ mod tests {
     }
 
     /// The MWEB overhead belongs to Litecoin and to MWEB destinations only.
-    ///
-    /// It lived inside `refreshLitecoinSendPreview`, which is why the other
-    /// UTXO chains needed their own preview functions to not have it.
     #[test]
     fn only_litecoin_mweb_destinations_cost_extra_bytes() {
         use crate::registry::Chain;
@@ -751,12 +727,8 @@ mod tests {
         assert!(route.allows_zero_amount);
     }
 
-    /// The preview and the submit are the same routing decision.
-    ///
-    /// They used to be two: a `plan_send_preview_routing` wrapper that read
-    /// `route_send_asset().preview_kind` and threw the rest away, and a
-    /// caller-side re-check for the submit branch. Asserting both fields of
-    /// one route is what says they cannot drift.
+    /// The preview and the submit are the same routing decision. Asserting
+    /// both fields of one route is what says they cannot drift.
     #[test]
     fn routes_supported_solana_assets_to_solana_preview_and_submit() {
         let route = route_send_asset(&SendAssetRoutingInput {
@@ -784,13 +756,8 @@ mod tests {
     }
 
     /// The routing kinds are a closed set, and every chain that can send has
-    /// one.
-    ///
-    /// `submitSend` switches on these strings. It used to re-derive the route
-    /// from chain-name lists, so a kind renamed here would have changed
-    /// nothing there; now a rename drops a chain straight into "not enabled
-    /// yet" — silently, at the moment a user tries to send. This is the test
-    /// that fails instead.
+    /// one. `submitSend` switches on these strings, so a renamed kind would
+    /// silently drop a chain into "not enabled yet"; this test fails instead.
     #[test]
     fn every_sendable_chain_has_a_routing_kind_from_the_known_set() {
         use crate::registry::Chain;
@@ -841,25 +808,9 @@ mod tests {
             }
         }
         // The chains with no send path are named, so adding one is a decision
-        // rather than something that shows up as a dead branch.
-        //
-        // This list held six. Five of them — Zcash, Bitcoin Gold, Decred,
-        // Kaspa and Dash — had complete send implementations under
-        // `send/` and arms in `service/send_execution.rs`; what they
-        // did not have was a row in `route_send_asset`, so the preflight
-        // refused before any of it ran. The list was recording the symptom,
-        // not a decision.
-        //
-        // Bittensor was the seventh, and its reason had expired. The comment
-        // here said a fallback "would mean inventing a TAO fee" — but
-        // `Chain::static_fee_units` has carried `Bittensor => 125_000` for
-        // some time, so the fee was decided and nobody came back to the
-        // exclusion. It has a `SimpleChain` shape and a router row now, and
-        // takes the shared submit path like Polkadot, whose extrinsic its own
-        // is a smaller version of.
-        //
-        // The list is empty, and that is the assertion: every mainnet the app
-        // offers can send.
+        // rather than something that shows up as a dead branch. The list is
+        // empty, and that is the assertion: every mainnet the app offers can
+        // send.
         assert!(
             unrouted.is_empty(),
             "these chains cannot send: {unrouted:?}"
@@ -914,10 +865,9 @@ mod tests {
         assert!(plan.allows_zero_amount);
     }
 
-    /// The gas floor a NEP-141 send has to clear was `0.001` in the iOS
-    /// submit branch. It is a fact about NEAR, so core states it — and states
-    /// it only where it applies: a native NEAR send pays its fee out of the
-    /// amount, and every other chain estimates one.
+    /// The gas floor a NEP-141 send has to clear is a fact about NEAR, so core
+    /// states it — and only where it applies: a native NEAR send pays its fee
+    /// out of the amount, and every other chain estimates one.
     #[test]
     fn a_near_token_send_carries_the_chains_gas_floor() {
         let near = |symbol: &str, token: Option<SendTokenIdentity>| {
@@ -1001,13 +951,6 @@ mod tests {
 #[cfg(test)]
 mod every_chain_with_a_send_implementation_can_route {
     /// A chain `execute_send` can broadcast is a chain the preflight routes.
-    ///
-    /// `route_send_asset` is a table of `(chain, symbol)` pairs, and five
-    /// chains with complete send implementations were missing from it: Zcash,
-    /// Bitcoin Gold, Decred, Kaspa and Dash. Each has a module under
-    /// `send/`, an arm in `service/send_execution.rs`, and derivation —
-    /// and the preflight answered "transfers are not enabled yet" before any
-    /// of it was reached.
     #[test]
     fn the_five_that_were_unroutable_now_route() {
         for (name, symbol, kind) in [
@@ -1045,12 +988,8 @@ mod every_chain_with_a_send_implementation_can_route {
 
 #[cfg(test)]
 mod token_decimals_are_not_assumed {
-    /// No chain's tokens all share one decimal count.
-    ///
-    /// Tron's send arm hardcoded six, which is USDT's and not BTT's, TUSD's,
-    /// USD1's or USDD's — all eighteen. It never fired because
-    /// `route_send_asset` lets only TRX and USDT reach it, so the guard against
-    /// a 10^12 error was an unrelated restriction two files away.
+    /// No chain's tokens all share one decimal count: Tron's USDT has six, and
+    /// BTT, TUSD, USD1 and USDD have eighteen.
     #[test]
     fn a_chain_can_host_tokens_of_different_decimals() {
         use std::collections::{HashMap, HashSet};
@@ -1125,8 +1064,6 @@ mod affordability_reads_the_chain_rather_than_the_caller {
         );
     }
 
-    /// `fee_decimals` is a display choice per chain, and two of the four
-    /// callers wrote `6` rather than asking for it. Bitcoin's is 8.
     #[test]
     fn the_fee_is_quoted_to_the_chains_own_decimals() {
         let mut btc = input("bitcoin", "BTC");

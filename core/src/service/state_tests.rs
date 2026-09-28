@@ -343,10 +343,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     assert_eq!(count(), 1);
     let state = service().open_state(db.clone()).await.unwrap();
     assert_eq!(state.wallets.len(), 0);
-    let pool =
-        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "bitcoin")
-            .unwrap()
-            .unwrap();
+    let pool = stored_keypool(&db);
     assert_eq!(pool.next_external_index, 11);
     assert_eq!(pool.reserved_receive_index, Some(reserved));
 }
@@ -379,12 +376,7 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
             .is_err()
     );
     assert_eq!(*s.keypool.read().await.indices(), before);
-    assert_eq!(
-        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "bitcoin")
-            .unwrap()
-            .unwrap(),
-        before[&keypool_key("w", "bitcoin")]
-    );
+    assert_eq!(stored_keypool(&db), before[&keypool_key("w", "bitcoin")]);
 }
 
 /// Tor policy, the display-currency catalog and the fiat rates are core state
@@ -397,9 +389,8 @@ mod tor_and_rates {
         StateCommand::SetAppSetting { update }
     }
 
-    /// The four Tor fields survive reopening the database, which is the whole
-    /// point of moving them: a second front end and the CLI read what the app
-    /// set.
+    /// The four Tor fields survive reopening the database, so a second front
+    /// end and the CLI read what the app set.
     ///
     /// `tor_enabled` and `tor_kill_switch` are never true together here. The
     /// policy is process-wide — the HTTP layer reads it per request — so a test
@@ -815,4 +806,11 @@ async fn committed_versions_order_reads_and_failed_writes_do_not_advance_them() 
     let next = s.apply_state_command(currency("JPY")).await.unwrap().state;
     assert!(next.revision > first.revision);
     assert_eq!(s.open_state(db).await.unwrap().revision, next.revision);
+}
+
+/// The keypool row core persisted for wallet `w` on Bitcoin.
+fn stored_keypool(db: &str) -> crate::wallet_db::KeypoolState {
+    crate::wallet_db::keypool_load_all(&crate::wallet_db::WalletDatabase::new(db)).unwrap()
+        ["bitcoin"]["w"]
+        .clone()
 }

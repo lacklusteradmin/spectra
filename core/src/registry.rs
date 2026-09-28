@@ -8,9 +8,6 @@
 /// Every chain Spectra knows about.
 ///
 /// This crosses the FFI boundary as the one chain type every front end uses.
-/// Before it did, each front end kept its own copy of this list — iOS had four
-/// (`SpectraChainID`, `SeedDerivationChain`, `AppChainID`,
-/// `StandardDiagnosticsChain`), each a different subset, each drifting.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum Chain {
     Bitcoin,
@@ -297,10 +294,6 @@ impl Chain {
     /// Dogecoin, Tron and the EVM family each take different inputs and return
     /// a different record, which is why they are not one call.
     ///
-    /// Swift held this as an eleven-entry `[String: SimpleChain]` table keyed
-    /// by display name, and passed the result back to core beside the chain id
-    /// core could have derived it from.
-    ///
     /// Through `mainnet_counterpart` because the shape is what decoding needs
     /// and a testnet decodes like its mainnet; which network is reached is the
     /// chain id's business.
@@ -457,9 +450,8 @@ impl Chain {
     /// directly — and the five chains whose derivation ignores the path it is
     /// handed still carry one, so this is not "does the arm use `p`".
     ///
-    /// The distinction matters because "no default path" was an error
-    /// everywhere it was asked, and Monero is a chain for which it is the
-    /// answer. See `default_path_from_catalog`.
+    /// For Monero "no path" is the answer, not an error. See
+    /// `default_path_from_catalog`.
     pub fn uses_derivation_path(self) -> bool {
         crate::chains::default_derivation_path_template(self.str_id()).is_some()
     }
@@ -730,22 +722,6 @@ impl Chain {
         }
     }
 
-    /// The JSON-RPC method that answers "is this node alive", or `None` for a
-    /// chain whose endpoints are checked over plain HTTP.
-    ///
-    /// Three of these were spelled in three different Swift functions, and
-    /// *which* endpoints were RPC was decided by two hand-written id lists
-    /// (`NearBalanceService.rpcEndpointCatalog`,
-    /// `PolkadotBalanceService.sidecarEndpointCatalog`) beside a catalog that
-    /// already carries an `rpc` role per endpoint. Both agreed when this was
-    /// written; adding a provider meant editing the JSON and remembering the
-    /// Swift list, and forgetting the second probes a JSON-RPC node with a
-    /// GET — which many of them answer 405, reported as unreachable.
-    pub fn rpc_health_method(self) -> Option<&'static str> {
-        self.endpoint_api(EndpointSlot::Primary)?
-            .rpc_health_method()
-    }
-
     /// Whether this chain's native send needs nothing beyond a destination, an
     /// amount and the fee its preview already supplied.
     ///
@@ -778,63 +754,29 @@ impl Chain {
                 | Chain::Kaspa
                 | Chain::Dash
                 | Chain::Bittensor
-                // Its Swift branch was `submitNativeChainSend` plus
-                // `moneroPriority: 2` — the same default `build_send_params`
-                // already applies with `unwrap_or(2)`, so the branch existed to
-                // pass a value core would have supplied. It has a shared-path
-                // preview like the rest.
+                // It has a shared-path preview like the rest.
                 | Chain::Monero
         )
     }
 
-    /// What a front end needs to assemble a send for this chain.
-    ///
-    /// Transcribed from the ten call sites that carried these inline; the
-    /// values are theirs, not new decisions. The one thing worth noticing is
-    /// that `fee_decimals` is 6 nearly everywhere and 7 for Stellar and 8 for
-    /// the UTXO chains — a display choice, unrelated to native decimals, which
-    /// is why it could not simply be looked up.
+    /// How this chain's fee enters a send, and the fee to assume without a
+    /// preview.
     pub fn send_execution_shape(self) -> SendExecutionShape {
         let chain = self.mainnet_counterpart();
         match chain {
             Chain::Sui => SendExecutionShape {
-                fee_decimals: 6,
-                supports_private_key: false,
                 fee_field: SendFeeField::GasBudget,
                 fee_fallback: 0.0,
             },
             Chain::Cardano => SendExecutionShape {
-                fee_decimals: 6,
-                supports_private_key: false,
                 fee_field: SendFeeField::FeeAmount,
                 fee_fallback: 0.0,
             },
-            Chain::Stellar => SendExecutionShape {
-                fee_decimals: 7,
-                supports_private_key: true,
-                fee_field: SendFeeField::None,
-                fee_fallback: 0.0,
-            },
-            Chain::Xrp => SendExecutionShape {
-                fee_decimals: 6,
-                supports_private_key: true,
-                fee_field: SendFeeField::None,
-                fee_fallback: 0.0,
-            },
-            // Bitcoin was missing from a table whose own comment says the
-            // UTXO chains are 8, because the ten call sites it was transcribed
-            // from did not include Bitcoin's — Bitcoin has an arm of its own.
-            // It fell to the default 6, which truncates a satoshi-denominated
-            // fee by two digits.
             Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
-                fee_decimals: 8,
-                supports_private_key: false,
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: 0.00001,
             },
             Chain::Litecoin => SendExecutionShape {
-                fee_decimals: 8,
-                supports_private_key: false,
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: 0.0001,
             },
@@ -845,27 +787,14 @@ impl Chain {
             // None of them has a shared-path preview, and without a fallback
             // the generic submit refuses for want of an estimate.
             Chain::Zcash | Chain::BitcoinGold | Chain::Kaspa => SendExecutionShape {
-                fee_decimals: 8,
-                supports_private_key: true,
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: 0.00001,
             },
             Chain::Decred | Chain::Dash => SendExecutionShape {
-                fee_decimals: 8,
-                supports_private_key: true,
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: 0.00002,
             },
-            // e8s, like the UTXO chains. Same omission, same cause.
-            Chain::Icp => SendExecutionShape {
-                fee_decimals: 8,
-                supports_private_key: true,
-                fee_field: SendFeeField::None,
-                fee_fallback: 0.0,
-            },
             _ => SendExecutionShape {
-                fee_decimals: 6,
-                supports_private_key: false,
                 fee_field: SendFeeField::None,
                 fee_fallback: 0.0,
             },
@@ -993,9 +922,7 @@ impl Chain {
     /// land, when no preview estimates the fee for that path.
     ///
     /// NEAR is the one chain that routes a token send with no fee estimate to
-    /// check against, so the floor is the whole check. It was `0.001` written
-    /// into the iOS submit branch, next to the NEAR balance it was compared
-    /// with — a number about a chain, held by the front end.
+    /// check against, so the floor is the whole check.
     pub fn token_send_gas_reserve(self) -> Option<f64> {
         match self {
             Chain::Near => Some(0.001),
@@ -1029,10 +956,6 @@ impl Chain {
     /// contract need not point at anything on an L2 — a destination reached by
     /// name is accepted only where the registry that named it lives, which is
     /// the stricter of the two readings.
-    ///
-    /// Swift asked `chainName == "ethereum"` for this in three places: the
-    /// composer's recipient probe, the EVM preview and the submit path. One
-    /// fact stated three times is three chances for them to disagree.
     pub fn resolves_ens_names(self) -> bool {
         matches!(self, Chain::Ethereum)
     }
@@ -1281,21 +1204,16 @@ impl Chain {
         Self::all().filter(|c| !c.is_testnet())
     }
 
-    /// Iterator over only testnet chains.
-    pub fn testnets() -> impl Iterator<Item = Self> {
-        Self::all().filter(|c| c.is_testnet())
-    }
-
-    /// Resolve a chain from the display name used on the boundary.
-    ///
-    /// No special cases: the enum and `chains.toml` agree on every name, and
-    /// `every_catalog_name_resolves` fails if they ever stop.
     /// The display name for a chain id, for a sentence a person reads. An id
     /// the registry does not know is shown as it is.
     pub fn display_name_for_id(id: &str) -> String {
         Self::from_str_id(id).map_or_else(|| id.to_string(), |c| c.chain_display_name().to_string())
     }
 
+    /// Resolve a chain from the display name used on the boundary.
+    ///
+    /// No special cases: the enum and `chains.toml` agree on every name, and
+    /// `every_catalog_name_resolves` fails if they ever stop.
     pub fn from_display_name(name: &str) -> Option<Self> {
         Chain::all().find(|c| c.chain_display_name() == name)
     }
@@ -1315,13 +1233,8 @@ pub enum SendFeeField {
 }
 
 /// How core moves a send on this chain — which is what the send screen's
-/// network card tells the user it is about to do.
-///
-/// The card's sentence was twelve strings in the iOS view, one per chain, and
-/// they had drifted into four verbs for two behaviours: "signs and broadcasts
-/// X transfers", "signs and broadcasts X payments", "signs and broadcasts ADA
-/// transfers" (the symbol, not the chain) and Monero's, which is the only one
-/// that describes something different. Two behaviours, so two variants.
+/// network card tells the user it is about to do. There are two behaviours,
+/// so two variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum SendBroadcastMode {
     /// Core signs on the device and broadcasts to this chain's endpoints.
@@ -1332,15 +1245,9 @@ pub enum SendBroadcastMode {
     PreparesWithBackend,
 }
 
-/// What a front end needs to assemble a send for this chain, beyond the
-/// amount and the destination.
+/// How a chain's fee enters a send, beyond the amount and the destination.
 #[derive(Debug, Clone, Copy)]
 pub struct SendExecutionShape {
-    /// Decimal places to show when reporting that the balance cannot cover
-    /// the fee. A display precision, not the chain's native decimals.
-    pub fee_decimals: u8,
-    /// Whether a wallet holding only a private key (no seed) can sign here.
-    pub supports_private_key: bool,
     pub fee_field: SendFeeField,
     /// Fee to assume when no preview is available, in native units. Zero
     /// where the chain always has a preview by the time a send is submitted.
@@ -1349,9 +1256,7 @@ pub struct SendExecutionShape {
 
 /// How a chain's pending transactions are polled for confirmation.
 ///
-/// A per-chain fact, so it lives here rather than as one wrapper function per
-/// chain in the shell — there were eighteen of those, each naming a chain, a
-/// chain id, an address resolver and up to two flags.
+/// A per-chain fact, so it lives here rather than in the shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PendingStatusPoll {
     /// Ask the chain's own status endpoint for a txid.
@@ -1381,13 +1286,8 @@ pub struct NetworkChoice {
 mod tests {
     use super::*;
 
-    /// The network card claims in-app signing for every chain that has one
-    /// except the backend-prepared one. Monero's testnet answers like Monero:
-    /// the backend is what does the work on either network.
     /// Every EVM chain carries its EIP-155 id, and Ethereum's test networks
-    /// carry theirs. These were asserted in the iOS suite through an
-    /// `EVMChainContext` wrapper the app no longer has; the facts are the
-    /// registry's, so this is where they are checked.
+    /// carry theirs.
     #[test]
     fn evm_chains_carry_their_eip155_ids() {
         for chain in Chain::all().filter(|chain| chain.is_evm()) {
@@ -1624,7 +1524,7 @@ mod tests {
 
     #[test]
     fn testnet_mainnet_counterparts_are_mainnets() {
-        for testnet in Chain::testnets() {
+        for testnet in Chain::all().filter(|c| c.is_testnet()) {
             let counterpart = testnet.mainnet_counterpart();
             assert!(
                 !counterpart.is_testnet(),
@@ -1723,10 +1623,6 @@ pub struct ChainIdentity {
     /// An import can carry an account xpub for this chain.
     pub accepts_account_xpub: bool,
     /// A private key alone yields an address on this chain.
-    ///
-    /// Was `core_supported_private_key_chain_names`, an export whose whole
-    /// body was `Chain::all().filter(…).map(display_name)` — a filter over
-    /// this column, made into a call.
     pub derives_from_private_key: bool,
     /// The chain has protocol-native staking the staking tab can drive.
     pub supports_staking: bool,
@@ -1825,14 +1721,10 @@ mod catalog_agreement_tests {
     /// exactly — position by position, not merely as sets.
     ///
     /// Asserting `chain.str_id() == entry.id` would prove nothing: `str_id`
-    /// *reads* the catalog now, so the two agree by construction. The variant
+    /// *reads* the catalog, so the two agree by construction. The variant
     /// name is the independent source, which is why [`expected_id`] exists.
-    ///
-    /// This replaces `display_names_match_the_catalog`, which asked whether two
-    /// tables agreed on a name. There is one table now. The question worth
-    /// asking is whether the index is sound — if it is not, every chain
-    /// silently becomes a different chain, and unlike a rename that is
-    /// invisible from the outside.
+    /// If the index is not sound, every chain silently becomes a different
+    /// chain, and unlike a rename that is invisible from the outside.
     #[test]
     fn chain_order_matches_the_catalog() {
         let catalog = crate::chains::list_all_chains();
@@ -1876,41 +1768,12 @@ mod catalog_agreement_tests {
 }
 
 #[cfg(test)]
-mod fee_decimals_match_the_asset {
-    /// A fee is shown and validated at the asset's own precision.
-    ///
-    /// Bitcoin and Internet Computer fell to the default six while the send
-    /// sheet formatted them at eight: satoshis and e8s both need eight, and a
-    /// six-decimal fee drops the last two digits.
-    #[test]
-    fn utxo_and_e8s_chains_use_eight() {
-        for name in [
-            "bitcoin",
-            "bitcoin-cash",
-            "bitcoin-sv",
-            "litecoin",
-            "internet-computer",
-        ] {
-            let c = super::Chain::from_str_id(name).unwrap();
-            assert_eq!(c.send_execution_shape().fee_decimals, 8, "{name}");
-        }
-        assert_eq!(super::Chain::Stellar.send_execution_shape().fee_decimals, 7);
-    }
-}
-
-#[cfg(test)]
 mod the_post_send_refresh_set_is_the_registrys {
     use super::{Chain, PendingStatusPoll};
 
     /// After a send, a chain either polls for a pending status or refreshes
     /// history. Which it does is `pending_status_poll`, and a testnet does what
     /// its mainnet does.
-    ///
-    /// Swift held `utxoPostSendChains`, a five-name `Set<String>` of the
-    /// mainnets, so a send on any of the seven UTXO testnets took the history
-    /// refresh instead of the pending one. Same shape as the five-name table
-    /// that made address discovery dead on those chains — a hand-written list
-    /// shorter than the registry.
     #[test]
     fn every_utxo_testnet_polls_the_way_its_mainnet_does() {
         let utxo = |c: Chain| matches!(c.pending_status_poll(), PendingStatusPoll::Utxo { .. });
@@ -1946,12 +1809,6 @@ mod monero_takes_the_shared_submit_path {
     use super::Chain;
 
     /// Monero's send is the generic one.
-    ///
-    /// Its Swift branch was four lines — `submitNativeChainSend(...,
-    /// moneroPriority: 2)` — and that `2` is the same default
-    /// `build_send_params` applies with `req.monero_priority.unwrap_or(2)`.
-    /// Two copies of one default, and a branch whose only job was to carry
-    /// one of them.
     ///
     /// It has a shared-path preview, which is what the flag needs: without one
     /// `has_send_preview` would answer through the `!uses_generic_send_submit`

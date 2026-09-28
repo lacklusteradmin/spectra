@@ -67,11 +67,7 @@ impl From<reqwest::Error> for SpectraBridgeError {
     fn from(error: reqwest::Error) -> Self {
         // Network / TLS / DNS / timeout problems route to `Network` so the
         // UI can branch on them; everything else (notably body-decode
-        // failures from `Response::json()`) lands in `Decode`. Without this
-        // routing, every reqwest error fell into `Failure` and Swift had no
-        // structured way to render "no internet" vs "provider returned bad
-        // shape" — even though the underlying source already had the
-        // distinction.
+        // failures from `Response::json()`) lands in `Decode`.
         let message = error.to_string();
         if error.is_decode() {
             Self::Decode { message }

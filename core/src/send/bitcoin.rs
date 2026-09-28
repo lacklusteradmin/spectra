@@ -40,31 +40,6 @@ impl BitcoinClient {
     }
 }
 
-// ── Professional coin-selection and output customization ──────────────────
-
-/// UTXO coin-selection strategy.
-#[derive(Debug, Clone, Default)]
-pub enum CoinSelectionStrategy {
-    /// Accumulate the largest UTXOs first. Minimizes input count; may leave
-    /// dust change when total overshoots the target significantly.
-    #[default]
-    LargestFirst,
-    /// Accumulate the smallest UTXOs first. Consolidates dust coins at the
-    /// cost of more inputs and higher fees. Useful for UTXO set hygiene.
-    SmallestFirst,
-}
-
-/// An additional output appended to the transaction after the primary
-/// recipient and change outputs. Enables batch sends and on-chain memos.
-#[derive(Debug, Clone)]
-pub enum BitcoinExtraOutput {
-    /// Secondary payment to another address in the same transaction.
-    Address { address: String, amount_sats: u64 },
-    /// OP_RETURN metadata payload (max 80 bytes, zero value). The `data_hex`
-    /// field is hex-encoded; no `0x` prefix required.
-    OpReturn { data_hex: String },
-}
-
 /// Parameters for building a Bitcoin transaction.
 #[derive(Debug)]
 pub struct BitcoinSendParams {
@@ -82,43 +57,25 @@ pub struct BitcoinSendParams {
     /// `pinned_utxos` is set. Fetched from Esplora if empty.
     pub available_utxos: Vec<EsploraUtxo>,
     /// Which network, as a registry chain id (`"bitcoin"`,
-    /// `"bitcoin-testnet-4"`, …). It was a mode string, which meant a table
-    /// mapping those strings back to a network beside the one the registry
-    /// already has.
+    /// `"bitcoin-testnet-4"`, …).
     pub chain_id: String,
     /// Whether to signal RBF (replace-by-fee) on inputs.
     pub enable_rbf: bool,
     /// Minimum change output in satoshis; dust below this is absorbed into fee.
     /// `None` uses the standard 546-sat P2PKH dust threshold.
     pub dust_threshold: Option<u64>,
-    // ── Professional controls ────────────────────────────────────────────────
     /// Manually selected UTXOs to spend. When `Some`, bypasses automatic coin
-    /// selection entirely. Their total still has to cover `amount_sats`, every
-    /// `extra_outputs` payment and the fee — the builder refuses rather than
-    /// signing a transaction that pays out more than it spends.
+    /// selection entirely. Their total still has to cover `amount_sats` and the
+    /// fee — the builder refuses rather than signing a transaction that pays
+    /// out more than it spends.
     pub pinned_utxos: Option<Vec<EsploraUtxo>>,
-    /// Additional outputs appended after the primary recipient and change.
-    /// Enables batch sends (multiple recipients in one tx) and OP_RETURN memos.
-    pub extra_outputs: Vec<BitcoinExtraOutput>,
-    /// Coin selection algorithm used when `pinned_utxos` is `None`.
-    pub coin_selection: CoinSelectionStrategy,
-    /// Sign the transaction but skip the Esplora broadcast. The signed raw
-    /// transaction hex is returned in `BitcoinSendResult.raw_tx_hex` and
-    /// `txid` is left empty. Useful for offline signing, PSBT handoffs, or
-    /// pre-flight fee inspection.
-    pub sign_only: bool,
 }
 
 /// What one input of a given script type costs to spend and what one of its
 /// outputs costs to create, in virtual bytes.
 ///
-/// These were four sets of magic numbers inlined twice each — once in the
-/// pinned-UTXO branch and once in the `select_coins` call — and the two copies
-/// had drifted: every type but P2PKH agreed on 31 bytes per output, and P2PKH
-/// used 34 when the caller pinned its own UTXOs but 31 when coin selection
-/// picked them, because `select_coins` hardcoded 31 and ignored what it was
-/// told. A legacy send therefore underpaid by 3 vbytes per output whenever it
-/// selected automatically.
+/// One table, so the pinned-UTXO branch and coin selection size a spend the
+/// same way.
 #[derive(Clone, Copy)]
 struct SpendSizing {
     input_vbytes: usize,
@@ -157,23 +114,16 @@ impl SpendSizing {
     }
 }
 
-/// Coin selection: accumulate UTXOs until we cover `target + fee`.
-/// Sorting order is determined by `strategy`.
-fn select_coins<'a>(
-    utxos: &'a [EsploraUtxo],
+/// Coin selection: accumulate the largest UTXOs until we cover `target + fee`.
+fn select_coins(
+    utxos: &[EsploraUtxo],
     target_sats: u64,
     fee_rate: FeeRate,
     sizing: SpendSizing,
     output_count: usize,
-    strategy: &CoinSelectionStrategy,
-) -> Result<(Vec<&'a EsploraUtxo>, u64), String> {
+) -> Result<(Vec<&EsploraUtxo>, u64), String> {
     let mut sorted: Vec<&EsploraUtxo> = utxos.iter().collect();
-    match strategy {
-        CoinSelectionStrategy::LargestFirst => {
-            sorted.sort_by_key(|utxo| std::cmp::Reverse(utxo.value))
-        }
-        CoinSelectionStrategy::SmallestFirst => sorted.sort_by_key(|utxo| utxo.value),
-    }
+    sorted.sort_by_key(|utxo| std::cmp::Reverse(utxo.value));
 
     let mut selected: Vec<&EsploraUtxo> = Vec::new();
     let mut total: u64 = 0;
@@ -198,57 +148,14 @@ fn select_coins<'a>(
 ///
 /// The fixed-fee signers get this and their change subtraction together from
 /// [`super::accounting::checked_change`]. Bitcoin's does not fit that shape:
-/// its fee is derived from an output count it only knows after the extras are
-/// built, the dust rule changes what is actually paid out, and its shortfall
-/// is the localized `utxo.insufficientFunds` rather than prose. What is shared
+/// its fee is derived from the input count coin selection settles on, the dust
+/// rule changes what is actually paid out, and its shortfall is the localized `utxo.insufficientFunds` rather than prose. What is shared
 /// is the refusal to let an endpoint's numbers wrap a sum.
 fn total_value<'a>(utxos: impl IntoIterator<Item = &'a EsploraUtxo>) -> Result<u64, String> {
     utxos
         .into_iter()
         .try_fold(0u64, |total, utxo| total.checked_add(utxo.value))
         .ok_or_else(|| "utxo.amountOverflow".to_string())
-}
-
-/// Build `TxOut` items for `extra_outputs`. OP_RETURN outputs are zero-value.
-fn build_extra_outputs(
-    extra: &[BitcoinExtraOutput],
-    network: bitcoin::Network,
-) -> Result<Vec<TxOut>, String> {
-    let mut out = Vec::new();
-    for item in extra {
-        match item {
-            BitcoinExtraOutput::Address {
-                address,
-                amount_sats,
-            } => {
-                let addr = Address::from_str(address)
-                    .map_err(|e| format!("extra output bad address: {e}"))?
-                    .require_network(network)
-                    .map_err(|e| format!("extra output wrong network: {e}"))?;
-                out.push(TxOut {
-                    value: Amount::from_sat(*amount_sats),
-                    script_pubkey: addr.script_pubkey(),
-                });
-            }
-            BitcoinExtraOutput::OpReturn { data_hex } => {
-                let data = hex::decode(data_hex.trim_start_matches("0x"))
-                    .map_err(|e| format!("OP_RETURN bad hex: {e}"))?;
-                if data.len() > 80 {
-                    return Err(format!(
-                        "OP_RETURN data too large: {} bytes (max 80)",
-                        data.len()
-                    ));
-                }
-                let push_bytes = bitcoin::script::PushBytesBuf::try_from(data)
-                    .map_err(|_| "OP_RETURN data exceeds PushBytes limit".to_string())?;
-                out.push(TxOut {
-                    value: Amount::ZERO,
-                    script_pubkey: ScriptBuf::new_op_return(push_bytes.as_push_bytes()),
-                });
-            }
-        }
-    }
-    Ok(out)
 }
 
 fn tx_input_for_utxo(utxo: &EsploraUtxo, sequence: Sequence) -> Result<TxIn, String> {
@@ -269,7 +176,6 @@ fn tx_input_for_utxo(utxo: &EsploraUtxo, sequence: Sequence) -> Result<TxIn, Str
 struct SpendIdentity {
     secret_key: SecretKey,
     public_key: CompressedPublicKey,
-    network: bitcoin::Network,
     from: Address,
     to: Address,
 }
@@ -316,7 +222,6 @@ fn parse_spend_identity(
     Ok(SpendIdentity {
         secret_key,
         public_key,
-        network,
         from,
         to,
     })
@@ -337,35 +242,20 @@ fn build_unsigned_spend(
     identity: &SpendIdentity,
     sizing: SpendSizing,
 ) -> Result<UnsignedSpend, String> {
-    // Build extra outputs before coin selection so their amounts are
-    // included in the funding target and change calculation.
-    build_unsigned_layout(
-        params,
-        &identity.from,
-        &identity.to,
-        identity.network,
-        sizing,
-    )
+    build_unsigned_layout(params, &identity.from, &identity.to, sizing)
 }
 
 fn build_unsigned_layout(
     params: &BitcoinSendParams,
     from: &Address,
     to: &Address,
-    network: bitcoin::Network,
     sizing: SpendSizing,
 ) -> Result<UnsignedSpend, String> {
-    let extra = build_extra_outputs(&params.extra_outputs, network)?;
-    let spend_sats = extra
-        .iter()
-        .try_fold(params.amount_sats, |total, out| {
-            total.checked_add(out.value.to_sat())
-        })
-        .ok_or("utxo.amountOverflow")?;
+    let spend_sats = params.amount_sats;
 
-    // The fee is sized for recipient + change + extras whether or not the
-    // change output survives the dust check below.
-    let output_count = 2 + extra.len();
+    // The fee is sized for recipient + change whether or not the change
+    // output survives the dust check below.
+    let output_count = 2;
 
     let (selected, fee) = match params.pinned_utxos.as_deref() {
         Some(pinned) => {
@@ -381,7 +271,6 @@ fn build_unsigned_layout(
             params.fee_rate,
             sizing,
             output_count,
-            &params.coin_selection,
         )?,
     };
 
@@ -414,13 +303,11 @@ fn build_unsigned_layout(
             script_pubkey: from.script_pubkey(),
         });
     }
-    output.extend(extra);
 
-    // What a transaction pays out cannot exceed what it spends. This is the
-    // property the batch-send arithmetic broke, and it holds for every path
-    // through this function — pinned or selected, change kept or dropped — so
-    // stating it here catches the next arithmetic change before it is signed
-    // rather than at the node.
+    // What a transaction pays out cannot exceed what it spends. This holds
+    // for every path through this function — pinned or selected, change kept
+    // or dropped — so stating it here catches the next arithmetic change
+    // before it is signed rather than at the node.
     let total_out: u64 = output
         .iter()
         .try_fold(0u64, |total, out| total.checked_add(out.value.to_sat()))
@@ -699,9 +586,6 @@ mod tests {
             enable_rbf: true,
             dust_threshold: None,
             pinned_utxos: None,
-            extra_outputs: vec![],
-            coin_selection: CoinSelectionStrategy::default(),
-            sign_only: true,
         }
     }
 
@@ -754,8 +638,7 @@ mod tests {
     }
 
     /// The fee a script type charges follows only from its own vsize table,
-    /// and pinning UTXOs must not change it. Legacy sends used to pay 60 sats
-    /// less here than when the same coins were pinned.
+    /// and pinning UTXOs must not change it.
     #[test]
     fn pinned_and_selected_coins_charge_the_same_fee() {
         for (kind, fee) in [
@@ -792,76 +675,16 @@ mod tests {
         assert_eq!(change_of(&tx), 490);
     }
 
-    /// What an extra output pays is funded like any other output.
-    ///
-    /// This asserted `change == 200_000 - 60_000 - fee`, leaving the 7_000 an
-    /// extra output paid out of nowhere: the transaction it pinned spent
-    /// 200_000 and paid out 204_980. It passed because it only ever read the
-    /// output values and never asked whether the inputs covered them.
-    #[test]
-    fn extra_outputs_are_funded_and_not_conjured() {
-        let mut p = params(Kind::P2wpkh, vec![utxo(0, 200_000)], 60_000);
-        p.extra_outputs = vec![
-            BitcoinExtraOutput::Address {
-                address: TO.to_string(),
-                amount_sats: 7_000,
-            },
-            BitcoinExtraOutput::OpReturn {
-                data_hex: "0xdeadbeef".to_string(),
-            },
-        ];
-        let (tx, _) = sign_p2wpkh(&mut p).unwrap();
-        assert_eq!(tx.output.len(), 4);
-        assert_eq!(tx.output[2].value.to_sat(), 7_000);
-        assert_eq!(tx.output[3].value.to_sat(), 0);
-        assert!(tx.output[3].script_pubkey.is_op_return());
-        // Fee is sized for the extra outputs even before they are built.
-        let fee = 10 * (10 + 68 + 4 * 31);
-        assert_eq!(change_of(&tx), 200_000 - 60_000 - 7_000 - fee);
-        assert_eq!(
-            paid_out(&tx) + fee,
-            200_000,
-            "outputs plus fee are the inputs"
-        );
-    }
-
-    /// The extras are part of the target, so coins that cover the recipient
-    /// but not the batch are insufficient funds — a refusal, not a change
-    /// output of zero and a transaction the network will not take.
-    #[test]
-    fn a_batch_the_inputs_cannot_cover_is_refused() {
-        // Three outputs at 10 sat/vB cost 10 × (10 + 68 + 3 × 31) = 1_710, so
-        // 60_000 + 7_000 + 1_710 needs 68_710 and this holds 68_000. Targeting
-        // the recipient alone, 68_000 cleared 60_000 + 1_710 and signed a
-        // transaction paying out 73_290.
-        let mut p = params(Kind::P2wpkh, vec![utxo(0, 68_000)], 60_000);
-        p.extra_outputs = vec![BitcoinExtraOutput::Address {
-            address: TO.to_string(),
-            amount_sats: 7_000,
-        }];
-        assert_eq!(sign_p2wpkh(&mut p).unwrap_err(), "utxo.insufficientFunds");
-
-        // Pinning the same coin reaches the same verdict by the other branch.
-        let mut pinned = params(Kind::P2wpkh, vec![], 60_000);
-        pinned.extra_outputs = p.extra_outputs.clone();
-        pinned.pinned_utxos = Some(vec![utxo(0, 68_000)]);
-        assert_eq!(
-            sign_p2wpkh(&mut pinned).unwrap_err(),
-            "utxo.insufficientFunds"
-        );
-    }
-
     /// Every path through the builder — pinned or selected, change kept or
-    /// absorbed, extras or none — pays out no more than it spends.
+    /// absorbed — pays out no more than it spends.
     #[test]
     fn no_layout_pays_out_more_than_it_spends() {
         for kind in [Kind::P2wpkh, Kind::P2sh, Kind::P2pkh, Kind::P2tr] {
-            for (values, amount, dust, extras) in [
-                (&[200_000u64] as &[u64], 60_000u64, None, false),
-                (&[200_000], 60_000, None, true),
-                (&[100_000, 50_000], 120_000, None, false),
+            for (values, amount, dust) in [
+                (&[200_000u64] as &[u64], 60_000u64, None),
+                (&[100_000, 50_000], 120_000, None),
                 // Change under the threshold is dropped into the fee.
-                (&[60_630], 60_000, Some(10_000u64), false),
+                (&[60_630], 60_000, Some(10_000u64)),
             ] {
                 let utxos = values
                     .iter()
@@ -870,12 +693,6 @@ mod tests {
                     .collect();
                 let mut p = params(kind, utxos, amount);
                 p.dust_threshold = dust;
-                if extras {
-                    p.extra_outputs = vec![BitcoinExtraOutput::Address {
-                        address: TO.to_string(),
-                        amount_sats: 7_000,
-                    }];
-                }
                 let Ok((tx, _)) = kind.sign(&mut p) else {
                     continue; // insufficient funds is its own assertion above
                 };
@@ -887,19 +704,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn op_return_over_eighty_bytes_is_refused() {
-        let mut p = params(Kind::P2wpkh, vec![utxo(0, 200_000)], 60_000);
-        p.extra_outputs = vec![BitcoinExtraOutput::OpReturn {
-            data_hex: "ab".repeat(81),
-        }];
-        assert!(
-            sign_p2wpkh(&mut p)
-                .unwrap_err()
-                .contains("OP_RETURN data too large")
-        );
     }
 
     #[test]
@@ -928,22 +732,6 @@ mod tests {
                 .unwrap_err()
                 .contains("does not match the supplied private key")
         );
-    }
-
-    #[test]
-    fn smallest_first_selection_consolidates_small_coins() {
-        let mut p = params(
-            Kind::P2wpkh,
-            vec![utxo(0, 100_000), utxo(1, 40_000), utxo(2, 40_000)],
-            60_000,
-        );
-        p.coin_selection = CoinSelectionStrategy::SmallestFirst;
-        let (tx, _) = sign_p2wpkh(&mut p).unwrap();
-        assert_eq!(tx.input.len(), 2, "two 40k coins beat one 100k coin");
-
-        p.coin_selection = CoinSelectionStrategy::LargestFirst;
-        let (tx, _) = sign_p2wpkh(&mut p).unwrap();
-        assert_eq!(tx.input.len(), 1);
     }
 
     #[test]
@@ -985,9 +773,6 @@ impl PreparedBitcoinTransaction {
             pinned_utxos: Some(self.inputs.clone()),
             enable_rbf: true,
             dust_threshold: None,
-            extra_outputs: Vec::new(),
-            coin_selection: CoinSelectionStrategy::LargestFirst,
-            sign_only: true,
         }
     }
     pub fn prepare(
@@ -1034,7 +819,7 @@ impl PreparedBitcoinTransaction {
         } else {
             return Err("Unsupported Bitcoin sender script".into());
         };
-        let spend = build_unsigned_layout(&params, &from, &to, chain.bitcoin_network(), sizing)?;
+        let spend = build_unsigned_layout(&params, &from, &to, sizing)?;
         result.inputs = spend
             .tx
             .input

@@ -80,18 +80,6 @@ pub struct DogeSendResult {
     pub raw_tx_hex: String,
 }
 
-impl super::SignedSubmission for DogeSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.raw_tx_hex
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Hex
-    }
-}
-
 // ── Client
 
 pub struct DogecoinClient {
@@ -183,8 +171,7 @@ impl DogecoinClient {
 ///
 /// BlockCypher lists a ref per input the address funded (`tx_input_n` ≥ 0)
 /// and per output paying it (`tx_input_n` = -1), so a transaction appears once
-/// per leg. Only the first ref of each hash was kept: a send read as its
-/// spent input alone, or as its change, depending on which leg came first.
+/// per leg.
 fn doge_history_from_txrefs(
     refs: impl IntoIterator<Item = BlockcypherTxref>,
 ) -> Result<Vec<DogeHistoryEntry>, String> {

@@ -78,8 +78,7 @@ async fn wallets_excluded_from_the_total_contribute_nothing() {
     assert_eq!(derived.included_portfolio_holdings.len(), 1);
 }
 
-/// Every family's testnet is unpriced, not just the two the old rule
-/// listed by name — Dogecoin testnet used to be quoted at mainnet prices.
+/// Every family's testnet is unpriced.
 #[tokio::test]
 async fn no_testnet_coin_is_quoted_on_any_family() {
     for (chain, testnet_id) in [

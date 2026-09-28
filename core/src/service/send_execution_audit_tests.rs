@@ -217,7 +217,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
 }
 
 #[tokio::test]
-async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
+async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     use crate::send::ethereum::{EvmCustomFeeConfiguration, EvmSendOverridesInput};
     use sha3::Digest;
     use std::sync::atomic::{AtomicBool, Ordering};

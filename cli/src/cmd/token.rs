@@ -319,8 +319,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
 ///
 /// Every rule here is the reducer's: the symbol is trimmed and upper-cased,
 /// the contract is judged by the hosting chain's own validator, a duplicate is
-/// refused and the list comes back sorted. The composer held all four and this
-/// command held none of them.
+/// refused and the list comes back sorted.
 fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
         chain_id: resolve_chain(&args.chain)?.str_id().to_string(),

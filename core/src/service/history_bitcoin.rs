@@ -114,10 +114,7 @@ impl WalletService {
                     exhausted = false;
                     // The cursor is left where it was. `advance_history_cursor`
                     // with `None` means "the chain says there is no more",
-                    // which a fetch that failed did not say: it marked the
-                    // wallet exhausted, so this outcome reported more to load
-                    // while the wallet's own cursor refused to load it, and
-                    // "load more" did nothing until a pull-to-refresh reset it.
+                    // which a fetch that failed did not say.
                     diagnostics.push(HistoryWalletDiagnostics {
                         wallet_id: wallet.id.clone(),
                         identifier: bitcoin_identifier(&wallet).unwrap_or_default(),
@@ -238,9 +235,8 @@ impl WalletService {
     /// The account xpub for this wallet's Bitcoin path, when its seed is
     /// readable. A sealed wallet has none without its password.
     ///
-    /// The phrase never leaves a `Zeroizing`: `wallet_seed_phrase` hands back a
-    /// plain `String` copy of it, which drops without being wiped, and this
-    /// runs on every Bitcoin refresh rather than only at send time.
+    /// The phrase never leaves a `Zeroizing`, which matters because this runs
+    /// on every Bitcoin refresh rather than only at send time.
     /// `load_signing_material` is the same read the send identity does, and
     /// keeps the wipe.
     fn bitcoin_account_xpub(
@@ -260,8 +256,7 @@ impl WalletService {
             return None;
         }
         // The account is the first four segments — `m/84'/0'/0'` — of the path
-        // the wallet derives with. This was string surgery on the front end
-        // side, over a path it read out of its own copy of the wallet.
+        // the wallet derives with.
         let path = wallet
             .addresses
             .iter()

@@ -101,12 +101,9 @@ pub fn list_all_builtin_token_deployments() -> Vec<tokens::TokenDeploymentEntry>
 
 /// Generate a new random BIP-39 mnemonic of `word_count` words.
 ///
-/// Refuses a length BIP-39 does not define rather than substituting one. This
-/// used to answer twelve words to any unrecognized count, which is not a
-/// substitution a wallet may make silently: both front ends then carried their
-/// own copy of the accepted lengths to avoid asking for eighteen and being
-/// handed twelve. [`crate::validation::seed_phrase_entropy_bits`] is now the
-/// only list.
+/// Refuses a length BIP-39 does not define rather than substituting one.
+/// `seed_phrase_entropy_bits` in `crate::validation` is the only list of
+/// accepted lengths.
 #[uniffi::export]
 pub fn generate_mnemonic(word_count: u32) -> Result<String, SpectraBridgeError> {
     use bip39::{Language, Mnemonic};

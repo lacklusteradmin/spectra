@@ -381,14 +381,10 @@ async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
 
 /// A UTXO wallet one of whose addresses did not answer stores nothing.
 ///
-/// Netting is over the whole address set, so an address that did not
-/// answer is a wrong amount rather than a missing row: a transaction whose
-/// change went there nets to the legs that did answer. The refresh used to
-/// aggregate and merge whatever came back, so a figure no address agreed
-/// with was stored — here the send leg alone, unnetted by the change leg
-/// the failing address holds. The wallet is counted failed, nothing is
-/// merged for it, and its cursor is left loadable so a later refresh nets
-/// the whole set again.
+/// Netting is over the whole address set, so an address that did not answer
+/// is a wrong amount rather than a missing row. The wallet is counted failed,
+/// nothing is merged for it, and its cursor is left loadable so a later
+/// refresh nets the whole set again.
 ///
 /// One address answers with a transaction and the other refuses, which is
 /// the case the offline gate cannot reach — hence the mock backend.
@@ -513,10 +509,8 @@ async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
     );
     // The row names the wallet when it has nothing else to be named by.
     assert_eq!(outcome.diagnostics[0].identifier, "w1 wallet");
-    // A failure leaves the cursor where it was. Writing `None` there says
-    // "the chain confirms there is no more", which a fetch that failed did
-    // not say: it marked the wallet exhausted, so this outcome reported
-    // more to load while the wallet's own cursor refused to load it.
+    // A failure leaves the cursor where it was: writing `None` there would
+    // say "the chain confirms there is no more".
     assert!(!outcome.exhausted, "a failed page is not the last page");
     assert!(
         !service
@@ -808,7 +802,15 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             .is_empty()
     );
     // The response was fetched before deletion and is submitted after the wallet transaction commits.
-    crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::new(&db), "w").unwrap();
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service
+        .apply_state_command(crate::store::state::StateCommand::RemoveWallet {
+            wallet_id: "w".into(),
+        })
+        .await
+        .unwrap();
     assert!(
         service
             .merge_fetched_history(vec![fetched])

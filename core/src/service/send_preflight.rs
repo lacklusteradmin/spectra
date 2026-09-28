@@ -44,10 +44,6 @@ impl WalletService {
     ///
     /// The same derivation the preflight does, for the callers that only want
     /// the routing: which preview to refresh, and which submit branch to take.
-    /// Both used to be decided again on the caller's side — the preview from a
-    /// `SendAssetRoutingInput` it assembled, the Solana submit branch from its
-    /// own copy of the send-support rule — so three places could disagree
-    /// about whether an asset is sendable.
     pub async fn send_asset_routing(
         &self,
         wallet_id: String,
@@ -235,14 +231,11 @@ fn supported_evm_token(
         .map(|entry| (entry.token.symbol.clone(), entry.token.contract.clone()))
 }
 
-/// What routing needs to know about a holding, derived from core's own state.
 /// The token a holding is, with the decimals the catalog gives it.
 ///
 /// A holding whose symbol is the chain's gas asset is native and has none. A
 /// token the user does not track has none either, which is what makes the
-/// send refuse rather than guess a scale — every submit branch used to look
-/// this up itself, and Tron's branch hard-coded six decimals for every token
-/// on it.
+/// send refuse rather than guess a scale.
 pub(super) fn send_token_identity(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
@@ -495,11 +488,8 @@ mod preflight_tests {
         }
     }
 
-    /// The two send-support rules, against core's own token list.
-    ///
-    /// They were iOS predicates whose answers were passed *in* to the
-    /// preflight — so on the funds path core took a caller's word about which
-    /// assets core itself knows how to send.
+    /// The two send-support rules, against core's own token list: core decides
+    /// which assets it knows how to send.
     #[test]
     fn solana_sends_sol_always_and_a_token_only_when_known() {
         let sol = holding("solana", "SOL", "Native", None);

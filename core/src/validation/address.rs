@@ -27,9 +27,6 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
 
     // Each testnet has its own `kind` string (e.g. `"bitcoinTestnet"`,
     // `"litecoinTestnet"`), so the kind says which network to judge against.
-    // The request used to also carry a `network_id` "for backwards
-    // compatibility with stored wallets" — nothing read it, and prelaunch
-    // there are no stored wallets to be compatible with.
     match request.kind.as_str() {
         "bitcoin" => validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Mainnet),
         "bitcoinTestnet" | "bitcoinTestnet4" | "bitcoinSignet" => {
@@ -516,11 +513,8 @@ fn validate_cardano_address(value: &str) -> AddressValidationResult {
 
 /// A Sui coin type: a package address, or `0xADDR::module::NAME`.
 ///
-/// The composer judged this with `hasPrefix("0x") && (contains("::") || count > 2)`,
-/// which accepts `0xzz` and `0x::::` and rejects nothing that starts with two
-/// characters — so a mistyped package address was stored as a coin type and
-/// every balance read for it failed. Same shape as the Aptos rule beside it:
-/// the address component has to be an address.
+/// Same shape as the Aptos rule beside it: the address component has to be
+/// an address, so a mistyped package address is refused rather than stored.
 fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
     let normalized = value.trim().to_lowercase();
     if normalized.is_empty() {

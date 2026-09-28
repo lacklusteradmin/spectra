@@ -19,18 +19,10 @@ pub struct HistoryCursor {
 }
 
 /// How much history pagination to forget.
-///
-/// Four methods stood for these four cases — `reset_history`,
-/// `reset_history_for_wallet`, `reset_history_for_chain`, `reset_all_history`
-/// — which is one question with the answer in the method name.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HistoryScope {
     /// One wallet's feed on one chain: pull-to-refresh, or a send confirming.
     ChainAndWallet { chain_id: String, wallet_id: String },
-    /// Every chain for one wallet: the wallet was deleted, or fully refreshed.
-    Wallet { wallet_id: String },
-    /// Every wallet on one chain: a re-org, or an endpoint switch.
-    Chain { chain_id: String },
     /// Everything: account wipe.
     All,
 }
@@ -70,17 +62,13 @@ impl WalletService {
     ///
     /// Internal: the commands that invalidate a feed — removing a wallet,
     /// switching a family's network, changing Bitcoin's Esplora source — reset
-    /// it where they commit. The app issued those resets itself afterwards.
+    /// it where they commit.
     pub fn reset_history(&self, scope: HistoryScope) {
         match scope {
             HistoryScope::ChainAndWallet {
                 chain_id,
                 wallet_id,
             } => self.history_pagination.reset(&chain_id, &wallet_id),
-            HistoryScope::Wallet { wallet_id } => {
-                self.history_pagination.reset_all_for_wallet(&wallet_id)
-            }
-            HistoryScope::Chain { chain_id } => self.history_pagination.reset_chain(&chain_id),
             HistoryScope::All => self.history_pagination.reset_all(),
         }
     }
@@ -105,11 +93,7 @@ impl WalletService {
     /// Record the page just fetched, and whether it was the last one.
     ///
     /// For the page-based family (EVM), where a page number is absolute rather
-    /// than a cursor. This was two exports — `set_history_page` and
-    /// `set_history_exhausted` — and the caller invoked both, in that order,
-    /// at its one call site: the page it fetched and whether the page came back
-    /// short. Two writes to one three-field cursor, so two chances for a reader
-    /// to see half an update.
+    /// than a cursor. One write, so a reader never sees half an update.
     pub fn set_history_page(
         &self,
         chain_id: String,
@@ -145,9 +129,7 @@ mod tests {
                 .history_cursor("ethereum".into(), "a".into())
                 .is_exhausted
         );
-        service.reset_history(HistoryScope::Wallet {
-            wallet_id: "a".into(),
-        });
+        service.history_pagination.reset_all_for_wallet("a");
         assert_eq!(
             service
                 .history_cursor("ethereum".into(), "a".into())

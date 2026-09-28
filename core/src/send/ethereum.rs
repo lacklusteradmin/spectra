@@ -128,13 +128,10 @@ pub struct EvmSendAssemblyInput {
     pub from_address: String,
     // Caller passes the already-resolved destination (ENS resolved in Swift).
     pub resolved_destination: String,
-    /// The amount as the user typed it, exactly. This was an `f64`, so an
-    /// amount of `1.1` assembled 1100000000000000089 wei while `execute_send`
-    /// — which has always taken the decimal string — signed
-    /// 1100000000000000000. The preview priced one transaction and the send
-    /// made another. A decimal string is also the only form that can carry an
-    /// 18-decimal amount at all: an `f64` runs out of significant digits six
-    /// orders of magnitude above a wei.
+    /// The amount as the user typed it, exactly: the decimal string
+    /// `execute_send` signs, so the preview prices the same transaction. An
+    /// `f64` would also run out of significant digits six orders of magnitude
+    /// above a wei.
     pub amount: String,
     /// Set for an ERC-20 transfer, and only then.
     pub token: Option<EvmSupportedToken>,
@@ -409,10 +406,8 @@ mod one_amount_one_conversion {
         .map(|assembly| assembly.value_wei)
     }
 
-    /// The amounts an `f64` gets wrong. Every one of these came out of
-    /// `format!("{:.18}", amount)` carrying the double's own error: `1.1`
-    /// assembled 89 wei above the amount typed, and the send then signed the
-    /// exact one — the preview priced a transaction that was never made.
+    /// The amounts an `f64` gets wrong. Each must become exactly its own
+    /// integer, so the preview prices the transaction the send makes.
     #[test]
     fn a_typed_decimal_becomes_exactly_its_own_integer() {
         for (typed, wei) in [
@@ -442,10 +437,8 @@ mod one_amount_one_conversion {
         assert_eq!(native_wei("0.000000000000000001").unwrap(), "1");
     }
 
-    /// Whatever the signing path refuses, the assembler refuses. Scientific
-    /// notation and over-precision both used to assemble: `parse` took `1e3`
-    /// as a thousand and `format!` truncated the extra digit, so a preview
-    /// succeeded for an amount `execute_send` would then reject.
+    /// Whatever the signing path refuses, the assembler refuses, scientific
+    /// notation and over-precision included.
     #[test]
     fn what_the_send_refuses_the_preview_refuses() {
         for refused in [
@@ -547,16 +540,10 @@ mod every_evm_chain_can_assemble {
         }
     }
 
-    /// A token is never assembled as the gas asset.
-    ///
-    /// `("Arbitrum", "ARB")` and `("Optimism", "OP")` were listed as native, so
-    /// a preview for either built a value transfer of that many ETH and
-    /// discarded the contract it had been given — a 21,000-gas estimate for a
-    /// transfer that is nearer 65,000, simulated against an ETH balance the
-    /// wallet may not have.
-    /// The asset is its deployment. A contract that is not the deployment
-    /// named, a contract handed with the gas asset, and a token with no
-    /// contract are all refused — whatever tickers they carry.
+    /// A token is never assembled as the gas asset. The asset is its
+    /// deployment: a contract that is not the deployment named, a contract
+    /// handed with the gas asset, and a token with no contract are all
+    /// refused — whatever tickers they carry.
     #[test]
     fn an_asset_is_its_deployment_not_its_ticker() {
         let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";

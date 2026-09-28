@@ -418,20 +418,14 @@ pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
     out
 }
 
-/// Normalize a dashboard asset's contract address for grouping/equality.
-/// The canonical form of a token's contract address or identifier on a chain.
+/// The canonical form of a token's contract address or identifier on a chain,
+/// for grouping and equality.
 ///
 /// Sui and Aptos have structured identifiers (`package::module::type`) with
 /// their own canonicalisation; everything else is the trimmed value lowercased.
 /// TON is the exception in the other direction: a jetton master address is
 /// case-significant base64, so lowercasing it produces an address that does not
 /// resolve.
-///
-/// This existed twice. `normalizedKnownTokenIdentifier` in `AppState` had its
-/// own copy — a twelve-name EVM arm, then Aptos, Sui, TON and a lowercase
-/// default — and the two disagreed about TON, which is the one chain where
-/// disagreeing changes the answer. One function, keyed by the chain, with the
-/// TON rule stated where the others are.
 pub fn normalize_token_identifier(
     contract_address: Option<String>,
     chain_id: String,
@@ -546,8 +540,7 @@ mod tests {
     ///
     /// TON is the arm worth stating: a jetton master address is
     /// case-significant base64, so the lowercase default would produce an
-    /// address that does not resolve. `normalizedKnownTokenIdentifier` in
-    /// Swift knew that and this function did not, until they became one.
+    /// address that does not resolve.
     #[test]
     fn token_identifier_normalisation_is_per_chain() {
         for chain in [

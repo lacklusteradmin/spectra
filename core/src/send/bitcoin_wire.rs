@@ -117,8 +117,7 @@ mod tests {
         );
     }
 
-    /// A txid that is not hex is an error, not an empty outpoint. Two of the
-    /// copies this replaced built a transaction around the empty case.
+    /// A txid that is not hex is an error, not an empty outpoint.
     #[test]
     fn a_bad_txid_is_refused() {
         assert!(decode_txid_le("not hex").is_err());

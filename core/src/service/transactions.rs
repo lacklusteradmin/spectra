@@ -155,11 +155,6 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Drop trackers for transactions that no longer exist.
-    /// Keep only these trackers and forget the rest.
-    ///
-    /// `clear_status_trackers()` was a second name for this with an empty list,
-    /// and one call site already spelled it that way.
     /// Drop trackers for transactions nothing polls any more.
     ///
     /// Refuses when no database is bound rather than reading "core holds no
@@ -167,10 +162,8 @@ impl WalletService {
     /// send from ever being polled again, where keeping a stale one costs a
     /// poll.
     ///
-    /// Took the ids to keep, which meant the front end filtered core's own
-    /// transaction table — by kind, by chain, by status, and by the chain's
-    /// `pending_status_poll` shape — and told core the answer. Every one of
-    /// those is core's, so core works it out.
+    /// Core works out which transactions are polled — by kind, chain, status
+    /// and the chain's `pending_status_poll` shape — from its own table.
     pub(crate) async fn prune_status_trackers(&self) -> Result<(), SpectraBridgeError> {
         let live: std::collections::HashSet<String> = self
             .transactions()
@@ -195,13 +188,13 @@ impl WalletService {
         Ok(())
     }
 
-    // Not exported: the pending-status poll is core's own loop now, and it
-    // is the only caller. It was an export because a front end drove the
-    // loop and asked for each piece.
     /// Which of `transaction_ids` are due for a confirmation poll now.
     ///
     /// An untracked transaction is always due — that is what makes a fresh
     /// launch re-poll everything pending.
+    ///
+    /// Not exported: the pending-status poll is core's own loop, and its only
+    /// caller.
     pub async fn transactions_due_for_status_poll(
         &self,
         transaction_ids: Vec<String>,
@@ -216,15 +209,10 @@ impl WalletService {
             .collect()
     }
 
-    // Not exported: the pending-status poll is core's own loop now, and it
-    // is the only caller. It was an export because a front end drove the
-    // loop and asked for each piece.
     /// Record the outcome of one confirmation poll.
     ///
-    /// Two methods before, and the success arm took `resolved_status_confirmed`
-    /// and `resolved_status_pending` as separate booleans — a three-state
-    /// written as two, so "confirmed and pending" was representable and had no
-    /// meaning. The outcome is the outcome.
+    /// Not exported: the pending-status poll is core's own loop, and its only
+    /// caller.
     pub async fn record_status_poll(&self, transaction_id: String, outcome: StatusPollOutcome) {
         let now_unix = crate::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
@@ -259,19 +247,8 @@ impl WalletService {
         trackers.insert(transaction_id, next);
     }
 
-    // Not exported: the pending-status poll is core's own loop now, and it
-    // is the only caller. It was an export because a front end drove the
-    // loop and asked for each piece.
-    /// Decide what each resolved pending transaction becomes, advancing the
-    /// confirmation trackers as a side effect.
     /// Apply one chain's resolved statuses, store the results, and report
     /// what changed.
-    ///
-    /// The caller used to send core an input per transaction built from its own
-    /// projection — old status, old failure reason, old confirmations — take
-    /// back a decision per transaction, apply it to build new records, and
-    /// upsert those into core. Every value in that round trip except the
-    /// resolutions came from the store it ended up back in.
     ///
     /// A transaction given up on stores `FAILURE_REASON_STUCK`, a code. The
     /// text a user reads is localized at render — a localized string written
@@ -463,12 +440,8 @@ impl WalletService {
     }
 }
 
-/// What one confirmation poll found.
-///
-/// Replaces a pair of methods and, inside the success arm, a pair of booleans:
-/// `resolved_status_confirmed` and `resolved_status_pending` encoded three
-/// states in two flags, so "confirmed and pending" type-checked and meant
-/// nothing.
+/// What one confirmation poll found: one of three outcomes, so no
+/// meaningless combination can be expressed.
 #[derive(Debug, Clone, Copy, uniffi::Enum)]
 pub enum StatusPollOutcome {
     /// The provider reported the transaction confirmed.
@@ -492,7 +465,7 @@ mod audit_fix5_tests {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn audit_fix5_concurrent_history_merges_keep_one_identity_per_wallet() {
+    async fn concurrent_history_merges_keep_one_identity_per_wallet() {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "atomic-history-{}.sqlite",

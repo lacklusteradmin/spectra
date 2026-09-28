@@ -35,20 +35,6 @@ diagnostics_record! {
 
 diagnostics_record! {
     /// One wallet's history-run result on one chain.
-    ///
-    /// There were five of these — `UtxoHistoryDiagnostics`,
-    /// `SimpleHistoryDiagnostics`, `SolanaHistoryDiagnostics`,
-    /// `TronHistoryDiagnostics` and
-    /// `EthereumTokenTransferHistoryDiagnostics`. Three were the same four
-    /// fields: Solana's was Simple with `transaction_count` spelled
-    /// `rpc_count`, and Tron's was Simple plus a second count. UTXO's added a
-    /// wallet id and a cursor. Only the EVM one had a different shape, and its
-    /// difference was four `(count, error)` pairs flattened into eight fields
-    /// plus two numbers derivable from the other two.
-    ///
-    /// The split cost five registries, five JSON builders, five export wrapper
-    /// types, a `DiagnosticsShape` enum threaded through all of them, and a
-    /// Swift call site that had to know which shape its chain used.
     HistoryDiagnostics {
         #[serde(rename = "walletID")]
         wallet_id: String,
@@ -126,8 +112,7 @@ mod tests {
         assert_eq!(reencoded, reencoded2);
     }
 
-    /// One record, one round-trip. There were five, and the ten `Simple*`
-    /// aliases before them.
+    /// One record, one round-trip.
     #[test]
     fn history_roundtrip() {
         roundtrip::<HistoryDiagnostics>(
@@ -144,8 +129,7 @@ mod tests {
         );
     }
 
-    /// The two numbers the old EVM record stored beside the ones they came
-    /// from are derived, so they cannot disagree with them.
+    /// The two numbers derived from the counts cannot disagree with them.
     #[test]
     fn undecoded_and_completeness_are_derived() {
         let row = |scanned: Option<i32>, decoded: i32| HistoryDiagnostics {

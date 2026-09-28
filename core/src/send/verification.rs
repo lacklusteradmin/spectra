@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub enum CoreSendVerificationStatus {
-    Verified,
     Deferred,
     Failed { message: String },
 }
@@ -19,15 +18,14 @@ pub struct SendVerificationNotice {
     pub is_warning: bool,
 }
 
-/// Not exported: the app only ever asked this with `Verified`, after a send it
-/// had not verified. What a front end shows comes from the stored record,
-/// through [`verification_notice_for_last_sent`].
-pub fn verification_notice_for_status(
+/// The notice for a send the network has not yet shown as settled. What a
+/// front end shows comes from the stored record, through
+/// [`verification_notice_for_last_sent`].
+fn verification_notice_for_status(
     status: CoreSendVerificationStatus,
     chain_id: String,
 ) -> SendVerificationNotice {
     match status {
-        CoreSendVerificationStatus::Verified => SendVerificationNotice::default(),
         CoreSendVerificationStatus::Deferred => SendVerificationNotice {
             notice: Some(format!(
                 "Broadcast succeeded, but {} network verification is still catching up. Status will update shortly.",
@@ -80,8 +78,7 @@ impl From<&crate::store::persistence_models::CorePersistedTransactionRecord>
 /// Returns the default (no notice) for anything that isn't a hashed send.
 ///
 /// Not exported: `WalletService::send_verification_notice` reads the stored
-/// record. The app used to rebuild this snapshot from its own copy of the
-/// record, with the kind and status spelled as strings, and hand it back.
+/// record.
 pub fn verification_notice_for_last_sent(
     snapshot: Option<LastSentTransactionSnapshot>,
 ) -> SendVerificationNotice {
@@ -137,14 +134,6 @@ mod tests {
             receipt_block_number: None,
             confirmation_count: None,
         }
-    }
-
-    #[test]
-    fn verified_clears_notice() {
-        let n =
-            verification_notice_for_status(CoreSendVerificationStatus::Verified, "ethereum".into());
-        assert!(n.notice.is_none());
-        assert!(!n.is_warning);
     }
 
     #[test]

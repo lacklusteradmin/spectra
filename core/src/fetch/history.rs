@@ -205,13 +205,6 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
 
         // Every EVM chain. `EvmHistoryEntry` is one shape for all of them,
         // which is why this is a guard rather than twenty-three names.
-        //
-        // There was no arm here at all: fifteen chains had one and the EVM
-        // family fell to `_ => vec![]`, so `fetch_normalized_history` returned
-        // nothing for Ethereum and every chain like it however well the fetch
-        // itself had gone. It was invisible while the fetch was also returning
-        // nothing — the explorer refusing without an API key — and only shows
-        // up once that is fixed.
         c if c.is_evm() => HistoryShape {
             block_height: Some("block_number"),
             ..HistoryShape::confirmed_native("value_wei").with_counterparty("from", "to")
@@ -639,8 +632,7 @@ mod normalize_chain_history_tests {
             r#"[{"kind":"send","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_id":"tron","amount":3.5,"counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         // The token catalog names a TRC-20, so every token on the chain has a
-        // name. A four-entry table in this file used to, and TrueUSD was one
-        // of the ones it did not reach.
+        // name.
         (
             "tron",
             r#"[{"txid":"i3","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"2.0","symbol":"TUSD","contract":"TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4","is_incoming":true}]"#,
@@ -758,8 +750,7 @@ mod normalize_chain_history_tests {
     }
 
     /// A testnet's client is its mainnet's client returning the same JSON, so
-    /// its history has to normalize the same way. Every UTXO testnet used to
-    /// fall through to an empty result.
+    /// its history has to normalize the same way.
     #[test]
     fn testnets_normalize_like_their_mainnets() {
         for (testnet, mainnet) in [
@@ -875,10 +866,9 @@ mod iso8601_tests {
         }
     }
 
-    /// The regression: byte-indexing a `&str` at 4, 7, 10, 13 and 16 panics
-    /// when one of those offsets falls inside a multi-byte character. These
-    /// are all at least nineteen bytes, so the old length guard let every one
-    /// of them through and core aborted on a provider's response.
+    /// Byte-indexing a `&str` at 4, 7, 10, 13 and 16 panics when one of those
+    /// offsets falls inside a multi-byte character. These are all at least
+    /// nineteen bytes, and each must be refused rather than abort core.
     #[test]
     fn a_non_ascii_response_is_refused_and_does_not_panic() {
         for hostile in [
@@ -917,7 +907,7 @@ mod iso8601_tests {
     }
 
     /// A leap second is a real reading at :60, and the epoch itself is a real
-    /// timestamp rather than the failure value it used to share.
+    /// timestamp rather than a failure value.
     #[test]
     fn leap_seconds_and_the_epoch_itself_parse() {
         assert_eq!(

@@ -35,18 +35,6 @@ pub struct IcpSendResult {
     pub txid: String,
 }
 
-impl super::SignedSubmission for IcpSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        ""
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::None
-    }
-}
-
 // ── Client (Rosetta-based for read, direct for write)
 
 pub struct IcpClient {
@@ -147,10 +135,7 @@ impl IcpClient {
 /// fee excluded.
 ///
 /// Read as the account's own balance change across the transfer, mint and
-/// burn operations. The amount used to be whatever negative operation the
-/// transaction had and the direction whether the positive one named the
-/// account, so a mint, a burn or an approval — which has neither — read as a
-/// 0 ICP send.
+/// burn operations, so an approval — which moves nothing — is not a send.
 ///
 /// Every ledger block has a time, so a transaction without one was misread.
 fn icp_history_from_transactions(

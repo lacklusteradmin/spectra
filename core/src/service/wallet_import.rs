@@ -88,10 +88,9 @@ impl WalletService {
             let mut resolved_addresses =
                 crate::derivation::import::WalletImportAddresses::default();
             // Derive here when the caller did not — from a seed phrase or from a
-            // private key, whichever this import carries. Both front ends used to
-            // derive first and hand the result over; the CLI could only do one
-            // chain, so the multi-chain rule — every EVM chain derives from
-            // Ethereum's derivation path — existed on the iOS side alone.
+            // private key, whichever this import carries — so the multi-chain
+            // rule (every EVM chain derives from Ethereum's derivation path)
+            // holds for every front end.
             if !commit.request.is_watch_only_import {
                 let key = commit
                     .private_key
@@ -156,8 +155,7 @@ impl WalletService {
             // a testnet address arrives in the mainnet slot and only the mode says
             // how to read it.
             //
-            // The selection is core's setting, read here. The app sent its copy of
-            // it on the commit.
+            // The selection is core's setting, read here.
             let typed_networks = crate::derivation::import::ImportNetworks {
                 by_family: this.app_state().await.settings.selected_chain_by_family,
             };

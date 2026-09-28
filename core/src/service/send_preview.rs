@@ -81,17 +81,8 @@ impl WalletService {
 impl WalletService {
     /// Bitcoin's fee rate, in sat/vB.
     ///
-    /// Split out of a `fetch_fee_estimate` that returned three different JSON
-    /// shapes by chain — this one, EVM's `EvmFeeEstimate`, and a flat native
-    /// amount for everyone else — as a `String` its callers parsed back. The
-    /// EVM arm had no reachable caller at all: EVM previews build their own
-    /// `EvmClient` and call `fetch_fee_estimate()` on it directly, so nothing
-    /// ever asked this function for an EVM chain. What is left is two shapes
-    /// with one caller each, so each caller gets its own typed function and
-    /// neither goes through JSON.
-    ///
     /// `chain` is the Bitcoin network to quote for: a testnet's fees are its
-    /// own, and reading mainnet's for it was a number about a different chain.
+    /// own.
     pub(crate) async fn bitcoin_fee_rate(
         &self,
         chain: Chain,
@@ -215,11 +206,9 @@ impl WalletService {
 
     /// Quote an EVM send: nonce, fee, gas limit, and what is spendable.
     ///
-    /// "Spendable" is a fact about the asset the amount field moves, and this
-    /// used to answer it with the native balance whatever was being sent — so
-    /// a USDC send offered the sender's ETH balance as its maximum, rendered
-    /// with USDC's own formatter. Gas is always paid in the chain's coin, but
-    /// the amount is not always denominated in it:
+    /// "Spendable" is a fact about the asset the amount field moves. Gas is
+    /// always paid in the chain's coin, but the amount is not always
+    /// denominated in it:
     ///
     /// - a native transfer spends one asset for both, so its spendable is
     ///   `balance - fee`;
@@ -354,9 +343,7 @@ impl WalletService {
                 return Err("token identifier required".into());
             }
             // TRX is the fee asset as well as the amount, so the fee comes out
-            // of what is spendable. Only this branch needs the TRX balance;
-            // reading it for a token send too was a wasted call whose result
-            // nothing looked at.
+            // of what is spendable. Only this branch needs the TRX balance.
             let trx_balance = client
                 .fetch_balance(&address)
                 .await

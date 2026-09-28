@@ -223,23 +223,17 @@ pub struct WalletService {
     ///
     /// Not persisted, and that is the whole difference from the keypool: a
     /// restart should refresh, which is exactly what an empty clock already
-    /// means. It was five `Date?` properties and two dictionaries on the iOS
-    /// side, handed back to core as arguments on every scheduling question —
-    /// so the answer was only as current as the caller's copy, and the CLI,
-    /// which has no such properties, could not ask the question at all.
+    /// means. Core holds it so every front end, the CLI included, can ask the
+    /// scheduling question.
     pub(crate) refresh_clock: Arc<AsyncRwLock<crate::fetch::refresh_policy::RefreshClock>>,
 }
 #[uniffi::export]
 impl WalletService {
     #[uniffi::constructor]
     pub fn new(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
-        // A library installing a global subscriber is already a liberty; one
-        // that writes to *stdout* at *debug* is a bug. It corrupted every
-        // `spectra --json` run — core's connection logs landed in the middle of
-        // the document — and a caller has no way to opt out of a `OnceLock`.
-        //
-        // Now: stderr, and quiet unless asked. `RUST_LOG=debug` restores what
-        // debug builds used to do by default.
+        // Log to stderr, and stay quiet unless `RUST_LOG` asks: a library
+        // writing to stdout would corrupt every `spectra --json` document, and
+        // a caller cannot opt out of a `OnceLock`.
         static LOGGING: std::sync::OnceLock<()> = std::sync::OnceLock::new();
         LOGGING.get_or_init(|| {
             use tracing_subscriber::{EnvFilter, fmt};

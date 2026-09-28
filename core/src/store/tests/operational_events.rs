@@ -42,8 +42,7 @@ async fn events_survive_reopening_the_database() {
     let _ = std::fs::remove_file(&db);
 }
 
-/// Newest first, and the cap holds — the property the planner stated but
-/// could not enforce, because a caller wrote the answer down.
+/// Newest first, and the cap holds.
 #[tokio::test]
 async fn the_log_is_newest_first_and_bounded() {
     let service = WalletService::new(Vec::new()).expect("service");

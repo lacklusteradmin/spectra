@@ -4,25 +4,15 @@ use super::*;
 impl WalletService {
     /// Does this destination look unused for the asset this holding sends?
     ///
-    /// Named by wallet and holding, not by chain and token descriptor. Which
-    /// contract a symbol means is a catalog question and the catalog is core's,
-    /// so the caller that used to answer it was reading core's token
-    /// preferences to hand them straight back: the composer decided native vs
-    /// token, built the descriptor, clamped its decimals into a `u8`, and
-    /// silently showed no verdict at all when it could not identify the token.
+    /// Named by wallet and holding, not by chain and token descriptor: which
+    /// contract a symbol means is a catalog question, and the catalog is
+    /// core's.
     ///
-    /// Swift also ran the read itself as four chain arms — Bitcoin, "every EVM
-    /// chain", Tron, and everything else — that fetched different things and
-    /// worded the answer three different ways. Two of the three wordings were
-    /// built by string interpolation and never reached the locale files, so a
-    /// Tron or EVM token send showed an English warning in a Chinese app.
-    ///
-    /// The history signal is one question now: has this address transacted on
+    /// The history signal is one question: has this address transacted on
     /// this chain. EVM adds the nonce because the balance probe returns it
-    /// anyway and it needs no explorer key. Bitcoin used to ask
-    /// `utxo_count > 0`, which is not that question — an address that received
-    /// and later spent everything has history and no UTXOs, and got a warning
-    /// stating it had "no transaction history", which was false.
+    /// anyway and it needs no explorer key. A UTXO count is not that question
+    /// — an address that received and later spent everything has history and
+    /// no UTXOs.
     ///
     /// `destination_input` is what the user typed. Resolving it here rather
     /// than trusting a caller-supplied address keeps the probe asking about
@@ -33,9 +23,8 @@ impl WalletService {
     /// chain's own asset or to one tracked token. A token the user does not
     /// track has no descriptor and is a refusal rather than a fallback: the
     /// probe would otherwise read the *chain's* balance and report it as the
-    /// token's, which is what three of Swift's four arms did, or read nothing
-    /// and show no verdict, which is what the EVM arm did. Neither says "we
-    /// could not check".
+    /// token's, or read nothing and show no verdict. Neither says "we could
+    /// not check".
     pub async fn send_destination_risk(
         &self,
         wallet_id: String,
@@ -196,9 +185,8 @@ pub(super) fn destination_probe_asset(
                 ),
             }
         })?;
-    // The catalog's precision, not a clamp of it. The caller that used to build
-    // this descriptor wrote `UInt8(clamping:)`, which turns an impossible 300
-    // into a plausible 255 and reads a balance off by 45 decimal places.
+    // The catalog's precision, not a clamp of it: clamping would turn an
+    // impossible 300 into a plausible 255.
     let decimals =
         u8::try_from(identity.decimals).map_err(|_| SpectraBridgeError::InvalidInput {
             message: format!(

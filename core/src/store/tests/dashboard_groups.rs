@@ -33,9 +33,8 @@ async fn service_with(
 /// A row is per asset: the same asset on two chains is one row, with the
 /// amounts summed and a breakdown of where it is held.
 ///
-/// Was per (chain, asset) — ETH on Ethereum and ETH on Arbitrum were two
-/// rows. Every EVM L2 carries Ethereum's coingecko id, which is what makes
-/// them one asset.
+/// Every EVM L2 carries Ethereum's coingecko id, which is what makes them one
+/// asset.
 #[tokio::test]
 async fn a_row_is_per_asset_and_breaks_down_by_chain() {
     let service = service_with(vec![
@@ -189,12 +188,8 @@ async fn a_testnet_row_has_no_value() {
     );
 }
 
-/// A pinned asset the user holds nowhere is a row that holds nothing.
-///
-/// `holdings` used to carry a synthesized entry so the row had a name, which
-/// told the reader they held zero of the asset on whichever chain the catalog
-/// listed first — a place they had never been shown. The name is `identity`'s
-/// job; `holdings` says only where it is actually held.
+/// A pinned asset the user holds nowhere is a row that holds nothing: the name
+/// is `identity`'s job, and `holdings` says only where it is actually held.
 #[tokio::test]
 async fn a_pinned_asset_held_nowhere_holds_nothing() {
     let service = service_with(vec![(

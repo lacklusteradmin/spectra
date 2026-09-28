@@ -126,9 +126,8 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// A history run writes its own rows and the chain's health. The app did this
-/// from the result of the call, on the two paths it drove; the scheduled
-/// refresh core runs recorded nothing.
+/// A history run writes its own rows and the chain's health, on every path
+/// including the scheduled refresh.
 #[tokio::test]
 async fn a_history_run_records_its_rows_and_the_chains_health() {
     use crate::registry::Chain;

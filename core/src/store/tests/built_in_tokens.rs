@@ -73,3 +73,61 @@ async fn merging_keeps_what_the_user_chose() {
         "the merge re-enabled a token the user turned off"
     );
 }
+
+/// A built-in row is not the user's to remove, and toggling one deployment
+/// toggles the token on every network it is deployed to.
+#[test]
+fn built_ins_toggle_as_one_token_and_cannot_be_removed() {
+    use crate::store::state::{
+        CoreAppState, CoreTokenPreferenceKey, StateEvent, TokenPreferenceRejection,
+        reduce_state_in_place,
+    };
+    let mut state = CoreAppState::default();
+    reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+    let usdc = state
+        .token_preferences
+        .iter()
+        .find(|e| e.token.symbol == "USDC" && e.token.chain_id == "ethereum")
+        .expect("USDC is built in")
+        .token
+        .clone();
+    let count = state.token_preferences.len();
+
+    let events = reduce_state_in_place(
+        &mut state,
+        StateCommand::RemoveCustomToken {
+            chain_id: usdc.chain_id.clone(),
+            contract: usdc.contract.clone(),
+        },
+    );
+    assert_eq!(
+        events.first(),
+        Some(&StateEvent::TokenPreferenceRejected {
+            reason: TokenPreferenceRejection::BuiltInToken
+        })
+    );
+    assert_eq!(state.token_preferences.len(), count);
+
+    reduce_state_in_place(
+        &mut state,
+        StateCommand::SetTokenPreferencesEnabled {
+            tokens: vec![CoreTokenPreferenceKey {
+                chain_id: usdc.chain_id,
+                contract: usdc.contract,
+            }],
+            is_enabled: false,
+        },
+    );
+    assert_eq!(
+        state.token_preferences.len(),
+        count,
+        "untracking is not deleting"
+    );
+    let deployments: Vec<_> = state
+        .token_preferences
+        .iter()
+        .filter(|e| e.token.token_id == usdc.token_id)
+        .collect();
+    assert!(deployments.len() > 2);
+    assert!(deployments.iter().all(|e| !e.is_enabled));
+}

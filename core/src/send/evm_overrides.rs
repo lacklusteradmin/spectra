@@ -110,7 +110,6 @@ impl EvmSendOverridesInput {
             gas_limit,
             calldata,
             access_list,
-            sign_only: self.sign_only.unwrap_or(false),
             gas_buffer_pct: None,
         })
     }
@@ -132,7 +131,6 @@ mod tests {
                 "11".repeat(20),
                 "22".repeat(32)
             )),
-            sign_only: Some(true),
             ..Default::default()
         };
         let value = input.resolve(Chain::Ethereum).unwrap();
@@ -141,7 +139,6 @@ mod tests {
         assert_eq!(value.calldata.unwrap(), [1, 2, 255]);
         assert_eq!(value.access_list[0].address, [0x11; 20]);
         assert_eq!(value.access_list[0].storage_keys, vec![[0x22; 32]]);
-        assert!(value.sign_only);
     }
 
     #[test]

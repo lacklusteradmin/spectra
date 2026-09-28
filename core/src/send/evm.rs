@@ -147,9 +147,6 @@ impl EvmClient {
 ///   arbitrary contract calls (approve, swap, multicall, etc.).
 /// * `access_list` — EIP-2930 access list. Pre-warms storage slots to reduce
 ///   gas on contracts with known read patterns.
-/// * `sign_only` — build and sign the transaction but do not broadcast it.
-///   The signed raw transaction is returned in `EvmSendResult.raw_tx_hex`
-///   and `txid` is left empty.
 #[derive(Debug, Clone, Default)]
 pub struct EvmSendOverrides {
     pub nonce: Option<u64>,
@@ -158,7 +155,6 @@ pub struct EvmSendOverrides {
     pub gas_limit: Option<u64>,
     pub calldata: Option<Vec<u8>>,
     pub access_list: Vec<AccessListEntry>,
-    pub sign_only: bool,
     /// Percentage buffer added to the `eth_estimateGas` result when
     /// `gas_limit` is not pinned. Default `20` (i.e. +20%).
     pub gas_buffer_pct: Option<u32>,
@@ -468,7 +464,6 @@ mod gas_tests {
                         address: [0x11; 20],
                         storage_keys: vec![[0x22; 32]],
                     }],
-                    sign_only: true,
                     ..Default::default()
                 };
                 let data = if token {
@@ -513,7 +508,6 @@ mod gas_tests {
                         max_fee_per_gas_wei: Some(2),
                         max_priority_fee_per_gas_wei: Some(1),
                         gas_limit: Some(gas),
-                        sign_only: true,
                         ..Default::default()
                     },
                 )

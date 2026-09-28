@@ -31,32 +31,15 @@ pub enum PriceProvider {
     CoinPaprika,
 }
 
-impl PriceProvider {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::CoinGecko => "CoinGecko",
-            Self::CoinPaprika => "CoinPaprika",
-        }
-    }
-}
-
 /// Fiat-rate providers, likewise in preference order.
 ///
-/// Two, where there were four. ExchangeRate.host moved behind an API key: its
-/// `/live` endpoint answers `200` with `{"success":false,"error":{"code":101,
-/// "type":"missing_access_key"}}`, and decoding `quotes` as an optional field
-/// turned that into an empty success — an arm that quoted nothing and did not
-/// even reach the failure list a total outage is reported from. Frankfurter
-/// serves ECB reference rates, which do not list AED, so it could not cover
-/// [`crate::store::state::FIAT_CURRENCY_CODES`] however healthy it was.
-///
-/// The two left both quote every code in that list, keyless, from independent
-/// infrastructure — er-api's own API and a jsDelivr CDN — and agreed to within
-/// 0.2% when this was cut. Merging here is not the union it is for spot
-/// prices, where a second provider lists coins the first does not: every
-/// provider quotes the same dozen currencies, so a third and fourth arm buy
-/// availability alone, against a number that moves once a day, refreshes every
-/// six hours, and falls back to the last good rate when no one answers.
+/// Both quote every [`crate::store::state::FiatCurrency`], keyless, from
+/// independent infrastructure — er-api's own API and a jsDelivr CDN. Merging
+/// here is not the union it is for spot prices, where a second provider lists
+/// coins the first does not: every provider quotes the same currencies, so a
+/// further arm would buy availability alone, against a number that moves once
+/// a day, refreshes every six hours, and falls back to the last good rate when
+/// no one answers.
 const FIAT_RATE_PROVIDERS: &[FiatRateProvider] =
     &[FiatRateProvider::OpenER, FiatRateProvider::FawazAhmed];
 
@@ -66,23 +49,11 @@ pub enum FiatRateProvider {
     FawazAhmed,
 }
 
-impl FiatRateProvider {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::OpenER => "Open ER",
-            Self::FawazAhmed => "Fawaz Ahmed Currency API",
-        }
-    }
-}
-
 // ── Inputs / outputs
 
 /// One coin the caller wants priced. `holding_key` is the caller's own
-/// identifier, returned in the quote map. Each provider has its own explicit id.
-///
-/// It also carried the ticker symbol, for providers to match on when the id
-/// missed. Nothing matches on symbol any more, so a front end no longer sends
-/// one — see [`PRICE_PROVIDERS`].
+/// identifier, returned in the quote map. Each provider has its own explicit
+/// id; nothing matches on ticker symbol — see [`PRICE_PROVIDERS`].
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceRequestCoin {
@@ -416,8 +387,7 @@ mod merging_beats_choosing {
     }
 
     /// Coverage is the union: a coin only one provider lists still gets a
-    /// price. Under the old single-select this depended on which provider the
-    /// user had picked in Settings.
+    /// price.
     #[test]
     fn every_provider_contributes_what_only_it_has() {
         let merged = merge_in_preference_order(
@@ -450,8 +420,7 @@ mod merging_beats_choosing {
     }
 
     /// A provider that fails contributes nothing and does not fail the fetch —
-    /// that is the whole point of asking more than one. Under the old code this
-    /// was an `Err` all the way to the caller and no prices at all.
+    /// that is the whole point of asking more than one.
     #[test]
     fn one_failure_does_not_lose_the_others_answers() {
         let merged = merge_in_preference_order(

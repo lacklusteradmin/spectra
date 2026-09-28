@@ -145,9 +145,6 @@ impl WalletService {
     /// Write what a history run found where the diagnostics screen reads it:
     /// one row per wallet, and whether the chain is degraded or healthy.
     ///
-    /// The app did this from the result of the call — copying each row back
-    /// through `diagnostics_record` and deciding health itself — on the two
-    /// paths it drove, and nothing did it on the scheduled refresh core runs.
     /// A diagnostics write failing does not fail the refresh it describes.
     pub(crate) async fn record_history_run(
         &self,

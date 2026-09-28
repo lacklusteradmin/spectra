@@ -9,10 +9,6 @@ use std::sync::Mutex;
 use super::types::*;
 
 /// Per-wallet history diagnostics, keyed by chain then wallet.
-///
-/// One map. There were five, one per record shape, plus a `DiagnosticsShape`
-/// enum to pick between them and five exported writers for callers to pick
-/// between by hand.
 #[derive(Default)]
 struct DiagnosticsRegistry {
     history: HashMap<String, HashMap<String, HistoryDiagnostics>>,
@@ -38,8 +34,7 @@ pub fn diagnostics_all(chain_id: String) -> HashMap<String, HistoryDiagnostics> 
 
 /// Record one wallet's history-diagnostics row for a chain.
 ///
-/// Internal: `refresh_history` records its own rows. It was exported for the
-/// app to copy them back in from the result of that same call.
+/// Internal: `refresh_history` records its own rows.
 pub fn diagnostics_record(chain_id: String, entry: HistoryDiagnostics) {
     registry()
         .lock()
@@ -76,7 +71,7 @@ pub fn diagnostics_run_summary(chain_id: String) -> DiagnosticsRunSummary {
 
 /// Drop every diagnostics row a wallet left behind, on every chain.
 ///
-/// Internal: removing a wallet does it, where the app used to call it after.
+/// Internal: removing a wallet does it.
 pub fn diagnostics_forget_wallet(wallet_id: String) {
     let mut reg = registry().lock().unwrap();
     for by_chain in reg.history.values_mut() {
@@ -181,8 +176,7 @@ mod tests {
         diagnostics_clear_all();
     }
 
-    /// Two chains that used to live in the same typed map now live in the same
-    /// map full stop, and a wallet on both keeps a row on each.
+    /// A wallet on two chains keeps a row on each.
     #[test]
     fn one_wallet_on_two_chains_keeps_a_row_on_each() {
         let _g = test_lock();

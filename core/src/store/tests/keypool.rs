@@ -68,12 +68,8 @@ async fn keypool_survives_reopening_the_database() {
     let _ = std::fs::remove_file(&db);
 }
 
-/// The baseline is core's now, so a recorded owned address has to move it
-/// without anyone passing one in.
-///
-/// This is the property the old shape could not have: the caller supplied
-/// the baseline, so the reservation was only as current as the caller's
-/// copy of the owned-address table.
+/// The baseline is core's, so a recorded owned address has to move it without
+/// anyone passing one in.
 #[tokio::test]
 async fn a_recorded_owned_address_raises_the_baseline() {
     let service = WalletService::new(Vec::new()).expect("service");
@@ -97,6 +93,29 @@ async fn a_recorded_owned_address_raises_the_baseline() {
         reserved, 8,
         "index 7 was already handed out; the next receive index must clear it"
     );
+}
+
+/// An owned index past what the keypool can hand out refuses the
+/// reservation rather than wrapping to a reused index.
+#[tokio::test]
+async fn an_out_of_range_baseline_refuses_to_reserve() {
+    let service = WalletService::new(Vec::new()).expect("service");
+    service
+        .register_owned_address(
+            "w1".into(),
+            "bitcoin".into(),
+            "bc1qexample".into(),
+            None,
+            Some("external".into()),
+            Some(i64::MAX),
+        )
+        .await
+        .expect("register");
+    let refused = service
+        .reserve_receive_index("w1".into(), "bitcoin".into(), 1)
+        .await
+        .expect_err("an invalid baseline cannot be reserved from");
+    assert!(refused.to_string().contains("out of range"), "{refused}");
 }
 
 /// The table is core's, so it has to come back on its own.

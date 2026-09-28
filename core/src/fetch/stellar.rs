@@ -37,18 +37,6 @@ pub struct StellarSendResult {
     pub signed_xdr_b64: String,
 }
 
-impl super::SignedSubmission for StellarSendResult {
-    fn submission_id(&self) -> &str {
-        &self.txid
-    }
-    fn signed_payload(&self) -> &str {
-        &self.signed_xdr_b64
-    }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
-        super::SignedPayloadFormat::Base64
-    }
-}
-
 // ── Horizon API response types
 
 #[derive(Debug, Deserialize)]
@@ -175,10 +163,8 @@ impl StellarClient {
 /// The XLM each payment record moved for `address`.
 ///
 /// A `create_account` record carries its ends and amount as `funder`,
-/// `account` and `starting_balance`; read through the payment fields it was a
-/// 0 XLM send between empty addresses. A payment of an issued asset is not
-/// XLM and is left out rather than shown with the asset's amount under XLM's
-/// name.
+/// `account` and `starting_balance`. A payment of an issued asset is not XLM
+/// and is left out rather than shown with the asset's amount under XLM's name.
 fn stellar_history_from_payments(
     records: Vec<HorizonPaymentRecord>,
     address: &str,

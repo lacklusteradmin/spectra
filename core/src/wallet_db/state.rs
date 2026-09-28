@@ -3,10 +3,7 @@ use super::*;
 // ── App state (wallets + settings) ────────────────────────────────────────────
 //
 // This is the persistence layer for `store::state::CoreAppState` — the
-// chain-agnostic wallet model. Before it existed, `CoreAppState` had no home in
-// Rust at all: iOS persisted its own Swift-side model and the CLI wrote its own
-// `wallets.json`, so "the wallet list" had two incompatible on-disk shapes and
-// neither belonged to the core.
+// chain-agnostic wallet model.
 //
 // Storage follows the `history_records` house style: identity and query columns
 // are promoted, the rest of the record rides along as JSON in `payload`. Wallet

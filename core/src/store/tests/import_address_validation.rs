@@ -29,11 +29,8 @@ fn a_malformed_address_is_dropped_whatever_the_chain() {
 
 /// A valid address survives import and is stored in core's normal form.
 ///
-/// The fixture was `0x742D35CC…bC454E…` — arbitrary mixed case, which the
-/// validator accepted because it lowercased before looking. It is a
-/// **broken EIP-55 checksum** and is refused now, so the fixture is the
-/// all-uppercase form: no checksum to verify, still valid, and it still
-/// demonstrates the normalisation this test is about.
+/// The fixture is the all-uppercase form: no EIP-55 checksum to verify, still
+/// valid, and it still demonstrates the normalisation this test is about.
 #[test]
 fn a_valid_address_survives_and_is_normalised() {
     let (kept, rejected) = validated_addresses(&addresses(&[(
@@ -68,10 +65,9 @@ fn the_bitcoin_xpub_is_carried_through_untouched() {
 /// A derived address is mainnet-format even on a testnet import, so the
 /// slot map is judged against mainnet regardless of the selected mode.
 ///
-/// Derivation at import runs against the mainnet chain — `chainPaths` is
-/// keyed by mainnet display name — and the testnet address is re-derived
-/// for display. Judging this map by the selected network mode dropped
-/// every address on a testnet import and produced a wallet with none.
+/// Derivation at import runs against the mainnet chain, and the testnet
+/// address is re-derived for display. Judging this map by the selected
+/// network mode would drop every address on a testnet import.
 #[test]
 fn a_derived_address_is_kept_on_a_testnet_import() {
     let derived = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
@@ -183,11 +179,9 @@ mod watch_only {
     /// The import path and the send path must agree on what an address
     /// looks like once normalised.
     ///
-    /// They are two separate tables today — `validate_address` matches on
-    /// the validation kind, `normalize_address` on the chain display name.
-    /// iOS called the second (as `normalizedSendAddress`) before handing
-    /// addresses to the first. Deleting those calls is only safe while the
-    /// two agree, so this fails if they ever drift apart.
+    /// They are two separate tables — `validate_address` matches on the
+    /// validation kind, `normalize_address` on the chain display name — so
+    /// this fails if they ever drift apart.
     #[test]
     fn the_send_normaliser_and_the_import_normaliser_agree() {
         use crate::send::flow::normalized_send_address;

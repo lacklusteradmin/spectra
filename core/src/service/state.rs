@@ -446,8 +446,7 @@ impl WalletService {
             // History pagination and the diagnostics rows describe what was
             // fetched, so they go with what they were fetched for: a removed
             // wallet, a family whose network changed, and Bitcoin when its
-            // Esplora source did. The app issued these resets itself after
-            // each of those commands, and nothing else did.
+            // Esplora source did.
             for id in &removed {
                 service.history_pagination.reset_all_for_wallet(id);
                 crate::diagnostics::diagnostics_forget_wallet(id.clone());
@@ -539,10 +538,7 @@ mod pruning_reads_cores_own_tables {
 mod utxo_discovery_is_the_registrys_chain_set {
     use crate::registry::Chain;
 
-    /// The Swift table this replaced named five chains; the registry answers
-    /// for twelve. `deriveUTXOAddress` required both, so the table won and
-    /// discovery was dead on every UTXO testnet — the shape of bug rule 2
-    /// exists to stop.
+    /// Every UTXO testnet is in the discovery set its mainnet is in.
     #[test]
     fn the_testnets_are_in_the_set_their_mainnets_are_in() {
         for (mainnet, testnet) in [
@@ -606,8 +602,8 @@ mod utxo_discovery_is_the_registrys_chain_set {
 mod tests;
 
 #[cfg(test)]
-#[path = "state_performance_tests.rs"]
-mod performance_tests;
+#[path = "address_discovery_tests.rs"]
+mod address_discovery_tests;
 
 fn wallets_for_display(
     state: &CoreAppState,
@@ -667,11 +663,8 @@ fn derive_wallet_state(
             // Identity is per *network*: testnet BTC groups separately from
             // mainnet BTC and is quoted separately (which is to say, not).
             let identity_key = holding.deployment_id();
-            // `chain_backends()` was a 78-row table beside `chains.toml`,
-            // with the same 78 names and `Live` on every one — so
-            // "has a backend", "supports send", "supports receive" and "is
-            // a live chain" were four spellings of "the registry knows this
-            // chain". Verified identical before it was deleted.
+            // Whether a holding's chain is live, sendable or receivable is one
+            // question: does the registry know it.
             let chain_is_known = crate::registry::Chain::from_str_id(&holding.chain_id).is_some();
 
             if network.is_none_or(|chain| !chain.is_testnet())
