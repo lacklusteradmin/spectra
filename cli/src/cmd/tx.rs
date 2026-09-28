@@ -47,6 +47,9 @@ pub struct TxsArgs {
     oldest_first: bool,
     #[arg(long, default_value = "all", value_parser = ["all", "send", "receive", "pending"])]
     filter: String,
+    /// Leave out transfers below 0.00001 of their asset (zero-value and dust).
+    #[arg(long, requires = "page")]
+    hide_small_amounts: bool,
 
     /// Explicit read endpoint for the rechecked transaction's stored network.
     #[arg(long, requires = "recheck")]
@@ -1189,6 +1192,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             oldest_first: args.oldest_first,
             cursor: args.cursor,
             limit: args.limit,
+            hide_small_amounts: args.hide_small_amounts,
         }))?;
         out.text(|| println!("{page:?}"));
         out.emit(serde_json::json!({"ok":true,"actions":page.records.iter().map(|r| (&r.id, &r.actions)).collect::<std::collections::BTreeMap<_, _>>(),"page":page}));

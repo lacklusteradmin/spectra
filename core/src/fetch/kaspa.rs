@@ -44,11 +44,14 @@ struct ApiScriptPublicKey {
     script_public_key: String,
 }
 
+/// api.kaspa.org answers in snake_case. These were read as camelCase, so
+/// every field fell to its default: no transaction id, no block, and no
+/// address on any input or output.
 #[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
 struct ApiTxEntry {
     #[serde(default)]
     transaction_id: String,
+    /// Unix milliseconds.
     #[serde(default)]
     block_time: u64,
     #[serde(default)]
@@ -60,7 +63,6 @@ struct ApiTxEntry {
 }
 
 #[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
 struct ApiTxInput {
     #[serde(default)]
     previous_outpoint_address: Option<String>,
@@ -69,7 +71,6 @@ struct ApiTxInput {
 }
 
 #[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
 struct ApiTxOutput {
     #[serde(default)]
     amount: u64,
@@ -196,12 +197,14 @@ impl KaspaClient {
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<KasHistoryEntry>, String> {
         let txs: Vec<ApiTxEntry> = self
             .get(&format!(
-                "/addresses/{address}/full-transactions-page?limit=50"
+                // Without resolving previous outpoints the inputs name no
+                // address, so a send read as receiving its own change.
+                "/addresses/{address}/full-transactions-page?limit=50&resolve_previous_outpoints=light"
             ))
             .await?;
         Ok(txs
             .into_iter()
-            .map(|tx| {
+            .filter_map(|tx| {
                 let owned_in: i64 = tx
                     .inputs
                     .iter()
@@ -225,13 +228,13 @@ impl KaspaClient {
                     .map(|o| o.amount as i64)
                     .sum();
                 let net = owned_out - owned_in;
-                KasHistoryEntry {
+                (net != 0).then(|| KasHistoryEntry {
                     txid: tx.transaction_id,
                     block_daa_score: tx.accepting_block_blue_score.unwrap_or(0),
                     timestamp: tx.block_time,
                     amount_sompi: net,
-                    is_incoming: net >= 0,
-                }
+                    is_incoming: net > 0,
+                })
             })
             .collect())
     }
@@ -252,11 +255,7 @@ impl KaspaClient {
                     txid: tx.transaction_id,
                     confirmed,
                     block_height: tx.accepting_block_blue_score,
-                    block_time: if tx.block_time > 0 {
-                        Some(tx.block_time)
-                    } else {
-                        None
-                    },
+                    block_time: (tx.block_time > 0).then_some(tx.block_time / 1000),
                     confirmations: None,
                 })
             }
@@ -300,4 +299,35 @@ fn format_kas(sompi: u64) -> String {
     let frac_str = format!("{:08}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    /// The snake_case shape api.kaspa.org's `full-transactions-page` returns
+    /// with `resolve_previous_outpoints=light`.
+    #[test]
+    fn transactions_decode_from_the_apis_own_field_names() {
+        let tx: ApiTxEntry = serde_json::from_value(serde_json::json!({
+            "transaction_id": "2de3", "block_time": 1_772_543_921_441u64,
+            "accepting_block_blue_score": 369_401_244u64,
+            "inputs": [{"previous_outpoint_address": "kaspa:me", "previous_outpoint_amount": 50_960_108_648u64}],
+            "outputs": [
+                {"amount": 39_800_000_000u64, "script_public_key_address": "kaspa:them"},
+                {"amount": 11_160_106_612u64, "script_public_key_address": "kaspa:me"}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(tx.transaction_id, "2de3");
+        assert_eq!(tx.accepting_block_blue_score, Some(369_401_244));
+        assert_eq!(
+            tx.inputs[0].previous_outpoint_address.as_deref(),
+            Some("kaspa:me")
+        );
+        assert_eq!(
+            tx.outputs[1].script_public_key_address.as_deref(),
+            Some("kaspa:me")
+        );
+    }
 }

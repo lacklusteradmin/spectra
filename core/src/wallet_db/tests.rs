@@ -829,3 +829,63 @@ fn failed_history_commit_rolls_back_and_allows_retry() {
     history_upsert_batch(&db, &[row]).unwrap();
     assert_eq!(history_fetch_all(&db).unwrap().len(), 1);
 }
+
+/// `hide_small_amounts` leaves out transfers below the threshold, zero-value
+/// ones included, and keeps the threshold itself; a cursor from one setting
+/// does not continue the other.
+#[test]
+fn history_pages_can_hide_small_amounts() {
+    let db = tmp_db();
+    app_state_save(
+        &db,
+        &CoreAppState {
+            wallets: vec![wallet("w1", "bitcoin")],
+            ..CoreAppState::default()
+        },
+    )
+    .unwrap();
+    let rows: Vec<HistoryRecord> = [
+        ("zero", "0"),
+        ("dust", "0.000009"),
+        ("edge", "0.00001"),
+        ("one", "1"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (id, amount))| {
+        let mut row = history_record(id, "w1");
+        row.created_at = i as f64;
+        row.payload.amount = amount.to_string();
+        row.payload.created_at_unix = i as f64;
+        row
+    })
+    .collect();
+    history_upsert_batch(&db, &rows).unwrap();
+    let page = |hide_small_amounts: bool, cursor: Option<String>| {
+        history_page(
+            &db,
+            &crate::service::HistoryQuery {
+                hide_small_amounts,
+                cursor,
+                limit: 1,
+                ..Default::default()
+            },
+        )
+    };
+    let ids = |hide: bool| {
+        let mut ids = Vec::new();
+        let mut cursor = None;
+        loop {
+            let p = page(hide, cursor).unwrap();
+            ids.extend(p.records.into_iter().map(|r| r.id));
+            match p.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break ids,
+            }
+        }
+    };
+    assert_eq!(ids(false), ["one", "edge", "dust", "zero"]);
+    assert_eq!(ids(true), ["one", "edge"]);
+    let cursor = page(false, None).unwrap().next_cursor;
+    assert!(page(true, cursor).is_err());
+}

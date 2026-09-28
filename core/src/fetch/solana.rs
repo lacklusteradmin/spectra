@@ -20,20 +20,7 @@ pub struct SolanaBalance {
     pub sol_display: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SolanaHistoryEntry {
-    pub signature: String,
-    pub slot: u64,
-    pub timestamp: Option<i64>,
-    pub fee_lamports: u64,
-    pub is_incoming: bool,
-    pub amount_lamports: u64,
-    pub from: String,
-    pub to: String,
-}
-
 /// Unified history entry covering both native SOL and SPL token transfers.
-/// Swift decodes this instead of `SolanaHistoryEntry` for the history tab.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolanaTransfer {
     pub signature: String,
@@ -310,113 +297,6 @@ impl SolanaClient {
             .ok_or_else(|| "getLatestBlockhash: missing blockhash".to_string())
     }
 
-    pub async fn fetch_history(
-        &self,
-        address: &str,
-        limit: usize,
-    ) -> Result<Vec<SolanaHistoryEntry>, String> {
-        // 1. Get signatures.
-        let sigs_result = self
-            .call(
-                "getSignaturesForAddress",
-                json!([address, {"limit": limit, "commitment": "confirmed"}]),
-            )
-            .await?;
-        let sig_array = sigs_result
-            .as_array()
-            .ok_or("getSignaturesForAddress: expected array")?;
-
-        let signatures: Vec<String> = sig_array
-            .iter()
-            .filter_map(|s| {
-                s.get("signature")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string)
-            })
-            .collect();
-
-        if signatures.is_empty() {
-            return Ok(vec![]);
-        }
-
-        // 2. Fetch transactions.
-        let mut entries = Vec::new();
-        for sig in &signatures {
-            let tx = self
-                .call(
-                    "getTransaction",
-                    json!([sig, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}]),
-                )
-                .await
-                .unwrap_or(Value::Null);
-
-            if tx.is_null() {
-                continue;
-            }
-
-            let slot = tx.get("slot").and_then(|v| v.as_u64()).unwrap_or(0);
-            let timestamp = tx.get("blockTime").and_then(|v| v.as_i64());
-            let fee = tx
-                .pointer("/meta/fee")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-
-            // Determine direction from pre/post balances for address index 0.
-            let pre_balances = tx
-                .pointer("/meta/preBalances")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let post_balances = tx
-                .pointer("/meta/postBalances")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let accounts: Vec<String> = tx
-                .pointer("/transaction/message/accountKeys")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|a| a.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            // Find this address's index.
-            let idx = accounts.iter().position(|a| a == address);
-            let (pre, post) = idx
-                .and_then(|i| {
-                    Some((
-                        pre_balances.get(i)?.as_u64()?,
-                        post_balances.get(i)?.as_u64()?,
-                    ))
-                })
-                .unwrap_or((0, 0));
-
-            let is_incoming = post > pre;
-            let amount_lamports = if is_incoming {
-                post.saturating_sub(pre)
-            } else {
-                pre.saturating_sub(post).saturating_sub(fee)
-            };
-
-            let from = accounts.first().cloned().unwrap_or_default();
-            let to = accounts.get(1).cloned().unwrap_or_default();
-
-            entries.push(SolanaHistoryEntry {
-                signature: sig.clone(),
-                slot,
-                timestamp,
-                fee_lamports: fee,
-                is_incoming,
-                amount_lamports,
-                from,
-                to,
-            });
-        }
-        Ok(entries)
-    }
-
     /// Fetch up to `limit` recent transfers as unified entries covering both
     /// native SOL and SPL token transfers.
     pub async fn fetch_unified_history(
@@ -450,7 +330,6 @@ impl SolanaClient {
 
         // 2. Fetch each transaction and build unified entries.
         let mut result: Vec<SolanaTransfer> = Vec::new();
-
         for sig in &signatures {
             let tx = self
                 .call(
@@ -459,216 +338,149 @@ impl SolanaClient {
                 )
                 .await
                 .unwrap_or(Value::Null);
-
-            if tx.is_null() {
-                continue;
+            if !tx.is_null() {
+                result.extend(solana_transfers_in_transaction(&tx, sig, address));
             }
-
-            let slot = tx.get("slot").and_then(|v| v.as_u64()).unwrap_or(0);
-            let timestamp = tx.get("blockTime").and_then(|v| v.as_i64());
-            let fee = tx
-                .pointer("/meta/fee")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-
-            let pre_balances = tx
-                .pointer("/meta/preBalances")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let post_balances = tx
-                .pointer("/meta/postBalances")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let accounts: Vec<String> = tx
-                .pointer("/transaction/message/accountKeys")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|a| a.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let from = accounts.first().cloned().unwrap_or_default();
-            let to = accounts.get(1).cloned().unwrap_or_default();
-
-            // Check for SPL token balance deltas.
-            let pre_tok = tx
-                .pointer("/meta/preTokenBalances")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let post_tok = tx
-                .pointer("/meta/postTokenBalances")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-
-            let mut spl_entries: Vec<SolanaTransfer> = Vec::new();
-
-            // Find post-token entries owned by this address.
-            for post_entry in &post_tok {
-                let owner = post_entry
-                    .get("owner")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if owner != address {
-                    continue;
-                }
-                // The mint is the token's identity. A row without one names no
-                // asset, and is left out rather than filed under a guess.
-                let Some(mint) = post_entry
-                    .get("mint")
-                    .and_then(|v| v.as_str())
-                    .filter(|mint| !mint.is_empty())
-                    .map(str::to_string)
-                else {
-                    continue;
-                };
-                let acct_idx = post_entry
-                    .get("accountIndex")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(u64::MAX);
-
-                let _post_ui = post_entry
-                    .pointer("/uiTokenAmount/uiAmountString")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("0");
-                let post_raw: u128 = post_entry
-                    .pointer("/uiTokenAmount/amount")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-
-                // Find matching pre entry by accountIndex.
-                let pre_raw: u128 = pre_tok
-                    .iter()
-                    .find(|e| {
-                        e.get("accountIndex")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(u64::MAX)
-                            == acct_idx
-                    })
-                    .and_then(|e| e.pointer("/uiTokenAmount/amount").and_then(|v| v.as_str()))
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-
-                if post_raw == pre_raw {
-                    continue; // No change for this token account.
-                }
-
-                let is_incoming = post_raw > pre_raw;
-                let decimals = post_entry
-                    .pointer("/uiTokenAmount/decimals")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(6);
-                let delta_raw = if is_incoming {
-                    post_raw.saturating_sub(pre_raw)
-                } else {
-                    pre_raw.saturating_sub(post_raw)
-                };
-                let divisor = 10u128.pow(decimals as u32);
-                let whole = delta_raw / divisor;
-                let frac = delta_raw % divisor;
-                let amount_display = if frac == 0 || decimals == 0 {
-                    whole.to_string()
-                } else {
-                    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
-                    let trimmed = frac_str.trim_end_matches('0');
-                    format!("{}.{}", whole, trimmed)
-                };
-
-                spl_entries.push(SolanaTransfer {
-                    signature: sig.clone(),
-                    slot,
-                    timestamp,
-                    fee_lamports: fee,
-                    is_incoming,
-                    amount_display,
-                    symbol: mint.clone(),
-                    mint,
-                    from: from.clone(),
-                    to: to.clone(),
-                });
-            }
-
-            if !spl_entries.is_empty() {
-                result.extend(spl_entries);
-                // Still emit a native SOL entry if the native balance changed
-                // (fee + send amount visible separately).
-                let idx = accounts.iter().position(|a| a == address);
-                let (pre, post) = idx
-                    .and_then(|i| {
-                        Some((
-                            pre_balances.get(i)?.as_u64()?,
-                            post_balances.get(i)?.as_u64()?,
-                        ))
-                    })
-                    .unwrap_or((0, 0));
-                let sol_delta = if post > pre {
-                    post.saturating_sub(pre)
-                } else {
-                    pre.saturating_sub(post).saturating_sub(fee)
-                };
-                if sol_delta > 0 {
-                    let is_incoming = post > pre;
-                    let sol_display = format_lamports(sol_delta);
-                    result.push(SolanaTransfer {
-                        signature: sig.clone(),
-                        slot,
-                        timestamp,
-                        fee_lamports: fee,
-                        is_incoming,
-                        amount_display: sol_display,
-                        symbol: "SOL".to_string(),
-                        mint: String::new(),
-                        from: from.clone(),
-                        to: to.clone(),
-                    });
-                }
-                continue;
-            }
-
-            // No SPL transfers — emit as a native SOL entry.
-            let idx = accounts.iter().position(|a| a == address);
-            let (pre, post) = idx
-                .and_then(|i| {
-                    Some((
-                        pre_balances.get(i)?.as_u64()?,
-                        post_balances.get(i)?.as_u64()?,
-                    ))
-                })
-                .unwrap_or((0, 0));
-
-            let is_incoming = post > pre;
-            let amount_lamports = if is_incoming {
-                post.saturating_sub(pre)
-            } else {
-                pre.saturating_sub(post).saturating_sub(fee)
-            };
-
-            result.push(SolanaTransfer {
-                signature: sig.clone(),
-                slot,
-                timestamp,
-                fee_lamports: fee,
-                is_incoming,
-                amount_display: format_lamports(amount_lamports),
-                symbol: "SOL".to_string(),
-                mint: String::new(),
-                from,
-                to,
-            });
         }
-
         Ok(result)
     }
 }
 
-fn format_lamports(lamports: u64) -> String {
-    format_sol(lamports)
+/// What one transaction moved into or out of `address`: an entry per SPL
+/// mint whose balance changed and one for SOL if it did, fee excluded.
+///
+/// Balances are indexed by the static account keys followed by the addresses
+/// a version-0 transaction loads from lookup tables, writable then read-only.
+/// Reading the static keys alone missed an address loaded from a table and
+/// reported its transfer as 0 SOL. A transaction that changed nothing for the
+/// address but its fee — a program interaction, a memo — yields no entry.
+fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<SolanaTransfer> {
+    let slot = tx.get("slot").and_then(Value::as_u64).unwrap_or(0);
+    let timestamp = tx.get("blockTime").and_then(Value::as_i64);
+    let fee = tx.pointer("/meta/fee").and_then(Value::as_u64).unwrap_or(0);
+    let keys = |pointer: &str| -> Vec<String> {
+        tx.pointer(pointer)
+            .and_then(Value::as_array)
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(|key| key.as_str().or_else(|| key.get("pubkey")?.as_str()))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let accounts: Vec<String> = [
+        "/transaction/message/accountKeys",
+        "/meta/loadedAddresses/writable",
+        "/meta/loadedAddresses/readonly",
+    ]
+    .iter()
+    .flat_map(|pointer| keys(pointer))
+    .collect();
+    let from = accounts.first().cloned().unwrap_or_default();
+    let to = accounts.get(1).cloned().unwrap_or_default();
+    let transfer = |is_incoming: bool, amount_display: String, mint: String| SolanaTransfer {
+        signature: sig.to_string(),
+        slot,
+        timestamp,
+        fee_lamports: fee,
+        is_incoming,
+        amount_display,
+        symbol: if mint.is_empty() {
+            "SOL".to_string()
+        } else {
+            mint.clone()
+        },
+        mint,
+        from: from.clone(),
+        to: to.clone(),
+    };
+
+    let mut result = Vec::new();
+
+    // SPL: every token account the address owns, before or after — an
+    // account closed by the transaction appears only before.
+    // accountIndex -> (mint, decimals, pre, post)
+    let mut tokens: std::collections::BTreeMap<u64, (String, u32, u128, u128)> =
+        std::collections::BTreeMap::new();
+    for (pointer, is_post) in [
+        ("/meta/preTokenBalances", false),
+        ("/meta/postTokenBalances", true),
+    ] {
+        for entry in tx
+            .pointer(pointer)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if entry.get("owner").and_then(Value::as_str) != Some(address) {
+                continue;
+            }
+            // The mint is the token's identity. A row without one names no
+            // asset, and is left out rather than filed under a guess.
+            let Some(mint) = entry
+                .get("mint")
+                .and_then(Value::as_str)
+                .filter(|mint| !mint.is_empty())
+            else {
+                continue;
+            };
+            let Some(index) = entry.get("accountIndex").and_then(Value::as_u64) else {
+                continue;
+            };
+            let raw: u128 = entry
+                .pointer("/uiTokenAmount/amount")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let decimals = entry
+                .pointer("/uiTokenAmount/decimals")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32;
+            let slot = tokens
+                .entry(index)
+                .or_insert_with(|| (mint.to_string(), decimals, 0, 0));
+            if is_post {
+                slot.3 = raw;
+            } else {
+                slot.2 = raw;
+            }
+        }
+    }
+    for (mint, decimals, pre, post) in tokens.into_values() {
+        if pre == post {
+            continue;
+        }
+        let delta = post.abs_diff(pre);
+        result.push(transfer(
+            post > pre,
+            crate::decimal::from_units(delta, decimals),
+            mint,
+        ));
+    }
+
+    // SOL. The fee payer is the first account; its fee is not a transfer.
+    if let Some(index) = accounts.iter().position(|a| a == address) {
+        let balance = |pointer: &str| {
+            tx.pointer(pointer)
+                .and_then(|balances| balances.get(index))
+                .and_then(Value::as_u64)
+        };
+        if let (Some(pre), Some(post)) =
+            (balance("/meta/preBalances"), balance("/meta/postBalances"))
+        {
+            let fee_paid = if index == 0 { fee } else { 0 };
+            let delta = i128::from(post) - i128::from(pre) + i128::from(fee_paid);
+            if delta != 0 {
+                result.push(transfer(
+                    delta > 0,
+                    crate::decimal::from_units(delta.unsigned_abs(), 9),
+                    String::new(),
+                ));
+            }
+        }
+    }
+    result
 }
 
 fn format_sol(lamports: u64) -> String {
@@ -793,5 +605,59 @@ mod audit_fix5_mint_tests {
         );
         assert!(validate_transfer_mint(&account("11111111111111111111111111111111")).is_err());
         assert!(validate_transfer_mint(&serde_json::Value::Null).is_err());
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    const ME: &str = "Me11111111111111111111111111111111111111111";
+    const PAYER: &str = "Payer111111111111111111111111111111111111111";
+    const MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+    /// A version-0 transaction that loads the address from a lookup table and
+    /// credits it a single lamport — spam dust, but a real transfer.
+    #[test]
+    fn an_address_loaded_from_a_lookup_table_is_read_exactly() {
+        let tx = json!({
+            "slot": 1, "blockTime": 1_790_000_000,
+            "transaction": {"message": {"accountKeys": [PAYER, "Program1111111111111111111111111111111111111"]}},
+            "meta": {
+                "fee": 5000,
+                "loadedAddresses": {"writable": [ME], "readonly": []},
+                "preBalances": [10_000_000u64, 1, 2_000_000],
+                "postBalances": [9_994_999u64, 1, 2_000_001]
+            }
+        });
+        let entries = solana_transfers_in_transaction(&tx, "sig", ME);
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert!(entries[0].is_incoming);
+        assert_eq!(entries[0].amount_display, "0.000000001");
+    }
+
+    /// Paying only a fee is not a transfer; a token account closed by the
+    /// transaction still reports what left it.
+    #[test]
+    fn fee_only_changes_are_nothing_and_closed_token_accounts_count() {
+        let tx = json!({
+            "slot": 1, "blockTime": 1_790_000_000,
+            "transaction": {"message": {"accountKeys": [ME, "Token1111111111111111111111111111111111111"]}},
+            "meta": {
+                "fee": 5000,
+                "preBalances": [10_000_000u64, 2_039_280],
+                "postBalances": [9_995_000u64, 2_039_280],
+                "preTokenBalances": [{
+                    "accountIndex": 1, "mint": MINT, "owner": ME,
+                    "uiTokenAmount": {"amount": "2500000", "decimals": 6}
+                }],
+                "postTokenBalances": []
+            }
+        });
+        let entries = solana_transfers_in_transaction(&tx, "sig", ME);
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].mint, MINT);
+        assert!(!entries[0].is_incoming);
+        assert_eq!(entries[0].amount_display, "2.5");
     }
 }

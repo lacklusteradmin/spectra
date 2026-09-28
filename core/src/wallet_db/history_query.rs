@@ -1,5 +1,8 @@
 use super::*;
-use crate::service::{HistoryPage, HistoryQuery, HistoryQueryFilter, TransactionSnapshot};
+use crate::service::{
+    HISTORY_SMALL_AMOUNT_THRESHOLD, HistoryPage, HistoryQuery, HistoryQueryFilter,
+    TransactionSnapshot,
+};
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 
 // All user-facing projections select the same canonical transaction and owner.
@@ -17,6 +20,8 @@ struct Cursor {
     filter: HistoryQueryFilter,
     search: String,
     oldest_first: bool,
+    #[serde(default)]
+    hide_small_amounts: bool,
 }
 
 fn decode_cursor(query: &HistoryQuery) -> Result<Option<Cursor>, String> {
@@ -32,6 +37,7 @@ fn decode_cursor(query: &HistoryQuery) -> Result<Option<Cursor>, String> {
                 || cursor.filter != query.filter
                 || cursor.search != query.search
                 || cursor.oldest_first != query.oldest_first
+                || cursor.hide_small_amounts != query.hide_small_amounts
             {
                 return Err("History cursor does not match this query; restart pagination".into());
             }
@@ -57,8 +63,17 @@ fn page_sql(query: &HistoryQuery) -> String {
         // Keep parameter numbering identical for both query shapes.
         "AND ?5 IS NULL AND ?6 IS NULL"
     };
+    // The threshold is a constant, so it is spelled into the statement rather
+    // than bound, keeping the parameter numbering the same for every shape.
+    let small = if query.hide_small_amounts {
+        format!(
+            "AND CAST(json_extract(h.payload, '$.amount') AS REAL) >= {HISTORY_SMALL_AMOUNT_THRESHOLD}"
+        )
+    } else {
+        String::new()
+    };
     format!("SELECT h.payload, h.created_at, h.id FROM history_records h
-        WHERE {wallet} {VISIBLE} {seek}
+        WHERE {wallet} {VISIBLE} {seek} {small}
         AND (?2 = 'all' OR json_extract(h.payload, '$.kind') = ?2 OR json_extract(h.payload, '$.status') = ?2)
         AND (?3 = '' OR instr(spectra_lower(coalesce(json_extract(h.payload, '$.walletName'), '') || ' ' ||
           coalesce(json_extract(h.payload, '$.assetDisplayName'), '') || ' ' ||
@@ -116,6 +131,7 @@ fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<His
                     filter: query.filter,
                     search: query.search.clone(),
                     oldest_first: query.oldest_first,
+                    hide_small_amounts: query.hide_small_amounts,
                 })
                 .map_err(|e| e.to_string())
             })

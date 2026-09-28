@@ -85,8 +85,12 @@ class HistoryTests(unittest.TestCase):
             def log_message(self, *args): pass
             def do_GET(self):
                 assert self.path.startswith('/api/v2/address/'), self.path
+                address = self.path.split('/')[4].split('?')[0]
+                # The amount is the address's own net: what the outputs pay it.
                 body = json.dumps({'transactions': [{'txid': 'ab' * 32, 'blockHeight': 42,
-                    'blockTime': 1700000000, 'value': '123456789', 'fees': '1000', 'vin': []}]}).encode()
+                    'blockTime': 1700000000, 'value': '223456789', 'fees': '1000', 'vin': [],
+                    'vout': [{'addresses': [address], 'value': '123456789'},
+                             {'addresses': ['someone-else'], 'value': '100000000'}]}]}).encode()
                 self.send_response(200); self.send_header('Content-Length', str(len(body)))
                 self.end_headers(); self.wfile.write(body)
         server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -153,6 +157,24 @@ class HistoryTests(unittest.TestCase):
                     db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (identity,solana_id,'solana',txhash.lower(),1,json.dumps(record)))
             distinct = run('txs','--page','--wallet','IdentityCases')['page']['records']
             assert {row['id'] for row in distinct} == {'case-upper','case-lower','unknown-one','unknown-two'}, distinct
+
+    def test_hide_small_amounts(self):
+        """Zero-value and dust transfers can be left out of a page; the threshold itself stays."""
+        with tempfile.TemporaryDirectory(prefix='spectra-history-small-') as directory:
+            def run(*args):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
+                assert result.returncode == 0, (args, result.stdout, result.stderr)
+                return json.loads(result.stdout)
+            run('wallet', 'watch', '--chain', 'ethereum', '--address', '0x'+'11'*20, '--name', 'Dust')
+            with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
+                wid = db.execute('SELECT id FROM wallets').fetchone()[0]
+                for i, amount in enumerate(['0', '0.000009', '0.00001', '1']):
+                    row = dict(id=f'tx-{i}', walletId=wid, walletName='Dust', kind='receive', status='confirmed', chainId='ethereum', symbol='USDT', assetDisplayName='Tether', amount=amount, address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAtUnix=i)
+                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'ethereum',row['transactionHash'],i,json.dumps(row)))
+            every = [r['amount'] for r in run('txs','--page')['page']['records']]
+            assert every == ['1','0.00001','0.000009','0'], every
+            kept = [r['amount'] for r in run('txs','--page','--hide-small-amounts')['page']['records']]
+            assert kept == ['1','0.00001'], kept
 
     def test_cursor_changes_and_ties(self):
         """Cursor survives anchor deletion and inserts; ties work in both directions."""

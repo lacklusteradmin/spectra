@@ -184,7 +184,7 @@ impl DecredClient {
         Ok(list
             .txs
             .into_iter()
-            .map(|tx| {
+            .filter_map(|tx| {
                 let owned_in: i64 = tx
                     .vin
                     .iter()
@@ -215,16 +215,15 @@ impl DecredClient {
                     })
                     .sum();
                 let net = owned_out - owned_in;
-                let is_incoming = net >= 0;
                 let fee_atoms = (tx.fees * 1e8).round() as u64;
-                DcrHistoryEntry {
+                (net != 0).then_some(DcrHistoryEntry {
                     txid: tx.txid,
                     block_height: tx.blockheight,
                     timestamp: tx.time,
                     amount_atoms: net,
                     fee_atoms,
-                    is_incoming,
-                }
+                    is_incoming: net > 0,
+                })
             })
             .collect())
     }

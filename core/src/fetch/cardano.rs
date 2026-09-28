@@ -85,9 +85,60 @@ pub(crate) struct KoiosTxInfo {
     #[serde(default)]
     pub(crate) tx_timestamp: u64,
     #[serde(default)]
-    pub(crate) total_output: String,
-    #[serde(default)]
     pub(crate) fee: String,
+    #[serde(default)]
+    pub(crate) inputs: Vec<KoiosTxIo>,
+    #[serde(default)]
+    pub(crate) outputs: Vec<KoiosTxIo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct KoiosTxIo {
+    pub(crate) payment_addr: KoiosPaymentAddr,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct KoiosPaymentAddr {
+    #[serde(default)]
+    pub(crate) bech32: String,
+}
+
+/// Each transaction's net effect on `address`: what its outputs paid the
+/// address less what its inputs spent from it.
+///
+/// This was the transaction's total output, always as a receipt — every
+/// output of every party, so a send read as receiving the recipient's amount
+/// and the change together.
+fn cardano_history_from_transactions(
+    txs: Vec<KoiosTxInfo>,
+    address: &str,
+) -> Vec<CardanoHistoryEntry> {
+    let paid = |ios: &[KoiosTxIo]| -> i128 {
+        ios.iter()
+            .filter(|io| io.payment_addr.bech32 == address)
+            .map(|io| io.value.parse::<i128>().unwrap_or(0))
+            .sum()
+    };
+    let mut entries: Vec<CardanoHistoryEntry> = txs
+        .into_iter()
+        .filter_map(|tx| {
+            let net = paid(&tx.outputs) - paid(&tx.inputs);
+            if net == 0 {
+                return None;
+            }
+            Some(CardanoHistoryEntry {
+                txid: tx.tx_hash,
+                block: tx.block_height.to_string(),
+                block_time: tx.tx_timestamp,
+                is_incoming: net > 0,
+                amount_lovelace: i64::try_from(net).ok()?,
+                fee_lovelace: tx.fee.parse().unwrap_or(0),
+            })
+        })
+        .collect();
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_time));
+    entries
 }
 
 // ── Client
@@ -194,6 +245,8 @@ impl CardanoClient {
         struct TxReq {
             #[serde(rename = "_tx_hashes")]
             tx_hashes: Vec<String>,
+            #[serde(rename = "_inputs")]
+            inputs: bool,
         }
 
         let tx_refs: Vec<KoiosTxRef> = self
@@ -210,26 +263,16 @@ impl CardanoClient {
             return Ok(vec![]);
         }
 
-        let tx_infos: Vec<KoiosTxInfo> =
-            self.post("/tx_info", &TxReq { tx_hashes: hashes }).await?;
-
-        let mut entries: Vec<CardanoHistoryEntry> = tx_infos
-            .into_iter()
-            .map(|tx| {
-                let total: i64 = tx.total_output.parse().unwrap_or(0);
-                let fee: u64 = tx.fee.parse().unwrap_or(0);
-                CardanoHistoryEntry {
-                    txid: tx.tx_hash,
-                    block: tx.block_height.to_string(),
-                    block_time: tx.tx_timestamp,
-                    is_incoming: total > 0,
-                    amount_lovelace: total,
-                    fee_lovelace: fee,
-                }
-            })
-            .collect();
-        entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_time));
-        Ok(entries)
+        let tx_infos: Vec<KoiosTxInfo> = self
+            .post(
+                "/tx_info",
+                &TxReq {
+                    tx_hashes: hashes,
+                    inputs: true,
+                },
+            )
+            .await?;
+        Ok(cardano_history_from_transactions(tx_infos, address))
     }
 
     /// Fetch current slot from the latest block.
@@ -255,4 +298,41 @@ fn format_ada(lovelace: u64) -> String {
     let frac_str = format!("{:06}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    const ME: &str = "addr1qx2kd28nq8ac5prwg32hhvudlwggpgfp8utlyqxu6wqgz62f79qsdmm5dsknt9ecr5w468r9ey0fxwkdrwh08ly3tu9sy0f4qd";
+    const THEM: &str = "addr1q8zup8m9ue3p98kxlxl9q8rnyan8hw3ul282tsl9s326dfj088lvedv4zckcj24arcpasr0gua4c5gq4zw2rpcpjk2lq8cmd9l";
+
+    /// Shape of Koios `tx_info` with `_inputs`.
+    #[test]
+    fn amounts_are_the_addresses_net_change() {
+        let txs: Vec<KoiosTxInfo> = serde_json::from_value(serde_json::json!([{
+            "tx_hash": "send", "block_height": 2, "tx_timestamp": 200, "fee": "170000",
+            "inputs": [{"payment_addr": {"bech32": ME}, "value": "10000000"}],
+            "outputs": [
+                {"payment_addr": {"bech32": THEM}, "value": "3000000"},
+                {"payment_addr": {"bech32": ME}, "value": "6830000"}
+            ]
+        }, {
+            "tx_hash": "receive", "block_height": 1, "tx_timestamp": 100, "fee": "170000",
+            "inputs": [{"payment_addr": {"bech32": THEM}, "value": "9000000"}],
+            "outputs": [
+                {"payment_addr": {"bech32": ME}, "value": "2000000"},
+                {"payment_addr": {"bech32": THEM}, "value": "6830000"}
+            ]
+        }]))
+        .unwrap();
+        let entries = cardano_history_from_transactions(txs, ME);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].txid, "send");
+        assert!(!entries[0].is_incoming);
+        assert_eq!(entries[0].amount_lovelace, -3_170_000, "net of the change");
+        assert_eq!(entries[1].txid, "receive");
+        assert!(entries[1].is_incoming);
+        assert_eq!(entries[1].amount_lovelace, 2_000_000);
+    }
 }

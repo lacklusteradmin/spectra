@@ -165,7 +165,9 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
 
         Chain::Sui => HistoryShape {
             hash: HashField::Text("digest"),
-            ..HistoryShape::confirmed_native("amount_mist").with_time("timestamp_ms", 1e3)
+            ..HistoryShape::confirmed_native("amount_mist")
+                .with_counterparty("from", "to")
+                .with_time("timestamp_ms", 1e3)
         },
 
         Chain::Aptos => HistoryShape::confirmed_native("amount_octas")
@@ -177,7 +179,7 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
         }
 
         Chain::Near => HistoryShape::confirmed_native("amount_yocto")
-            .with_counterparty("signer_id", "receiver_id")
+            .with_counterparty("from", "to")
             .with_time("timestamp_ns", 1e9),
 
         Chain::Icp => HistoryShape {
@@ -188,6 +190,20 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
         },
 
         Chain::Monero => HistoryShape::confirmed_native("amount_piconeros"),
+
+        // Both report the address's signed net per transaction. They had no
+        // arm, so their history normalized to nothing however well the fetch
+        // went.
+        Chain::Kaspa => HistoryShape {
+            direction_fallback: AmountSign,
+            ..HistoryShape::confirmed_native("amount_sompi").with_time("timestamp", 1e3)
+        },
+        Chain::Decred => HistoryShape {
+            direction_fallback: AmountSign,
+            status: ConfirmedWhenMined,
+            block_height: Some("block_height"),
+            ..HistoryShape::confirmed_native("amount_atoms")
+        },
 
         // Every EVM chain. `EvmHistoryEntry` is one shape for all of them,
         // which is why this is a guard rather than twenty-three names.
@@ -217,6 +233,26 @@ fn json_number(value: &Value) -> Option<f64> {
         .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
 }
 
+/// The magnitude of a whole number of base units, from a JSON integer or a
+/// digit string. Dividing a float by the chain's factor rounds on the way:
+/// 10^23 yoctoNEAR came out as 0.09999999999999999 NEAR. A decimal shift of
+/// the integer does not, and the float taken from it is the nearest to the
+/// true amount.
+fn exact_units(value: &Value) -> Option<u128> {
+    if let Some(n) = value.as_i64() {
+        return Some(n.unsigned_abs().into());
+    }
+    if let Some(n) = value.as_u64() {
+        return Some(n.into());
+    }
+    let text = value.as_str()?;
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
 /// Convert a raw history JSON string (as returned by `fetch_history`) into
 /// normalized `ChainHistoryEntry` records that Swift can consume without
 /// any chain-specific parsing logic.
@@ -244,8 +280,9 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
             };
 
             // Signed while direction is still being decided; the entry itself
-            // reports a magnitude and says which way it went in `kind`.
-            let signed_amount = json_number(&entry[shape.amount]).unwrap_or(0.0);
+            // reports a magnitude and says which way it went in `kind`. A row
+            // whose amount cannot be read is refused, not stored as 0.
+            let signed_amount = json_number(&entry[shape.amount])?;
             let is_incoming =
                 entry["is_incoming"]
                     .as_bool()
@@ -326,7 +363,14 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
                 symbol: entry_symbol.to_string(),
                 chain_id: chain_id.to_string(),
                 amount: if shape.amount_in_base_units {
-                    signed_amount.abs() / factor
+                    exact_units(&entry[shape.amount])
+                        .map(|units| {
+                            crate::decimal::to_f64(&crate::decimal::from_units(
+                                units,
+                                chain.native_decimals().into(),
+                            ))
+                        })
+                        .unwrap_or(signed_amount.abs() / factor)
                 } else {
                     signed_amount.abs()
                 },
@@ -615,8 +659,8 @@ mod normalize_chain_history_tests {
         ),
         (
             "sui",
-            r#"[{"digest":"j1","amount_mist":800000000.0,"timestamp_ms":1700000015000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Sui","symbol":"SUI","chain_id":"sui","amount":0.8,"counterparty":"","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
+            r#"[{"digest":"j1","amount_mist":800000000,"timestamp_ms":1700000015000,"is_incoming":true,"from":"suiSender","to":"suiMe"}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Sui","symbol":"SUI","chain_id":"sui","amount":0.8,"counterparty":"suiSender","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
         ),
         (
             "aptos",
@@ -630,7 +674,7 @@ mod normalize_chain_history_tests {
         ),
         (
             "near",
-            r#"[{"txid":"m1","timestamp_ns":1700000018000000000,"signer_id":"nSigner","receiver_id":"nReceiver","amount_yocto":"1500000000000000000000000","is_incoming":false}]"#,
+            r#"[{"txid":"m1","timestamp_ns":1700000018000000000,"from":"nSigner","to":"nReceiver","amount_yocto":"1500000000000000000000000","is_incoming":false}]"#,
             r#"[{"kind":"send","status":"confirmed","asset_display_name":"NEAR","symbol":"NEAR","chain_id":"near","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
         ),
         (
@@ -654,6 +698,16 @@ mod normalize_chain_history_tests {
             r#"[{"kind":"send","status":"confirmed","asset_display_name":"Polygon","symbol":"POL","chain_id":"polygon","amount":0.25,"counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
         ),
         (
+            "kaspa",
+            r#"[{"txid":"k1","block_daa_score":369401244,"timestamp":1772543921441,"amount_sompi":-39800000000,"is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Kaspa","symbol":"KAS","chain_id":"kaspa","amount":398.0,"counterparty":"","tx_hash":"k1","block_height":null,"timestamp":1772543921.441}]"#,
+        ),
+        (
+            "decred",
+            r#"[{"txid":"d1","block_height":900000,"timestamp":1700000025,"amount_atoms":250000000,"fee_atoms":2980,"is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Decred","symbol":"DCR","chain_id":"decred","amount":2.5,"counterparty":"","tx_hash":"d1","block_height":900000,"timestamp":1700000025.0}]"#,
+        ),
+        (
             "bitcoin-testnet",
             r#"[{"txid":"q1","confirmed":true,"block_height":2500000,"block_time":1700000023,"net_sats":4242}]"#,
             r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin","symbol":"tBTC","chain_id":"bitcoin-testnet","amount":0.00004242,"counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
@@ -664,6 +718,17 @@ mod normalize_chain_history_tests {
             r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Litecoin","symbol":"tLTC","chain_id":"litecoin-testnet","amount":0.00031337,"counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
         ),
     ];
+
+    /// A base-unit integer is shifted, not divided as a float.
+    #[test]
+    fn base_unit_amounts_convert_exactly() {
+        let rows = normalize_chain_history(
+            "near",
+            r#"[{"txid":"n","timestamp_ns":1,"from":"a","to":"b","amount_yocto":"100000000000000000000000","is_incoming":true}]"#,
+        );
+        assert_eq!(rows[0].amount, 0.1);
+        assert_eq!(crate::decimal::amount_from_f64(rows[0].amount), "0.1");
+    }
 
     #[test]
     fn every_chain_shape_normalizes_to_its_expected_row() {

@@ -229,84 +229,85 @@ impl AptosClient {
             .get(&format!("/accounts/{address}/transactions?limit=50"))
             .await?;
 
-        let mut entries = Vec::new();
-        for tx in txs {
-            let txtype = tx.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            if txtype != "user_transaction" {
-                continue;
+        Ok(aptos_history_from_transactions(&txs, address))
+    }
+}
+
+/// The recipient and octas of a successful user transaction that moves APT
+/// through one of the framework's transfer entry functions.
+///
+/// Any function whose name contained `transfer` used to count, with its
+/// first two arguments read as recipient and amount: a token's transfer was
+/// filed as APT, and a fungible-asset transfer — whose first argument is the
+/// asset — produced an empty recipient and 0 APT.
+fn aptos_native_transfer(tx: &Value) -> Option<(String, u64)> {
+    if tx.get("type").and_then(Value::as_str) != Some("user_transaction")
+        || tx.get("success").and_then(Value::as_bool) != Some(true)
+    {
+        return None;
+    }
+    let payload = tx.get("payload")?;
+    let function = payload.get("function")?.as_str()?;
+    let args = payload.get("arguments")?.as_array()?;
+    let type_args: Vec<&str> = payload
+        .get("type_arguments")
+        .and_then(Value::as_array)
+        .map(|args| args.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let is_apt_coin = type_args.as_slice() == ["0x1::aptos_coin::AptosCoin"];
+    let is_apt_asset = |metadata: &Value| {
+        metadata
+            .get("inner")
+            .and_then(Value::as_str)
+            .map(|inner| inner.trim_start_matches("0x").trim_start_matches('0') == "a")
+            .unwrap_or(false)
+    };
+    let (to, amount) = match function {
+        "0x1::aptos_account::transfer" => (args.first()?, args.get(1)?),
+        "0x1::aptos_account::transfer_coins" | "0x1::coin::transfer" if is_apt_coin => {
+            (args.first()?, args.get(1)?)
+        }
+        "0x1::primary_fungible_store::transfer"
+        | "0x1::aptos_account::transfer_fungible_assets"
+            if is_apt_asset(args.first()?) =>
+        {
+            (args.get(1)?, args.get(2)?)
+        }
+        _ => return None,
+    };
+    Some((to.as_str()?.to_string(), amount.as_str()?.parse().ok()?))
+}
+
+fn aptos_history_from_transactions(txs: &[Value], address: &str) -> Vec<AptosHistoryEntry> {
+    let number = |tx: &Value, field: &str| -> u64 {
+        tx.get(field)
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    };
+    txs.iter()
+        .filter_map(|tx| {
+            let (to, amount_octas) = aptos_native_transfer(tx)?;
+            if amount_octas == 0 {
+                return None;
             }
-            let txid = tx
-                .get("hash")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let version: u64 = tx
-                .get("version")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let timestamp_us: u64 = tx
-                .get("timestamp")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let from = tx
-                .get("sender")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let gas_used: u64 = tx
-                .get("gas_used")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let gas_unit_price: u64 = tx
-                .get("gas_unit_price")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-
-            // Extract coin transfer payload.
-            let func = tx
-                .pointer("/payload/function")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let (to, amount_octas) = if func.contains("transfer") {
-                let args = tx
-                    .pointer("/payload/arguments")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
-                let to = args
-                    .first()
-                    .and_then(|v| v.as_str())
+            Some(AptosHistoryEntry {
+                txid: tx.get("hash")?.as_str()?.to_string(),
+                version: number(tx, "version"),
+                timestamp_us: number(tx, "timestamp"),
+                from: tx
+                    .get("sender")
+                    .and_then(Value::as_str)
                     .unwrap_or("")
-                    .to_string();
-                let amount: u64 = args
-                    .get(1)
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                (to, amount)
-            } else {
-                continue;
-            };
-
-            let is_incoming = to.eq_ignore_ascii_case(address);
-            entries.push(AptosHistoryEntry {
-                txid,
-                version,
-                timestamp_us,
-                from,
+                    .to_string(),
+                is_incoming: to.eq_ignore_ascii_case(address),
                 to,
                 amount_octas,
-                gas_used,
-                gas_unit_price,
-                is_incoming,
-            });
-        }
-        Ok(entries)
-    }
+                gas_used: number(tx, "gas_used"),
+                gas_unit_price: number(tx, "gas_unit_price"),
+            })
+        })
+        .collect()
 }
 
 fn format_apt(octas: u64) -> String {
@@ -318,4 +319,89 @@ fn format_apt(octas: u64) -> String {
     let frac_str = format!("{:08}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use serde_json::json;
+
+    const ME: &str = "0x6a2c9b3d1f64c2ae7c0e79c56b4b2f8e07c1b5f2aa7ec8bb0e0f2e7c4b6d8e1a";
+    const THEM: &str = "0x1f64c2ae7c0e79c56b4b2f8e07c1b5f2aa7ec8bb0e0f2e7c4b6d8e1a6a2c9b3d";
+
+    fn tx(
+        hash: &str,
+        function: &str,
+        type_arguments: Value,
+        arguments: Value,
+        success: bool,
+    ) -> Value {
+        json!({
+            "type": "user_transaction", "hash": hash, "version": "1", "timestamp": "1",
+            "sender": ME, "success": success, "gas_used": "10", "gas_unit_price": "100",
+            "payload": {"function": function, "type_arguments": type_arguments, "arguments": arguments}
+        })
+    }
+
+    #[test]
+    fn only_apt_moved_by_a_framework_transfer_is_an_entry() {
+        let usdc = "0x5e156f1207d0ebfa19a9eeff00d62a282278fb8719f4fab3a586a0a2c0fffbea::coin::T";
+        let txs = [
+            tx(
+                "apt",
+                "0x1::aptos_account::transfer",
+                json!([]),
+                json!([THEM, "150000000"]),
+                true,
+            ),
+            tx(
+                "coin",
+                "0x1::coin::transfer",
+                json!(["0x1::aptos_coin::AptosCoin"]),
+                json!([THEM, "2"]),
+                true,
+            ),
+            tx(
+                "fa",
+                "0x1::primary_fungible_store::transfer",
+                json!(["0x1::fungible_asset::Metadata"]),
+                json!([{"inner": "0xa"}, THEM, "3"]),
+                true,
+            ),
+            tx(
+                "token",
+                "0x1::coin::transfer",
+                json!([usdc]),
+                json!([THEM, "5000000"]),
+                true,
+            ),
+            tx(
+                "other-fa",
+                "0x1::primary_fungible_store::transfer",
+                json!(["0x1::fungible_asset::Metadata"]),
+                json!([{"inner": "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"}, THEM, "7"]),
+                true,
+            ),
+            tx(
+                "failed",
+                "0x1::aptos_account::transfer",
+                json!([]),
+                json!([THEM, "9"]),
+                false,
+            ),
+            tx(
+                "nft",
+                "0x4::aptos_token::transfer",
+                json!([]),
+                json!([{"inner": "0x1"}, THEM]),
+                true,
+            ),
+        ];
+        let entries = aptos_history_from_transactions(&txs, ME);
+        let hashes: Vec<&str> = entries.iter().map(|e| e.txid.as_str()).collect();
+        assert_eq!(hashes, ["apt", "coin", "fa"]);
+        assert!(entries.iter().all(|e| e.to == THEM && !e.is_incoming));
+        assert_eq!(entries[0].amount_octas, 150_000_000);
+        assert_eq!(entries[2].amount_octas, 3);
+    }
 }

@@ -13,6 +13,18 @@ pub enum HistoryQueryFilter {
     Pending,
 }
 
+/// Below this many units of its own asset, a transfer is small enough for
+/// `HistoryQuery::hide_small_amounts` to leave it out. One threshold for every
+/// asset: the filter is for the zero-value and dust transfers anyone can send
+/// to an address, not a judgement of what an amount is worth.
+pub const HISTORY_SMALL_AMOUNT_THRESHOLD: &str = "0.00001";
+
+/// `HISTORY_SMALL_AMOUNT_THRESHOLD`, for a front end to name in its filter.
+#[uniffi::export]
+pub fn history_small_amount_threshold() -> String {
+    HISTORY_SMALL_AMOUNT_THRESHOLD.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryQuery {
@@ -22,6 +34,10 @@ pub struct HistoryQuery {
     pub oldest_first: bool,
     pub cursor: Option<String>,
     pub limit: u32,
+    /// Leave out transfers below `HISTORY_SMALL_AMOUNT_THRESHOLD`.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    pub hide_small_amounts: bool,
 }
 impl Default for HistoryQuery {
     fn default() -> Self {
@@ -32,6 +48,7 @@ impl Default for HistoryQuery {
             oldest_first: false,
             cursor: None,
             limit: 20,
+            hide_small_amounts: false,
         }
     }
 }

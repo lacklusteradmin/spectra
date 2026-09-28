@@ -171,8 +171,10 @@ impl WalletService {
             .into_iter()
             .map(|e| EvmNativeTransferItem {
                 status: e.status,
-                from_address: e.from,
-                to_address: e.to,
+                // Compared against the lowercased wallet address, as token
+                // transfers already are; an explorer may answer checksummed.
+                from_address: e.from.to_lowercase(),
+                to_address: e.to.to_lowercase(),
                 amount_decimal: crate::fetch::history_decode::decimal_string_from_wei(&e.value_wei),
                 transaction_hash: e.txid,
                 block_number: e.block_number as i64,

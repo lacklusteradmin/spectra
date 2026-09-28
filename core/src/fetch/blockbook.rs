@@ -47,16 +47,18 @@ struct BlockbookTx {
     txid: String,
     block_time: Option<u64>,
     block_height: Option<u64>,
-    #[serde(default)]
-    value: String,
     fees: Option<String>,
     #[serde(default)]
-    vin: Vec<BlockbookVin>,
+    vin: Vec<BlockbookIo>,
+    #[serde(default)]
+    vout: Vec<BlockbookIo>,
 }
 
 #[derive(Debug, Deserialize)]
-struct BlockbookVin {
+struct BlockbookIo {
     addresses: Option<Vec<String>>,
+    /// Satoshis, as a decimal string.
+    value: Option<String>,
 }
 
 /// `/api/v2` reports the backend's chain tip.
@@ -214,8 +216,7 @@ impl BlockbookClient {
     /// Fetch the most recent 50 transactions touching `address` via
     /// Blockbook's `details=txs` pagination. `amount_sat` is the net value
     /// change from the queried address's perspective (positive = received,
-    /// negative = sent). Fee is the absolute tx fee; direction detection
-    /// inspects the vin address lists.
+    /// negative = sent). Fee is the absolute tx fee.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<BlockbookHistoryEntry>, String> {
         let normalized = self.normalize_address(address);
         let list: BlockbookTxList = self
@@ -227,24 +228,32 @@ impl BlockbookClient {
         Ok(list
             .transactions
             .into_iter()
-            .map(|tx| {
-                let is_incoming = !tx.vin.iter().any(|i| {
-                    i.addresses
-                        .as_deref()
-                        .unwrap_or_default()
-                        .iter()
-                        .any(|a| a == &normalized || a == address)
-                });
-                let amount_sat: i64 = tx.value.parse().unwrap_or(0);
+            .filter_map(|tx| {
+                // The transaction's `value` is its total output — every
+                // party's, change included — so the address's own inputs and
+                // outputs are summed instead.
+                let own = |ios: &[BlockbookIo]| -> i64 {
+                    ios.iter()
+                        .filter(|io| {
+                            io.addresses
+                                .as_deref()
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|a| a == &normalized || a == address)
+                        })
+                        .filter_map(|io| io.value.as_deref()?.parse::<i64>().ok())
+                        .sum()
+                };
+                let amount_sat = own(&tx.vout) - own(&tx.vin);
                 let fee_sat: u64 = tx.fees.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0);
-                BlockbookHistoryEntry {
+                (amount_sat != 0).then(|| BlockbookHistoryEntry {
                     txid: tx.txid,
                     block_height: tx.block_height.unwrap_or(0),
                     timestamp: tx.block_time.unwrap_or(0),
-                    amount_sat: if is_incoming { amount_sat } else { -amount_sat },
+                    amount_sat,
                     fee_sat,
-                    is_incoming,
-                }
+                    is_incoming: amount_sat > 0,
+                })
             })
             .collect())
     }

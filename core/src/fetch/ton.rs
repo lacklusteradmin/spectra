@@ -288,77 +288,76 @@ impl TonClient {
         struct Resp {
             result: Vec<TonTx>,
         }
-        #[derive(Deserialize)]
-        struct TonTx {
-            transaction_id: TonTxId,
-            utime: u64,
-            in_msg: Option<TonMsg>,
-            out_msgs: Vec<TonMsg>,
-            fee: String,
-        }
-        #[derive(Deserialize)]
-        struct TonTxId {
-            hash: String,
-        }
-        #[derive(Deserialize)]
-        struct TonMsg {
-            source: String,
-            destination: String,
-            value: String,
-            #[serde(default)]
-            message: String,
-        }
-
         let resp: Resp = self
             .get(&format!(
                 "/getTransactions?address={address}&limit=50&archival=false"
             ))
             .await?;
-
-        let mut entries = Vec::new();
-        for tx in resp.result {
-            let txid = tx.transaction_id.hash;
-            let timestamp = tx.utime;
-            let fee: u64 = tx.fee.parse().unwrap_or(0);
-
-            // Incoming: in_msg.destination == address
-            if let Some(msg) = &tx.in_msg
-                && !msg.destination.is_empty()
-            {
-                let amount: u64 = msg.value.parse().unwrap_or(0);
-                let comment = if msg.message.is_empty() {
-                    None
-                } else {
-                    Some(msg.message.clone())
-                };
-                entries.push(TonHistoryEntry {
-                    txid: txid.clone(),
-                    timestamp,
-                    from: msg.source.clone(),
-                    to: msg.destination.clone(),
-                    amount_nanotons: amount,
-                    fee_nanotons: fee,
-                    is_incoming: true,
-                    comment,
-                });
-            }
-            // Outgoing.
-            for msg in &tx.out_msgs {
-                let amount: u64 = msg.value.parse().unwrap_or(0);
-                entries.push(TonHistoryEntry {
-                    txid: txid.clone(),
-                    timestamp,
-                    from: msg.source.clone(),
-                    to: msg.destination.clone(),
-                    amount_nanotons: amount,
-                    fee_nanotons: fee,
-                    is_incoming: false,
-                    comment: None,
-                });
-            }
-        }
-        Ok(entries)
+        Ok(ton_history_from_transactions(resp.result))
     }
+}
+
+#[derive(Deserialize)]
+struct TonTx {
+    transaction_id: TonTxId,
+    utime: u64,
+    in_msg: Option<TonMsg>,
+    out_msgs: Vec<TonMsg>,
+    fee: String,
+}
+#[derive(Deserialize)]
+struct TonTxId {
+    hash: String,
+}
+#[derive(Deserialize)]
+struct TonMsg {
+    source: String,
+    destination: String,
+    value: String,
+    #[serde(default)]
+    message: String,
+}
+
+/// The value-carrying messages of each transaction, one entry per message.
+///
+/// A message with no source is external: the signed request that starts a
+/// wallet's own send, carrying no value. One with no destination is an
+/// external log. Neither moves TON between accounts, so neither is an entry —
+/// the external request was read as a receipt of 0 TON beside every send.
+fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
+    let mut entries = Vec::new();
+    for tx in txs {
+        let txid = tx.transaction_id.hash;
+        let timestamp = tx.utime;
+        let fee: u64 = tx.fee.parse().unwrap_or(0);
+        let internal = |msg: &TonMsg| !msg.source.is_empty() && !msg.destination.is_empty();
+
+        if let Some(msg) = tx.in_msg.as_ref().filter(|msg| internal(msg)) {
+            entries.push(TonHistoryEntry {
+                txid: txid.clone(),
+                timestamp,
+                from: msg.source.clone(),
+                to: msg.destination.clone(),
+                amount_nanotons: msg.value.parse().unwrap_or(0),
+                fee_nanotons: fee,
+                is_incoming: true,
+                comment: Some(msg.message.clone()).filter(|m| !m.is_empty()),
+            });
+        }
+        for msg in tx.out_msgs.iter().filter(|msg| internal(msg)) {
+            entries.push(TonHistoryEntry {
+                txid: txid.clone(),
+                timestamp,
+                from: msg.source.clone(),
+                to: msg.destination.clone(),
+                amount_nanotons: msg.value.parse().unwrap_or(0),
+                fee_nanotons: fee,
+                is_incoming: false,
+                comment: None,
+            });
+        }
+    }
+    entries
 }
 
 fn format_ton(nanotons: u64) -> String {
@@ -375,4 +374,39 @@ fn format_ton(nanotons: u64) -> String {
         trimmed
     };
     format!("{}.{}", whole, capped)
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    const ME: &str = "EQCD39VS5jcptHL8vMjEXrzGaRcCVYto7HUn4bpAOg8xqB2N";
+    const THEM: &str = "EQBvW8Z5huBkMJYdnfAEM5JqTNkuWX3diqYENkWsIL0XggGG";
+
+    /// A toncenter v2 wallet send: the external request comes in with no
+    /// source and no value, and the transfer goes out.
+    #[test]
+    fn a_send_is_one_outgoing_entry_without_a_zero_receipt() {
+        let txs: Vec<TonTx> = serde_json::from_value(serde_json::json!([{
+            "transaction_id": {"hash": "send"},
+            "utime": 1_790_000_000u64,
+            "fee": "2780000",
+            "in_msg": {"source": "", "destination": ME, "value": "0", "message": ""},
+            "out_msgs": [{"source": ME, "destination": THEM, "value": "1500000000", "message": ""}]
+        }, {
+            "transaction_id": {"hash": "receive"},
+            "utime": 1_790_000_100u64,
+            "fee": "0",
+            "in_msg": {"source": THEM, "destination": ME, "value": "250000000", "message": "hi"},
+            "out_msgs": []
+        }]))
+        .unwrap();
+        let entries = ton_history_from_transactions(txs);
+        assert_eq!(entries.len(), 2);
+        assert!(!entries[0].is_incoming);
+        assert_eq!(entries[0].amount_nanotons, 1_500_000_000);
+        assert!(entries[1].is_incoming);
+        assert_eq!(entries[1].amount_nanotons, 250_000_000);
+        assert_eq!(entries[1].comment.as_deref(), Some("hi"));
+    }
 }

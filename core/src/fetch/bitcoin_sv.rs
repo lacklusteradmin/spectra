@@ -52,6 +52,8 @@ pub(crate) struct WocHistoryItem {
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct WocTxDetail {
     #[serde(default)]
+    pub(crate) txid: String,
+    #[serde(default)]
     pub(crate) time: Option<u64>,
     #[serde(default)]
     pub(crate) blocktime: Option<u64>,
@@ -63,10 +65,14 @@ pub(crate) struct WocTxDetail {
     pub(crate) vout: Vec<WocTxVout>,
 }
 
+/// An input names the output it spends; WoC gives neither its address nor
+/// its value.
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct WocTxVin {
     #[serde(default)]
-    pub(crate) addr: Option<String>,
+    pub(crate) txid: String,
+    #[serde(default)]
+    pub(crate) vout: u32,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -74,6 +80,8 @@ pub(crate) struct WocTxVout {
     /// BSV amount as a float (WoC convention). Convert ×1e8 for sats.
     #[serde(default)]
     pub(crate) value: f64,
+    #[serde(default)]
+    pub(crate) n: u32,
     #[serde(default)]
     #[serde(rename = "scriptPubKey")]
     pub(crate) script_pub_key: Option<WocTxVoutScriptPubKey>,
@@ -200,37 +208,15 @@ impl BitcoinSvClient {
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<BsvHistoryEntry>, String> {
         let list: Vec<WocHistoryItem> = self.get(&format!("/address/{address}/history")).await?;
 
-        let mut out: Vec<BsvHistoryEntry> = Vec::with_capacity(list.len());
-        for item in list.into_iter() {
-            let tx: WocTxDetail = match self.get(&format!("/tx/hash/{}", item.tx_hash)).await {
-                Ok(t) => t,
-                Err(_) => {
-                    // Fall back to a bare entry so the user still sees the txid.
-                    out.push(BsvHistoryEntry {
-                        txid: item.tx_hash,
-                        block_height: item.height.max(0) as u64,
-                        timestamp: 0,
-                        amount_sat: 0,
-                        is_incoming: false,
-                    });
-                    continue;
-                }
-            };
-
-            let (amount_sat, is_incoming) = bsv_compute_delta(&tx, address);
-            let block_height = tx.blockheight.unwrap_or(item.height).max(0) as u64;
-            let timestamp = tx.blocktime.or(tx.time).unwrap_or(0);
-
-            out.push(BsvHistoryEntry {
-                txid: item.tx_hash,
-                block_height,
-                timestamp,
-                amount_sat,
-                is_incoming,
-            });
+        let mut details = Vec::with_capacity(list.len());
+        for item in list {
+            // Every transaction is needed to know which outputs are the
+            // address's, so one that cannot be read fails the whole history
+            // rather than turning a later spend of its outputs into a receipt.
+            let tx: WocTxDetail = self.get(&format!("/tx/hash/{}", item.tx_hash)).await?;
+            details.push((item, tx));
         }
-
-        Ok(out)
+        Ok(bsv_history_from_details(details, address))
     }
 
     /// Fetch confirmation status for a single txid via WoC `/tx/hash/{txid}`.
@@ -272,44 +258,131 @@ fn format_bsv(sat: u64) -> String {
     format!("{}.{}", whole, trimmed)
 }
 
-/// Best-effort amount/direction decoding from a WoC tx detail object.
+/// Each transaction's net effect on `address`: the outputs paying it less
+/// the outputs of its own that the transaction spends.
 ///
-/// We don't have the previous-output values for inputs without extra
-/// round-trips, so "outgoing" is returned with a zero amount when we can
-/// only prove the address appeared on the input side. For incoming txs we
-/// sum the vout values destined for the queried address and convert BSV
-/// floats to satoshis.
-fn bsv_compute_delta(tx: &WocTxDetail, address: &str) -> (i64, bool) {
-    // Outgoing detection: any vin whose `addr` matches us.
-    let is_outgoing = tx.vin.iter().any(|v| v.addr.as_deref() == Some(address));
-
-    // Incoming amount: sum vout values paid to us.
-    let mut incoming_sats: u64 = 0;
-    for v in &tx.vout {
-        let pays_us = v
-            .script_pub_key
+/// WoC's inputs carry no address or value, only the output they spend, so an
+/// input is the address's when it spends an output the address received in
+/// this same history. Without that, no input was ever recognized: a send
+/// with change read as receiving the change, and one without read as 0.
+fn bsv_history_from_details(
+    details: Vec<(WocHistoryItem, WocTxDetail)>,
+    address: &str,
+) -> Vec<BsvHistoryEntry> {
+    let sats = |value: f64| {
+        let sats = (value * 100_000_000.0).round();
+        if sats.is_finite() && sats >= 0.0 {
+            sats as i64
+        } else {
+            0
+        }
+    };
+    let pays_address = |vout: &WocTxVout| {
+        vout.script_pub_key
             .as_ref()
             .and_then(|spk| spk.addresses.as_ref())
-            .map(|addrs| addrs.iter().any(|a| a == address))
-            .unwrap_or(false);
-        if pays_us {
-            // BSV float → satoshis; clamp negatives and NaN.
-            let sats = (v.value * 100_000_000.0).round();
-            if sats.is_finite() && sats >= 0.0 {
-                incoming_sats = incoming_sats.saturating_add(sats as u64);
-            }
-        }
+            .is_some_and(|addrs| addrs.iter().any(|a| a == address))
+    };
+    let owned: std::collections::HashMap<(String, u32), i64> = details
+        .iter()
+        .flat_map(|(item, tx)| {
+            let txid = if tx.txid.is_empty() {
+                &item.tx_hash
+            } else {
+                &tx.txid
+            };
+            tx.vout
+                .iter()
+                .filter(|vout| pays_address(vout))
+                .map(move |vout| ((txid.clone(), vout.n), sats(vout.value)))
+        })
+        .collect();
+    details
+        .into_iter()
+        .filter_map(|(item, tx)| {
+            let received: i64 = tx
+                .vout
+                .iter()
+                .filter(|v| pays_address(v))
+                .map(|v| sats(v.value))
+                .sum();
+            let spent: i64 = tx
+                .vin
+                .iter()
+                .filter_map(|vin| owned.get(&(vin.txid.clone(), vin.vout)))
+                .sum();
+            let amount_sat = received - spent;
+            (amount_sat != 0).then(|| BsvHistoryEntry {
+                txid: item.tx_hash,
+                block_height: tx.blockheight.unwrap_or(item.height).max(0) as u64,
+                timestamp: tx.blocktime.or(tx.time).unwrap_or(0),
+                amount_sat,
+                is_incoming: amount_sat > 0,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    const ME: &str = "1KGHhLTQaPr4LErrvbAuGE62yPpDoRwrob";
+    const THEM: &str = "14oJKtCNjEM7Sx4eFReaiHfqRFVVLDNBMG";
+
+    fn detail(
+        txid: &str,
+        vin: serde_json::Value,
+        vout: serde_json::Value,
+    ) -> (WocHistoryItem, WocTxDetail) {
+        let tx: WocTxDetail = serde_json::from_value(
+            serde_json::json!({"txid": txid, "vin": vin, "vout": vout, "blocktime": 1}),
+        )
+        .unwrap();
+        (
+            WocHistoryItem {
+                tx_hash: txid.into(),
+                height: 1,
+            },
+            tx,
+        )
+    }
+    fn out(n: u32, value: f64, to: &str) -> serde_json::Value {
+        serde_json::json!({"value": value, "n": n, "scriptPubKey": {"addresses": [to]}})
     }
 
-    if is_outgoing {
-        // Outgoing wins: amount is best-effort as the *negative* incoming
-        // change (wallets that send to themselves will show a small delta).
-        // When we can't attribute any value we return 0 rather than lie.
-        let signed: i64 = incoming_sats.min(i64::MAX as u64) as i64;
-        (-signed, false)
-    } else if incoming_sats > 0 {
-        (incoming_sats.min(i64::MAX as u64) as i64, true)
-    } else {
-        (0, false)
+    /// WoC `/tx/hash` shapes: inputs name only the output they spend.
+    #[test]
+    fn a_send_spends_the_addresses_own_outputs() {
+        let details = vec![
+            detail(
+                "fund",
+                serde_json::json!([{"txid": "x", "vout": 0}]),
+                serde_json::json!([out(0, 1.0, ME)]),
+            ),
+            detail(
+                "send",
+                serde_json::json!([{"txid": "fund", "vout": 0}]),
+                serde_json::json!([out(0, 0.6, THEM), out(1, 0.3999, ME)]),
+            ),
+            detail(
+                "sweep",
+                serde_json::json!([{"txid": "send", "vout": 1}]),
+                serde_json::json!([out(0, 0.3998, THEM)]),
+            ),
+        ];
+        let entries = bsv_history_from_details(details, ME);
+        let got: Vec<(&str, i64, bool)> = entries
+            .iter()
+            .map(|e| (e.txid.as_str(), e.amount_sat, e.is_incoming))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("fund", 100_000_000, true),
+                ("send", -60_010_000, false),
+                ("sweep", -39_990_000, false)
+            ]
+        );
     }
 }

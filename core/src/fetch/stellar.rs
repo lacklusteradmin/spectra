@@ -93,6 +93,16 @@ pub(crate) struct HorizonPaymentRecord {
     pub(crate) to: String,
     #[serde(default)]
     pub(crate) amount: String,
+    /// `native` for XLM; a payment of an issued asset names its own.
+    #[serde(default)]
+    pub(crate) asset_type: String,
+    /// `create_account` names its ends and amount differently.
+    #[serde(default)]
+    pub(crate) funder: String,
+    #[serde(default)]
+    pub(crate) account: String,
+    #[serde(default)]
+    pub(crate) starting_balance: String,
     pub(crate) created_at: String,
     pub(crate) transaction_hash: String,
 }
@@ -157,27 +167,45 @@ impl StellarClient {
                 "/accounts/{address}/payments?limit=50&order=desc&include_failed=false"
             ))
             .await?;
-        Ok(payments
-            .embedded
-            .records
-            .into_iter()
-            .filter(|r| r.op_type == "payment" || r.op_type == "create_account")
-            .map(|r| {
-                let amount_stroops = parse_stellar_amount(&r.amount).unwrap_or(0);
-                let is_incoming = r.to == address;
-                StellarHistoryEntry {
-                    txid: r.transaction_hash,
-                    ledger: 0,
-                    timestamp: r.created_at,
-                    from: r.from,
-                    to: r.to,
-                    amount_stroops,
-                    fee_charged: 0,
-                    is_incoming,
-                }
-            })
-            .collect())
+        Ok(stellar_history_from_payments(
+            payments.embedded.records,
+            address,
+        ))
     }
+}
+
+/// The XLM each payment record moved for `address`.
+///
+/// A `create_account` record carries its ends and amount as `funder`,
+/// `account` and `starting_balance`; read through the payment fields it was a
+/// 0 XLM send between empty addresses. A payment of an issued asset is not
+/// XLM and is left out rather than shown with the asset's amount under XLM's
+/// name.
+fn stellar_history_from_payments(
+    records: Vec<HorizonPaymentRecord>,
+    address: &str,
+) -> Vec<StellarHistoryEntry> {
+    records
+        .into_iter()
+        .filter_map(|r| {
+            let (from, to, amount) = match r.op_type.as_str() {
+                "payment" if r.asset_type == "native" => (r.from, r.to, r.amount),
+                "create_account" => (r.funder, r.account, r.starting_balance),
+                _ => return None,
+            };
+            let amount_stroops = parse_stellar_amount(&amount).ok()?;
+            Some(StellarHistoryEntry {
+                txid: r.transaction_hash,
+                ledger: 0,
+                timestamp: r.created_at,
+                is_incoming: to == address,
+                from,
+                to,
+                amount_stroops,
+                fee_charged: 0,
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, String> {
@@ -188,4 +216,40 @@ pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, String> {
     let frac_padded = format!("{:0<7}", frac_str);
     let frac: i64 = frac_padded[..7].parse().unwrap_or(0);
     Ok(whole * 10_000_000 + frac)
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    const ME: &str = "GA5XIGA5C7QTPTWXQHY6MCJRMTRZDOSHR6EFIBNDQTCQHG262N4GGKTM";
+    const THEM: &str = "GBUXQE5RNV267EEVS6COJSHRKIE52GFVVA66TMM7UNAYLAOZP36PZ7YX";
+
+    /// Record shapes as Horizon's `/accounts/{id}/payments` returns them.
+    #[test]
+    fn create_account_and_issued_assets_are_read_by_their_own_fields() {
+        let records: HorizonPaymentsEmbedded = serde_json::from_value(serde_json::json!({
+            "records": [
+                {"type": "create_account", "created_at": "2025-08-06T02:05:01Z",
+                 "transaction_hash": "created", "starting_balance": "241.5703630",
+                 "funder": THEM, "account": ME},
+                {"type": "payment", "created_at": "2025-08-06T01:17:03Z",
+                 "transaction_hash": "xlm", "asset_type": "native",
+                 "from": ME, "to": THEM, "amount": "82.1781600"},
+                {"type": "payment", "created_at": "2025-08-06T01:18:03Z",
+                 "transaction_hash": "usdc", "asset_type": "credit_alphanum4",
+                 "from": THEM, "to": ME, "amount": "5000.0000000"}
+            ]
+        }))
+        .unwrap();
+        let entries = stellar_history_from_payments(records.records, ME);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].txid, "created");
+        assert!(entries[0].is_incoming);
+        assert_eq!(entries[0].from, THEM);
+        assert_eq!(entries[0].amount_stroops, 2_415_703_630);
+        assert_eq!(entries[1].txid, "xlm");
+        assert!(!entries[1].is_incoming);
+        assert_eq!(entries[1].amount_stroops, 821_781_600);
+    }
 }

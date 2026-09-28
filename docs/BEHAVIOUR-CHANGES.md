@@ -16,6 +16,117 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-27 — History can hide small amounts
+
+- **Before:** the history page showed every stored transfer. A large watched
+  address filled it with zero-value and dust transfers — EVM contract calls
+  (0 ETH), ERC-20/TRC-20 address-poisoning transfers of 0 USDT, 1-nanoton
+  TON notifications — with no way to set them aside.
+- **After:** `HistoryQuery` has `hideSmallAmounts`, which leaves out
+  transfers below `HISTORY_SMALL_AMOUNT_THRESHOLD` (0.00001 of the row's own
+  asset); the threshold itself is kept. A cursor carries the setting and is
+  refused by a query with the other one. The history filter menu has a "Hide
+  small amounts" toggle, off by default, that names the threshold core
+  exports as `historySmallAmountThreshold()`.
+- **Why:** these transfers are real chain activity, so the history keeps
+  them; the user decides whether to see them. One threshold for every asset
+  keeps it a filter of dust rather than a valuation.
+- **CLI check:** `spectra txs --page --hide-small-amounts`;
+  `scripts/cli-history.py HistoryTests.test_hide_small_amounts` stores 0,
+  0.000009, 0.00001 and 1 and expects the last two.
+- **Verification:** `make verify`.
+
+## 2026-09-27 — Chain history no longer invents zero or wrong amounts
+
+Each history client now reports what the transaction moved for the address,
+fee excluded on account chains, and leaves out a transaction that moved
+nothing. What each did before:
+
+- **Sui:** every row was a receipt of 0 SUI — the client hard-coded
+  `is_incoming: true, amount_mist: 0`. It now queries as sender and as
+  recipient and reads the address's SUI balance change, adding back the gas
+  it paid.
+- **TON:** a wallet's own send starts with an external message (no source,
+  no value), which was stored as a receipt of 0 TON beside every send.
+  External messages in and out are no longer entries.
+- **XRP:** an issued-currency payment read as 0 XRP, a partial payment as its
+  `Amount` ceiling rather than what was delivered, and a failed payment as a
+  transfer. The amount is now the account's own `AccountRoot` balance change
+  from the metadata; only successful payments count.
+- **Stellar:** `create_account` read as a 0 XLM send between empty addresses
+  (its fields are `funder`, `account`, `starting_balance`), and a payment of
+  an issued asset was shown under XLM's name. Both are read correctly or left
+  out.
+- **NEAR:** the indexer path `/accounts/{id}/activity` answers 404, so there
+  was no NEAR history at all. It now reads Nearblocks'
+  `/account/{id}/txns`: successful receipts that attach a deposit between the
+  account and another; gas refunds from `system` are fees, not transfers.
+- **Solana:** a version-0 transaction that loads the address from a lookup
+  table read as 0 SOL, a fee-only transaction as a 0 SOL send, amounts below
+  0.000001 SOL were cut to 0, and a token account closed by the transaction
+  lost its outgoing transfer. The dead `fetch_history` is removed.
+- **Aptos:** any entry function named `*transfer*` counted as APT, so token
+  transfers were filed as APT and fungible-asset transfers as 0 APT to
+  nobody. Only the framework's APT transfers count, and only when successful.
+- **ICP:** mints, burns and approvals read as 0 ICP sends. The amount is now
+  the account's own change across transfer, mint and burn operations.
+- **Cardano:** every transaction was a receipt of its total output — every
+  party's, change included. It is now the address's own outputs less its
+  inputs.
+- **Kaspa:** the API's snake_case fields were read as camelCase, so every
+  field defaulted and each transaction was a receipt of 0 KAS (and a pending
+  send never confirmed); inputs were also fetched without their addresses.
+  Kaspa and Decred had no normalization shape, so neither chain's history
+  reached the store.
+- **Bitcoin SV:** WhatsOnChain's inputs carry no address or value, so no
+  input was recognized: a send with change read as receiving the change, one
+  without as 0, and an unreadable transaction as a 0 BSV send. Inputs are
+  now matched against the address's own outputs in the same history, and an
+  unreadable transaction fails the refresh.
+- **Blockbook:** the amount was the transaction's total output; it is now
+  the address's net.
+- **All normalized chains:** an unreadable amount was stored as 0; the row is
+  refused. A whole number of base units converts exactly (10^23 yoctoNEAR is
+  0.1 NEAR, not 0.09999999999999999). EVM native ends are compared
+  lowercased, as token ends already were.
+
+- **Why:** a 0 or a wrong amount is a false record of the user's funds. The
+  zero-value transfers that remain are ones the chain actually carried; the
+  entry above lets the user hide them.
+- **CLI check:** `spectra history <wallet>` on a watched Sui, TON, XRP,
+  Stellar, NEAR, Kaspa or Cardano address shows no 0-amount rows. Unit tests
+  per client (`history_tests` in each `fetch/*.rs`) hold the shapes the
+  providers return; `scripts/cli-history.py` covers Blockbook's net amount.
+- **Verification:** `make verify`.
+
+## 2026-09-27 — The portfolio card no longer counts wallets
+
+- **Before:** under the portfolio total, a footnote read `Across 3 wallets`
+  (the wallets included in the total).
+- **After:** the card shows the label and the total only; the
+  `dashboard.portfolio.walletCount.*` strings are gone from every locale.
+- **Why:** the Wallets card directly below lists the wallets, so the count
+  repeated it; which wallets the total includes is what the card opens to
+  choose.
+- **CLI check:** none applies — presentation only.
+- **Verification:** `make test-ios`.
+
+## 2026-09-27 — A partial total no longer says what it leaves out
+
+- **Before:** a total with unpriced holdings read `$5,400.00 · 1 without a
+  price` in the figure itself — the portfolio header's large title, each
+  wallet card's value and the wallet detail's total — so the headline number
+  shrank to fit a sentence.
+- **After:** the figure is the amount alone, and the `%lld without a price`
+  string is gone from every locale.
+- **Why:** each unpriced holding already shows "—" as its value on its own
+  row, which says the same thing where it applies; repeating it in the
+  headline made the total the least legible thing on the card.
+- **CLI check:** none applies — presentation only; core's `unpricedCount` is
+  unchanged. `testUnvaluedFiguresAreUnavailableAndPartialTotalsShowTheFigureAlone`
+  covers it.
+- **Verification:** `make test-ios`.
+
 ## 2026-09-27 — The send review names the recipient and shows its address whole
 
 - **Before:** the pre-build review printed the typed amount as entered
