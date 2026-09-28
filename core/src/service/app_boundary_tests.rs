@@ -139,7 +139,7 @@ async fn dogecoin_preview_excludes_spent_outputs_and_preserves_requested_amount(
         .mount(&server)
         .await;
     let preview = service("dogecoin", &server)
-        .fetch_dogecoin_send_preview("sender".into(), 1.0, "standard".into())
+        .fetch_dogecoin_send_preview("sender".into(), 1.0)
         .await
         .unwrap()
         .unwrap();

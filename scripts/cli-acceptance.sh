@@ -226,7 +226,7 @@ check "reports an unknown wallet"           1 spectra wallet show "no such walle
 check "stored metadata strictly requires the current format" 0 python3 - "$BIN" "$DATA_DIR" <<'PYSTORED'
 import json, pathlib, shutil, sqlite3, subprocess, sys, tempfile
 binary, source = sys.argv[1:]
-for case in ["version", "missing_version", "unknown_key", "missing_setting", "unknown_setting", "fee", "preferences", "alerts", "rates", "quotes"]:
+for case in ["version", "missing_version", "unknown_key", "missing_setting", "unknown_setting", "preferences", "alerts", "rates", "quotes"]:
     with tempfile.TemporaryDirectory() as root:
         path = pathlib.Path(root) / "spectra.sqlite"
         with sqlite3.connect(pathlib.Path(source) / "spectra.sqlite") as original, sqlite3.connect(path) as db:
@@ -240,8 +240,7 @@ for case in ["version", "missing_version", "unknown_key", "missing_setting", "un
                 if key == "settings":
                     settings = json.loads(db.execute("SELECT value FROM app_state_meta WHERE key='settings'").fetchone()[0])
                     if case == "missing_setting": del settings["fiatCurrency"]
-                    elif case == "unknown_setting": settings["obsolete"] = True
-                    else: settings["feePriorityByChain"] = {"Bitcoin": "lightspeed"}
+                    else: settings["obsolete"] = True
                     value = json.dumps(settings)
                 db.execute("INSERT OR REPLACE INTO app_state_meta VALUES (?, ?)", (key, value))
             db.commit()
@@ -626,6 +625,12 @@ check "refuses self-tests for an unknown chain" $USAGE \
     spectra diagnostics self-test --chain Nope
 contains "builds a diagnostics document"  '"endpoints"' \
     spectra diagnostics show --chain Bitcoin
+contains "the document names the network it describes" '"network":"bitcoin"' \
+    spectra --json diagnostics show --chain Bitcoin
+contains "core builds the diagnostics bundle" '"chainDiagnosticsJson"' \
+    spectra diagnostics bundle
+contains "the bundle's header counts core's wallets" '"walletCount"' \
+    spectra diagnostics bundle
 
 # ── Tracked tokens ──────────────────────────────────────────────────────────
 #
@@ -1024,22 +1029,11 @@ check "adds a typed custom endpoint" $OK \
     spectra endpoints --chain monero --api monero-daemon-rpc --capabilities fee,broadcast,verification --add https://wallet.example
 contains "a second process reads the custom endpoint" '"endpoint":"https://wallet.example"' \
     spectra --json endpoints --catalog --source custom --chain monero
-# Fee priority is keyed by chain rather than global, so every chain can have
-# its own.
-check "sets a per-chain fee priority"       $OK \
+# Fee priority was stored per chain and spent by no send path; it is gone
+# rather than kept as a choice that changes nothing.
+check "fee priority is not a setting"      $REJECTED \
     spectra settings set fee-priority.Dogecoin economy
-contains "and reads it back"                '"value":"economy"' \
-    spectra --json settings get fee-priority.Dogecoin
-contains "a chain never set reads the default" '"value":"normal"' \
-    spectra --json settings get fee-priority.Solana
-# The three the picker offers, or the default. A value no send path knows how
-# to spend is not worth storing under a name that says a fee was chosen.
-contains "refuses a priority no send path spends" '"value":"normal"' \
-    spectra --json settings set fee-priority.Solana lightspeed
-check "refuses a chain the registry does not know" $REJECTED \
-    spectra settings set fee-priority.Nonsuch economy
-# The same keyed shape, for the setting that decides which node a chain talks
-# to. It was one `ethereum_rpc_endpoint` string, read through an accessor that
+# Custom nodes are keyed by chain, so every EVM network can have its own. It was one `ethereum_rpc_endpoint` string, read through an accessor that
 # was `chainName == "Ethereum" ? … : nil`, so twenty-two EVM mainnets could not
 # be pointed at a private node from any front end.
 check "adds an EVM endpoint" $OK \

@@ -153,6 +153,7 @@ impl WalletService {
     ) {
         use crate::service::DiagnosticCommand;
         let chain_id = chain.str_id().to_string();
+        crate::diagnostics::diagnostics_record_history_run(chain_id.clone());
         let command = match result {
             Ok(outcome) => {
                 for row in &outcome.diagnostics {

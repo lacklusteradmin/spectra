@@ -482,18 +482,11 @@ impl WalletService {
         &self,
         address: String,
         requested_amount: f64,
-        fee_priority: String,
     ) -> Result<Option<crate::send::preview_types::DogecoinSendPreview>, SpectraBridgeError> {
         let raw = self
             .fetch_utxo_fee_preview_json(Chain::Dogecoin.str_id(), address, 0)
             .await?;
-        Ok(
-            crate::send::preview_decode::build_dogecoin_send_preview_record(
-                raw,
-                requested_amount,
-                fee_priority,
-            ),
-        )
+        Ok(crate::send::preview_decode::build_dogecoin_send_preview_record(raw, requested_amount))
     }
     pub async fn fetch_simple_chain_send_preview(
         &self,

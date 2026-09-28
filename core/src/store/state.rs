@@ -189,39 +189,6 @@ pub enum AddressBookRejection {
     DuplicateAddress,
 }
 
-/// Fee-priority choices. Front ends supply their localized names.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "lowercase")]
-pub enum FeePriority {
-    Economy,
-    Normal,
-    Priority,
-}
-
-impl FeePriority {
-    /// The stored spelling, and what a provider fee preview is asked for.
-    pub fn as_raw(self) -> &'static str {
-        match self {
-            Self::Economy => "economy",
-            Self::Normal => "normal",
-            Self::Priority => "priority",
-        }
-    }
-}
-
-/// Read a fee priority written as text — a stored value, a CLI argument.
-///
-/// Anything the three do not name is the default rather than a stored value no
-/// send path knows how to spend.
-#[uniffi::export]
-pub fn parse_fee_priority(raw: String) -> FeePriority {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "economy" => FeePriority::Economy,
-        "priority" => FeePriority::Priority,
-        _ => FeePriority::Normal,
-    }
-}
-
 /// Why a token-preference change was refused. Front ends map these to their
 /// own wording; the decision itself is core's.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
@@ -284,12 +251,6 @@ pub struct AppSettings {
 
     /// How far past the last used address HD discovery keeps looking.
     pub bitcoin_stop_gap: u32,
-
-    // ── Fees ──────────────────────────────────────────────────────────────
-    /// Confirmation preference per chain, as `chain display name -> one of
-    /// "economy" / "normal" / "priority"`. Absent means `normal`, so the map
-    /// is empty until the user picks something.
-    pub fee_priority_by_chain: std::collections::HashMap<String, FeePriority>,
 
     // ── Network and refresh policy ────────────────────────────────────────
     pub background_sync_profile: BackgroundSyncProfile,
@@ -552,7 +513,6 @@ impl Default for AppSettings {
             selected_chain_by_family: std::collections::HashMap::new(),
             custom_endpoints: Vec::new(),
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
-            fee_priority_by_chain: std::collections::HashMap::new(),
             background_sync_profile: BackgroundSyncProfile::Balanced,
             use_price_alerts: default_true(),
             use_transaction_status_notifications: default_true(),
@@ -635,12 +595,6 @@ pub enum AppSettingUpdate {
     },
     BitcoinStopGap {
         value: u32,
-    },
-    /// `chain` is a registry display name; an unknown one is refused and an
-    /// unknown `value` falls back to `normal`.
-    FeePriority {
-        chain: String,
-        value: FeePriority,
     },
     BackgroundSyncProfile {
         value: BackgroundSyncProfile,
@@ -1041,18 +995,6 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
         }
         AppSettingUpdate::BitcoinStopGap { value } => {
             settings.bitcoin_stop_gap = clamp(value, BITCOIN_STOP_GAP_RANGE)
-        }
-        AppSettingUpdate::FeePriority { chain, value } => {
-            let Some(chain) = crate::registry::Chain::from_str_id(&chain) else {
-                return false;
-            };
-            if value == FeePriority::Normal {
-                settings.fee_priority_by_chain.remove(chain.str_id());
-            } else {
-                settings
-                    .fee_priority_by_chain
-                    .insert(chain.str_id().to_string(), value);
-            }
         }
         AppSettingUpdate::BackgroundSyncProfile { value } => {
             settings.background_sync_profile = value
@@ -1564,65 +1506,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
     }
 
     events
-}
-
-#[cfg(test)]
-mod fee_priority_tests {
-    use super::*;
-
-    #[test]
-    fn the_three_are_read_by_name_and_everything_else_is_the_default() {
-        assert_eq!(parse_fee_priority(" Economy ".into()), FeePriority::Economy);
-        assert_eq!(parse_fee_priority("priority".into()), FeePriority::Priority);
-        assert_eq!(parse_fee_priority("NORMAL".into()), FeePriority::Normal);
-        for raw in ["lightspeed", "", "   ", "instant", "priority!"] {
-            assert_eq!(
-                parse_fee_priority(raw.to_string()),
-                FeePriority::Normal,
-                "{raw:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn unknown_stored_fee_priority_is_refused() {
-        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
-        value["feePriorityByChain"] = serde_json::json!({"dogecoin": "lightspeed"});
-        assert!(serde_json::from_value::<AppSettings>(value).is_err());
-    }
-
-    #[test]
-    fn the_stored_spelling_is_the_one_the_setting_had() {
-        assert_eq!(
-            serde_json::to_string(&FeePriority::Priority).expect("serializes"),
-            "\"priority\""
-        );
-        assert_eq!(FeePriority::Economy.as_raw(), "economy");
-    }
-
-    #[test]
-    fn picking_the_default_stops_storing_a_choice() {
-        let mut settings = AppSettings::default();
-        assert!(apply_app_setting(
-            &mut settings,
-            AppSettingUpdate::FeePriority {
-                chain: "dogecoin".into(),
-                value: FeePriority::Economy,
-            }
-        ));
-        assert_eq!(
-            settings.fee_priority_by_chain.get("dogecoin"),
-            Some(&FeePriority::Economy)
-        );
-        assert!(apply_app_setting(
-            &mut settings,
-            AppSettingUpdate::FeePriority {
-                chain: "dogecoin".into(),
-                value: FeePriority::Normal,
-            }
-        ));
-        assert!(settings.fee_priority_by_chain.is_empty());
-    }
 }
 
 #[cfg(test)]

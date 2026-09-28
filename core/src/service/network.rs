@@ -83,6 +83,7 @@ impl WalletService {
                     detail,
                 });
             }
+            crate::diagnostics::diagnostics_record_endpoints(chain_id.clone(), out.clone());
             Ok(out)
         })
         .await

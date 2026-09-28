@@ -69,8 +69,9 @@ mod address_discovery;
 mod balance_refresh;
 mod diagnostic_state;
 pub use diagnostic_state::{
-    ChainDegradation, ConfiguredSelfTestReport, DiagnosticCommand, DiagnosticLog,
-    DiagnosticLogInput, DiagnosticLogLevel, DiagnosticState,
+    ChainDegradation, ChainDiagnostics, ConfiguredSelfTestReport, DiagnosticCommand, DiagnosticLog,
+    DiagnosticLogInput, DiagnosticLogLevel, DiagnosticState, DiagnosticsPlatformInfo,
+    DiagnosticsSourceCount,
 };
 mod funds_scan;
 pub use funds_scan::{FundsScan, FundsScanProgress, FundsScanRead};

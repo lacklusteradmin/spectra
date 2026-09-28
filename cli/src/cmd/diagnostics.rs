@@ -35,8 +35,10 @@ pub enum DiagnosticsCommand {
         #[arg(long)]
         chain: String,
     },
-    /// The diagnostics document core builds for a chain.
+    /// The diagnostics document core builds for a chain, on its selected network.
     Show(ShowArgs),
+    /// The diagnostics bundle core builds: every mainnet's document and a header.
+    Bundle,
 }
 
 #[derive(Args)]
@@ -89,6 +91,7 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
         }
         DiagnosticsCommand::SelfTest(args) => self_test(out, args),
         DiagnosticsCommand::Show(args) => show(ctx, out, args),
+        DiagnosticsCommand::Bundle => bundle(ctx, out),
         DiagnosticsCommand::Configured { chain } => {
             let chain = resolve_chain(&chain)?;
             let report = ctx.rt.block_on(
@@ -189,22 +192,31 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
 
 fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let _ = ctx;
-    let json = spectra_core::diagnostics::diagnostics_json(
-        chain.str_id().to_string(),
-        Vec::new(),
-        None,
-        None,
-        None,
-    )
-    .ok_or_else(|| {
-        CliError::failure(format!(
-            "core built no diagnostics document for {}",
-            chain.chain_display_name()
-        ))
-    })?;
+    let diagnostics = ctx
+        .rt
+        .block_on(ctx.service()?.chain_diagnostics(chain.str_id().into()))?;
+    out.text(|| println!("{}", diagnostics.document));
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.str_id(),
+        "network": diagnostics.network_id,
+        "document": diagnostics.document,
+    }));
+    Ok(())
+}
 
+fn bundle(ctx: &Ctx, out: Out) -> CliResult<()> {
+    let platform = spectra_core::service::DiagnosticsPlatformInfo {
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        build_number: "cli".into(),
+        os_version: std::env::consts::OS.into(),
+        locale_identifier: std::env::var("LANG").unwrap_or_default(),
+        time_zone_identifier: std::env::var("TZ").unwrap_or_default(),
+    };
+    let json = ctx
+        .rt
+        .block_on(ctx.service()?.diagnostics_bundle(platform))?;
     out.text(|| println!("{json}"));
-    out.emit(serde_json::json!({ "ok": true, "chain": chain.str_id(), "document": json }));
+    out.emit(serde_json::json!({"ok": true, "bundle": json}));
     Ok(())
 }

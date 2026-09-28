@@ -1,33 +1,16 @@
-//! Per-chain diagnostics JSON builders.
+//! Diagnostics documents: one per chain, and the bundle that carries them.
 //!
-//! The JSON output shape is part of the exported diagnostics bundle contract —
-//! define the current diagnostic export format.
-//!
-//! Each builder takes an already-normalized list of diagnostics records and
-//! returns a pretty-printed, sanitized JSON string. `Option<String>` return
-//! type mirrors the Swift helpers that return `String?` on serialization failure.
+//! Core builds both from what it recorded. The JSON shape is the exported
+//! bundle's contract; every string is sanitized before it leaves.
 
 use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
 
+use super::registry::RecordedChainDiagnostics;
 use super::types::*;
 use crate::diagnostics::sanitizer::sanitize_diagnostics_string;
-
-/// One endpoint's reachability, for every chain.
-#[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct EndpointHealthRow {
-    /// Human-readable name for the endpoint. Empty for chains whose
-    /// diagnostics list endpoints without one.
-    #[serde(default)]
-    pub label: String,
-    pub endpoint: String,
-    pub reachable: bool,
-    pub status_code: Option<i32>,
-    pub detail: String,
-}
-
-// ---------- shared helpers ----------
+use crate::service::EndpointProbe;
 
 fn pretty_sanitized(value: Value) -> Option<String> {
     let bytes = serde_json::to_vec_pretty(&value).ok()?;
@@ -35,53 +18,45 @@ fn pretty_sanitized(value: Value) -> Option<String> {
     Some(sanitize_diagnostics_string(&s))
 }
 
-/// One endpoint row. Include `label` only when present.
-fn endpoint_row_value(row: &EndpointHealthRow) -> Value {
-    let mut out = Map::new();
-    if !row.label.is_empty() {
-        out.insert("label".into(), json!(row.label));
-    }
-    out.insert("endpoint".into(), json!(row.endpoint));
-    out.insert("reachable".into(), json!(row.reachable));
-    out.insert("statusCode".into(), json!(row.status_code.unwrap_or(-1)));
-    out.insert("detail".into(), json!(row.detail));
-    Value::Object(out)
+/// One endpoint row. `checked` false means nothing knows how to probe it,
+/// which is not a pass.
+fn endpoint_row_value(row: &EndpointProbe) -> Value {
+    json!({
+        "endpoint": row.endpoint,
+        "checked": row.checked,
+        "reachable": row.reachable,
+        "detail": row.detail,
+    })
 }
 
-fn unix_or_zero(t: Option<f64>) -> f64 {
-    t.unwrap_or(0.0)
-}
+// ---------- Chain document ----------
 
-// ---------- History JSON ----------
-
-/// One chain's diagnostics document, with uniform history and endpoint rows.
-pub fn diagnostics_build_history_json(
-    history: Vec<HistoryDiagnostics>,
-    endpoints: Vec<EndpointHealthRow>,
-    history_last_updated_at_unix: Option<f64>,
-    endpoints_last_updated_at_unix: Option<f64>,
-    extra_network_mode: Option<String>,
+/// One family's diagnostics document: its history rows, and the endpoint
+/// check of the network it is on. A time is `null` until its run happens.
+pub(crate) fn chain_diagnostics_document(
+    family_id: &str,
+    network_id: &str,
+    recorded: &RecordedChainDiagnostics,
 ) -> Option<String> {
-    let history_dicts: Vec<Value> = history.iter().map(history_row_value).collect();
-    let endpoint_dicts: Vec<Value> = endpoints.iter().map(endpoint_row_value).collect();
     let mut payload = Map::new();
+    payload.insert("chainId".into(), json!(family_id));
+    payload.insert("network".into(), json!(network_id));
     payload.insert(
         "historyLastUpdatedAt".into(),
-        json!(unix_or_zero(history_last_updated_at_unix)),
+        json!(recorded.history_run_at_unix),
     );
     payload.insert(
         "endpointsLastUpdatedAt".into(),
-        json!(unix_or_zero(endpoints_last_updated_at_unix)),
+        json!(recorded.endpoints_checked_at_unix),
     );
-    payload.insert("history".into(), Value::Array(history_dicts));
-    payload.insert("endpoints".into(), Value::Array(endpoint_dicts));
-    // Only a family with more than one network has anything else to say, and
-    // saying nothing is not the same as saying "none" — an absent key reads as
-    // "this chain has no such thing", a present empty one as "it has one and
-    // it is empty".
-    if let Some(mode) = extra_network_mode {
-        payload.insert("networkMode".into(), Value::String(mode));
-    }
+    payload.insert(
+        "history".into(),
+        Value::Array(recorded.history.iter().map(history_row_value).collect()),
+    );
+    payload.insert(
+        "endpoints".into(),
+        Value::Array(recorded.endpoints.iter().map(endpoint_row_value).collect()),
+    );
     pretty_sanitized(Value::Object(payload))
 }
 
@@ -128,10 +103,9 @@ fn history_row_value(row: &HistoryDiagnostics) -> Value {
 
 // ---------- Full diagnostics bundle ----------
 
-/// Complete diagnostics bundle. All chain JSON fields are non-optional — callers
-/// supply `"{}"` as a fallback for chains with no data. `generated_at` is a
-/// Unix timestamp (f64) so it round-trips losslessly across FFI without
-/// depending on Swift date-encoding strategy.
+/// Complete diagnostics bundle, assembled by `WalletService::diagnostics_bundle`.
+/// `generated_at` is a Unix timestamp (f64) so it round-trips losslessly
+/// across FFI without depending on Swift date-encoding strategy.
 #[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticsBundlePayload {
@@ -139,8 +113,8 @@ pub struct DiagnosticsBundlePayload {
     pub generated_at: f64,
     pub environment: DiagnosticsEnvironmentMetadata,
     pub chain_degraded: HashMap<String, crate::service::ChainDegradation>,
-    /// `Chain::str_id()` → that chain's diagnostics JSON blob (`"{}"` when the
-    /// chain has no data). Keyed rather than one field per chain: the bundle is
+    /// `Chain::str_id()` of every mainnet → that family's diagnostics document.
+    /// Keyed rather than one field per chain: the bundle is
     /// written for human inspection and nothing reads individual chains, so a
     /// map costs nothing and adding a chain stops being a schema change.
     pub chain_diagnostics_json: HashMap<String, String>,
@@ -148,7 +122,6 @@ pub struct DiagnosticsBundlePayload {
 
 /// Serialize a bundle payload to pretty-printed, sanitized JSON. Returns `None`
 /// only on the extremely unlikely serialization failure path.
-#[uniffi::export]
 pub fn diagnostics_bundle_to_json(payload: DiagnosticsBundlePayload) -> Option<String> {
     // Redact inside each string value rather than over the rendered text: a
     // redaction that ran across quotes could consume JSON structure.
@@ -189,27 +162,41 @@ mod tests {
         }
     }
 
+    fn recorded(history: Vec<HistoryDiagnostics>) -> RecordedChainDiagnostics {
+        RecordedChainDiagnostics {
+            history,
+            history_run_at_unix: None,
+            endpoints: Vec::new(),
+            endpoints_checked_at_unix: None,
+        }
+    }
+
     #[test]
-    fn a_document_carries_history_and_endpoints() {
-        let s = diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None)
-            .expect("builds");
-        assert!(s.contains("\"history\""));
-        assert!(s.contains("\"endpoints\""));
-        assert!(s.contains("\"walletID\""));
-        assert!(s.contains("\"identifier\""));
-        assert!(s.contains("\"transactionCount\""));
+    fn a_document_names_its_network_and_carries_history_and_endpoints() {
+        let s =
+            chain_diagnostics_document("bitcoin", "bitcoin-testnet", &recorded(vec![row("w1")]))
+                .expect("builds");
+        let v: Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["chainId"], "bitcoin");
+        assert_eq!(v["network"], "bitcoin-testnet");
+        assert!(
+            v["historyLastUpdatedAt"].is_null(),
+            "no run is not a run at 1970"
+        );
+        assert!(v["endpoints"].as_array().unwrap().is_empty());
+        assert_eq!(v["history"][0]["walletID"], "w1");
+        assert_eq!(v["history"][0]["transactionCount"], 5);
     }
 
     /// Optional keys are absent rather than empty, so a reader can tell "this
     /// chain has no such thing" from "it has one and it is empty".
     #[test]
     fn optional_keys_are_absent_when_the_chain_has_none() {
-        let plain = diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None)
+        let plain = chain_diagnostics_document("bitcoin", "bitcoin", &recorded(vec![row("w1")]))
             .expect("builds");
         assert!(!plain.contains("nextCursor"));
         assert!(!plain.contains("scannedCount"));
         assert!(!plain.contains("perSource"));
-        assert!(!plain.contains("networkMode"));
 
         let mut full = row("w1");
         full.next_cursor = Some("c".into());
@@ -220,61 +207,12 @@ mod tests {
             count: 1,
             error: None,
         }];
-        let s =
-            diagnostics_build_history_json(vec![full], vec![], None, None, Some("testnet".into()))
-                .expect("builds");
+        let s = chain_diagnostics_document("bitcoin", "bitcoin", &recorded(vec![full]))
+            .expect("builds");
         assert!(s.contains("\"nextCursor\""));
         assert!(s.contains("\"perSource\""));
-        assert!(s.contains("\"networkMode\"") && s.contains("testnet"));
         // Derived, not stored.
         assert!(s.contains("\"undecodedCount\": 1"));
         assert!(s.contains("\"decodingCompleteness\""));
-    }
-}
-
-/// Build a chain's diagnostics document from core-owned history and supplied
-/// endpoint health results.
-#[uniffi::export]
-pub fn diagnostics_json(
-    chain_id: String,
-    endpoints: Vec<EndpointHealthRow>,
-    history_last_updated_at_unix: Option<f64>,
-    endpoints_last_updated_at_unix: Option<f64>,
-    extra_network_mode: Option<String>,
-) -> Option<String> {
-    use crate::diagnostics::registry as reg;
-
-    // No shape to dispatch on: every chain records the same row, so the
-    // document is the same document.
-    crate::registry::Chain::from_str_id(&chain_id)?;
-    let history: Vec<HistoryDiagnostics> = reg::diagnostics_all(chain_id).into_values().collect();
-    diagnostics_build_history_json(
-        history,
-        endpoints,
-        history_last_updated_at_unix,
-        endpoints_last_updated_at_unix,
-        extra_network_mode,
-    )
-}
-
-#[cfg(test)]
-mod one_builder_tests {
-    use super::*;
-    use crate::registry::Chain;
-
-    /// Every chain the diagnostics bundle reports on produces a document.
-    ///
-    /// Five separate builders could not state this; a chain simply had no
-    /// builder and nothing said so.
-    #[test]
-    fn every_chain_produces_a_document() {
-        for chain in Chain::all().filter(|c| !c.is_testnet()) {
-            let json = diagnostics_json(chain.str_id().to_string(), Vec::new(), None, None, None);
-            assert!(
-                json.is_some(),
-                "{} produced no diagnostics document",
-                chain.str_id()
-            );
-        }
     }
 }

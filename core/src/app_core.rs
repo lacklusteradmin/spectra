@@ -180,8 +180,6 @@ pub struct AppCoreChainEndpoints {
     /// What the settings screen shows, grouped by network.
     pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
     pub transaction_explorer: Option<AppCoreExplorerEntry>,
-    /// Esplora bases, for the Bitcoin family. Empty elsewhere.
-    pub bitcoin_esplora: Vec<String>,
 }
 
 /// The endpoint catalog, one row per chain, in catalog order.
@@ -194,7 +192,6 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
             AppCoreChainEndpoints {
                 grouped_settings: grouped_settings_entries(catalog, chain),
                 transaction_explorer: transaction_explorer_entry(catalog, &id),
-                bitcoin_esplora: bitcoin_esplora_base_urls(catalog, &id).unwrap_or_default(),
                 chain_id: id,
             }
         })
@@ -589,24 +586,6 @@ pub(crate) fn derivation_path_replacing_last_two(
 }
 
 // ── Registry-backed catalog lookups ───────────────────────────────
-
-// ── Bitcoin URL groups ────────────────────────────────────────────────────
-
-pub(super) fn bitcoin_esplora_base_urls(
-    catalog: &AppCoreCatalog,
-    chain_id: &str,
-) -> Result<Vec<String>, String> {
-    let chain = crate::registry::Chain::from_str_id(chain_id)
-        .ok_or_else(|| format!("Unknown network: {chain_id}"))?;
-    if chain.mainnet_counterpart() != crate::registry::Chain::Bitcoin {
-        return Err(format!("Not a Bitcoin network: {chain_id}"));
-    }
-    Ok(endpoint_records_for_chain(catalog, chain_id, 0)
-        .into_iter()
-        .filter(|record| record.api == Some(EndpointApi::Esplora))
-        .map(|record| record.endpoint)
-        .collect())
-}
 
 #[cfg(test)]
 mod testnet_derivation_paths {

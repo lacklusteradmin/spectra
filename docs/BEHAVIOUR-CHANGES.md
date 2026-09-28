@@ -16,6 +16,94 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-28 — Fee priority is gone: no send path spent it
+
+- **Before:** every non-EVM send page and the Bitcoin-family diagnostics
+  screen offered an Economy / Normal / Priority picker, stored per chain in
+  `AppSettings.fee_priority_by_chain` and settable as
+  `spectra settings set fee-priority.<chain>`. The UTXO page said Spectra
+  "applies it to live send previews". Core read it in one place: the Dogecoin
+  preview, which echoed it back as a `feePriority` label. No build, sign or
+  fee estimate on any chain used it.
+- **After:** the setting, its reducer case, the `FeePriority` enum, the CLI
+  `fee-priority.*` keys, the Dogecoin preview's `feePriority` field and every
+  picker are removed. A stored `feePriorityByChain` is an unknown setting and
+  is refused like any other.
+- **Why:** a funds-affecting choice that changes nothing tells the user a fee
+  was chosen when it was not. Making it real is a new feature; keeping it was
+  a false one. The diagnostics screen gated its copy of the picker on the
+  endpoint catalog having Esplora bases, a chain fact read from the wrong
+  place, so `AppCoreChainEndpoints.bitcoin_esplora` went with it.
+- **CLI check:** `spectra settings set fee-priority.Dogecoin economy` is
+  refused; `spectra --json settings list` has no `fee-priority` key.
+- **Verification:** all four suites passed: rustfmt/clippy, 863 core tests plus the
+  transport test, 443 CLI acceptance checks and 96 iPhone simulator tests.
+
+## 2026-09-28 — Core owns chain diagnostics and builds the bundle
+
+- **Before:** a chain's diagnostics screen kept the last endpoint check and
+  the last history-run time in Swift, for this launch only, and passed them
+  back to `diagnostics_json` to be serialized. The bundle was assembled in
+  Swift from those values. `spectra diagnostics show` passed empty endpoints
+  and no times, so the CLI and the app produced different documents for the
+  same chain. The endpoint check probed the family's mainnet even when a
+  testnet was selected; the self-test results were stored and never shown;
+  before any check the screen listed catalog endpoints as "Not checked yet".
+- **After:** core records history rows, the history-run time, endpoint probes
+  and the check time in its diagnostics registry. `WalletService.chain_diagnostics`
+  answers for a family on its selected network — counts, sources by use,
+  endpoints and the document — and `diagnostics_bundle` builds the whole
+  bundle (schema 2) from core state plus the platform's version, OS, locale
+  and time zone. The document names `chainId` and `network`, gives times as
+  `null` until a run happens, and marks endpoints nothing can probe as
+  `checked: false`. The screen re-reads after every run, so self-test
+  outcomes appear in its operational events; it lists endpoints only once
+  checked (the endpoint catalog screen lists them before that).
+- **Why:** the export was Swift reading session state only to hand it back
+  for a decision, and the CLI could not reproduce it. One owner removes the
+  split, the forwarding `StandardChainDiagnosticsDispatch` and the fields
+  nothing read (`lastRunAt` for self-tests and rescans, the last imported
+  bundle).
+- **CLI check:** `spectra --json diagnostics show --chain Bitcoin` prints
+  `"network":"bitcoin"`; `spectra diagnostics bundle` prints the bundle with
+  `chainDiagnosticsJson` and `walletCount`.
+- **Verification:** all four suites passed: rustfmt/clippy, 863 core tests plus the
+  transport test, 443 CLI acceptance checks and 96 iPhone simulator tests.
+
+## 2026-09-28 — "Last checked" is core's clock; balances land per wallet
+
+- **Before:** Swift stamped its own "last checked" time whenever a refresh
+  returned pending results, failures included. During a balance sweep core
+  collected every wallet before reporting any, and the app ignored per-wallet
+  reports anyway, so every balance waited for the slowest chain.
+- **After:** `AppRefreshResult.pending_checked_at_unix` carries core's
+  `refresh_clock.pending_transactions_at`, stamped only by a failure-free
+  check, and the app shows that. The engine reports each wallet as its
+  balances are committed, and the app re-reads the portfolio at most every
+  300 ms while a sweep is landing, then once more when it completes.
+- **Why:** core already owned the clock; the Swift copy disagreed with it on
+  failure. Holding every balance for the slowest provider was an artefact of
+  collecting the stream, not a rule.
+- **CLI check:** `spectra --json diagnostics refresh --intent … --conditions …`
+  prints the result with `pending_checked_at_unix`. Per-wallet timing has no
+  CLI check; the observer contract documents it.
+- **Verification:** all four suites passed: rustfmt/clippy, 863 core tests plus the
+  transport test, 443 CLI acceptance checks and 96 iPhone simulator tests.
+
+## 2026-09-28 — Generic secrets move to the `com.spectra.wallet` Keychain service
+
+- **Before:** sealed-wallet salts, password verifiers and Monero view keys were
+  stored under the Keychain service `com.spectra.pricing`, a name left from an
+  earlier use.
+- **After:** they are stored under `com.spectra.wallet`. Prelaunch, so nothing
+  migrates; an install from before this change loses those items.
+- **Why:** AGENTS: change keychain keys directly rather than keep a
+  misleading name for compatibility.
+- **CLI check:** none applies — the CLI uses its file-backed secret store.
+  `SecureSeedStoreTests.testGenericSecretsUseTheWalletService` covers it.
+- **Verification:** all four suites passed: rustfmt/clippy, 863 core tests plus the
+  transport test, 443 CLI acceptance checks and 96 iPhone simulator tests.
+
 ## 2026-09-28 — `send overrides` no longer echoes `--sign-only`
 
 - **Before:** `spectra send overrides --sign-only` accepted the flag and

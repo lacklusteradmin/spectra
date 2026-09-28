@@ -312,17 +312,10 @@ impl WalletService {
                 .await?
                 .map(|preview| SendPreview::Utxo { preview }),
             Chain::Dogecoin => {
-                let priority = state
-                    .settings
-                    .fee_priority_by_chain
-                    .get(chain.str_id())
-                    .copied()
-                    .unwrap_or(crate::store::state::FeePriority::Normal);
                 // This legacy provider preview accepts a display amount; signing parses the exact input separately.
                 self.fetch_dogecoin_send_preview(
                     address,
                     amount.parse().map_err(|_| "invalid amount")?,
-                    priority.as_raw().to_string(),
                 )
                 .await?
                 .map(|preview| SendPreview::Dogecoin { preview })

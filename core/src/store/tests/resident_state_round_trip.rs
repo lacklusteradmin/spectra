@@ -82,9 +82,7 @@ fn alerts_contacts_and_currency_survive_reopening() {
 /// surviving a reset.
 #[test]
 fn resetting_settings_restores_every_default() {
-    use crate::store::state::{
-        AppSettingUpdate as U, FeePriority, StateCommand, reduce_state_in_place,
-    };
+    use crate::store::state::{AppSettingUpdate as U, StateCommand, reduce_state_in_place};
     let mut state = CoreAppState::default();
     let defaults = state.settings.clone();
 
@@ -117,10 +115,6 @@ fn resetting_settings_restores_every_default() {
             endpoint: "https://a.example".into(),
         },
         U::BitcoinStopGap { value: 42 },
-        U::FeePriority {
-            chain: "dogecoin".into(),
-            value: FeePriority::Economy,
-        },
         U::BackgroundSyncProfile {
             value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
@@ -163,7 +157,7 @@ fn resetting_settings_restores_every_default() {
 /// `apply_app_setting` fails here.
 #[test]
 fn every_settings_field_round_trips() {
-    use crate::store::state::{AppSettingUpdate as U, FeePriority};
+    use crate::store::state::AppSettingUpdate as U;
     let db = tmp_db();
     let mut state = CoreAppState::default();
     let updates = vec![
@@ -205,14 +199,6 @@ fn every_settings_field_round_trips() {
             endpoint: "https://a.example".into(),
         },
         U::BitcoinStopGap { value: 42 },
-        U::FeePriority {
-            chain: "bitcoin".into(),
-            value: FeePriority::Priority,
-        },
-        U::FeePriority {
-            chain: "dogecoin".into(),
-            value: FeePriority::Economy,
-        },
         U::BackgroundSyncProfile {
             value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },

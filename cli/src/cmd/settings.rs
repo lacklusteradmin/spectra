@@ -5,8 +5,7 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::{
-    AppSettingUpdate, AppSettings, BackgroundSyncProfile, FeePriority, ResetScope, StateCommand,
-    StateEvent,
+    AppSettingUpdate, AppSettings, BackgroundSyncProfile, ResetScope, StateCommand, StateEvent,
 };
 
 use crate::ctx::Ctx;
@@ -155,123 +154,33 @@ const FIELDS: &[Field] = &[
     },
 ];
 
-/// A setting keyed by chain rather than global, named `<prefix><chain>`.
-///
-/// These cannot be rows in `FIELDS` — there would have to be seventy-eight of
-/// each, regenerated whenever `chains.toml` changes.
-struct ChainKeyedField {
-    prefix: &'static str,
-    read: fn(&AppSettings, &str) -> String,
-    update: fn(&str, &str) -> AppSettingUpdate,
-    /// The chains that currently have a value stored, so `list` can show them.
-    stored: fn(&AppSettings) -> Vec<String>,
-}
-
-const CHAIN_KEYED: &[ChainKeyedField] = &[ChainKeyedField {
-    prefix: "fee-priority.",
-    read: |s, chain| {
-        s.fee_priority_by_chain
-            .get(chain)
-            .copied()
-            .unwrap_or(FeePriority::Normal)
-            .as_raw()
-            .to_string()
-    },
-    // Which values exist is core's, and so is reading one written as text:
-    // a priority no send path spends stores as the default rather than
-    // under a name that says a fee was chosen.
-    update: |chain, value| AppSettingUpdate::FeePriority {
-        chain: chain.to_string(),
-        value: spectra_core::store::state::parse_fee_priority(value.to_string()),
-    },
-    stored: |s| s.fee_priority_by_chain.keys().cloned().collect(),
-}];
-
-/// A setting a caller can name: one of the fixed rows, or one chain's value
-/// under one of the keyed families.
-enum Setting {
-    Scalar(&'static Field),
-    ChainKeyed(&'static ChainKeyedField, String),
-}
-
-impl Setting {
-    fn key(&self) -> String {
-        match self {
-            Setting::Scalar(field) => field.key.to_string(),
-            Setting::ChainKeyed(field, chain) => format!("{}{chain}", field.prefix),
-        }
-    }
-
-    fn read(&self, settings: &AppSettings) -> String {
-        match self {
-            Setting::Scalar(field) => (field.read)(settings),
-            Setting::ChainKeyed(field, chain) => (field.read)(settings, chain),
-        }
-    }
-
-    fn update(&self, raw: &str) -> Result<AppSettingUpdate, &'static str> {
-        match self {
-            Setting::Scalar(field) => (field.update)(raw),
-            Setting::ChainKeyed(field, chain) => Ok((field.update)(chain, raw)),
-        }
-    }
-}
-
-fn field(key: &str) -> CliResult<Setting> {
-    for keyed in CHAIN_KEYED {
-        let Some(name) = key.strip_prefix(keyed.prefix) else {
-            continue;
-        };
-        // Keyed by chain id, as core stores it; a display name is accepted too.
-        let chain = super::resolve_chain(name)
-            .map_err(|_| CliError::rejected(format!("no chain named {name}")))?;
-        return Ok(Setting::ChainKeyed(keyed, chain.str_id().to_string()));
-    }
+fn field(key: &str) -> CliResult<&'static Field> {
     FIELDS
         .iter()
         .find(|field| field.key == key)
-        .map(Setting::Scalar)
         .ok_or_else(|| CliError::rejected(format!("no setting named {key}")))
-}
-
-/// Every setting that has a value to print: the fixed rows, then whichever
-/// chains have a value stored under each keyed family. Chains at the default
-/// are left out — listing all seventy-eight of each would bury the rest.
-fn settings_in_order(settings: &AppSettings) -> Vec<Setting> {
-    let mut all: Vec<Setting> = FIELDS.iter().map(Setting::Scalar).collect();
-    for keyed in CHAIN_KEYED {
-        let mut chains = (keyed.stored)(settings);
-        chains.sort();
-        all.extend(
-            chains
-                .into_iter()
-                .map(|chain| Setting::ChainKeyed(keyed, chain)),
-        );
-    }
-    all
 }
 
 fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     let settings = ctx.state()?.settings;
-    let all = settings_in_order(&settings);
     out.text(|| {
         println!();
-        for setting in &all {
+        for field in FIELDS {
             println!(
                 "  {:<34} {}",
-                setting.key().bold(),
-                out::hint(&setting.read(&settings))
+                field.key.bold(),
+                out::hint(&(field.read)(&settings))
             );
         }
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "settings": all
+        "settings": FIELDS
             .iter()
-            .map(|setting| {
+            .map(|field| {
                 (
-                    setting.key(),
-                    serde_json::Value::String(setting.read(&settings)),
+                    field.key.to_string(),
+                    serde_json::Value::String((field.read)(&settings)),
                 )
             })
             .collect::<serde_json::Map<String, serde_json::Value>>(),
@@ -280,18 +189,17 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 }
 
 fn get(ctx: &Ctx, out: Out, args: GetArgs) -> CliResult<()> {
-    let setting = field(&args.key)?;
-    let value = setting.read(&ctx.state()?.settings);
+    let field = field(&args.key)?;
+    let value = (field.read)(&ctx.state()?.settings);
     out.text(|| println!("  {}", value.bold()));
-    out.emit(serde_json::json!({ "ok": true, "key": setting.key(), "value": value }));
+    out.emit(serde_json::json!({ "ok": true, "key": field.key, "value": value }));
     Ok(())
 }
 
 fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
-    let setting = field(&args.key)?;
-    let key = setting.key();
-    let update = setting
-        .update(&args.value)
+    let field = field(&args.key)?;
+    let key = field.key;
+    let update = (field.update)(&args.value)
         .map_err(|reason| CliError::rejected(format!("{key}: {reason}")))?;
     let transition = ctx.apply(StateCommand::SetAppSetting { update })?;
     // Core refuses a value it cannot store — an unknown chain, an address that
@@ -309,7 +217,7 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     }
     // Report what core stored, not what was asked for: it trims strings and
     // bounds numbers, so the two differ often enough to be worth showing.
-    let stored = setting.read(&transition.state.settings);
+    let stored = (field.read)(&transition.state.settings);
     out.text(|| println!("  {} {key} = {}", out::ok_mark(), stored.bold()));
     out.emit(serde_json::json!({ "ok": true, "key": key, "value": stored }));
     Ok(())
@@ -338,9 +246,8 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
             })
             .collect::<CliResult<Vec<_>>>()?
     };
-    let outcome = ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
-    let settings = outcome.state.settings;
-    let count = settings_in_order(&settings).len();
+    ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
+    let count = FIELDS.len();
     out.text(|| println!("  {} {count} settings at their defaults", out::ok_mark()));
     out.emit(serde_json::json!({ "ok": true, "settings": count }));
     Ok(())

@@ -134,7 +134,6 @@ pub struct DogecoinSendPreviewDecoded {
     pub estimated_transaction_bytes: i64,
     pub selected_input_count: i64,
     pub uses_change_output: bool,
-    pub fee_priority: String,
     pub max_sendable_doge: f64,
     pub fee_rate_description: String,
 }
@@ -142,7 +141,6 @@ pub struct DogecoinSendPreviewDecoded {
 pub fn decode_dogecoin_send_preview(
     json: String,
     requested_amount: f64,
-    fee_priority: String,
 ) -> Option<DogecoinSendPreviewDecoded> {
     let base = decode_utxo_send_preview(json)?;
     if base.spendable_sat == 0 {
@@ -159,7 +157,6 @@ pub fn decode_dogecoin_send_preview(
         estimated_transaction_bytes: base.estimated_transaction_bytes,
         selected_input_count: base.selected_input_count,
         uses_change_output: uses_change,
-        fee_priority,
         max_sendable_doge: base.max_sendable,
         fee_rate_description: base.fee_rate_description,
     })
@@ -308,9 +305,8 @@ pub fn build_bitcoin_hd_send_preview_record(
 pub fn build_dogecoin_send_preview_record(
     json: String,
     requested_amount: f64,
-    fee_priority: String,
 ) -> Option<crate::send::preview_types::DogecoinSendPreview> {
-    let d = decode_dogecoin_send_preview(json, requested_amount, fee_priority)?;
+    let d = decode_dogecoin_send_preview(json, requested_amount)?;
     Some(crate::send::preview_types::DogecoinSendPreview {
         spendableBalanceDoge: d.spendable_balance_doge,
         requestedAmountDoge: d.requested_amount_doge,
@@ -319,7 +315,6 @@ pub fn build_dogecoin_send_preview_record(
         estimatedTransactionBytes: d.estimated_transaction_bytes,
         selectedInputCount: d.selected_input_count,
         usesChangeOutput: d.uses_change_output,
-        feePriority: d.fee_priority,
         maxSendableDoge: d.max_sendable_doge,
         spendableBalance: d.spendable_balance_doge,
         feeRateDescription: Some(d.fee_rate_description),
@@ -576,9 +571,8 @@ mod tests {
     #[test]
     fn dogecoin_uses_change_flag() {
         let json = r#"{"fee_rate_svb":1,"estimated_fee_sat":1000,"estimated_tx_bytes":200,"selected_input_count":1,"spendable_balance_sat":1000000000,"max_sendable_sat":999999000}"#;
-        let d = decode_dogecoin_send_preview(json.into(), 1.0, "Normal".into()).unwrap();
+        let d = decode_dogecoin_send_preview(json.into(), 1.0).unwrap();
         assert!(d.uses_change_output);
-        assert_eq!(d.fee_priority, "Normal");
         assert!((d.estimated_fee_rate_doge_per_kb - 0.00001).abs() < 1e-12);
     }
 

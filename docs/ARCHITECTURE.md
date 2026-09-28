@@ -223,7 +223,16 @@ Live Activities and resumed send details query the stored ID and distinguish
 missing records from read failures.
 
 Refresh completes alert/movement evaluation before adopting the final portfolio
-and history projections once. Notification delivery does not rebuild projections.
+and history projections once. During a balance sweep the engine reports each
+wallet as core commits it, and the app re-reads the portfolio at a bounded rate
+so balances do not wait for the slowest chain; those reads carry no alerts.
+Notification delivery does not rebuild projections.
+
+Diagnostics runs record their results in core: history rows by family, endpoint
+probes by network, and when each ran. `chain_diagnostics` and
+`diagnostics_bundle` answer from that record for every front end; the platform
+supplies only its own version, OS, locale and time zone, and keeps which runs
+are in flight.
 `AmountPresentation` renders explicit projection values without AppState or
 storage. Its native formatter cache is presentation-only. `AssetPresentationCatalog`
 indexes core's immutable artwork and caches core-derived holding identities by

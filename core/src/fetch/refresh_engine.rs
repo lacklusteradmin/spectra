@@ -359,41 +359,31 @@ impl RefreshEngine {
             // entry — avoids N RwLock acquisitions during the hot path.
             let obs = inner.observer.read().unwrap().clone();
 
-            // The service resolves, merges and commits each wallet before notification.
+            // The service resolves, merges and commits each wallet before
+            // notification, and each wallet is reported as it lands rather than
+            // when the slowest one does.
             let ws = Arc::clone(&inner.wallet_service);
-            let results: Vec<Result<(String, String, WalletState), ()>> = stream::iter(entries)
+            let mut results = stream::iter(entries)
                 .map(|entry| {
                     let ws = Arc::clone(&ws);
                     async move {
-                        let wallet_summary = ws
-                            .refresh_wallet_balances(entry.wallet_id.clone())
-                            .await
-                            .map_err(|_| ())?;
-                        Ok((
-                            entry.holding_chain_id.clone(),
-                            entry.wallet_id,
-                            wallet_summary,
-                        ))
+                        let summary = ws.refresh_wallet_balances(entry.wallet_id.clone()).await;
+                        (entry.holding_chain_id, entry.wallet_id, summary)
                     }
                 })
-                .buffer_unordered(8)
-                .collect()
-                .await;
+                .buffer_unordered(8);
 
             let mut refreshed: u32 = 0;
             let mut errors: u32 = 0;
-
-            for result in results {
-                match result {
-                    Ok((chain_id, wallet_id, summary)) => {
+            while let Some((chain_id, wallet_id, summary)) = results.next().await {
+                match summary {
+                    Ok(summary) => {
                         if let Some(ref o) = obs {
                             o.on_balance_updated(chain_id, wallet_id, Some(summary));
                         }
                         refreshed += 1;
                     }
-                    Err(()) => {
-                        errors += 1;
-                    }
+                    Err(_) => errors += 1,
                 }
             }
 
@@ -532,10 +522,10 @@ use crate::store::state::WalletState;
 /// `WalletState` record directly — no JSON shuttle.
 #[uniffi::export(with_foreign)]
 pub trait RefreshObserver: Send + Sync {
-    /// Called after each successful balance fetch within a cycle. `summary`
-    /// is the updated `WalletState` (already applied to the Rust store), or
-    /// `None` if the native amount could not be parsed or the wallet is not
-    /// in the in-memory state.
+    /// Called as each successful balance fetch within a cycle lands, not at
+    /// the end of the sweep. `summary` is the updated `WalletState` (already
+    /// applied to the Rust store), or `None` if the native amount could not be
+    /// parsed or the wallet is not in the in-memory state.
     fn on_balance_updated(&self, chain_id: String, wallet_id: String, summary: Option<WalletState>);
 
     /// Called once the full sweep of all registered entries completes.

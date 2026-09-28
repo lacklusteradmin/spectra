@@ -29,6 +29,8 @@ pub struct AppRefreshResult {
     /// The diagnostic state changed: a log line, or a chain's health. A front
     /// end re-reads diagnostics only when this is set.
     pub diagnostics_changed: bool,
+    /// When pending sends were last checked without a failure, by any refresh.
+    pub pending_checked_at_unix: Option<f64>,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -66,6 +68,8 @@ impl WalletService {
             if let Ok(result) = result.as_mut() {
                 result.diagnostics_changed =
                     this.diagnostics_fingerprint().await != diagnostics_before;
+                result.pending_checked_at_unix =
+                    this.refresh_clock.read().await.pending_transactions_at;
             }
             result
         })
@@ -162,6 +166,7 @@ impl WalletService {
             movement: None,
             transactions_changed: false,
             diagnostics_changed: false,
+            pending_checked_at_unix: None,
         };
         if !conditions.is_network_reachable {
             if deep_rescan {

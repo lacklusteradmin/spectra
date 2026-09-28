@@ -185,6 +185,145 @@ impl WalletService {
         .await
     }
 }
+/// How many wallets' history came from one source.
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
+pub struct DiagnosticsSourceCount {
+    pub source: String,
+    pub wallet_count: u32,
+}
+
+/// One family's diagnostics as its screen and the bundle show them: history
+/// keyed by the family, endpoints by the network it is on, and the document
+/// built from exactly those.
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct ChainDiagnostics {
+    pub network_id: String,
+    pub wallet_count: u32,
+    /// Most used first; blank sources are not a source.
+    pub history_sources: Vec<DiagnosticsSourceCount>,
+    pub history_run_at_unix: Option<f64>,
+    pub endpoints: Vec<EndpointProbe>,
+    pub endpoints_checked_at_unix: Option<f64>,
+    pub document: String,
+}
+
+/// What only the platform knows about itself, for a bundle's header.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DiagnosticsPlatformInfo {
+    pub app_version: String,
+    pub build_number: String,
+    pub os_version: String,
+    pub locale_identifier: String,
+    pub time_zone_identifier: String,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    /// A family's diagnostics, on the network the family is on. A concrete
+    /// network id reads that network.
+    pub async fn chain_diagnostics(
+        &self,
+        chain_id: String,
+    ) -> Result<ChainDiagnostics, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let requested = chain_for_id(&chain_id)?;
+            let settings = this.app_state().await.settings;
+            Ok(chain_diagnostics_for(requested, &settings))
+        })
+        .await
+    }
+
+    /// The diagnostics bundle, as the JSON a file holds: every mainnet's
+    /// document, degraded chains, and a header from core's own counts and the
+    /// platform's description of itself.
+    pub async fn diagnostics_bundle(
+        &self,
+        platform: DiagnosticsPlatformInfo,
+    ) -> Result<String, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let state = this.app_state().await;
+            let transaction_count = this.transaction_snapshot().await?.total_count;
+            let environment = crate::diagnostics::DiagnosticsEnvironmentMetadata {
+                app_version: platform.app_version,
+                build_number: platform.build_number,
+                os_version: platform.os_version,
+                locale_identifier: platform.locale_identifier,
+                time_zone_identifier: platform.time_zone_identifier,
+                selected_fiat_currency: state.settings.fiat_currency.code().into(),
+                wallet_count: state.wallets.len() as i64,
+                transaction_count: i64::try_from(transaction_count).unwrap_or(i64::MAX),
+            };
+            let payload = crate::diagnostics::DiagnosticsBundlePayload {
+                schema_version: 2,
+                generated_at: crate::store::now_unix(),
+                environment,
+                chain_degraded: state.diagnostics.degraded.clone(),
+                chain_diagnostics_json: Chain::all()
+                    .filter(|c| !c.is_testnet())
+                    .map(|c| {
+                        (
+                            c.str_id().to_string(),
+                            chain_diagnostics_for(c, &state.settings).document,
+                        )
+                    })
+                    .collect(),
+            };
+            crate::diagnostics::diagnostics_bundle_to_json(payload)
+                .ok_or_else(|| "The diagnostics bundle could not be serialized".into())
+        })
+        .await
+    }
+}
+
+fn chain_diagnostics_for(
+    requested: Chain,
+    settings: &crate::store::state::AppSettings,
+) -> ChainDiagnostics {
+    let family = requested.mainnet_counterpart();
+    let network = if requested == family {
+        settings.selected_chain_for_family(family)
+    } else {
+        requested
+    };
+    let recorded = crate::diagnostics::diagnostics_recorded(family.str_id(), network.str_id());
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    for row in &recorded.history {
+        let source = row.source_used.trim();
+        if !source.is_empty() {
+            *counts.entry(source.to_string()).or_default() += 1;
+        }
+    }
+    let mut history_sources: Vec<_> = counts
+        .into_iter()
+        .map(|(source, wallet_count)| DiagnosticsSourceCount {
+            source,
+            wallet_count,
+        })
+        .collect();
+    history_sources.sort_by(|a, b| {
+        b.wallet_count
+            .cmp(&a.wallet_count)
+            .then_with(|| a.source.cmp(&b.source))
+    });
+    let document = crate::diagnostics::chain_diagnostics_document(
+        family.str_id(),
+        network.str_id(),
+        &recorded,
+    )
+    .unwrap_or_else(|| "{}".into());
+    ChainDiagnostics {
+        network_id: network.str_id().into(),
+        wallet_count: recorded.history.len() as u32,
+        history_sources,
+        history_run_at_unix: recorded.history_run_at_unix,
+        endpoints: recorded.endpoints,
+        endpoints_checked_at_unix: recorded.endpoints_checked_at_unix,
+        document,
+    }
+}
+
 fn sync_log(chain: String, level: DiagnosticLogLevel, message: String) -> DiagnosticLogInput {
     DiagnosticLogInput {
         level,
@@ -200,6 +339,101 @@ fn sync_log(chain: String, level: DiagnosticLogLevel, message: String) -> Diagno
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The screen and the bundle read one answer: history keyed by the family,
+    /// endpoints by the network it is on, and the header from core's counts.
+    // The guard only serializes tests over the shared registry; holding it
+    // across awaits is the point, and nothing else locks it.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn chain_diagnostics_follow_the_selected_network_into_the_bundle() {
+        use crate::diagnostics::*;
+        let _g = registry::diagnostics_test_lock();
+        diagnostics_clear_all();
+        let service = WalletService::new_catalog().unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "chain-diagnostics-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        let row = |wallet: &str, source: &str| HistoryDiagnostics {
+            wallet_id: wallet.into(),
+            identifier: "addr".into(),
+            source_used: source.into(),
+            transaction_count: 1,
+            scanned_count: None,
+            next_cursor: None,
+            error: None,
+            per_source: Vec::new(),
+        };
+        diagnostics_record("litecoin".into(), row("w1", "blockbook"));
+        diagnostics_record("litecoin".into(), row("w2", "blockbook"));
+        diagnostics_record("litecoin".into(), row("w3", " "));
+        diagnostics_record_history_run("litecoin".into());
+        let probe = |endpoint: &str| EndpointProbe {
+            api: None,
+            chain_id: String::new(),
+            endpoint: endpoint.into(),
+            capabilities: Vec::new(),
+            checked: true,
+            reachable: false,
+            detail: "timeout".into(),
+        };
+        diagnostics_record_endpoints("litecoin".into(), vec![probe("https://main")]);
+        diagnostics_record_endpoints("litecoin-testnet".into(), vec![probe("https://test")]);
+
+        let mainnet = service.chain_diagnostics("litecoin".into()).await.unwrap();
+        assert_eq!(mainnet.network_id, "litecoin");
+        assert_eq!(mainnet.endpoints[0].endpoint, "https://main");
+
+        service
+            .apply_state_command(StateCommand::SelectChainForFamily {
+                chain_id: "litecoin-testnet".into(),
+            })
+            .await
+            .unwrap();
+        let selected = service.chain_diagnostics("litecoin".into()).await.unwrap();
+        assert_eq!(selected.network_id, "litecoin-testnet");
+        assert_eq!(selected.wallet_count, 3);
+        assert_eq!(
+            selected.history_sources,
+            vec![DiagnosticsSourceCount {
+                source: "blockbook".into(),
+                wallet_count: 2
+            }],
+            "a blank source is not a source"
+        );
+        assert!(selected.history_run_at_unix.is_some());
+        assert_eq!(selected.endpoints.len(), 1);
+        assert_eq!(selected.endpoints[0].endpoint, "https://test");
+        let document: serde_json::Value = serde_json::from_str(&selected.document).unwrap();
+        assert_eq!(document["network"], "litecoin-testnet");
+        assert_eq!(document["endpoints"][0]["endpoint"], "https://test");
+
+        let bundle = service
+            .diagnostics_bundle(DiagnosticsPlatformInfo {
+                app_version: "9.9".into(),
+                build_number: "1".into(),
+                os_version: "test".into(),
+                locale_identifier: "en".into(),
+                time_zone_identifier: "UTC".into(),
+            })
+            .await
+            .unwrap();
+        let parsed = diagnostics_bundle_from_json(bundle).unwrap();
+        assert_eq!(parsed.environment.app_version, "9.9");
+        assert_eq!(parsed.environment.selected_fiat_currency, "USD");
+        assert_eq!(parsed.environment.wallet_count, 0);
+        assert_eq!(
+            parsed.chain_diagnostics_json.len(),
+            Chain::all().filter(|c| !c.is_testnet()).count()
+        );
+        assert_eq!(parsed.chain_diagnostics_json["litecoin"], selected.document);
+        diagnostics_clear_all();
+    }
     #[tokio::test]
     async fn diagnostic_intents_persist_and_recover() {
         let service = WalletService::new(vec![]).unwrap();

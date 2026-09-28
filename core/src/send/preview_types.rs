@@ -42,7 +42,6 @@ pub struct DogecoinSendPreview {
     pub estimatedTransactionBytes: i64,
     pub selectedInputCount: i64,
     pub usesChangeOutput: bool,
-    pub feePriority: String,
     pub maxSendableDoge: f64,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
