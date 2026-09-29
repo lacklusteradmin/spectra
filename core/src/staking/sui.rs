@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct SuiStakingClient {
@@ -58,7 +58,7 @@ impl SuiStakingClient {
             "method": "suix_getLatestSuiSystemState",
             "params": []
         });
-        let resp: SuiSystemStateResp = match with_fallback(&self.rpc_endpoints, |url| {
+        let resp: SuiSystemStateResp = match race(&self.rpc_endpoints, |url| {
             let client = client.clone();
             let body = body.clone();
             async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }

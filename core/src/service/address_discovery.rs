@@ -361,39 +361,16 @@ impl WalletService {
         chain: crate::registry::Chain,
         address: &str,
     ) -> Result<bool, SpectraBridgeError> {
-        use crate::fetch::{
-            bitcoin::BitcoinClient, bitcoin_sv::BitcoinSvClient, blockbook::BlockbookClient,
-            dogecoin::DogecoinClient,
-        };
-        let endpoints = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::History])
-            .await;
-        let active = match chain.mainnet_counterpart() {
-            crate::registry::Chain::Bitcoin => {
-                BitcoinClient::new(crate::fetch::http::HttpClient::shared(), endpoints)
-                    .has_activity(address)
-                    .await?
-            }
-            crate::registry::Chain::BitcoinCash | crate::registry::Chain::Litecoin => {
-                BlockbookClient::new(endpoints, chain)
-                    .has_activity(address)
-                    .await?
-            }
-            crate::registry::Chain::BitcoinSV => {
-                BitcoinSvClient::new(endpoints)
-                    .has_activity(address)
-                    .await?
-            }
-            crate::registry::Chain::Dogecoin => {
-                DogecoinClient::new(endpoints).has_activity(address).await?
-            }
-            _ => {
-                return Err(SpectraBridgeError::from(
-                    "chain does not support UTXO discovery",
-                ));
-            }
-        };
-        Ok(active)
+        if !chain.uses_utxo_client() {
+            return Err(SpectraBridgeError::from(
+                "chain does not support UTXO discovery",
+            ));
+        }
+        Ok(self
+            .utxo_client(chain, &[EndpointCapability::History])
+            .await
+            .has_activity(address)
+            .await?)
     }
 
     /// The seed and base derivation path this wallet derives UTXO addresses

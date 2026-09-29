@@ -45,7 +45,7 @@ impl WalletService {
                 .map(|entry| entry.record)
                 .collect();
 
-            if let Some(api) = chain.primary_api() {
+            if let Some(api) = chain.default_api() {
                 for endpoint in this.configured_endpoint_urls(&chain_id).await.iter() {
                     if records.iter().any(|r| &r.endpoint == endpoint) {
                         continue;
@@ -124,31 +124,20 @@ impl WalletService {
                 "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
             ))
         })?;
+        if chain.uses_utxo_client() {
+            return Ok(self
+                .utxo_client(chain, &[EndpointCapability::Verification])
+                .await
+                .fetch_tx_status(&txid)
+                .await?);
+        }
         let (api, endpoints) = self
             .fetch_endpoints(chain, &[EndpointCapability::Verification])
             .await?;
         use crate::EndpointApi as Api;
         let status: UtxoTxStatus = match api {
-            Api::Esplora => {
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
-            Api::Blockcypher => {
-                let client = DogecoinClient::new(endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
-
-            Api::Blockbook => {
-                let client = BlockbookClient::new(endpoints, chain);
-                client.fetch_tx_status(&txid).await?
-            }
-            Api::Whatsonchain => {
-                let client = BitcoinSvClient::new(endpoints);
-                client.fetch_tx_status(&txid).await?
-            }
-
             Api::Insight => {
-                let client = DecredClient::new(endpoints);
+                let client = InsightClient::new(endpoints);
                 client.fetch_tx_status(&txid).await?
             }
             Api::KaspaRest => {

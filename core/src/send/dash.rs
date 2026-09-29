@@ -1,6 +1,5 @@
 //! Dash send: legacy V1 P2PKH transactions with standard SIGHASH_ALL
-//! double-SHA-256 sighash. Broadcast via Trezor Blockbook
-//! `/api/v2/sendtx`. The wire format is identical to Bitcoin/Litecoin
+//! double-SHA-256 sighash. The wire format is identical to Bitcoin/Litecoin
 //! legacy — Dash never adopted SegWit on mainnet.
 
 use super::bitcoin_wire::p2pkh_script;

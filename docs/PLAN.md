@@ -194,6 +194,20 @@ Swift async export, and offline assembly cannot verify a broadcast.
   A useful gate needs type-aware analysis before it can reject unused fields.
 - [ ] **Staking transaction execution.** The app currently provides information
   and validator queries. Transaction execution remains future work.
+- [ ] **Staking reads go through the API adapters.** AGENTS.md puts an API's
+  network I/O in `core/src/api/<api>.rs`; `staking/` predates that rule.
+  `SolanaStakingClient`, `SuiStakingClient`, `NearStakingClient` and
+  `AptosStakingClient` each build their own JSON-RPC or REST request and race
+  their own endpoint list in `fetch_validators` (`getVoteAccounts`,
+  `suix_getLatestSuiSystemState`, `validators`, the Aptos validator-set
+  resource). Move each request and its response type into the matching adapter
+  (`solana_json_rpc`, `sui_json_rpc`, `near_json_rpc`, `aptos_rest`) as a client
+  method, and have `staking/` take that client and keep only the staking
+  decisions: ranking, commission and APY projection, position shaping.
+  `IcpStakingClient` and `PolkadotStakingClient` hold endpoint lists they never
+  read (a static NNS neuron directory; no keyless Sidecar), so drop those fields
+  rather than route them. Record any change in what a validator query returns
+  in [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md) and pass `make verify`.
 - **Endpoint availability and redundancy:** the 2026-09-23 live audit removed
   failed built-in providers instead of retaining broken fallbacks. Zcash,
   Bitcoin Gold, Dash, Dogecoin testnet and Monero stagenet now have no built-in
@@ -207,6 +221,8 @@ Swift async export, and offline assembly cannot verify a broadcast.
   Etherscan V2 and its API-key setting were removed by user request.
 
 - **Keyless provider policy:** API-key configuration and authenticated provider
-  adapters are removed. Polkadot/Westend and Bittensor balance/history remain
-  unavailable until supported keyless implementations exist. Cardano staking
+  adapters are removed. Polkadot/Westend and Bittensor read balances from
+  `System.Account` storage over their own RPC; their history remains
+  unavailable until a keyless indexer exists. Blockchair, SoChain and Trezor's
+  Blockbooks refuse keyless clients and are not candidates. Cardano staking
   queries are unavailable; its keyless Koios broadcast is implemented.

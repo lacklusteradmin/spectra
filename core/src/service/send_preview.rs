@@ -86,12 +86,12 @@ impl WalletService {
     pub(crate) async fn bitcoin_fee_rate(
         &self,
         chain: Chain,
-    ) -> Result<crate::fetch::bitcoin::FeeRate, SpectraBridgeError> {
-        let endpoints = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
-            .await;
-        let client = BitcoinClient::new(HttpClient::shared(), endpoints);
-        Ok(client.fetch_fee_rate(6).await?)
+    ) -> Result<crate::api::utxo::FeeRate, SpectraBridgeError> {
+        Ok(self
+            .utxo_client(chain, &[EndpointCapability::Fee])
+            .await
+            .fetch_fee_rate(6)
+            .await?)
     }
 
     /// A chain's fee quoted in its own native unit, live where the chain has
@@ -114,11 +114,11 @@ impl WalletService {
         match chain {
             // Chains with live RPC fee fetches.
             Chain::Xrp => {
-                let drops = XrpClient::new(endpoints).fetch_fee().await?;
+                let drops = XrplClient::new(endpoints).fetch_fee().await?;
                 Ok(native(drops as u128, "rpc"))
             }
             Chain::Stellar => {
-                let stroops = StellarClient::new(endpoints).fetch_base_fee().await?;
+                let stroops = HorizonClient::new(endpoints).fetch_base_fee().await?;
                 Ok(native(stroops as u128, "rpc"))
             }
             Chain::Aptos => {
@@ -154,63 +154,45 @@ impl WalletService {
                 "fetch_utxo_fee_preview_json: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let eps = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
-            .await;
-        match chain.mainnet_counterpart() {
-            Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), eps);
-                let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 {
-                    fee_rate_svb
-                } else {
-                    BitcoinClient::new(
-                        HttpClient::shared(),
-                        self.endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
-                            .await,
-                    )
+        let family = chain.mainnet_counterpart();
+        if !matches!(
+            family,
+            Chain::Bitcoin
+                | Chain::Dogecoin
+                | Chain::Litecoin
+                | Chain::BitcoinCash
+                | Chain::BitcoinSV
+        ) {
+            return Err(SpectraBridgeError::from(format!(
+                "fetch_utxo_fee_preview_json: unsupported chain: {family:?}"
+            )));
+        }
+        let utxos = self
+            .utxo_client(chain, &[EndpointCapability::Utxo])
+            .await
+            .fetch_utxos(&address)
+            .await?;
+        let rate = if fee_rate_svb > 0 {
+            fee_rate_svb
+        } else {
+            let fees = self.utxo_client(chain, &[EndpointCapability::Fee]).await;
+            match family {
+                // Bitcoin is quoted live, or not previewed.
+                Chain::Bitcoin => fees
                     .fetch_fee_rate(3)
                     .await
-                    .map(|r| r.sats_per_vbyte.ceil() as u64)?
-                };
-                let values: Vec<u64> = utxos.into_iter().map(|u| u.value).collect();
-                Ok(utxo_fee_preview_json(values, rate))
+                    .map(|r| r.sats_per_vbyte.ceil() as u64)?,
+                // A live quote where one answers, else the relay floor.
+                Chain::Litecoin | Chain::BitcoinCash => fees
+                    .fetch_fee_rate(3)
+                    .await
+                    .map(|r| (r.sats_per_vbyte.ceil() as u64).max(1))
+                    .unwrap_or(1),
+                _ => 1,
             }
-            Chain::Dogecoin => {
-                let client = DogecoinClient::new(eps);
-                let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 { fee_rate_svb } else { 1 };
-                let values: Vec<u64> = utxos.into_iter().map(|u| u.value_koin).collect();
-                Ok(utxo_fee_preview_json(values, rate))
-            }
-            Chain::Litecoin | Chain::BitcoinCash => {
-                let client = BlockbookClient::new(eps, chain);
-                let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 {
-                    fee_rate_svb
-                } else {
-                    let fees = self
-                        .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
-                        .await;
-                    if fees.is_empty() {
-                        return Err("No fee endpoint configured".into());
-                    }
-                    BlockbookClient::new(fees, chain).fetch_fee_rate(3).await
-                };
-                let values: Vec<u64> = utxos.into_iter().map(|u| u.value_sat).collect();
-                Ok(utxo_fee_preview_json(values, rate))
-            }
-            Chain::BitcoinSV => {
-                let client = BitcoinSvClient::new(eps);
-                let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 { fee_rate_svb } else { 1 };
-                let values: Vec<u64> = utxos.into_iter().map(|u| u.value_sat).collect();
-                Ok(utxo_fee_preview_json(values, rate))
-            }
-            c => Err(SpectraBridgeError::from(format!(
-                "fetch_utxo_fee_preview_json: unsupported chain: {c:?}"
-            ))),
-        }
+        };
+        let values: Vec<u64> = utxos.into_iter().map(|u| u.value).collect();
+        Ok(utxo_fee_preview_json(values, rate))
     }
 
     /// Quote an EVM send: nonce, fee, gas limit, and what is spendable.
@@ -258,7 +240,7 @@ impl WalletService {
         // An ERC-20 transfer is addressed to the token contract, so the
         // destination *is* the token whose balance this send spends.
         let token_contract = data_opt
-            .filter(|data| crate::fetch::evm::is_erc20_transfer(data))
+            .filter(|data| crate::api::evm_json_rpc::is_erc20_transfer(data))
             .map(|_| to.as_str());
 
         let verification = EvmClient::new(
@@ -324,7 +306,7 @@ impl WalletService {
             "max_priority_fee_per_gas_gwei": priority_fee_gwei,
             "estimated_fee_eth": estimated_fee_eth,
             "spendable_balance": spendable_balance,
-            "is_token": crate::fetch::evm::is_erc20_transfer(&data_hex),
+            "is_token": crate::api::evm_json_rpc::is_erc20_transfer(&data_hex),
             "native_balance_wei": balance_wei_val.to_string(),
             "fee_rate_description": format!("Max {:.2} gwei / Priority {:.2} gwei",
                 max_fee_gwei, priority_fee_gwei),
@@ -348,7 +330,7 @@ impl WalletService {
                 },
             )
             .await;
-        let client = TronClient::new(eps);
+        let client = TronHttpClient::new(eps);
 
         // The native asset, by the catalog's gas token rather than the string
         // "TRX" — the same fact the rest of the send path routes on.

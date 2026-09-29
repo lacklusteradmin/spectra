@@ -1,11 +1,9 @@
-//! Kaspa chain client.
-//!
-//! Backed by the public REST surface at `https://api.kaspa.org`. Balances
-//! and outpoint values are denominated in `sompi` (1e-8 KAS).
+//! The Kaspa REST adapter (`api.kaspa.org`): balances, UTXOs, history,
+//! transaction status and submission, in sompi (1e-8 KAS).
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 #[derive(Debug, Deserialize)]
 struct ApiBalance {
@@ -209,8 +207,10 @@ impl KaspaClient {
                     .map(|o| o.amount as i64)
                     .sum();
                 let net = owned_out - owned_in;
-                let timestamp =
-                    super::confirmed_history_time(Some(tx.block_time), &tx.transaction_id)?;
+                let timestamp = crate::api::time::confirmed_history_time(
+                    Some(tx.block_time),
+                    &tx.transaction_id,
+                )?;
                 Ok((net != 0).then_some(KasHistoryEntry {
                     txid: tx.transaction_id,
                     block_daa_score: tx.accepting_block_blue_score.unwrap_or(0),
@@ -226,16 +226,16 @@ impl KaspaClient {
     pub async fn fetch_tx_status(
         &self,
         txid: &str,
-    ) -> Result<crate::fetch::bitcoin::UtxoTxStatus, String> {
+    ) -> Result<crate::api::utxo::UtxoTxStatus, String> {
         let txid = txid.to_string();
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let txid = txid.clone();
             let client = self.client.clone();
             async move {
                 let url = format!("{base}/transactions/{txid}");
                 let tx: ApiTxEntry = client.get_json(&url, RetryProfile::ChainRead).await?;
                 let confirmed = tx.accepting_block_blue_score.is_some();
-                Ok(crate::fetch::bitcoin::UtxoTxStatus {
+                Ok(crate::api::utxo::UtxoTxStatus {
                     txid: tx.transaction_id,
                     confirmed,
                     block_height: tx.accepting_block_blue_score,
@@ -253,7 +253,7 @@ impl KaspaClient {
         &self,
         body: serde_json::Value,
     ) -> Result<KasSendResult, String> {
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();
             let url = format!("{}/transactions", base.trim_end_matches('/'));

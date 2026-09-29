@@ -1,12 +1,9 @@
-//! Stellar chain client.
-//!
-//! Uses the Horizon REST API for account info, history, fee stats,
-//! and transaction submission. Signs with Ed25519 using ed25519-dalek.
-//! XDR encoding is done manually (minimal subset for Payment operation).
+//! The Stellar Horizon adapter: accounts, payments history, base fee and
+//! envelope submission.
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::HttpClient;
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 // ── Public result types
 
@@ -98,12 +95,12 @@ pub(crate) struct HorizonPaymentRecord {
 
 // ── Client
 
-pub struct StellarClient {
+pub struct HorizonClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
-impl StellarClient {
+impl HorizonClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -121,7 +118,7 @@ impl StellarClient {
 // Stellar fetch paths (Horizon): native balance, per-asset balance, sequence,
 // base fee, and payments history.
 
-impl StellarClient {
+impl HorizonClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<StellarBalance, String> {
         let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
         let native = account
@@ -179,8 +176,8 @@ fn stellar_history_from_payments(
             };
             let amount_stroops = parse_stellar_amount(&amount)?;
             // Horizon lists only operations already in a ledger.
-            let timestamp = super::confirmed_history_time(
-                super::history::parse_iso8601_timestamp(&r.created_at)
+            let timestamp = crate::api::time::confirmed_history_time(
+                crate::api::time::parse_iso8601_timestamp(&r.created_at)
                     .filter(|t| *t > 0.0)
                     .map(|t| t as u64),
                 &r.transaction_hash,
@@ -208,6 +205,37 @@ pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, String> {
     let frac_padded = format!("{:0<7}", frac_str);
     let frac: i64 = frac_padded[..7].parse().unwrap_or(0);
     Ok(whole * 10_000_000 + frac)
+}
+
+impl HorizonClient {
+    /// Submit a pre-signed XDR envelope (for rebroadcast).
+    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<StellarSendResult, String> {
+        let tx_b64 = tx_b64.to_string();
+        race(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let tx_b64 = tx_b64.clone();
+            let url = format!("{}/transactions", base.trim_end_matches('/'));
+            async move {
+                let resp: serde_json::Value = client
+                    .post_json(
+                        &url,
+                        &serde_json::json!({"tx": tx_b64}),
+                        RetryProfile::ChainWrite,
+                    )
+                    .await?;
+                let hash = resp
+                    .get("hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Ok(StellarSendResult {
+                    txid: hash,
+                    signed_xdr_b64: tx_b64.clone(),
+                })
+            }
+        })
+        .await
+    }
 }
 
 #[cfg(test)]

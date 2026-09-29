@@ -1,13 +1,10 @@
-//! XRP (Ripple) chain client.
-//!
-//! Uses the XRP Ledger JSON-RPC / REST API (rippled / Clio).
-//! Transactions are serialized using XRP's binary codec (STObject)
-//! and signed with secp256k1.
+//! The XRP Ledger JSON-RPC adapter (rippled / Clio): account info and
+//! sequence, fees, transaction history and blob submission.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::fetch::http::HttpClient;
+use crate::api::http::HttpClient;
 
 // ── Public result types
 
@@ -39,12 +36,12 @@ pub struct XrpSendResult {
 
 // ── Client
 
-pub struct XrpClient {
+pub struct XrplClient {
     endpoints: std::sync::Arc<Vec<String>>,
     client: std::sync::Arc<HttpClient>,
 }
 
-impl XrpClient {
+impl XrplClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -53,7 +50,7 @@ impl XrpClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        crate::fetch::json_rpc::call(
+        crate::api::json_rpc::call(
             crate::EndpointApi::XrplJsonRpc,
             &self.client,
             &self.endpoints,
@@ -66,7 +63,7 @@ impl XrpClient {
 
 // XRP fetch paths: balance, sequence, fee, history.
 
-impl XrpClient {
+impl XrplClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<XrpBalance, String> {
         let result = self
             .call(
@@ -209,7 +206,7 @@ fn xrp_history_from_transactions(
             .to_string();
         // `account_tx` up to the validated ledger lists only validated
         // transactions. XRP epoch: 2000-01-01, Unix epoch difference = 946684800.
-        let timestamp = super::confirmed_history_time(
+        let timestamp = crate::api::time::confirmed_history_time(
             tx.get("date")
                 .and_then(Value::as_u64)
                 .map(|d| d + 946_684_800),
@@ -238,6 +235,23 @@ fn format_xrp(drops: u64) -> String {
     let frac_str = format!("{:06}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+impl XrplClient {
+    /// Submit a pre-signed transaction blob (for rebroadcast).
+    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, String> {
+        let result = self.call("submit", json!({"tx_blob": tx_blob_hex})).await?;
+        let txid = result
+            .get("tx_json")
+            .and_then(|t| t.get("hash"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        Ok(XrpSendResult {
+            txid,
+            tx_blob_hex: tx_blob_hex.to_string(),
+        })
+    }
 }
 
 #[cfg(test)]

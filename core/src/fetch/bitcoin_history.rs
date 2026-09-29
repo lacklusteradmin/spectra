@@ -4,7 +4,7 @@
 //! retains unconsumed rows and each address's provider cursor. Complete block
 //! cohorts are merged before being displayed, so an HD transfer split across
 //! addresses or provider pages is counted exactly once.
-use super::bitcoin::BitcoinHistoryEntry;
+use crate::api::utxo::UtxoHistoryEntry;
 use crate::fetch::history::CoreBitcoinHistorySnapshot;
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ struct AddressCursor {
     address: String,
     after: Option<String>,
     exhausted: bool,
-    rows: VecDeque<BitcoinHistoryEntry>,
+    rows: VecDeque<UtxoHistoryEntry>,
     visited: HashSet<String>,
 }
 
@@ -32,7 +32,7 @@ struct Cursor {
     ready: VecDeque<CoreBitcoinHistorySnapshot>,
 }
 
-fn height(row: &BitcoinHistoryEntry) -> u64 {
+fn height(row: &UtxoHistoryEntry) -> u64 {
     if row.confirmed {
         row.block_height.unwrap_or(0)
     } else {
@@ -43,13 +43,13 @@ fn height(row: &BitcoinHistoryEntry) -> u64 {
 async fn refill<F, Fut>(source: &mut AddressCursor, fetch: &F) -> Result<(), String>
 where
     F: Fn(String, Option<String>) -> Fut,
-    Fut: Future<Output = Result<Vec<BitcoinHistoryEntry>, String>>,
+    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, String>>,
 {
     let rows = fetch(source.address.clone(), source.after.clone()).await?;
     accept_page(source, rows)
 }
 
-fn accept_page(source: &mut AddressCursor, rows: Vec<BitcoinHistoryEntry>) -> Result<(), String> {
+fn accept_page(source: &mut AddressCursor, rows: Vec<UtxoHistoryEntry>) -> Result<(), String> {
     if rows
         .iter()
         .any(|r| r.txid.is_empty() || (r.confirmed && r.block_height.is_none()))
@@ -85,7 +85,7 @@ pub(crate) async fn page<F, Fut>(
 ) -> Result<HistoryPage<CoreBitcoinHistorySnapshot>, String>
 where
     F: Fn(String, Option<String>) -> Fut,
-    Fut: Future<Output = Result<Vec<BitcoinHistoryEntry>, String>>,
+    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, String>>,
 {
     if addresses.is_empty() || limit == 0 {
         return Err("bitcoin history: empty scope or page size".into());
@@ -165,7 +165,7 @@ where
         }
         // Sum in satoshis before conversion; floats must not decide whether
         // an internal transfer has a zero net change.
-        let mut grouped = std::collections::BTreeMap::<String, (i128, BitcoinHistoryEntry)>::new();
+        let mut grouped = std::collections::BTreeMap::<String, (i128, UtxoHistoryEntry)>::new();
         for row in cohort {
             let entry = grouped.entry(row.txid.clone()).or_insert((0, row.clone()));
             entry.0 += i128::from(row.net_sats);
@@ -210,10 +210,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn rows(count: u64) -> Vec<BitcoinHistoryEntry> {
+    fn rows(count: u64) -> Vec<UtxoHistoryEntry> {
         (1..=count)
             .rev()
-            .map(|i| BitcoinHistoryEntry {
+            .map(|i| UtxoHistoryEntry {
                 txid: format!("{i:064x}"),
                 confirmed: true,
                 block_height: Some(i),
@@ -223,7 +223,7 @@ mod tests {
             })
             .collect()
     }
-    fn provider(all: Vec<BitcoinHistoryEntry>, after: Option<String>) -> Vec<BitcoinHistoryEntry> {
+    fn provider(all: Vec<UtxoHistoryEntry>, after: Option<String>) -> Vec<UtxoHistoryEntry> {
         let start = after
             .map(|id| all.iter().position(|r| r.txid == id).unwrap() + 1)
             .unwrap_or(0);

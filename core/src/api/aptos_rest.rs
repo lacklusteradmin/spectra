@@ -1,13 +1,10 @@
-//! Aptos chain client.
-//!
-//! Uses the Aptos REST API (api.mainnet.aptoslabs.com/v1).
-//! Transactions use BCS serialization (Binary Canonical Serialization).
-//! Signing uses Ed25519 via ed25519-dalek.
+//! The Aptos REST adapter: account resources, coin and fungible-asset
+//! balances, gas price, history, simulation and submission of a signed body.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 // ── Public result types
 
@@ -61,7 +58,7 @@ impl AptosClient {
     pub(crate) async fn post_val(&self, path: &str, body: &Value) -> Result<Value, String> {
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             let body = std::sync::Arc::clone(&body);
@@ -119,7 +116,7 @@ impl AptosClient {
     pub async fn fetch_all_coin_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<super::HeldToken>, String> {
+    ) -> Result<Vec<crate::api::HeldToken>, String> {
         let resources: Value = self.get(&format!("/accounts/{address}/resources")).await?;
         let mut held: Vec<(String, u128)> = Vec::new();
         for res in resources
@@ -158,12 +155,14 @@ impl AptosClient {
         Ok(held
             .into_iter()
             .zip(metadata)
-            .map(|((contract, balance_raw), decimals)| super::HeldToken {
-                contract,
-                balance_raw,
-                decimals,
-                symbol: None,
-            })
+            .map(
+                |((contract, balance_raw), decimals)| crate::api::HeldToken {
+                    contract,
+                    balance_raw,
+                    decimals,
+                    symbol: None,
+                },
+            )
             .collect())
     }
 
@@ -286,7 +285,8 @@ fn aptos_history_from_transactions(
         if amount_octas == 0 {
             continue;
         }
-        let timestamp_us = super::confirmed_history_time(Some(number(tx, "timestamp")), txid)?;
+        let timestamp_us =
+            crate::api::time::confirmed_history_time(Some(number(tx, "timestamp")), txid)?;
         entries.push(AptosHistoryEntry {
             txid: txid.to_string(),
             version: number(tx, "version"),
@@ -315,6 +315,25 @@ fn format_apt(octas: u64) -> String {
     let frac_str = format!("{:08}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+impl AptosClient {
+    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
+        let body: Value = serde_json::from_str(signed_json)
+            .map_err(|e| format!("invalid Aptos transaction: {e}"))?;
+        let response = self.post_val("/transactions", &body).await?;
+        let txid = response["hash"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or("Aptos submit: missing hash")?
+            .to_string();
+        let version = response["version"].as_str().and_then(|s| s.parse().ok());
+        Ok(AptosSendResult {
+            txid,
+            version,
+            signed_body_json: signed_json.into(),
+        })
+    }
 }
 
 #[cfg(test)]

@@ -1,13 +1,10 @@
-//! TON (The Open Network) chain client.
-//!
-//! Uses the TON Center REST API (toncenter.com/api/v2).
-//! Signing uses Ed25519 (ed25519-dalek).
-//! TON cells are complex; for transfers we use the tonlib-compatible
-//! approach of sending via the `walletv4r2` contract message format.
+//! The TON Center v2 adapter: balances, wallet seqno, transaction history
+//! and BOC submission. Jettons are `toncenter_v3`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 // ── Public result types
 
@@ -37,37 +34,19 @@ pub struct TonSendResult {
     pub boc_b64: String,
 }
 
-/// One jetton (token) balance entry returned by the v3 API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TonJettonBalance {
-    /// Jetton master contract address (matches the known-token `contract` field).
-    pub master_address: String,
-    /// Jetton wallet contract address (holder's personal wallet for this token).
-    pub wallet_address: String,
-    /// Raw balance in the token's smallest unit.
-    pub balance_raw: u128,
-}
-
 // ── Client
 
-pub struct TonClient {
+pub struct ToncenterV2Client {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
-    pub(crate) v3_endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
-impl TonClient {
+impl ToncenterV2Client {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
-            v3_endpoints: std::sync::Arc::new(Vec::new()),
             client: HttpClient::shared(),
         }
-    }
-
-    pub fn with_v3_endpoints(mut self, v3_endpoints: std::sync::Arc<Vec<String>>) -> Self {
-        self.v3_endpoints = v3_endpoints;
-        self
     }
 
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
@@ -75,24 +54,7 @@ impl TonClient {
         path: &str,
     ) -> Result<T, String> {
         let path = path.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move { client.get_json(&url, RetryProfile::ChainRead).await }
-        })
-        .await
-    }
-
-    /// GET from the TonCenter v3 base URL (if configured).
-    pub(crate) async fn get_v3<T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-    ) -> Result<T, String> {
-        if self.v3_endpoints.is_empty() {
-            return Err("ton: no v3 endpoints configured".to_string());
-        }
-        let path = path.to_string();
-        with_fallback(&self.v3_endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             async move { client.get_json(&url, RetryProfile::ChainRead).await }
@@ -100,115 +62,8 @@ impl TonClient {
         .await
     }
 }
-// TON fetch paths: balance, seqno, history (TonCenter v2), jetton balances (v3).
 
-impl TonClient {
-    /// Fetch all jetton (token) balances for `address` via the TonCenter v3 API.
-    /// Returns a list of `TonJettonBalance` entries — one per jetton wallet found.
-    pub async fn fetch_jetton_balances(
-        &self,
-        address: &str,
-    ) -> Result<Vec<TonJettonBalance>, String> {
-        #[derive(Deserialize)]
-        struct Envelope {
-            jetton_wallets: Option<Vec<JettonEntry>>,
-        }
-        #[derive(Deserialize)]
-        struct JettonEntry {
-            balance: Option<String>,
-            address: Option<String>,
-            jetton: Option<AddressWrapper>,
-        }
-        #[derive(Deserialize)]
-        struct AddressWrapper {
-            address: Option<String>,
-        }
-
-        let path = format!("/jetton/wallets?owner_address={address}&limit=100");
-        let resp: Envelope = self.get_v3(&path).await?;
-        let wallets = resp.jetton_wallets.unwrap_or_default();
-        Ok(wallets
-            .into_iter()
-            .filter_map(|entry| {
-                let master_address = entry.jetton?.address?;
-                let wallet_address = entry.address?;
-                let balance_raw: u128 = entry.balance?.parse().ok()?;
-                Some(TonJettonBalance {
-                    master_address,
-                    wallet_address,
-                    balance_raw,
-                })
-            })
-            .collect())
-    }
-
-    /// A jetton master's own decimals, from its content. `None` when the
-    /// master will not answer.
-    pub async fn fetch_jetton_decimals(&self, master_address: &str) -> Option<u8> {
-        #[derive(Deserialize)]
-        struct MasterEnvelope {
-            jetton_masters: Option<Vec<Master>>,
-        }
-        #[derive(Deserialize)]
-        struct Master {
-            jetton_content: Option<Content>,
-        }
-        #[derive(Deserialize)]
-        struct Content {
-            decimals: Option<serde_json::Value>,
-        }
-        let path = format!("/jetton/masters?address={master_address}&limit=1");
-        let content = self
-            .get_v3::<MasterEnvelope>(&path)
-            .await
-            .ok()?
-            .jetton_masters?
-            .into_iter()
-            .next()?
-            .jetton_content?;
-        // TON metadata carries decimals as a string as often as a number, and
-        // both mean the same count.
-        let raw = content.decimals?;
-        raw.as_u64()
-            .or_else(|| raw.as_str().and_then(|s| s.parse().ok()))
-            .map(|d| d as u8)
-    }
-
-    /// Every jetton the address holds, with each jetton master's own decimals.
-    ///
-    /// `/jetton/wallets` enumerates the holdings but carries no content, so
-    /// each master's metadata is read concurrently; a master that will not
-    /// answer is reported unnamed rather than dropped.
-    pub async fn fetch_all_jetton_balances(
-        &self,
-        address: &str,
-    ) -> Result<Vec<super::HeldToken>, String> {
-        let wallets: Vec<TonJettonBalance> = self
-            .fetch_jetton_balances(address)
-            .await?
-            .into_iter()
-            .filter(|w| w.balance_raw > 0)
-            .collect();
-
-        let metadata = futures::future::join_all(
-            wallets
-                .iter()
-                .map(|w| self.fetch_jetton_decimals(&w.master_address)),
-        )
-        .await;
-
-        Ok(wallets
-            .into_iter()
-            .zip(metadata)
-            .map(|(w, decimals)| super::HeldToken {
-                contract: w.master_address,
-                balance_raw: w.balance_raw,
-                decimals,
-                symbol: None,
-            })
-            .collect())
-    }
-
+impl ToncenterV2Client {
     pub async fn fetch_balance(&self, address: &str) -> Result<TonBalance, String> {
         #[derive(Deserialize)]
         struct Resp {
@@ -239,7 +94,7 @@ impl TonClient {
             Some("active") => {}
             _ => return Err("TON: account is frozen or state is unreadable".into()),
         }
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}/runGetMethod", base.trim_end_matches('/'));
             let body = json!({"address": address, "method": "seqno", "stack": []});
@@ -364,6 +219,51 @@ fn format_ton(nanotons: u64) -> String {
     format!("{}.{}", whole, capped)
 }
 
+impl ToncenterV2Client {
+    /// Send a pre-built BOC (for rebroadcast).
+    pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, String> {
+        let body = json!({"boc": boc_b64});
+        let boc_b64 = boc_b64.to_string();
+        race(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let body = body.clone();
+            let boc_b64 = boc_b64.clone();
+            let url = format!("{}/sendBocReturnHash", base.trim_end_matches('/'));
+            async move {
+                let resp: Value = client
+                    .post_json(&url, &body, RetryProfile::ChainWrite)
+                    .await?;
+                if resp.get("ok").and_then(Value::as_bool) != Some(true) {
+                    return Err(format!(
+                        "TON broadcast rejected: {}",
+                        resp.get("error").unwrap_or(&Value::Null)
+                    ));
+                }
+                let hash = resp
+                    .get("result")
+                    .and_then(|r| r.get("hash"))
+                    .and_then(Value::as_str)
+                    .ok_or("TON broadcast: missing message hash")?
+                    .to_string();
+                use base64::Engine;
+                if base64::engine::general_purpose::STANDARD
+                    .decode(&hash)
+                    .map_err(|_| "TON broadcast: invalid hash")?
+                    .len()
+                    != 32
+                {
+                    return Err("TON broadcast: invalid hash length".into());
+                }
+                Ok(TonSendResult {
+                    message_hash: hash,
+                    boc_b64,
+                })
+            }
+        })
+        .await
+    }
+}
+
 #[cfg(test)]
 mod history_tests {
     use super::*;
@@ -396,5 +296,59 @@ mod history_tests {
         assert!(entries[1].is_incoming);
         assert_eq!(entries[1].amount_nanotons, 250_000_000);
         assert_eq!(entries[1].comment.as_deref(), Some("hi"));
+    }
+}
+
+#[cfg(test)]
+mod submission_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ton_reads_real_seqno_and_refuses_failed_reads_and_submissions() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        let server = MockServer::start().await;
+        let client = ToncenterV2Client::new(std::sync::Arc::new(vec![server.uri()]));
+        Mock::given(method("GET"))
+            .and(path("/getAddressInformation"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"ok":true,"result":{"state":"active"}})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/runGetMethod"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"ok":true,"result":{"exit_code":0,"stack":[["num","0x2a"]]}}),
+            ))
+            .mount(&server)
+            .await;
+        assert_eq!(client.fetch_seqno("address").await.unwrap(), 42);
+        server.reset().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":false})))
+            .mount(&server)
+            .await;
+        assert!(client.fetch_seqno("address").await.is_err());
+        Mock::given(method("POST"))
+            .and(path("/sendBocReturnHash"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"ok":false,"error":"invalid boc"})),
+            )
+            .mount(&server)
+            .await;
+        assert!(client.send_boc("payload").await.is_err());
+        server.reset().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"ok":true,"result":{"state":"uninitialized"}})),
+            )
+            .mount(&server)
+            .await;
+        assert_eq!(client.fetch_seqno("address").await.unwrap(), 0);
     }
 }

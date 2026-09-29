@@ -141,7 +141,7 @@ pub(crate) fn reconcile(
     match &desired {
         RuntimeConfiguration::Off => {}
         RuntimeConfiguration::Proxy(url) => {
-            crate::fetch::http::set_socks5_proxy(Some(url));
+            crate::api::http::set_socks5_proxy(Some(url));
             *state = TorInternalState::CustomProxy;
         }
         RuntimeConfiguration::Embedded(dir) => {
@@ -162,7 +162,7 @@ fn stop_runtime(state: &mut TorInternalState) {
         TorInternalState::Bootstrapping { task, .. } => task.abort(),
         _ => {}
     }
-    crate::fetch::http::set_socks5_proxy(None);
+    crate::api::http::set_socks5_proxy(None);
 }
 
 /// Force proxy-side ("remote") DNS resolution by upgrading a plain `socks5://`
@@ -255,7 +255,7 @@ async fn finish_bootstrap(data_dir: String, percent: Arc<AtomicU8>) {
             };
             let client = Arc::new(client);
             let proxy_task = tokio::spawn(run_socks5_proxy(client.clone(), listener));
-            crate::fetch::http::set_socks5_proxy(Some(&format!("socks5h://127.0.0.1:{port}")));
+            crate::api::http::set_socks5_proxy(Some(&format!("socks5h://127.0.0.1:{port}")));
             *state = TorInternalState::Running {
                 _client: client,
                 proxy_task,

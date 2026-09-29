@@ -120,7 +120,7 @@ impl WalletService {
                                 json!([signer.from_address, "latest"]),
                             )
                             .await?;
-                        crate::fetch::evm::parse_hex_u64(
+                        crate::api::evm_json_rpc::parse_hex_u64(
                             response.as_str().ok_or("Missing confirmed nonce")?,
                         )?
                     } else {
@@ -295,8 +295,16 @@ impl WalletService {
         history.signed_transaction_payload = Some(serde_json::to_string(&submission)?);
         history.signed_transaction_payload_format = Some("core.submission_json".into());
         self.save_send_record(history.clone()).await?;
+        // Every selected endpoint gets the payload at once. Each attempt is
+        // saved as uncertain before anything is sent, so a crash mid-way
+        // never loses the record of a submission.
+        let first = stored.view.attempts.len();
+        let mut submissions = Vec::with_capacity(endpoints.len());
         for endpoint in endpoints {
-            let index = stored.view.attempts.len();
+            let api = self
+                .endpoint_api(chain, &endpoint)
+                .await
+                .ok_or("Endpoint does not support broadcasts on the selected network")?;
             stored.view.attempts.push(BroadcastAttempt {
                 endpoint: endpoint.clone(),
                 attempted_at: crate::store::now_unix(),
@@ -304,26 +312,29 @@ impl WalletService {
                 transaction_hash: None,
                 detail: "Submission outcome unknown; retry only this signed payload".into(),
             });
-            stored.view.revision += 1;
-            self.save_send_artifact(&stored, Vec::new()).await?;
-            let api = chain.primary_api().ok_or("No broadcast API")?;
-            let result = self
-                .broadcast_at(
-                    chain,
-                    api,
-                    Arc::new(vec![endpoint]),
-                    submission.payload.clone(),
-                )
-                .await
-                .and_then(|result| {
-                    let value: serde_json::Value = serde_json::from_str(&result)?;
-                    value[&submission.result_field]
-                        .as_str()
-                        .filter(|s| !s.is_empty())
-                        .map(str::to_owned)
-                        .ok_or_else(|| "Node returned no transaction identifier".into())
-                });
-            let attempt = &mut stored.view.attempts[index];
+            submissions.push((api, endpoint));
+        }
+        stored.view.revision += 1;
+        self.save_send_artifact(&stored, Vec::new()).await?;
+        let submission = &submission;
+        let results = futures::future::join_all(submissions.into_iter().map(|(api, endpoint)| {
+            let payload = submission.payload.clone();
+            async move {
+                self.broadcast_at(chain, api, Arc::new(vec![endpoint]), payload)
+                    .await
+                    .and_then(|result| {
+                        let value: serde_json::Value = serde_json::from_str(&result)?;
+                        value[&submission.result_field]
+                            .as_str()
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_owned)
+                            .ok_or_else(|| "Node returned no transaction identifier".into())
+                    })
+            }
+        }))
+        .await;
+        for (offset, result) in results.into_iter().enumerate() {
+            let attempt = &mut stored.view.attempts[first + offset];
             match result {
                 Ok(hash)
                     if submission.transaction_hash.as_ref().is_none_or(|expected| {
@@ -362,8 +373,6 @@ impl WalletService {
                     ),
                 )
             };
-            stored.view.revision += 1;
-            self.save_send_artifact(&stored, Vec::new()).await?;
             self.record_event(
                 level,
                 "Broadcast",
@@ -373,6 +382,8 @@ impl WalletService {
             )
             .await;
         }
+        stored.view.revision += 1;
+        self.save_send_artifact(&stored, Vec::new()).await?;
         if let Some(accepted) = stored
             .view
             .attempts
@@ -462,7 +473,7 @@ impl WalletService {
                 )
             };
             PreparedPayload::Evm(
-                crate::fetch::http::with_fallback(&endpoints, |endpoint| {
+                crate::api::http::race(&endpoints, |endpoint| {
                     let sender = &sender;
                     let to = &to;
                     let data = &data;
@@ -471,9 +482,15 @@ impl WalletService {
                         self.validate_endpoint_network(chain, &endpoint)
                             .await
                             .map_err(|e| e.to_string())?;
-                        EvmClient::new(Arc::new(vec![endpoint]), chain.evm_chain_id()?)
-                            .prepare_transfer(sender, to, value, data, overrides)
-                            .await
+                        crate::send::evm::prepare_transfer(
+                            &EvmClient::new(Arc::new(vec![endpoint]), chain.evm_chain_id()?),
+                            sender,
+                            to,
+                            value,
+                            data,
+                            overrides,
+                        )
+                        .await
                     }
                 })
                 .await?,

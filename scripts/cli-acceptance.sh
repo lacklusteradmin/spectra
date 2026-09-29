@@ -358,14 +358,15 @@ btc = configured["bitcoin"]
 assert btc and all(any(r["endpoint"] == url and r["api"] == "esplora" for r in records) for url in btc)
 assert "https://blockchain.info/multiaddr" not in btc
 assert configured["ton"] == ["https://toncenter.com/api/v2"]
-# A transport list is a chain's primary API; secondary services are found by API.
+# A transport list holds every API a chain's own client speaks; secondary
+# services are found by API.
 assert all(":" not in chain for chain in configured)
 assert [r["endpoint"] for r in records if r["chainId"] == "ton" and r["api"] == "toncenter-v3"] == ["https://toncenter.com/api/v3"]
-assert configured["tron"] == ["https://api.trongrid.io"]
+assert configured["tron"] == ["https://api.trongrid.io", "https://tron-rpc.publicnode.com"]
 assert not any(r["api"] in ("taostats", "subscan", "ethplorer") for r in records)
-# Existing clients have no matching catalog API for these chains.
-assert configured["litecoin"] == []
-assert configured["bitcoin-cash"] == []
+# Litecoin speaks Esplora and BlockCypher alike, and uses both.
+assert configured["litecoin"] == ["https://litecoinspace.org/api", "https://api.blockcypher.com/v1/ltc/main"]
+assert configured["bitcoin-cash"] == ["https://rest.bch.actorforth.org/v2"]
 assert configured["monero"]
 assert all(any(r["endpoint"] == url and r["api"] == "monero-daemon-rpc" for r in records) for url in configured["monero"])
 PYAPI
@@ -443,10 +444,13 @@ check "unknown endpoint network is refused" $USAGE \
     spectra --json endpoints --catalog --chain unknown-network
 
 section "keyless provider policy"
+# Substrate balances are the node's own `System.Account` storage; reading one
+# needs the network, so offline the check is that the catalog declares it.
+# History has no keyless source and refuses before any request.
 for chain in Polkadot Bittensor; do
     check "$chain offline wallet creation" $OK spectra wallet new --chain "$chain" --name "Keyless $chain" --no-password
-    contains_exit 1 "$chain balance has no source" "no compatible" spectra balance "Keyless $chain"
-    contains_exit 1 "$chain history has no source" "no compatible" spectra history "Keyless $chain"
+    contains "$chain nodes declare balance" '"balance"' spectra --json endpoints --catalog --chain "$chain"
+    contains_exit 1 "$chain history has no source" "no keyless history source" spectra history "Keyless $chain"
     check "$chain fixture wallet cleanup" $OK spectra wallet delete "Keyless $chain" --yes
 done
 contains_exit 3 "Cardano staking refuses without network access" "Staking queries are unavailable for Cardano" spectra staking validators --chain Cardano

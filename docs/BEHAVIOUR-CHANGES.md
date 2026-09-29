@@ -16,6 +16,108 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-29 — Polkadot and Bittensor balances; Bitcoin Cash has an indexer
+
+- **Before:** Polkadot and Bittensor balance reads failed with "no keyless
+  balance source configured". Bitcoin Cash had no catalog endpoint at all: its
+  Blockbook rows had died and the BCH REST v2 rows were removed with the
+  adapter-less APIs, so balance, history, UTXOs and broadcast all failed. The
+  BCH/Litecoin fee preview refused with "No fee endpoint configured" when no
+  endpoint quoted one. Tron had one node HTTP endpoint.
+- **After:** `SubstrateClient::fetch_balance` reads the `System.Account`
+  record with `state_getStorage` and decodes it at the chain's
+  `Chain::substrate_balance_bytes` (Polkadot `u128`, subtensor `u64`); a record
+  of any other length is refused. The balance shown is the transferable one:
+  `free` less what `frozen` holds beyond `reserved`, so staked funds are not
+  offered to a send. The catalog's Substrate rows declare `balance`. A new
+  `bch-rest-v2` adapter serves Bitcoin Cash through `UtxoClient` (balance,
+  history, UTXOs, status, broadcast; no fee quote), with
+  `https://rest.bch.actorforth.org/v2` in the catalog. Its inputs report BCH in
+  a field named `valueSat`; the adapter reads them as BCH. The Litecoin/BCH
+  preview uses a live fee where one answers and 1 sat/B otherwise. Tron gains
+  `https://tron-rpc.publicnode.com` as a second node HTTP endpoint. OnFinality's
+  public Hyperliquid RPC was probed and left out: it answers "Too Many
+  Requests" after two calls and stays refused.
+- **Why:** Substrate nodes hold account balances as plain storage; no indexer
+  or key was ever needed. Bitcoin Cash had no working source at all, and the
+  one keyless indexer still answering needed only an adapter.
+- **CLI check:** watch `13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB` on
+  Polkadot and `spectra --json balance <wallet>` reports its DOT; watch a
+  Bitcoin Cash address and `spectra --json history <wallet>` lists it.
+  `spectra --json endpoints --catalog` lists the BCH REST row under
+  `configured` for `bitcoin-cash`.
+- **Verification:** all four suites passed: rustfmt/clippy, 877 core tests plus
+  the transport test, 450 CLI acceptance checks and 95 iPhone simulator tests;
+  the CLI check above was also run against the live networks.
+
+## 2026-09-29 — One adapter per API; `send` only builds and signs
+
+- **Before:** `fetch/` had one file per chain, and several held two APIs:
+  `evm.rs` the node and Blockscout, `ton.rs` TON Center v2 and v3 behind one
+  client with two endpoint lists, `tron.rs` the node and TronGrid v1, `near.rs`
+  the node and Nearblocks. `polkadot.rs` and `bittensor.rs` were the same
+  Substrate client twice. Eighteen `send/` files added methods to fetch
+  clients, so an API's wire code was split between `fetch/` and `send/` —
+  BlockCypher's broken broadcast sat in `send/dogecoin.rs`. NEAR history asked
+  only the first Nearblocks endpoint.
+- **After:** `core/src/api/` holds one module per `EndpointApi`, named after its
+  `as_str()`, with that API's requests, parsing and submission, whichever chain
+  uses it: `esplora`, `whatsonchain`, `insight`, `koios`, `horizon`,
+  `substrate_json_rpc` (one `SubstrateClient`), `blockscout`, `toncenter_v3`,
+  `trongrid_v1`, `nearblocks` and `monero_daemon_rpc` among them. `api` is a
+  root module with its transport (`http`, `json_rpc`), the shared answer types
+  and provider timestamp parsing, and depends on none of `fetch`, `send`,
+  `staking` or `service`, which all call it. `send/` builds and signs; its
+  fetch-then-build flows are free functions taking a client.
+  NEAR history races every Nearblocks endpoint. Polkadot and Bittensor balance
+  and history refuse in the service instead of in two stub clients.
+- **Why:** an adapter is a wire contract, not a chain; naming files after
+  chains hid which code spoke which API and let one API's code live in two
+  directories.
+- **CLI check:** none shows file layout; `spectra --json history` on a NEAR
+  wallet reads Nearblocks as before. `make test` covers the moved adapters,
+  including `substrate_balance_and_history_are_errors_not_empty_wallets`.
+- **Verification:** all four suites passed: rustfmt/clippy, 871 core tests plus
+  the transport test, 450 CLI acceptance checks and 95 iPhone simulator tests.
+
+## 2026-09-29 — Every endpoint is asked at once, in every API a chain speaks
+
+- **Before:** `with_fallback` tried a chain's endpoints top to bottom with
+  180 ms between failures, so catalog order decided which provider served
+  every request and a dead one cost a timeout on each call. Each chain had one
+  `primary_api()`, and a URL speaking any other API was dropped from its list:
+  Litecoin's primary was Blockbook, whose rows were removed in September, so
+  its Esplora and BlockCypher rows were never used and Litecoin had no working
+  endpoint. BlockCypher broadcasts went to Blockbook's `/api/v2/sendtx/` and
+  could not succeed. The four UTXO adapters disagreed on meaning: WhatsOnChain's
+  balance included unconfirmed funds, Esplora's `utxo_count` was a transaction
+  count, BlockCypher's UTXO list left out mempool outputs, and history came in
+  three shapes (`net_sats`, `amount_sat`, `amount_koin`). A user's broadcast to
+  several selected endpoints went to one after another.
+- **After:** `race` asks every endpoint at once and answers with the first
+  success; only when all fail is it an error. `Chain::endpoint_apis()` lists
+  every API a chain's own client speaks — Bitcoin Esplora and BlockCypher;
+  Litecoin Blockbook, Esplora and BlockCypher; Dogecoin BlockCypher and
+  Blockbook; Dash Blockbook and BlockCypher — and every URL in any of them is
+  used. `api::utxo::UtxoClient` serves the UTXO family over all of them in
+  one set of types: confirmed balance plus mempool delta, UTXOs including the
+  mempool's, one history shape, newest first. Only Esplora can continue
+  history past the first page; the others refuse a cursor and the race
+  answers from Esplora. BlockCypher broadcasts to `/txs/push` and quotes fees.
+  Broadcasts, the user's selected ones included, go to every endpoint
+  together and each runs to its end. `NativeBalanceSummary.utxo_count` and
+  `utxoCount` in `spectra balance` are gone. A configured URL outside the
+  directory is still read as the chain's `default_api()`.
+- **Why:** order had become an unstated preference between providers, and a
+  second API on a chain was a silent dead row rather than redundancy — the
+  `primary_api` filter hid that Litecoin had nothing left. One client answering
+  in one meaning is what lets endpoints of different APIs be interchangeable.
+- **CLI check:** `spectra --json endpoints --catalog` lists both
+  `https://litecoinspace.org/api` and `https://api.blockcypher.com/v1/ltc/main`
+  under `configured` for `litecoin`, where it listed nothing.
+- **Verification:** all four suites passed: rustfmt/clippy, 872 core tests plus
+  the transport test, 450 CLI acceptance checks and 95 iPhone simulator tests.
+
 ## 2026-09-29 — Donation addresses are core's, checked when they load
 
 - **Before:** `resources/Donations.json` held the Donate screen's five

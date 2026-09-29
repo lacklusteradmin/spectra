@@ -1,5 +1,5 @@
-//! Bitcoin send path: P2WPKH / P2PKH / P2TR signers, coin selection, fee
-//! calculation, and Esplora broadcast.
+//! Bitcoin send path: P2WPKH / P2PKH / P2TR signers, coin selection and fee
+//! calculation.
 
 use std::str::FromStr;
 
@@ -16,29 +16,7 @@ use bitcoin::{
 };
 use zeroize::Zeroize;
 
-use crate::fetch::http::{RetryProfile, with_fallback};
-
-use crate::fetch::bitcoin::{BitcoinClient, EsploraUtxo, FeeRate};
-
-impl BitcoinClient {
-    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
-        let raw = raw_tx_hex.to_string();
-        let http = self.http.clone();
-        let endpoints = self.endpoints.clone();
-
-        with_fallback(&endpoints, |base| {
-            let raw = raw.clone();
-            let http = http.clone();
-            async move {
-                let url = format!("{base}/tx");
-                // Esplora broadcast: POST hex-encoded tx as plain text, returns txid.
-                http.post_text(&url, raw, RetryProfile::ChainWrite).await
-            }
-        })
-        .await
-        .map(|s| s.trim().to_string())
-    }
-}
+use crate::api::utxo::{FeeRate, Utxo};
 
 /// Parameters for building a Bitcoin transaction.
 #[derive(Debug)]
@@ -55,7 +33,7 @@ pub struct BitcoinSendParams {
     pub fee_rate: FeeRate,
     /// UTXOs available for automatic coin selection. Ignored when
     /// `pinned_utxos` is set. Fetched from Esplora if empty.
-    pub available_utxos: Vec<EsploraUtxo>,
+    pub available_utxos: Vec<Utxo>,
     /// Which network, as a registry chain id (`"bitcoin"`,
     /// `"bitcoin-testnet-4"`, …).
     pub chain_id: String,
@@ -68,7 +46,7 @@ pub struct BitcoinSendParams {
     /// selection entirely. Their total still has to cover `amount_sats` and the
     /// fee — the builder refuses rather than signing a transaction that pays
     /// out more than it spends.
-    pub pinned_utxos: Option<Vec<EsploraUtxo>>,
+    pub pinned_utxos: Option<Vec<Utxo>>,
 }
 
 /// What one input of a given script type costs to spend and what one of its
@@ -116,16 +94,16 @@ impl SpendSizing {
 
 /// Coin selection: accumulate the largest UTXOs until we cover `target + fee`.
 fn select_coins(
-    utxos: &[EsploraUtxo],
+    utxos: &[Utxo],
     target_sats: u64,
     fee_rate: FeeRate,
     sizing: SpendSizing,
     output_count: usize,
-) -> Result<(Vec<&EsploraUtxo>, u64), String> {
-    let mut sorted: Vec<&EsploraUtxo> = utxos.iter().collect();
+) -> Result<(Vec<&Utxo>, u64), String> {
+    let mut sorted: Vec<&Utxo> = utxos.iter().collect();
     sorted.sort_by_key(|utxo| std::cmp::Reverse(utxo.value));
 
-    let mut selected: Vec<&EsploraUtxo> = Vec::new();
+    let mut selected: Vec<&Utxo> = Vec::new();
     let mut total: u64 = 0;
 
     for utxo in sorted {
@@ -151,14 +129,14 @@ fn select_coins(
 /// its fee is derived from the input count coin selection settles on, the dust
 /// rule changes what is actually paid out, and its shortfall is the localized `utxo.insufficientFunds` rather than prose. What is shared
 /// is the refusal to let an endpoint's numbers wrap a sum.
-fn total_value<'a>(utxos: impl IntoIterator<Item = &'a EsploraUtxo>) -> Result<u64, String> {
+fn total_value<'a>(utxos: impl IntoIterator<Item = &'a Utxo>) -> Result<u64, String> {
     utxos
         .into_iter()
         .try_fold(0u64, |total, utxo| total.checked_add(utxo.value))
         .ok_or_else(|| "utxo.amountOverflow".to_string())
 }
 
-fn tx_input_for_utxo(utxo: &EsploraUtxo, sequence: Sequence) -> Result<TxIn, String> {
+fn tx_input_for_utxo(utxo: &Utxo, sequence: Sequence) -> Result<TxIn, String> {
     let txid = Txid::from_str(&utxo.txid).map_err(|e| format!("bad txid {}: {e}", utxo.txid))?;
     Ok(TxIn {
         previous_output: OutPoint {
@@ -506,7 +484,7 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fetch::bitcoin::EsploraUtxoStatus;
+    use crate::api::utxo::UtxoStatus;
 
     const KEY_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
     const TXID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
@@ -560,11 +538,11 @@ mod tests {
         (secp, secret, pk)
     }
 
-    fn utxo(vout: u32, value: u64) -> EsploraUtxo {
-        EsploraUtxo {
+    fn utxo(vout: u32, value: u64) -> Utxo {
+        Utxo {
             txid: TXID.to_string(),
             vout,
-            status: EsploraUtxoStatus {
+            status: UtxoStatus {
                 confirmed: true,
                 block_height: Some(800_000),
             },
@@ -572,7 +550,7 @@ mod tests {
         }
     }
 
-    fn params(kind: Kind, utxos: Vec<EsploraUtxo>, amount: u64) -> BitcoinSendParams {
+    fn params(kind: Kind, utxos: Vec<Utxo>, amount: u64) -> BitcoinSendParams {
         BitcoinSendParams {
             from_address: kind.address(),
             private_key_hex: KEY_HEX.to_string().into(),
@@ -754,7 +732,7 @@ pub(crate) struct PreparedBitcoinTransaction {
     pub to: String,
     pub amount: u64,
     pub fee_rate: f64,
-    pub inputs: Vec<EsploraUtxo>,
+    pub inputs: Vec<Utxo>,
     pub unsigned_hex: String,
     pub fee_sats: u64,
 }
@@ -781,7 +759,7 @@ impl PreparedBitcoinTransaction {
         to: &str,
         amount: u64,
         fee_rate: f64,
-        inputs: Vec<EsploraUtxo>,
+        inputs: Vec<Utxo>,
     ) -> Result<Self, String> {
         if !fee_rate.is_finite() || fee_rate <= 0.0 {
             return Err("Invalid Bitcoin fee rate".into());

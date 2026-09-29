@@ -1,34 +1,11 @@
-//! Dogecoin send: P2PKH signer and Blockbook broadcast.
+//! Dogecoin send: the P2PKH signer. Broadcast goes through `api::utxo`.
 
 use super::bitcoin_wire::p2pkh_script;
-use crate::fetch::http::{RetryProfile, with_fallback};
 
 use super::bitcoin_wire::{
     build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint,
 };
 use crate::derivation::dogecoin::decode_doge_address;
-use crate::fetch::dogecoin::{DogeSendResult, DogecoinClient};
-
-impl DogecoinClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<DogeSendResult, String> {
-        let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let hex = hex.clone();
-            let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
-            async move {
-                let txid: String = client
-                    .post_text(&url, hex.clone(), RetryProfile::ChainWrite)
-                    .await?;
-                Ok(DogeSendResult {
-                    txid: txid.trim().to_string(),
-                    raw_tx_hex: hex.clone(),
-                })
-            }
-        })
-        .await
-    }
-}
 
 // ── Dogecoin P2PKH signing
 

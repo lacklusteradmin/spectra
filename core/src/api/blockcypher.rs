@@ -1,21 +1,21 @@
-//! Dogecoin chain client.
-//!
-//! Uses BlockCypher REST API (the only configured endpoint).
-//! Endpoint base: https://api.blockcypher.com/v1/doge/main
-//! Signing uses secp256k1 / P2PKH (Dogecoin does not support SegWit).
-//! Network params: version byte 0x1e (addresses start with 'D').
+//! The BlockCypher REST adapter. A base URL names its coin and network, as in
+//! `https://api.blockcypher.com/v1/doge/main`; the paths below it are the
+//! same for every coin. `api::utxo` decides which adapter serves a request.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::fetch::http::HttpClient;
+use crate::api::http::{HttpClient, RetryProfile, race};
+use crate::api::utxo::{FeeRate, Utxo, UtxoBalance, UtxoHistoryEntry, UtxoStatus, UtxoTxStatus};
 
 // ── BlockCypher response types
 
 /// Response from GET /addrs/{address}/balance
 #[derive(Debug, Deserialize)]
 struct BlockcypherBalance {
-    /// Confirmed balance in koinus (1 DOGE = 100_000_000 koinus).
+    /// Confirmed balance in the coin's smallest unit.
     balance: u64,
+    #[serde(default)]
+    unconfirmed_balance: i64,
 }
 
 /// Response from GET /addrs/{address}?unspentOnly=true
@@ -37,57 +37,28 @@ struct BlockcypherTxref {
     tx_input_n: i32,
     value: i64,
     #[serde(default)]
-    confirmations: u32,
-    #[serde(default)]
     block_height: i64,
     #[serde(default)]
     spent: bool,
     confirmed: Option<String>,
 }
 
-// ── Public result types
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DogeBalance {
-    /// Confirmed balance in koinus (1 DOGE = 100_000_000 koinus).
-    pub balance_koin: u64,
-    pub balance_display: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DogeHistoryEntry {
-    pub txid: String,
-    pub block_height: u64,
-    /// `None` while the transaction is unconfirmed.
-    pub timestamp: Option<u64>,
-    pub amount_koin: i64, // negative = outgoing
-    pub fee_koin: u64,
-    pub is_incoming: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DogeUtxo {
-    pub txid: String,
-    pub vout: u32,
-    pub value_koin: u64,
-    pub confirmations: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DogeSendResult {
-    pub txid: String,
-    #[serde(default)]
-    pub raw_tx_hex: String,
+/// Response from GET {base}: the chain's fee levels, per 1000 bytes.
+#[derive(Debug, Deserialize)]
+struct BlockcypherChain {
+    high_fee_per_kb: f64,
+    medium_fee_per_kb: f64,
+    low_fee_per_kb: f64,
 }
 
 // ── Client
 
-pub struct DogecoinClient {
+pub struct BlockcypherClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
-impl DogecoinClient {
+impl BlockcypherClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -103,7 +74,7 @@ impl DogecoinClient {
     }
 }
 
-impl DogecoinClient {
+impl BlockcypherClient {
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
         #[derive(Deserialize)]
         struct Activity {
@@ -114,40 +85,64 @@ impl DogecoinClient {
         Ok(info.n_tx > 0 || info.unconfirmed_n_tx > 0)
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<DogeBalance, String> {
+    /// The confirmed balance and the mempool's net change to it.
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
         let info: BlockcypherBalance = self.get(&format!("/addrs/{address}/balance")).await?;
-        Ok(DogeBalance {
-            balance_koin: info.balance,
-            balance_display: format_doge(info.balance),
+        Ok(UtxoBalance {
+            confirmed_sats: info.balance,
+            unconfirmed_sats: info.unconfirmed_balance,
         })
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<DogeUtxo>, String> {
+    /// Unspent outputs, the mempool's included.
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
         let info: BlockcypherAddress = self
             .get(&format!("/addrs/{address}?unspentOnly=true"))
             .await?;
         Ok(info
             .txrefs
             .into_iter()
+            .chain(info.unconfirmed_txrefs)
             .filter(|r| r.tx_output_n >= 0 && !r.spent && r.value >= 0)
-            .map(|r| DogeUtxo {
-                txid: r.tx_hash,
-                vout: r.tx_output_n as u32,
-                value_koin: r.value as u64,
-                confirmations: r.confirmations,
+            .map(|r| {
+                let block_height = (r.block_height > 0).then_some(r.block_height as u64);
+                Utxo {
+                    txid: r.tx_hash,
+                    vout: r.tx_output_n as u32,
+                    value: r.value as u64,
+                    status: UtxoStatus {
+                        confirmed: block_height.is_some(),
+                        block_height,
+                    },
+                }
             })
             .collect())
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<DogeHistoryEntry>, String> {
+    /// The most recent 50 transactions touching `address`, newest first.
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, String> {
         let info: BlockcypherAddress = self.get(&format!("/addrs/{address}?limit=50")).await?;
-        doge_history_from_txrefs(info.unconfirmed_txrefs.into_iter().chain(info.txrefs))
+        history_from_txrefs(info.unconfirmed_txrefs.into_iter().chain(info.txrefs))
     }
 
-    pub async fn fetch_tx_status(
-        &self,
-        txid: &str,
-    ) -> Result<crate::fetch::bitcoin::UtxoTxStatus, String> {
+    /// The fee rate for a `confirmation_target`, in sat/vB: BlockCypher's
+    /// high level within two blocks, medium within six, low beyond.
+    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, String> {
+        let chain: BlockcypherChain = self.get("").await?;
+        let per_kb = match confirmation_target {
+            0..=2 => chain.high_fee_per_kb,
+            3..=6 => chain.medium_fee_per_kb,
+            _ => chain.low_fee_per_kb,
+        };
+        if !per_kb.is_finite() || per_kb <= 0.0 {
+            return Err("BlockCypher has no fee estimate".into());
+        }
+        Ok(FeeRate {
+            sats_per_vbyte: per_kb / 1000.0,
+        })
+    }
+
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
         #[derive(Deserialize)]
         struct BlockcypherTx {
             hash: String,
@@ -157,13 +152,38 @@ impl DogecoinClient {
         }
         let tx: BlockcypherTx = self.get(&format!("/txs/{txid}")).await?;
         let confirmed = tx.block_height.map(|h| h > 0).unwrap_or(false);
-        Ok(crate::fetch::bitcoin::UtxoTxStatus {
+        Ok(UtxoTxStatus {
             txid: tx.hash,
             confirmed,
             block_height: tx.block_height.map(|h| if h > 0 { h as u64 } else { 0 }),
             block_time: blockcypher_time(tx.confirmed.as_deref()),
             confirmations: tx.confirmations,
         })
+    }
+
+    /// Submit a signed transaction; BlockCypher answers with its hash.
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct Pushed {
+            tx: PushedTx,
+        }
+        #[derive(Deserialize)]
+        struct PushedTx {
+            hash: String,
+        }
+        let body = serde_json::json!({ "tx": hex_tx });
+        race(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let body = body.clone();
+            let url = format!("{}/txs/push", base.trim_end_matches('/'));
+            async move {
+                let pushed: Pushed = client
+                    .post_json(&url, &body, RetryProfile::ChainWrite)
+                    .await?;
+                Ok(pushed.tx.hash)
+            }
+        })
+        .await
     }
 }
 
@@ -172,9 +192,9 @@ impl DogecoinClient {
 /// BlockCypher lists a ref per input the address funded (`tx_input_n` ≥ 0)
 /// and per output paying it (`tx_input_n` = -1), so a transaction appears once
 /// per leg.
-fn doge_history_from_txrefs(
+fn history_from_txrefs(
     refs: impl IntoIterator<Item = BlockcypherTxref>,
-) -> Result<Vec<DogeHistoryEntry>, String> {
+) -> Result<Vec<UtxoHistoryEntry>, String> {
     let mut order: Vec<String> = Vec::new();
     let mut legs: std::collections::HashMap<String, Vec<BlockcypherTxref>> =
         std::collections::HashMap::new();
@@ -198,31 +218,25 @@ fn doge_history_from_txrefs(
             .iter()
             .map(|r| r.block_height)
             .max()
-            .unwrap_or(0)
-            .max(0) as u64;
-        let timestamp = super::history_time(
-            block_height > 0,
+            .filter(|height| *height > 0)
+            .map(|height| height as u64);
+        let block_time = crate::api::time::history_time(
+            block_height.is_some(),
             refs.iter()
                 .find_map(|r| blockcypher_time(r.confirmed.as_deref())),
             &hash,
         )?;
-        entries.push(DogeHistoryEntry {
+        entries.push(UtxoHistoryEntry {
             txid: hash,
+            confirmed: block_height.is_some(),
             block_height,
-            timestamp,
-            amount_koin: net,
-            fee_koin: 0,
-            is_incoming: net > 0,
+            block_time,
+            net_sats: net,
+            fee_sats: None,
         });
     }
     // Unconfirmed first, then newest block first.
-    entries.sort_by_key(|entry| {
-        std::cmp::Reverse(if entry.block_height == 0 {
-            u64::MAX
-        } else {
-            entry.block_height
-        })
-    });
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.block_height.unwrap_or(u64::MAX)));
     Ok(entries)
 }
 
@@ -230,20 +244,9 @@ fn doge_history_from_txrefs(
 /// or it does not parse. This had its own parser, which answered 0 — the
 /// Unix epoch — for anything it could not read.
 fn blockcypher_time(s: Option<&str>) -> Option<u64> {
-    super::history::parse_iso8601_timestamp(s?)
+    crate::api::time::parse_iso8601_timestamp(s?)
         .filter(|t| *t > 0.0)
         .map(|t| t as u64)
-}
-
-fn format_doge(koin: u64) -> String {
-    let whole = koin / 100_000_000;
-    let frac = koin % 100_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:08}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 #[cfg(test)]
@@ -268,7 +271,7 @@ mod history_tests {
     #[test]
     fn a_transactions_legs_net_into_one_entry() {
         let t = Some("2026-09-22T19:10:21Z");
-        let entries = doge_history_from_txrefs([
+        let entries = history_from_txrefs([
             leg("pending", -1, 500, -1, None),
             leg("send", 0, 1_000_000_000, 6_385_234, t),
             leg("send", -1, 400_000_000, 6_385_234, t),
@@ -277,7 +280,7 @@ mod history_tests {
         .unwrap();
         let got: Vec<(&str, i64, Option<u64>)> = entries
             .iter()
-            .map(|e| (e.txid.as_str(), e.amount_koin, e.timestamp))
+            .map(|e| (e.txid.as_str(), e.net_sats, e.block_time))
             .collect();
         assert_eq!(
             got,
@@ -287,6 +290,6 @@ mod history_tests {
                 ("receive", 951_727_163, Some(1_790_104_221)),
             ]
         );
-        assert!(doge_history_from_txrefs([leg("bad", -1, 1, 5, None)]).is_err());
+        assert!(history_from_txrefs([leg("bad", -1, 1, 5, None)]).is_err());
     }
 }

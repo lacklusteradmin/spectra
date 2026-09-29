@@ -55,7 +55,6 @@ pub struct TokenBalanceResult {
 pub struct NativeBalanceSummary {
     pub smallest_unit: String,
     pub amount_display: String,
-    pub utxo_count: u32,
 }
 
 /// What a send destination looks like, for the composer's recipient warning.

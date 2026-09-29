@@ -1,13 +1,10 @@
-//! Decred chain client.
-//!
-//! Backed by the dcrdata Insight-compatible REST surface
-//! (`https://dcrdata.decred.org/insight/api`). Insight returns DCR amounts as
-//! decimal strings (e.g. `"1.23456789"`), which we convert to atoms (1e-8
-//! DCR) for storage parity with Bitcoin family chains.
+//! The Insight REST adapter, as dcrdata serves it for Decred. Insight reports
+//! amounts as decimal coin strings (`"1.23456789"`); they are converted to
+//! atoms (1e-8).
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 #[derive(Debug, Deserialize)]
 struct InsightAddress {
@@ -110,12 +107,12 @@ struct InsightBroadcastResponse {
     txid: String,
 }
 
-pub struct DecredClient {
+pub struct InsightClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
-impl DecredClient {
+impl InsightClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -198,7 +195,8 @@ impl DecredClient {
                     .sum();
                 let net = owned_out - owned_in;
                 let fee_atoms = (tx.fees * 1e8).round() as u64;
-                let timestamp = super::history_time(tx.blockheight > 0, Some(tx.time), &tx.txid)?;
+                let timestamp =
+                    crate::api::time::history_time(tx.blockheight > 0, Some(tx.time), &tx.txid)?;
                 Ok((net != 0).then_some(DcrHistoryEntry {
                     txid: tx.txid,
                     block_height: tx.blockheight,
@@ -215,9 +213,9 @@ impl DecredClient {
     pub async fn fetch_tx_status(
         &self,
         txid: &str,
-    ) -> Result<crate::fetch::bitcoin::UtxoTxStatus, String> {
+    ) -> Result<crate::api::utxo::UtxoTxStatus, String> {
         let txid = txid.to_string();
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let txid = txid.clone();
             let client = self.client.clone();
             async move {
@@ -228,7 +226,7 @@ impl DecredClient {
                 } else {
                     None
                 };
-                Ok(crate::fetch::bitcoin::UtxoTxStatus {
+                Ok(crate::api::utxo::UtxoTxStatus {
                     txid: tx.txid,
                     confirmed: height.is_some(),
                     block_height: height,
@@ -242,7 +240,7 @@ impl DecredClient {
 
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<DcrSendResult, String> {
         let raw_hex = raw_tx_hex.to_string();
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let raw_hex = raw_hex.clone();
             let url = format!("{}/tx/send", base.trim_end_matches('/'));

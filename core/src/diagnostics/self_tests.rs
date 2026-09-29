@@ -174,7 +174,7 @@ struct EthRpcResponse {
 async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, String> {
     let body = format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":[]}}"#);
     let resp =
-        crate::fetch::http::http_post_json(url.to_string(), body, std::collections::HashMap::new())
+        crate::api::http::http_post_json(url.to_string(), body, std::collections::HashMap::new())
             .await
             .map_err(|e| format!("{e:?}"))?;
     let parsed: EthRpcResponse = serde_json::from_str(&resp.body).map_err(|e| e.to_string())?;

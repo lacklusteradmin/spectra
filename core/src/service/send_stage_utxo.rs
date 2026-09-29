@@ -8,9 +8,6 @@ impl WalletService {
         sender: &str,
     ) -> Result<Vec<Input>, SpectraBridgeError> {
         use crate::derivation::*;
-        let eps = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
-            .await;
         let hash = match chain.mainnet_counterpart() {
             Chain::Dogecoin => dogecoin::decode_doge_address(sender)?,
             Chain::BitcoinSV => bitcoin_sv::decode_bsv_address(sender)?.0,
@@ -21,26 +18,14 @@ impl WalletService {
             _ => return Err("Unsupported fixed-fee UTXO protocol".into()),
         };
         let script = crate::send::bitcoin_wire::p2pkh_script(&hash);
-        Ok(match chain.mainnet_counterpart() {
-            Chain::Dogecoin => DogecoinClient::new(eps)
-                .fetch_utxos(sender)
-                .await?
-                .into_iter()
-                .map(|u| (u.txid, u.vout, u.value_koin, script.clone()))
-                .collect(),
-            Chain::BitcoinSV => BitcoinSvClient::new(eps)
-                .fetch_utxos(sender)
-                .await?
-                .into_iter()
-                .map(|u| (u.txid, u.vout, u.value_sat, script.clone()))
-                .collect(),
-            _ => BlockbookClient::new(eps, chain)
-                .fetch_utxos(sender)
-                .await?
-                .into_iter()
-                .map(|u| (u.txid, u.vout, u.value_sat, script.clone()))
-                .collect(),
-        })
+        Ok(self
+            .utxo_client(chain, &[EndpointCapability::Utxo])
+            .await
+            .fetch_utxos(sender)
+            .await?
+            .into_iter()
+            .map(|u| (u.txid, u.vout, u.value, script.clone()))
+            .collect())
     }
     pub(super) async fn prepare_fixed_utxo(
         &self,

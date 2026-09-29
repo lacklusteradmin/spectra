@@ -61,7 +61,7 @@ pub fn service_for_chain(
     let records = spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), any_of)?;
     if !records
         .iter()
-        .any(|row| Some(row.api) == chain.primary_api())
+        .any(|row| chain.endpoint_apis().contains(&row.api))
     {
         return Err(CliError::failure(format!(
             "no compatible endpoints registered for {}",
@@ -415,9 +415,6 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
             out::tint(chain.coin_symbol(), &wallet.chain_id).bold(),
         );
         out::field("raw", &out::hint(&summary.smallest_unit).to_string());
-        if summary.utxo_count > 0 {
-            out::field("utxos", &summary.utxo_count.to_string());
-        }
     });
     out.emit(serde_json::json!({
         "ok": true,
@@ -429,7 +426,6 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
                 "isTestnet": chain.is_testnet(),
         "amount": summary.amount_display,
         "smallestUnit": summary.smallest_unit,
-        "utxoCount": summary.utxo_count,
     }));
     Ok(())
 }

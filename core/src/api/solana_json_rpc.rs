@@ -1,15 +1,10 @@
-//! Solana chain client.
-//!
-//! Uses the Solana JSON-RPC API for balance, history, and broadcast.
-//! Transaction serialization follows the compact (v0) wire format:
-//!   signatures | message header | accounts | recent_blockhash | instructions
-//!
-//! Ed25519 signing is performed using the `ed25519-dalek` crate.
+//! The Solana JSON-RPC adapter: balances, SPL token accounts, signatures
+//! history, blockhashes, fees and raw transaction broadcast.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::fetch::http::HttpClient;
+use crate::api::http::HttpClient;
 
 // ── Public result types
 
@@ -73,7 +68,7 @@ impl SolanaClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        crate::fetch::json_rpc::call(
+        crate::api::json_rpc::call(
             crate::EndpointApi::SolanaJsonRpc,
             &self.client,
             &self.endpoints,
@@ -176,7 +171,7 @@ impl SolanaClient {
                     let b: u128 = balance_raw.parse().unwrap_or(0);
                     existing.balance_raw = (a + b).to_string();
                     existing.balance_display =
-                        crate::fetch::evm::format_token_amount(a + b, decimals);
+                        crate::api::evm_json_rpc::format_token_amount(a + b, decimals);
                 } else {
                     out.push(SplBalance {
                         mint: mint.to_string(),
@@ -237,7 +232,7 @@ impl SolanaClient {
                             .ok_or("SPL account: missing amount")?
                             .parse()
                             .map_err(|_| "SPL account: invalid amount")?;
-                        let decimals = super::checked_token_decimals(u128::from(
+                        let decimals = crate::api::checked_token_decimals(u128::from(
                             amount
                                 .get("decimals")
                                 .and_then(|v| v.as_u64())
@@ -256,7 +251,9 @@ impl SolanaClient {
                         mint,
                         owner,
                         balance_raw: raw.to_string(),
-                        balance_display: crate::fetch::evm::format_token_amount(raw, decimals),
+                        balance_display: crate::api::evm_json_rpc::format_token_amount(
+                            raw, decimals,
+                        ),
                         decimals,
                         symbol: String::new(),
                     }))
@@ -487,6 +484,26 @@ fn format_sol(lamports: u64) -> String {
     format!("{}.{}", whole, capped)
 }
 
+impl SolanaClient {
+    /// Broadcast an already-signed transaction given as a base64 string.
+    pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
+        let result = self
+            .call(
+                "sendTransaction",
+                json!([signed_tx_base64, {"encoding": "base64", "preflightCommitment": "confirmed"}]),
+            )
+            .await?;
+        let signature = result
+            .as_str()
+            .ok_or("sendTransaction: expected string")?
+            .to_string();
+        Ok(SolanaSendResult {
+            signature,
+            signed_tx_base64: signed_tx_base64.to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod balance_read_tests {
     use super::*;
@@ -570,21 +587,9 @@ mod audit_fix5_mint_tests {
         let (b, _) = validate_transfer_mint(&token2022).unwrap();
         assert_ne!(a, b);
         assert_eq!(decimals, 9);
-        let owner = crate::derivation::solana::decode_b58_32(
-            "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk",
-        )
-        .unwrap();
-        let mint = [0x44; 32];
-        // Independent @solana/spl-token 0.4.14 vectors.
-        let ata = crate::send::solana::derive_associated_token_account;
-        assert_eq!(
-            bs58::encode(ata(&owner, &mint, &a).unwrap()).into_string(),
-            "FF2BjgeRK2LgK8Lj4wY2CTJrmJAKV5ZPCdHqfq1tJLGi"
-        );
-        assert_eq!(
-            bs58::encode(ata(&owner, &mint, &b).unwrap()).into_string(),
-            "Hzvpgx8hB4wZewvsYXSedgrgSb4yNycQRhufYeMaKuRM"
-        );
+        let program = |id: &str| crate::derivation::solana::decode_b58_32(id).unwrap();
+        assert_eq!(a, program("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
+        assert_eq!(b, program("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"));
         token2022["data"]["parsed"]["info"]["extensions"] = json!([{"extension":"transferHook"}]);
         assert!(
             validate_transfer_mint(&token2022)

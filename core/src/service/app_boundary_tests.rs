@@ -284,8 +284,7 @@ async fn one_blockbook_adapter_reads_each_network_and_keeps_bch_address_rules() 
     }
     let client = BlockbookClient::new(Arc::new(vec![server.uri()]), Chain::Dash);
     assert!(
-        client
-            .sign_litecoin_and_broadcast("from", "to", 1, 1, &[], None)
+        crate::send::litecoin::sign_litecoin_and_broadcast(&client, "from", "to", 1, 1, &[], None)
             .await
             .unwrap_err()
             .contains("network")
@@ -305,4 +304,43 @@ async fn balance_summary_keeps_sub_micro_native_amounts() {
         .await
         .unwrap();
     assert_eq!(balance.amount_display, "0.000000000000000001");
+}
+
+/// No keyless source answers Substrate history: asking is an error, never an
+/// empty list.
+#[tokio::test]
+async fn substrate_history_is_an_error_not_an_empty_list() {
+    let service = WalletService::new(vec![]).unwrap();
+    for chain in ["polkadot", "bittensor"] {
+        let history = service
+            .fetch_history(chain, "address".into())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(history.contains("no keyless history source"), "{history}");
+    }
+}
+
+/// A Polkadot balance is the `System.Account` record read from the node; a
+/// record read from `rpc.polkadot.io` for the treasury.
+#[tokio::test]
+async fn a_polkadot_balance_is_read_from_system_account_storage() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_partial_json(json!({"method": "state_getStorage"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0", "id": 1,
+            "result": "0x000000000000000001000000000000001a8ea401a31900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080"
+        })))
+        .mount(&server)
+        .await;
+    let summary = service("polkadot", &server)
+        .fetch_native_balance_summary(
+            "polkadot".into(),
+            "13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB".into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(summary.smallest_unit, "28187897925146");
+    assert_eq!(summary.amount_display, "2818.7897925146");
 }

@@ -1,38 +1,7 @@
-//! BSV send: SIGHASH_FORKID P2PKH signer (BIP143-variant) and WhatsOnChain
-//! `/tx/raw` broadcast.
-
-use serde_json::json;
-
-use crate::fetch::http::{RetryProfile, with_fallback};
+//! BSV send: SIGHASH_FORKID P2PKH signer (BIP143-variant).
 
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::bitcoin_sv::decode_bsv_address;
-use crate::fetch::bitcoin_sv::{BitcoinSvClient, BsvSendResult};
-
-impl BitcoinSvClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BsvSendResult, String> {
-        let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let hex = hex.clone();
-            let url = format!("{}/tx/raw", base.trim_end_matches('/'));
-            async move {
-                // WhatsOnChain /tx/raw expects `{"txhex": "<hex>"}` and
-                // responds with a bare JSON string containing the txid.
-                let raw_tx_hex = hex.clone();
-                let body = json!({ "txhex": hex });
-                let txid: String = client
-                    .post_json(&url, &body, RetryProfile::ChainWrite)
-                    .await?;
-                Ok(BsvSendResult {
-                    txid: txid.trim().trim_matches('"').to_string(),
-                    raw_tx_hex,
-                })
-            }
-        })
-        .await
-    }
-}
 
 // ── BSV SIGHASH_FORKID signing (BIP143-variant, inherited from BCH fork)
 

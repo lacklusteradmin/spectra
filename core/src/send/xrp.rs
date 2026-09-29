@@ -1,27 +1,6 @@
-//! XRP send: build + sign Payment transactions (binary codec), submit,
-//! and rebroadcast pre-signed blobs.
-
-use serde_json::json;
+//! XRP send: build + sign Payment transactions (binary codec).
 
 use crate::derivation::xrp::decode_xrp_address;
-use crate::fetch::xrp::{XrpClient, XrpSendResult};
-
-impl XrpClient {
-    /// Submit a pre-signed transaction blob (for rebroadcast).
-    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, String> {
-        let result = self.call("submit", json!({"tx_blob": tx_blob_hex})).await?;
-        let txid = result
-            .get("tx_json")
-            .and_then(|t| t.get("hash"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        Ok(XrpSendResult {
-            txid,
-            tx_blob_hex: tx_blob_hex.to_string(),
-        })
-    }
-}
 
 // ── XRP binary codec (minimal — Payment only)
 

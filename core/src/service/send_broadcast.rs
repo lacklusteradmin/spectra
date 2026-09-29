@@ -27,22 +27,29 @@ impl WalletService {
         let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
             SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
         })?;
-        let (api, eps) = self
-            .fetch_endpoints(chain, &[EndpointCapability::Broadcast])
-            .await?;
-        crate::fetch::http::with_fallback(&eps, |endpoint| {
+        // Every endpoint gets the payload, and every submission runs to its
+        // end: one acceptance does not cut another short.
+        let endpoints = self
+            .chain_endpoints(chain, &[EndpointCapability::Broadcast])
+            .await;
+        let results = futures::future::join_all(endpoints.into_iter().map(|endpoint| {
             let payload = payload.clone();
             async move {
-                self.validate_broadcast_endpoint(chain, &endpoint)
+                self.validate_broadcast_endpoint(chain, &endpoint.url)
+                    .await?;
+                self.broadcast_at(chain, endpoint.api, Arc::new(vec![endpoint.url]), payload)
                     .await
-                    .map_err(|e| e.to_string())?;
-                self.broadcast_at(chain, api, Arc::new(vec![endpoint]), payload)
-                    .await
-                    .map_err(|e| e.to_string())
             }
-        })
-        .await
-        .map_err(Into::into)
+        }))
+        .await;
+        let mut last_err = SpectraBridgeError::from("no endpoints configured");
+        for result in results {
+            match result {
+                Ok(response) => return Ok(response),
+                Err(e) => last_err = e,
+            }
+        }
+        Err(last_err)
     }
 
     pub(super) async fn broadcast_at(
@@ -54,26 +61,18 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         use crate::EndpointApi as Api;
         match api {
-            Api::Esplora => {
-                let client = BitcoinClient::new(HttpClient::shared(), eps);
-                let txid = client.broadcast_raw_tx(&payload).await?;
+            api if api.is_utxo_indexer() => {
+                let endpoints = eps
+                    .iter()
+                    .map(|url| crate::Endpoint {
+                        api,
+                        url: url.clone(),
+                    })
+                    .collect();
+                let txid = crate::api::utxo::UtxoClient::new(chain, endpoints)
+                    .broadcast(&payload)
+                    .await?;
                 Ok(json!({ "txid": txid }).to_string())
-            }
-            Api::Blockcypher => {
-                let client = DogecoinClient::new(eps);
-                let res = client.broadcast_raw_tx(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-
-            Api::Blockbook => {
-                let client = BlockbookClient::new(eps, chain);
-                let res = client.broadcast_raw_tx(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Api::Whatsonchain => {
-                let client = BitcoinSvClient::new(eps);
-                let res = client.broadcast_raw_tx(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
             }
             Api::SolanaJsonRpc => {
                 let client = SolanaClient::new(eps);
@@ -81,7 +80,7 @@ impl WalletService {
                 Ok(serde_json::to_string(&res)?)
             }
             Api::TronHttp => {
-                let client = TronClient::new(eps);
+                let client = TronHttpClient::new(eps);
                 let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -96,7 +95,7 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw xrp: missing tx_blob_hex")?
                     .to_string();
-                let client = XrpClient::new(eps);
+                let client = XrplClient::new(eps);
                 let res = client.submit_signed_blob(&blob).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -106,7 +105,7 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw stellar: missing signed_xdr_b64")?
                     .to_string();
-                let client = StellarClient::new(eps);
+                let client = HorizonClient::new(eps);
                 let res = client.submit_envelope_b64(&xdr).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -116,29 +115,19 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw cardano: missing cbor_hex")?
                     .to_string();
-                let client = CardanoClient::new(eps);
+                let client = KoiosClient::new(eps);
                 let res = client.submit_tx(&cbor).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Api::SubstrateJsonRpc if chain.mainnet_counterpart() == Chain::Bittensor => {
+            Api::SubstrateJsonRpc => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let hex = val["extrinsic_hex"]
                     .as_str()
-                    .ok_or("missing extrinsic_hex")?;
-                let client = BittensorClient::new(eps);
+                    .ok_or("broadcast_raw substrate: missing extrinsic_hex")?;
+                let client = SubstrateClient::new(eps);
                 Ok(serde_json::to_string(
                     &client.submit_extrinsic_hex(hex).await?,
                 )?)
-            }
-            Api::SubstrateJsonRpc => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let ext_hex = val["extrinsic_hex"]
-                    .as_str()
-                    .ok_or("broadcast_raw polkadot: missing extrinsic_hex")?
-                    .to_string();
-                let client = PolkadotClient::new(eps);
-                let res = client.submit_extrinsic_hex(&ext_hex).await?;
-                Ok(serde_json::to_string(&res)?)
             }
             Api::SuiJsonRpc => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
@@ -170,7 +159,7 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw ton: missing boc_b64")?
                     .to_string();
-                let client = TonClient::new(eps);
+                let client = ToncenterV2Client::new(eps);
                 let res = client.send_boc(&boc).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -200,7 +189,7 @@ impl WalletService {
                     return Err("Trailing data in Monero transaction".into());
                 }
                 let endpoint = eps.first().ok_or("Missing Monero broadcast endpoint")?;
-                let daemon = crate::send::monero_local::daemon(endpoint, chain).await?;
+                let daemon = crate::api::monero_daemon_rpc::daemon(endpoint, chain).await?;
                 daemon
                     .publish_transaction(&tx)
                     .await
@@ -217,7 +206,7 @@ impl WalletService {
                 )?)
             }
             Api::Insight => {
-                let client = DecredClient::new(eps);
+                let client = InsightClient::new(eps);
                 Ok(serde_json::to_string(
                     &client.broadcast_raw_tx(&payload).await?,
                 )?)

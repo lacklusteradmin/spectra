@@ -1,7 +1,8 @@
-//! TRX/TRC-20: read a block reference, construct locally, sign locally, broadcast.
+//! TRX/TRC-20: construct and sign locally against a block reference that
+//! `api::tron_http` reads.
 //! Wire schema: tronprotocol/protocol core/Tron.proto and contract/*.proto.
+use crate::api::tron_http::BlockReference;
 use crate::derivation::tron::tron_base58_to_evm_hex;
-use crate::fetch::tron::{TronClient, TronSendResult};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -16,13 +17,6 @@ pub(crate) enum Transfer<'a> {
         amount: u128,
         fee_limit: u64,
     },
-}
-
-/// Only the block reference is supplied by the node, never a transaction/hash.
-pub(crate) struct BlockReference {
-    pub number: u64,
-    pub id: [u8; 32],
-    pub timestamp_ms: u64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -169,53 +163,5 @@ impl PreparedTronTransfer {
         sig.push(recovery.to_i32() as u8 + 27);
         self.body["signature"] = json!([hex::encode(sig)]);
         Ok(self.body.to_string())
-    }
-}
-
-impl TronClient {
-    pub(crate) async fn transfer_reference(&self) -> Result<BlockReference, String> {
-        let block = self.post("/wallet/getnowblock", &json!({})).await?;
-        let number = block
-            .pointer("/block_header/raw_data/number")
-            .and_then(Value::as_u64)
-            .ok_or("missing Tron block number")?;
-        let id = hex::decode(block["blockID"].as_str().ok_or("missing Tron block id")?)
-            .map_err(|_| "invalid Tron block id")?
-            .try_into()
-            .map_err(|_| "Tron block id must be 32 bytes")?;
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| "clock before epoch")?
-            .as_millis()
-            .try_into()
-            .map_err(|_| "clock overflow")?;
-        Ok(BlockReference {
-            number,
-            id,
-            timestamp_ms,
-        })
-    }
-
-    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<TronSendResult, String> {
-        let body: Value = serde_json::from_str(signed_tx_json)
-            .map_err(|e| format!("invalid signed Tron transaction: {e}"))?;
-        let raw = hex::decode(
-            body["raw_data_hex"]
-                .as_str()
-                .ok_or("missing Tron raw bytes")?,
-        )
-        .map_err(|_| "invalid Tron raw bytes")?;
-        let txid = hex::encode(Sha256::digest(&raw));
-        if body["txID"].as_str() != Some(txid.as_str()) {
-            return Err("Tron transaction hash mismatch".into());
-        }
-        let result = self.post("/wallet/broadcasttransaction", &body).await?;
-        if result["result"].as_bool() != Some(true) {
-            return Err(format!("Tron broadcast refused: {result}"));
-        }
-        Ok(TronSendResult {
-            txid,
-            signed_tx_json: signed_tx_json.into(),
-        })
     }
 }

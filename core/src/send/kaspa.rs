@@ -25,94 +25,92 @@
 
 use serde::Serialize;
 
+use crate::api::kaspa_rest::KaspaClient;
 use crate::derivation::kaspa::decode_kaspa_address;
-use crate::fetch::kaspa::KaspaClient;
 
 const TX_VERSION: u16 = 0;
 const SIGHASH_ALL: u8 = 1;
 const SIG_OP_COUNT_DEFAULT: u8 = 1;
 const KASPA_SIGHASH_KEY: &[u8] = b"TransactionSigningHash";
 
-impl KaspaClient {
-    pub(crate) async fn prepare_transfer(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        amount_sompi: u64,
-        fee_sompi: u64,
-        min_fee_sompi: Option<u64>,
-        dust_threshold_sompi: Option<u64>,
-    ) -> Result<PreparedKaspaTransaction, String> {
-        if amount_sompi == 0 {
-            return Err("kaspa amount must be positive".into());
-        }
-        let utxos = self.fetch_utxos(from_address).await?;
-        if utxos.is_empty() {
-            return Err("kaspa: no spendable UTXOs at source address".to_string());
-        }
-        let from_decoded = decode_kaspa_address(from_address)?;
-        let to_decoded = decode_kaspa_address(to_address)?;
-        if from_decoded.0 != 0 {
-            return Err("kaspa: only Schnorr (version 0) sender addresses supported".to_string());
-        }
-        if to_decoded.0 != 0 && to_decoded.0 != 1 && to_decoded.0 != 8 {
-            return Err(format!(
-                "kaspa: unsupported destination version 0x{:02x}",
-                to_decoded.0
-            ));
-        }
-
-        let total_in = utxos.iter().try_fold(0u64, |sum, u| {
-            sum.checked_add(u.value_sompi)
-                .ok_or("kaspa input sum overflow")
-        })?;
-        let actual_fee = fee_sompi.max(min_fee_sompi.unwrap_or(1_000));
-        let needed = amount_sompi
-            .checked_add(actual_fee)
-            .ok_or("kaspa amount plus fee overflow")?;
-        if total_in < needed {
-            return Err(format!(
-                "kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi"
-            ));
-        }
-        let change = total_in - needed;
-
-        // Outputs: recipient + optional change. Kaspa dust threshold is 1000
-        // sompi for a 2-output Schnorr send; below that we drop the change
-        // output and let it become fee.
-        let mut outputs: Vec<KaspaOutputBuild> = vec![KaspaOutputBuild {
-            amount: amount_sompi,
-            script_pubkey: kaspa_payment_script(to_decoded.0, &to_decoded.1)?,
-            script_version: 0,
-        }];
-        if change > dust_threshold_sompi.unwrap_or(1_000) {
-            outputs.push(KaspaOutputBuild {
-                amount: change,
-                script_pubkey: kaspa_payment_script(from_decoded.0, &from_decoded.1)?,
-                script_version: 0,
-            });
-        }
-
-        // Per-input snapshot needed for both sighash and the final wire body.
-        let inputs: Vec<KaspaInputBuild> = utxos
-            .iter()
-            .map(|u| {
-                let script_pubkey = hex::decode(&u.script_pubkey_hex)
-                    .map_err(|e| format!("kaspa utxo script hex: {e}"))?;
-                Ok::<KaspaInputBuild, String>(KaspaInputBuild {
-                    txid: u.txid.clone(),
-                    vout: u.vout,
-                    sequence: 0,
-                    sig_op_count: SIG_OP_COUNT_DEFAULT,
-                    amount: u.value_sompi,
-                    script_pubkey,
-                    script_version: u.script_version as u16,
-                })
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(PreparedKaspaTransaction { inputs, outputs })
+pub(crate) async fn prepare_transfer(
+    client: &KaspaClient,
+    from_address: &str,
+    to_address: &str,
+    amount_sompi: u64,
+    fee_sompi: u64,
+    min_fee_sompi: Option<u64>,
+    dust_threshold_sompi: Option<u64>,
+) -> Result<PreparedKaspaTransaction, String> {
+    if amount_sompi == 0 {
+        return Err("kaspa amount must be positive".into());
     }
+    let utxos = client.fetch_utxos(from_address).await?;
+    if utxos.is_empty() {
+        return Err("kaspa: no spendable UTXOs at source address".to_string());
+    }
+    let from_decoded = decode_kaspa_address(from_address)?;
+    let to_decoded = decode_kaspa_address(to_address)?;
+    if from_decoded.0 != 0 {
+        return Err("kaspa: only Schnorr (version 0) sender addresses supported".to_string());
+    }
+    if to_decoded.0 != 0 && to_decoded.0 != 1 && to_decoded.0 != 8 {
+        return Err(format!(
+            "kaspa: unsupported destination version 0x{:02x}",
+            to_decoded.0
+        ));
+    }
+
+    let total_in = utxos.iter().try_fold(0u64, |sum, u| {
+        sum.checked_add(u.value_sompi)
+            .ok_or("kaspa input sum overflow")
+    })?;
+    let actual_fee = fee_sompi.max(min_fee_sompi.unwrap_or(1_000));
+    let needed = amount_sompi
+        .checked_add(actual_fee)
+        .ok_or("kaspa amount plus fee overflow")?;
+    if total_in < needed {
+        return Err(format!(
+            "kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi"
+        ));
+    }
+    let change = total_in - needed;
+
+    // Outputs: recipient + optional change. Kaspa dust threshold is 1000
+    // sompi for a 2-output Schnorr send; below that we drop the change
+    // output and let it become fee.
+    let mut outputs: Vec<KaspaOutputBuild> = vec![KaspaOutputBuild {
+        amount: amount_sompi,
+        script_pubkey: kaspa_payment_script(to_decoded.0, &to_decoded.1)?,
+        script_version: 0,
+    }];
+    if change > dust_threshold_sompi.unwrap_or(1_000) {
+        outputs.push(KaspaOutputBuild {
+            amount: change,
+            script_pubkey: kaspa_payment_script(from_decoded.0, &from_decoded.1)?,
+            script_version: 0,
+        });
+    }
+
+    // Per-input snapshot needed for both sighash and the final wire body.
+    let inputs: Vec<KaspaInputBuild> = utxos
+        .iter()
+        .map(|u| {
+            let script_pubkey = hex::decode(&u.script_pubkey_hex)
+                .map_err(|e| format!("kaspa utxo script hex: {e}"))?;
+            Ok::<KaspaInputBuild, String>(KaspaInputBuild {
+                txid: u.txid.clone(),
+                vout: u.vout,
+                sequence: 0,
+                sig_op_count: SIG_OP_COUNT_DEFAULT,
+                amount: u.value_sompi,
+                script_pubkey,
+                script_version: u.script_version as u16,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    Ok(PreparedKaspaTransaction { inputs, outputs })
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

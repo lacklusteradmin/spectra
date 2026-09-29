@@ -1,4 +1,4 @@
-//! BCH send: SIGHASH_FORKID P2PKH signer (BIP143-variant) and Blockbook broadcast.
+//! BCH send: SIGHASH_FORKID P2PKH signer (BIP143-variant).
 
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::bitcoin_cash::decode_bch_to_hash20;

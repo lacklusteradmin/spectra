@@ -29,6 +29,7 @@ pub enum EndpointApi {
     Nearblocks,
     Insight,
     KaspaRest,
+    BchRestV2,
 }
 
 impl EndpointApi {
@@ -57,8 +58,28 @@ impl EndpointApi {
             Self::Nearblocks => "nearblocks",
             Self::Insight => "insight",
             Self::KaspaRest => "kaspa-rest",
+            Self::BchRestV2 => "bch-rest-v2",
         }
     }
+
+    /// An address indexer for the Bitcoin family, served by `api::utxo`.
+    pub fn is_utxo_indexer(self) -> bool {
+        matches!(
+            self,
+            Self::Esplora
+                | Self::Blockbook
+                | Self::Blockcypher
+                | Self::Whatsonchain
+                | Self::BchRestV2
+        )
+    }
+}
+
+/// One URL and the API it speaks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Endpoint {
+    pub api: EndpointApi,
+    pub url: String,
 }
 
 /// What an endpoint is used *for*. A capability is a claim about the endpoint
@@ -138,9 +159,8 @@ pub fn endpoint_capability_id(capability: EndpointCapability) -> String {
     capability.as_str().into()
 }
 
-/// A configured URL is interpreted using the chain's primary API. If it is
-/// already in the catalog, reject a known mismatch before retaining or sending
-/// to it.
+/// A configured URL must speak one of the chain's APIs. If it is already in
+/// the catalog, reject a known mismatch before retaining or sending to it.
 pub(crate) fn validate_configured_endpoint(
     chain: crate::registry::Chain,
     url: &str,
@@ -148,7 +168,7 @@ pub(crate) fn validate_configured_endpoint(
     if url.is_empty() {
         return Ok(());
     }
-    let expected = chain.primary_api();
+    let expected = chain.endpoint_apis();
     let catalog = crate::app_core::endpoint_catalog()?;
     let matching: Vec<_> = catalog
         .endpoint_records
@@ -157,15 +177,19 @@ pub(crate) fn validate_configured_endpoint(
         .collect();
     if !matching.is_empty()
         && !matching.iter().any(|record| {
-            Some(record.api) == expected && record.capabilities.iter().any(|c| c.is_primary_read())
+            expected.contains(&record.api)
+                && record.capabilities.iter().any(|c| c.is_primary_read())
         })
     {
+        let names: Vec<_> = expected.iter().map(|api| api.as_str()).collect();
         return Err(format!(
             "{} requires {} endpoints; {url} uses a different API",
             chain.str_id(),
-            expected
-                .map(EndpointApi::as_str)
-                .unwrap_or("a supported API")
+            if names.is_empty() {
+                "a supported API".to_string()
+            } else {
+                names.join(" or ")
+            }
         ));
     }
     Ok(())
@@ -246,6 +270,7 @@ pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<En
             &[Balance, History, Utxo, Fee, Broadcast, Verification]
         }
         KaspaRest => &[Balance, History, Utxo, Fee, Broadcast, Verification],
+        BchRestV2 => &[Balance, History, Utxo, Broadcast, Verification],
         Blockscout => &[History, TokenHistory],
         ToncenterV2 => &[Balance, History, Fee, Broadcast, Verification, TokenBalance],
         ToncenterV3 => &[TokenBalance, TokenDiscovery],
@@ -254,7 +279,7 @@ pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<En
         IcpRosetta => &[Balance, History, Fee, Broadcast, Verification],
         TrongridV1 => &[History, TokenHistory, TokenDiscovery],
         Nearblocks => &[History],
-        SubstrateJsonRpc => &[Fee, Broadcast, Verification, Staking],
+        SubstrateJsonRpc => &[Balance, Fee, Broadcast, Verification, Staking],
     };
     values
         .iter()

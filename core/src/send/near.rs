@@ -1,26 +1,5 @@
-//! NEAR send: BORSH-encoded Transfer + FunctionCall transaction builders,
-//! Ed25519 signer, and `broadcast_tx_commit` RPC submit (plus rebroadcast).
-
-use serde_json::json;
-
-use crate::fetch::near::{NearClient, NearSendResult};
-
-impl NearClient {
-    /// Rebroadcast a pre-signed transaction (base64-encoded).
-    pub async fn broadcast_signed_tx_b64(&self, tx_b64: &str) -> Result<NearSendResult, String> {
-        let result = self.call("broadcast_tx_commit", json!([tx_b64])).await?;
-        let txid = result
-            .get("transaction")
-            .and_then(|t| t.get("hash"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        Ok(NearSendResult {
-            txid,
-            signed_tx_b64: tx_b64.to_string(),
-        })
-    }
-}
+//! NEAR send: BORSH-encoded Transfer + FunctionCall transaction builders and
+//! Ed25519 signer.
 
 // ── NEAR transaction builder (BORSH)
 

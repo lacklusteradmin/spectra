@@ -79,7 +79,7 @@ impl From<reqwest::Error> for SpectraBridgeError {
 
 mod endpoint_api;
 pub use endpoint_api::{
-    EndpointApi, EndpointCapability, endpoint_capability_id, endpoint_capability_options,
+    Endpoint, EndpointApi, EndpointCapability, endpoint_capability_id, endpoint_capability_options,
 };
 
 mod app_core;
@@ -93,6 +93,7 @@ pub use explorers::{
     TransactionExplorer, TransactionExplorerLink, transaction_explorer_link, transaction_explorers,
 };
 
+pub mod api;
 pub mod chains;
 pub mod decimal;
 pub mod derivation;

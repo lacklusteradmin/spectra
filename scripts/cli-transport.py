@@ -73,8 +73,9 @@ class TransportTests(unittest.TestCase):
                     balance = '0x1'
                     self.assertEqual(run(*probe)['activity'], 'funded')
                     self.assertIn('eth_getBalance', methods)
-                    self.assertTrue(destinations)
-                    self.assertEqual(set(destinations), {('spectra.invalid', 8545)})
+                    # Every endpoint is asked at once, so the catalog's are
+                    # reached too; each went through the proxy by hostname.
+                    self.assertIn(('spectra.invalid', 8545), destinations)
                     run('settings', 'set', 'tor-enabled', 'false')
                     self.assertEqual(run('tor')['status'], 'Stopped')
                 finally:

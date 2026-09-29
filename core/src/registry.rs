@@ -328,37 +328,65 @@ impl Chain {
             && (lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1"))
     }
 
-    /// The API the chain's own client speaks: what its balance, fee and
-    /// broadcast reads use. Catalog URLs with a different API never enter its
-    /// fallback list; indexers and secondary services are asked for by API.
-    pub fn primary_api(self) -> Option<crate::EndpointApi> {
+    /// The APIs the chain's own clients speak: what its balance, fee and
+    /// broadcast reads use. Every URL speaking any of them is asked at once,
+    /// whichever API it speaks; indexers and secondary services are asked for
+    /// by API.
+    ///
+    /// More than one API is only possible where one client answers in all of
+    /// them — the UTXO family, through `api::utxo`.
+    pub fn endpoint_apis(self) -> &'static [crate::EndpointApi] {
         use crate::EndpointApi as Api;
-        Some(match self.mainnet_counterpart() {
-            c if c.is_evm() => Api::EvmJsonRpc,
-            Chain::Bitcoin => Api::Esplora,
-            Chain::BitcoinCash
-            | Chain::Litecoin
-            | Chain::Zcash
-            | Chain::BitcoinGold
-            | Chain::Dash => Api::Blockbook,
-            Chain::BitcoinSV => Api::Whatsonchain,
-            Chain::Dogecoin => Api::Blockcypher,
-            Chain::Solana => Api::SolanaJsonRpc,
-            Chain::Tron => Api::TronHttp,
-            Chain::Stellar => Api::Horizon,
-            Chain::Xrp => Api::XrplJsonRpc,
-            Chain::Cardano => Api::Koios,
-            Chain::Polkadot | Chain::Bittensor => Api::SubstrateJsonRpc,
-            Chain::Sui => Api::SuiJsonRpc,
-            Chain::Aptos => Api::AptosRest,
-            Chain::Ton => Api::ToncenterV2,
-            Chain::Near => Api::NearJsonRpc,
-            Chain::Icp => Api::IcpRosetta,
-            Chain::Monero => Api::MoneroDaemonRpc,
-            Chain::Decred => Api::Insight,
-            Chain::Kaspa => Api::KaspaRest,
-            _ => return None,
-        })
+        match self.mainnet_counterpart() {
+            c if c.is_evm() => &[Api::EvmJsonRpc],
+            Chain::Bitcoin => &[Api::Esplora, Api::Blockcypher],
+            Chain::Litecoin => &[Api::Blockbook, Api::Esplora, Api::Blockcypher],
+            Chain::Dogecoin => &[Api::Blockcypher, Api::Blockbook],
+            Chain::Dash => &[Api::Blockbook, Api::Blockcypher],
+            Chain::BitcoinCash => &[Api::Blockbook, Api::BchRestV2],
+            // Zcash's transparent builder asks Blockbook for its consensus
+            // branch, which no other indexer reports.
+            Chain::BitcoinGold | Chain::Zcash => &[Api::Blockbook],
+            Chain::BitcoinSV => &[Api::Whatsonchain],
+            Chain::Solana => &[Api::SolanaJsonRpc],
+            Chain::Tron => &[Api::TronHttp],
+            Chain::Stellar => &[Api::Horizon],
+            Chain::Xrp => &[Api::XrplJsonRpc],
+            Chain::Cardano => &[Api::Koios],
+            Chain::Polkadot | Chain::Bittensor => &[Api::SubstrateJsonRpc],
+            Chain::Sui => &[Api::SuiJsonRpc],
+            Chain::Aptos => &[Api::AptosRest],
+            Chain::Ton => &[Api::ToncenterV2],
+            Chain::Near => &[Api::NearJsonRpc],
+            Chain::Icp => &[Api::IcpRosetta],
+            Chain::Monero => &[Api::MoneroDaemonRpc],
+            Chain::Decred => &[Api::Insight],
+            Chain::Kaspa => &[Api::KaspaRest],
+            _ => &[],
+        }
+    }
+
+    /// The byte width of a Substrate chain's `Balance` type, which sizes its
+    /// `System.Account` record: Polkadot's is `u128`, subtensor's `u64`.
+    pub fn substrate_balance_bytes(self) -> Option<usize> {
+        match self.mainnet_counterpart() {
+            Chain::Polkadot => Some(16),
+            Chain::Bittensor => Some(8),
+            _ => None,
+        }
+    }
+
+    /// How a configured URL the endpoint directory does not know is read.
+    /// It picks nothing about which URLs are used.
+    pub fn default_api(self) -> Option<crate::EndpointApi> {
+        self.endpoint_apis().first().copied()
+    }
+
+    /// The chain's reads go through `api::utxo::UtxoClient`, which answers
+    /// the same way in every UTXO indexer API.
+    pub fn uses_utxo_client(self) -> bool {
+        let apis = self.endpoint_apis();
+        !apis.is_empty() && apis.iter().all(|api| api.is_utxo_indexer())
     }
 
     pub fn has_send_preview(self) -> bool {
@@ -1238,6 +1266,17 @@ pub struct NetworkChoice {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chain with several APIs needs one client answering in all of them,
+    /// and only the UTXO family has one.
+    #[test]
+    fn only_the_utxo_client_speaks_several_apis() {
+        for chain in Chain::all() {
+            if chain.endpoint_apis().len() > 1 {
+                assert!(chain.uses_utxo_client(), "{}", chain.str_id());
+            }
+        }
+    }
 
     /// Every EVM chain carries its EIP-155 id, and Ethereum's test networks
     /// carry theirs.

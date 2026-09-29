@@ -1,50 +1,4 @@
-//! Cardano send: minimal CBOR encoder for an ADA-only Shelley transfer,
-//! keyless Koios submission.
-
-use crate::fetch::http::{HttpHeader, HttpRetryProfile, http_request, with_fallback};
-
-use crate::fetch::cardano::{CardanoClient, CardanoSendResult};
-
-impl CardanoClient {
-    /// Submit a CBOR-encoded signed transaction.
-    pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, String> {
-        let cbor_hex_owned = cbor_hex.to_string();
-        let cbor_bytes = hex::decode(cbor_hex).map_err(|e| format!("hex decode: {e}"))?;
-        with_fallback(&self.endpoints, |base| {
-            let cbor_bytes = cbor_bytes.clone();
-            let cbor_hex = cbor_hex_owned.clone();
-            let url = format!("{}/submittx", base.trim_end_matches('/'));
-            async move {
-                // Koios submit-api accepts raw CBOR and returns a JSON transaction hash.
-                let response = http_request(
-                    "POST".into(),
-                    url,
-                    vec![HttpHeader {
-                        name: "Content-Type".into(),
-                        value: "application/cbor".into(),
-                    }],
-                    Some(cbor_bytes),
-                    HttpRetryProfile::ChainWrite,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-                if response.status_code != 202 {
-                    return Err(format!(
-                        "Koios submission: expected HTTP 202, received {}",
-                        response.status_code
-                    ));
-                }
-                let txid: String = serde_json::from_slice(&response.body)
-                    .map_err(|e| format!("Koios transaction id: {e}"))?;
-                if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    return Err("Koios submission returned an invalid transaction id".into());
-                }
-                Ok(CardanoSendResult { txid, cbor_hex })
-            }
-        })
-        .await
-    }
-}
+//! Cardano send: minimal CBOR encoder for an ADA-only Shelley transfer.
 
 // ── Cardano transaction building (minimal CBOR for ADA-only transfer)
 
@@ -290,53 +244,5 @@ mod accounting_tests {
             build(&[2170000], 1000000, 170000).is_ok(),
             "minimum change is valid"
         );
-    }
-}
-
-#[cfg(test)]
-mod keyless_submission_tests {
-    use super::*;
-    use std::sync::Arc;
-    use wiremock::{
-        Mock, MockServer, ResponseTemplate,
-        matchers::{body_bytes, header, method, path},
-    };
-
-    #[tokio::test]
-    async fn koios_receives_raw_cbor_without_credentials_and_requires_a_transaction_id() {
-        let server = MockServer::start().await;
-        let client = CardanoClient::new(Arc::new(vec![server.uri()]));
-        let txid = "ab".repeat(32);
-        Mock::given(method("POST"))
-            .and(path("/submittx"))
-            .and(header("content-type", "application/cbor"))
-            .and(body_bytes(vec![0x81, 0x00]))
-            .respond_with(ResponseTemplate::new(202).set_body_json(&txid))
-            .expect(1)
-            .mount(&server)
-            .await;
-        assert_eq!(client.submit_tx("8100").await.unwrap().txid, txid);
-        let requests = server.received_requests().await.unwrap();
-        assert!(!requests[0].headers.contains_key("authorization"));
-        assert!(!requests[0].headers.contains_key("project_id"));
-        assert!(requests[0].url.query().is_none());
-        server.reset().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(202).set_body_json(""))
-            .mount(&server)
-            .await;
-        assert!(
-            client
-                .submit_tx("8100")
-                .await
-                .unwrap_err()
-                .contains("invalid transaction id")
-        );
-        server.reset().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(400).set_body_string("invalid transaction"))
-            .mount(&server)
-            .await;
-        assert!(client.submit_tx("8100").await.is_err());
     }
 }

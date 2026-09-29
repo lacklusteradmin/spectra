@@ -29,7 +29,7 @@ pub mod decred;
 pub mod dogecoin;
 pub mod evm;
 pub mod icp;
-mod icp_stages;
+pub(crate) mod icp_stages;
 pub mod kaspa;
 pub mod litecoin;
 pub(crate) mod monero_local;
@@ -44,7 +44,7 @@ pub mod ton;
 pub mod tron;
 pub mod xrp;
 pub mod zcash;
-mod zcash_stages;
+pub(crate) mod zcash_stages;
 
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;

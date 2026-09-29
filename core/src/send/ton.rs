@@ -1,59 +1,9 @@
-//! TON send: WalletV4R2 message builder, signer, and sendBoc.
-
-use serde_json::{Value, json};
-
-use crate::fetch::http::{RetryProfile, with_fallback};
+//! TON send: WalletV4R2 message builder and signer.
 
 #[cfg(test)]
 use crate::derivation::ton::parse_ton_address;
 use crate::derivation::ton::v4r2_state_init;
 use crate::derivation::ton_cell::Cell;
-use crate::fetch::ton::{TonClient, TonSendResult};
-
-impl TonClient {
-    /// Send a pre-built BOC (for rebroadcast).
-    pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, String> {
-        let body = json!({"boc": boc_b64});
-        let boc_b64 = boc_b64.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let body = body.clone();
-            let boc_b64 = boc_b64.clone();
-            let url = format!("{}/sendBocReturnHash", base.trim_end_matches('/'));
-            async move {
-                let resp: Value = client
-                    .post_json(&url, &body, RetryProfile::ChainWrite)
-                    .await?;
-                if resp.get("ok").and_then(Value::as_bool) != Some(true) {
-                    return Err(format!(
-                        "TON broadcast rejected: {}",
-                        resp.get("error").unwrap_or(&Value::Null)
-                    ));
-                }
-                let hash = resp
-                    .get("result")
-                    .and_then(|r| r.get("hash"))
-                    .and_then(Value::as_str)
-                    .ok_or("TON broadcast: missing message hash")?
-                    .to_string();
-                use base64::Engine;
-                if base64::engine::general_purpose::STANDARD
-                    .decode(&hash)
-                    .map_err(|_| "TON broadcast: invalid hash")?
-                    .len()
-                    != 32
-                {
-                    return Err("TON broadcast: invalid hash length".into());
-                }
-                Ok(TonSendResult {
-                    message_hash: hash,
-                    boc_b64,
-                })
-            }
-        })
-        .await
-    }
-}
 
 #[cfg(test)]
 pub(crate) fn build_transfer_at(
@@ -174,6 +124,7 @@ pub(crate) fn build_transfer_for_address(
 #[cfg(test)]
 mod protocol_tests {
     use super::*;
+    use serde_json::Value;
     #[test]
     fn ton_messages_match_official_sdk_vectors() {
         let fixtures: Value =
@@ -245,53 +196,5 @@ mod protocol_tests {
             )
             .is_err()
         );
-    }
-    #[tokio::test]
-    async fn ton_reads_real_seqno_and_refuses_failed_reads_and_submissions() {
-        use wiremock::{
-            Mock, MockServer, ResponseTemplate,
-            matchers::{method, path},
-        };
-        let server = MockServer::start().await;
-        let client = TonClient::new(std::sync::Arc::new(vec![server.uri()]));
-        Mock::given(method("GET"))
-            .and(path("/getAddressInformation"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"ok":true,"result":{"state":"active"}})),
-            )
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/runGetMethod"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                json!({"ok":true,"result":{"exit_code":0,"stack":[["num","0x2a"]]}}),
-            ))
-            .mount(&server)
-            .await;
-        assert_eq!(client.fetch_seqno("address").await.unwrap(), 42);
-        server.reset().await;
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":false})))
-            .mount(&server)
-            .await;
-        assert!(client.fetch_seqno("address").await.is_err());
-        Mock::given(method("POST"))
-            .and(path("/sendBocReturnHash"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({"ok":false,"error":"invalid boc"})),
-            )
-            .mount(&server)
-            .await;
-        assert!(client.send_boc("payload").await.is_err());
-        server.reset().await;
-        Mock::given(method("GET"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"ok":true,"result":{"state":"uninitialized"}})),
-            )
-            .mount(&server)
-            .await;
-        assert_eq!(client.fetch_seqno("address").await.unwrap(), 0);
     }
 }

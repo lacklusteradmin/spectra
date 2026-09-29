@@ -149,7 +149,7 @@ fn audit_tron_local_native_and_token_bytes_match_tronweb() {
         let prepared = tron::prepare_transfer(
             t["from"].as_str().unwrap(),
             transfer,
-            tron::BlockReference {
+            crate::api::tron_http::BlockReference {
                 number: 7,
                 id,
                 timestamp_ms: 1800000000000,
@@ -273,7 +273,7 @@ fn audit_local_builders_refuse_unfunded_or_mismatched_inputs() {
                 to: t["to"].as_str().unwrap(),
                 amount,
             },
-            tron::BlockReference {
+            crate::api::tron_http::BlockReference {
                 number: 7,
                 id,
                 timestamp_ms: 1800000000000,
@@ -316,7 +316,7 @@ async fn audit_failed_sui_execution_is_not_a_successful_send() {
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     let server = MockServer::start().await;
     Mock::given(any()).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"jsonrpc":"2.0","id":1,"result":{"digest":"11111111111111111111111111111111","effects":{"status":{"status":"failure","error":"InsufficientGas"}}}}))).mount(&server).await;
-    let client = crate::fetch::sui::SuiClient::new(std::sync::Arc::new(vec![server.uri()]));
+    let client = crate::api::sui_json_rpc::SuiClient::new(std::sync::Arc::new(vec![server.uri()]));
     assert!(
         client
             .execute_signed_tx("test-payload", "test-signature")

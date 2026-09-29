@@ -1,5 +1,5 @@
 //! Service-owned read cache. Sending deliberately bypasses this cache.
-use super::tron::Trc20Metadata;
+use crate::api::tron_http::Trc20Metadata;
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 use tokio::{
     sync::{Mutex, OnceCell},

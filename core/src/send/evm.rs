@@ -1,29 +1,10 @@
-//! EVM send: EIP-1559 RLP builder, secp256k1 signer, eth_sendRawTransaction
-//! broadcast (native ETH + ERC-20 transfer paths, with optional override hooks
-//! for replacement-by-fee / speed-up / cancel flows).
+//! EVM send: EIP-1559 RLP builder and secp256k1 signer (native ETH + ERC-20
+//! transfer paths, with optional override hooks for replacement-by-fee /
+//! speed-up / cancel flows).
 
 use serde_json::json;
 
-use crate::fetch::evm::{EvmClient, EvmSendResult, SEL_TRANSFER, decode_hex};
-
-impl EvmClient {
-    /// Broadcast a pre-signed raw transaction hex (0x-prefixed).
-    pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<EvmSendResult, String> {
-        let result = self.call("eth_sendRawTransaction", json!([hex_tx])).await?;
-        let txid = result
-            .as_str()
-            .ok_or("eth_sendRawTransaction: expected string")?
-            .to_string();
-        Ok(EvmSendResult {
-            txid,
-            nonce: 0,
-            raw_tx_hex: hex_tx.to_string(),
-            gas_limit: 0,
-            max_fee_per_gas_wei: String::new(),
-            max_priority_fee_per_gas_wei: String::new(),
-        })
-    }
-}
+use crate::api::evm_json_rpc::{EvmClient, SEL_TRANSFER, decode_hex};
 
 /// The exact EIP-1559 fields reviewed before signing. Contains no key material.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -81,51 +62,49 @@ impl PreparedEvmTransaction {
     }
 }
 
-impl EvmClient {
-    /// Resolve all network-dependent fields without reading signing material.
-    pub async fn prepare_transfer(
-        &self,
-        from: &str,
-        to: &str,
-        value_wei: u128,
-        data: &[u8],
-        overrides: &EvmSendOverrides,
-    ) -> Result<PreparedEvmTransaction, String> {
-        let nonce = match overrides.nonce {
-            Some(nonce) => nonce,
-            None => self.fetch_nonce(from).await?,
-        };
-        let (max_fee_per_gas, max_priority_fee_per_gas) = resolve_fees(self, overrides).await?;
-        if max_fee_per_gas == 0 || max_priority_fee_per_gas > max_fee_per_gas {
-            return Err("invalid EIP-1559 fees".into());
-        }
-        let data = overrides.calldata.as_deref().unwrap_or(data);
-        let gas_limit = resolve_gas(
-            self,
-            from,
-            to,
-            value_wei,
-            data,
-            nonce,
-            max_fee_per_gas,
-            max_priority_fee_per_gas,
-            overrides,
-        )
-        .await?;
-        let prepared = PreparedEvmTransaction {
-            chain_id: self.chain_id,
-            nonce,
-            max_fee_per_gas,
-            max_priority_fee_per_gas,
-            gas_limit,
-            to: to.into(),
-            value_wei,
-            data: data.into(),
-            access_list: overrides.access_list.clone(),
-        };
-        prepared.signing_payload()?;
-        Ok(prepared)
+/// Resolve all network-dependent fields without reading signing material.
+pub async fn prepare_transfer(
+    client: &EvmClient,
+    from: &str,
+    to: &str,
+    value_wei: u128,
+    data: &[u8],
+    overrides: &EvmSendOverrides,
+) -> Result<PreparedEvmTransaction, String> {
+    let nonce = match overrides.nonce {
+        Some(nonce) => nonce,
+        None => client.fetch_nonce(from).await?,
+    };
+    let (max_fee_per_gas, max_priority_fee_per_gas) = resolve_fees(client, overrides).await?;
+    if max_fee_per_gas == 0 || max_priority_fee_per_gas > max_fee_per_gas {
+        return Err("invalid EIP-1559 fees".into());
     }
+    let data = overrides.calldata.as_deref().unwrap_or(data);
+    let gas_limit = resolve_gas(
+        client,
+        from,
+        to,
+        value_wei,
+        data,
+        nonce,
+        max_fee_per_gas,
+        max_priority_fee_per_gas,
+        overrides,
+    )
+    .await?;
+    let prepared = PreparedEvmTransaction {
+        chain_id: client.chain_id,
+        nonce,
+        max_fee_per_gas,
+        max_priority_fee_per_gas,
+        gas_limit,
+        to: to.into(),
+        value_wei,
+        data: data.into(),
+        access_list: overrides.access_list.clone(),
+    };
+    prepared.signing_payload()?;
+    Ok(prepared)
 }
 
 // ── Send overrides + fee resolution
@@ -194,7 +173,7 @@ async fn resolve_gas(
             }]),
         )
         .await?;
-    let gas = crate::fetch::evm::parse_hex_u64(
+    let gas = crate::api::evm_json_rpc::parse_hex_u64(
         result.as_str().ok_or("eth_estimateGas: expected string")?,
     )?;
     if gas == 0 {
@@ -471,15 +450,15 @@ mod gas_tests {
                 } else {
                     vec![]
                 };
-                let result = client
-                    .prepare_transfer(
-                        address,
-                        address,
-                        if token { 0 } else { 7 },
-                        &data,
-                        &overrides,
-                    )
-                    .await;
+                let result = prepare_transfer(
+                    &client,
+                    address,
+                    address,
+                    if token { 0 } else { 7 },
+                    &data,
+                    &overrides,
+                )
+                .await;
                 if estimate == Some("0x7531") {
                     let tx = result.unwrap();
                     assert_eq!(tx.gas_limit, 36002);
@@ -497,21 +476,21 @@ mod gas_tests {
         let client = EvmClient::new(Arc::new(vec![]), 1);
         let address = "0x1111111111111111111111111111111111111111";
         for gas in [0, 21000] {
-            let result = client
-                .prepare_transfer(
-                    address,
-                    address,
-                    1,
-                    &[],
-                    &EvmSendOverrides {
-                        nonce: Some(0),
-                        max_fee_per_gas_wei: Some(2),
-                        max_priority_fee_per_gas_wei: Some(1),
-                        gas_limit: Some(gas),
-                        ..Default::default()
-                    },
-                )
-                .await;
+            let result = prepare_transfer(
+                &client,
+                address,
+                address,
+                1,
+                &[],
+                &EvmSendOverrides {
+                    nonce: Some(0),
+                    max_fee_per_gas_wei: Some(2),
+                    max_priority_fee_per_gas_wei: Some(1),
+                    gas_limit: Some(gas),
+                    ..Default::default()
+                },
+            )
+            .await;
             assert_eq!(result.is_ok(), gas > 0);
         }
     }

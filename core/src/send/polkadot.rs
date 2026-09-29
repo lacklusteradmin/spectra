@@ -1,6 +1,6 @@
 //! Polkadot send: SCALE-encoded Balances.transfer_keep_alive builder,
-//! sr25519 (schnorrkel) signer using the canonical substrate signing
-//! context, and RPC submit (plus pre-signed rebroadcast).
+//! and sr25519 (schnorrkel) signer using the canonical substrate signing
+//! context. Submission is `api::substrate_json_rpc`.
 //!
 //! `private_key_bytes` is the 32-byte sr25519 mini-secret produced by
 //! `derive_polkadot` (substrate-bip39 expansion). It is *not* a 64-byte
@@ -11,29 +11,13 @@
 //! emits the result under `MultiSignature::Sr25519` (variant `0x01`).
 
 use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u32, scale_compact_u128};
-use serde_json::json;
 
 use crate::derivation::polkadot::decode_ss58;
-use crate::fetch::polkadot::{DotSendResult, PolkadotClient};
 use crate::send::substrate::POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE;
 
 /// Substrate's transaction signing context — fixed across chains that use
 /// the standard sr25519 multi-signature envelope.
 const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
-
-impl PolkadotClient {
-    /// Submit a pre-signed extrinsic hex (for rebroadcast).
-    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<DotSendResult, String> {
-        let result = self
-            .rpc_call("author_submitExtrinsic", json!([hex]))
-            .await?;
-        let txid = result.as_str().unwrap_or("").to_string();
-        Ok(DotSendResult {
-            txid,
-            extrinsic_hex: hex.to_string(),
-        })
-    }
-}
 
 // ── SCALE-encoded Polkadot extrinsic builder
 

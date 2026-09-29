@@ -1,41 +1,6 @@
-//! Stellar send: XDR Payment builder (native XLM), Ed25519 signer,
-//! and Horizon POST /transactions.
-
-use crate::fetch::http::{RetryProfile, with_fallback};
+//! Stellar send: XDR Payment builder (native XLM) and Ed25519 signer.
 
 use crate::derivation::stellar::decode_stellar_address;
-use crate::fetch::stellar::{StellarClient, StellarSendResult};
-
-impl StellarClient {
-    /// Submit a pre-signed XDR envelope (for rebroadcast).
-    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<StellarSendResult, String> {
-        let tx_b64 = tx_b64.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let tx_b64 = tx_b64.clone();
-            let url = format!("{}/transactions", base.trim_end_matches('/'));
-            async move {
-                let resp: serde_json::Value = client
-                    .post_json(
-                        &url,
-                        &serde_json::json!({"tx": tx_b64}),
-                        RetryProfile::ChainWrite,
-                    )
-                    .await?;
-                let hash = resp
-                    .get("hash")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                Ok(StellarSendResult {
-                    txid: hash,
-                    signed_xdr_b64: tx_b64.clone(),
-                })
-            }
-        })
-        .await
-    }
-}
 
 // ── XDR transaction builder
 

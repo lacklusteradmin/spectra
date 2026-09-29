@@ -187,7 +187,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             service
                 .broadcast_at(
                     chain,
-                    chain.primary_api().unwrap(),
+                    chain.default_api().unwrap(),
                     Arc::new(vec![server.uri()]),
                     signed.signed_payload.clone().unwrap(),
                 )

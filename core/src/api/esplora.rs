@@ -1,38 +1,14 @@
-//! Bitcoin chain: balance/UTXO/history fetch via Esplora, and
-//! P2WPKH/P2PKH/P2SH-P2WPKH/P2TR transaction construction, signing,
-//! and broadcast.
-//!
-//! ## Network providers (Esplora endpoints from endpoints.toml)
-//!
-//! Mainnet:  blockstream.info/api, mempool.space/api, emzy.de/...
-//! Testnet:  mempool.space/testnet/api, blockstream.info/testnet/api
-//! Testnet4: mempool.space/testnet4/api
-//! Signet:   mempool.space/signet/api
-//!
-//! All calls use `with_fallback` so that if the primary endpoint is
-//! unreachable the next one is tried automatically.
+//! The Esplora REST adapter. `api::utxo` decides which adapter serves a
+//! request.
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::fetch::http::HttpClient;
+use crate::api::http::HttpClient;
+use crate::api::utxo::{FeeRate, Utxo, UtxoBalance, UtxoHistoryEntry, UtxoTxStatus};
 
 // ── Esplora API types
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EsploraUtxo {
-    pub txid: String,
-    pub vout: u32,
-    pub status: EsploraUtxoStatus,
-    pub value: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EsploraUtxoStatus {
-    pub confirmed: bool,
-    pub block_height: Option<u64>,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct EsploraAddressStats {
@@ -82,69 +58,24 @@ pub struct EsploraFeeEstimates {
     pub targets: std::collections::HashMap<String, f64>,
 }
 
-// ── Public result types
-
-/// Unified tx confirmation status returned by all UTXO chains.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-pub struct UtxoTxStatus {
-    pub txid: String,
-    pub confirmed: bool,
-    pub block_height: Option<u64>,
-    pub block_time: Option<u64>,
-    /// Number of confirmations (populated by Blockbook-backed chains; None for Esplora/WoC).
-    pub confirmations: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BitcoinBalance {
-    /// Confirmed balance in satoshis.
-    pub confirmed_sats: u64,
-    /// Unconfirmed balance delta (can be negative).
-    pub unconfirmed_sats: i64,
-    /// Total UTXOs.
-    pub utxo_count: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BitcoinHistoryEntry {
-    pub txid: String,
-    pub confirmed: bool,
-    pub block_height: Option<u64>,
-    pub block_time: Option<u64>,
-    /// Net satoshi change for the watched address (positive = received,
-    /// negative = sent).
-    pub net_sats: i64,
-    pub fee_sats: Option<u64>,
-}
-
-/// Satoshis per virtual byte, as returned by `GET /fee-estimates`.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct FeeRate {
-    /// Satoshis per virtual byte.
-    pub sats_per_vbyte: f64,
-}
-
-/// Stateless client for all Bitcoin Esplora interactions.
-pub struct BitcoinClient {
+/// One or more Esplora base URLs.
+pub struct EsploraClient {
     pub(crate) http: Arc<HttpClient>,
-    /// Ordered list of Esplora base URLs for the current network mode.
     pub(crate) endpoints: Arc<Vec<String>>,
 }
 
-impl BitcoinClient {
+impl EsploraClient {
     pub fn new(http: Arc<HttpClient>, endpoints: Arc<Vec<String>>) -> Self {
         Self { http, endpoints }
     }
 }
-// Bitcoin fetch paths (Esplora REST): balance, UTXOs, history, fee estimates,
-// and tx status.
 
-use crate::fetch::http::{RetryProfile, with_fallback};
+use crate::api::http::{RetryProfile, race};
 
-impl BitcoinClient {
+impl EsploraClient {
     /// Address counters include spent history and pending transactions, without tx bodies.
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let url = format!("{base}/address/{address}");
             async move {
                 let stats: EsploraAddressStats =
@@ -155,12 +86,12 @@ impl BitcoinClient {
         .await
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<BitcoinBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
         let addr = address.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
 
-        with_fallback(&endpoints, |base| {
+        race(&endpoints, |base| {
             let addr = addr.clone();
             let http = http.clone();
             async move {
@@ -173,22 +104,21 @@ impl BitcoinClient {
                     .saturating_sub(stats.chain_stats.spent_txo_sum);
                 let unconfirmed_sats = stats.mempool_stats.funded_txo_sum as i64
                     - stats.mempool_stats.spent_txo_sum as i64;
-                Ok(BitcoinBalance {
+                Ok(UtxoBalance {
                     confirmed_sats,
                     unconfirmed_sats,
-                    utxo_count: stats.chain_stats.tx_count as usize,
                 })
             }
         })
         .await
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<EsploraUtxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
         let addr = address.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
 
-        with_fallback(&endpoints, |base| {
+        race(&endpoints, |base| {
             let addr = addr.clone();
             let http = http.clone();
             async move {
@@ -203,13 +133,13 @@ impl BitcoinClient {
         &self,
         address: &str,
         after_txid: Option<&str>,
-    ) -> Result<Vec<BitcoinHistoryEntry>, String> {
+    ) -> Result<Vec<UtxoHistoryEntry>, String> {
         let addr = address.to_string();
         let cursor = after_txid.map(str::to_string);
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
 
-        with_fallback(&endpoints, |base| {
+        race(&endpoints, |base| {
             let addr = addr.clone();
             let cursor = cursor.clone();
             let http = http.clone();
@@ -237,7 +167,7 @@ impl BitcoinClient {
                             .filter(|o| o.scriptpubkey_address.as_deref() == Some(&addr))
                             .map(|o| o.value)
                             .sum();
-                        BitcoinHistoryEntry {
+                        UtxoHistoryEntry {
                             txid: tx.txid,
                             confirmed: tx.status.confirmed,
                             block_height: tx.status.block_height,
@@ -259,7 +189,7 @@ impl BitcoinClient {
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
 
-        let estimates: EsploraFeeEstimates = with_fallback(&endpoints, |base| {
+        let estimates: EsploraFeeEstimates = race(&endpoints, |base| {
             let http = http.clone();
             async move {
                 let url = format!("{base}/fee-estimates");
@@ -293,7 +223,7 @@ impl BitcoinClient {
         let txid = txid.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
-        with_fallback(&endpoints, |base| {
+        race(&endpoints, |base| {
             let txid = txid.clone();
             let http = http.clone();
             async move {
@@ -309,5 +239,25 @@ impl BitcoinClient {
             }
         })
         .await
+    }
+}
+
+impl EsploraClient {
+    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
+        let raw = raw_tx_hex.to_string();
+        let http = self.http.clone();
+        let endpoints = self.endpoints.clone();
+
+        race(&endpoints, |base| {
+            let raw = raw.clone();
+            let http = http.clone();
+            async move {
+                let url = format!("{base}/tx");
+                // Esplora broadcast: POST hex-encoded tx as plain text, returns txid.
+                http.post_text(&url, raw, RetryProfile::ChainWrite).await
+            }
+        })
+        .await
+        .map(|s| s.trim().to_string())
     }
 }

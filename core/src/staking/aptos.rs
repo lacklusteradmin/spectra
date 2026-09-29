@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct AptosStakingClient {
@@ -37,7 +37,7 @@ impl AptosStakingClient {
         });
         // Response: [[pool_addr1, pool_addr2, ...]] — outer array = return values,
         // inner array = the vector<address> return value.
-        let resp: serde_json::Value = match with_fallback(&self.rest_endpoints, |base| {
+        let resp: serde_json::Value = match race(&self.rest_endpoints, |base| {
             let client = client.clone();
             let body = body.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);

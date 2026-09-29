@@ -1,24 +1,17 @@
-//! Bitcoin SV chain client.
-//!
-//! BSV uses legacy P2PKH addresses (base58check, version byte 0x00 on mainnet)
-//! and inherits the BIP143-variant SIGHASH_FORKID = 0x41 signing rules from
-//! the BCH fork. There is no SegWit, no CashAddr, and no Taproot.
-//!
-//! ## Endpoints
-//!
-//! The canonical BSV indexer is WhatsOnChain. The endpoints vector is
-//! expected to contain one or more base URLs rooted at `/v1/bsv/main`
-//! (or `/v1/bsv/test` for testnet). Paths appended below:
+//! The WhatsOnChain adapter for Bitcoin SV. A base URL is rooted at
+//! `/v1/bsv/main` (or `/v1/bsv/test`); the paths below it:
 //!
 //! - `GET /address/{addr}/balance` → `{confirmed, unconfirmed}`
 //! - `GET /address/{addr}/unspent`  → `[{tx_hash, tx_pos, value, height}]`
 //! - `POST /tx/raw`                 → body `{"txhex": "..."}` returning a txid string
 //!
-//! Failures fall through to the next endpoint via `with_fallback`.
+//! `api::utxo` decides which adapter serves a request.
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
+use crate::api::utxo::{Utxo, UtxoBalance, UtxoHistoryEntry, UtxoStatus, UtxoTxStatus};
 
 // ── WhatsOnChain response types
 
@@ -96,48 +89,20 @@ pub(crate) struct WocTxVoutScriptPubKey {
 // ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BsvBalance {
-    pub balance_sat: u64,
-    pub balance_display: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BsvUtxo {
-    pub txid: String,
-    pub vout: u32,
-    pub value_sat: u64,
-    pub confirmations: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BsvSendResult {
+pub struct WhatsonchainSendResult {
     pub txid: String,
     #[serde(default)]
     pub raw_tx_hex: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BsvHistoryEntry {
-    pub txid: String,
-    pub block_height: u64,
-    /// `None` while the transaction is unconfirmed.
-    pub timestamp: Option<u64>,
-    /// Best-effort net value change for the queried address in sats.
-    /// Positive = incoming (sum of vout values paid to this address).
-    /// Negative = outgoing (vin addresses include this address).
-    /// Zero = indeterminate (no direct match on either side).
-    pub amount_sat: i64,
-    pub is_incoming: bool,
-}
-
 // ── Client
 
-pub struct BitcoinSvClient {
+pub struct WhatsonchainClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
-impl BitcoinSvClient {
+impl WhatsonchainClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -155,9 +120,10 @@ impl BitcoinSvClient {
 // BSV fetch paths (WhatsOnChain REST): balance, UTXOs, history (with per-tx
 // enrichment), and tx status.
 
-impl BitcoinSvClient {
+impl WhatsonchainClient {
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
-        if self.fetch_balance(address).await?.balance_sat > 0 {
+        let balance = self.fetch_balance(address).await?;
+        if balance.confirmed_sats > 0 || balance.unconfirmed_sats != 0 {
             return Ok(true);
         }
         // Only the history index is needed; never enrich every transaction.
@@ -165,26 +131,28 @@ impl BitcoinSvClient {
         Ok(!list.is_empty())
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<BsvBalance, String> {
+    /// The confirmed balance and the mempool's net change to it.
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
         let bal: WocBalance = self.get(&format!("/address/{address}/balance")).await?;
-        let confirmed = bal.confirmed.max(0) as u64;
-        let unconfirmed = bal.unconfirmed.max(0) as u64;
-        let total = confirmed.saturating_add(unconfirmed);
-        Ok(BsvBalance {
-            balance_sat: total,
-            balance_display: format_bsv(total),
+        Ok(UtxoBalance {
+            confirmed_sats: bal.confirmed.max(0) as u64,
+            unconfirmed_sats: bal.unconfirmed,
         })
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<BsvUtxo>, String> {
+    /// Unspent outputs, the mempool's included.
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
         let utxos: Vec<WocUtxo> = self.get(&format!("/address/{address}/unspent")).await?;
         Ok(utxos
             .into_iter()
-            .map(|u| BsvUtxo {
+            .map(|u| Utxo {
                 txid: u.tx_hash,
                 vout: u.tx_pos,
-                value_sat: u.value,
-                confirmations: if u.height > 0 { 1 } else { 0 },
+                value: u.value,
+                status: UtxoStatus {
+                    confirmed: u.height > 0,
+                    block_height: (u.height > 0).then_some(u.height as u64),
+                },
             })
             .collect())
     }
@@ -194,7 +162,7 @@ impl BitcoinSvClient {
     /// WoC exposes `/address/{addr}/history` as a flat list of
     /// `{tx_hash, height}` entries. To populate amounts and timestamps we
     /// issue a sequential `/tx/hash/{hash}` fetch per entry.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<BsvHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, String> {
         let list: Vec<WocHistoryItem> = self.get(&format!("/address/{address}/history")).await?;
 
         let mut details = Vec::with_capacity(list.len());
@@ -209,12 +177,9 @@ impl BitcoinSvClient {
     }
 
     /// Fetch confirmation status for a single txid via WoC `/tx/hash/{txid}`.
-    pub async fn fetch_tx_status(
-        &self,
-        txid: &str,
-    ) -> Result<crate::fetch::bitcoin::UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
         let txid = txid.to_string();
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let txid = txid.clone();
             async move {
@@ -223,7 +188,7 @@ impl BitcoinSvClient {
                 let confirmed = tx.blockheight.map(|h| h >= 0).unwrap_or(false);
                 let block_height = tx.blockheight.filter(|&h| h >= 0).map(|h| h as u64);
                 let block_time = tx.blocktime.or(tx.time);
-                Ok(crate::fetch::bitcoin::UtxoTxStatus {
+                Ok(UtxoTxStatus {
                     txid: txid.clone(),
                     confirmed,
                     block_height,
@@ -236,17 +201,6 @@ impl BitcoinSvClient {
     }
 }
 
-fn format_bsv(sat: u64) -> String {
-    let whole = sat / 100_000_000;
-    let frac = sat % 100_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:08}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
-}
-
 /// Each transaction's net effect on `address`: the outputs paying it less
 /// the outputs of its own that the transaction spends.
 ///
@@ -257,7 +211,7 @@ fn format_bsv(sat: u64) -> String {
 fn bsv_history_from_details(
     details: Vec<(WocHistoryItem, WocTxDetail)>,
     address: &str,
-) -> Result<Vec<BsvHistoryEntry>, String> {
+) -> Result<Vec<UtxoHistoryEntry>, String> {
     let sats = |value: f64| {
         let sats = (value * 100_000_000.0).round();
         if sats.is_finite() && sats >= 0.0 {
@@ -286,7 +240,7 @@ fn bsv_history_from_details(
                 .map(move |vout| ((txid.clone(), vout.n), sats(vout.value)))
         })
         .collect();
-    let entries: Result<Vec<Option<BsvHistoryEntry>>, String> = details
+    let entries: Result<Vec<Option<UtxoHistoryEntry>>, String> = details
         .into_iter()
         .map(|(item, tx)| {
             let received: i64 = tx
@@ -300,20 +254,51 @@ fn bsv_history_from_details(
                 .iter()
                 .filter_map(|vin| owned.get(&(vin.txid.clone(), vin.vout)))
                 .sum();
-            let amount_sat = received - spent;
-            let block_height = tx.blockheight.unwrap_or(item.height).max(0) as u64;
-            let timestamp =
-                super::history_time(block_height > 0, tx.blocktime.or(tx.time), &item.tx_hash)?;
-            Ok((amount_sat != 0).then_some(BsvHistoryEntry {
+            let net_sats = received - spent;
+            let block_height = Some(tx.blockheight.unwrap_or(item.height))
+                .filter(|height| *height > 0)
+                .map(|height| height as u64);
+            let block_time = crate::api::time::history_time(
+                block_height.is_some(),
+                tx.blocktime.or(tx.time),
+                &item.tx_hash,
+            )?;
+            Ok((net_sats != 0).then_some(UtxoHistoryEntry {
                 txid: item.tx_hash,
+                confirmed: block_height.is_some(),
                 block_height,
-                timestamp,
-                amount_sat,
-                is_incoming: amount_sat > 0,
+                block_time,
+                net_sats,
+                fee_sats: None,
             }))
         })
         .collect();
     Ok(entries?.into_iter().flatten().collect())
+}
+
+impl WhatsonchainClient {
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<WhatsonchainSendResult, String> {
+        let hex = hex_tx.to_string();
+        race(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let hex = hex.clone();
+            let url = format!("{}/tx/raw", base.trim_end_matches('/'));
+            async move {
+                // WhatsOnChain /tx/raw expects `{"txhex": "<hex>"}` and
+                // responds with a bare JSON string containing the txid.
+                let raw_tx_hex = hex.clone();
+                let body = json!({ "txhex": hex });
+                let txid: String = client
+                    .post_json(&url, &body, RetryProfile::ChainWrite)
+                    .await?;
+                Ok(WhatsonchainSendResult {
+                    txid: txid.trim().trim_matches('"').to_string(),
+                    raw_tx_hex,
+                })
+            }
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -367,7 +352,7 @@ mod history_tests {
         let entries = bsv_history_from_details(details, ME).unwrap();
         let got: Vec<(&str, i64, bool)> = entries
             .iter()
-            .map(|e| (e.txid.as_str(), e.amount_sat, e.is_incoming))
+            .map(|e| (e.txid.as_str(), e.net_sats, e.net_sats > 0))
             .collect();
         assert_eq!(
             got,

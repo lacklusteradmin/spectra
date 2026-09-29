@@ -1,15 +1,11 @@
-//! Cardano chain client.
-//!
-//! Uses the Koios REST API (api.koios.rest/api/v1) for balance,
-//! history, UTXOs, and protocol params.
-//! Cardano transactions are encoded in CBOR (cardano-multiplatform-lib
-//! is too heavy; we use a minimal handwritten CBOR encoder for simple
-//! ADA-only transfers).
-//! Signing uses Ed25519 (ed25519-dalek).
+//! The Koios REST adapter for Cardano: balances, UTXOs, history, the tip
+//! slot and raw CBOR submission.
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{
+    HttpClient, HttpHeader, HttpRetryProfile, RetryProfile, http_request, race,
+};
 
 // ── Public result types
 
@@ -115,7 +111,7 @@ fn cardano_history_from_transactions(
             continue;
         }
         entries.push(CardanoHistoryEntry {
-            block_time: super::confirmed_history_time(tx.tx_timestamp, &tx.tx_hash)?,
+            block_time: crate::api::time::confirmed_history_time(tx.tx_timestamp, &tx.tx_hash)?,
             txid: tx.tx_hash,
             block: tx.block_height.to_string(),
             is_incoming: net > 0,
@@ -129,12 +125,12 @@ fn cardano_history_from_transactions(
 
 // ── Client
 
-pub struct CardanoClient {
+pub struct KoiosClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
-impl CardanoClient {
+impl KoiosClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -156,7 +152,7 @@ impl CardanoClient {
     ) -> Result<T, String> {
         let path = path.to_string();
         let body_val = serde_json::to_value(body).map_err(|e| e.to_string())?;
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             let body_val = body_val.clone();
@@ -170,7 +166,7 @@ impl CardanoClient {
     }
 }
 
-impl CardanoClient {
+impl KoiosClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<CardanoBalance, String> {
         #[derive(Serialize)]
         struct Req<'a> {
@@ -286,6 +282,47 @@ fn format_ada(lovelace: u64) -> String {
     format!("{}.{}", whole, trimmed)
 }
 
+impl KoiosClient {
+    /// Submit a CBOR-encoded signed transaction.
+    pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, String> {
+        let cbor_hex_owned = cbor_hex.to_string();
+        let cbor_bytes = hex::decode(cbor_hex).map_err(|e| format!("hex decode: {e}"))?;
+        race(&self.endpoints, |base| {
+            let cbor_bytes = cbor_bytes.clone();
+            let cbor_hex = cbor_hex_owned.clone();
+            let url = format!("{}/submittx", base.trim_end_matches('/'));
+            async move {
+                // Koios submit-api accepts raw CBOR and returns a JSON transaction hash.
+                let response = http_request(
+                    "POST".into(),
+                    url,
+                    vec![HttpHeader {
+                        name: "Content-Type".into(),
+                        value: "application/cbor".into(),
+                    }],
+                    Some(cbor_bytes),
+                    HttpRetryProfile::ChainWrite,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                if response.status_code != 202 {
+                    return Err(format!(
+                        "Koios submission: expected HTTP 202, received {}",
+                        response.status_code
+                    ));
+                }
+                let txid: String = serde_json::from_slice(&response.body)
+                    .map_err(|e| format!("Koios transaction id: {e}"))?;
+                if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err("Koios submission returned an invalid transaction id".into());
+                }
+                Ok(CardanoSendResult { txid, cbor_hex })
+            }
+        })
+        .await
+    }
+}
+
 #[cfg(test)]
 mod history_tests {
     use super::*;
@@ -320,5 +357,53 @@ mod history_tests {
         assert_eq!(entries[1].txid, "receive");
         assert!(entries[1].is_incoming);
         assert_eq!(entries[1].amount_lovelace, 2_000_000);
+    }
+}
+
+#[cfg(test)]
+mod keyless_submission_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_bytes, header, method, path},
+    };
+
+    #[tokio::test]
+    async fn koios_receives_raw_cbor_without_credentials_and_requires_a_transaction_id() {
+        let server = MockServer::start().await;
+        let client = KoiosClient::new(Arc::new(vec![server.uri()]));
+        let txid = "ab".repeat(32);
+        Mock::given(method("POST"))
+            .and(path("/submittx"))
+            .and(header("content-type", "application/cbor"))
+            .and(body_bytes(vec![0x81, 0x00]))
+            .respond_with(ResponseTemplate::new(202).set_body_json(&txid))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert_eq!(client.submit_tx("8100").await.unwrap().txid, txid);
+        let requests = server.received_requests().await.unwrap();
+        assert!(!requests[0].headers.contains_key("authorization"));
+        assert!(!requests[0].headers.contains_key("project_id"));
+        assert!(requests[0].url.query().is_none());
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(202).set_body_json(""))
+            .mount(&server)
+            .await;
+        assert!(
+            client
+                .submit_tx("8100")
+                .await
+                .unwrap_err()
+                .contains("invalid transaction id")
+        );
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("invalid transaction"))
+            .mount(&server)
+            .await;
+        assert!(client.submit_tx("8100").await.is_err());
     }
 }

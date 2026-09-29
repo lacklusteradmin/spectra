@@ -23,6 +23,11 @@ backward-compatibility shims.
   Swift renders and forwards. New domain logic belongs in `core/` and must be
   drivable from `spectra`.
 - Per-chain facts belong on `registry::Chain`, not in caller-owned lists.
+- Every request to a chain service, broadcasts included, lives in
+  `core/src/api/<api>.rs`, one file per `EndpointApi` named after its
+  `as_str()`. `api` depends only on its transport and `registry`; `fetch`,
+  `send`, `staking` and `service` call it. `send/` builds and signs per chain
+  and never implements a client.
 - Do not add `core_plan_*` functions; core must own the state it decides about.
 - Swift may hold view state, not authoritative domain state. If losing data on
   restart would be a bug, core owns it.

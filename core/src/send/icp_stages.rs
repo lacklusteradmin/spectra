@@ -1,8 +1,9 @@
 //! Locally constructed ICP ledger `send_pb` calls and Rosetta envelopes.
 //! Wire definitions: dfinity/ic rs/rosetta-api/icp/{models,convert}.rs and
 //! rs/ledger_suite/icp/proto/ic_ledger/pb/v1/types.proto.
+use crate::api::icp_rosetta::{IcpClient, network_identifier as network};
 use crate::send::keys::Ed25519Seed;
-use crate::{derivation::icp::*, fetch::icp::IcpClient, registry::Chain};
+use crate::{derivation::icp::*, registry::Chain};
 use serde::{Deserialize, Serialize};
 use serde_cbor::Value as Cbor;
 use serde_json::{Value, json};
@@ -198,90 +199,74 @@ impl PreparedIcpTransaction {
         )
     }
 }
-fn network() -> Value {
-    json!({"blockchain":"Internet Computer","network":Chain::Icp.icp_ledger_id().expect("ICP registry")})
-}
-impl IcpClient {
-    pub(crate) async fn verify_network(&self) -> Result<(), String> {
-        let response: Value = self
-            .rosetta_post("/network/list", &json!({"metadata":{}}))
-            .await?;
-        if !response["network_identifiers"]
-            .as_array()
-            .is_some_and(|rows| rows.iter().any(|row| row == &network()))
-        {
-            return Err("ICP endpoint does not serve the configured ledger".into());
-        }
-        Ok(())
-    }
-    pub(crate) async fn prepare_transfer(
-        &self,
-        sender: &str,
-        recipient: &str,
-        amount: u64,
-    ) -> Result<PreparedIcpTransaction, String> {
-        validate_account(sender)?;
-        validate_account(recipient)?;
-        self.verify_network().await?;
-        let fee = u64::try_from(
-            Chain::Icp
-                .static_fee_units()
-                .ok_or("Missing ICP ledger fee")?,
+
+pub(crate) async fn prepare_transfer(
+    client: &IcpClient,
+    sender: &str,
+    recipient: &str,
+    amount: u64,
+) -> Result<PreparedIcpTransaction, String> {
+    validate_account(sender)?;
+    validate_account(recipient)?;
+    client.verify_network().await?;
+    let fee = u64::try_from(
+        Chain::Icp
+            .static_fee_units()
+            .ok_or("Missing ICP ledger fee")?,
+    )
+    .map_err(|_| "ICP fee overflow")?;
+    let operations = json!([
+        {"operation_identifier":{"index":0},"type":"TRANSACTION","account":{"address":sender},"amount":{"value":format!("-{amount}"),"currency":{"symbol":"ICP","decimals":8}}},
+        {"operation_identifier":{"index":1},"type":"TRANSACTION","account":{"address":recipient},"amount":{"value":amount.to_string(),"currency":{"symbol":"ICP","decimals":8}}},
+        {"operation_identifier":{"index":2},"type":"FEE","account":{"address":sender},"amount":{"value":format!("-{fee}"),"currency":{"symbol":"ICP","decimals":8}}}
+    ]);
+    let pre: Value = client
+        .rosetta_post(
+            "/construction/preprocess",
+            &json!({"network_identifier":network(),"operations":operations}),
         )
-        .map_err(|_| "ICP fee overflow")?;
-        let operations = json!([
-            {"operation_identifier":{"index":0},"type":"TRANSACTION","account":{"address":sender},"amount":{"value":format!("-{amount}"),"currency":{"symbol":"ICP","decimals":8}}},
-            {"operation_identifier":{"index":1},"type":"TRANSACTION","account":{"address":recipient},"amount":{"value":amount.to_string(),"currency":{"symbol":"ICP","decimals":8}}},
-            {"operation_identifier":{"index":2},"type":"FEE","account":{"address":sender},"amount":{"value":format!("-{fee}"),"currency":{"symbol":"ICP","decimals":8}}}
-        ]);
-        let pre: Value = self
-            .rosetta_post(
-                "/construction/preprocess",
-                &json!({"network_identifier":network(),"operations":operations}),
-            )
-            .await?;
-        let options = pre
-            .get("options")
-            .ok_or("Missing ICP construction options")?;
-        let meta: Value = self
-            .rosetta_post(
-                "/construction/metadata",
-                &json!({"network_identifier":network(),"options":options}),
-            )
-            .await?;
-        let fees = meta["suggested_fee"]
-            .as_array()
-            .ok_or("Missing ICP suggested fee")?;
-        if fees.len() != 1
-            || fees[0]["value"]
-                .as_str()
-                .and_then(|s| s.parse::<u64>().ok())
-                != Some(fee)
-            || fees[0]["currency"] != json!({"symbol":"ICP","decimals":8})
-        {
-            return Err("ICP ledger fee changed or is unsupported".into());
-        }
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_nanos();
-        let now = u64::try_from(now).map_err(|_| "ICP timestamp overflow")?;
-        let mut prepared = PreparedIcpTransaction {
-            sender: sender.to_lowercase(),
-            recipient: recipient.to_lowercase(),
-            amount,
-            fee,
-            memo: rand::random(),
-            created_at_time_ns: now,
-            ingress_expiry_ns: now
-                .checked_add(240_000_000_000)
-                .ok_or("ICP expiry overflow")?,
-            ledger_canister: Chain::Icp.icp_ledger_id()?.into(),
-            argument_hex: String::new(),
-        };
-        prepared.argument_hex = hex::encode(prepared.argument()?);
-        Ok(prepared)
+        .await?;
+    let options = pre
+        .get("options")
+        .ok_or("Missing ICP construction options")?;
+    let meta: Value = client
+        .rosetta_post(
+            "/construction/metadata",
+            &json!({"network_identifier":network(),"options":options}),
+        )
+        .await?;
+    let fees = meta["suggested_fee"]
+        .as_array()
+        .ok_or("Missing ICP suggested fee")?;
+    if fees.len() != 1
+        || fees[0]["value"]
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            != Some(fee)
+        || fees[0]["currency"] != json!({"symbol":"ICP","decimals":8})
+    {
+        return Err("ICP ledger fee changed or is unsupported".into());
     }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let now = u64::try_from(now).map_err(|_| "ICP timestamp overflow")?;
+    let mut prepared = PreparedIcpTransaction {
+        sender: sender.to_lowercase(),
+        recipient: recipient.to_lowercase(),
+        amount,
+        fee,
+        memo: rand::random(),
+        created_at_time_ns: now,
+        ingress_expiry_ns: now
+            .checked_add(240_000_000_000)
+            .ok_or("ICP expiry overflow")?,
+        ledger_canister: Chain::Icp.icp_ledger_id()?.into(),
+        argument_hex: String::new(),
+    };
+    prepared.argument_hex = hex::encode(prepared.argument()?);
+    Ok(prepared)
 }
 
 #[cfg(test)]

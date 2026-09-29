@@ -4,7 +4,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::EndpointApi;
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 pub(crate) async fn call(
     api: EndpointApi,
@@ -27,7 +27,7 @@ pub(crate) async fn call(
         _ => return Err(format!("{} is not a JSON-RPC API", api.as_str())),
     };
     let body = Arc::new(body);
-    with_fallback(endpoints, |url| {
+    race(endpoints, |url| {
         let client = Arc::clone(client);
         let body = Arc::clone(&body);
         async move {

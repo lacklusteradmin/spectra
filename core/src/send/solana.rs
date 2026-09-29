@@ -1,31 +1,10 @@
 //! Solana send: native SOL transfer + SPL TransferChecked (with idempotent ATA
-//! create). Ed25519 signing + sendTransaction RPC broadcast.
+//! create) and Ed25519 signing.
 
 use crate::send::keys::Ed25519Seed;
-use serde_json::json;
 
+use crate::api::solana_json_rpc::SolanaClient;
 use crate::derivation::solana::decode_b58_32;
-use crate::fetch::solana::{SolanaClient, SolanaSendResult};
-
-impl SolanaClient {
-    /// Broadcast an already-signed transaction given as a base64 string.
-    pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
-        let result = self
-            .call(
-                "sendTransaction",
-                json!([signed_tx_base64, {"encoding": "base64", "preflightCommitment": "confirmed"}]),
-            )
-            .await?;
-        let signature = result
-            .as_str()
-            .ok_or("sendTransaction: expected string")?
-            .to_string();
-        Ok(SolanaSendResult {
-            signature,
-            signed_tx_base64: signed_tx_base64.to_string(),
-        })
-    }
-}
 
 // ── Transaction builder
 
@@ -179,62 +158,60 @@ impl PreparedSolanaTransaction {
     }
 }
 
-impl SolanaClient {
-    pub(crate) async fn prepare_transfer(
-        &self,
-        from: &str,
-        to: &str,
-        amount: u64,
-        token: Option<(&str, u8)>,
-    ) -> Result<PreparedSolanaTransaction, String> {
-        let payer = decode_b58_32(from)?;
-        let recipient = decode_b58_32(to)?;
-        let blockhash = self.fetch_recent_blockhash().await?;
-        let message = if let Some((mint, decimals)) = token {
-            let (program, actual_decimals) = self.fetch_transfer_mint(mint).await?;
-            if decimals != actual_decimals {
-                return Err("SPL decimals changed; review again".into());
-            }
-            let mint = decode_b58_32(mint)?;
-            let source = derive_associated_token_account(&payer, &mint, &program)?;
-            let destination = derive_associated_token_account(&recipient, &mint, &program)?;
-            let mut data = vec![12];
-            data.extend(amount.to_le_bytes());
-            data.push(decimals);
-            compile_message(
-                &payer,
-                &[
-                    (payer, true),
-                    (destination, true),
-                    (source, true),
-                    (recipient, false),
-                    (mint, false),
-                    ([0; 32], false),
-                    (program, false),
-                    (ASSOCIATED_TOKEN_PROGRAM_ID, false),
-                ],
-                &[
-                    (7, vec![0, 1, 3, 4, 5, 6], vec![1]),
-                    (6, vec![2, 4, 1, 0], data),
-                ],
-                &blockhash,
-            )?
-        } else {
-            let mut data = 2u32.to_le_bytes().to_vec();
-            data.extend(amount.to_le_bytes());
-            compile_message(
-                &payer,
-                &[(payer, true), (recipient, true), ([0; 32], false)],
-                &[(2, vec![0, 1], data)],
-                &blockhash,
-            )?
-        };
-        Ok(PreparedSolanaTransaction {
-            payer,
-            blockhash,
-            message,
-        })
-    }
+pub(crate) async fn prepare_transfer(
+    client: &SolanaClient,
+    from: &str,
+    to: &str,
+    amount: u64,
+    token: Option<(&str, u8)>,
+) -> Result<PreparedSolanaTransaction, String> {
+    let payer = decode_b58_32(from)?;
+    let recipient = decode_b58_32(to)?;
+    let blockhash = client.fetch_recent_blockhash().await?;
+    let message = if let Some((mint, decimals)) = token {
+        let (program, actual_decimals) = client.fetch_transfer_mint(mint).await?;
+        if decimals != actual_decimals {
+            return Err("SPL decimals changed; review again".into());
+        }
+        let mint = decode_b58_32(mint)?;
+        let source = derive_associated_token_account(&payer, &mint, &program)?;
+        let destination = derive_associated_token_account(&recipient, &mint, &program)?;
+        let mut data = vec![12];
+        data.extend(amount.to_le_bytes());
+        data.push(decimals);
+        compile_message(
+            &payer,
+            &[
+                (payer, true),
+                (destination, true),
+                (source, true),
+                (recipient, false),
+                (mint, false),
+                ([0; 32], false),
+                (program, false),
+                (ASSOCIATED_TOKEN_PROGRAM_ID, false),
+            ],
+            &[
+                (7, vec![0, 1, 3, 4, 5, 6], vec![1]),
+                (6, vec![2, 4, 1, 0], data),
+            ],
+            &blockhash,
+        )?
+    } else {
+        let mut data = 2u32.to_le_bytes().to_vec();
+        data.extend(amount.to_le_bytes());
+        compile_message(
+            &payer,
+            &[(payer, true), (recipient, true), ([0; 32], false)],
+            &[(2, vec![0, 1], data)],
+            &blockhash,
+        )?
+    };
+    Ok(PreparedSolanaTransaction {
+        payer,
+        blockhash,
+        message,
+    })
 }
 
 fn compile_message(
@@ -294,4 +271,31 @@ fn compact_u16(val: usize) -> Vec<u8> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod associated_token_account_tests {
+    use super::*;
+
+    /// Independent @solana/spl-token 0.4.14 vectors, for the legacy Token
+    /// program and Token-2022.
+    #[test]
+    fn associated_token_accounts_match_spl_token_vectors() {
+        let key = |b58: &str| crate::derivation::solana::decode_b58_32(b58).unwrap();
+        let owner = key("HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk");
+        let mint = [0x44; 32];
+        for (program, expected) in [
+            (
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                "FF2BjgeRK2LgK8Lj4wY2CTJrmJAKV5ZPCdHqfq1tJLGi",
+            ),
+            (
+                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                "Hzvpgx8hB4wZewvsYXSedgrgSb4yNycQRhufYeMaKuRM",
+            ),
+        ] {
+            let ata = derive_associated_token_account(&owner, &mint, &key(program)).unwrap();
+            assert_eq!(bs58::encode(ata).into_string(), expected);
+        }
+    }
 }

@@ -1,15 +1,10 @@
-//! Sui chain client.
-//!
-//! Uses the Sui JSON-RPC API (sui_getBalance, sui_getCoins,
-//! sui_queryTransactionBlocks, unsafe_transferSui / sui_executeTransactionBlock).
-//! Signing uses Ed25519 via ed25519-dalek.
-//! Sui addresses are 32-byte Blake2b-256 hashes of the public key,
-//! prefixed with a flag byte (0x00 for Ed25519).
+//! The Sui JSON-RPC adapter: balances, coin objects, gas price, transaction
+//! history and execution of a signed transaction.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::fetch::http::HttpClient;
+use crate::api::http::HttpClient;
 
 // ── Public result types
 
@@ -58,7 +53,7 @@ impl SuiClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        crate::fetch::json_rpc::call(
+        crate::api::json_rpc::call(
             crate::EndpointApi::SuiJsonRpc,
             &self.client,
             &self.endpoints,
@@ -144,7 +139,7 @@ impl SuiClient {
     pub async fn fetch_all_coin_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<super::HeldToken>, String> {
+    ) -> Result<Vec<crate::api::HeldToken>, String> {
         let result = self.call("suix_getAllBalances", json!([address])).await?;
         let mut held: Vec<(String, u128)> = Vec::new();
         for entry in result.as_array().map(|v| v.as_slice()).unwrap_or_default() {
@@ -173,12 +168,14 @@ impl SuiClient {
         Ok(held
             .into_iter()
             .zip(metadata)
-            .map(|((contract, balance_raw), decimals)| super::HeldToken {
-                contract,
-                balance_raw,
-                decimals,
-                symbol: None,
-            })
+            .map(
+                |((contract, balance_raw), decimals)| crate::api::HeldToken {
+                    contract,
+                    balance_raw,
+                    decimals,
+                    symbol: None,
+                },
+            )
             .collect())
     }
 
@@ -283,7 +280,7 @@ fn sui_history_from_blocks(
                 .unwrap_or_default();
             (address.clone(), recipient)
         };
-        let timestamp_ms = super::history_time(
+        let timestamp_ms = crate::api::time::history_time(
             block.get("checkpoint").is_some_and(|c| !c.is_null()),
             block
                 .get("timestampMs")
@@ -319,6 +316,110 @@ fn format_sui(mist: u64) -> String {
         trimmed
     };
     format!("{}.{}", whole, capped)
+}
+
+impl SuiClient {
+    pub async fn execute_signed_tx(
+        &self,
+        tx_bytes_b64: &str,
+        sig_b64: &str,
+    ) -> Result<SuiSendResult, String> {
+        let result = self
+            .call(
+                "sui_executeTransactionBlock",
+                json!([tx_bytes_b64,[sig_b64],{"showEffects":true},"WaitForLocalExecution"]),
+            )
+            .await?;
+        if result
+            .pointer("/effects/status/status")
+            .and_then(Value::as_str)
+            != Some("success")
+        {
+            return Err(format!("Sui execution did not succeed: {result}"));
+        }
+        let digest = result["digest"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or("missing Sui transaction digest")?
+            .to_string();
+        Ok(SuiSendResult {
+            digest,
+            tx_bytes_b64: tx_bytes_b64.into(),
+            sig_b64: sig_b64.into(),
+        })
+    }
+}
+
+/// One SUI coin object, as gas or as the amount sent.
+pub struct SuiCoin {
+    pub object_id: String,
+    pub version: u64,
+    pub digest: [u8; 32],
+    pub balance: u64,
+}
+
+/// A page of `suix_getCoins`; `next_cursor` is `None` on the last page.
+pub struct SuiCoinPage {
+    pub coins: Vec<SuiCoin>,
+    pub next_cursor: Option<String>,
+}
+
+impl SuiClient {
+    pub async fn fetch_reference_gas_price(&self) -> Result<u64, String> {
+        self.call("suix_getReferenceGasPrice", json!([]))
+            .await?
+            .as_str()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| "missing Sui reference gas price".to_string())
+    }
+
+    /// Up to 50 of `owner`'s SUI coins, from `cursor` on.
+    pub async fn fetch_sui_coins_page(
+        &self,
+        owner: &str,
+        cursor: Option<&str>,
+    ) -> Result<SuiCoinPage, String> {
+        let page = self
+            .call("suix_getCoins", json!([owner, "0x2::sui::SUI", cursor, 50]))
+            .await?;
+        let coins = page["data"]
+            .as_array()
+            .ok_or("missing Sui coins")?
+            .iter()
+            .map(|row| {
+                Ok(SuiCoin {
+                    object_id: row["coinObjectId"]
+                        .as_str()
+                        .ok_or("missing Sui coin id")?
+                        .to_string(),
+                    version: row["version"]
+                        .as_str()
+                        .and_then(|s| s.parse().ok())
+                        .ok_or("missing Sui coin version")?,
+                    digest: bs58::decode(row["digest"].as_str().ok_or("missing Sui coin digest")?)
+                        .into_vec()
+                        .map_err(|_| "invalid Sui coin digest")?
+                        .try_into()
+                        .map_err(|_| "Sui digest must be 32 bytes")?,
+                    balance: row["balance"]
+                        .as_str()
+                        .and_then(|s| s.parse().ok())
+                        .ok_or("invalid Sui coin balance")?,
+                })
+            })
+            .collect::<Result<_, String>>()?;
+        let next_cursor = if page["hasNextPage"].as_bool() == Some(false) {
+            None
+        } else {
+            Some(
+                page.get("nextCursor")
+                    .and_then(Value::as_str)
+                    .ok_or("missing Sui coin cursor")?
+                    .to_string(),
+            )
+        };
+        Ok(SuiCoinPage { coins, next_cursor })
+    }
 }
 
 #[cfg(test)]

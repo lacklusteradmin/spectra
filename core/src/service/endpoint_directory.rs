@@ -1,6 +1,6 @@
 //! One directory for built-in and user-supplied API endpoints.
 use super::*;
-use crate::{AppCoreEndpointRecord, EndpointApi, EndpointCapability};
+use crate::{AppCoreEndpointRecord, Endpoint, EndpointApi, EndpointCapability};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
@@ -34,7 +34,7 @@ impl CustomEndpoint {
             .iter()
             .filter(|r| r.chain_id == chain.str_id())
             .map(|r| r.api)
-            .chain(chain.primary_api())
+            .chain(chain.endpoint_apis().iter().copied())
             .find(|value| value.as_str() == api)
             .ok_or("API type is not supported by this network")?;
         let supported = crate::endpoint_api::endpoint_capability_options(chain_id.clone(), api);
@@ -132,59 +132,105 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// The chain's primary-API URLs that declare every capability in
-    /// `required`. Fallback never widens this set.
+    /// Every configured URL of the chain's own APIs that declares each
+    /// capability in `required`, with the API it speaks. The list has no
+    /// order: requests go to all of them at once.
+    pub(crate) async fn chain_endpoints(
+        &self,
+        chain: Chain,
+        required: &[EndpointCapability],
+    ) -> Vec<Endpoint> {
+        let urls = self.configured_endpoint_urls(chain.str_id()).await;
+        let Ok(directory) = self.endpoint_directory().await else {
+            return vec![];
+        };
+        let declares =
+            |capabilities: &[EndpointCapability]| required.iter().all(|c| capabilities.contains(c));
+        let index = self.endpoints.read().await;
+        urls.iter()
+            .filter_map(|url| {
+                let matching: Vec<_> = directory
+                    .iter()
+                    .filter(|e| {
+                        e.record.endpoint.trim_end_matches('/') == url.trim_end_matches('/')
+                    })
+                    .collect();
+                let api = if matching.is_empty() {
+                    // Outside the directory: the transport list vouches for
+                    // it, and it is read as the chain's default API.
+                    index
+                        .capabilities
+                        .get(chain.str_id())
+                        .is_some_and(|caps| declares(caps))
+                        .then(|| chain.default_api())
+                        .flatten()?
+                } else {
+                    matching
+                        .iter()
+                        .find(|e| {
+                            e.record.chain_id == chain.str_id()
+                                && chain.endpoint_apis().contains(&e.record.api)
+                                && declares(&e.record.capabilities)
+                        })?
+                        .record
+                        .api
+                };
+                Some(Endpoint {
+                    api,
+                    url: url.clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// The URLs of `chain_endpoints`, for a client that speaks the chain's
+    /// only API. The UTXO family has several and uses `utxo_client`.
     pub(crate) async fn endpoints_for(
         &self,
         chain_id: &str,
         required: &[EndpointCapability],
     ) -> Arc<Vec<String>> {
-        let urls = self.configured_endpoint_urls(chain_id).await;
         let Some(chain) = Chain::from_str_id(chain_id) else {
             return Arc::new(vec![]);
         };
-        let Ok(directory) = self.endpoint_directory().await else {
-            return Arc::new(vec![]);
-        };
-        let declares =
-            |capabilities: &[EndpointCapability]| required.iter().all(|c| capabilities.contains(c));
-        let index = self.endpoints.read().await;
         Arc::new(
-            urls.iter()
-                .filter(|url| {
-                    let matching: Vec<_> = directory
-                        .iter()
-                        .filter(|e| {
-                            e.record.endpoint.trim_end_matches('/') == url.trim_end_matches('/')
-                        })
-                        .collect();
-                    if matching.is_empty() {
-                        return index
-                            .capabilities
-                            .get(chain_id)
-                            .is_some_and(|caps| declares(caps));
-                    }
-                    matching.iter().any(|e| {
-                        e.record.chain_id == chain_id
-                            && Some(e.record.api) == chain.primary_api()
-                            && declares(&e.record.capabilities)
-                    })
-                })
-                .cloned()
+            self.chain_endpoints(chain, required)
+                .await
+                .into_iter()
+                .map(|endpoint| endpoint.url)
                 .collect(),
         )
     }
 
+    /// The UTXO family's client over every URL of every API it speaks.
+    pub(crate) async fn utxo_client(
+        &self,
+        chain: Chain,
+        required: &[EndpointCapability],
+    ) -> crate::api::utxo::UtxoClient {
+        crate::api::utxo::UtxoClient::new(chain, self.chain_endpoints(chain, required).await)
+    }
+
+    /// The API a configured URL speaks on `chain`, when it is one of the
+    /// chain's own.
+    pub(crate) async fn endpoint_api(&self, chain: Chain, url: &str) -> Option<EndpointApi> {
+        self.chain_endpoints(chain, &[])
+            .await
+            .into_iter()
+            .find(|endpoint| endpoint.url.trim_end_matches('/') == url.trim_end_matches('/'))
+            .map(|endpoint| endpoint.api)
+    }
+
     /// The URLs for one API on `chain` that declare every capability in
     /// `required`: custom endpoints first, then the catalog. How indexers and
-    /// secondary services are found; the primary list is `endpoints_for`.
+    /// secondary services are found; the chain's own list is `chain_endpoints`.
     pub(crate) async fn api_endpoints(
         &self,
         chain: Chain,
         api: EndpointApi,
         required: &[EndpointCapability],
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let mut urls = self.custom_api_endpoints(chain, api, required).await;
+        let mut urls = self.custom_api_endpoints(chain, &[api], required).await;
         for record in &crate::app_core::endpoint_catalog()?.endpoint_records {
             if record.chain_id == chain.str_id()
                 && record.api == api
@@ -200,7 +246,7 @@ impl WalletService {
     pub(crate) async fn custom_api_endpoints(
         &self,
         chain: Chain,
-        api: EndpointApi,
+        apis: &[EndpointApi],
         required: &[EndpointCapability],
     ) -> Vec<String> {
         self.wallet_state
@@ -211,7 +257,7 @@ impl WalletService {
             .iter()
             .filter(|e| {
                 e.chain_id == chain.str_id()
-                    && e.api == api
+                    && apis.contains(&e.api)
                     && required.iter().all(|c| e.capabilities.contains(c))
             })
             .map(|e| e.endpoint.clone())
@@ -220,10 +266,10 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Each chain's primary list as requests use it, custom URLs included.
+    /// Each chain's own list as requests use it, custom URLs included.
     pub async fn configured_endpoints(&self) -> Vec<ChainEndpoints> {
         let mut rows = Vec::new();
-        for chain in Chain::all().filter(|chain| chain.primary_api().is_some()) {
+        for chain in Chain::all().filter(|chain| !chain.endpoint_apis().is_empty()) {
             rows.push(ChainEndpoints {
                 capabilities: vec![],
                 endpoints: self

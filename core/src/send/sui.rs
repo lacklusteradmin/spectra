@@ -1,9 +1,8 @@
 //! SUI transfer: resolve gas objects, build a local PTB, sign, execute.
 use super::bcs;
-use crate::fetch::sui::{SuiClient, SuiSendResult};
+use crate::api::sui_json_rpc::SuiClient;
 use crate::send::keys::Ed25519Seed;
 use base64::{Engine, engine::general_purpose::STANDARD};
-use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GasCoin {
@@ -96,107 +95,53 @@ impl PreparedSuiTransfer {
         Ok((STANDARD.encode(self.bytes), STANDARD.encode(signature)))
     }
 }
-impl SuiClient {
-    pub(crate) async fn prepare_native_transfer(
-        &self,
-        from: &str,
-        to: &str,
-        mist: u64,
-        gas_budget: u64,
-    ) -> Result<PreparedSuiTransfer, String> {
-        bcs::address(from)?;
-        bcs::address(to)?;
-        if mist == 0 || gas_budget == 0 {
-            return Err("Sui amount and gas budget must be positive".into());
-        }
-        let required = mist
-            .checked_add(gas_budget)
-            .ok_or("Sui amount plus gas overflow")?;
-        let price = self.call("suix_getReferenceGasPrice", json!([])).await?;
-        let gas_price = price
-            .as_str()
-            .and_then(|s| s.parse().ok())
-            .ok_or("missing Sui reference gas price")?;
-        let mut coins = Vec::new();
-        let mut cursor = Value::Null;
-        let mut total = 0u64;
-        let mut cursors = std::collections::HashSet::new();
-        loop {
-            let page = self
-                .call("suix_getCoins", json!([from, "0x2::sui::SUI", cursor, 50]))
-                .await?;
-            for row in page["data"].as_array().ok_or("missing Sui coins")? {
-                let balance = row["balance"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or("invalid Sui coin balance")?;
-                let id = bcs::address(row["coinObjectId"].as_str().ok_or("missing Sui coin id")?)?;
-                let version = row["version"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or("missing Sui coin version")?;
-                let digest = bs58::decode(row["digest"].as_str().ok_or("missing Sui coin digest")?)
-                    .into_vec()
-                    .map_err(|_| "invalid Sui coin digest")?
-                    .try_into()
-                    .map_err(|_| "Sui digest must be 32 bytes")?;
-                total = total
-                    .checked_add(balance)
-                    .ok_or("Sui coin balance overflow")?;
-                coins.push(GasCoin {
-                    id,
-                    version,
-                    digest,
-                    balance,
-                });
-                if total >= required || coins.len() == 256 {
-                    break;
-                }
-            }
-            if total >= required
-                || coins.len() == 256
-                || page["hasNextPage"].as_bool() == Some(false)
-            {
+
+pub(crate) async fn prepare_native_transfer(
+    client: &SuiClient,
+    from: &str,
+    to: &str,
+    mist: u64,
+    gas_budget: u64,
+) -> Result<PreparedSuiTransfer, String> {
+    bcs::address(from)?;
+    bcs::address(to)?;
+    if mist == 0 || gas_budget == 0 {
+        return Err("Sui amount and gas budget must be positive".into());
+    }
+    let required = mist
+        .checked_add(gas_budget)
+        .ok_or("Sui amount plus gas overflow")?;
+    let gas_price = client.fetch_reference_gas_price().await?;
+    let mut coins = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut total = 0u64;
+    let mut cursors = std::collections::HashSet::new();
+    loop {
+        let page = client.fetch_sui_coins_page(from, cursor.as_deref()).await?;
+        for coin in page.coins {
+            total = total
+                .checked_add(coin.balance)
+                .ok_or("Sui coin balance overflow")?;
+            coins.push(GasCoin {
+                id: bcs::address(&coin.object_id)?,
+                version: coin.version,
+                digest: coin.digest,
+                balance: coin.balance,
+            });
+            if total >= required || coins.len() == 256 {
                 break;
             }
-            cursor = page
-                .get("nextCursor")
-                .filter(|v| v.is_string())
-                .cloned()
-                .ok_or("missing Sui coin cursor")?;
-            if !cursors.insert(cursor.to_string()) {
-                return Err("repeated Sui coin cursor".into());
-            }
         }
-        prepare_transfer(from, to, mist, gas_budget, gas_price, &coins)
-    }
-    pub async fn execute_signed_tx(
-        &self,
-        tx_bytes_b64: &str,
-        sig_b64: &str,
-    ) -> Result<SuiSendResult, String> {
-        let result = self
-            .call(
-                "sui_executeTransactionBlock",
-                json!([tx_bytes_b64,[sig_b64],{"showEffects":true},"WaitForLocalExecution"]),
-            )
-            .await?;
-        if result
-            .pointer("/effects/status/status")
-            .and_then(Value::as_str)
-            != Some("success")
-        {
-            return Err(format!("Sui execution did not succeed: {result}"));
+        if total >= required || coins.len() == 256 {
+            break;
         }
-        let digest = result["digest"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .ok_or("missing Sui transaction digest")?
-            .to_string();
-        Ok(SuiSendResult {
-            digest,
-            tx_bytes_b64: tx_bytes_b64.into(),
-            sig_b64: sig_b64.into(),
-        })
+        let Some(next) = page.next_cursor else {
+            break;
+        };
+        if !cursors.insert(next.clone()) {
+            return Err("repeated Sui coin cursor".into());
+        }
+        cursor = Some(next);
     }
+    prepare_transfer(from, to, mist, gas_budget, gas_price, &coins)
 }

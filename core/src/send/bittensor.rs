@@ -1,6 +1,6 @@
 //! Bittensor send: SCALE-encoded `Balances.transfer_keep_alive` extrinsic,
-//! sr25519 (schnorrkel) signer using the canonical substrate signing
-//! context, and RPC submit (plus pre-signed rebroadcast).
+//! and sr25519 (schnorrkel) signer using the canonical substrate signing
+//! context. Submission is `api::substrate_json_rpc`.
 //!
 //! `private_key_bytes` is the 32-byte sr25519 mini-secret produced by
 //! `derive_substrate_sr25519_material` (substrate-bip39 expansion). The
@@ -12,28 +12,13 @@
 //! metadata after each subtensor runtime upgrade.
 
 use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u32, scale_compact_u128};
-use serde_json::json;
 
 use crate::derivation::bittensor::decode_bittensor_ss58;
-use crate::fetch::bittensor::{BittensorClient, TaoSendResult};
 use crate::send::substrate::BITTENSOR_BALANCES_TRANSFER_KEEP_ALIVE;
 
 /// Substrate's transaction signing context — fixed across chains that use
 /// the standard sr25519 multi-signature envelope.
 const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
-
-impl BittensorClient {
-    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<TaoSendResult, String> {
-        let result = self
-            .rpc_call("author_submitExtrinsic", json!([hex]))
-            .await?;
-        let txid = result.as_str().unwrap_or("").to_string();
-        Ok(TaoSendResult {
-            txid,
-            extrinsic_hex: hex.to_string(),
-        })
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 pub fn build_signed_transfer(

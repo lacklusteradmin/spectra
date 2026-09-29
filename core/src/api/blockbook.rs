@@ -1,9 +1,12 @@
-//! Blockbook request/response handling shared by every supported network.
+//! The Blockbook adapter, for every network a Blockbook instance indexes:
+//! balances, UTXOs, history, fee estimates, status and broadcast.
+//! `api::utxo` decides which adapter serves a request.
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
+use crate::api::utxo::{FeeRate, Utxo, UtxoBalance, UtxoHistoryEntry, UtxoStatus, UtxoTxStatus};
 
 // ── Wire shapes ───────────────────────────────────────────────────────────
 
@@ -14,12 +17,15 @@ struct BlockbookUtxo {
     value: String,
     #[serde(default)]
     confirmations: u32,
+    height: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BlockbookAddress {
     balance: String,
+    #[serde(default)]
+    unconfirmed_balance: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,48 +67,26 @@ struct BlockbookIo {
     value: Option<String>,
 }
 
-/// `/api/v2` reports the backend's chain tip.
+/// `/api/v2` reports the backend's chain tip, and on Zcash its consensus
+/// branches.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg(test)]
 struct BlockbookStatus {
     backend: BlockbookBackend,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg(test)]
 struct BlockbookBackend {
-    blocks: u64,
+    blocks: u32,
+    consensus: Option<BlockbookConsensus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlockbookConsensus {
+    chaintip: String,
+    nextblock: String,
 }
 
 // ── Result types ──────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockbookBalance {
-    pub balance_sat: u64,
-    pub balance_display: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockbookUtxoEntry {
-    pub txid: String,
-    pub vout: u32,
-    pub value_sat: u64,
-    pub confirmations: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockbookHistoryEntry {
-    pub txid: String,
-    pub block_height: u64,
-    /// `None` while the transaction is unconfirmed.
-    pub timestamp: Option<u64>,
-    /// Net value change for the queried address. Negative = outgoing.
-    pub amount_sat: i64,
-    pub fee_sat: u64,
-    pub is_incoming: bool,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockbookSendResult {
@@ -161,52 +145,63 @@ impl BlockbookClient {
         Ok(info.txs > 0 || info.unconfirmed_txs > 0)
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<BlockbookBalance, String> {
+    /// The confirmed balance and the mempool's net change to it.
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
         let address = self.normalize_address(address);
         let info: BlockbookAddress = self
             .get(&format!("/api/v2/address/{address}?details=basic"))
             .await?;
-        let sat = parse_units(&info.balance)?;
-        Ok(BlockbookBalance {
-            balance_sat: sat,
-            balance_display: format_sats(sat),
+        Ok(UtxoBalance {
+            confirmed_sats: parse_units(&info.balance)?,
+            unconfirmed_sats: match info.unconfirmed_balance.as_deref() {
+                Some(value) => value
+                    .parse()
+                    .map_err(|_| format!("invalid Blockbook amount {value:?}"))?,
+                None => 0,
+            },
         })
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<BlockbookUtxoEntry>, String> {
+    /// Unspent outputs, the mempool's included.
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
         let address = self.normalize_address(address);
         let utxos: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
         utxos
             .into_iter()
             .map(|u| {
-                Ok(BlockbookUtxoEntry {
+                let confirmed = u.confirmations > 0;
+                Ok(Utxo {
                     txid: u.txid,
                     vout: u.vout,
-                    value_sat: parse_units(&u.value)?,
-                    confirmations: u.confirmations,
+                    value: parse_units(&u.value)?,
+                    status: UtxoStatus {
+                        confirmed,
+                        block_height: u.height.filter(|_| confirmed),
+                    },
                 })
             })
             .collect::<Result<_, String>>()
     }
 
-    /// Fetch recommended fee rate for `blocks` confirmation target.
-    /// Returns satoshis per vbyte. Falls back to 1 sat/vB on failure.
-    pub async fn fetch_fee_rate(&self, blocks: u32) -> u64 {
-        let estimate: Result<BlockbookFeeEstimate, _> =
-            self.get(&format!("/api/v2/estimatefee/{blocks}")).await;
-        estimate
+    /// The fee rate for a `blocks` confirmation target, in sat/vB.
+    pub async fn fetch_fee_rate(&self, blocks: u32) -> Result<FeeRate, String> {
+        let estimate: BlockbookFeeEstimate =
+            self.get(&format!("/api/v2/estimatefee/{blocks}")).await?;
+        let coin_per_kb = estimate
+            .result
+            .parse::<f64>()
             .ok()
-            .and_then(|e| e.result.parse::<f64>().ok())
             .filter(|v| v.is_finite() && *v > 0.0)
-            .map(|coin_per_kb| ((coin_per_kb * 1e8 / 1000.0).ceil() as u64).max(1))
-            .unwrap_or(1)
+            .ok_or("Blockbook has no fee estimate")?;
+        Ok(FeeRate {
+            sats_per_vbyte: coin_per_kb * 1e8 / 1000.0,
+        })
     }
 
-    /// Fetch the most recent 50 transactions touching `address` via
-    /// Blockbook's `details=txs` pagination. `amount_sat` is the net value
-    /// change from the queried address's perspective (positive = received,
-    /// negative = sent). Fee is the absolute tx fee.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<BlockbookHistoryEntry>, String> {
+    /// The most recent 50 transactions touching `address`, newest first.
+    /// `net_sats` is the change to the queried address; the fee is the whole
+    /// transaction's.
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, String> {
         let normalized = self.normalize_address(address);
         let list: BlockbookTxList = self
             .get(&format!(
@@ -214,7 +209,7 @@ impl BlockbookClient {
             ))
             .await?;
 
-        let entries: Result<Vec<Option<BlockbookHistoryEntry>>, String> = list
+        let entries: Result<Vec<Option<UtxoHistoryEntry>>, String> = list
             .transactions
             .into_iter()
             .map(|tx| {
@@ -233,17 +228,20 @@ impl BlockbookClient {
                         .filter_map(|io| io.value.as_deref()?.parse::<i64>().ok())
                         .sum()
                 };
-                let amount_sat = own(&tx.vout) - own(&tx.vin);
-                let fee_sat: u64 = tx.fees.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0);
-                let block_height = tx.block_height.unwrap_or(0);
-                let timestamp = super::history_time(block_height > 0, tx.block_time, &tx.txid)?;
-                Ok((amount_sat != 0).then_some(BlockbookHistoryEntry {
+                let net_sats = own(&tx.vout) - own(&tx.vin);
+                let block_height = tx.block_height.filter(|height| *height > 0);
+                let block_time = crate::api::time::history_time(
+                    block_height.is_some(),
+                    tx.block_time,
+                    &tx.txid,
+                )?;
+                Ok((net_sats != 0).then_some(UtxoHistoryEntry {
                     txid: tx.txid,
+                    confirmed: block_height.is_some(),
                     block_height,
-                    timestamp,
-                    amount_sat,
-                    fee_sat,
-                    is_incoming: amount_sat > 0,
+                    block_time,
+                    net_sats,
+                    fee_sats: tx.fees.as_deref().and_then(|s| s.parse().ok()),
                 }))
             })
             .collect();
@@ -251,19 +249,16 @@ impl BlockbookClient {
     }
 
     /// Fetch confirmation status for a single txid via `/api/v2/tx/{txid}`.
-    pub async fn fetch_tx_status(
-        &self,
-        txid: &str,
-    ) -> Result<crate::fetch::bitcoin::UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
         let txid = txid.to_string();
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let txid = txid.clone();
             let client = self.client.clone();
             async move {
                 let url = format!("{base}/api/v2/tx/{txid}");
                 let tx: BlockbookTx = client.get_json(&url, RetryProfile::ChainRead).await?;
                 let confirmed = tx.block_height.map(|h| h > 0).unwrap_or(false);
-                Ok(crate::fetch::bitcoin::UtxoTxStatus {
+                Ok(UtxoTxStatus {
                     txid: tx.txid,
                     confirmed,
                     block_height: tx.block_height,
@@ -280,13 +275,13 @@ impl BlockbookClient {
     #[cfg(test)]
     pub async fn fetch_chain_tip_height(&self) -> Result<u64, String> {
         let status: BlockbookStatus = self.get("/api/v2").await?;
-        Ok(status.backend.blocks)
+        Ok(u64::from(status.backend.blocks))
     }
 
     /// Submit a signed transaction. Blockbook answers with the txid.
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BlockbookSendResult, String> {
         let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
             let hex = hex.clone();
             let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
@@ -313,36 +308,52 @@ impl BlockbookClient {
     }
 }
 
-/// Render satoshis (or the equivalent 8-decimal unit every chain in this
-/// family uses) as a trimmed decimal string.
-fn format_sats(sat: u64) -> String {
-    let whole = sat / 100_000_000;
-    let frac = sat % 100_000_000;
-    if frac == 0 {
-        return whole.to_string();
+impl BlockbookClient {
+    /// Bind the actual backend to the selected genesis, height and known consensus schedule.
+    /// No silent NU5 fallback when older Blockbook versions omit consensus information.
+    pub(crate) async fn zcash_context(&self) -> Result<(u32, u32), String> {
+        let expected_genesis = self.chain.zcash_genesis()?;
+        let genesis: serde_json::Value = self.get("/api/v2/block-index/0").await?;
+        if genesis["blockHash"].as_str() != Some(expected_genesis) {
+            return Err("Zcash endpoint is on the wrong network".into());
+        }
+        let status: BlockbookStatus = self.get("/api/v2").await?;
+        let height = status.backend.blocks;
+        let consensus = status
+            .backend
+            .consensus
+            .ok_or("Blockbook reports no Zcash consensus branch")?;
+        let branch = self
+            .chain
+            .zcash_consensus_branch(height.checked_add(1).ok_or("Height overflow")?)?;
+        let parse = |s: &str| -> Result<u32, String> {
+            if s.len() != 8 {
+                return Err("Invalid Zcash consensus branch".into());
+            }
+            u32::from_str_radix(s, 16).map_err(|e| e.to_string())
+        };
+        if parse(&consensus.nextblock)? != branch
+            || parse(&consensus.chaintip)? != self.chain.zcash_consensus_branch(height)?
+        {
+            return Err(
+                "Zcash consensus upgrade is unsupported or inconsistent; update before sending"
+                    .into(),
+            );
+        }
+        Ok((height, branch))
     }
-    format!("{}.{}", whole, format!("{frac:08}").trim_end_matches('0'))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn balances_render_with_trailing_zeros_trimmed() {
-        assert_eq!(format_sats(0), "0");
-        assert_eq!(format_sats(100_000_000), "1");
-        assert_eq!(format_sats(150_000_000), "1.5");
-        assert_eq!(format_sats(1), "0.00000001");
-        assert_eq!(format_sats(100_000_001), "1.00000001");
-    }
-
     #[tokio::test]
     async fn a_client_without_endpoints_reports_rather_than_hangs() {
         let client = BlockbookClient::new(Arc::new(vec![]), crate::registry::Chain::Dash);
         assert!(client.fetch_balance("addr").await.is_err());
         assert!(client.fetch_utxos("addr").await.is_err());
-        assert_eq!(client.fetch_fee_rate(6).await, 1, "fee estimate falls back");
+        assert!(client.fetch_fee_rate(6).await.is_err());
     }
 }
 

@@ -1,5 +1,5 @@
 //! Bitcoin Gold send: BIP143 P2PKH signer with SIGHASH_FORKID and BTG's
-//! fork ID `79`. Broadcast via Trezor Blockbook `/api/v2/sendtx`.
+//! fork ID `79`.
 //!
 //! BIP143 preimage uses a 4-byte hash-type field encoded as
 //! `(fork_id << 8) | sighash`, so for BTG (`SIGHASH_ALL=0x01`, fork_id=79)

@@ -1,6 +1,6 @@
-//! APT: read sequence/gas, construct the BCS signing message locally, sign, submit.
+//! APT: construct the BCS signing message locally and sign it. Reads and
+//! submission are `api::aptos_rest`.
 use super::bcs;
-use crate::fetch::aptos::{AptosClient, AptosSendResult};
 use crate::send::keys::Ed25519Seed;
 use serde_json::{Value, json};
 use sha3::{Digest, Sha3_256};
@@ -69,23 +69,5 @@ impl PreparedAptosTransfer {
         }
         self.body["signature"] = json!({"type":"ed25519_signature","public_key":format!("0x{}",hex::encode(public)),"signature":format!("0x{}",hex::encode(key.sign(&self.message)))});
         Ok(self.body.to_string())
-    }
-}
-impl AptosClient {
-    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
-        let body: Value = serde_json::from_str(signed_json)
-            .map_err(|e| format!("invalid Aptos transaction: {e}"))?;
-        let response = self.post_val("/transactions", &body).await?;
-        let txid = response["hash"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .ok_or("Aptos submit: missing hash")?
-            .to_string();
-        let version = response["version"].as_str().and_then(|s| s.parse().ok());
-        Ok(AptosSendResult {
-            txid,
-            version,
-            signed_body_json: signed_json.into(),
-        })
     }
 }

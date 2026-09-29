@@ -1,5 +1,5 @@
 //! Read-only protocol checks against the endpoint actually configured.
-use crate::fetch::http::{HttpClient, RetryProfile};
+use crate::api::http::{HttpClient, RetryProfile};
 use crate::registry::{Chain, EvmHistorySource};
 use crate::{AppCoreEndpointRecord, EndpointApi, EndpointCapability};
 use serde_json::{Value, json};
@@ -143,7 +143,7 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
         Esplora => vec![Check::get(format!("{base}/blocks/tip/height"), Response::Height)],
         Blockscout => ["txlist", "tokentx"].into_iter()
             .filter(|action| record.capabilities.contains(&if *action == "txlist" { EndpointCapability::History } else { EndpointCapability::TokenHistory }))
-            .map(|action| crate::fetch::evm::explorer_query_url(
+            .map(|action| crate::api::blockscout::explorer_query_url(
                 EvmHistorySource::Open(base),
                 &format!("module=account&action={action}&address={ZERO_EVM}&sort=desc&page=1&offset=1"),
             ).map(|url| Check::get(url, Response::History)))
@@ -166,6 +166,7 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
         Nearblocks => vec![get("/stats", "/stats/0")],
         Insight => vec![get("/status", "/blocks")],
         KaspaRest => vec![get("/info/network", "/networkName")],
+        BchRestV2 => vec![get("/blockchain/getBlockchainInfo", "/blocks")],
     };
     if checks.is_empty() {
         return Err("no health check for the declared capabilities".into());

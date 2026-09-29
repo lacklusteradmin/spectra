@@ -26,9 +26,10 @@
 # methods, so those nodes do carry address history. Whether a node can index by address is a
 # protocol fact, not a provider one. `no_evm_node_claims_history` asserts it.
 #
-# Order matters: `with_fallback` tries a chain's endpoints top to bottom, so a
-# dead one costs a timeout plus 180 ms on every call that reaches it. Run
-# `spectra endpoints` to find them.
+# Order does not matter. Every endpoint of a chain's own APIs is asked at once
+# and the first to answer wins; a chain may speak several APIs
+# (`Chain::endpoint_apis`) and uses all of them. A dead endpoint costs no
+# time, only a wasted request per call. Run `spectra endpoints` to find them.
 
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
@@ -94,6 +95,15 @@ endpoint = "https://api.whatsonchain.com/v1/bsv/main"
 capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
+id = "bitcoincash.rest.actorforth"
+api = "bch-rest-v2"
+chain_id = "bitcoin-cash"
+endpoint = "https://rest.bch.actorforth.org/v2"
+# The only keyless Bitcoin Cash indexer left answering; it quotes no fee, so
+# sends use the 1 sat/B floor. Slow for addresses with long histories.
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
 id = "litecoin.litecoinspace.api"
 api = "esplora"
 chain_id = "litecoin"
@@ -126,6 +136,13 @@ id = "tron.trongrid.rpc.io"
 api = "tron-http"
 chain_id = "tron"
 endpoint = "https://api.trongrid.io"
+capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
+
+[[endpoints]]
+id = "tron.rpc.publicnode"
+api = "tron-http"
+chain_id = "tron"
+endpoint = "https://tron-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
 
 [[endpoints]]
@@ -259,7 +276,7 @@ id = "polkadot.rpc.onfinality"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
 endpoint = "https://polkadot.api.onfinality.io/public"
-capabilities = ["fee", "broadcast", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
 id = "polkadot.rpc.official"
@@ -268,7 +285,7 @@ chain_id = "polkadot"
 endpoint = "https://rpc.polkadot.io"
 # The official node, which was not in this file while two of the three
 # listed for Polkadot were dead.
-capabilities = ["fee", "broadcast", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
 id = "stellar.horizon.primary"
@@ -642,7 +659,7 @@ id = "bittensor.mainnet.opentensor"
 api = "substrate-json-rpc"
 chain_id = "bittensor"
 endpoint = "https://entrypoint-finney.opentensor.ai"
-capabilities = ["fee", "broadcast", "verification"]
+capabilities = ["balance", "fee", "broadcast", "verification"]
 
 # Verified keyless address-history services; shared by routing and diagnostics.
 

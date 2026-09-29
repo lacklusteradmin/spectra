@@ -250,7 +250,6 @@ mod display_balance_from_a_typed_summary {
         NativeBalanceSummary {
             smallest_unit: smallest.to_string(),
             amount_display: display.to_string(),
-            utxo_count: 0,
         }
     }
 

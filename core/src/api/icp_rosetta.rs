@@ -1,10 +1,10 @@
-//! ICP ledger reads and signed-envelope submission through Rosetta.
-//! Ed25519 identity, ledger arguments and ingress signatures are constructed locally.
+//! The ICP Rosetta adapter: ledger balances and history, the construction
+//! calls that return what to sign, and submission of a signed envelope.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::fetch::http::{HttpClient, RetryProfile, with_fallback};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 // ── Constants
 
@@ -59,7 +59,7 @@ impl IcpClient {
         let is_submit = path == "/construction/submit";
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
-        with_fallback(&self.rosetta_endpoints, |base| {
+        race(&self.rosetta_endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             let body = std::sync::Arc::clone(&body);
@@ -83,6 +83,11 @@ impl IcpClient {
 // ICP fetch paths (via Rosetta): balance and history.
 
 use serde_json::json;
+
+/// Rosetta's name for the ICP ledger, sent with every construction call.
+pub(crate) fn network_identifier() -> Value {
+    json!({"blockchain":"Internet Computer","network":crate::registry::Chain::Icp.icp_ledger_id().expect("ICP registry")})
+}
 
 impl IcpClient {
     pub async fn fetch_balance(&self, account_address: &str) -> Result<IcpBalance, String> {
@@ -182,7 +187,8 @@ fn icp_history_from_transactions(
         let Ok(amount_e8s) = u64::try_from(delta.unsigned_abs()) else {
             continue;
         };
-        let timestamp_ns = super::confirmed_history_time(timestamp, &block_index.to_string())?;
+        let timestamp_ns =
+            crate::api::time::confirmed_history_time(timestamp, &block_index.to_string())?;
         let is_incoming = delta > 0;
         let (from, to) = if is_incoming {
             (counterparty, account_address.to_string())
@@ -211,6 +217,41 @@ fn format_icp(e8s: u64) -> String {
     let frac_str = format!("{:08}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+impl IcpClient {
+    pub(crate) async fn submit_signed_transaction(
+        &self,
+        payload: &str,
+    ) -> Result<IcpSendResult, String> {
+        let body: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+        let submit: Value = self.rosetta_post("/construction/submit", &body).await?;
+        let txid = submit
+            .pointer("/transaction_identifier/hash")
+            .and_then(Value::as_str)
+            .ok_or("submit: missing transaction hash")?;
+        if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("submit: invalid transaction hash".into());
+        }
+        Ok(IcpSendResult {
+            txid: txid.to_lowercase(),
+        })
+    }
+}
+
+impl IcpClient {
+    pub(crate) async fn verify_network(&self) -> Result<(), String> {
+        let response: Value = self
+            .rosetta_post("/network/list", &json!({"metadata":{}}))
+            .await?;
+        if !response["network_identifiers"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| row == &network_identifier()))
+        {
+            return Err("ICP endpoint does not serve the configured ledger".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

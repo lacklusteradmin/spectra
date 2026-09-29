@@ -32,15 +32,15 @@
 
 pub(crate) use crate::EndpointCapability;
 pub(crate) use crate::SpectraBridgeError;
-pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
-pub(crate) use crate::fetch::http::HttpClient;
-pub(crate) use crate::fetch::{
-    aptos::AptosClient, bitcoin::BitcoinClient, bitcoin::UtxoTxStatus, bitcoin_sv::BitcoinSvClient,
-    bittensor::BittensorClient, blockbook::BlockbookClient, cardano::CardanoClient,
-    decred::DecredClient, dogecoin::DogecoinClient, evm::EvmClient, icp::IcpClient,
-    kaspa::KaspaClient, near::NearClient, polkadot::PolkadotClient, solana::SolanaClient,
-    stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient, xrp::XrpClient,
+pub(crate) use crate::api::utxo::UtxoTxStatus;
+pub(crate) use crate::api::{
+    aptos_rest::AptosClient, blockbook::BlockbookClient, evm_json_rpc::EvmClient,
+    horizon::HorizonClient, icp_rosetta::IcpClient, insight::InsightClient,
+    kaspa_rest::KaspaClient, koios::KoiosClient, near_json_rpc::NearClient,
+    solana_json_rpc::SolanaClient, substrate_json_rpc::SubstrateClient, sui_json_rpc::SuiClient,
+    toncenter_v2::ToncenterV2Client, tron_http::TronHttpClient, xrpl_json_rpc::XrplClient,
 };
+pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::registry::Chain;
 pub(crate) use crate::store::secret_store::SecretStore;
 pub(crate) use crate::store::state::{
@@ -180,7 +180,7 @@ pub struct WalletService {
     send_execute_lock: Arc<tokio::sync::Mutex<()>>,
     quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     balance_refreshes: Arc<balance_refresh::BalanceRefreshes>,
-    pub(crate) trc20_metadata: Arc<crate::fetch::tron_metadata_cache::MetadataCache>,
+    pub(crate) trc20_metadata: Arc<crate::api::tron_metadata_cache::MetadataCache>,
 
     /// Serializes persistent mutations, including database binding.
     pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
@@ -237,7 +237,7 @@ impl WalletService {
         });
         Ok(Arc::new(Self {
             transport_cache_dir: Arc::new(parking_lot::Mutex::new(None)),
-            trc20_metadata: Arc::new(crate::fetch::tron_metadata_cache::MetadataCache::default()),
+            trc20_metadata: Arc::new(crate::api::tron_metadata_cache::MetadataCache::default()),
             send_reviews: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             app_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             send_execute_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -282,27 +282,17 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Resolve the adapter and URLs from one configuration snapshot.
-    /// Unknown custom URLs use the chain's declared default API.
+    /// The API and URLs of a chain with one API. The UTXO family has several
+    /// and goes through `utxo_client` instead.
     pub(crate) async fn fetch_endpoints(
         &self,
         chain: Chain,
         required: &[EndpointCapability],
     ) -> Result<(crate::EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
-        let urls = self.endpoints_for(chain.str_id(), required).await;
-        let catalog = crate::app_core::endpoint_catalog()?;
-        let api = urls
-            .iter()
-            .find_map(|url| {
-                catalog
-                    .endpoint_records
-                    .iter()
-                    .find(|row| row.chain_id == chain.str_id() && row.endpoint == *url)
-                    .map(|row| row.api)
-            })
-            .or_else(|| chain.primary_api())
-            .ok_or_else(|| format!("No fetch API for {}", chain.str_id()))?;
-        Ok((api, urls))
+        let [api] = chain.endpoint_apis() else {
+            return Err(format!("{} has no single fetch API", chain.str_id()).into());
+        };
+        Ok((*api, self.endpoints_for(chain.str_id(), required).await))
     }
 
     pub(crate) async fn configured_endpoint_urls(&self, chain_id: &str) -> Arc<Vec<String>> {
@@ -318,9 +308,10 @@ impl WalletService {
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
             && let Some(chain) = Chain::from_str_id(chain_id)
-            && let Some(api) = chain.primary_api()
         {
-            let mut custom = self.custom_api_endpoints(chain, api, &[]).await;
+            let mut custom = self
+                .custom_api_endpoints(chain, chain.endpoint_apis(), &[])
+                .await;
             if !custom.is_empty() {
                 for url in base.iter() {
                     if !custom.contains(url) {
@@ -335,21 +326,23 @@ impl WalletService {
 }
 
 /// Catalog transport configuration for a non-platform front end: each
-/// chain's primary API list. Indexers and secondary services are asked for
-/// by API, through `WalletService::api_endpoints`.
+/// chain's own list, every API it speaks included. Indexers and secondary
+/// services are asked for by API, through `WalletService::api_endpoints`.
 pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
     let mut endpoints = Vec::new();
     for chain in Chain::all() {
-        let Some(api) = chain.primary_api() else {
+        let apis = chain.endpoint_apis();
+        if apis.is_empty() {
             continue;
-        };
+        }
         endpoints.push(ChainEndpoints {
             capabilities: vec![],
             chain_id: chain.str_id().into(),
             endpoints: crate::filtered_endpoint_records_for_chain(chain.str_id().into(), &[])?
                 .into_iter()
                 .filter(|record| {
-                    record.api == api && record.capabilities.iter().any(|c| c.is_primary_read())
+                    apis.contains(&record.api)
+                        && record.capabilities.iter().any(|c| c.is_primary_read())
                 })
                 .map(|record| record.endpoint)
                 .collect(),
@@ -375,7 +368,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
                     .into_iter()
                     .find(|record| &record.endpoint == endpoint)
                     .unwrap();
-                assert_eq!(Some(record.api), chain.primary_api());
+                assert!(chain.endpoint_apis().contains(&record.api));
                 assert!(
                     record.capabilities.iter().any(|c| c.is_primary_read()),
                     "{} lists operation-only URL {endpoint} as a base",
@@ -385,6 +378,27 @@ mod a_primary_endpoint_can_serve_a_primary_read {
             }
         }
         assert!(checked > 0, "no primary endpoint was checked at all");
+    }
+
+    /// Litecoin's Esplora and BlockCypher rows are both its own endpoints;
+    /// neither is set aside for the other.
+    #[test]
+    fn a_chain_uses_every_api_it_speaks() {
+        let litecoin = catalog_endpoints()
+            .unwrap()
+            .into_iter()
+            .find(|row| row.chain_id == "litecoin")
+            .unwrap();
+        assert!(
+            litecoin
+                .endpoints
+                .contains(&"https://litecoinspace.org/api".to_string())
+        );
+        assert!(
+            litecoin
+                .endpoints
+                .contains(&"https://api.blockcypher.com/v1/ltc/main".to_string())
+        );
     }
 }
 

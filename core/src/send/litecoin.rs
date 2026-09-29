@@ -1,115 +1,111 @@
-//! Litecoin send: P2PKH transactions and MWEB peg-in transactions, broadcast
-//! via Blockbook `/api/v2/sendtx`.
+//! Litecoin send: P2PKH transactions and MWEB peg-in transactions.
 
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
+#[cfg(test)]
+use crate::api::blockbook::{BlockbookClient, BlockbookSendResult};
 use crate::derivation::litecoin::decode_ltc_address;
 #[cfg(test)]
 use crate::derivation::litecoin::is_mweb_address;
 #[cfg(test)]
 use crate::derivation::litecoin::parse_mweb_address;
 #[cfg(test)]
-use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
-#[cfg(test)]
 use crate::send::mweb::{MWEB_PEGIN_OVERHEAD_BYTES, build_peg_in_extension};
 
+/// Build and broadcast an MWEB peg-in transaction.
+///
+/// Constructs:
+///   - Standard Litecoin tx with UTXOs as inputs, a HogEx output (witness
+///     v8 + Pedersen commitment) at `amount_sat`, and optional P2PKH change.
+///   - MWEB extension block (Output + PegIn Kernel) appended after locktime.
+///
+/// `fee_sat` is applied as-is; the MWEB overhead (~1017 extra bytes) should
+/// already be factored in by the caller's fee estimation.
 #[cfg(test)]
-impl BlockbookClient {
-    /// Fetch UTXOs, sign a legacy P2PKH LTC transaction, and broadcast.
-    /// Automatically routes to the MWEB peg-in path when `to_address` is
-    /// an `ltcmweb1` or `tmweb1` stealth address.
-    #[cfg(test)]
-    pub async fn sign_litecoin_and_broadcast(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        amount_sat: u64,
-        fee_sat: u64,
-        private_key_bytes: &[u8],
-        dust_threshold: Option<u64>,
-    ) -> Result<BlockbookSendResult, String> {
-        self.require_chain(crate::registry::Chain::Litecoin)?;
-        if is_mweb_address(to_address) {
-            return self
-                .sign_and_broadcast_mweb_peg_in(
-                    from_address,
-                    to_address,
-                    amount_sat,
-                    fee_sat,
-                    private_key_bytes,
-                    dust_threshold,
-                )
-                .await;
-        }
-        let utxos = self.fetch_utxos(from_address).await?;
-        let script_pubkey = p2pkh_script(&decode_ltc_address(from_address)?);
-        let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
-            .iter()
-            .map(|u| (u.txid.clone(), u.vout, u.value_sat, script_pubkey.clone()))
-            .collect();
-        let raw = sign_ltc_with_output_script(
-            &utxo_tuples,
-            &p2pkh_script(&decode_ltc_address(to_address)?),
+async fn sign_and_broadcast_mweb_peg_in(
+    client: &BlockbookClient,
+    from_address: &str,
+    to_mweb_address: &str,
+    amount_sat: u64,
+    fee_sat: u64,
+    private_key_bytes: &[u8],
+    dust_threshold: Option<u64>,
+) -> Result<BlockbookSendResult, String> {
+    let mweb_addr = parse_mweb_address(to_mweb_address)?;
+
+    // Enforce a fee floor that covers both the on-chain tx and the MWEB
+    // extension block overhead, assuming ≥1 sat/vbyte.
+    let min_fee = MWEB_PEGIN_OVERHEAD_BYTES;
+    let effective_fee = fee_sat.max(min_fee);
+
+    let (mweb_ext, hog_script) = build_peg_in_extension(&mweb_addr, amount_sat, effective_fee)?;
+
+    let utxos = client.fetch_utxos(from_address).await?;
+    let script_pubkey = p2pkh_script(&decode_ltc_address(from_address)?);
+    let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
+        .iter()
+        .map(|u| (u.txid.clone(), u.vout, u.value, script_pubkey.clone()))
+        .collect();
+
+    // Sign the on-chain portion using the HogEx script as the recipient output
+    let mut raw = sign_ltc_with_output_script(
+        &utxo_tuples,
+        &hog_script,
+        amount_sat,
+        effective_fee,
+        from_address,
+        private_key_bytes,
+        dust_threshold,
+    )?;
+
+    // Append MWEB extension block after the standard tx bytes
+    raw.extend_from_slice(&mweb_ext);
+
+    client.broadcast_raw_tx(&hex::encode(&raw)).await
+}
+
+/// Fetch UTXOs, sign a legacy P2PKH LTC transaction, and broadcast.
+/// Automatically routes to the MWEB peg-in path when `to_address` is
+/// an `ltcmweb1` or `tmweb1` stealth address.
+#[cfg(test)]
+pub async fn sign_litecoin_and_broadcast(
+    client: &BlockbookClient,
+    from_address: &str,
+    to_address: &str,
+    amount_sat: u64,
+    fee_sat: u64,
+    private_key_bytes: &[u8],
+    dust_threshold: Option<u64>,
+) -> Result<BlockbookSendResult, String> {
+    client.require_chain(crate::registry::Chain::Litecoin)?;
+    if is_mweb_address(to_address) {
+        return sign_and_broadcast_mweb_peg_in(
+            client,
+            from_address,
+            to_address,
             amount_sat,
             fee_sat,
-            from_address,
             private_key_bytes,
             dust_threshold,
-        )?;
-        self.broadcast_raw_tx(&hex::encode(&raw)).await
+        )
+        .await;
     }
-
-    /// Build and broadcast an MWEB peg-in transaction.
-    ///
-    /// Constructs:
-    ///   - Standard Litecoin tx with UTXOs as inputs, a HogEx output (witness
-    ///     v8 + Pedersen commitment) at `amount_sat`, and optional P2PKH change.
-    ///   - MWEB extension block (Output + PegIn Kernel) appended after locktime.
-    ///
-    /// `fee_sat` is applied as-is; the MWEB overhead (~1017 extra bytes) should
-    /// already be factored in by the caller's fee estimation.
-    #[cfg(test)]
-    async fn sign_and_broadcast_mweb_peg_in(
-        &self,
-        from_address: &str,
-        to_mweb_address: &str,
-        amount_sat: u64,
-        fee_sat: u64,
-        private_key_bytes: &[u8],
-        dust_threshold: Option<u64>,
-    ) -> Result<BlockbookSendResult, String> {
-        let mweb_addr = parse_mweb_address(to_mweb_address)?;
-
-        // Enforce a fee floor that covers both the on-chain tx and the MWEB
-        // extension block overhead, assuming ≥1 sat/vbyte.
-        let min_fee = MWEB_PEGIN_OVERHEAD_BYTES;
-        let effective_fee = fee_sat.max(min_fee);
-
-        let (mweb_ext, hog_script) = build_peg_in_extension(&mweb_addr, amount_sat, effective_fee)?;
-
-        let utxos = self.fetch_utxos(from_address).await?;
-        let script_pubkey = p2pkh_script(&decode_ltc_address(from_address)?);
-        let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
-            .iter()
-            .map(|u| (u.txid.clone(), u.vout, u.value_sat, script_pubkey.clone()))
-            .collect();
-
-        // Sign the on-chain portion using the HogEx script as the recipient output
-        let mut raw = sign_ltc_with_output_script(
-            &utxo_tuples,
-            &hog_script,
-            amount_sat,
-            effective_fee,
-            from_address,
-            private_key_bytes,
-            dust_threshold,
-        )?;
-
-        // Append MWEB extension block after the standard tx bytes
-        raw.extend_from_slice(&mweb_ext);
-
-        self.broadcast_raw_tx(&hex::encode(&raw)).await
-    }
+    let utxos = client.fetch_utxos(from_address).await?;
+    let script_pubkey = p2pkh_script(&decode_ltc_address(from_address)?);
+    let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
+        .iter()
+        .map(|u| (u.txid.clone(), u.vout, u.value, script_pubkey.clone()))
+        .collect();
+    let raw = sign_ltc_with_output_script(
+        &utxo_tuples,
+        &p2pkh_script(&decode_ltc_address(to_address)?),
+        amount_sat,
+        fee_sat,
+        from_address,
+        private_key_bytes,
+        dust_threshold,
+    )?;
+    client.broadcast_raw_tx(&hex::encode(&raw)).await
 }
 
 // ── Litecoin transaction signing

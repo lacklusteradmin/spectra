@@ -7,7 +7,7 @@ impl WalletService {
     /// decoding on the Swift side. Smallest unit is returned as a decimal
     /// string (sats / wei / lamports / yocto-NEAR / ...) so callers can `UInt64`
     /// or `BigInt` parse as appropriate. `amount_display` is the human-readable
-    /// native amount as decimal string. `utxo_count` is 0 for non-UTXO chains.
+    /// native amount as decimal string.
     pub async fn fetch_native_balance_summary(
         &self,
         chain_id: String,
@@ -38,7 +38,6 @@ impl WalletService {
             return Ok(NativeBalanceSummary {
                 smallest_unit: bal.confirmed_sats.to_string(),
                 amount_display: format_smallest_unit_decimal(bal.confirmed_sats as u128, 8),
-                utxo_count: bal.utxo_count as u32,
             });
         }
         let chain = chain_for_id(chain_id)?;
@@ -67,37 +66,38 @@ async fn fetch_native_balance_summary(
         return Ok(NativeBalanceSummary {
             smallest_unit: status.unlocked_piconeros.to_string(),
             amount_display: format_smallest_unit_decimal(status.unlocked_piconeros as u128, 12),
-            utxo_count: 0,
         });
     }
+    let units = if chain.uses_utxo_client() {
+        service
+            .utxo_client(chain, &[EndpointCapability::Balance])
+            .await
+            .fetch_balance(address)
+            .await?
+            .confirmed_sats
+            .to_string()
+    } else {
+        single_api_balance(address, chain, service).await?
+    };
+    let amount = units
+        .parse::<u128>()
+        .map_err(|_| "native balance exceeds core precision")?;
+    Ok(NativeBalanceSummary {
+        amount_display: format_smallest_unit_decimal(amount, u32::from(chain.native_decimals())),
+        smallest_unit: units,
+    })
+}
+
+async fn single_api_balance(
+    address: &str,
+    chain: Chain,
+    service: &WalletService,
+) -> Result<String, SpectraBridgeError> {
     let (api, endpoints) = service
         .fetch_endpoints(chain, &[EndpointCapability::Balance])
         .await?;
     use crate::EndpointApi as Api;
-    let mut utxo_count = 0;
-    let units = match api {
-        Api::Esplora => {
-            let balance = BitcoinClient::new(HttpClient::shared(), endpoints)
-                .fetch_balance(address)
-                .await?;
-            utxo_count = balance.utxo_count as u32;
-            balance.confirmed_sats.to_string()
-        }
-        Api::Blockbook => BlockbookClient::new(endpoints, chain)
-            .fetch_balance(address)
-            .await?
-            .balance_sat
-            .to_string(),
-        Api::Whatsonchain => BitcoinSvClient::new(endpoints)
-            .fetch_balance(address)
-            .await?
-            .balance_sat
-            .to_string(),
-        Api::Blockcypher => DogecoinClient::new(endpoints)
-            .fetch_balance(address)
-            .await?
-            .balance_koin
-            .to_string(),
+    Ok(match api {
         Api::EvmJsonRpc => {
             EvmClient::new(endpoints, chain.evm_chain_id()?)
                 .fetch_balance(address)
@@ -109,40 +109,40 @@ async fn fetch_native_balance_summary(
             .await?
             .lamports
             .to_string(),
-        Api::TronHttp => TronClient::new(endpoints)
+        Api::TronHttp => TronHttpClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .sun
             .to_string(),
-        Api::Horizon => StellarClient::new(endpoints)
+        Api::Horizon => HorizonClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .stroops
             .to_string(),
-        Api::XrplJsonRpc => XrpClient::new(endpoints)
+        Api::XrplJsonRpc => XrplClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .drops
             .to_string(),
-        Api::Koios => CardanoClient::new(endpoints)
+        Api::Koios => KoiosClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .lovelace
             .to_string(),
         Api::SubstrateJsonRpc => {
-            if chain.mainnet_counterpart() == Chain::Bittensor {
-                BittensorClient::new(endpoints)
-                    .fetch_balance(address)
-                    .await?
-                    .rao
-                    .to_string()
+            let account = if chain.mainnet_counterpart() == Chain::Bittensor {
+                crate::derivation::bittensor::decode_bittensor_ss58(address)?
             } else {
-                PolkadotClient::new(endpoints)
-                    .fetch_balance(address)
-                    .await?
-                    .planck
-                    .to_string()
-            }
+                crate::derivation::polkadot::decode_ss58(address)?
+            };
+            let width = chain
+                .substrate_balance_bytes()
+                .ok_or("no Substrate balance layout for this chain")?;
+            SubstrateClient::new(endpoints)
+                .fetch_balance(&account, width)
+                .await?
+                .transferable()
+                .to_string()
         }
         Api::SuiJsonRpc => SuiClient::new(endpoints)
             .fetch_balance(address)
@@ -154,7 +154,7 @@ async fn fetch_native_balance_summary(
             .await?
             .octas
             .to_string(),
-        Api::ToncenterV2 => TonClient::new(endpoints)
+        Api::ToncenterV2 => ToncenterV2Client::new(endpoints)
             .fetch_balance(address)
             .await?
             .nanotons
@@ -170,7 +170,7 @@ async fn fetch_native_balance_summary(
             .await?
             .e8s
             .to_string(),
-        Api::Insight => DecredClient::new(endpoints)
+        Api::Insight => InsightClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .balance_atoms
@@ -181,13 +181,5 @@ async fn fetch_native_balance_summary(
             .balance_sompi
             .to_string(),
         api => return Err(format!("{} has no native balance adapter", api.as_str()).into()),
-    };
-    let amount = units
-        .parse::<u128>()
-        .map_err(|_| "native balance exceeds core precision")?;
-    Ok(NativeBalanceSummary {
-        amount_display: format_smallest_unit_decimal(amount, u32::from(chain.native_decimals())),
-        smallest_unit: units,
-        utxo_count,
     })
 }

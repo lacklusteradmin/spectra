@@ -209,11 +209,10 @@ impl WalletService {
                 .to_string();
             (vec![address.clone()], address, "rust")
         };
-        let client = std::sync::Arc::new(crate::fetch::bitcoin::BitcoinClient::new(
-            crate::fetch::http::HttpClient::shared(),
-            self.endpoints_for(network.str_id(), &[EndpointCapability::History])
+        let client = std::sync::Arc::new(
+            self.utxo_client(network, &[EndpointCapability::History])
                 .await,
-        ));
+        );
         let page = crate::fetch::bitcoin_history::page(
             network.str_id(),
             &addresses,

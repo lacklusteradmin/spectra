@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::http::{HttpClient, RetryProfile};
+use crate::api::http::{HttpClient, RetryProfile};
 
 // ── Provider catalog
 

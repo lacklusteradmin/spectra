@@ -1,5 +1,4 @@
-//! Zcash transparent send: build + sign V5 (ZIP-225) transactions and
-//! broadcast via Trezor's Blockbook `/api/v2/sendtx`.
+//! Zcash transparent send: build + sign V5 (ZIP-225) transactions.
 //!
 //! Only transparent-only transactions are supported (empty Sapling and
 //! Orchard bundles). Signing follows ZIP-244 (txid digest = personalised
@@ -12,9 +11,9 @@ pub(crate) use super::zcash_stages::PreparedZcashTransaction;
 
 use super::bitcoin_wire::{decode_txid_le, p2pkh_script, varint};
 #[cfg(test)]
-use crate::derivation::zcash::decode_zcash_address;
+use crate::api::blockbook::{BlockbookClient, BlockbookSendResult};
 #[cfg(test)]
-use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
+use crate::derivation::zcash::decode_zcash_address;
 
 // ── Network upgrade descriptor ────────────────────────────────────────────
 
@@ -46,44 +45,41 @@ const BLAKE2B_PERSONALIZED_LEN: usize = 32;
 
 // ── Public broadcast + signing entrypoint ─────────────────────────────────
 
+/// Fetch UTXOs + chain tip, sign a V5 transparent transaction, broadcast.
 #[cfg(test)]
-impl BlockbookClient {
-    /// Fetch UTXOs + chain tip, sign a V5 transparent transaction, broadcast.
-    #[cfg(test)]
-    pub async fn sign_zcash_and_broadcast(
-        &self,
-        from_address: &str,
-        to_address: &str,
-        amount_sat: u64,
-        fee_sat: u64,
-        private_key_bytes: &[u8],
-        network_upgrade: ZcashNetworkUpgrade,
-        dust_threshold_zats: u64,
-    ) -> Result<BlockbookSendResult, String> {
-        self.require_chain(crate::registry::Chain::Zcash)?;
-        let utxos = self.fetch_utxos(from_address).await?;
-        let tip = self.fetch_chain_tip_height().await?;
-        // Match zcashd default: 40-block expiry window.
-        let expiry_height = expiry_height(tip)?;
-        let from_hash = decode_zcash_address(from_address)?;
-        let from_script = p2pkh_script(&from_hash);
-        let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
-            .iter()
-            .map(|u| (u.txid.clone(), u.vout, u.value_sat, from_script.clone()))
-            .collect();
-        let raw = sign_zcash_v5_p2pkh(
-            &utxo_tuples,
-            to_address,
-            amount_sat,
-            fee_sat,
-            from_address,
-            expiry_height,
-            private_key_bytes,
-            network_upgrade,
-            dust_threshold_zats,
-        )?;
-        self.broadcast_raw_tx(&hex::encode(&raw)).await
-    }
+pub async fn sign_zcash_and_broadcast(
+    client: &BlockbookClient,
+    from_address: &str,
+    to_address: &str,
+    amount_sat: u64,
+    fee_sat: u64,
+    private_key_bytes: &[u8],
+    network_upgrade: ZcashNetworkUpgrade,
+    dust_threshold_zats: u64,
+) -> Result<BlockbookSendResult, String> {
+    client.require_chain(crate::registry::Chain::Zcash)?;
+    let utxos = client.fetch_utxos(from_address).await?;
+    let tip = client.fetch_chain_tip_height().await?;
+    // Match zcashd default: 40-block expiry window.
+    let expiry_height = expiry_height(tip)?;
+    let from_hash = decode_zcash_address(from_address)?;
+    let from_script = p2pkh_script(&from_hash);
+    let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
+        .iter()
+        .map(|u| (u.txid.clone(), u.vout, u.value, from_script.clone()))
+        .collect();
+    let raw = sign_zcash_v5_p2pkh(
+        &utxo_tuples,
+        to_address,
+        amount_sat,
+        fee_sat,
+        from_address,
+        expiry_height,
+        private_key_bytes,
+        network_upgrade,
+        dust_threshold_zats,
+    )?;
+    client.broadcast_raw_tx(&hex::encode(&raw)).await
 }
 
 // ── Encoding helpers ──────────────────────────────────────────────────────
@@ -414,10 +410,18 @@ mod expiry_tests {
             .await;
         let client =
             BlockbookClient::new(Arc::new(vec![server.uri()]), crate::registry::Chain::Zcash);
-        let err = client
-            .sign_zcash_and_broadcast("from", "to", 1, 1, &[1; 32], ZcashNetworkUpgrade::NU5, 546)
-            .await
-            .unwrap_err();
+        let err = sign_zcash_and_broadcast(
+            &client,
+            "from",
+            "to",
+            1,
+            1,
+            &[1; 32],
+            ZcashNetworkUpgrade::NU5,
+            546,
+        )
+        .await
+        .unwrap_err();
         assert!(err.contains("json decode"), "{err}");
         assert!(
             server

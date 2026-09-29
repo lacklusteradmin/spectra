@@ -138,11 +138,11 @@ boundaries; mock-node tests exercise the stored-wallet execution route.
 
 Production source files normally sit at `core/src/<domain>/<topic>.rs`, with
 no further directory nesting. Chain names and topic prefixes identify siblings:
-`derivation/ton_cell.rs`, `fetch/tron_metadata_cache.rs`, `fetch/refresh_engine.rs`
+`derivation/ton_cell.rs`, `api/tron_metadata_cache.rs`, `fetch/refresh_engine.rs`
 and `fetch/refresh_policy.rs`. Keep cohesive modules; flattening directories is
 not a reason to merge unrelated code or enlarge existing files.
 
-Use the domain-qualified Rust path (`crate::fetch::http`, `crate::store::state`,
+Use the domain-qualified Rust path (`crate::api::http`, `crate::store::state`,
 `crate::send::ethereum`). Do not add crate-root module aliases or compatibility
 re-exports for moved modules. `wallet_db` is a root module owning relational
 storage; `store` owns resident state and wallet-domain rules.
@@ -153,6 +153,11 @@ prefix, such as `send_execution_tests.rs`. Declare them as child modules with
 access without widening production visibility. `store/tests/` is the deliberate
 exception to the depth rule: it groups the store's many domain regressions.
 
+- `api/` owns every request to a chain service and the parsing of its answer:
+  one module per `EndpointApi` (`api/esplora.rs`, `api/substrate_json_rpc.rs`,
+  …), plus `utxo` (the UTXO family's client over several of them), the `http`
+  and `json_rpc` transport and provider `time` parsing. It depends on nothing
+  above it; `fetch`, `send`, `staking` and `service` call it.
 - `service/network.rs` owns endpoint health and status probes. Its siblings
   `network_balance`, `network_tokens`, `network_history`, `network_hd` and
   `network_prices` own the corresponding reads and dispatch.

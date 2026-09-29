@@ -75,7 +75,7 @@ impl WalletService {
         let chain = evm_network_for_id(&chain_id)?;
 
         // History is served by indexers, independently for native and token transfers.
-        let client = EvmClient::new(Arc::new(vec![]), chain.evm_chain_id()?);
+        let client = crate::api::blockscout::BlockscoutClient::new();
         let sources = self
             .api_endpoints(
                 chain,
@@ -86,7 +86,7 @@ impl WalletService {
         if sources.is_empty() {
             return Err("no explorer configured for this chain".into());
         }
-        let native_entries = crate::fetch::http::with_fallback(&sources, |base| {
+        let native_entries = crate::api::http::race(&sources, |base| {
             let client = &client;
             let address = &address;
             async move {
@@ -111,7 +111,7 @@ impl WalletService {
                     &[EndpointCapability::TokenHistory],
                 )
                 .await?;
-            crate::fetch::http::with_fallback(&sources, |base| {
+            crate::api::http::race(&sources, |base| {
                 let client = &client;
                 let address = &address;
                 async move {
@@ -154,7 +154,7 @@ impl WalletService {
                 if dec != entry.decimals {
                     entry.decimals = dec;
                     entry.amount_display =
-                        crate::fetch::evm::format_evm_decimals(&entry.amount_raw, dec);
+                        crate::api::evm_json_rpc::format_evm_decimals(&entry.amount_raw, dec);
                 }
                 if entry.from != addr_lower && entry.to != addr_lower {
                     return None;
@@ -210,36 +210,24 @@ async fn fetch_history(
     } else {
         &[EndpointCapability::History]
     };
+    if chain.uses_utxo_client() {
+        return json_response(
+            &service
+                .utxo_client(chain, requirements)
+                .await
+                .fetch_history(address, None)
+                .await?,
+        );
+    }
     let (api, endpoints) = service.fetch_endpoints(chain, requirements).await?;
     use crate::EndpointApi as Api;
     match api {
-        Api::Esplora => json_response(
-            &BitcoinClient::new(HttpClient::shared(), endpoints)
-                .fetch_history(address, None)
-                .await?,
-        ),
-        Api::Blockbook => json_response(
-            &BlockbookClient::new(endpoints, chain)
-                .fetch_history(address)
-                .await?,
-        ),
-        Api::Whatsonchain => json_response(
-            &BitcoinSvClient::new(endpoints)
-                .fetch_history(address)
-                .await?,
-        ),
-
-        Api::Blockcypher => json_response(
-            &DogecoinClient::new(endpoints)
-                .fetch_history(address)
-                .await?,
-        ),
         Api::EvmJsonRpc => {
             let sources = service
                 .api_endpoints(chain, Api::Blockscout, &[EndpointCapability::History])
                 .await?;
-            let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
-            let h = crate::fetch::http::with_fallback(&sources, |base| {
+            let client = crate::api::blockscout::BlockscoutClient::new();
+            let h = crate::api::http::race(&sources, |base| {
                 let client = &client;
                 async move {
                     client
@@ -272,43 +260,44 @@ async fn fetch_history(
                 )
                 .await?;
             json_response(
-                &TronClient::new(endpoints)
-                    .fetch_history(address, &accounts, 50)
+                &crate::api::trongrid_v1::TrongridClient::new(Arc::new(accounts))
+                    .fetch_history(address, 50)
                     .await?,
             )
         }
-        Api::Horizon => json_response(&StellarClient::new(endpoints).fetch_history(address).await?),
-        Api::XrplJsonRpc => json_response(&XrpClient::new(endpoints).fetch_history(address).await?),
-        Api::Koios => json_response(&CardanoClient::new(endpoints).fetch_history(address).await?),
-        Api::SubstrateJsonRpc if chain.mainnet_counterpart() == Chain::Bittensor => json_response(
-            &BittensorClient::new(endpoints)
-                .fetch_history(address)
-                .await?,
-        ),
-        Api::SubstrateJsonRpc => json_response(
-            &PolkadotClient::new(endpoints)
-                .fetch_history(address)
-                .await?,
-        ),
+        Api::Horizon => json_response(&HorizonClient::new(endpoints).fetch_history(address).await?),
+        Api::XrplJsonRpc => {
+            json_response(&XrplClient::new(endpoints).fetch_history(address).await?)
+        }
+        Api::Koios => json_response(&KoiosClient::new(endpoints).fetch_history(address).await?),
+        Api::SubstrateJsonRpc => Err(format!(
+            "{}: no keyless history source configured",
+            chain.chain_display_name()
+        )
+        .into()),
         Api::SuiJsonRpc => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
         Api::AptosRest => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
-        Api::ToncenterV2 => json_response(&TonClient::new(endpoints).fetch_history(address).await?),
+        Api::ToncenterV2 => json_response(
+            &ToncenterV2Client::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
         Api::NearJsonRpc => {
-            let indexer = service
+            let indexers = service
                 .api_endpoints(chain, Api::Nearblocks, &[EndpointCapability::History])
-                .await?
-                .first()
-                .cloned()
-                .ok_or("No NEAR history indexer configured")?;
+                .await?;
+            if indexers.is_empty() {
+                return Err("No NEAR history indexer configured".into());
+            }
             json_response(
-                &NearClient::new(endpoints)
-                    .fetch_history(address, &indexer)
+                &crate::api::nearblocks::NearblocksClient::new(Arc::new(indexers))
+                    .fetch_history(address)
                     .await?,
             )
         }
         Api::IcpRosetta => json_response(&IcpClient::new(endpoints).fetch_history(address).await?),
 
-        Api::Insight => json_response(&DecredClient::new(endpoints).fetch_history(address).await?),
+        Api::Insight => json_response(&InsightClient::new(endpoints).fetch_history(address).await?),
         Api::KaspaRest => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),
 
         c => Err(SpectraBridgeError::from(format!("unsupported API: {c:?}"))),

@@ -82,13 +82,13 @@ fn build_blocked_client() -> Client {
 }
 
 impl HttpClient {
-    /// Read a REST resource using the same base-URL fallback policy everywhere.
+    /// Read a REST resource from whichever base URL answers first.
     pub(crate) async fn get_path<T: serde::de::DeserializeOwned>(
         &self,
         endpoints: &[String],
         path: &str,
     ) -> Result<T, String> {
-        with_fallback(endpoints, |base| async move {
+        race(endpoints, |base| async move {
             self.get_json(
                 &format!("{}{}", base.trim_end_matches('/'), path),
                 RetryProfile::ChainRead,
@@ -374,25 +374,36 @@ fn format_reqwest_error(e: &reqwest::Error) -> String {
     parts.join(" | ")
 }
 
-/// Try each URL in `endpoints` with `f` until one succeeds. Returns the
-/// first successful result or the last error.
-pub async fn with_fallback<F, Fut, T>(endpoints: &[String], f: F) -> Result<T, String>
+/// Ask every URL in `endpoints` at once and answer with the first success.
+///
+/// No endpoint is preferred and none waits for another to fail: a dead one
+/// costs nothing while any other answers. The result is an error only when
+/// every endpoint failed, and then it is the last failure.
+pub async fn race<F, Fut, T>(endpoints: &[String], f: F) -> Result<T, String>
 where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = Result<T, String>>,
 {
-    if endpoints.is_empty() {
+    first_success(endpoints.iter().cloned().map(f)).await
+}
+
+/// Run every request at once; the first `Ok` wins and the rest are dropped.
+pub(crate) async fn first_success<Fut, T>(
+    requests: impl IntoIterator<Item = Fut>,
+) -> Result<T, String>
+where
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    use futures::StreamExt;
+    let mut pending: futures::stream::FuturesUnordered<Fut> = requests.into_iter().collect();
+    if pending.is_empty() {
         return Err("no endpoints configured".to_string());
     }
     let mut last_err = String::new();
-    for url in endpoints {
-        match f(url.clone()).await {
-            Ok(v) => return Ok(v),
-            Err(e) => {
-                last_err = e;
-                // 180 ms between fallback attempts (matches Swift EsploraProvider.runWithFallback)
-                sleep(Duration::from_millis(180)).await;
-            }
+    while let Some(result) = pending.next().await {
+        match result {
+            Ok(value) => return Ok(value),
+            Err(e) => last_err = e,
         }
     }
     Err(last_err)
@@ -622,5 +633,44 @@ mod tests {
             .expect("ok");
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("result"));
+    }
+
+    /// Every endpoint is asked at once: a slow or dead one listed first does
+    /// not hold up one that answers, and only when all fail is it an error.
+    #[tokio::test]
+    async fn race_answers_with_whichever_endpoint_succeeds_first() {
+        let slow = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("slow")
+                    .set_delay(Duration::from_secs(5)),
+            )
+            .mount(&slow)
+            .await;
+        let fast = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("fast"))
+            .mount(&fast)
+            .await;
+        let get = |url: String| async move {
+            HttpClient::shared()
+                .reqwest_client()
+                .get(url)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?
+                .text()
+                .await
+                .map_err(|e| e.to_string())
+        };
+        let started = std::time::Instant::now();
+        let answer = race(&[slow.uri(), fast.uri()], get).await.unwrap();
+        assert_eq!(answer, "fast");
+        assert!(started.elapsed() < Duration::from_secs(2));
+
+        let failing = |url: String| async move { Err::<(), _>(url) };
+        assert!(race(&["a".into(), "b".into()], failing).await.is_err());
+        assert!(race(&[], failing).await.is_err());
     }
 }

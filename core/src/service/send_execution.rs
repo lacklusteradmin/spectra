@@ -234,25 +234,25 @@ impl WalletService {
             .endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
             .await;
         if chain.is_evm() {
-            let client = crate::fetch::evm::EvmClient::new(endpoints, chain.evm_chain_id()?);
+            let client = crate::api::evm_json_rpc::EvmClient::new(endpoints, chain.evm_chain_id()?);
             return Ok(Some(u32::from(
                 client.fetch_erc20_metadata(contract).await?.decimals,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Tron {
-            let client = crate::fetch::tron::TronClient::new(endpoints);
+            let client = crate::api::tron_http::TronHttpClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_trc20_metadata(contract).await?.decimals,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Solana {
-            let client = crate::fetch::solana::SolanaClient::new(endpoints);
+            let client = crate::api::solana_json_rpc::SolanaClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_transfer_mint(contract).await?.1,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Near {
-            let client = crate::fetch::near::NearClient::new(endpoints);
+            let client = crate::api::near_json_rpc::NearClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_ft_metadata(contract).await?.decimals,
             )));

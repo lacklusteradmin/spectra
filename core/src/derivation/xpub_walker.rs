@@ -21,14 +21,14 @@
 //! Given an account-level xpub, receive addresses live at `0/i` and change
 //! at `1/i`. `derive_children` walks a contiguous index range on the given
 //! chain leg and returns `(index, address)` tuples. Aggregation helpers then
-//! query Esplora per address and sum the results.
+//! query the network's indexers per address and sum the results.
 
 use bip39::Mnemonic;
 use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::fetch::bitcoin::{BitcoinClient, EsploraUtxo};
+use crate::api::utxo::{Utxo, UtxoClient};
 
 use super::bitcoin::{
     BTC_MAINNET, BTC_TESTNET, BitcoinNetworkParams, ExtendedPrivateKey, ExtendedPublicKey,
@@ -209,8 +209,6 @@ pub struct HdXpubBalance {
     pub confirmed_sats: u64,
     /// Total unconfirmed delta across all scanned addresses.
     pub unconfirmed_sats: i64,
-    /// Total UTXO count across all scanned addresses.
-    pub utxo_count: usize,
     /// Addresses that were scanned (receive + change).
     pub scanned_addresses: Vec<HdChildAddress>,
     /// UTXOs keyed to the address that owns them.
@@ -230,9 +228,9 @@ pub struct HdUtxo {
 
 /// Scan `receive_count` external + `change_count` internal addresses and
 /// return an aggregated balance plus per-UTXO breakdown. `client` must
-/// already be configured with Esplora endpoints for the target network.
+/// already be configured with endpoints for the target network.
 pub async fn fetch_xpub_balance(
-    client: &BitcoinClient,
+    client: &UtxoClient,
     xpub_input: &str,
     receive_count: u32,
     change_count: u32,
@@ -245,11 +243,10 @@ pub async fn fetch_xpub_balance(
 
     let mut confirmed_sats: u64 = 0;
     let mut unconfirmed_sats: i64 = 0;
-    let mut utxo_count: usize = 0;
     let mut utxos_out: Vec<HdUtxo> = Vec::new();
 
     // Bounded concurrency (5 in flight) via semaphore + join_all — enough to
-    // beat sequential latency while staying under Esplora's rate limits.
+    // beat sequential latency while staying under indexers' rate limits.
     // We use join_all instead of buffer_unordered because `client` is a
     // reference and the futures borrow it within the same async scope.
     let sem = Arc::new(tokio::sync::Semaphore::new(5));
@@ -262,7 +259,7 @@ pub async fn fetch_xpub_balance(
             async move {
                 let _permit = sem.acquire().await.unwrap();
                 let bal = client.fetch_balance(&address).await?;
-                let utxos = if bal.confirmed_sats > 0 || bal.unconfirmed_sats > 0 {
+                let utxos = if bal.confirmed_sats > 0 || bal.unconfirmed_sats != 0 {
                     client.fetch_utxos(&address).await?
                 } else {
                     Vec::new()
@@ -277,22 +274,20 @@ pub async fn fetch_xpub_balance(
         let (i, bal, utxos) = result?;
         confirmed_sats = confirmed_sats.saturating_add(bal.confirmed_sats);
         unconfirmed_sats = unconfirmed_sats.saturating_add(bal.unconfirmed_sats);
-        utxo_count = utxo_count.saturating_add(bal.utxo_count);
         for u in utxos {
-            utxos_out.push(from_esplora_utxo(&u, &all[i]));
+            utxos_out.push(hd_utxo(&u, &all[i]));
         }
     }
 
     Ok(HdXpubBalance {
         confirmed_sats,
         unconfirmed_sats,
-        utxo_count,
         scanned_addresses: all,
         utxos: utxos_out,
     })
 }
 
-fn from_esplora_utxo(u: &EsploraUtxo, addr: &HdChildAddress) -> HdUtxo {
+fn hd_utxo(u: &Utxo, addr: &HdChildAddress) -> HdUtxo {
     HdUtxo {
         address: addr.address.clone(),
         change: addr.change,
