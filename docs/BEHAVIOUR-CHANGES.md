@@ -16,6 +16,43 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-29 — CLI acceptance is confined to loopback
+
+- **Before:** `scripts/cli-acceptance.sh` claimed "no external network", but
+  nothing enforced it. A fixture endpoint was raced against the chain's
+  built-in providers, so `cli-send.py` read Ethereum mainnet through
+  publicnode and 1rpc on every run. Its password test validated those nodes and
+  sent them the signed transaction as well (an owned send validates and
+  submits to every configured broadcast endpoint), and passed only because
+  they answered. `cli-diagnostics.py` read Solana validators from the public
+  RPCs the same way. A catalog change could turn an offline failure into a
+  live read without anyone noticing, as Polkadot's balance rows did.
+- **After:** when `SPECTRA_LOOPBACK_ONLY` names a journal file, core confines
+  the process to loopback hosts. Endpoint selection (`chain_endpoints`,
+  `api_endpoints`) leaves remote endpoints out, so a chain is served by its
+  loopback fixtures alone. The listings (`endpoints --catalog`, `configured`)
+  are unchanged. Every other remote request is routed to a dead proxy and never
+  sent, and so is an embedded Tor bootstrap. Each is journaled with its
+  host and command line. The acceptance script exports the variable for the
+  whole run, including the Python suites. The exception is `cli-transport.py`:
+  its local SOCKS proxy carries requests that name remote hosts. The script
+  fails if the journal is not empty, and a canary check first proves that a
+  health probe of the built-in Bitcoin providers is caught. `cli-endpoints.py`
+  now lists selection with loopback URLs that are never called. The variable
+  is unset in the app and in `cargo test`, where nothing changes.
+- **Why:** an acceptance check must pass or fail on core's rules, not on the
+  day's chain state or a provider's uptime, and it must never broadcast.
+  Refusing silently would still let a check pass on an offline error it did
+  not mean to test, so every refusal fails the run and names the command.
+- **CLI check:** `SPECTRA_LOOPBACK_ONLY=/tmp/journal spectra --json endpoints
+  --chain bitcoin` reports every provider unreachable, and `/tmp/journal` lists
+  `https://blockstream.info/`, `https://mempool.space/` and
+  `https://mempool.emzy.de/`. `scripts/cli-acceptance.sh` ends with "no
+  command reached beyond loopback".
+- **Verification:** `make lint test test-cli`: rustfmt and clippy clean, 879
+  core tests plus the transport test, 453 CLI checks. `test-ios` not run: no
+  Swift or FFI surface changed.
+
 ## 2026-09-29 — Polkadot and Bittensor balances; Bitcoin Cash has an indexer
 
 - **Before:** Polkadot and Bittensor balance reads failed with "no keyless

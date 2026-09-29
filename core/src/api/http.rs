@@ -47,6 +47,12 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
     {
         builder = builder.pool_max_idle_per_host(0);
     }
+    // Listed first, so it sees every request before a user's proxy does.
+    if LOOPBACK_JOURNAL.is_some() {
+        builder = builder.proxy(reqwest::Proxy::custom(|url| {
+            (!is_loopback(url) && refuse_non_loopback(url.as_str())).then_some(DEAD_PROXY)
+        }));
+    }
     if let Some(url) = proxy_url {
         match reqwest::Proxy::all(url) {
             Ok(proxy) => builder = builder.proxy(proxy),
@@ -59,7 +65,7 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
     match builder.build() {
         Ok(client) => client,
         // Same fail-closed posture if the proxied client fails to build.
-        Err(_) if proxy_url.is_some() => build_blocked_client(),
+        Err(_) if proxy_url.is_some() || LOOPBACK_JOURNAL.is_some() => build_blocked_client(),
         Err(_) => Client::new(),
     }
 }
@@ -71,14 +77,78 @@ static BLOCKED_CLIENT: LazyLock<Client> = LazyLock::new(build_blocked_client);
 pub(crate) const KILL_SWITCH_MESSAGE: &str =
     "Tor kill switch: the circuit is not ready, so the request was not sent.";
 
+/// A proxy nothing listens on, so whatever is routed to it cannot connect.
+const DEAD_PROXY: &str = "socks5h://127.0.0.1:1";
+
 /// A client that cannot reach the network: every request is routed to a dead
 /// loopback port. Used when a proxy was requested but could not be applied, so
 /// connectivity breaks loudly instead of leaking over a direct connection.
 fn build_blocked_client() -> Client {
     Client::builder()
-        .proxy(reqwest::Proxy::all("socks5h://127.0.0.1:1").expect("static proxy url is valid"))
+        .proxy(reqwest::Proxy::all(DEAD_PROXY).expect("static proxy url is valid"))
         .build()
         .unwrap_or_else(|_| Client::new())
+}
+
+// ── Loopback-only mode
+
+/// Names a journal file and confines the process to loopback hosts.
+///
+/// Set by `scripts/cli-acceptance.sh`, which promises no external network: a
+/// check that reached a live provider would pass or fail on the day's chain
+/// state rather than on core's rules. Endpoint selection leaves remote
+/// endpoints out ([`may_contact`]), so a chain is served by its loopback
+/// fixtures alone. Any other destination is refused, never sent, and
+/// journaled with the command that tried it, so the suite fails naming it
+/// even when the refusal resembled the offline error the check expected.
+const LOOPBACK_ONLY_ENV: &str = "SPECTRA_LOOPBACK_ONLY";
+
+static LOOPBACK_JOURNAL: LazyLock<Option<std::path::PathBuf>> = LazyLock::new(|| {
+    std::env::var_os(LOOPBACK_ONLY_ENV)
+        .filter(|path| !path.is_empty())
+        .map(Into::into)
+});
+
+fn is_loopback(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Whether this process may contact `url`: always, unless loopback-only
+/// mode confines it to loopback hosts.
+pub(crate) fn may_contact(url: &str) -> bool {
+    LOOPBACK_JOURNAL.is_none() || reqwest::Url::parse(url).is_ok_and(|url| is_loopback(&url))
+}
+
+/// In loopback-only mode, journal `target` and return true: the caller must
+/// not reach it. Outside that mode, return false.
+pub(crate) fn refuse_non_loopback(target: &str) -> bool {
+    use std::io::Write;
+    let Some(journal) = LOOPBACK_JOURNAL.as_ref() else {
+        return false;
+    };
+    let command = std::env::args().collect::<Vec<_>>().join(" ");
+    // One write per line: raced requests journal concurrently, and an
+    // appended write is only whole when it is a single one.
+    let line = format!("{target}\t{command}\n");
+    let written = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(journal)
+        .and_then(|mut file| file.write_all(line.as_bytes()));
+    if written.is_err() {
+        // A refusal nobody hears about is the silent pass this mode exists
+        // to prevent.
+        eprintln!("{LOOPBACK_ONLY_ENV}: refused {target} and could not journal it");
+        std::process::exit(70);
+    }
+    true
 }
 
 impl HttpClient {
@@ -618,6 +688,29 @@ mod tests {
     use super::*;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn loopback_hosts_are_only_the_local_machine() {
+        let loopback = |url: &str| is_loopback(&reqwest::Url::parse(url).unwrap());
+        for url in [
+            "http://127.0.0.1:8545",
+            "http://127.9.9.9/",
+            "http://localhost:3000/rpc",
+            "http://LOCALHOST",
+            "http://[::1]:9000",
+        ] {
+            assert!(loopback(url), "{url}");
+        }
+        for url in [
+            "https://rpc.polkadot.io",
+            "http://10.0.0.2:9050",
+            "http://[::2]/",
+            "http://localhost.example",
+            "http://127.0.0.1.nip.io",
+        ] {
+            assert!(!loopback(url), "{url}");
+        }
+    }
 
     #[tokio::test]
     async fn http_post_json_sends_body_and_content_type() {

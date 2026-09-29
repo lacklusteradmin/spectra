@@ -12,6 +12,8 @@
 # No external network. State, crypto and validation run offline; the Bitcoin
 # pagination and service checks use isolated loopback fixtures. Balance,
 # history and send workflows use these local providers; no live chain is needed.
+# Core enforces this: `SPECTRA_LOOPBACK_ONLY` refuses and journals every
+# request to a non-loopback host, and any journaled request fails the run.
 #
 # Usage:  scripts/cli-acceptance.sh [path/to/spectra]
 
@@ -24,7 +26,11 @@ if [[ -z "$BIN" ]]; then
 fi
 
 DATA_DIR="$(mktemp -d)"
-trap 'rm -rf "$DATA_DIR"' EXIT
+NETWORK_JOURNAL="$(mktemp)"
+CANARY_JOURNAL="$(mktemp)"
+trap 'rm -rf "$DATA_DIR" "$NETWORK_JOURNAL" "$CANARY_JOURNAL"' EXIT
+# Inherited by every `spectra` process, the Python suites' included.
+export SPECTRA_LOOPBACK_ONLY="$NETWORK_JOURNAL"
 
 # Wallets created here are throwaway, so the password is too.
 export SPECTRA_PASSWORD="acceptance-password"
@@ -38,6 +44,7 @@ spectra() { "$BIN" --data-dir "$DATA_DIR" "$@"; }
 # These wrappers set the variable for one call instead.
 with_seed() { local seed="$1"; shift; SPECTRA_SEED="$seed" "$@"; }
 with_password() { local password="$1"; shift; SPECTRA_PASSWORD="$password" "$@"; }
+with_journal() { local journal="$1"; shift; SPECTRA_LOOPBACK_ONLY="$journal" "$@"; }
 
 # Shared assertions check both the command's exit status and its output.
 source "$(dirname "$0")/cli-assertions.sh"
@@ -1290,10 +1297,27 @@ contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not fou
     spectra --json send rebroadcast missing --yes
 
 section "Offline integration suites"
-for domain in wallets portfolio history send send-icp-zcash send-monero diagnostics transport endpoints; do
+for domain in wallets portfolio history send send-icp-zcash send-monero diagnostics endpoints; do
     check "$domain integration checks" $OK \
         python3 "$(dirname "$0")/cli-$domain.py" "$BIN"
 done
+# Its local SOCKS proxy is the point: requests name remote hosts and never
+# leave loopback, so the host-based guard would refuse the very traffic it
+# proves is proxied.
+check "transport integration checks" $OK \
+    env -u SPECTRA_LOOPBACK_ONLY python3 "$(dirname "$0")/cli-transport.py" "$BIN"
+
+section "no external network"
+# The guard must catch a real attempt, or an empty journal proves nothing.
+# Health probes call every built-in provider directly, so this one is refused.
+check "a probe of remote providers still exits" $OK \
+    with_journal "$CANARY_JOURNAL" spectra --json endpoints --chain bitcoin
+contains "and the refusal is journaled by host" 'https://blockstream.info/' cat "$CANARY_JOURNAL"
+check "no command reached beyond loopback" $OK test ! -s "$NETWORK_JOURNAL"
+if [[ -s "$NETWORK_JOURNAL" ]]; then
+    printf '    refused, then journaled:\n'
+    sed 's/^/      /' "$NETWORK_JOURNAL"
+fi
 
 # ── Result ──────────────────────────────────────────────────────────────────
 

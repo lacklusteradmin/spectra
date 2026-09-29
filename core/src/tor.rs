@@ -144,6 +144,14 @@ pub(crate) fn reconcile(
             crate::api::http::set_socks5_proxy(Some(url));
             *state = TorInternalState::CustomProxy;
         }
+        // Arti dials the Tor network itself, past the HTTP client's guard.
+        RuntimeConfiguration::Embedded(_)
+            if crate::api::http::refuse_non_loopback("tor: embedded bootstrap") =>
+        {
+            *state = TorInternalState::Error {
+                message: "loopback-only mode refused the embedded Tor bootstrap".into(),
+            };
+        }
         RuntimeConfiguration::Embedded(dir) => {
             let percent = Arc::new(AtomicU8::new(0));
             let task = tokio::spawn(bootstrap_tor(dir.clone(), percent.clone()));

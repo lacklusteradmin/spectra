@@ -148,6 +148,7 @@ impl WalletService {
             |capabilities: &[EndpointCapability]| required.iter().all(|c| capabilities.contains(c));
         let index = self.endpoints.read().await;
         urls.iter()
+            .filter(|url| crate::api::http::may_contact(url))
             .filter_map(|url| {
                 let matching: Vec<_> = directory
                     .iter()
@@ -240,6 +241,7 @@ impl WalletService {
                 urls.push(record.endpoint.clone());
             }
         }
+        urls.retain(|url| crate::api::http::may_contact(url));
         Ok(urls)
     }
 
