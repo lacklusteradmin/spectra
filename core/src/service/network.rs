@@ -45,7 +45,7 @@ impl WalletService {
                 .map(|entry| entry.record)
                 .collect();
 
-            if let Some(api) = chain.endpoint_api(EndpointSlot::Primary) {
+            if let Some(api) = chain.primary_api() {
                 for endpoint in this.configured_endpoint_urls(&chain_id).await.iter() {
                     if records.iter().any(|r| &r.endpoint == endpoint) {
                         continue;
@@ -63,7 +63,6 @@ impl WalletService {
                             .get(&chain_id)
                             .cloned()
                             .unwrap_or_default(),
-                        probe_url: None,
                     });
                 }
             }
@@ -103,7 +102,9 @@ impl WalletService {
         &self,
         name: String,
     ) -> Result<Option<String>, SpectraBridgeError> {
-        let eps = self.endpoints_for("ethereum", &["verification"]).await;
+        let eps = self
+            .endpoints_for("ethereum", &[EndpointCapability::Verification])
+            .await;
         let client = EvmClient::new(eps, 1);
         let address = client.resolve_ens(&name).await?;
         Ok(address.filter(|a| !a.is_empty()))
@@ -123,7 +124,9 @@ impl WalletService {
                 "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let (api, endpoints) = self.fetch_endpoints(chain, &["verification"]).await?;
+        let (api, endpoints) = self
+            .fetch_endpoints(chain, &[EndpointCapability::Verification])
+            .await?;
         use crate::EndpointApi as Api;
         let status: UtxoTxStatus = match api {
             Api::Esplora => {
@@ -178,7 +181,9 @@ impl WalletService {
         tx_hash: String,
     ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let receipt = client
             .fetch_receipt(&tx_hash)
@@ -213,7 +218,9 @@ impl WalletService {
         tx_hash: String,
     ) -> Result<u64, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
     }
@@ -226,7 +233,9 @@ impl WalletService {
         address: String,
     ) -> Result<bool, SpectraBridgeError> {
         let chain = evm_network_for_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let code = client.fetch_code(&address).await?;
         Ok(crate::send::flow::evm_has_contract_code(code))

@@ -8,8 +8,7 @@ fn record(chain: Chain, api: EndpointApi, endpoint: String) -> AppCoreEndpointRe
         chain_id: chain.str_id().into(),
         api,
         endpoint,
-        capabilities: vec!["history".into()],
-        probe_url: None,
+        capabilities: vec![crate::EndpointCapability::History],
     }
 }
 
@@ -136,14 +135,13 @@ async fn esplora_and_monero_use_the_protocol_path() {
 }
 
 #[tokio::test]
-async fn rest_probes_ignore_an_unrelated_probe_host_and_reject_html() {
+async fn rest_probes_reject_html() {
     let server = MockServer::start().await;
-    let mut record = record(
+    let record = record(
         Chain::Tron,
         EndpointApi::TrongridV1,
         format!("{}/v1/accounts", server.uri()),
     );
-    record.probe_url = Some("https://unrelated.invalid/wallet/getnowblock".into());
     Mock::given(method("GET"))
         .and(path(format!("/v1/accounts/{ZERO_TRON}")))
         .respond_with(ResponseTemplate::new(200).set_body_string("<html>Unavailable</html>"))

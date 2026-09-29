@@ -299,9 +299,7 @@ mod failed_reads {
             .mount(&server)
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
         }])
@@ -346,9 +344,7 @@ mod failed_reads {
                 ResponseTemplate::new(200).set_body_json(response)
             }).mount(&server).await;
             let service = WalletService::new(vec![ChainEndpoints {
-                capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                    .map(String::from)
-                    .to_vec(),
+                capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: "ethereum".into(),
                 endpoints: vec![server.uri()],
             }])
@@ -409,9 +405,7 @@ mod failed_reads {
                     .await;
             }
             let service = WalletService::new(vec![ChainEndpoints {
-                capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                    .map(String::from)
-                    .to_vec(),
+                capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: "tron".into(),
                 endpoints: vec![server.uri()],
             }])
@@ -506,9 +500,7 @@ mod a_preview_quotes_the_asset_it_moves {
     async fn owned_preview_uses_wallet_network_and_exact_amount_without_secrets() {
         let server = evm_node().await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum-sepolia".into(),
             endpoints: vec![server.uri()],
         }])
@@ -566,9 +558,7 @@ mod a_preview_quotes_the_asset_it_moves {
         data_hex: String,
     ) -> serde_json::Value {
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
         }])
@@ -651,9 +641,7 @@ mod a_preview_quotes_the_asset_it_moves {
                 .await;
         }
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "tron".into(),
             endpoints: vec![server.uri()],
         }])
@@ -682,9 +670,7 @@ mod a_preview_quotes_the_asset_it_moves {
             .mount(&server)
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "tron".into(),
             endpoints: vec![server.uri()],
         }])
@@ -727,9 +713,7 @@ mod destination_probe_tests {
             // Zero nonce on BNB needs its keyed explorer: without a key the
             // result is unknown/error, rather than an invented empty history.
             let service = WalletService::new(vec![ChainEndpoints {
-                capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                    .map(String::from)
-                    .to_vec(),
+                capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: Chain::BnbChain.str_id().into(),
                 endpoints: vec![server.uri()],
             }])
@@ -776,9 +760,7 @@ mod destination_probe_tests {
             .mount(&server)
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: Chain::BnbChain.str_id().into(),
             endpoints: vec![server.uri()],
         }])
@@ -806,9 +788,7 @@ mod destination_probe_tests {
             .mount(&server)
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "litecoin".into(),
             endpoints: vec![server.uri()],
         }])

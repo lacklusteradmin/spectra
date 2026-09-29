@@ -937,7 +937,9 @@ mod every_evm_chain_says_where_its_history_comes_from {
                 assert!(catalog.endpoint_records.iter().any(|record| {
                     record.chain_id == chain.str_id()
                         && record.endpoint == url
-                        && record.capabilities.iter().any(|cap| cap == "history")
+                        && record
+                            .capabilities
+                            .contains(&crate::EndpointCapability::History)
                 }));
             }
             if chain != chain.mainnet_counterpart() {

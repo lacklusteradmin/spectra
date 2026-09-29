@@ -1,8 +1,8 @@
 //! Commands that talk to a chain: the supported list, balances and history.
 //!
 //! Endpoint selection is core's — `filtered_endpoint_records_for_chain` picks
-//! them from the catalog by API and capability. The CLI supplies the filter mask for what it
-//! is about to do and nothing else.
+//! them from the catalog by API and capability. The CLI names the capabilities
+//! it is about to use and nothing else.
 
 use clap::Args;
 use colored::Colorize as _;
@@ -15,10 +15,7 @@ use crate::ctx::{Ctx, wallet_address};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
-pub use spectra_core::{
-    ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST, ENDPOINT_CAPABILITY_FEE,
-    ENDPOINT_CAPABILITY_HISTORY, ENDPOINT_CAPABILITY_UTXO,
-};
+pub use spectra_core::EndpointCapability;
 
 #[derive(Args)]
 pub struct ChainsArgs {
@@ -58,13 +55,14 @@ pub struct HistoryArgs {
 pub fn service_for_chain(
     ctx: &Ctx,
     chain: Chain,
-    filter_mask: u32,
+    any_of: &[EndpointCapability],
 ) -> CliResult<Arc<WalletService>> {
     let service = ctx.service()?;
-    let records =
-        spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), filter_mask)?;
-    let api = chain.endpoint_api(spectra_core::registry::EndpointSlot::Primary);
-    if !records.iter().any(|row| Some(row.api) == api) {
+    let records = spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), any_of)?;
+    if !records
+        .iter()
+        .any(|row| Some(row.api) == chain.primary_api())
+    {
         return Err(CliError::failure(format!(
             "no compatible endpoints registered for {}",
             chain.chain_display_name()
@@ -178,7 +176,11 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 chain_id: chains[0].str_id().into(),
                 api: args.api.unwrap(),
                 endpoint: url,
-                capabilities: args.capabilities,
+                capabilities: args
+                    .capabilities
+                    .iter()
+                    .map(|name| name.parse().map_err(CliError::usage))
+                    .collect::<CliResult<_>>()?,
             },
         })?;
         if transition
@@ -224,7 +226,13 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 println!(
                     "  {} · {}",
                     record.record.api.as_str(),
-                    record.record.capabilities.join(" · ")
+                    record
+                        .record
+                        .capabilities
+                        .iter()
+                        .map(|c| c.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
                 );
             }
         });
@@ -366,10 +374,29 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
     Ok(())
 }
 
+/// The Donate screen's addresses, as core validated them.
+pub fn donations(out: Out) -> CliResult<()> {
+    let donations = spectra_core::donation_destinations();
+    out.text(|| {
+        println!();
+        for d in &donations {
+            println!("  {:<12} {}", super::chain_name(&d.chain_id), d.address);
+        }
+        println!();
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "donations": donations.iter().map(|d| serde_json::json!({
+            "chainId": d.chain_id, "address": d.address,
+        })).collect::<Vec<_>>(),
+    }));
+    Ok(())
+}
+
 pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
-    let service = service_for_chain(ctx, chain, ENDPOINT_CAPABILITY_BALANCE)?;
+    let service = service_for_chain(ctx, chain, &[EndpointCapability::Balance])?;
 
     let summary = ctx
         .rt
@@ -485,21 +512,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let network = wallet.chain().unwrap_or(chain);
     let service = if let Some(endpoint) = args.endpoint {
         WalletService::new(vec![ChainEndpoints {
-            capabilities: vec![
-                "balance",
-                "history",
-                "utxo",
-                "fee",
-                "broadcast",
-                "verification",
-                "token-balance",
-                "token-discovery",
-                "token-history",
-                "staking",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+            capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
             chain_id: network.str_id().into(),
             endpoints: vec![endpoint],
         }])
@@ -508,7 +521,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         service_for_chain(
             ctx,
             network,
-            ENDPOINT_CAPABILITY_HISTORY | ENDPOINT_CAPABILITY_BALANCE,
+            &[EndpointCapability::History, EndpointCapability::Balance],
         )?
     };
     ctx.prepare_transport(&service)?;

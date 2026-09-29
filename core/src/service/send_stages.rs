@@ -103,7 +103,8 @@ impl WalletService {
             let (submission, resources) = match &stored.prepared {
                 PreparedPayload::Evm(p) => {
                     let client = EvmClient::new(
-                        this.endpoints_for(chain.str_id(), &["verification"]).await,
+                        this.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+                            .await,
                         chain.evm_chain_id()?,
                     );
                     let nonce = if stored
@@ -177,7 +178,7 @@ impl WalletService {
             let this = &this;
             let chain = chain_for_id(&chain_id)?;
             Ok(this
-                .endpoints_for(chain.str_id(), &["broadcast"])
+                .endpoints_for(chain.str_id(), &[EndpointCapability::Broadcast])
                 .await
                 .as_ref()
                 .clone())
@@ -305,9 +306,7 @@ impl WalletService {
             });
             stored.view.revision += 1;
             self.save_send_artifact(&stored, Vec::new()).await?;
-            let api = chain
-                .endpoint_api(EndpointSlot::Primary)
-                .ok_or("No broadcast API")?;
+            let api = chain.primary_api().ok_or("No broadcast API")?;
             let result = self
                 .broadcast_at(
                     chain,
@@ -420,7 +419,9 @@ impl WalletService {
             return Err("Invalid destination for selected network".into());
         }
         let prepared = if chain.is_evm() {
-            let endpoints = self.endpoints_for(chain.str_id(), &["fee"]).await;
+            let endpoints = self
+                .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                .await;
             let mut overrides = request
                 .evm_overrides
                 .clone()
@@ -431,7 +432,8 @@ impl WalletService {
             }
             let (to, value, data) = if let Some(contract) = &request.contract_address {
                 let metadata = EvmClient::new(
-                    self.endpoints_for(chain.str_id(), &["token-balance"]).await,
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                        .await,
                     chain.evm_chain_id()?,
                 )
                 .fetch_erc20_metadata(contract)

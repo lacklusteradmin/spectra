@@ -112,6 +112,51 @@ class HistoryTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); worker.join()
 
+    def test_tron_history_reads_trongrid_accounts(self):
+        """TRX and TRC-20 transfers come from TronGrid's v1 account API."""
+        me, them = 'TKHuVq1oKVruCGLvqVexFs6dawKv6fQgFs', 'TJ5usJLLwjwn7Pw3TPbdzreG7dvgKzfQ5y'
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                requests.append(self.path)
+                route = self.path.split('?')[0]
+                if route == f'/v1/accounts/{me}/transactions':
+                    data = [{'txID': 'aa' * 32, 'block_timestamp': 1700000000000,
+                             'ret': [{'contractRet': 'SUCCESS'}],
+                             'raw_data': {'contract': [{'type': 'TransferContract', 'parameter': {'value': {
+                                 'amount': 2500000,
+                                 'owner_address': '41add5246bd889365714a57579fc070ef81a8b6d81',
+                                 'to_address': '4166426c7ac3d98b29191063833345b6bc540d7278'}}}]}}]
+                elif route == f'/v1/accounts/{me}/transactions/trc20':
+                    data = [{'transaction_id': 'bb' * 32, 'type': 'Transfer', 'block_timestamp': 1700000001000,
+                             'from': me, 'to': them, 'value': '7500000',
+                             'token_info': {'symbol': 'USDT', 'decimals': 6,
+                                            'address': 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'}}]
+                else:
+                    self.send_response(404); self.end_headers(); return
+                body = json.dumps({'data': data, 'success': True}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-tron-history-') as directory:
+                def run(*args):
+                    p = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                        capture_output=True, text=True, timeout=60)
+                    assert p.returncode == 0, (p.stdout, p.stderr)
+                    return json.loads(p.stdout)
+                run('wallet', 'watch', '--chain', 'tron', '--address', me, '--name', 'TRX')
+                history = run('history', 'TRX', '--endpoint', f'http://127.0.0.1:{server.server_port}')
+                rows = {tx['hash']: tx for tx in history['transactions']}
+                assert set(rows) == {'aa' * 32, 'bb' * 32}, history
+                assert rows['aa' * 32]['kind'] == 'receive' and rows['aa' * 32]['amount'] == 2.5, rows
+                assert rows['bb' * 32]['kind'] == 'send' and rows['bb' * 32]['symbol'] == 'USDT', rows
+                assert all('only_confirmed=true' in path for path in requests), requests
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
     def test_stored_pages(self):
         """History pages deduplicate, sort, search Unicode and keep distinct identities."""
         with tempfile.TemporaryDirectory(prefix='spectra-history-pages-') as directory:

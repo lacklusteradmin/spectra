@@ -579,10 +579,10 @@ mod configured_tests {
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
                         capabilities: vec![
-                            "balance".into(),
-                            "fee".into(),
-                            "broadcast".into(),
-                            "verification".into(),
+                            EndpointCapability::Balance,
+                            EndpointCapability::Fee,
+                            EndpointCapability::Broadcast,
+                            EndpointCapability::Verification,
                         ],
                         chain_id: crate::registry::Chain::from_str_id(chain)
                             .unwrap()

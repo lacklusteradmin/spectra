@@ -12,10 +12,7 @@ use spectra_core::send::{
 use spectra_core::service::WalletService;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
 
-use super::chain::{
-    ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST, ENDPOINT_CAPABILITY_FEE,
-    ENDPOINT_CAPABILITY_UTXO, service_for_chain,
-};
+use super::chain::{EndpointCapability, service_for_chain};
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
@@ -54,7 +51,7 @@ pub struct TxsArgs {
     /// Explicit read endpoint for the rechecked transaction's stored network.
     #[arg(long, requires = "recheck")]
     endpoint: Option<String>,
-    /// Recheck one stored ENDPOINT_CAPABILITY_UTXO transaction, including failed or confirmed records.
+    /// Recheck one stored UTXO transaction, including failed or confirmed records.
     #[arg(long, conflicts_with_all = ["refresh_pending", "maintenance", "poll_chain", "wallet", "replaceable"])]
     recheck: Option<String>,
     /// Poll all stored transaction networks and persist status changes.
@@ -1031,7 +1028,7 @@ fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     // ENS needs the registry-selected EVM API; other chains validate locally.
     let service = if chain.resolves_ens_names() {
-        service_for_chain(ctx, chain, 0)?
+        service_for_chain(ctx, chain, &[])?
     } else {
         WalletService::new(Vec::new()).map_err(CliError::from)?
     };
@@ -1110,7 +1107,7 @@ pub struct SendArgs {
     #[arg(long)]
     yes: bool,
     /// Sign the transaction and stop, printing the raw payload. Reads the live
-    /// nonce or ENDPOINT_CAPABILITY_UTXO set, moves nothing, and needs no `--yes`.
+    /// nonce or UTXO set, moves nothing, and needs no `--yes`.
     #[arg(long)]
     sign_only: bool,
     /// EVM gas limit. Given explicitly, the builder skips estimation — which
@@ -1205,27 +1202,13 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 .find(|row| row.id.eq_ignore_ascii_case(&id))
                 .ok_or_else(|| CliError::rejected("Transaction not found."))?;
             let chain = resolve_chain(&transaction.chain_id)?;
-            ctx.rt.block_on(service.update_endpoints(
-                vec![spectra_core::service::ChainEndpoints {
-                    capabilities: vec![
-                        "balance",
-                        "history",
-                        "utxo",
-                        "fee",
-                        "broadcast",
-                        "verification",
-                        "token-balance",
-                        "token-discovery",
-                        "token-history",
-                        "staking",
-                    ]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
+            ctx.rt.block_on(service.update_endpoints(vec![
+                spectra_core::service::ChainEndpoints {
+                    capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
                     chain_id: chain.str_id().into(),
                     endpoints: vec![endpoint],
-                }],
-            ))?;
+                },
+            ]))?;
         }
         let change = ctx.rt.block_on(service.recheck_transaction_status(id))?;
         out.text(|| println!("{}: {}", change.id, change.new_status.as_raw()));
@@ -1267,7 +1250,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let service = WalletService::new(
             spectra_core::service::catalog_endpoints()?
                 .into_iter()
-                .filter(|row| row.chain_id.split(':').next() == Some(network.str_id()))
+                .filter(|row| row.chain_id == network.str_id())
                 .collect(),
         )
         .map_err(CliError::from)?;
@@ -1482,10 +1465,12 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     let service = service_for_chain(
         ctx,
         chain,
-        ENDPOINT_CAPABILITY_BALANCE
-            | ENDPOINT_CAPABILITY_BROADCAST
-            | ENDPOINT_CAPABILITY_FEE
-            | ENDPOINT_CAPABILITY_UTXO,
+        &[
+            EndpointCapability::Balance,
+            EndpointCapability::Broadcast,
+            EndpointCapability::Fee,
+            EndpointCapability::Utxo,
+        ],
     )?;
     service.set_secret_store(ctx.secrets.clone());
     ctx.rt.block_on(service.open_state(ctx.db_path()))?;
@@ -1657,21 +1642,7 @@ fn staged_service(
         return ctx.service();
     }
     let service = WalletService::new(vec![spectra_core::service::ChainEndpoints {
-        capabilities: vec![
-            "balance",
-            "history",
-            "utxo",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-            "token-discovery",
-            "token-history",
-            "staking",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect(),
+        capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
         chain_id: chain_id.into(),
         endpoints,
     }])?;

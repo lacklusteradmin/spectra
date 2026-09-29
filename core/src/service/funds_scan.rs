@@ -142,9 +142,7 @@ mod scan_tests {
             .mount(&server)
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
         }])

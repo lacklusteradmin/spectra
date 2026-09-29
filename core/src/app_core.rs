@@ -1,39 +1,13 @@
-use crate::EndpointApi;
 use crate::store::wallet_domain::CoreSeedDerivationPaths;
+use crate::{EndpointApi, EndpointCapability};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml");
 
-pub const ENDPOINT_CAPABILITY_BALANCE: u32 = 1 << 1;
-pub const ENDPOINT_CAPABILITY_HISTORY: u32 = 1 << 2;
-pub const ENDPOINT_CAPABILITY_UTXO: u32 = 1 << 3;
-pub const ENDPOINT_CAPABILITY_FEE: u32 = 1 << 4;
-pub const ENDPOINT_CAPABILITY_BROADCAST: u32 = 1 << 5;
-const ENDPOINT_CAPABILITY_VERIFICATION: u32 = 1 << 6;
-const ENDPOINT_CAPABILITY_TOKEN_HISTORY: u32 = 1 << 11;
-const ENDPOINT_CAPABILITY_TOKEN_DISCOVERY: u32 = 1 << 12;
-const ENDPOINT_CAPABILITY_TOKEN_BALANCE: u32 = 1 << 13;
-
-pub(crate) const ENDPOINT_CAPABILITIES: [&str; 10] = [
-    "balance",
-    "history",
-    "token-history",
-    "token-discovery",
-    "token-balance",
-    "utxo",
-    "fee",
-    "broadcast",
-    "verification",
-    "staking",
-];
-
 #[derive(Debug, Clone)]
 pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
-    /// Parallel to `endpoint_records`: pre-computed bitmask per record so the
-    /// hot-path filter avoids per-call string matching on capabilities.
-    pub(crate) endpoint_filter_masks: Vec<u32>,
     /// Concrete network ID → record indices, preserving endpoint order.
     endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>>,
 }
@@ -54,9 +28,7 @@ struct TomlEndpoint {
     chain_id: String,
     api: EndpointApi,
     endpoint: String,
-    capabilities: Vec<String>,
-    #[serde(default)]
-    probe_url: Option<String>,
+    capabilities: Vec<EndpointCapability>,
 }
 
 impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
@@ -71,13 +43,21 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
                 e.id
             ));
         }
+        let supported = crate::endpoint_capability_options(e.chain_id.clone(), e.api);
+        if let Some(claim) = e.capabilities.iter().find(|c| !supported.contains(c)) {
+            return Err(format!(
+                "{}: {} has no {} adapter on this network",
+                e.id,
+                e.api.as_str(),
+                claim.as_str()
+            ));
+        }
         Ok(AppCoreEndpointRecord {
             id: e.id,
             chain_id: e.chain_id,
             api: e.api,
             endpoint: e.endpoint,
             capabilities: e.capabilities,
-            probe_url: e.probe_url,
         })
     }
 }
@@ -89,11 +69,9 @@ pub struct AppCoreEndpointRecord {
     pub api: EndpointApi,
     pub chain_id: String,
     pub endpoint: String,
-    /// What this endpoint is used for. A capability is a claim about the
-    /// endpoint that has to be true — see `no_evm_node_claims_history`.
-    pub capabilities: Vec<String>,
-    #[serde(rename = "probeURL")]
-    pub probe_url: Option<String>,
+    /// What this endpoint is used for: a claim that has to be true of the
+    /// endpoint, and one Spectra's adapter for its API can act on.
+    pub capabilities: Vec<EndpointCapability>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -132,18 +110,16 @@ pub fn derivation_paths_for_preset(
     Ok(seed_derivation_paths_for_account(preset.account_index())?)
 }
 
-/// A chain's endpoint records, filtered by any requested capability.
-///
-/// Was also exported with role *names*, for an app wrapper that nothing
-/// called; the CLI and core pass the mask constants.
+/// A chain's endpoint records that declare any of `any_of`, or all of them
+/// when `any_of` is empty.
 pub fn filtered_endpoint_records_for_chain(
     chain_id: String,
-    filter_mask: u32,
+    any_of: &[EndpointCapability],
 ) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
     crate::registry::Chain::from_str_id(&chain_id)
         .ok_or_else(|| format!("Unknown endpoint chain_id: {chain_id}"))?;
     let catalog = endpoint_catalog()?;
-    Ok(endpoint_records_for_chain(catalog, &chain_id, filter_mask))
+    Ok(endpoint_records_for_chain(catalog, &chain_id, any_of))
 }
 
 /// Everything the endpoint catalog holds for one chain.
@@ -182,24 +158,6 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
         .into_iter()
         .map(AppCoreEndpointRecord::try_from)
         .collect::<Result<Vec<_>, _>>()?;
-    for record in &endpoint_records {
-        for capability in &record.capabilities {
-            if !ENDPOINT_CAPABILITIES.contains(&capability.as_str()) {
-                return Err(format!(
-                    "{}: unknown endpoint capability {capability:?}",
-                    record.id
-                ));
-            }
-        }
-    }
-    let endpoint_filter_masks: Vec<u32> = endpoint_records
-        .iter()
-        .map(|r| {
-            r.capabilities
-                .iter()
-                .fold(0u32, |acc, role| acc | endpoint_filter_bit(role))
-        })
-        .collect();
     let mut endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>> =
         std::collections::HashMap::new();
     for (idx, record) in endpoint_records.iter().enumerate() {
@@ -210,56 +168,25 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
     }
     Ok(AppCoreCatalog {
         endpoint_records,
-        endpoint_filter_masks,
         endpoint_records_by_chain,
     })
-}
-
-pub(crate) fn endpoint_filter_bit(role: &str) -> u32 {
-    match role {
-        "balance" => ENDPOINT_CAPABILITY_BALANCE,
-        "history" => ENDPOINT_CAPABILITY_HISTORY,
-        "token-history" => ENDPOINT_CAPABILITY_TOKEN_HISTORY,
-        "token-discovery" => ENDPOINT_CAPABILITY_TOKEN_DISCOVERY,
-        "token-balance" => ENDPOINT_CAPABILITY_TOKEN_BALANCE,
-        "utxo" => ENDPOINT_CAPABILITY_UTXO,
-        "fee" => ENDPOINT_CAPABILITY_FEE,
-        "broadcast" => ENDPOINT_CAPABILITY_BROADCAST,
-        "verification" => ENDPOINT_CAPABILITY_VERIFICATION,
-        "staking" => 1 << 14,
-        _ => 0,
-    }
 }
 
 fn endpoint_records_for_chain(
     catalog: &AppCoreCatalog,
     chain_id: &str,
-    filter_mask: u32,
+    any_of: &[EndpointCapability],
 ) -> Vec<AppCoreEndpointRecord> {
-    records_from(
-        catalog,
-        catalog.endpoint_records_by_chain.get(chain_id),
-        filter_mask,
-    )
-}
-
-fn records_from(
-    catalog: &AppCoreCatalog,
-    indices: Option<&Vec<usize>>,
-    filter_mask: u32,
-) -> Vec<AppCoreEndpointRecord> {
-    let Some(indices) = indices else {
-        return Vec::new();
-    };
-    indices
-        .iter()
-        .filter_map(|&idx| {
-            let record = &catalog.endpoint_records[idx];
-            if filter_mask != 0 && catalog.endpoint_filter_masks[idx] & filter_mask == 0 {
-                return None;
-            }
-            Some(record.clone())
+    catalog
+        .endpoint_records_by_chain
+        .get(chain_id)
+        .into_iter()
+        .flatten()
+        .map(|&idx| &catalog.endpoint_records[idx])
+        .filter(|record| {
+            any_of.is_empty() || any_of.iter().any(|c| record.capabilities.contains(c))
         })
+        .cloned()
         .collect()
 }
 
@@ -273,7 +200,7 @@ fn grouped_settings_entries(
         })
         .filter_map(|network| {
             let mut endpoints = Vec::new();
-            for record in endpoint_records_for_chain(catalog, network.str_id(), 0) {
+            for record in endpoint_records_for_chain(catalog, network.str_id(), &[]) {
                 if !endpoints.contains(&record.endpoint) {
                     endpoints.push(record.endpoint);
                 }
@@ -576,7 +503,7 @@ mod endpoint_network_index_tests {
 
     /// The network index every endpoint consumer reads through.
     fn rpc_endpoints(chain_id: &str) -> Vec<String> {
-        endpoint_records_for_chain(endpoint_catalog().expect("catalog"), chain_id, 0)
+        endpoint_records_for_chain(endpoint_catalog().expect("catalog"), chain_id, &[])
             .into_iter()
             .filter(|r| r.api == EndpointApi::EvmJsonRpc)
             .map(|r| r.endpoint)
@@ -625,7 +552,7 @@ mod endpoint_network_index_tests {
     fn every_record_belongs_to_exactly_its_network() {
         let catalog = endpoint_catalog().expect("catalog");
         for chain in crate::registry::Chain::all() {
-            let rows = endpoint_records_for_chain(catalog, chain.str_id(), 0);
+            let rows = endpoint_records_for_chain(catalog, chain.str_id(), &[]);
             let expected: Vec<_> = catalog
                 .endpoint_records
                 .iter()
@@ -663,6 +590,15 @@ capabilities = ["balance"]"#;
         assert!(
             toml::from_str::<TomlEndpoint>(&valid.replace("api = \"evm-json-rpc\"\n", "")).is_err()
         );
+        let overclaimed = toml::from_str::<TomlEndpoint>(
+            &valid.replace("[\"balance\"]", "[\"balance\", \"history\"]"),
+        )
+        .unwrap();
+        assert!(
+            AppCoreEndpointRecord::try_from(overclaimed)
+                .unwrap_err()
+                .contains("no history adapter")
+        );
         let unused = toml::from_str::<TomlEndpoint>(&valid.replace("[\"balance\"]", "[]")).unwrap();
         assert!(AppCoreEndpointRecord::try_from(unused).is_err());
 
@@ -677,12 +613,13 @@ capabilities = ["balance"]"#;
                     .is_err()
             );
         }
-        assert!(filtered_endpoint_records_for_chain("Ethereum".into(), 0).is_err());
+        assert!(filtered_endpoint_records_for_chain("Ethereum".into(), &[]).is_err());
     }
 }
 
 #[cfg(test)]
 mod endpoint_capabilities {
+    use crate::EndpointCapability;
     use crate::registry::Chain;
 
     fn records() -> Vec<super::AppCoreEndpointRecord> {
@@ -715,10 +652,12 @@ mod endpoint_capabilities {
                 continue;
             }
             assert!(
-                !record
-                    .capabilities
-                    .iter()
-                    .any(|c| matches!(c.as_str(), "history" | "token-history" | "token-discovery")),
+                !record.capabilities.iter().any(|c| matches!(
+                    c,
+                    EndpointCapability::History
+                        | EndpointCapability::TokenHistory
+                        | EndpointCapability::TokenDiscovery
+                )),
                 "{} {} is an EVM node and cannot serve address history",
                 record.chain_id,
                 record.endpoint
@@ -727,26 +666,13 @@ mod endpoint_capabilities {
     }
 
     #[test]
-    fn every_capability_owns_a_distinct_bit() {
-        let mut bits = std::collections::HashSet::new();
-        for capability in super::ENDPOINT_CAPABILITIES {
-            let bit = super::endpoint_filter_bit(capability);
-            assert!(bit.is_power_of_two());
-            assert!(bits.insert(bit));
-        }
-    }
-
-    #[test]
     fn token_capabilities_select_the_api_that_can_answer() {
         let selected = |chain: &str, capability: &str| {
-            super::filtered_endpoint_records_for_chain(
-                chain.into(),
-                super::endpoint_filter_bit(capability),
-            )
-            .unwrap()
-            .into_iter()
-            .map(|r| r.id)
-            .collect::<Vec<_>>()
+            super::filtered_endpoint_records_for_chain(chain.into(), &[capability.parse().unwrap()])
+                .unwrap()
+                .into_iter()
+                .map(|r| r.id)
+                .collect::<Vec<_>>()
         };
         let balances = selected("ethereum", "token-balance");
         assert!(balances.contains(&"ethereum.rpc.publicnode".into()));
@@ -758,11 +684,13 @@ mod endpoint_capabilities {
         // The implemented Blockscout adapter reads transfers, not holdings.
         assert!(selected("ethereum", "token-discovery").is_empty());
         assert!(!balances.contains(&"ethereum.explorer.blockscout".into()));
-        // Jetton indexing lives on v3, independently of v2's native history.
+        // Jetton discovery lives on v3, independently of v2's native history.
+        // No TON adapter reads jetton transfers, so nothing claims them.
+        assert_eq!(selected("ton", "token-discovery"), ["ton.api.v3"]);
         for capability in ["token-discovery", "token-history"] {
-            assert_eq!(selected("ton", capability), ["ton.api.v3"]);
             assert!(selected("bitcoin", capability).is_empty());
         }
+        assert!(selected("ton", "token-history").is_empty());
         // v2 reads the metadata required to interpret v3 token balances.
         assert_eq!(
             selected("ton", "token-balance"),
@@ -777,6 +705,8 @@ mod endpoint_capabilities {
 
 #[cfg(test)]
 mod catalog_endpoints_carry_their_api {
+    use crate::EndpointCapability;
+
     fn record(endpoint: &str) -> super::AppCoreEndpointRecord {
         super::endpoint_catalog()
             .unwrap()
@@ -791,12 +721,12 @@ mod catalog_endpoints_carry_their_api {
     fn a_node_and_an_indexer_declare_different_capabilities() {
         let node = record("https://ethereum-rpc.publicnode.com");
         assert_eq!(node.api, crate::EndpointApi::EvmJsonRpc);
-        assert!(node.capabilities.contains(&"balance".to_string()));
+        assert!(node.capabilities.contains(&EndpointCapability::Balance));
         assert!(
-            !node.capabilities.contains(&"history".to_string()),
+            !node.capabilities.contains(&EndpointCapability::History),
             "an EVM node cannot serve address history"
         );
         let indexer = record("https://eth.blockscout.com");
-        assert!(indexer.capabilities.contains(&"history".to_string()));
+        assert!(indexer.capabilities.contains(&EndpointCapability::History));
     }
 }

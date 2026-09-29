@@ -5,9 +5,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn service(chain: &str, server: &MockServer) -> Arc<WalletService> {
     WalletService::new(vec![ChainEndpoints {
-        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-            .map(String::from)
-            .to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: chain.into(),
         endpoints: vec![server.uri()],
     }])

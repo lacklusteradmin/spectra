@@ -251,7 +251,8 @@ impl WalletService {
         source: &str,
     ) -> Result<u64, SpectraBridgeError> {
         let client = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &["verification"]).await,
+            self.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+                .await,
             chain.evm_chain_id()?,
         );
         let mut next = client.fetch_nonce(source).await?;
@@ -308,9 +309,7 @@ mod tests {
     async fn stored_rebroadcast_uses_recorded_network_and_requires_node_identifier() {
         let server = MockServer::start().await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum-sepolia".into(),
             endpoints: vec![server.uri()],
         }])

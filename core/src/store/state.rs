@@ -588,7 +588,7 @@ pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 #[serde(tag = "field", rename_all = "camelCase")]
 pub enum AppSettingUpdate {
     AddCustomEndpoint {
-        capabilities: Vec<String>,
+        capabilities: Vec<crate::EndpointCapability>,
         chain_id: String,
         api: String,
         endpoint: String,

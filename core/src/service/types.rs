@@ -128,7 +128,7 @@ pub struct EndpointProbe {
     pub chain_id: String,
     pub endpoint: String,
     /// Operations the endpoint declares.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<crate::EndpointCapability>,
     /// False when nothing knows how to probe this endpoint. Not a pass.
     pub checked: bool,
     pub reachable: bool,
@@ -182,12 +182,12 @@ pub enum TransactionCommand {
     Clear,
 }
 
-/// Endpoint configuration passed in from Swift at construction time and
-/// rebuilt via `update_endpoints`.
+/// One chain's primary-API endpoint list, given at construction or through
+/// `update_endpoints` to replace the catalog transport.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ChainEndpoints {
     /// Declared operations for explicit URLs absent from the directory.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<crate::EndpointCapability>,
     pub chain_id: String,
     pub endpoints: Vec<String>,
 }

@@ -78,24 +78,10 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
             .ok_or_else(|| CliError::rejected("unknown wallet network"))?;
         ctx.rt
             .block_on(service.update_endpoints(vec![ChainEndpoints {
-                    capabilities: vec![
-                        "balance",
-                        "history",
-                        "utxo",
-                        "fee",
-                        "broadcast",
-                        "verification",
-                        "token-balance",
-                        "token-discovery",
-                        "token-history",
-                        "staking",
-                    ]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
-                    chain_id: chain.str_id().into(),
-                    endpoints: vec![endpoint],
-                }]))
+                capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
+                chain_id: chain.str_id().into(),
+                endpoints: vec![endpoint],
+            }]))
             .map_err(CliError::from)?;
     }
 

@@ -601,9 +601,7 @@ mod tests {
                 "result":if body["method"] == "eth_chainId" { json!("0x1") } else { serde_json::Value::Null }}))
         }).mount(&server).await;
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: crate::EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
         }])
@@ -723,16 +721,12 @@ mod tests {
         service
             .update_endpoints(vec![
                 crate::service::ChainEndpoints {
-                    capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                        .map(String::from)
-                        .to_vec(),
+                    capabilities: crate::EndpointCapability::ALL.to_vec(),
                     chain_id: "ethereum".into(),
                     endpoints: vec![mainnet.uri()],
                 },
                 crate::service::ChainEndpoints {
-                    capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                        .map(String::from)
-                        .to_vec(),
+                    capabilities: crate::EndpointCapability::ALL.to_vec(),
                     chain_id: "ethereum-sepolia".into(),
                     endpoints: vec![sepolia.uri()],
                 },

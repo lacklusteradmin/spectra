@@ -26,6 +26,19 @@ pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
     Ok(hex::encode(&decoded[1..]))
 }
 
+/// Encode a node API's hex address (`41` followed by the 20-byte account
+/// hash) as the base58check "T…" form.
+pub fn tron_hex_to_base58(hex_address: &str) -> Result<String, String> {
+    let payload = hex::decode(hex_address).map_err(|e| format!("Tron hex address: {e}"))?;
+    if payload.len() != 21 || payload[0] != 0x41 {
+        return Err(format!(
+            "invalid Tron hex address length/prefix: len={}",
+            payload.len()
+        ));
+    }
+    Ok(bs58::encode(&payload).with_check().into_string())
+}
+
 // Keccak-256 hash; used for Tron address derivation.
 fn keccak256(data: &[u8]) -> [u8; 32] {
     use sha3::{Digest, Keccak256};

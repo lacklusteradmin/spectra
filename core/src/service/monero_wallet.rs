@@ -129,7 +129,9 @@ impl WalletService {
                         cache_key(&wallet_id, &secret[32..]),
                     )
                 };
-            let endpoint = this.monero_endpoint(chain, &["verification"]).await?;
+            let endpoint = this
+                .monero_endpoint(chain, &[EndpointCapability::Verification])
+                .await?;
             let rpc = monero_local::daemon(&endpoint, chain).await?;
             monero_local::scan(&mut cached, &rpc, &signer.private_key_hex, 500).await?;
             this.save_monero(revision, &cached, &key).await?;
@@ -166,7 +168,7 @@ impl WalletService {
     pub(super) async fn monero_endpoint(
         &self,
         chain: Chain,
-        required: &[&str],
+        required: &[EndpointCapability],
     ) -> Result<String, SpectraBridgeError> {
         self.endpoints_for(chain.str_id(), required)
             .await
@@ -295,7 +297,10 @@ impl WalletService {
             ViewPair::new(address.spend(), Zeroizing::new(scalar)).map_err(|e| e.to_string())?;
         let rpc = monero_local::daemon(
             &self
-                .monero_endpoint(chain, &["verification", "fee"])
+                .monero_endpoint(
+                    chain,
+                    &[EndpointCapability::Verification, EndpointCapability::Fee],
+                )
                 .await?,
             chain,
         )
@@ -321,7 +326,9 @@ impl WalletService {
         let (revision, mut wallet, key) = self.load_monero(wallet_id).await?;
         let chain = chain_for_id(&wallet.chain_id)?;
         let rpc = monero_local::daemon(
-            &self.monero_endpoint(chain, &["verification"]).await?,
+            &self
+                .monero_endpoint(chain, &[EndpointCapability::Verification])
+                .await?,
             chain,
         )
         .await?;

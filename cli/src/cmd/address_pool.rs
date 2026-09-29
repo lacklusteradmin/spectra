@@ -62,7 +62,10 @@ fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let service = super::chain::service_for_chain(
         ctx,
         chain,
-        super::chain::ENDPOINT_CAPABILITY_BALANCE | super::chain::ENDPOINT_CAPABILITY_HISTORY,
+        &[
+            super::chain::EndpointCapability::Balance,
+            super::chain::EndpointCapability::History,
+        ],
     )?;
     service.set_secret_store(ctx.secrets.clone());
     ctx.rt

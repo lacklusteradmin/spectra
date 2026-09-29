@@ -365,7 +365,9 @@ impl WalletService {
             bitcoin::BitcoinClient, bitcoin_sv::BitcoinSvClient, blockbook::BlockbookClient,
             dogecoin::DogecoinClient,
         };
-        let endpoints = self.endpoints_for(chain.str_id(), &["history"]).await;
+        let endpoints = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::History])
+            .await;
         let active = match chain.mainnet_counterpart() {
             crate::registry::Chain::Bitcoin => {
                 BitcoinClient::new(crate::fetch::http::HttpClient::shared(), endpoints)

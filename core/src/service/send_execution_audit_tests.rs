@@ -69,9 +69,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             ResponseTemplate::new(200).set_body_json(if body["method"].is_string(){json!({"jsonrpc":"2.0","id":body["id"],"result":result})}else{result})
         }).mount(&server).await;
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain.str_id().into(),
             endpoints: vec![server.uri()],
         }])
@@ -189,7 +187,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             service
                 .broadcast_at(
                     chain,
-                    chain.endpoint_api(EndpointSlot::Primary).unwrap(),
+                    chain.primary_api().unwrap(),
                     Arc::new(vec![server.uri()]),
                     signed.signed_payload.clone().unwrap(),
                 )
@@ -230,9 +228,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(vec![ChainEndpoints {
-        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-            .map(String::from)
-            .to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: "ethereum".into(),
         endpoints: vec![server.uri()],
     }])
@@ -322,9 +318,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     assert!(first.failure_reason.is_some());
     drop(service);
     let reopened = WalletService::new(vec![ChainEndpoints {
-        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-            .map(String::from)
-            .to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: "ethereum".into(),
         endpoints: vec![server.uri()],
     }])

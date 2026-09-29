@@ -649,11 +649,13 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     assert!(!original.is_empty());
     assert!(
         !service
-            .configured_endpoint_urls(
-                &crate::registry::Chain::Ton
-                    .endpoint_str_id(crate::registry::EndpointSlot::Secondary)
+            .api_endpoints(
+                crate::registry::Chain::Ton,
+                crate::EndpointApi::ToncenterV3,
+                &[]
             )
             .await
+            .unwrap()
             .is_empty()
     );
     service
@@ -682,9 +684,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     );
     reopened
         .update_endpoints(vec![crate::service::ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec!["http://127.0.0.1:9545".into()],
         }])

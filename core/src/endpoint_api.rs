@@ -12,16 +12,11 @@ pub enum EndpointApi {
     NearJsonRpc,
     XrplJsonRpc,
     SubstrateJsonRpc,
-    TronJsonRpc,
     MoneroDaemonRpc,
     Esplora,
     Blockbook,
-    Blockchair,
-    BlockchainInfo,
-    BchRestV2,
     Blockcypher,
     Whatsonchain,
-    SochainV2,
     Blockscout,
     ToncenterV2,
     ToncenterV3,
@@ -31,10 +26,7 @@ pub enum EndpointApi {
     IcpRosetta,
     TronHttp,
     TrongridV1,
-    Tronscan,
-    Xrpscan,
     Nearblocks,
-    SubstrateSidecar,
     Insight,
     KaspaRest,
 }
@@ -48,16 +40,11 @@ impl EndpointApi {
             Self::NearJsonRpc => "near-json-rpc",
             Self::XrplJsonRpc => "xrpl-json-rpc",
             Self::SubstrateJsonRpc => "substrate-json-rpc",
-            Self::TronJsonRpc => "tron-json-rpc",
             Self::MoneroDaemonRpc => "monero-daemon-rpc",
             Self::Esplora => "esplora",
             Self::Blockbook => "blockbook",
-            Self::Blockchair => "blockchair",
-            Self::BlockchainInfo => "blockchain-info",
-            Self::BchRestV2 => "bch-rest-v2",
             Self::Blockcypher => "blockcypher",
             Self::Whatsonchain => "whatsonchain",
-            Self::SochainV2 => "sochain-v2",
             Self::Blockscout => "blockscout",
             Self::ToncenterV2 => "toncenter-v2",
             Self::ToncenterV3 => "toncenter-v3",
@@ -67,27 +54,101 @@ impl EndpointApi {
             Self::IcpRosetta => "icp-rosetta",
             Self::TronHttp => "tron-http",
             Self::TrongridV1 => "trongrid-v1",
-            Self::Tronscan => "tronscan",
-            Self::Xrpscan => "xrpscan",
             Self::Nearblocks => "nearblocks",
-            Self::SubstrateSidecar => "substrate-sidecar",
             Self::Insight => "insight",
             Self::KaspaRest => "kaspa-rest",
         }
     }
 }
 
-/// A custom URL is interpreted using its slot's API. If it is already in the
-/// catalog, reject a known mismatch before retaining or sending to it.
+/// What an endpoint is used *for*. A capability is a claim about the endpoint
+/// that has to be true — see `no_evm_node_claims_history`.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum EndpointCapability {
+    /// The native coin's balance.
+    Balance,
+    /// The native coin's address history.
+    History,
+    /// Fungible-token transfers, not approvals or arbitrary contract activity.
+    TokenHistory,
+    /// Holdings enumerated without a caller-supplied token list.
+    TokenDiscovery,
+    /// A specified token's balance, including its metadata.
+    TokenBalance,
+    Utxo,
+    Fee,
+    Broadcast,
+    Verification,
+    Staking,
+}
+
+impl EndpointCapability {
+    pub const ALL: [Self; 10] = [
+        Self::Balance,
+        Self::History,
+        Self::TokenHistory,
+        Self::TokenDiscovery,
+        Self::TokenBalance,
+        Self::Utxo,
+        Self::Fee,
+        Self::Broadcast,
+        Self::Verification,
+        Self::Staking,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Balance => "balance",
+            Self::History => "history",
+            Self::TokenHistory => "token-history",
+            Self::TokenDiscovery => "token-discovery",
+            Self::TokenBalance => "token-balance",
+            Self::Utxo => "utxo",
+            Self::Fee => "fee",
+            Self::Broadcast => "broadcast",
+            Self::Verification => "verification",
+            Self::Staking => "staking",
+        }
+    }
+
+    /// A chain's primary endpoint list holds only URLs that answer one of
+    /// these; anything else there is an operation-only URL, not a base.
+    pub(crate) fn is_primary_read(self) -> bool {
+        matches!(self, Self::Balance | Self::Fee | Self::Broadcast)
+    }
+}
+
+impl std::str::FromStr for EndpointCapability {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, String> {
+        Self::ALL
+            .into_iter()
+            .find(|capability| capability.as_str() == value)
+            .ok_or_else(|| format!("unknown endpoint capability {value:?}"))
+    }
+}
+
+/// The capability's catalog name, such as `token-history`.
+#[uniffi::export]
+pub fn endpoint_capability_id(capability: EndpointCapability) -> String {
+    capability.as_str().into()
+}
+
+/// A configured URL is interpreted using the chain's primary API. If it is
+/// already in the catalog, reject a known mismatch before retaining or sending
+/// to it.
 pub(crate) fn validate_configured_endpoint(
     chain: crate::registry::Chain,
-    slot: crate::registry::EndpointSlot,
     url: &str,
 ) -> Result<(), String> {
     if url.is_empty() {
         return Ok(());
     }
-    let expected = chain.endpoint_api(slot);
+    let expected = chain.primary_api();
     let catalog = crate::app_core::endpoint_catalog()?;
     let matching: Vec<_> = catalog
         .endpoint_records
@@ -96,12 +157,7 @@ pub(crate) fn validate_configured_endpoint(
         .collect();
     if !matching.is_empty()
         && !matching.iter().any(|record| {
-            Some(record.api) == expected
-                && (slot != crate::registry::EndpointSlot::Primary
-                    || record
-                        .capabilities
-                        .iter()
-                        .any(|c| matches!(c.as_str(), "balance" | "fee" | "broadcast")))
+            Some(record.api) == expected && record.capabilities.iter().any(|c| c.is_primary_read())
         })
     {
         return Err(format!(
@@ -118,138 +174,91 @@ pub(crate) fn validate_configured_endpoint(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::{Chain, EndpointSlot};
+    use crate::registry::Chain;
 
     #[test]
     fn known_incompatible_urls_are_rejected_before_configuration() {
         assert!(
-            validate_configured_endpoint(
-                Chain::Bitcoin,
-                EndpointSlot::Primary,
-                "https://blockchain.info/multiaddr"
-            )
-            .is_err()
+            validate_configured_endpoint(Chain::Bitcoin, "https://ethereum-rpc.publicnode.com")
+                .is_err()
         );
         assert!(
-            validate_configured_endpoint(
-                Chain::Bitcoin,
-                EndpointSlot::Primary,
-                "https://blockstream.info/api/"
-            )
-            .is_ok()
+            validate_configured_endpoint(Chain::Bitcoin, "https://blockstream.info/api/").is_ok()
         );
         assert!(
-            validate_configured_endpoint(
-                Chain::Monero,
-                EndpointSlot::Primary,
-                "https://blockstream.info/api"
-            )
-            .is_err()
+            validate_configured_endpoint(Chain::Monero, "https://blockstream.info/api").is_err()
         );
+    }
+
+    #[test]
+    fn capability_names_round_trip() {
+        for capability in EndpointCapability::ALL {
+            assert_eq!(capability.as_str().parse(), Ok(capability));
+            assert_eq!(
+                serde_json::to_value(capability).unwrap(),
+                capability.as_str()
+            );
+        }
+        assert!("native-history".parse::<EndpointCapability>().is_err());
     }
 }
 
 /// Operations implemented by Spectra's adapter. This is an editing constraint,
 /// never a claim that any particular provider enables those operations.
 #[uniffi::export]
-pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<String> {
+pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<EndpointCapability> {
     use EndpointApi::*;
+    use EndpointCapability::{
+        Balance, Broadcast, Fee, History, Staking, TokenBalance, TokenDiscovery, TokenHistory,
+        Utxo, Verification,
+    };
     let Some(chain) = crate::registry::Chain::from_str_id(&chain_id) else {
         return vec![];
     };
-    let values: &[&str] = match api {
-        EvmJsonRpc => &[
-            "balance",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-        ],
+    let values: &[EndpointCapability] = match api {
+        EvmJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance],
         SolanaJsonRpc => &[
-            "balance",
-            "history",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-            "token-discovery",
-            "token-history",
-            "staking",
+            Balance,
+            History,
+            Fee,
+            Broadcast,
+            Verification,
+            TokenBalance,
+            TokenDiscovery,
+            TokenHistory,
+            Staking,
         ],
         SuiJsonRpc | AptosRest => &[
-            "balance",
-            "history",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-            "token-discovery",
-            "staking",
+            Balance,
+            History,
+            Fee,
+            Broadcast,
+            Verification,
+            TokenBalance,
+            TokenDiscovery,
+            Staking,
         ],
-        NearJsonRpc => &[
-            "balance",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-            "staking",
-        ],
-        XrplJsonRpc => &["balance", "history", "fee", "broadcast", "verification"],
-        TronHttp => &[
-            "balance",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-        ],
-        MoneroDaemonRpc => &["fee", "broadcast", "verification"],
-        Esplora | Blockbook | Blockcypher | Whatsonchain | Insight => &[
-            "balance",
-            "history",
-            "utxo",
-            "fee",
-            "broadcast",
-            "verification",
-        ],
-        KaspaRest => &[
-            "balance",
-            "history",
-            "utxo",
-            "fee",
-            "broadcast",
-            "verification",
-        ],
-        Blockscout => &["history", "token-history"],
-        ToncenterV2 => &[
-            "balance",
-            "history",
-            "fee",
-            "broadcast",
-            "verification",
-            "token-balance",
-        ],
-        ToncenterV3 => &["token-balance", "token-discovery"],
-        Koios => &[
-            "balance",
-            "history",
-            "utxo",
-            "fee",
-            "broadcast",
-            "verification",
-        ],
-        Horizon => &["balance", "history", "fee", "broadcast", "verification"],
-        IcpRosetta => &["balance", "history", "fee", "broadcast", "verification"],
-        TrongridV1 => &["token-discovery"],
-        Tronscan => &["history", "token-history"],
-        Nearblocks => &["history"],
-        SubstrateJsonRpc => &["fee", "broadcast", "verification", "staking"],
-        // Catalog reference APIs without a production request adapter.
-        TronJsonRpc | Blockchair | BlockchainInfo | BchRestV2 | SochainV2 | Xrpscan
-        | SubstrateSidecar => &[],
+        NearJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
+        XrplJsonRpc => &[Balance, History, Fee, Broadcast, Verification],
+        TronHttp => &[Balance, Fee, Broadcast, Verification, TokenBalance],
+        MoneroDaemonRpc => &[Fee, Broadcast, Verification],
+        Esplora | Blockbook | Blockcypher | Whatsonchain | Insight => {
+            &[Balance, History, Utxo, Fee, Broadcast, Verification]
+        }
+        KaspaRest => &[Balance, History, Utxo, Fee, Broadcast, Verification],
+        Blockscout => &[History, TokenHistory],
+        ToncenterV2 => &[Balance, History, Fee, Broadcast, Verification, TokenBalance],
+        ToncenterV3 => &[TokenBalance, TokenDiscovery],
+        Koios => &[Balance, History, Utxo, Fee, Broadcast, Verification],
+        Horizon => &[Balance, History, Fee, Broadcast, Verification],
+        IcpRosetta => &[Balance, History, Fee, Broadcast, Verification],
+        TrongridV1 => &[History, TokenHistory, TokenDiscovery],
+        Nearblocks => &[History],
+        SubstrateJsonRpc => &[Fee, Broadcast, Verification, Staking],
     };
     values
         .iter()
-        .filter(|value| **value != "staking" || chain.staking_uses_endpoint())
-        .map(|s| (*s).to_owned())
+        .copied()
+        .filter(|value| *value != Staking || chain.staking_uses_endpoint())
         .collect()
 }

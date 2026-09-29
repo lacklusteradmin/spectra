@@ -30,6 +30,7 @@
 //! visibility, so anything that should stay off the FFI lives in a plain
 //! `impl` block.
 
+pub(crate) use crate::EndpointCapability;
 pub(crate) use crate::SpectraBridgeError;
 pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::fetch::http::HttpClient;
@@ -40,7 +41,7 @@ pub(crate) use crate::fetch::{
     kaspa::KaspaClient, near::NearClient, polkadot::PolkadotClient, solana::SolanaClient,
     stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient, xrp::XrpClient,
 };
-pub(crate) use crate::registry::{Chain, EndpointSlot};
+pub(crate) use crate::registry::Chain;
 pub(crate) use crate::store::secret_store::SecretStore;
 pub(crate) use crate::store::state::{
     CoreAppState, StateCommand, StateTransition, reduce_state_in_place,
@@ -140,29 +141,17 @@ pub use types::*;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct EndpointIndex {
-    capabilities: std::collections::HashMap<String, Vec<String>>,
+    capabilities: std::collections::HashMap<String, Vec<EndpointCapability>>,
     endpoints: std::collections::HashMap<String, Arc<Vec<String>>>,
 }
 
 impl EndpointIndex {
     fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
         for row in &list {
-            if row
-                .capabilities
-                .iter()
-                .any(|c| !crate::app_core::ENDPOINT_CAPABILITIES.contains(&c.as_str()))
-            {
-                return Err("Unknown endpoint capability".into());
-            }
-            let (chain_id, slot) = match row.chain_id.split_once(':') {
-                Some((chain_id, "secondary")) => (chain_id, EndpointSlot::Secondary),
-                Some((chain_id, "explorer")) => (chain_id, EndpointSlot::Explorer),
-                _ => (row.chain_id.as_str(), EndpointSlot::Primary),
-            };
-            if let Some(chain) = Chain::from_str_id(chain_id) {
-                for url in &row.endpoints {
-                    crate::endpoint_api::validate_configured_endpoint(chain, slot, url)?;
-                }
+            let chain = Chain::from_str_id(&row.chain_id)
+                .ok_or_else(|| format!("Unknown endpoint network: {}", row.chain_id))?;
+            for url in &row.endpoints {
+                crate::endpoint_api::validate_configured_endpoint(chain, url)?;
             }
         }
 
@@ -298,7 +287,7 @@ impl WalletService {
     pub(crate) async fn fetch_endpoints(
         &self,
         chain: Chain,
-        required: &[&str],
+        required: &[EndpointCapability],
     ) -> Result<(crate::EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
         let urls = self.endpoints_for(chain.str_id(), required).await;
         let catalog = crate::app_core::endpoint_catalog()?;
@@ -311,7 +300,7 @@ impl WalletService {
                     .find(|row| row.chain_id == chain.str_id() && row.endpoint == *url)
                     .map(|row| row.api)
             })
-            .or_else(|| chain.endpoint_api(EndpointSlot::Primary))
+            .or_else(|| chain.primary_api())
             .ok_or_else(|| format!("No fetch API for {}", chain.str_id()))?;
         Ok((api, urls))
     }
@@ -328,60 +317,43 @@ impl WalletService {
         if self
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
+            && let Some(chain) = Chain::from_str_id(chain_id)
+            && let Some(api) = chain.primary_api()
         {
-            let (network_id, slot) = match chain_id.split_once(':') {
-                Some((network, "secondary")) => (network, EndpointSlot::Secondary),
-                Some((network, "explorer")) => (network, EndpointSlot::Explorer),
-                _ => (chain_id, EndpointSlot::Primary),
-            };
-            if let Some(chain) = Chain::from_str_id(network_id)
-                && let Some(api) = chain.endpoint_api(slot)
-            {
-                let mut custom = self.custom_api_endpoints(chain, api, &[]).await;
-                if !custom.is_empty() {
-                    for url in base.iter() {
-                        if !custom.contains(url) {
-                            custom.push(url.clone());
-                        }
+            let mut custom = self.custom_api_endpoints(chain, api, &[]).await;
+            if !custom.is_empty() {
+                for url in base.iter() {
+                    if !custom.contains(url) {
+                        custom.push(url.clone());
                     }
-                    return Arc::new(custom);
                 }
+                return Arc::new(custom);
             }
         }
         base
     }
 }
 
-/// Catalog transport configuration for a non-platform front end.
+/// Catalog transport configuration for a non-platform front end: each
+/// chain's primary API list. Indexers and secondary services are asked for
+/// by API, through `WalletService::api_endpoints`.
 pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
     let mut endpoints = Vec::new();
     for chain in Chain::all() {
-        let records = crate::filtered_endpoint_records_for_chain(chain.str_id().into(), 0)?;
-        for slot in [
-            EndpointSlot::Primary,
-            EndpointSlot::Secondary,
-            EndpointSlot::Explorer,
-        ] {
-            let Some(api) = chain.endpoint_api(slot) else {
-                continue;
-            };
-            endpoints.push(ChainEndpoints {
-                capabilities: vec![],
-                chain_id: chain.endpoint_str_id(slot),
-                endpoints: records
-                    .iter()
-                    .filter(|record| {
-                        record.api == api
-                            && (slot != EndpointSlot::Primary
-                                || record
-                                    .capabilities
-                                    .iter()
-                                    .any(|c| matches!(c.as_str(), "balance" | "fee" | "broadcast")))
-                    })
-                    .map(|record| record.endpoint.clone())
-                    .collect(),
-            });
-        }
+        let Some(api) = chain.primary_api() else {
+            continue;
+        };
+        endpoints.push(ChainEndpoints {
+            capabilities: vec![],
+            chain_id: chain.str_id().into(),
+            endpoints: crate::filtered_endpoint_records_for_chain(chain.str_id().into(), &[])?
+                .into_iter()
+                .filter(|record| {
+                    record.api == api && record.capabilities.iter().any(|c| c.is_primary_read())
+                })
+                .map(|record| record.endpoint)
+                .collect(),
+        });
     }
     Ok(endpoints)
 }
@@ -396,22 +368,16 @@ mod a_primary_endpoint_can_serve_a_primary_read {
     fn no_chain_is_offered_an_endpoint_that_answers_none_of_them() {
         let mut checked = 0;
         for row in catalog_endpoints().expect("catalog endpoints") {
-            if Chain::from_str_id(&row.chain_id).is_none() {
-                continue; // a `:secondary` or `:explorer` slot, not the primary list
-            }
             for endpoint in &row.endpoints {
                 let chain = Chain::from_str_id(&row.chain_id).unwrap();
-                let record = crate::filtered_endpoint_records_for_chain(row.chain_id.clone(), 0)
+                let record = crate::filtered_endpoint_records_for_chain(row.chain_id.clone(), &[])
                     .unwrap()
                     .into_iter()
                     .find(|record| &record.endpoint == endpoint)
                     .unwrap();
-                assert_eq!(Some(record.api), chain.endpoint_api(EndpointSlot::Primary));
+                assert_eq!(Some(record.api), chain.primary_api());
                 assert!(
-                    record
-                        .capabilities
-                        .iter()
-                        .any(|c| matches!(c.as_str(), "balance" | "fee" | "broadcast")),
+                    record.capabilities.iter().any(|c| c.is_primary_read()),
                     "{} lists operation-only URL {endpoint} as a base",
                     row.chain_id
                 );

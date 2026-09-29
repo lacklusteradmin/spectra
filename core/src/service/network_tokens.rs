@@ -25,6 +25,36 @@ fn readable_tokens(results: Vec<Result<TokenBalanceResult, String>>) -> Vec<Toke
         .collect()
 }
 
+impl WalletService {
+    /// TronGrid v1 account API bases declaring `required`: the catalog's and
+    /// custom `trongrid-v1` entries under the catalog transport. Under an
+    /// explicit override, or when none declares it, each primary node's own
+    /// `/v1/accounts`, since TronGrid serves both APIs from one host.
+    pub(crate) async fn tron_account_endpoints(
+        &self,
+        chain: Chain,
+        primary: &[String],
+        required: &[EndpointCapability],
+    ) -> Result<Vec<String>, SpectraBridgeError> {
+        let accounts = if self
+            .uses_catalog_endpoints
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            self.api_endpoints(chain, crate::EndpointApi::TrongridV1, required)
+                .await?
+        } else {
+            Vec::new()
+        };
+        if !accounts.is_empty() {
+            return Ok(accounts);
+        }
+        Ok(primary
+            .iter()
+            .map(|url| format!("{}/v1/accounts", url.trim_end_matches('/')))
+            .collect())
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch balances for a list of tokens in one call.
@@ -78,7 +108,7 @@ impl WalletService {
                 )));
             }
             let endpoints = this
-                .endpoints_for(chain.str_id(), &["token-discovery"])
+                .endpoints_for(chain.str_id(), &[EndpointCapability::TokenDiscovery])
                 .await;
             // Not `unwrap_or_default()` on any arm: a node that will not answer is
             // not an address that holds nothing, and the difference is what a user
@@ -97,27 +127,16 @@ impl WalletService {
                     })
                     .collect(),
                 Chain::Tron | Chain::TronNile => {
-                    let mut accounts = if this
-                        .uses_catalog_endpoints
-                        .load(std::sync::atomic::Ordering::Relaxed)
-                    {
-                        this.api_endpoints(
+                    let accounts = this
+                        .tron_account_endpoints(
                             chain,
-                            crate::EndpointApi::TrongridV1,
-                            &["token-discovery"],
+                            &endpoints,
+                            &[EndpointCapability::TokenDiscovery],
                         )
-                        .await?
-                    } else {
-                        Vec::new()
-                    };
-                    if accounts.is_empty() {
-                        accounts = endpoints
-                            .iter()
-                            .map(|url| format!("{}/v1/accounts", url.trim_end_matches('/')))
-                            .collect();
-                    }
+                        .await?;
                     TronClient::with_metadata_cache(
-                        this.endpoints_for(chain.str_id(), &["token-balance"]).await,
+                        this.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                            .await,
                         chain.str_id(),
                         this.trc20_metadata.clone(),
                     )
@@ -134,19 +153,23 @@ impl WalletService {
                     .await
                     .map_err(SpectraBridgeError::from)?,
                 Chain::Ton | Chain::TonTestnet => {
-                    // The v3 API is the only one that enumerates jetton wallets; it
-                    // lives in the chain's Secondary endpoint slot.
-                    let v3 = this
-                        .endpoints_for(
-                            &chain.endpoint_str_id(EndpointSlot::Secondary),
-                            &["token-discovery"],
+                    // The v3 API is the only one that enumerates jetton wallets.
+                    let v3 = Arc::new(
+                        this.api_endpoints(
+                            chain,
+                            crate::EndpointApi::ToncenterV3,
+                            &[EndpointCapability::TokenDiscovery],
                         )
-                        .await;
-                    TonClient::new(this.endpoints_for(chain.str_id(), &["token-balance"]).await)
-                        .with_v3_endpoints(v3)
-                        .fetch_all_jetton_balances(&address)
-                        .await
-                        .map_err(SpectraBridgeError::from)?
+                        .await?,
+                    );
+                    TonClient::new(
+                        this.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                            .await,
+                    )
+                    .with_v3_endpoints(v3)
+                    .fetch_all_jetton_balances(&address)
+                    .await
+                    .map_err(SpectraBridgeError::from)?
                 }
                 // Unreachable: the registry gate above rejects every chain that
                 // has no client arm here, and the test below holds the two together.
@@ -210,7 +233,9 @@ impl WalletService {
                 "fetch_token_balances: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let endpoints = self.endpoints_for(chain.str_id(), &["token-balance"]).await;
+        let endpoints = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+            .await;
 
         macro_rules! coin_token_balances {
             ($Client:ty, $endpoints:expr) => {{
@@ -364,14 +389,15 @@ impl WalletService {
             Chain::Sui => coin_token_balances!(SuiClient, endpoints),
             Chain::Aptos => coin_token_balances!(AptosClient, endpoints),
             Chain::Ton => {
-                // TON — jetton balances via TonCenter v3 API. The v3 endpoint
-                // lives in the chain's Secondary slot (registered as id + 100 = 116).
-                let v3_endpoints = self
-                    .endpoints_for(
-                        &chain.endpoint_str_id(EndpointSlot::Secondary),
-                        &["token-balance"],
+                // TON — jetton balances via the TonCenter v3 API.
+                let v3_endpoints = Arc::new(
+                    self.api_endpoints(
+                        chain,
+                        crate::EndpointApi::ToncenterV3,
+                        &[EndpointCapability::TokenBalance],
                     )
-                    .await;
+                    .await?,
+                );
                 let client = TonClient::new(endpoints).with_v3_endpoints(v3_endpoints);
                 let jetton_balances = client.fetch_jetton_balances(&address).await?;
 
@@ -618,9 +644,7 @@ mod decimals_come_from_the_chain {
             .await;
 
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: crate::EndpointCapability::ALL.to_vec(),
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
         }])

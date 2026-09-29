@@ -43,7 +43,7 @@ impl WalletService {
             });
         }
         let endpoints = self
-            .endpoints_for(chain.str_id(), &["staking"])
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Staking])
             .await
             .as_ref()
             .clone();
@@ -51,7 +51,7 @@ impl WalletService {
             return Err("No staking endpoints configured".into());
         }
         Ok(ChainEndpoints {
-            capabilities: vec!["staking".into()],
+            capabilities: vec![EndpointCapability::Staking],
             chain_id,
             endpoints,
         })
@@ -132,7 +132,7 @@ mod tests {
             );
         }
         let explicit = WalletService::new(vec![ChainEndpoints {
-            capabilities: vec!["staking".into()],
+            capabilities: vec![EndpointCapability::Staking],
             chain_id: "solana".into(),
             endpoints: vec!["http://127.0.0.1:13003".into()],
         }])

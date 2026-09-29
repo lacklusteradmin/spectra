@@ -1,12 +1,11 @@
 //! Read-only protocol checks against the endpoint actually configured.
 use crate::fetch::http::{HttpClient, RetryProfile};
 use crate::registry::{Chain, EvmHistorySource};
-use crate::{AppCoreEndpointRecord, EndpointApi};
+use crate::{AppCoreEndpointRecord, EndpointApi, EndpointCapability};
 use serde_json::{Value, json};
 
 const ZERO_EVM: &str = "0x0000000000000000000000000000000000000000";
 const ZERO_TRON: &str = "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb";
-const XRP_GENESIS: &str = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
 
 enum Response {
     RpcHex(Option<u64>),
@@ -130,8 +129,8 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
     let get = |suffix: &str, field| Check::get(format!("{base}{suffix}"), Response::Field(field));
     let rpc = |method: &str| Check::rpc(base, method, json!([]), Response::RpcValue);
     let checks = match api {
-        EvmJsonRpc | TronJsonRpc => vec![
-            Check::rpc(base, "eth_chainId", json!([]), Response::RpcHex(if api == EvmJsonRpc { Some(chain.evm_chain_id()?) } else { None })),
+        EvmJsonRpc => vec![
+            Check::rpc(base, "eth_chainId", json!([]), Response::RpcHex(Some(chain.evm_chain_id()?))),
             Check::rpc(base, "eth_blockNumber", json!([]), Response::RpcHex(None)),
             Check::rpc(base, "eth_getBalance", json!([ZERO_EVM, "latest"]), Response::RpcHex(None)),
         ],
@@ -143,7 +142,7 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
         MoneroDaemonRpc => vec![Check::rpc(&format!("{base}/json_rpc"), "get_info", json!({}), Response::Monero)],
         Esplora => vec![Check::get(format!("{base}/blocks/tip/height"), Response::Height)],
         Blockscout => ["txlist", "tokentx"].into_iter()
-            .filter(|action| record.capabilities.iter().any(|cap| cap == if *action == "txlist" { "history" } else { "token-history" }))
+            .filter(|action| record.capabilities.contains(&if *action == "txlist" { EndpointCapability::History } else { EndpointCapability::TokenHistory }))
             .map(|action| crate::fetch::evm::explorer_query_url(
                 EvmHistorySource::Open(base),
                 &format!("module=account&action={action}&address={ZERO_EVM}&sort=desc&page=1&offset=1"),
@@ -156,8 +155,6 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
             url: format!("{base}/wallet/getnowblock"), body: Some(json!({})), response: Response::Field("/blockID"),
         }],
         TrongridV1 => vec![get(&format!("/{ZERO_TRON}"), "/data")],
-        Xrpscan => vec![get(&format!("/{XRP_GENESIS}"), "/xrpBalance")],
-        BlockchainInfo => vec![get("?active=1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa&n=1", "/wallet")],
         Blockbook => vec![get("/api/v2", "/blockbook/bestHeight")],
         Blockcypher => vec![get("", "/height")],
         AptosRest => vec![get("", "/ledger_version")],
@@ -167,23 +164,8 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
         ToncenterV3 => vec![get("/masterchainInfo", "/last/seqno")],
         Horizon => vec![get("/fee_stats", "/last_ledger")],
         Nearblocks => vec![get("/stats", "/stats/0")],
-        SubstrateSidecar => vec![get("/transaction/material", "/at/hash")],
         Insight => vec![get("/status", "/blocks")],
         KaspaRest => vec![get("/info/network", "/networkName")],
-        // These legacy directory entries include operation URL prefixes.
-        // An explicit probe must still belong to the configured service.
-        Blockchair | BchRestV2 => {
-            let url = record.probe_url.as_deref().ok_or("no health path for this API")?;
-            let endpoint = reqwest::Url::parse(base).map_err(|e| e.to_string())?;
-            let probe = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
-            if endpoint.origin() != probe.origin() {
-                return Err("health probe must use the configured endpoint origin".into());
-            }
-            vec![Check::get(url.into(), Response::Field(if api == Blockchair { "/data/blocks" } else { "/blocks" }))]
-        }
-        SochainV2 | Tronscan => {
-            return Err("no read-only health check for this API".into());
-        }
     };
     if checks.is_empty() {
         return Err("no health check for the declared capabilities".into());

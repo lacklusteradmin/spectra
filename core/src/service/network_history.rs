@@ -77,7 +77,11 @@ impl WalletService {
         // History is served by indexers, independently for native and token transfers.
         let client = EvmClient::new(Arc::new(vec![]), chain.evm_chain_id()?);
         let sources = self
-            .api_endpoints(chain, crate::EndpointApi::Blockscout, &["history"])
+            .api_endpoints(
+                chain,
+                crate::EndpointApi::Blockscout,
+                &[EndpointCapability::History],
+            )
             .await?;
         if sources.is_empty() {
             return Err("no explorer configured for this chain".into());
@@ -101,7 +105,11 @@ impl WalletService {
             vec![]
         } else {
             let sources = self
-                .api_endpoints(chain, crate::EndpointApi::Blockscout, &["token-history"])
+                .api_endpoints(
+                    chain,
+                    crate::EndpointApi::Blockscout,
+                    &[EndpointCapability::TokenHistory],
+                )
                 .await?;
             crate::fetch::http::with_fallback(&sources, |base| {
                 let client = &client;
@@ -194,10 +202,13 @@ async fn fetch_history(
     _token: Option<&str>,
     service: &WalletService,
 ) -> Result<String, SpectraBridgeError> {
-    let requirements: &[&str] = if chain.mainnet_counterpart() == Chain::Solana {
-        &["history", "token-history"]
+    let requirements: &[EndpointCapability] = if chain.mainnet_counterpart() == Chain::Solana {
+        &[
+            EndpointCapability::History,
+            EndpointCapability::TokenHistory,
+        ]
     } else {
-        &["history"]
+        &[EndpointCapability::History]
     };
     let (api, endpoints) = service.fetch_endpoints(chain, requirements).await?;
     use crate::EndpointApi as Api;
@@ -225,7 +236,7 @@ async fn fetch_history(
         ),
         Api::EvmJsonRpc => {
             let sources = service
-                .api_endpoints(chain, Api::Blockscout, &["history"])
+                .api_endpoints(chain, Api::Blockscout, &[EndpointCapability::History])
                 .await?;
             let client = EvmClient::new(endpoints, chain.evm_chain_id()?);
             let h = crate::fetch::http::with_fallback(&sources, |base| {
@@ -250,24 +261,19 @@ async fn fetch_history(
                 .await?,
         ),
         Api::TronHttp => {
-            let tronscan = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer), &["history"])
-                .await
-                .first()
-                .cloned()
-                .ok_or("No Tron history indexer configured")?;
-            let tokens = service
-                .endpoints_for(
-                    &chain.endpoint_str_id(EndpointSlot::Explorer),
-                    &["token-history"],
+            let accounts = service
+                .tron_account_endpoints(
+                    chain,
+                    &endpoints,
+                    &[
+                        EndpointCapability::History,
+                        EndpointCapability::TokenHistory,
+                    ],
                 )
-                .await;
-            let tokens = tokens
-                .first()
-                .ok_or("No Tron token history indexer configured")?;
+                .await?;
             json_response(
                 &TronClient::new(endpoints)
-                    .fetch_unified_history(address, &tronscan, tokens, 50)
+                    .fetch_history(address, &accounts, 50)
                     .await?,
             )
         }
@@ -289,8 +295,8 @@ async fn fetch_history(
         Api::ToncenterV2 => json_response(&TonClient::new(endpoints).fetch_history(address).await?),
         Api::NearJsonRpc => {
             let indexer = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer), &["history"])
-                .await
+                .api_endpoints(chain, Api::Nearblocks, &[EndpointCapability::History])
+                .await?
                 .first()
                 .cloned()
                 .ok_or("No NEAR history indexer configured")?;

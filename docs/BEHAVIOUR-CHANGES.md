@@ -16,6 +16,109 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-29 — Donation addresses are core's, checked when they load
+
+- **Before:** `resources/Donations.json` held the Donate screen's five
+  addresses. Swift decoded it, and only a Swift test checked that each was a
+  valid address on the chain it named.
+- **After:** `core/data/donations.toml` holds them. Loading refuses an unknown
+  or test network, a second address for one network, and any address that is
+  not already its chain's valid, normalized form. Swift reads
+  `donation_destinations()`; `spectra donations` prints the same list. The
+  JSON resource and the Swift test are gone.
+- **Why:** these are funds destinations; AGENTS.md asks for them to be
+  validated by core before anything shows them, not trusted from a platform
+  resource.
+- **CLI check:** `spectra --json donations` lists the five addresses.
+- **Verification:** all four suites passed: rustfmt/clippy, 867 core tests plus
+  the transport test, 450 CLI acceptance checks and 95 iPhone simulator tests.
+
+## 2026-09-29 — The endpoint catalog claims only what an adapter can do
+
+- **Before:** 14 of 111 catalog rows claimed capabilities their API's adapter
+  does not implement. Eight APIs (Blockchair, blockchain.info, BCH REST v2,
+  SoChain v2, XRPScan, Substrate Sidecar, Tron JSON-RPC, Tronscan) had no
+  adapter at all; their 12 rows only appeared on the Endpoints screen and in
+  health checks. TON v3 claimed balance and history, TronGrid v1 balance and
+  token balance. `probe_url` sat on 57 rows and was read for seven, all
+  Blockchair or BCH REST.
+- **After:** loading refuses a row that claims a capability outside
+  `endpoint_capability_options` for its API on that network. The 12
+  adapter-less rows, the eight `EndpointApi` variants, their health checks
+  and `probe_url` are removed. TON v3 declares token balance and discovery;
+  TronGrid v1 declares history, token history and token discovery. Bitcoin
+  Cash is left with no catalog endpoint, which is what its client already
+  saw.
+- **Why:** a capability is documented as a claim that has to be true, and the
+  Endpoints screen showed these as working services. An API nothing can call
+  is not an endpoint.
+- **CLI check:** `spectra --json endpoints --catalog` has no row whose
+  `capabilities` exceed its `supportedCapabilities`, and no `probeURL`.
+- **Verification:** all four suites passed: rustfmt/clippy, 867 core tests plus
+  the transport test, 450 CLI acceptance checks and 95 iPhone simulator tests.
+
+## 2026-09-29 — Tron history reads TronGrid
+
+- **Before:** Tron history needed a Tronscan endpoint, and the keyless
+  catalog had none after 2026-09-21, so every Tron history read failed with
+  "No Tron history indexer configured" before any request. The Tronscan
+  client also turned a failed read into an empty history.
+- **After:** `TronClient::fetch_history` reads TronGrid's v1 account API
+  (`/transactions` and `/transactions/trc20`, confirmed only), the one the
+  catalog already lists for token discovery. It keeps successful TRX
+  transfers and TRC-20 `Transfer` events, converts node hex addresses to
+  base58check, formats token amounts exactly, and returns an error when a
+  read fails. The account bases come from `tron_account_endpoints`, shared
+  with token discovery: catalog and custom `trongrid-v1` rows, or each primary
+  node's own `/v1/accounts` under an explicit override. The Tronscan client is
+  removed.
+- **Why:** a chain with a keyless indexer in the catalog should not have
+  broken history, and an empty history is not an honest answer to a failed
+  read.
+- **CLI check:** `spectra history <tron wallet>` lists transfers;
+  `scripts/cli-history.py` covers it against a loopback TronGrid.
+- **Verification:** all four suites passed: rustfmt/clippy, 867 core tests plus
+  the transport test, 450 CLI acceptance checks and 95 iPhone simulator tests.
+
+## 2026-09-28 — Endpoint slots and capability strings are gone
+
+- **Before:** services beside a chain's own client were reached through
+  `EndpointSlot`: `Chain::endpoint_api(slot)` hard-coded TON v3 as the
+  Secondary slot and Nearblocks and XRPScan as the Explorer slot, and their
+  lists were keyed by strings such as `"ton:secondary"` and `"near:explorer"`,
+  parsed back with `split_once(':')` in three places. Blockscout and TronGrid
+  were already asked for by API through `api_endpoints`, so routing had two
+  models. Nothing read the XRP explorer list, and Tron history read
+  `"tron:explorer"`, a slot with no API. A transport override with an unknown
+  chain id was accepted and ignored. Capabilities were strings everywhere:
+  checked against a list when the catalog loaded, packed into
+  `ENDPOINT_CAPABILITY_*` bitmasks (staking an unnamed `1 << 14`) for
+  filtering, and compared by literal at about 300 call sites. Custom
+  endpoints stored them sorted alphabetically.
+- **After:** `Chain::primary_api()` names the one API a chain's client
+  speaks. `endpoints_for` is that API's list; every other service is
+  `api_endpoints(chain, api, capabilities)`, custom endpoints first and then
+  the catalog, whether or not the transport was overridden. `ChainEndpoints`
+  is a chain's primary list and refuses an unknown network, and
+  `spectra endpoints --catalog` reports one `configured` row per chain.
+  `EndpointCapability` is an enum with the same kebab-case names, used by the
+  catalog, records, custom endpoints, probes, overrides, `AddCustomEndpoint`
+  and `spectra endpoints --capabilities`, so a misspelt capability fails to
+  parse. Filters take a capability slice, the masks are gone, custom
+  endpoints store capabilities in declaration order, and Swift localizes a
+  capability through `endpoint_capability_id`.
+- **Why:** a slot was a second name for an API, with string keys to carry
+  it, and it hid that Tron history had no route. A capability string could be
+  misspelt anywhere except the catalog file.
+- **Not fixed:** Tron history still fails with "No Tron history indexer
+  configured": it needs a Tronscan endpoint, and the keyless catalog has had
+  none since 2026-09-21.
+- **CLI check:** `spectra --json endpoints --catalog` has no `configured`
+  key containing `:`; `spectra endpoints --chain base --api evm-json-rpc
+  --capabilities native-history --add https://base.example` exits 2.
+- **Verification:** all four suites passed: rustfmt/clippy, 862 core tests plus
+  the transport test, 449 CLI acceptance checks and 96 iPhone simulator tests.
+
 ## 2026-09-28 — Transaction explorers moved out of the endpoint catalog
 
 - **Before:** `endpoints.toml` held 44 transaction-explorer pages beside the

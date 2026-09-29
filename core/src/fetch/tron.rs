@@ -1,6 +1,6 @@
 //! Tron chain client.
 //!
-//! Uses the TronGrid / TronScan REST API.
+//! Uses the TronGrid REST API: the node HTTP API and the v1 account API.
 //! Transactions are built using a protobuf-like manual encoding (Tron uses
 //! protobuf for its RawData but the on-wire format for transfers is simple).
 //! Signing uses secp256k1 with keccak256 (same key derivation as Ethereum,
@@ -25,8 +25,7 @@ pub struct TronBalance {
 pub struct TronTransfer {
     pub contract: Option<String>,
     pub txid: String,
-    pub block_number: u64,
-    /// Milliseconds since epoch (TronScan convention).
+    /// Milliseconds since epoch, as TronGrid reports block times.
     pub timestamp_ms: u64,
     pub from: String,
     pub to: String,
@@ -151,168 +150,40 @@ impl TronClient {
         })
     }
 
-    /// Fetch up to `limit` recent transfers combining native TRX and TRC-20
-    /// token transfers from TronScan. Results are sorted newest-first.
-    pub async fn fetch_unified_history(
+    /// Up to `limit` recent confirmed transfers, native TRX and TRC-20,
+    /// newest first, from TronGrid's v1 account API. Each entry of
+    /// `account_endpoints` is a `…/v1/accounts` base; the first that answers
+    /// both reads is used.
+    pub async fn fetch_history(
         &self,
         address: &str,
-        api_base: &str,
-        token_api_base: &str,
+        account_endpoints: &[String],
         limit: usize,
     ) -> Result<Vec<TronTransfer>, String> {
         let limit = limit.min(50);
-
-        // --- Native TRX transfers ---
-        let trx_url = format!(
-            "{}/api/transaction?sort=-timestamp&count=true&limit={}&address={}",
-            api_base.trim_end_matches('/'),
-            limit,
-            address
-        );
-        let trx_resp: Value = self
-            .client
-            .get_json(&trx_url, RetryProfile::ChainRead)
-            .await
-            .unwrap_or(Value::Null);
-        let trx_data = trx_resp
-            .get("data")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        // Tronscan lists only transactions already in a block.
-        let mut entries: Vec<TronTransfer> = trx_data
-            .into_iter()
-            .map(|tx| {
-                // Only include Transfer (contractType 1) transactions.
-                let contract_type = tx.get("contractType").and_then(|v| v.as_u64()).unwrap_or(0);
-                if contract_type != 1 {
-                    return Ok(None);
-                }
-                let txid = tx
-                    .get("hash")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
-                let timestamp_ms = super::confirmed_history_time(
-                    tx.get("timestamp").and_then(|v| v.as_u64()),
-                    &txid,
-                )?;
-                let from = tx
-                    .pointer("/contractData/owner_address")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let to = tx
-                    .pointer("/contractData/to_address")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let amount_sun = tx
-                    .pointer("/contractData/amount")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let is_incoming = to.eq_ignore_ascii_case(address);
-                let trx = amount_sun as f64 / 1_000_000.0;
-                let amount_display = format_trx_f64(trx);
-                Ok(Some(TronTransfer {
-                    contract: None,
-                    txid,
-                    block_number,
-                    timestamp_ms,
-                    from,
-                    to,
-                    amount_display,
-                    symbol: "TRX".to_string(),
-                    is_incoming,
-                }))
+        let (native, tokens): (Value, Value) =
+            with_fallback(account_endpoints, |base| async move {
+                let base = format!("{}/{address}", base.trim_end_matches('/'));
+                let query = format!("limit={limit}&only_confirmed=true");
+                let native = self
+                    .client
+                    .get_json(
+                        &format!("{base}/transactions?{query}"),
+                        RetryProfile::ChainRead,
+                    )
+                    .await?;
+                let tokens = self
+                    .client
+                    .get_json(
+                        &format!("{base}/transactions/trc20?{query}"),
+                        RetryProfile::ChainRead,
+                    )
+                    .await?;
+                Ok((native, tokens))
             })
-            .collect::<Result<Vec<Option<TronTransfer>>, String>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // --- TRC-20 token transfers ---
-        let trc20_url = format!(
-            "{}/api/token_trc20/transfers?limit={}&start=0&sort=-timestamp&address={}",
-            token_api_base.trim_end_matches('/'),
-            limit,
-            address
-        );
-        let trc20_resp: Value = self
-            .client
-            .get_json(&trc20_url, RetryProfile::ChainRead)
-            .await
-            .unwrap_or(Value::Null);
-        let trc20_data = trc20_resp
-            .get("token_transfers")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        for tx in trc20_data {
-            let txid = tx
-                .get("transaction_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
-            let timestamp_ms =
-                super::confirmed_history_time(tx.get("block_ts").and_then(|v| v.as_u64()), &txid)?;
-            let from = tx
-                .get("from_address")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let to = tx
-                .get("to_address")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let is_incoming = to.eq_ignore_ascii_case(address);
-            let symbol = tx
-                .pointer("/tokenInfo/tokenAbbr")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?")
-                .to_string();
-            let decimals = tx
-                .pointer("/tokenInfo/tokenDecimal")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(6) as u32;
-            let quant_str = tx.get("quant").and_then(|v| v.as_str()).unwrap_or("0");
-            let quant: u128 = quant_str.parse().unwrap_or(0);
-            let divisor = 10u128.pow(decimals);
-            let whole = quant / divisor;
-            let frac = quant % divisor;
-            let amount_display = if frac == 0 || decimals == 0 {
-                whole.to_string()
-            } else {
-                let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
-                let trimmed = frac_str.trim_end_matches('0');
-                format!("{}.{}", whole, trimmed)
-            };
-
-            entries.push(TronTransfer {
-                contract: Some(
-                    tx.get("contract_address")
-                        .or_else(|| tx.pointer("/tokenInfo/tokenId"))
-                        .and_then(Value::as_str)
-                        .filter(|s| !s.is_empty())
-                        .ok_or("TRC20 history missing contract")?
-                        .to_string(),
-                ),
-                txid,
-                block_number,
-                timestamp_ms,
-                from,
-                to,
-                amount_display,
-                symbol,
-                is_incoming,
-            });
-        }
-
+            .await?;
+        let mut entries = native_transfers(&native, address)?;
+        entries.extend(token_transfers(&tokens, address)?);
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms));
         entries.truncate(limit);
         Ok(entries)
@@ -502,6 +373,113 @@ pub(crate) fn parse_abi_u128(hex_str: &str) -> Result<u128, String> {
     u128::from_str_radix(&word[32..], 16).map_err(|e| format!("TRC20 integer: {e}"))
 }
 
+fn data(response: &Value) -> Result<&Vec<Value>, String> {
+    response
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "TronGrid history: response has no data".to_string())
+}
+
+/// Successful TRX transfers. Other contract types (smart-contract calls,
+/// staking, votes) move no TRX between accounts; TRC-20 movements come from
+/// the token endpoint.
+fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>, String> {
+    let mut entries = Vec::new();
+    for tx in data(response)? {
+        let contract = tx.pointer("/raw_data/contract/0");
+        if contract.and_then(|c| c.get("type")).and_then(Value::as_str) != Some("TransferContract")
+            || tx.pointer("/ret/0/contractRet").and_then(Value::as_str) != Some("SUCCESS")
+        {
+            continue;
+        }
+        let txid = tx.get("txID").and_then(Value::as_str).unwrap_or_default();
+        let value = contract
+            .and_then(|c| c.pointer("/parameter/value"))
+            .ok_or_else(|| format!("TronGrid history: transfer {txid} has no value"))?;
+        let party = |field: &str| {
+            value
+                .get(field)
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("TronGrid history: transfer {txid} has no {field}"))
+                .and_then(crate::derivation::tron::tron_hex_to_base58)
+        };
+        let (from, to) = (party("owner_address")?, party("to_address")?);
+        let sun = value
+            .get("amount")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("TronGrid history: transfer {txid} has no amount"))?;
+        entries.push(TronTransfer {
+            contract: None,
+            txid: txid.to_string(),
+            timestamp_ms: super::confirmed_history_time(
+                tx.get("block_timestamp").and_then(Value::as_u64),
+                txid,
+            )?,
+            is_incoming: to == address,
+            from,
+            to,
+            amount_display: format_trx(sun),
+            symbol: "TRX".to_string(),
+        });
+    }
+    Ok(entries)
+}
+
+/// TRC-20 `Transfer` events; approvals move nothing.
+fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>, String> {
+    let mut entries = Vec::new();
+    for tx in data(response)? {
+        if tx.get("type").and_then(Value::as_str) != Some("Transfer") {
+            continue;
+        }
+        let txid = tx
+            .get("transaction_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let text = |pointer: &str| {
+            tx.pointer(pointer)
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| format!("TronGrid history: token transfer {txid} has no {pointer}"))
+        };
+        let raw: u128 = text("/value")?.parse().map_err(|_| {
+            format!("TronGrid history: token transfer {txid} has a malformed value")
+        })?;
+        let decimals = tx
+            .pointer("/token_info/decimals")
+            .and_then(Value::as_u64)
+            .and_then(|d| u32::try_from(d).ok())
+            .filter(|d| *d <= 38)
+            .ok_or_else(|| format!("TronGrid history: token transfer {txid} has no decimals"))?;
+        let to = text("/to")?.to_string();
+        entries.push(TronTransfer {
+            contract: Some(text("/token_info/address")?.to_string()),
+            txid: txid.to_string(),
+            timestamp_ms: super::confirmed_history_time(
+                tx.get("block_timestamp").and_then(Value::as_u64),
+                txid,
+            )?,
+            from: text("/from")?.to_string(),
+            is_incoming: to == address,
+            to,
+            amount_display: format_units(raw, decimals),
+            symbol: text("/token_info/symbol").unwrap_or("?").to_string(),
+        });
+    }
+    Ok(entries)
+}
+
+/// `raw` in whole units, exactly: no rounding, trailing zeros trimmed.
+fn format_units(raw: u128, decimals: u32) -> String {
+    let divisor = 10u128.pow(decimals);
+    let (whole, frac) = (raw / divisor, raw % divisor);
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac = format!("{frac:0>width$}", width = decimals as usize);
+    format!("{whole}.{}", frac.trim_end_matches('0'))
+}
+
 fn format_trx(sun: u64) -> String {
     let whole = sun / 1_000_000;
     let frac = sun % 1_000_000;
@@ -513,10 +491,93 @@ fn format_trx(sun: u64) -> String {
     format!("{}.{}", whole, trimmed)
 }
 
-fn format_trx_f64(trx: f64) -> String {
-    // Format with up to 6 decimal places, trimming trailing zeros.
-    let sun = (trx * 1_000_000.0).round() as u64;
-    format_trx(sun)
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const ME: &str = "TKHuVq1oKVruCGLvqVexFs6dawKv6fQgFs";
+
+    #[tokio::test]
+    async fn trongrid_history_merges_trx_and_trc20_transfers_newest_first() {
+        let server = MockServer::start().await;
+        let transfer = |id: &str, kind: &str, ret: &str, owner: &str, to: &str, time: u64| {
+            serde_json::json!({
+                "txID": id, "block_timestamp": time, "ret": [{"contractRet": ret}],
+                "raw_data": {"contract": [{"type": kind, "parameter": {"value": {
+                    "amount": 1_500_000, "owner_address": owner, "to_address": to,
+                }}}]},
+            })
+        };
+        let me = "4166426c7ac3d98b29191063833345b6bc540d7278";
+        let them = "41add5246bd889365714a57579fc070ef81a8b6d81";
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/accounts/{ME}/transactions")))
+            .and(query_param("only_confirmed", "true"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": [
+                    transfer("in", "TransferContract", "SUCCESS", them, me, 3000),
+                    transfer("call", "TriggerSmartContract", "SUCCESS", me, them, 2500),
+                    transfer("failed", "TransferContract", "REVERT", me, them, 2000),
+                ]})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/accounts/{ME}/transactions/trc20")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": [
+                {"transaction_id": "usdt", "type": "Transfer", "block_timestamp": 4000,
+                 "from": ME, "to": "TJ5usJLLwjwn7Pw3TPbdzreG7dvgKzfQ5y", "value": "1234500",
+                 "token_info": {"symbol": "USDT", "address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "decimals": 6}},
+                {"transaction_id": "approve", "type": "Approval", "block_timestamp": 5000,
+                 "from": ME, "to": "TJ5usJLLwjwn7Pw3TPbdzreG7dvgKzfQ5y", "value": "1",
+                 "token_info": {"symbol": "USDT", "address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "decimals": 6}},
+            ]})))
+            .mount(&server)
+            .await;
+
+        let history = TronClient::new(std::sync::Arc::new(vec![]))
+            .fetch_history(ME, &[format!("{}/v1/accounts", server.uri())], 50)
+            .await
+            .unwrap();
+        let ids: Vec<_> = history.iter().map(|t| t.txid.as_str()).collect();
+        assert_eq!(ids, ["usdt", "in"]);
+        assert_eq!(history[0].amount_display, "1.2345");
+        assert_eq!(
+            history[0].contract.as_deref(),
+            Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
+        );
+        assert!(!history[0].is_incoming);
+        assert_eq!(history[1].amount_display, "1.5");
+        assert_eq!(history[1].to, ME, "hex addresses come back in base58check");
+        assert!(history[1].is_incoming);
+    }
+
+    #[tokio::test]
+    async fn a_failed_read_is_an_error_rather_than_an_empty_history() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        assert!(
+            TronClient::new(std::sync::Arc::new(vec![]))
+                .fetch_history(ME, &[format!("{}/v1/accounts", server.uri())], 50)
+                .await
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn token_amounts_are_exact() {
+        assert_eq!(
+            format_units(1_000_000_000_000_000_001, 18),
+            "1.000000000000000001"
+        );
+        assert_eq!(format_units(5, 0), "5");
+        assert_eq!(format_units(2_000_000, 6), "2");
+    }
 }
 
 #[cfg(test)]

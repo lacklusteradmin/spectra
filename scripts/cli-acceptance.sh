@@ -358,9 +358,10 @@ btc = configured["bitcoin"]
 assert btc and all(any(r["endpoint"] == url and r["api"] == "esplora" for r in records) for url in btc)
 assert "https://blockchain.info/multiaddr" not in btc
 assert configured["ton"] == ["https://toncenter.com/api/v2"]
-assert configured["ton:secondary"] == ["https://toncenter.com/api/v3"]
+# A transport list is a chain's primary API; secondary services are found by API.
+assert all(":" not in chain for chain in configured)
+assert [r["endpoint"] for r in records if r["chainId"] == "ton" and r["api"] == "toncenter-v3"] == ["https://toncenter.com/api/v3"]
 assert configured["tron"] == ["https://api.trongrid.io"]
-assert "bittensor:secondary" not in configured
 assert not any(r["api"] in ("taostats", "subscan", "ethplorer") for r in records)
 # Existing clients have no matching catalog API for these chains.
 assert configured["litecoin"] == []
@@ -390,7 +391,7 @@ contains "Solana nodes enumerate tokens and expose token transfers" '"capabiliti
     spectra --json endpoints --catalog --chain Solana
 contains "TON v2 only claims native history" '"capabilities":["balance","history","fee","broadcast","verification","token-balance"]' \
     spectra --json endpoints --catalog --chain TON
-contains "TON v3 exposes jetton balances and transfers" '"capabilities":["balance","history","token-balance","token-discovery","token-history"]' \
+contains "TON v3 claims only what its adapter reads: jetton balances and discovery" '"capabilities":["token-balance","token-discovery"]' \
     spectra --json endpoints --catalog --chain TON
 
 section "transaction explorers"
@@ -419,6 +420,13 @@ check "a blank hash is refused" $USAGE \
     spectra --json explorers --chain Ethereum --tx " "
 check "--tx needs a chain" $USAGE \
     spectra --json explorers --tx abc
+
+check "an unknown capability is refused before it is saved" $USAGE \
+    spectra endpoints --chain base --api evm-json-rpc --capabilities native-history --add https://base.example
+
+contains "donation addresses come from core's validated catalog" \
+    '"address":"0xefa039ed09c3fe6aeceb89b365b2740e4050365c","chainId":"ethereum"' \
+    spectra --json donations
 
 section "endpoint network identity"
 contains "Sepolia endpoints carry their concrete network ID" '"chainId":"ethereum-sepolia"' \

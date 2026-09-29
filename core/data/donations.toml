@@ -1,0 +1,26 @@
+# Donation addresses shown on the Donate screen, one per network.
+#
+# These are funds destinations. Loading refuses an unknown or test network, a
+# second address for one network, and any address that is not already the
+# chain's valid, normalized form, so a typo fails the build's tests instead of
+# reaching a donor.
+
+[[donations]]
+chain_id = "bitcoin"
+address = "bc1pc7vh4gd3qcghvyplv2e8kg7wfrdduvus98chqfka3kl7cl3g9n0qa2xk03"
+
+[[donations]]
+chain_id = "ethereum"
+address = "0xefa039ed09c3fe6aeceb89b365b2740e4050365c"
+
+[[donations]]
+chain_id = "solana"
+address = "Cbjxsz2mtdxo8ZRStCDpAjuRcHcAg9kMNMgVjE6E9VBv"
+
+[[donations]]
+chain_id = "tron"
+address = "TUYaUXqRKoLs6GSWrrGgc6BUg8cgyHbB44"
+
+[[donations]]
+chain_id = "monero"
+address = "89vtA958CURTLxDnteLZUUQk43nL8RcCaSDAPUcToQi9NmeAECDRxnie15sLa9rFWDZuzjXKJs3i6fweiqEJGKWoJuUkLKh"

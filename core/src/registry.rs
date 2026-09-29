@@ -92,14 +92,6 @@ pub enum Chain {
     MoneroStagenet,
 }
 
-/// Which endpoint-list slot to fetch for a given chain.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EndpointSlot {
-    Primary,
-    Secondary,
-    Explorer,
-}
-
 // All variants in stable order. Used by Chain::all().
 /// What a chain requires before a holding may be sent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,48 +328,37 @@ impl Chain {
             && (lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1"))
     }
 
-    /// Wire contract implemented by the client consuming this service slot.
-    /// Catalog URLs with a different API must never enter its fallback list.
-    pub fn endpoint_api(self, slot: EndpointSlot) -> Option<crate::EndpointApi> {
+    /// The API the chain's own client speaks: what its balance, fee and
+    /// broadcast reads use. Catalog URLs with a different API never enter its
+    /// fallback list; indexers and secondary services are asked for by API.
+    pub fn primary_api(self) -> Option<crate::EndpointApi> {
         use crate::EndpointApi as Api;
-        let chain = self.mainnet_counterpart();
-        match slot {
-            EndpointSlot::Primary => Some(match chain {
-                c if c.is_evm() => Api::EvmJsonRpc,
-                Chain::Bitcoin => Api::Esplora,
-                Chain::BitcoinCash
-                | Chain::Litecoin
-                | Chain::Zcash
-                | Chain::BitcoinGold
-                | Chain::Dash => Api::Blockbook,
-                Chain::BitcoinSV => Api::Whatsonchain,
-                Chain::Dogecoin => Api::Blockcypher,
-                Chain::Solana => Api::SolanaJsonRpc,
-                Chain::Tron => Api::TronHttp,
-                Chain::Stellar => Api::Horizon,
-                Chain::Xrp => Api::XrplJsonRpc,
-                Chain::Cardano => Api::Koios,
-                Chain::Polkadot | Chain::Bittensor => Api::SubstrateJsonRpc,
-                Chain::Sui => Api::SuiJsonRpc,
-                Chain::Aptos => Api::AptosRest,
-                Chain::Ton => Api::ToncenterV2,
-                Chain::Near => Api::NearJsonRpc,
-                Chain::Icp => Api::IcpRosetta,
-                Chain::Monero => Api::MoneroDaemonRpc,
-                Chain::Decred => Api::Insight,
-                Chain::Kaspa => Api::KaspaRest,
-                _ => return None,
-            }),
-            EndpointSlot::Secondary => match chain {
-                Chain::Ton => Some(Api::ToncenterV3),
-                _ => None,
-            },
-            EndpointSlot::Explorer => match chain {
-                Chain::Near => Some(Api::Nearblocks),
-                Chain::Xrp => Some(Api::Xrpscan),
-                _ => None,
-            },
-        }
+        Some(match self.mainnet_counterpart() {
+            c if c.is_evm() => Api::EvmJsonRpc,
+            Chain::Bitcoin => Api::Esplora,
+            Chain::BitcoinCash
+            | Chain::Litecoin
+            | Chain::Zcash
+            | Chain::BitcoinGold
+            | Chain::Dash => Api::Blockbook,
+            Chain::BitcoinSV => Api::Whatsonchain,
+            Chain::Dogecoin => Api::Blockcypher,
+            Chain::Solana => Api::SolanaJsonRpc,
+            Chain::Tron => Api::TronHttp,
+            Chain::Stellar => Api::Horizon,
+            Chain::Xrp => Api::XrplJsonRpc,
+            Chain::Cardano => Api::Koios,
+            Chain::Polkadot | Chain::Bittensor => Api::SubstrateJsonRpc,
+            Chain::Sui => Api::SuiJsonRpc,
+            Chain::Aptos => Api::AptosRest,
+            Chain::Ton => Api::ToncenterV2,
+            Chain::Near => Api::NearJsonRpc,
+            Chain::Icp => Api::IcpRosetta,
+            Chain::Monero => Api::MoneroDaemonRpc,
+            Chain::Decred => Api::Insight,
+            Chain::Kaspa => Api::KaspaRest,
+            _ => return None,
+        })
     }
 
     pub fn has_send_preview(self) -> bool {
@@ -626,21 +607,13 @@ impl Chain {
                 catalog.endpoint_records.iter().find(|record| {
                     record.chain_id == self.str_id()
                         && record.api == crate::EndpointApi::Blockscout
-                        && record.capabilities.iter().any(|cap| cap == "history")
+                        && record
+                            .capabilities
+                            .contains(&crate::EndpointCapability::History)
                 })
             })
             .map(|record| EvmHistorySource::Open(record.endpoint.as_str()))
             .unwrap_or(EvmHistorySource::Unavailable)
-    }
-
-    /// Endpoint-table key for a given logical slot.
-    /// Primary → chain str_id; Secondary → "id:secondary"; Explorer → "id:explorer".
-    pub fn endpoint_str_id(self, slot: EndpointSlot) -> String {
-        match slot {
-            EndpointSlot::Primary => self.str_id().to_string(),
-            EndpointSlot::Secondary => format!("{}:secondary", self.str_id()),
-            EndpointSlot::Explorer => format!("{}:explorer", self.str_id()),
-        }
     }
 
     // ── Native-coin metadata
@@ -1530,30 +1503,6 @@ mod tests {
         assert_eq!(Chain::Unichain.evm_chain_id().unwrap(), 130);
         assert_eq!(Chain::Ink.evm_chain_id().unwrap(), 57073);
         assert_eq!(Chain::XLayer.evm_chain_id().unwrap(), 196);
-    }
-
-    #[test]
-    fn endpoint_slots_use_string_suffixes() {
-        assert_eq!(
-            Chain::Polkadot.endpoint_str_id(EndpointSlot::Primary),
-            "polkadot"
-        );
-        assert_eq!(
-            Chain::Polkadot.endpoint_str_id(EndpointSlot::Secondary),
-            "polkadot:secondary"
-        );
-        assert_eq!(
-            Chain::Ethereum.endpoint_str_id(EndpointSlot::Explorer),
-            "ethereum:explorer"
-        );
-        assert_eq!(
-            Chain::Tron.endpoint_str_id(EndpointSlot::Explorer),
-            "tron:explorer"
-        );
-        assert_eq!(
-            Chain::Near.endpoint_str_id(EndpointSlot::Explorer),
-            "near:explorer"
-        );
     }
 }
 

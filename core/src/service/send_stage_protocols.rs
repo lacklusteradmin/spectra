@@ -10,14 +10,19 @@ impl WalletService {
         request: &mut crate::send::SendExecutionRequest,
         sender: &str,
     ) -> Result<PreparedPayload, SpectraBridgeError> {
-        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .await;
         let decimals = if let Some(contract) = &request.contract_address {
             let decimals = match chain.mainnet_counterpart() {
                 Chain::Solana => u32::from(
-                    SolanaClient::new(self.endpoints_for(chain.str_id(), &["token-balance"]).await)
-                        .fetch_transfer_mint(contract)
-                        .await?
-                        .1,
+                    SolanaClient::new(
+                        self.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                            .await,
+                    )
+                    .fetch_transfer_mint(contract)
+                    .await?
+                    .1,
                 ),
                 Chain::Near => self
                     .token_contract_decimals(chain, contract)
@@ -25,10 +30,13 @@ impl WalletService {
                     .or(request.token_decimals)
                     .ok_or("NEAR token precision unavailable")?,
                 Chain::Tron => u32::from(
-                    TronClient::new(self.endpoints_for(chain.str_id(), &["token-balance"]).await)
-                        .fetch_trc20_metadata(contract)
-                        .await?
-                        .decimals,
+                    TronClient::new(
+                        self.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                            .await,
+                    )
+                    .fetch_trc20_metadata(contract)
+                    .await?
+                    .decimals,
                 ),
                 _ => return Err("Token transfer unavailable on this protocol".into()),
             };
@@ -62,16 +70,22 @@ impl WalletService {
             }
             Chain::Icp => PreparedPayload::Icp(
                 IcpClient::new(
-                    self.endpoints_for(chain.str_id(), &["verification", "fee"])
-                        .await,
+                    self.endpoints_for(
+                        chain.str_id(),
+                        &[EndpointCapability::Verification, EndpointCapability::Fee],
+                    )
+                    .await,
                 )
                 .prepare_transfer(sender, to, amount_u64)
                 .await?,
             ),
             Chain::Zcash => PreparedPayload::Zcash(
                 BlockbookClient::new(
-                    self.endpoints_for(chain.str_id(), &["verification", "utxo"])
-                        .await,
+                    self.endpoints_for(
+                        chain.str_id(),
+                        &[EndpointCapability::Verification, EndpointCapability::Utxo],
+                    )
+                    .await,
                     chain,
                 )
                 .prepare_zcash(sender, to, amount_u64, request.fee_sat)
@@ -123,33 +137,39 @@ impl WalletService {
                 }
             }
             Chain::Decred => PreparedPayload::Decred(
-                DecredClient::new(self.endpoints_for(chain.str_id(), &["utxo"]).await)
-                    .prepare_transfer(
-                        sender,
-                        to,
-                        amount_u64,
-                        request.fee_sat.unwrap_or(
-                            u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                                .map_err(|_| "Invalid chain fee")?,
-                        ),
-                        None,
-                    )
-                    .await?,
+                DecredClient::new(
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
+                )
+                .prepare_transfer(
+                    sender,
+                    to,
+                    amount_u64,
+                    request.fee_sat.unwrap_or(
+                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
+                            .map_err(|_| "Invalid chain fee")?,
+                    ),
+                    None,
+                )
+                .await?,
             ),
             Chain::Kaspa => PreparedPayload::Kaspa(
-                KaspaClient::new(self.endpoints_for(chain.str_id(), &["utxo"]).await)
-                    .prepare_transfer(
-                        sender,
-                        to,
-                        amount_u64,
-                        request.fee_sat.unwrap_or(
-                            u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                                .map_err(|_| "Invalid chain fee")?,
-                        ),
-                        None,
-                        None,
-                    )
-                    .await?,
+                KaspaClient::new(
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
+                )
+                .prepare_transfer(
+                    sender,
+                    to,
+                    amount_u64,
+                    request.fee_sat.unwrap_or(
+                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
+                            .map_err(|_| "Invalid chain fee")?,
+                    ),
+                    None,
+                    None,
+                )
+                .await?,
             ),
             Chain::Ton => PreparedPayload::Ton {
                 seqno: TonClient::new(eps).fetch_seqno(sender).await?,
@@ -161,9 +181,12 @@ impl WalletService {
                 let client = XrpClient::new(eps);
                 PreparedPayload::Xrp {
                     sequence: client.fetch_sequence(sender).await?,
-                    fee_drops: XrpClient::new(self.endpoints_for(chain.str_id(), &["fee"]).await)
-                        .fetch_fee()
-                        .await?,
+                    fee_drops: XrpClient::new(
+                        self.endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                            .await,
+                    )
+                    .fetch_fee()
+                    .await?,
                     amount_drops: amount_u64,
                 }
             }
@@ -176,7 +199,8 @@ impl WalletService {
                         .checked_add(1)
                         .ok_or("Sequence exhausted")?,
                     fee_stroops: StellarClient::new(
-                        self.endpoints_for(chain.str_id(), &["fee"]).await,
+                        self.endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                            .await,
                     )
                     .fetch_base_fee()
                     .await?,
@@ -221,13 +245,15 @@ impl WalletService {
                         u64::try_from(chain.static_fee_units().ok_or("No Cardano fee")?)
                             .map_err(|_| "Invalid fee")?,
                     );
-                let inputs: Vec<_> =
-                    CardanoClient::new(self.endpoints_for(chain.str_id(), &["utxo"]).await)
-                        .fetch_utxos(sender)
-                        .await?
-                        .into_iter()
-                        .map(|u| (u.tx_hash, u.tx_index, u.lovelace))
-                        .collect();
+                let inputs: Vec<_> = CardanoClient::new(
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
+                )
+                .fetch_utxos(sender)
+                .await?
+                .into_iter()
+                .map(|u| (u.tx_hash, u.tx_index, u.lovelace))
+                .collect();
                 crate::send::accounting::checked_change(
                     inputs.iter().map(|u| u.2),
                     amount_u64,
@@ -247,14 +273,16 @@ impl WalletService {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(
                     HttpClient::shared(),
-                    self.endpoints_for(chain.str_id(), &["utxo"]).await,
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
                 );
                 let rate = match request.fee_rate_svb {
                     Some(rate) => rate,
                     None => {
                         BitcoinClient::new(
                             HttpClient::shared(),
-                            self.endpoints_for(chain.str_id(), &["fee"]).await,
+                            self.endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                                .await,
                         )
                         .fetch_fee_rate(6)
                         .await?
@@ -275,9 +303,12 @@ impl WalletService {
                     self.endpoints_for(
                         chain.str_id(),
                         if request.contract_address.is_some() {
-                            &["verification", "token-balance"]
+                            &[
+                                EndpointCapability::Verification,
+                                EndpointCapability::TokenBalance,
+                            ]
                         } else {
-                            &["verification"]
+                            &[EndpointCapability::Verification]
                         },
                     )
                     .await,
@@ -327,9 +358,12 @@ impl WalletService {
                     to,
                     amount_u64,
                     sequence,
-                    AptosClient::new(self.endpoints_for(chain.str_id(), &["fee"]).await)
-                        .fetch_gas_price()
-                        .await?,
+                    AptosClient::new(
+                        self.endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                            .await,
+                    )
+                    .fetch_gas_price()
+                    .await?,
                     10_000,
                     crate::store::now_unix() as u64 + 600,
                     network,
@@ -343,8 +377,15 @@ impl WalletService {
                     .unwrap_or(10_000_000);
                 PreparedPayload::Sui(
                     SuiClient::new(
-                        self.endpoints_for(chain.str_id(), &["verification", "balance", "fee"])
-                            .await,
+                        self.endpoints_for(
+                            chain.str_id(),
+                            &[
+                                EndpointCapability::Verification,
+                                EndpointCapability::Balance,
+                                EndpointCapability::Fee,
+                            ],
+                        )
+                        .await,
                     )
                     .prepare_native_transfer(sender, to, amount_u64, gas)
                     .await?,
@@ -360,7 +401,9 @@ impl WalletService {
         stored: &StoredSend,
         signer: &super::send_identity::ResolvedSendIdentity,
     ) -> Result<(PreparedSubmission, Vec<String>), SpectraBridgeError> {
-        let eps = self.endpoints_for(chain.str_id(), &["verification"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .await;
         let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
         let mut resources = Vec::new();
         let (payload, field, hash) = match &stored.prepared {
@@ -436,23 +479,25 @@ impl WalletService {
             }
             PreparedPayload::Decred(p) => {
                 let request = &stored.request;
-                let refreshed =
-                    DecredClient::new(self.endpoints_for(chain.str_id(), &["utxo"]).await)
-                        .prepare_transfer(
-                            &stored.view.sender,
-                            &stored.view.recipient,
-                            u64::try_from(crate::send::amount_input::parse_raw_amount(
-                                &request.amount_str,
-                                8,
-                            )?)
-                            .map_err(|_| "Amount too large")?,
-                            request.fee_sat.unwrap_or(
-                                u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                                    .map_err(|_| "Invalid chain fee")?,
-                            ),
-                            None,
-                        )
-                        .await?;
+                let refreshed = DecredClient::new(
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
+                )
+                .prepare_transfer(
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    u64::try_from(crate::send::amount_input::parse_raw_amount(
+                        &request.amount_str,
+                        8,
+                    )?)
+                    .map_err(|_| "Amount too large")?,
+                    request.fee_sat.unwrap_or(
+                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
+                            .map_err(|_| "Invalid chain fee")?,
+                    ),
+                    None,
+                )
+                .await?;
                 if serde_json::to_vec(p)? != serde_json::to_vec(&refreshed)? {
                     return Err("Decred inputs changed; build and review again".into());
                 }
@@ -462,24 +507,26 @@ impl WalletService {
             }
             PreparedPayload::Kaspa(p) => {
                 let request = &stored.request;
-                let refreshed =
-                    KaspaClient::new(self.endpoints_for(chain.str_id(), &["utxo"]).await)
-                        .prepare_transfer(
-                            &stored.view.sender,
-                            &stored.view.recipient,
-                            u64::try_from(crate::send::amount_input::parse_raw_amount(
-                                &request.amount_str,
-                                8,
-                            )?)
-                            .map_err(|_| "Amount too large")?,
-                            request.fee_sat.unwrap_or(
-                                u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                                    .map_err(|_| "Invalid chain fee")?,
-                            ),
-                            None,
-                            None,
-                        )
-                        .await?;
+                let refreshed = KaspaClient::new(
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
+                )
+                .prepare_transfer(
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    u64::try_from(crate::send::amount_input::parse_raw_amount(
+                        &request.amount_str,
+                        8,
+                    )?)
+                    .map_err(|_| "Amount too large")?,
+                    request.fee_sat.unwrap_or(
+                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
+                            .map_err(|_| "Invalid chain fee")?,
+                    ),
+                    None,
+                    None,
+                )
+                .await?;
                 if serde_json::to_vec(p)? != serde_json::to_vec(&refreshed)? {
                     return Err("Kaspa inputs changed; build and review again".into());
                 }
@@ -548,8 +595,11 @@ impl WalletService {
             }
             PreparedPayload::Zcash(p) => {
                 let client = BlockbookClient::new(
-                    self.endpoints_for(chain.str_id(), &["verification", "utxo"])
-                        .await,
+                    self.endpoints_for(
+                        chain.str_id(),
+                        &[EndpointCapability::Verification, EndpointCapability::Utxo],
+                    )
+                    .await,
                     chain,
                 );
                 client.validate_zcash_prepared(p).await?;
@@ -744,10 +794,12 @@ impl WalletService {
                 if client.fetch_latest_slot().await? >= *ttl {
                     return Err("Cardano transaction expired; build and review again".into());
                 }
-                let current =
-                    CardanoClient::new(self.endpoints_for(chain.str_id(), &["utxo"]).await)
-                        .fetch_utxos(&stored.view.sender)
-                        .await?;
+                let current = CardanoClient::new(
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
+                )
+                .fetch_utxos(&stored.view.sender)
+                .await?;
                 for (hash, index, value) in inputs {
                     if !current
                         .iter()
@@ -788,7 +840,8 @@ impl WalletService {
             PreparedPayload::Bitcoin(p) => {
                 let current = BitcoinClient::new(
                     HttpClient::shared(),
-                    self.endpoints_for(chain.str_id(), &["utxo"]).await,
+                    self.endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+                        .await,
                 )
                 .fetch_utxos(&stored.view.sender)
                 .await?;
@@ -924,7 +977,9 @@ impl WalletService {
         chain: Chain,
         endpoint: &str,
     ) -> Result<(), SpectraBridgeError> {
-        let allowed = self.endpoints_for(chain.str_id(), &["broadcast"]).await;
+        let allowed = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Broadcast])
+            .await;
         if !allowed
             .iter()
             .any(|url| url.trim_end_matches('/') == endpoint.trim_end_matches('/'))
@@ -942,7 +997,7 @@ impl WalletService {
         let catalog = crate::app_core::endpoint_catalog()?;
         let known = catalog.endpoint_records.iter().any(|r| {
             r.chain_id == chain.str_id()
-                && Some(r.api) == chain.endpoint_api(EndpointSlot::Primary)
+                && Some(r.api) == chain.primary_api()
                 && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
         });
         let eps = Arc::new(vec![endpoint.to_string()]);
@@ -988,7 +1043,9 @@ impl WalletService {
         stored: &StoredSend,
     ) -> Result<(), SpectraBridgeError> {
         let now = crate::store::now_unix();
-        let endpoints = self.endpoints_for(chain.str_id(), &["verification"]).await;
+        let endpoints = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .await;
         let expired = match &stored.prepared {
             PreparedPayload::Zcash(p) => {
                 let (height, branch) = BlockbookClient::new(endpoints, chain)

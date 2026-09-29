@@ -1,6 +1,6 @@
 //! One directory for built-in and user-supplied API endpoints.
 use super::*;
-use crate::{AppCoreEndpointRecord, EndpointApi};
+use crate::{AppCoreEndpointRecord, EndpointApi, EndpointCapability};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
@@ -9,7 +9,7 @@ pub struct CustomEndpoint {
     pub chain_id: String,
     pub api: EndpointApi,
     pub endpoint: String,
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<EndpointCapability>,
 }
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
@@ -25,7 +25,7 @@ impl CustomEndpoint {
         chain_id: String,
         api: String,
         endpoint: String,
-        mut capabilities: Vec<String>,
+        mut capabilities: Vec<EndpointCapability>,
     ) -> Result<Self, String> {
         let chain = Chain::from_str_id(&chain_id).ok_or("Unknown endpoint network")?;
         let catalog = crate::app_core::endpoint_catalog()?;
@@ -34,15 +34,7 @@ impl CustomEndpoint {
             .iter()
             .filter(|r| r.chain_id == chain.str_id())
             .map(|r| r.api)
-            .chain(
-                [
-                    EndpointSlot::Primary,
-                    EndpointSlot::Secondary,
-                    EndpointSlot::Explorer,
-                ]
-                .into_iter()
-                .filter_map(|slot| chain.endpoint_api(slot)),
-            )
+            .chain(chain.primary_api())
             .find(|value| value.as_str() == api)
             .ok_or("API type is not supported by this network")?;
         let supported = crate::endpoint_api::endpoint_capability_options(chain_id.clone(), api);
@@ -96,7 +88,6 @@ impl CustomEndpoint {
             chain_id: self.chain_id.clone(),
             endpoint: self.endpoint.clone(),
             capabilities: self.capabilities.clone(),
-            probe_url: None,
         })
     }
 }
@@ -141,24 +132,22 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// All requirements are conjunctive. Fallback never widens this set.
+    /// The chain's primary-API URLs that declare every capability in
+    /// `required`. Fallback never widens this set.
     pub(crate) async fn endpoints_for(
         &self,
         chain_id: &str,
-        required: &[&str],
+        required: &[EndpointCapability],
     ) -> Arc<Vec<String>> {
         let urls = self.configured_endpoint_urls(chain_id).await;
-        let (network, slot) = match chain_id.split_once(':') {
-            Some((network, "secondary")) => (network, EndpointSlot::Secondary),
-            Some((network, "explorer")) => (network, EndpointSlot::Explorer),
-            _ => (chain_id, EndpointSlot::Primary),
-        };
-        let Some(chain) = Chain::from_str_id(network) else {
+        let Some(chain) = Chain::from_str_id(chain_id) else {
             return Arc::new(vec![]);
         };
         let Ok(directory) = self.endpoint_directory().await else {
             return Arc::new(vec![]);
         };
+        let declares =
+            |capabilities: &[EndpointCapability]| required.iter().all(|c| capabilities.contains(c));
         let index = self.endpoints.read().await;
         Arc::new(
             urls.iter()
@@ -170,16 +159,15 @@ impl WalletService {
                         })
                         .collect();
                     if matching.is_empty() {
-                        return index.capabilities.get(chain_id).is_some_and(|caps| {
-                            required.iter().all(|c| caps.iter().any(|v| v == c))
-                        });
+                        return index
+                            .capabilities
+                            .get(chain_id)
+                            .is_some_and(|caps| declares(caps));
                     }
                     matching.iter().any(|e| {
-                        e.record.chain_id == network
-                            && Some(e.record.api) == chain.endpoint_api(slot)
-                            && required
-                                .iter()
-                                .all(|c| e.record.capabilities.iter().any(|v| v == c))
+                        e.record.chain_id == chain_id
+                            && Some(e.record.api) == chain.primary_api()
+                            && declares(&e.record.capabilities)
                     })
                 })
                 .cloned()
@@ -187,19 +175,20 @@ impl WalletService {
         )
     }
 
+    /// The URLs for one API on `chain` that declare every capability in
+    /// `required`: custom endpoints first, then the catalog. How indexers and
+    /// secondary services are found; the primary list is `endpoints_for`.
     pub(crate) async fn api_endpoints(
         &self,
         chain: Chain,
         api: EndpointApi,
-        required: &[&str],
+        required: &[EndpointCapability],
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let mut urls = self.custom_api_endpoints(chain, api, required).await;
         for record in &crate::app_core::endpoint_catalog()?.endpoint_records {
             if record.chain_id == chain.str_id()
                 && record.api == api
-                && required
-                    .iter()
-                    .all(|c| record.capabilities.iter().any(|v| v == c))
+                && required.iter().all(|c| record.capabilities.contains(c))
                 && !urls.contains(&record.endpoint)
             {
                 urls.push(record.endpoint.clone());
@@ -212,7 +201,7 @@ impl WalletService {
         &self,
         chain: Chain,
         api: EndpointApi,
-        required: &[&str],
+        required: &[EndpointCapability],
     ) -> Vec<String> {
         self.wallet_state
             .read()
@@ -223,9 +212,7 @@ impl WalletService {
             .filter(|e| {
                 e.chain_id == chain.str_id()
                     && e.api == api
-                    && required
-                        .iter()
-                        .all(|c| e.capabilities.iter().any(|v| v == c))
+                    && required.iter().all(|c| e.capabilities.contains(c))
             })
             .map(|e| e.endpoint.clone())
             .collect()
@@ -233,28 +220,19 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// The same slot lists used by requests, including persisted custom URLs.
+    /// Each chain's primary list as requests use it, custom URLs included.
     pub async fn configured_endpoints(&self) -> Vec<ChainEndpoints> {
         let mut rows = Vec::new();
-        for chain in Chain::all() {
-            for slot in [
-                EndpointSlot::Primary,
-                EndpointSlot::Secondary,
-                EndpointSlot::Explorer,
-            ] {
-                if chain.endpoint_api(slot).is_some() {
-                    let chain_id = chain.endpoint_str_id(slot);
-                    rows.push(ChainEndpoints {
-                        capabilities: vec![],
-                        endpoints: self
-                            .configured_endpoint_urls(&chain_id)
-                            .await
-                            .as_ref()
-                            .clone(),
-                        chain_id,
-                    });
-                }
-            }
+        for chain in Chain::all().filter(|chain| chain.primary_api().is_some()) {
+            rows.push(ChainEndpoints {
+                capabilities: vec![],
+                endpoints: self
+                    .configured_endpoint_urls(chain.str_id())
+                    .await
+                    .as_ref()
+                    .clone(),
+                chain_id: chain.str_id().into(),
+            });
         }
         rows
     }
@@ -277,9 +255,9 @@ mod tests {
             .apply_state_command(StateCommand::SetAppSetting {
                 update: AppSettingUpdate::AddCustomEndpoint {
                     capabilities: match api {
-                        "blockscout" => vec!["history".into()],
-                        "trongrid-v1" => vec!["token-discovery".into()],
-                        _ => vec!["balance".into(), "broadcast".into()],
+                        "blockscout" => vec![EndpointCapability::History],
+                        "trongrid-v1" => vec![EndpointCapability::TokenDiscovery],
+                        _ => vec![EndpointCapability::Balance, EndpointCapability::Broadcast],
                     },
                     chain_id: chain.into(),
                     api: api.into(),
@@ -504,8 +482,8 @@ mod tests {
         let balance = MockServer::start().await;
         let broadcast = MockServer::start().await;
         for (url, capabilities) in [
-            (balance.uri(), vec!["balance".into()]),
-            (broadcast.uri(), vec!["broadcast".into()]),
+            (balance.uri(), vec![EndpointCapability::Balance]),
+            (broadcast.uri(), vec![EndpointCapability::Broadcast]),
         ] {
             let result = service
                 .apply_state_command(StateCommand::SetAppSetting {
@@ -577,9 +555,8 @@ mod tests {
                 .unwrap()
                 .record
                 .capabilities,
-            ["balance"]
+            [EndpointCapability::Balance]
         );
-        assert!(own.iter().all(|r| r.record.probe_url.is_none()));
         assert!(
             !reopened
                 .send_endpoints("ethereum".into())
@@ -601,7 +578,7 @@ mod tests {
             .update_endpoints(vec![ChainEndpoints {
                 chain_id: "ethereum".into(),
                 endpoints: vec![balance.uri()],
-                capabilities: vec!["broadcast".into()],
+                capabilities: vec![EndpointCapability::Broadcast],
             }])
             .await
             .unwrap();
@@ -622,7 +599,7 @@ mod tests {
 
     #[test]
     fn custom_capabilities_are_explicit_validated_and_canonical() {
-        for caps in [vec![], vec!["made-up".into()], vec!["history".into()]] {
+        for caps in [vec![], vec![EndpointCapability::History]] {
             assert!(
                 CustomEndpoint::validated(
                     "ethereum".into(),
@@ -637,11 +614,21 @@ mod tests {
             "ethereum".into(),
             "evm-json-rpc".into(),
             "https://node.example".into(),
-            vec!["fee".into(), "balance".into(), "fee".into()],
+            vec![
+                EndpointCapability::Fee,
+                EndpointCapability::Balance,
+                EndpointCapability::Fee,
+            ],
         )
         .unwrap();
-        assert_eq!(endpoint.capabilities, ["balance", "fee"]);
-        assert_eq!(endpoint.record().unwrap().capabilities, ["balance", "fee"]);
+        assert_eq!(
+            endpoint.capabilities,
+            [EndpointCapability::Balance, EndpointCapability::Fee]
+        );
+        assert_eq!(
+            endpoint.record().unwrap().capabilities,
+            [EndpointCapability::Balance, EndpointCapability::Fee]
+        );
     }
     #[tokio::test]
     async fn evm_preview_routes_balance_fee_and_context_to_separate_nodes() {
@@ -650,9 +637,9 @@ mod tests {
         let fees = MockServer::start().await;
         let context = MockServer::start().await;
         for (server, cap) in [
-            (&balance, "balance"),
-            (&fees, "fee"),
-            (&context, "verification"),
+            (&balance, EndpointCapability::Balance),
+            (&fees, EndpointCapability::Fee),
+            (&context, EndpointCapability::Verification),
         ] {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
@@ -660,7 +647,7 @@ mod tests {
                         chain_id: "ethereum".into(),
                         api: "evm-json-rpc".into(),
                         endpoint: server.uri(),
-                        capabilities: vec![cap.into()],
+                        capabilities: vec![cap],
                     },
                 })
                 .await
@@ -669,18 +656,22 @@ mod tests {
                 .respond_with(move |request: &wiremock::Request| {
                     let body: serde_json::Value = request.body_json().unwrap();
                     let result = match (cap, body["method"].as_str().unwrap()) {
-                        ("balance", "eth_getBalance") => json!("0xde0b6b3a7640000"),
-                        ("verification", "eth_getTransactionCount") => json!("0x7"),
-                        ("fee", "eth_estimateGas") => json!("0x5208"),
-                        ("fee", "eth_feeHistory") => {
+                        (EndpointCapability::Balance, "eth_getBalance") => {
+                            json!("0xde0b6b3a7640000")
+                        }
+                        (EndpointCapability::Verification, "eth_getTransactionCount") => {
+                            json!("0x7")
+                        }
+                        (EndpointCapability::Fee, "eth_estimateGas") => json!("0x5208"),
+                        (EndpointCapability::Fee, "eth_feeHistory") => {
                             json!({"baseFeePerGas":["0x1"],"reward":[["0x2"]]})
                         }
-                        _ => panic!("Request escaped its declared capability: {cap}: {body}"),
+                        _ => panic!("Request escaped its declared capability: {cap:?}: {body}"),
                     };
                     ResponseTemplate::new(200)
                         .set_body_json(json!({"jsonrpc":"2.0","id":body["id"],"result":result}))
                 })
-                .expect(if cap == "fee" { 2 } else { 1 })
+                .expect(if cap == EndpointCapability::Fee { 2 } else { 1 })
                 .mount(server)
                 .await;
         }
@@ -706,9 +697,9 @@ mod tests {
         let failing_balance = MockServer::start().await;
         let broadcast = MockServer::start().await;
         for (server, caps) in [
-            (&balance, vec!["balance".into()]),
-            (&failing_balance, vec!["balance".into()]),
-            (&broadcast, vec!["broadcast".into()]),
+            (&balance, vec![EndpointCapability::Balance]),
+            (&failing_balance, vec![EndpointCapability::Balance]),
+            (&broadcast, vec![EndpointCapability::Broadcast]),
         ] {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
@@ -788,7 +779,7 @@ mod tests {
             .update_endpoints(vec![ChainEndpoints {
                 chain_id: "ethereum".into(),
                 endpoints: vec![balance.uri()],
-                capabilities: vec!["broadcast".into()],
+                capabilities: vec![EndpointCapability::Broadcast],
             }])
             .await
             .unwrap();

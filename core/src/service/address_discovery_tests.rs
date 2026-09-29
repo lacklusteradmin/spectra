@@ -48,9 +48,7 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
 async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     use crate::store::secret_backends::InMemorySecretStore;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
-        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-            .map(String::from)
-            .to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: "bitcoin".into(),
         endpoints: vec![endpoint],
     }])
@@ -180,9 +178,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
             .mount(&server)
             .await;
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
-            capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-                .map(String::from)
-                .to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain.str_id().into(),
             endpoints: vec![server.uri()],
         }])
@@ -206,9 +202,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
         .mount(&server)
         .await;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
-        capabilities: crate::app_core::ENDPOINT_CAPABILITIES
-            .map(String::from)
-            .to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::BitcoinSV.str_id().into(),
         endpoints: vec![server.uri()],
     }])

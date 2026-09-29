@@ -21,8 +21,7 @@ pub(crate) async fn call(
         EndpointApi::EvmJsonRpc
         | EndpointApi::SolanaJsonRpc
         | EndpointApi::SuiJsonRpc
-        | EndpointApi::SubstrateJsonRpc
-        | EndpointApi::TronJsonRpc => {
+        | EndpointApi::SubstrateJsonRpc => {
             json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
         }
         _ => return Err(format!("{} is not a JSON-RPC API", api.as_str())),

@@ -87,7 +87,9 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<crate::fetch::bitcoin::FeeRate, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(chain.str_id(), &["fee"]).await;
+        let endpoints = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+            .await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         Ok(client.fetch_fee_rate(6).await?)
     }
@@ -101,7 +103,9 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<NativeFeeEstimate, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(chain.str_id(), &["fee"]).await;
+        let endpoints = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+            .await;
         let native = |raw: u128, source: &'static str| NativeFeeEstimate {
             raw: raw.to_string(),
             display: format_decimals(raw, chain.native_decimals()),
@@ -150,7 +154,9 @@ impl WalletService {
                 "fetch_utxo_fee_preview_json: unsupported chain_id: {chain_id}"
             ))
         })?;
-        let eps = self.endpoints_for(chain.str_id(), &["utxo"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Utxo])
+            .await;
         match chain.mainnet_counterpart() {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
@@ -160,7 +166,8 @@ impl WalletService {
                 } else {
                     BitcoinClient::new(
                         HttpClient::shared(),
-                        self.endpoints_for(chain.str_id(), &["fee"]).await,
+                        self.endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                            .await,
                     )
                     .fetch_fee_rate(3)
                     .await
@@ -182,7 +189,9 @@ impl WalletService {
                 let rate = if fee_rate_svb > 0 {
                     fee_rate_svb
                 } else {
-                    let fees = self.endpoints_for(chain.str_id(), &["fee"]).await;
+                    let fees = self
+                        .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+                        .await;
                     if fees.is_empty() {
                         return Err("No fee endpoint configured".into());
                     }
@@ -228,7 +237,9 @@ impl WalletService {
         data_hex: String,
     ) -> Result<String, SpectraBridgeError> {
         let chain = evm_network_for_id(chain_id)?;
-        let eps = self.endpoints_for(chain.str_id(), &["fee"]).await;
+        let eps = self
+            .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
+            .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
         if value_wei.is_empty() || !value_wei.bytes().all(|b| b.is_ascii_digit()) {
@@ -251,15 +262,18 @@ impl WalletService {
             .map(|_| to.as_str());
 
         let verification = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &["verification"]).await,
+            self.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+                .await,
             chain.evm_chain_id()?,
         );
         let balances = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &["balance"]).await,
+            self.endpoints_for(chain.str_id(), &[EndpointCapability::Balance])
+                .await,
             chain.evm_chain_id()?,
         );
         let tokens = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &["token-balance"]).await,
+            self.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                .await,
             chain.evm_chain_id()?,
         );
         let (nonce_res, fee_res, gas_res, bal_res, token_res) = tokio::join!(
@@ -328,9 +342,9 @@ impl WalletService {
             .endpoints_for(
                 "tron",
                 if contract_address.is_empty() {
-                    &["balance"]
+                    &[EndpointCapability::Balance]
                 } else {
-                    &["token-balance"]
+                    &[EndpointCapability::TokenBalance]
                 },
             )
             .await;

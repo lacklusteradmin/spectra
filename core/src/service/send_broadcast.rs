@@ -27,7 +27,9 @@ impl WalletService {
         let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
             SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
         })?;
-        let (api, eps) = self.fetch_endpoints(chain, &["broadcast"]).await?;
+        let (api, eps) = self
+            .fetch_endpoints(chain, &[EndpointCapability::Broadcast])
+            .await?;
         crate::fetch::http::with_fallback(&eps, |endpoint| {
             let payload = payload.clone();
             async move {
