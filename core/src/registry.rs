@@ -79,6 +79,13 @@ pub enum Chain {
     AvalancheFuji,
     PolygonAmoy,
     HyperliquidTestnet,
+    LineaSepolia,
+    CeloSepolia,
+    CronosTestnet,
+    ZkSyncEraSepolia,
+    SonicTestnet,
+    InkSepolia,
+    XLayerTestnet,
     EthereumClassicMordor,
     TronNile,
     SolanaDevnet,
@@ -201,6 +208,13 @@ const ALL_CHAINS: &[Chain] = &[
     Chain::AvalancheFuji,
     Chain::PolygonAmoy,
     Chain::HyperliquidTestnet,
+    Chain::LineaSepolia,
+    Chain::CeloSepolia,
+    Chain::CronosTestnet,
+    Chain::ZkSyncEraSepolia,
+    Chain::SonicTestnet,
+    Chain::InkSepolia,
+    Chain::XLayerTestnet,
     Chain::EthereumClassicMordor,
     Chain::TronNile,
     Chain::SolanaDevnet,
@@ -443,9 +457,9 @@ impl Chain {
     }
 
     /// The chain can hold tracked tokens: the catalog gives it a token
-    /// standard. Testnets carry their mainnet's standard but no token catalog.
+    /// standard. A testnet carries its mainnet's standard.
     pub fn hosts_tokens(self) -> bool {
-        !self.is_testnet() && !self.entry().token_standard.is_empty()
+        !self.entry().token_standard.is_empty()
     }
 
     /// The catalog's token standard (`ERC-20`, `SPL`), or empty.
@@ -536,6 +550,13 @@ impl Chain {
                 | Chain::AvalancheFuji
                 | Chain::PolygonAmoy
                 | Chain::HyperliquidTestnet
+                | Chain::LineaSepolia
+                | Chain::CeloSepolia
+                | Chain::CronosTestnet
+                | Chain::ZkSyncEraSepolia
+                | Chain::SonicTestnet
+                | Chain::InkSepolia
+                | Chain::XLayerTestnet
                 | Chain::EthereumClassicMordor
         )
     }
@@ -652,6 +673,13 @@ impl Chain {
             Chain::AvalancheFuji => 43113,
             Chain::PolygonAmoy => 80002,
             Chain::HyperliquidTestnet => 998,
+            Chain::LineaSepolia => 59141,
+            Chain::CeloSepolia => 11142220,
+            Chain::CronosTestnet => 338,
+            Chain::ZkSyncEraSepolia => 300,
+            Chain::SonicTestnet => 14601,
+            Chain::InkSepolia => 763373,
+            Chain::XLayerTestnet => 1952,
             Chain::EthereumClassicMordor => 63,
             _ => return Err(format!("{} is not an EVM chain", self.str_id())),
         })
@@ -1035,6 +1063,13 @@ impl Chain {
             | Chain::AvalancheFuji
             | Chain::PolygonAmoy
             | Chain::HyperliquidTestnet
+            | Chain::LineaSepolia
+            | Chain::CeloSepolia
+            | Chain::CronosTestnet
+            | Chain::ZkSyncEraSepolia
+            | Chain::SonicTestnet
+            | Chain::InkSepolia
+            | Chain::XLayerTestnet
             | Chain::EthereumClassicMordor => "evmTestnet",
 
             Chain::Bitcoin => "bitcoin",
@@ -1213,6 +1248,13 @@ impl Chain {
             | Chain::AvalancheFuji
             | Chain::PolygonAmoy
             | Chain::HyperliquidTestnet
+            | Chain::LineaSepolia
+            | Chain::CeloSepolia
+            | Chain::CronosTestnet
+            | Chain::ZkSyncEraSepolia
+            | Chain::SonicTestnet
+            | Chain::InkSepolia
+            | Chain::XLayerTestnet
             | Chain::EthereumClassicMordor => None,
             Chain::Near => None,
             Chain::NearTestnet => None,
@@ -1423,8 +1465,9 @@ mod tests {
         }
     }
 
-    /// Tracked tokens live exactly on the mainnets the catalog gives a token
-    /// standard, and each validates its contracts with a known validator.
+    /// Tracked tokens live exactly on the networks the catalog gives a token
+    /// standard, a testnet's is its mainnet's, and each validates its
+    /// contracts with a known validator.
     #[test]
     fn token_hosting_follows_the_token_standard_column() {
         let hosting: Vec<&str> = Chain::all()
@@ -1433,10 +1476,18 @@ mod tests {
             .collect();
         let with_standard: Vec<&str> = crate::chains::catalog()
             .iter()
-            .filter(|c| !c.token_standard.is_empty() && !c.is_testnet)
+            .filter(|c| !c.token_standard.is_empty())
             .map(|c| c.id.as_str())
             .collect();
         assert_eq!(hosting, with_standard);
+        for chain in Chain::all().filter(|c| c.is_testnet()) {
+            assert_eq!(
+                chain.token_standard(),
+                chain.mainnet_counterpart().token_standard(),
+                "{}",
+                chain.str_id()
+            );
+        }
         assert!(!Chain::Bitcoin.hosts_tokens() && !Chain::Monero.hosts_tokens());
         for chain in Chain::all().filter(|c| c.hosts_tokens()) {
             assert!(
@@ -1518,6 +1569,13 @@ mod tests {
             "avalanche-fuji",
             "polygon-amoy",
             "hyperliquid-testnet",
+            "linea-sepolia",
+            "celo-sepolia",
+            "cronos-testnet",
+            "zksync-era-sepolia",
+            "sonic-testnet",
+            "ink-sepolia",
+            "x-layer-testnet",
             "ethereum-classic-mordor",
         ];
         let mut expected: Vec<&str> = [mainnet_ids, testnet_ids].concat();
@@ -1675,6 +1733,7 @@ mod catalog_agreement_tests {
             (Chain::BnbChain, "bnb"),
             (Chain::OpBnb, "opbnb"),
             (Chain::ZkSyncEra, "zksync-era"),
+            (Chain::ZkSyncEraSepolia, "zksync-era-sepolia"),
             (Chain::BitcoinTestnet4, "bitcoin-testnet-4"),
             (Chain::BnbChainTestnet, "bnb-testnet"),
         ];

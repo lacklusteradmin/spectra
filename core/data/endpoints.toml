@@ -928,6 +928,69 @@ endpoint = "https://polygon-amoy-bor-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "linea.sepolia.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "linea-sepolia"
+endpoint = "https://linea-sepolia-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "celo.sepolia.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "celo-sepolia"
+endpoint = "https://forno.celo-sepolia.celo-testnet.org"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "cronos.testnet.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "cronos-testnet"
+endpoint = "https://evm-t3.cronos.org"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "zksync-era.sepolia.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "zksync-era-sepolia"
+endpoint = "https://sepolia.era.zksync.dev"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "sonic.testnet.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "sonic-testnet"
+endpoint = "https://rpc.testnet.soniclabs.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "ink.sepolia.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "ink-sepolia"
+endpoint = "https://rpc-gel-sepolia.inkonchain.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "ink.sepolia.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "ink-sepolia"
+endpoint = "https://ink-sepolia-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "x-layer.testnet.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "x-layer-testnet"
+endpoint = "https://testrpc.xlayer.tech/terigon"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "x-layer.testnet.rpc.okx"
+api = "evm-json-rpc"
+chain_id = "x-layer-testnet"
+endpoint = "https://xlayertestrpc.okx.com/terigon"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "decred.mainnet.dcrdata"
 api = "insight"
 chain_id = "decred"
@@ -1256,4 +1319,25 @@ id = "avalanche-fuji.history.keyless"
 api = "blockscout"
 chain_id = "avalanche-fuji"
 endpoint = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "celo-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "celo-sepolia"
+endpoint = "https://celo-sepolia.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "zksync-era-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "zksync-era-sepolia"
+endpoint = "https://zksync-sepolia.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "ink-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "ink-sepolia"
+endpoint = "https://explorer-sepolia.inkonchain.com"
 capabilities = ["history", "token-history"]

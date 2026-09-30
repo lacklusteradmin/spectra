@@ -106,8 +106,12 @@ fn build() -> Vec<AssetWikiEntry> {
     }
 
     // Then the deployments. A coin already listed gains places rather than a
-    // second row: CRO is native to Cronos and a contract on Ethereum.
-    for token in tokens::catalog().iter().filter(|t| !t.is_native()) {
+    // second row: CRO is native to Cronos and a contract on Ethereum. Testnet
+    // tokens are skipped for the reason testnet coins are: nothing prices them.
+    for token in tokens::catalog()
+        .iter()
+        .filter(|t| !t.is_native() && !t.chain_id.is_testnet())
+    {
         let slot = *index.entry(token.token_id.clone()).or_insert_with(|| {
             out.push(entry_from_token(token));
             out.len() - 1

@@ -16,6 +16,76 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-30 — Token-2022 mints send when their extensions leave the transfer intact
+
+- **Before:** the Solana send refused any Token-2022 mint that had a single
+  extension, whatever it was. PYUSD, on mainnet and Devnet, carries eight, so
+  it showed a balance and could not be sent.
+- **After:** extensions are admitted by name, each because a plain transfer by
+  the owner still means what it says: metadata, group and member records,
+  mint close authority, permanent delegate, confidential-transfer configs, a
+  transfer hook with no program, and a transfer fee that charges nothing in
+  both its current and its scheduled config. A mint with that fee extension
+  is sent with `TransferCheckedWithFee` stating a zero fee instead of
+  `TransferChecked`. Everything else is refused, now naming the extension: a
+  hook program, a fee that can withhold, non-transferable, default account
+  state, interest-bearing or scaled amounts, pausable, and anything unlisted.
+- **Why:** the blanket refusal was right about the risk and wrong about its
+  scope. Two extensions can change what the recipient gets — a fee withholds
+  part of the amount, a hook runs another program — and the rest describe the
+  mint or act only outside this transfer. Stating the fee turns the chain into
+  the check: Token-2022 recomputes it when the transaction lands and fails on a
+  mismatch, so a fee switched on after review fails the send rather than
+  quietly withholding. Fees that do charge stay refused until review can show
+  the amount that arrives.
+- **CLI check:** none offline — a send needs a funded Devnet key. Unit tests
+  pin the admitted and refused extensions against PYUSD's Devnet mint and the
+  two instruction layouts. On Devnet, `prepare_transfer` for 1 PYUSD from a
+  holder built a transaction that `simulateTransaction` ran as
+  `CreateIdempotent` then `TransferCheckedWithFee`; the same transaction
+  stating a fee of 1 failed with "Calculated fee does not match expected fee".
+- **Verification:** `make lint`, `cargo test --workspace`, `make test-cli`
+  and `make test-ios` pass.
+
+## 2026-09-30 — Testnets host tokens; testnet USDC ships in the catalog
+
+- **Before:** every testnet had an empty `token_standard` in `chains.toml`, and
+  `Chain::hosts_tokens` refused testnets outright, so storage rejected any
+  protocol token on them and `testnet-tokens.toml` could hold only faucet
+  coins. Testing a token send meant a mainnet and real funds.
+- **After:** a testnet carries its mainnet's standard (Sepolia and Hoodi
+  ERC-20, BNB Testnet BEP-20, Fuji ARC-20, Nile TRC-20, Devnet SPL, and so
+  on) and `hosts_tokens` follows the standard alone. `testnet-tokens.toml` adds
+  `usd-coin-testnet` (USDC, no market identity) on Ethereum, Arbitrum and Base
+  Sepolia, Avalanche Fuji, Polygon Amoy, Hyperliquid Testnet, Solana Devnet,
+  Sui, Aptos and NEAR testnets. The asset wiki skips testnet deployments, as it
+  already skipped testnet coins. Stellar has no token standard on mainnet
+  either, so its testnet USDC is not listed. `paypal-usd-testnet` (PYUSD) sits
+  beside it on Ethereum and Arbitrum Sepolia, Polygon Amoy, X Layer Testnet and
+  Solana Devnet. The Devnet mint is Token-2022; sending it is the next entry.
+- **After, networks:** seven EVM testnets join the registry, each with its
+  faucet coin and USDC: Linea Sepolia (59141), Celo Sepolia (11142220), Cronos
+  Testnet (338), zkSync Era Sepolia (300), Sonic Testnet (14601), Ink Sepolia
+  (763373) and X Layer Testnet (1952). Every chain id was read back with
+  `eth_chainId`, and every USDC contract answered `symbol()` `USDC` and
+  `decimals()` 6. RPC rows: Linea's PublicNode (the official
+  `rpc.sepolia.linea.build` answers every `eth_getBalance` with -32603), Celo
+  Forno, Cronos `evm-t3`, zkSync, Sonic Labs, Ink's Gelato and PublicNode, and
+  two X Layer hosts. Blockscout history for Celo Sepolia, zkSync Sepolia and
+  Ink Sepolia; Routescan serves none of the seven, and the other four have no
+  keyless indexer, so they have no history, as BNB Testnet and Amoy have none.
+- **Why:** a testnet is where a token path should be exercised first; the rule
+  kept it untestable anywhere but mainnet. Valuation already prices testnet
+  holdings at zero, so hosting tokens there adds no priced asset. A test now
+  pins each testnet's standard to its mainnet's.
+- **CLI check:** `spectra token catalog --chain base-sepolia` lists USDC at
+  `0x036cbd53842c5426634e7929541ec2318f3dcf7e`; `spectra token track --chain
+  base-sepolia USDC` reports it already tracked. `spectra endpoints --chain
+  ink-sepolia` probes three answering endpoints; after `spectra network set
+  zksync-era-sepolia`, `spectra refresh` reads the Sepolia balance in tETH.
+- **Verification:** `make lint`, `cargo test --workspace`, `make test-cli`
+  and `make test-ios` pass.
+
 ## 2026-09-30 — No float on the send path: fees, maxima and history amounts are exact
 
 - **Before:** every send preview carried its fee, spendable balance and

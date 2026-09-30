@@ -22,7 +22,7 @@ impl WalletService {
                     )
                     .fetch_transfer_mint(contract)
                     .await?
-                    .1,
+                    .decimals,
                 ),
                 Chain::Near => self
                     .token_contract_decimals(chain, contract)

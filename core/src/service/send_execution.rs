@@ -246,7 +246,7 @@ impl WalletService {
         if chain.mainnet_counterpart() == Chain::Solana {
             let client = crate::api::solana_json_rpc::SolanaClient::new(endpoints);
             return Ok(Some(u32::from(
-                client.fetch_transfer_mint(contract).await?.1,
+                client.fetch_transfer_mint(contract).await?.decimals,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Near {

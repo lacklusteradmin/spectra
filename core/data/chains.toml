@@ -615,7 +615,7 @@ id = "ethereum-sepolia"
 name = "Ethereum Sepolia"
 family = "ethereum"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -625,7 +625,7 @@ id = "ethereum-hoodi"
 name = "Ethereum Hoodi"
 family = "ethereum"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -635,7 +635,7 @@ id = "arbitrum-sepolia"
 name = "Arbitrum Sepolia"
 family = "arbitrum"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -645,7 +645,7 @@ id = "optimism-sepolia"
 name = "Optimism Sepolia"
 family = "optimism"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -655,7 +655,7 @@ id = "base-sepolia"
 name = "Base Sepolia"
 family = "base"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -665,7 +665,7 @@ id = "bnb-testnet"
 name = "BNB Chain Testnet"
 family = "bnb"
 environment = "testnet"
-token_standard = ""
+token_standard = "BEP-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -675,7 +675,7 @@ id = "avalanche-fuji"
 name = "Avalanche Fuji"
 family = "avalanche"
 environment = "testnet"
-token_standard = ""
+token_standard = "ARC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -685,7 +685,7 @@ id = "polygon-amoy"
 name = "Polygon Amoy"
 family = "polygon"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -695,7 +695,77 @@ id = "hyperliquid-testnet"
 name = "Hyperliquid Testnet"
 family = "hyperliquid"
 environment = "testnet"
-token_standard = ""
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "linea-sepolia"
+name = "Linea Sepolia"
+family = "linea"
+environment = "testnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "celo-sepolia"
+name = "Celo Sepolia"
+family = "celo"
+environment = "testnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "cronos-testnet"
+name = "Cronos Testnet"
+family = "cronos"
+environment = "testnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "zksync-era-sepolia"
+name = "zkSync Era Sepolia"
+family = "zksync-era"
+environment = "testnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "sonic-testnet"
+name = "Sonic Testnet"
+family = "sonic"
+environment = "testnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "ink-sepolia"
+name = "Ink Sepolia"
+family = "ink"
+environment = "testnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "x-layer-testnet"
+name = "X Layer Testnet"
+family = "x-layer"
+environment = "testnet"
+token_standard = "ERC-20"
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
@@ -715,7 +785,7 @@ id = "tron-nile"
 name = "Tron Nile"
 family = "tron"
 environment = "testnet"
-token_standard = ""
+token_standard = "TRC-20"
 enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
@@ -728,7 +798,7 @@ id = "solana-devnet"
 name = "Solana Devnet"
 family = "solana"
 environment = "testnet"
-token_standard = ""
+token_standard = "SPL"
 enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
@@ -772,7 +842,7 @@ id = "sui-testnet"
 name = "Sui Testnet"
 family = "sui"
 environment = "testnet"
-token_standard = ""
+token_standard = "Sui Coin"
 enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
@@ -783,7 +853,7 @@ id = "aptos-testnet"
 name = "Aptos Testnet"
 family = "aptos"
 environment = "testnet"
-token_standard = ""
+token_standard = "AIP-21"
 enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
@@ -794,7 +864,7 @@ id = "ton-testnet"
 name = "TON Testnet"
 family = "ton"
 environment = "testnet"
-token_standard = ""
+token_standard = "TEP-74"
 enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
@@ -805,7 +875,7 @@ id = "near-testnet"
 name = "NEAR Testnet"
 family = "near"
 environment = "testnet"
-token_standard = ""
+token_standard = "NEP-141"
 derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
 ]

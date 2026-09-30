@@ -556,9 +556,9 @@ mod explicit_network_catalog {
         assert_eq!(Chain::Ethereum.coin_symbol(), "ETH");
     }
 
-    /// A testnet asset has no price and hosts no tokens, structurally.
+    /// A testnet asset has no price, structurally.
     #[test]
-    fn a_network_never_inherits_a_price_or_a_token_standard() {
+    fn a_network_never_inherits_a_price() {
         for chain in Chain::all().filter(|c| c.is_testnet()) {
             let e = entry(chain.str_id());
             assert!(
@@ -566,12 +566,6 @@ mod explicit_network_catalog {
                 "{} carries a price id",
                 e.id
             );
-            assert!(
-                e.token_standard.is_empty(),
-                "{} claims to host tokens",
-                e.id
-            );
-            assert!(e.contract_address_prompt.is_empty());
         }
     }
 

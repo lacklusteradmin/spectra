@@ -101,7 +101,7 @@ impl SolanaClient {
     /// `decimals` — so discovery answers "what does this address hold" and
     /// "how is it denominated" together, without a catalog and without an
     /// indexer.
-    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<([u8; 32], u8), String> {
+    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<TransferMint, String> {
         crate::derivation::solana::decode_b58_32(mint)?;
         let result = self
             .call(
@@ -525,9 +525,37 @@ mod balance_read_tests {
     }
 }
 
-/// Refuse unknown programs and extensions before signing. Extensions may alter
-/// transfer semantics or require accounts that our TransferChecked does not supply.
-fn validate_transfer_mint(account: &serde_json::Value) -> Result<([u8; 32], u8), String> {
+/// What a transfer needs to know about its mint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TransferMint {
+    pub program: [u8; 32],
+    pub decimals: u8,
+    /// The mint has a transfer-fee extension, so the transfer states the fee
+    /// it expects (always zero; see [`validate_transfer_mint`]).
+    pub transfer_fee_extension: bool,
+}
+
+/// Refuse unknown programs and extensions before signing.
+///
+/// Token-2022 extensions are allowed by name, each for a reason it leaves a
+/// plain `TransferChecked` from the owner meaning what it says:
+///
+/// - metadata, group and member pointers and records only describe the mint;
+/// - a mint close authority acts only on a mint with no supply;
+/// - a permanent delegate can move the owner's tokens, but whether the owner
+///   sends does not change that;
+/// - confidential transfer configs govern encrypted balances, not this one;
+/// - a transfer hook with no program runs nothing;
+/// - a transfer fee that charges nothing in either its current or its
+///   scheduled config withholds nothing. The transfer then asserts a zero
+///   fee on chain, so a fee raised between review and landing fails the
+///   transaction instead of withholding from the recipient.
+///
+/// Anything else — a hook program, a fee, non-transferable tokens, frozen
+/// default accounts, interest or scaled amounts, pausing, or an extension
+/// this list has never heard of — changes what arrives or needs accounts the
+/// transfer does not supply, so it is refused.
+fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, String> {
     let owner = account["owner"].as_str().ok_or("SPL mint: missing owner")?;
     if ![
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -542,16 +570,66 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<([u8; 32], u8),
     if parsed["type"] != "mint" || info["isInitialized"] != true {
         return Err("SPL mint: expected initialized mint".into());
     }
-    if let Some(extensions) = info.get("extensions")
-        && !extensions.as_array().is_some_and(|e| e.is_empty())
-    {
-        return Err("SPL mint: Token-2022 extensions are not supported for sending".into());
+    let mut transfer_fee_extension = false;
+    let extensions = match info.get("extensions") {
+        None => &Vec::new(),
+        Some(extensions) => extensions
+            .as_array()
+            .ok_or("SPL mint: invalid extensions")?,
+    };
+    for extension in extensions {
+        let state = &extension["state"];
+        match extension["extension"].as_str() {
+            Some(
+                "metadataPointer"
+                | "tokenMetadata"
+                | "groupPointer"
+                | "groupMemberPointer"
+                | "tokenGroup"
+                | "tokenGroupMember"
+                | "mintCloseAuthority"
+                | "permanentDelegate"
+                | "confidentialTransferMint"
+                | "confidentialTransferFeeConfig",
+            ) => {}
+            Some("transferHook") => {
+                if !state["programId"].is_null() {
+                    return Err("SPL mint: transfer hook programs are not supported".into());
+                }
+            }
+            Some("transferFeeConfig") => {
+                // A fee is zero when either factor is: no basis points, or a
+                // cap of nothing.
+                let charges_nothing = |config: &serde_json::Value| {
+                    config["transferFeeBasisPoints"].as_u64() == Some(0)
+                        || config["maximumFee"].as_u64() == Some(0)
+                };
+                if !charges_nothing(&state["olderTransferFee"])
+                    || !charges_nothing(&state["newerTransferFee"])
+                {
+                    return Err(
+                        "SPL mint: tokens that charge a transfer fee are not supported".into(),
+                    );
+                }
+                transfer_fee_extension = true;
+            }
+            Some(other) => {
+                return Err(format!(
+                    "SPL mint: Token-2022 extension {other} is not supported for sending"
+                ));
+            }
+            None => return Err("SPL mint: unnamed extension".into()),
+        }
     }
     let decimals = info["decimals"]
         .as_u64()
         .and_then(|d| u8::try_from(d).ok())
         .ok_or("SPL mint: invalid decimals")?;
-    Ok((crate::derivation::solana::decode_b58_32(owner)?, decimals))
+    Ok(TransferMint {
+        program: crate::derivation::solana::decode_b58_32(owner)?,
+        decimals,
+        transfer_fee_extension,
+    })
 }
 
 #[cfg(test)]
@@ -562,21 +640,133 @@ mod audit_fix5_mint_tests {
         let account = |owner: &str| json!({"owner":owner,"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":9,"extensions":[]}}}});
         let legacy = account("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
         let mut token2022 = account("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
-        let (a, decimals) = validate_transfer_mint(&legacy).unwrap();
-        let (b, _) = validate_transfer_mint(&token2022).unwrap();
-        assert_ne!(a, b);
-        assert_eq!(decimals, 9);
+        let a = validate_transfer_mint(&legacy).unwrap();
+        let b = validate_transfer_mint(&token2022).unwrap();
+        assert_ne!(a.program, b.program);
+        assert_eq!(a.decimals, 9);
+        assert!(!a.transfer_fee_extension && !b.transfer_fee_extension);
         let program = |id: &str| crate::derivation::solana::decode_b58_32(id).unwrap();
-        assert_eq!(a, program("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
-        assert_eq!(b, program("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"));
-        token2022["data"]["parsed"]["info"]["extensions"] = json!([{"extension":"transferHook"}]);
+        assert_eq!(
+            a.program,
+            program("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        );
+        assert_eq!(
+            b.program,
+            program("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+        );
+        token2022["data"]["parsed"]["info"]["extensions"] =
+            json!([{"extension":"nonTransferable"}]);
         assert!(
             validate_transfer_mint(&token2022)
                 .unwrap_err()
-                .contains("extensions")
+                .contains("nonTransferable")
         );
         assert!(validate_transfer_mint(&account("11111111111111111111111111111111")).is_err());
         assert!(validate_transfer_mint(&serde_json::Value::Null).is_err());
+    }
+
+    /// PYUSD's mint as Solana Devnet reported it on 2026-09-30, authorities
+    /// elided: eight extensions, a zero fee and a hook with no program.
+    fn pyusd_mint() -> Value {
+        let fee = json!({"epoch": 644, "maximumFee": 0, "transferFeeBasisPoints": 0});
+        json!({"owner":"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb","data":{"parsed":{"type":"mint","info":{
+            "isInitialized": true, "decimals": 6,
+            "extensions": [
+                {"extension":"mintCloseAuthority","state":{"closeAuthority":"x"}},
+                {"extension":"permanentDelegate","state":{"delegate":"x"}},
+                {"extension":"transferFeeConfig","state":{"newerTransferFee":fee,"olderTransferFee":fee,
+                    "transferFeeConfigAuthority":"x","withdrawWithheldAuthority":"x","withheldAmount":0}},
+                {"extension":"confidentialTransferMint","state":{"auditorElgamalPubkey":null,"authority":"x","autoApproveNewAccounts":false}},
+                {"extension":"confidentialTransferFeeConfig","state":{"authority":"x","harvestToMintEnabled":true}},
+                {"extension":"transferHook","state":{"authority":"x","programId":null}},
+                {"extension":"metadataPointer","state":{"authority":"x","metadataAddress":"x"}},
+                {"extension":"tokenMetadata","state":{"symbol":"PYUSD"}}
+            ]
+        }}}})
+    }
+
+    fn with_extension(mut mint: Value, name: &str, state: Value) -> Value {
+        let extensions = mint
+            .pointer_mut("/data/parsed/info/extensions")
+            .and_then(Value::as_array_mut)
+            .unwrap();
+        extensions.retain(|e| e["extension"] != name);
+        extensions.push(json!({"extension": name, "state": state}));
+        mint
+    }
+
+    /// Every extension PYUSD carries leaves the transfer meaning what it says,
+    /// and the fee extension is reported so the transfer can assert zero.
+    #[test]
+    fn pyusd_is_sendable_and_states_its_fee_extension() {
+        let mint = validate_transfer_mint(&pyusd_mint()).unwrap();
+        assert_eq!(mint.decimals, 6);
+        assert!(mint.transfer_fee_extension);
+    }
+
+    /// A fee charges nothing when either factor is zero, in both the current
+    /// and the scheduled config; anything else is refused.
+    #[test]
+    fn a_fee_that_can_withhold_is_refused() {
+        let config = |older: Value, newer: Value| {
+            with_extension(
+                pyusd_mint(),
+                "transferFeeConfig",
+                json!({"olderTransferFee": older, "newerTransferFee": newer}),
+            )
+        };
+        let fee = |bps: u64, max: u64| json!({"transferFeeBasisPoints": bps, "maximumFee": max});
+        for (older, newer, sendable) in [
+            (fee(0, 5), fee(0, 5), true),
+            (fee(50, 0), fee(50, 0), true),
+            (fee(50, 5), fee(0, 0), false),
+            // Scheduled for a later epoch still counts: review cannot know
+            // which epoch the transaction lands in.
+            (fee(0, 0), fee(1, 1), false),
+            (json!({}), fee(0, 0), false),
+        ] {
+            let result = validate_transfer_mint(&config(older, newer));
+            assert_eq!(result.is_ok(), sendable, "{result:?}");
+            if !sendable {
+                assert!(result.unwrap_err().contains("transfer fee"));
+            }
+        }
+    }
+
+    /// A hook with a program needs extra accounts this transfer does not
+    /// resolve.
+    #[test]
+    fn a_transfer_hook_program_is_refused() {
+        let mint = with_extension(
+            pyusd_mint(),
+            "transferHook",
+            json!({"programId": "HooK111111111111111111111111111111111111111"}),
+        );
+        assert!(validate_transfer_mint(&mint).unwrap_err().contains("hook"));
+    }
+
+    /// Extensions that change what arrives, and ones nobody listed, are refused.
+    #[test]
+    fn unlisted_extensions_are_refused() {
+        for name in [
+            "nonTransferable",
+            "defaultAccountState",
+            "interestBearingConfig",
+            "scaledUiAmountConfig",
+            "pausableConfig",
+            "somethingNew",
+        ] {
+            let mint = with_extension(pyusd_mint(), name, json!({}));
+            assert!(
+                validate_transfer_mint(&mint).unwrap_err().contains(name),
+                "{name}"
+            );
+        }
+        let mut unnamed = pyusd_mint();
+        unnamed["data"]["parsed"]["info"]["extensions"] = json!([{}]);
+        assert!(validate_transfer_mint(&unnamed).is_err());
+        unnamed["data"]["parsed"]["info"]["extensions"] = json!("none");
+        assert!(validate_transfer_mint(&unnamed).is_err());
     }
 }
 

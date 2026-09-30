@@ -1,5 +1,6 @@
-//! Solana send: native SOL transfer + SPL TransferChecked (with idempotent ATA
-//! create) and Ed25519 signing.
+//! Solana send: native SOL transfer + SPL TransferChecked, or
+//! TransferCheckedWithFee on a Token-2022 fee mint (with idempotent ATA
+//! create), and Ed25519 signing.
 
 use crate::send::keys::Ed25519Seed;
 
@@ -169,16 +170,15 @@ pub(crate) async fn prepare_transfer(
     let recipient = decode_b58_32(to)?;
     let blockhash = client.fetch_recent_blockhash().await?;
     let message = if let Some((mint, decimals)) = token {
-        let (program, actual_decimals) = client.fetch_transfer_mint(mint).await?;
-        if decimals != actual_decimals {
+        let transfer_mint = client.fetch_transfer_mint(mint).await?;
+        if decimals != transfer_mint.decimals {
             return Err("SPL decimals changed; review again".into());
         }
+        let program = transfer_mint.program;
         let mint = decode_b58_32(mint)?;
         let source = derive_associated_token_account(&payer, &mint, &program)?;
         let destination = derive_associated_token_account(&recipient, &mint, &program)?;
-        let mut data = vec![12];
-        data.extend(amount.to_le_bytes());
-        data.push(decimals);
+        let data = token_transfer_data(amount, decimals, transfer_mint.transfer_fee_extension);
         compile_message(
             &payer,
             &[
@@ -212,6 +212,30 @@ pub(crate) async fn prepare_transfer(
         blockhash,
         message,
     })
+}
+
+/// `TransferChecked`, or on a mint with a transfer-fee extension
+/// `TransferCheckedWithFee` asserting a zero fee. Both take the same accounts:
+/// source, mint, destination, owner.
+///
+/// The fee is always zero because the mint check admits only fees that charge
+/// nothing. Stating it is the point: Token-2022 recomputes the fee when the
+/// transaction lands and fails it on any mismatch, so a fee switched on after
+/// review cannot quietly withhold part of the amount from the recipient.
+fn token_transfer_data(amount: u64, decimals: u8, transfer_fee_extension: bool) -> Vec<u8> {
+    // Token-2022 `TransferFeeExtension` (26), sub-instruction
+    // `TransferCheckedWithFee` (1); the base `TransferChecked` is 12.
+    let mut data = if transfer_fee_extension {
+        vec![26, 1]
+    } else {
+        vec![12]
+    };
+    data.extend(amount.to_le_bytes());
+    data.push(decimals);
+    if transfer_fee_extension {
+        data.extend(0u64.to_le_bytes());
+    }
+    data
 }
 
 fn compile_message(
@@ -271,6 +295,27 @@ fn compact_u16(val: usize) -> Vec<u8> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod token_transfer_data_tests {
+    use super::*;
+
+    /// Byte layouts from spl-token-2022's `TokenInstruction::TransferChecked`
+    /// and `TransferFeeInstruction::TransferCheckedWithFee` packing.
+    #[test]
+    fn transfer_checked_and_with_fee_layouts() {
+        let amount = 0x0102_0304_0506_0708u64;
+        let mut plain = vec![12];
+        plain.extend([8, 7, 6, 5, 4, 3, 2, 1]);
+        plain.push(6);
+        assert_eq!(token_transfer_data(amount, 6, false), plain);
+        let mut with_fee = vec![26, 1];
+        with_fee.extend([8, 7, 6, 5, 4, 3, 2, 1]);
+        with_fee.push(6);
+        with_fee.extend([0; 8]);
+        assert_eq!(token_transfer_data(amount, 6, true), with_fee);
+    }
 }
 
 #[cfg(test)]

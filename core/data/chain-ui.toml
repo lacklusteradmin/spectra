@@ -530,6 +530,62 @@ artwork_name = "hyperliquid"
 address_prefix_hint = "0x…"
 
 [[chains]]
+chain_id = "linea-sepolia"
+search_keywords = ["Linea Sepolia", "tETH"]
+category = "evm-l2"
+color = "blue"
+artwork_name = "linea"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "celo-sepolia"
+search_keywords = ["Celo Sepolia", "tCELO"]
+category = "evm-l2"
+color = "yellow"
+artwork_name = "celo"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "cronos-testnet"
+search_keywords = ["Cronos Testnet", "tCRO"]
+category = "evm-l1"
+color = "blue"
+artwork_name = "cronos"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "zksync-era-sepolia"
+search_keywords = ["zkSync Era Sepolia", "zkSync Sepolia", "tETH"]
+category = "evm-l2"
+color = "gray"
+artwork_name = "zksyncera"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "sonic-testnet"
+search_keywords = ["Sonic Testnet", "tS"]
+category = "evm-l1"
+color = "gray"
+artwork_name = "sonic"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "ink-sepolia"
+search_keywords = ["Ink Sepolia", "tETH"]
+category = "evm-l2"
+color = "purple"
+artwork_name = "ink"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "x-layer-testnet"
+search_keywords = ["X Layer Testnet", "tOKB"]
+category = "evm-l2"
+color = "gray"
+artwork_name = "okb"
+address_prefix_hint = "0x…"
+
+[[chains]]
 chain_id = "ethereum-classic-mordor"
 search_keywords = ["Ethereum Classic Mordor", "Mordor", "tETC"]
 category = "evm-l1"
