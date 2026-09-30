@@ -22,11 +22,8 @@ impl WalletService {
                 p.hosting_chain() == Some(chain.mainnet_counterpart())
                     && crate::tokens::normalize_token_identifier(
                         Some(p.token.contract.clone()),
-                        chain.str_id().into(),
-                    ) == crate::tokens::normalize_token_identifier(
-                        Some(contract.clone()),
-                        chain.str_id().into(),
-                    )
+                        chain,
+                    ) == crate::tokens::normalize_token_identifier(Some(contract.clone()), chain)
             })
         });
         let symbol = token.map(|p| p.token.symbol.as_str()).unwrap_or_else(|| {
@@ -143,9 +140,7 @@ impl WalletService {
         record.failure_reason =
             Some(crate::store::persistence_models::TransactionFailure::RebroadcastOutcomeUnknown);
         self.save_send_record(record.clone()).await?;
-        let hash = self
-            .broadcast_raw_extract(chain.str_id().into(), payload, field)
-            .await?;
+        let hash = self.broadcast_raw_extract(chain, payload, field).await?;
         if hash.trim().is_empty() {
             return Err("node returned no transaction identifier".into());
         }
@@ -166,7 +161,7 @@ pub(super) fn rebroadcast_input(
     if record.status == CoreTransactionStatus::Confirmed {
         return Err("transaction already confirmed".into());
     }
-    let chain = Chain::from_str_id(&record.chain_id).ok_or("unknown transaction chain")?;
+    let chain = record.chain_id;
     let payload = record
         .signed_transaction_payload
         .as_ref()
@@ -197,7 +192,7 @@ pub(super) fn rebroadcast_input(
     } else {
         let prepared =
             crate::send::flow::rebroadcast_prepare_payload(format.into(), payload.clone())?;
-        if Chain::from_str_id(&prepared.chain_id) != Some(chain.mainnet_counterpart()) {
+        if prepared.chain_id != chain.mainnet_counterpart() {
             return Err("payload does not match transaction chain".into());
         }
         (prepared.broadcast_payload, prepared.result_field)
@@ -251,7 +246,7 @@ impl WalletService {
         source: &str,
     ) -> Result<u64, SpectraBridgeError> {
         let client = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            self.endpoints_for(chain, &[EndpointCapability::Verification])
                 .await,
             chain.evm_chain_id()?,
         );
@@ -259,13 +254,13 @@ impl WalletService {
         let db = self.bound_database().await?;
         let sender = source.to_owned();
         let rows = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_pending_for_sender(&db, chain.str_id(), &sender)
+            crate::wallet_db::history_pending_for_sender(&db, chain, &sender)
         })
         .await
         .map_err(|e| e.to_string())??;
         for row in rows {
             let r = row.payload;
-            if r.chain_id == chain.str_id()
+            if r.chain_id == chain
                 && r.source_address
                     .as_deref()
                     .is_some_and(|a| a.eq_ignore_ascii_case(source))
@@ -280,12 +275,12 @@ impl WalletService {
         let db = self.bound_database().await?;
         let sender = source.to_owned();
         let artifacts = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::signed_sends_for_sender(&db, chain.str_id(), &sender)
+            crate::wallet_db::signed_sends_for_sender(&db, chain, &sender)
         })
         .await
         .map_err(|e| e.to_string())??;
         for artifact in artifacts {
-            if artifact.view.chain_id == chain.str_id()
+            if artifact.view.chain_id == chain
                 && artifact.view.sender.eq_ignore_ascii_case(source)
                 && artifact.view.stage == crate::send::stages::SendStage::Signed
                 && let crate::send::stages::PreparedPayload::Evm(p) = artifact.prepared
@@ -310,7 +305,7 @@ mod tests {
         let server = MockServer::start().await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum-sepolia".into(),
+            chain_id: crate::registry::Chain::EthereumSepolia,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -327,7 +322,7 @@ mod tests {
                 wallet: WalletState::single_address(
                     "w",
                     "W",
-                    "ethereum",
+                    crate::registry::Chain::Ethereum,
                     "0x1111111111111111111111111111111111111111",
                     None,
                     true,

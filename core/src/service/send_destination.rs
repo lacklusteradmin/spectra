@@ -37,23 +37,23 @@ impl WalletService {
             let (chain, token) = this
                 .destination_probe_target(&wallet_id, &holding_key)
                 .await?;
-            let chain_id = chain.str_id().to_string();
+            let chain_id = chain;
             let address = this
-                .resolve_send_destination(chain_id.clone(), destination_input)
+                .resolve_send_destination(chain_id, destination_input)
                 .await?
                 .address;
 
             let balance_read = async {
                 let raw = match token {
                     Some(descriptor) => this
-                        .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor])
+                        .fetch_token_balances(chain_id, address.clone(), vec![descriptor])
                         .await?
                         .first()
                         .ok_or_else(|| SpectraBridgeError::from("token balance unavailable"))?
                         .balance_raw
                         .clone(),
                     None => {
-                        this.fetch_native_balance_summary(chain_id.clone(), address.clone())
+                        this.fetch_native_balance_summary(chain_id, address.clone())
                             .await?
                             .smallest_unit
                     }
@@ -68,7 +68,7 @@ impl WalletService {
                 // alone cannot rule out incoming transfers; ask history in that case.
                 if chain.is_evm() {
                     let client = EvmClient::new(
-                        this.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+                        this.endpoints_for(chain, &[EndpointCapability::Verification])
                             .await,
                         chain.evm_chain_id()?,
                     );
@@ -77,7 +77,7 @@ impl WalletService {
                     }
                 }
                 Ok::<_, SpectraBridgeError>(
-                    this.fetch_history_summary(chain_id.clone(), address.clone())
+                    this.fetch_history_summary(chain_id, address.clone())
                         .await?
                         .entry_count
                         > 0,
@@ -107,16 +107,13 @@ impl WalletService {
     /// Always resolve afresh; no service-lifetime cache for payment destinations.
     pub async fn resolve_send_destination(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         input: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            resolve_destination(chain_for_id(&chain_id)?, input, |name| {
-                this.resolve_ens_name(name)
-            })
-            .await
+            resolve_destination(chain_id, input, |name| this.resolve_ens_name(name)).await
         })
         .await
     }
@@ -124,15 +121,14 @@ impl WalletService {
     /// Bind the user's review to an address. A changed name requires a new review.
     pub async fn verify_send_destination(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         input: String,
         expected_address: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let chain = chain_for_id(&chain_id)?;
-            let resolved = this.resolve_send_destination(chain_id, input).await?;
+            let resolved = this.resolve_send_destination(chain, input).await?;
             verify_reviewed_destination(chain, resolved, &expected_address)
         })
         .await
@@ -170,22 +166,24 @@ pub(super) fn destination_probe_asset(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Result<(Chain, Option<TokenDescriptor>), SpectraBridgeError> {
-    let chain =
-        Chain::from_str_id(&holding.chain_id).ok_or_else(|| SpectraBridgeError::InvalidInput {
+    let asset = crate::send::SendAsset::of(holding, preferences).ok_or_else(|| {
+        SpectraBridgeError::InvalidInput {
             message: format!("unknown chain: {}", holding.chain_id),
-        })?;
-    if holding.is_native() {
-        return Ok((chain, None));
-    }
-    let identity =
-        super::send_preflight::send_token_identity(holding, preferences).ok_or_else(|| {
-            SpectraBridgeError::InvalidInput {
+        }
+    })?;
+    let chain = asset.chain;
+    let identity = match asset.kind {
+        crate::send::SendAssetKind::Native => return Ok((chain, None)),
+        crate::send::SendAssetKind::Token(identity) => identity,
+        crate::send::SendAssetKind::UntrackedToken => {
+            return Err(SpectraBridgeError::InvalidInput {
                 message: format!(
                     "{} on {} is not a token this wallet tracks",
                     holding.symbol, holding.chain_id
                 ),
-            }
-        })?;
+            });
+        }
+    };
     // The catalog's precision, not a clamp of it: clamping would turn an
     // impossible 300 into a plausible 255.
     let decimals =
@@ -215,11 +213,11 @@ where
     F: FnOnce(String) -> Fut,
     Fut: std::future::Future<Output = Result<Option<String>, SpectraBridgeError>>,
 {
-    let id = chain.str_id();
+    let id = chain;
     let typed = input.trim().to_string();
-    if crate::send::flow::is_valid_send_address(id.into(), typed.clone()) {
+    if crate::send::flow::is_valid_send_address(id, typed.clone()) {
         return Ok(SendDestinationResolution {
-            address: crate::send::flow::normalized_send_address(id.into(), typed),
+            address: crate::send::flow::normalized_send_address(id, typed),
             used_ens: false,
         });
     }
@@ -233,12 +231,12 @@ where
     }
     let address = lookup(typed.clone())
         .await?
-        .filter(|a| crate::send::flow::is_valid_send_address(id.into(), a.clone()))
+        .filter(|a| crate::send::flow::is_valid_send_address(id, a.clone()))
         .ok_or_else(|| SpectraBridgeError::InvalidInput {
             message: format!("unable to resolve ENS name '{typed}'"),
         })?;
     Ok(SendDestinationResolution {
-        address: crate::send::flow::normalized_send_address(id.into(), address),
+        address: crate::send::flow::normalized_send_address(id, address),
         used_ens: true,
     })
 }
@@ -248,9 +246,8 @@ pub(super) fn verify_reviewed_destination(
     resolved: SendDestinationResolution,
     expected: &str,
 ) -> Result<SendDestinationResolution, SpectraBridgeError> {
-    if !crate::send::flow::is_valid_send_address(chain.str_id().into(), expected.into())
-        || crate::send::flow::normalized_send_address(chain.str_id().into(), expected.into())
-            != resolved.address
+    if !crate::send::flow::is_valid_send_address(chain, expected.into())
+        || crate::send::flow::normalized_send_address(chain, expected.into()) != resolved.address
     {
         return Err(SpectraBridgeError::InvalidInput {
             message: format!(

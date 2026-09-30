@@ -18,7 +18,7 @@ fn tmp_db() -> String {
 
 fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
     StateCommand::AddCustomToken {
-        chain_id: crate::registry::Chain::Ethereum.str_id().to_string(),
+        chain_id: crate::registry::Chain::Ethereum,
         symbol: symbol.to_string(),
         name: symbol.to_string(),
         contract: "0x0000000000000000000000000000000000000001".to_string(),
@@ -72,7 +72,7 @@ fn new_network_deployments_inherit_the_tokens_saved_choice() {
     let token = state
         .token_preferences
         .iter()
-        .find(|e| e.token.symbol == "USDC" && e.token.chain_id == "ethereum")
+        .find(|e| e.token.symbol == "USDC" && e.token.chain_id == crate::registry::Chain::Ethereum)
         .unwrap()
         .token
         .clone();
@@ -80,16 +80,16 @@ fn new_network_deployments_inherit_the_tokens_saved_choice() {
         &mut state,
         StateCommand::SetTokenPreferencesEnabled {
             tokens: vec![CoreTokenPreferenceKey {
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 contract: token.contract,
             }],
             is_enabled: false,
         },
     );
     // A later catalog introduces deployments absent from the saved preferences.
-    state
-        .token_preferences
-        .retain(|e| e.token.token_id != token.token_id || e.token.chain_id == "ethereum");
+    state.token_preferences.retain(|e| {
+        e.token.token_id != token.token_id || e.token.chain_id == crate::registry::Chain::Ethereum
+    });
     reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
     let deployments: Vec<_> = state
         .token_preferences

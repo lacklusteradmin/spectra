@@ -46,11 +46,10 @@ mod token_decimals_come_from_the_contract {
 pub(super) mod request_fixture {
     use crate::send::SendExecutionRequest;
     pub(in crate::service::send_execution) fn req(
-        chain_id: &str,
-        _chain_name: &str,
+        chain_id: crate::registry::Chain,
     ) -> SendExecutionRequest {
         SendExecutionRequest {
-            chain_id: chain_id.to_string(),
+            chain_id,
             wallet_id: "w".into(),
             password: None,
             to_address: "to".to_string(),
@@ -76,14 +75,14 @@ mod sign_only_tests {
     /// request's own field or through the EVM overrides.
     #[test]
     fn either_route_asks_the_same_thing() {
-        let plain = req("ethereum", "ethereum");
+        let plain = req(crate::registry::Chain::Ethereum);
         assert!(!plain.wants_sign_only(), "a send is not a dry run");
 
-        let mut by_field = req("ethereum", "ethereum");
+        let mut by_field = req(crate::registry::Chain::Ethereum);
         by_field.sign_only = true;
         assert!(by_field.wants_sign_only());
 
-        let mut by_overrides = req("ethereum", "ethereum");
+        let mut by_overrides = req(crate::registry::Chain::Ethereum);
         by_overrides.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
             sign_only: Some(true),
             ..Default::default()
@@ -94,7 +93,7 @@ mod sign_only_tests {
         );
 
         // Overrides that say nothing about it do not unsay the field.
-        let mut both = req("ethereum", "ethereum");
+        let mut both = req(crate::registry::Chain::Ethereum);
         both.sign_only = true;
         both.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
             sign_only: None,
@@ -110,7 +109,7 @@ mod send_chain_tests {
     use crate::registry::Chain;
     use crate::store::state::{CoreAppState, WalletState};
 
-    fn wallet(id: &str, chain: Chain, chain_id: Option<&str>) -> WalletState {
+    fn wallet(id: &str, chain: Chain, chain_id: Option<Chain>) -> WalletState {
         WalletState {
             id: id.to_string(),
             name: id.to_string(),
@@ -118,7 +117,7 @@ mod send_chain_tests {
                 password_protected: false,
             },
             include_in_portfolio_total: true,
-            chain_id: chain_id.unwrap_or(chain.str_id()).to_string(),
+            chain_id: chain_id.unwrap_or(chain),
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
@@ -134,7 +133,7 @@ mod send_chain_tests {
     #[test]
     fn a_send_requires_the_explicit_network_and_never_retargets() {
         let mut state = CoreAppState {
-            wallets: vec![wallet("w1", Chain::Ethereum, Some("ethereum-sepolia"))],
+            wallets: vec![wallet("w1", Chain::Ethereum, Some(Chain::EthereumSepolia))],
             ..Default::default()
         };
         assert!(send_chain_for(&state, "w1", Chain::Ethereum).is_err());
@@ -146,7 +145,7 @@ mod send_chain_tests {
         state
             .settings
             .selected_chain_by_family
-            .insert("ethereum".into(), "ethereum-hoodi".into());
+            .insert(Chain::Ethereum, Chain::EthereumHoodi);
         assert_eq!(
             send_chain_for(&state, "w1", Chain::EthereumSepolia).unwrap(),
             Chain::EthereumSepolia
@@ -158,7 +157,7 @@ mod send_chain_tests {
 async fn invalid_exact_amount_and_fee_refuse_before_storage_or_keys() {
     let service = WalletService::new(vec![]).unwrap();
     for amount in ["-1", "NaN", "0.0000000000000000001", "1e8"] {
-        let mut request = request_fixture::req("ethereum", "ethereum");
+        let mut request = request_fixture::req(crate::registry::Chain::Ethereum);
         request.amount_str = amount.into();
         let error = service.build_send(request).await.unwrap_err().to_string();
         assert!(
@@ -166,9 +165,9 @@ async fn invalid_exact_amount_and_fee_refuse_before_storage_or_keys() {
             "{error}"
         );
     }
-    for fee in [f64::NAN, -1.0, f64::INFINITY, 0.00000000001] {
-        let mut request = request_fixture::req("bitcoin", "bitcoin");
-        request.fee_rate_svb = Some(fee);
+    for fee in ["NaN", "-1", "inf", "0.00000000001"] {
+        let mut request = request_fixture::req(crate::registry::Chain::Bitcoin);
+        request.fee_rate_svb = Some(fee.into());
         assert!(
             service
                 .build_send(request)
@@ -185,13 +184,13 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
     use crate::send::stages::*;
     let service = WalletService::new(vec![]).unwrap();
     let mut stored = StoredSend {
-        request: request_fixture::req("ton", "TON"),
+        request: request_fixture::req(crate::registry::Chain::Ton),
         view: SendArtifact {
             id: "fixture".into(),
             revision: 0,
             stage: SendStage::Prepared,
             wallet_id: "w".into(),
-            chain_id: "ton".into(),
+            chain_id: crate::registry::Chain::Ton,
             sender: String::new(),
             recipient: "to".into(),
             amount: "1.5".into(),

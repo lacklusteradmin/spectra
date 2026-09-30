@@ -10,13 +10,12 @@ impl WalletService {
     /// native amount as decimal string.
     pub async fn fetch_native_balance_summary(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let chain = chain_for_id(&chain_id)?;
             fetch_native_balance_summary(&address, chain, this).await
         })
         .await
@@ -25,22 +24,20 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn fetch_native_balance_summary_auto(
         &self,
-        chain_id: &str,
+        chain: crate::registry::Chain,
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
         // The Bitcoin family, not the literal id: a wallet on Testnet4 arrives
         // as `bitcoin-testnet-4`, and comparing the string meant its xpub was
         // walked as a plain address instead.
-        let is_bitcoin_family = crate::registry::Chain::from_str_id(chain_id)
-            .is_some_and(|chain| chain.mainnet_counterpart() == crate::registry::Chain::Bitcoin);
+        let is_bitcoin_family = chain.mainnet_counterpart() == crate::registry::Chain::Bitcoin;
         if is_bitcoin_family && is_extended_public_key(&address) {
-            let bal = self.bitcoin_xpub_balance(chain_id, address, 20, 20).await?;
+            let bal = self.bitcoin_xpub_balance(chain, address, 20, 20).await?;
             return Ok(NativeBalanceSummary {
                 smallest_unit: bal.confirmed_sats.to_string(),
-                amount_display: format_smallest_unit_decimal(bal.confirmed_sats as u128, 8),
+                amount_display: crate::decimal::from_units(bal.confirmed_sats as u128, 8),
             });
         }
-        let chain = chain_for_id(chain_id)?;
         fetch_native_balance_summary(&address, chain, self).await
     }
 }
@@ -54,7 +51,7 @@ async fn fetch_native_balance_summary(
         let owner = state
             .wallets
             .iter()
-            .find(|w| w.chain_id == chain.str_id() && w.address_on(chain) == Some(address))
+            .find(|w| w.chain_id == chain && w.address_on(chain) == Some(address))
             .ok_or("Monero balance requires an owned local wallet")?;
         let status = service
             .monero_sync_status(owner.id.clone())
@@ -65,7 +62,7 @@ async fn fetch_native_balance_summary(
         }
         return Ok(NativeBalanceSummary {
             smallest_unit: status.unlocked_piconeros.to_string(),
-            amount_display: format_smallest_unit_decimal(status.unlocked_piconeros as u128, 12),
+            amount_display: crate::decimal::from_units(status.unlocked_piconeros as u128, 12),
         });
     }
     let units = if chain.uses_utxo_client() {
@@ -83,7 +80,7 @@ async fn fetch_native_balance_summary(
         .parse::<u128>()
         .map_err(|_| "native balance exceeds core precision")?;
     Ok(NativeBalanceSummary {
-        amount_display: format_smallest_unit_decimal(amount, u32::from(chain.native_decimals())),
+        amount_display: crate::decimal::from_units(amount, u32::from(chain.native_decimals())),
         smallest_unit: units,
     })
 }

@@ -108,7 +108,7 @@ class HistoryTests(unittest.TestCase):
                     history = run('history', chain, '--endpoint', f'http://127.0.0.1:{server.server_port}')
                     assert history['count'] == 1, history
                     tx = history['transactions'][0]
-                    assert tx['hash'] == 'ab' * 32 and tx['amount'] == 1.23456789, tx
+                    assert tx['hash'] == 'ab' * 32 and tx['amount'] == '1.23456789', tx
         finally:
             server.shutdown(); server.server_close(); worker.join()
 
@@ -151,7 +151,7 @@ class HistoryTests(unittest.TestCase):
                 history = run('history', 'TRX', '--endpoint', f'http://127.0.0.1:{server.server_port}')
                 rows = {tx['hash']: tx for tx in history['transactions']}
                 assert set(rows) == {'aa' * 32, 'bb' * 32}, history
-                assert rows['aa' * 32]['kind'] == 'receive' and rows['aa' * 32]['amount'] == 2.5, rows
+                assert rows['aa' * 32]['kind'] == 'receive' and rows['aa' * 32]['amount'] == '2.5', rows
                 assert rows['bb' * 32]['kind'] == 'send' and rows['bb' * 32]['symbol'] == 'USDT', rows
                 assert all('only_confirmed=true' in path for path in requests), requests
         finally:

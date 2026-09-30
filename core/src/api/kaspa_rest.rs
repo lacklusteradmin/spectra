@@ -79,7 +79,6 @@ struct ApiTxOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KasBalance {
     pub balance_sompi: u64,
-    pub balance_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,7 +141,6 @@ impl KaspaClient {
         let info: ApiBalance = self.get(&format!("/addresses/{address}/balance")).await?;
         Ok(KasBalance {
             balance_sompi: info.balance,
-            balance_display: format_kas(info.balance),
         })
     }
 
@@ -272,17 +270,6 @@ impl KaspaClient {
         })
         .await
     }
-}
-
-fn format_kas(sompi: u64) -> String {
-    let whole = sompi / 100_000_000;
-    let frac = sompi % 100_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:08}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 #[cfg(test)]

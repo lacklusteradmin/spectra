@@ -11,7 +11,7 @@ fn tmp_db(tag: &str) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn pending_send(id: &str, chain: &str) -> CorePersistedTransactionRecord {
+fn pending_send(id: &str, chain: crate::registry::Chain) -> CorePersistedTransactionRecord {
     serde_json::from_value(serde_json::json!({
         "id": id, "walletId": "w1", "kind": "send", "status": "pending",
         "walletName": "W", "assetDisplayName": chain, "symbol": "BTC",
@@ -61,23 +61,22 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
         .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
             id: "tx1".into(),
             wallet_id: Some("w1".into()),
-            chain_id: "bitcoin".into(),
+            chain_id: crate::registry::Chain::Bitcoin,
             tx_hash: Some("hash-tx1".into()),
             created_at: 0.0,
-            payload: pending_send("tx1", "bitcoin"),
+            payload: pending_send("tx1", crate::registry::Chain::Bitcoin),
         }])
         .await
         .expect("store");
 
     let changes = service
         .apply_resolved_pending_statuses(
-            "bitcoin".into(),
+            crate::registry::Chain::Bitcoin,
             vec![ResolvedPendingStatus {
                 id: "tx1".into(),
                 status: "confirmed".into(),
                 confirmations: Some(6),
                 receipt_block_number: Some(900_000),
-                confirmed_network_fee: None,
                 evm_receipt_cost: None,
             }],
         )
@@ -114,13 +113,12 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
     // Applying the same resolution again is not a change.
     let again = service
         .apply_resolved_pending_statuses(
-            "bitcoin".into(),
+            crate::registry::Chain::Bitcoin,
             vec![ResolvedPendingStatus {
                 id: "tx1".into(),
                 status: "confirmed".into(),
                 confirmations: Some(6),
                 receipt_block_number: None,
-                confirmed_network_fee: None,
                 evm_receipt_cost: None,
             }],
         )
@@ -145,17 +143,17 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
         .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
             id: "tx1".into(),
             wallet_id: Some("w1".into()),
-            chain_id: "bitcoin".into(),
+            chain_id: crate::registry::Chain::Bitcoin,
             tx_hash: Some("hash-tx1".into()),
             created_at: 0.0,
-            payload: pending_send("tx1", "bitcoin"),
+            payload: pending_send("tx1", crate::registry::Chain::Bitcoin),
         }])
         .await
         .expect("store");
 
     assert!(
         service
-            .stale_pending_failure_ids("bitcoin".into())
+            .stale_pending_failure_ids(crate::registry::Chain::Bitcoin)
             .await
             .expect("read")
             .is_empty(),
@@ -169,7 +167,7 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
     }
     assert_eq!(
         service
-            .stale_pending_failure_ids("bitcoin".into())
+            .stale_pending_failure_ids(crate::registry::Chain::Bitcoin)
             .await
             .expect("read"),
         vec!["tx1".to_string()]
@@ -178,7 +176,7 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
     // Another chain's sweep must not pick it up.
     assert!(
         service
-            .stale_pending_failure_ids("litecoin".into())
+            .stale_pending_failure_ids(crate::registry::Chain::Litecoin)
             .await
             .expect("read")
             .is_empty()

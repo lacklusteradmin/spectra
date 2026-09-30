@@ -6,12 +6,12 @@ use crate::staking::{StakingPosition, StakingValidator, service::StakingService}
 impl WalletService {
     pub async fn fetch_staking_validators(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
     ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let endpoints = this.staking_endpoints(chain_id.clone()).await?;
+            let endpoints = this.staking_endpoints(chain_id).await?;
             StakingService::new(vec![endpoints])
                 .fetch_validators(chain_id)
                 .await
@@ -24,9 +24,8 @@ impl WalletService {
     /// Inspect the same effective configuration used for the next query.
     pub async fn staking_endpoints(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<ChainEndpoints, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
         if chain.is_testnet() || !chain.supports_staking() {
             return Err(SpectraBridgeError::InvalidInput {
                 message: format!(
@@ -38,12 +37,12 @@ impl WalletService {
         if !chain.staking_uses_endpoint() {
             return Ok(ChainEndpoints {
                 capabilities: vec![],
-                chain_id,
+                chain_id: chain,
                 endpoints: vec![],
             });
         }
         let endpoints = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Staking])
+            .endpoints_for(chain, &[EndpointCapability::Staking])
             .await
             .as_ref()
             .clone();
@@ -52,7 +51,7 @@ impl WalletService {
         }
         Ok(ChainEndpoints {
             capabilities: vec![EndpointCapability::Staking],
-            chain_id,
+            chain_id: chain,
             endpoints,
         })
     }
@@ -67,21 +66,19 @@ impl WalletService {
                 .iter()
                 .find(|w| w.id == wallet_id)
                 .ok_or_else(|| SpectraBridgeError::from("Wallet not found"))?;
-            let chain = wallet
-                .chain()
-                .ok_or_else(|| SpectraBridgeError::from("Wallet has no network"))?;
+            let chain = wallet.chain_id;
             let address = wallet
                 .address_on(chain)
                 .ok_or_else(|| SpectraBridgeError::from("Wallet has no staking address"))?
                 .to_string();
             (chain, address)
         };
-        let endpoints = self.staking_endpoints(chain.str_id().into()).await?;
-        if !crate::send::flow::is_valid_send_address(chain.str_id().into(), address.clone()) {
+        let endpoints = self.staking_endpoints(chain).await?;
+        if !crate::send::flow::is_valid_send_address(chain, address.clone()) {
             return Err("Invalid staking wallet address".into());
         }
         StakingService::new(vec![endpoints])
-            .fetch_positions(chain.str_id().into(), address)
+            .fetch_positions(chain, address)
             .await
             .map_err(|e| SpectraBridgeError::from(e.to_string()))
     }
@@ -104,10 +101,10 @@ mod tests {
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
                         capabilities: crate::endpoint_capability_options(
-                            "solana".into(),
+                            crate::registry::Chain::Solana,
                             crate::EndpointApi::SolanaJsonRpc,
                         ),
-                        chain_id: "solana".into(),
+                        chain_id: crate::registry::Chain::Solana,
                         api: "solana-json-rpc".into(),
                         endpoint: url.into(),
                     },
@@ -116,24 +113,19 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 service
-                    .staking_endpoints("solana".into())
+                    .staking_endpoints(crate::registry::Chain::Solana)
                     .await
                     .unwrap()
                     .endpoints[0],
                 url
             );
         }
-        for chain in ["bitcoin", "solana-devnet"] {
-            assert!(
-                service
-                    .fetch_staking_validators(chain.into())
-                    .await
-                    .is_err()
-            );
+        for chain in [Chain::Bitcoin, Chain::SolanaDevnet] {
+            assert!(service.fetch_staking_validators(chain).await.is_err());
         }
         let explicit = WalletService::new(vec![ChainEndpoints {
             capabilities: vec![EndpointCapability::Staking],
-            chain_id: "solana".into(),
+            chain_id: crate::registry::Chain::Solana,
             endpoints: vec!["http://127.0.0.1:13003".into()],
         }])
         .unwrap();
@@ -143,7 +135,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             explicit
-                .staking_endpoints("solana".into())
+                .staking_endpoints(crate::registry::Chain::Solana)
                 .await
                 .unwrap()
                 .endpoints,

@@ -13,7 +13,6 @@ use crate::api::http::HttpClient;
 pub struct NearBalance {
     /// yoctoNEAR (1 NEAR = 10^24 yoctoNEAR).
     pub yocto_near: String,
-    pub near_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,11 +77,7 @@ impl NearClient {
             .and_then(|v| v.as_str())
             .unwrap_or("0")
             .to_string();
-        let display = format_near(&yocto);
-        Ok(NearBalance {
-            yocto_near: yocto,
-            near_display: display,
-        })
+        Ok(NearBalance { yocto_near: yocto })
     }
 
     pub async fn fetch_access_key_nonce(
@@ -192,27 +187,6 @@ impl NearClient {
             decimals: meta.decimals,
         })
     }
-}
-
-// ── Formatting helpers
-
-fn format_near(yocto: &str) -> String {
-    // yocto is a 25-digit decimal; divide by 10^24 for NEAR.
-    let n: u128 = yocto.parse().unwrap_or(0);
-    let divisor: u128 = 1_000_000_000_000_000_000_000_000; // 10^24
-    let whole = n / divisor;
-    let frac = n % divisor;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:024}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
 }
 
 impl NearClient {

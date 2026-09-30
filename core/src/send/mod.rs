@@ -49,90 +49,32 @@ pub(crate) mod zcash_stages;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SendAssetRoutingInput {
-    pub is_native: bool,
-    pub chain_id: String,
-    pub symbol: String,
-    pub is_evm_chain: bool,
-    pub supports_solana_send_coin: bool,
-    #[serde(default)]
-    pub supports_near_token_send: bool,
-}
+pub use transfer::{SendAsset, SendAssetKind, SendTokenIdentity};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SendAssetRoute {
-    pub preview_kind: Option<String>,
-    pub submit_kind: Option<String>,
-    pub native_evm_symbol: Option<String>,
-    pub is_native_evm_asset: bool,
-    pub allows_zero_amount: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct SendSubmitPreflightRequest {
-    pub wallet_found: bool,
-    pub asset_found: bool,
-    pub destination_address: String,
-    pub amount_input: String,
-    /// Exact decimal.
-    pub available_balance: String,
-    pub asset: Option<SendAssetRoutingInput>,
-    /// The token the holding is, from the user's tracked list. `None` for a
-    /// native asset — and for a token nothing tracks, which is refused.
-    pub token: Option<SendTokenIdentity>,
-}
-
-/// A token's contract and its own decimals.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SendTokenIdentity {
-    pub contract: String,
-    pub decimals: u32,
-}
-
+/// Whether a send can be made, with what core resolved to make it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPreflight {
-    pub submit_kind: String,
-    pub preview_kind: Option<String>,
-    pub normalized_destination_address: String,
-    pub amount: f64,
-    /// Original trimmed user input string — carries exact decimal representation
-    /// through to `SendExecutionRequest.amount_str` so raw-unit conversion never
-    /// touches f64.
-    pub amount_str: String,
-    pub chain_id: String,
+    pub chain: crate::registry::Chain,
     pub symbol: String,
-    pub native_evm_symbol: Option<String>,
-    pub is_native_evm_asset: bool,
-    pub allows_zero_amount: bool,
-    /// Whether this send takes the shared submit path — see
-    /// `Chain::uses_generic_send_submit`. Decided here rather than by the
-    /// caller because NEAR qualifies for its native asset and not for a token
-    /// on it, which is a question about the asset and not only the chain.
-    pub uses_generic_submit: bool,
-    /// The token this send moves, as core resolved it, or `None` for a native
-    /// asset.
-    ///
-    /// The token is core's; a send that names one core cannot identify is
-    /// refused here rather than sent with a guessed scale.
+    pub normalized_destination_address: String,
+    /// The amount as typed, trimmed: an exact decimal, never a float.
+    pub amount: String,
+    /// The token this send moves, or `None` for a native asset. A token core
+    /// cannot identify is refused rather than sent with a guessed scale.
     pub token_contract_address: Option<String>,
     pub token_decimals: Option<u32>,
-    /// The gas-asset balance this send needs before it can land, where the
-    /// chain routes a token send with no fee estimate — see
-    /// `Chain::token_send_gas_reserve`. `None` for a native send, and for a
-    /// chain whose preview supplies a real fee.
-    pub token_send_gas_reserve: Option<f64>,
+    /// The gas-asset balance a token send needs before it can land, where the
+    /// chain has no fee estimate for that path — see
+    /// `Chain::token_send_gas_reserve`. `None` for a native send.
+    pub token_send_gas_reserve: Option<String>,
 }
 
 /// Unified request for `WalletService::execute_send`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct SendExecutionRequest {
     /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// Core-owned wallet whose stored signing identity is used.
     pub wallet_id: String,
     /// Required only for a password-sealed wallet. No seed or raw key crosses here.
@@ -147,14 +89,15 @@ pub struct SendExecutionRequest {
     /// Token decimals for raw-unit conversion.
     pub token_decimals: Option<u32>,
     // ── Chain-specific optional fields ───────────────────────────────────
-    /// BTC fee rate in sat/vB.
-    pub fee_rate_svb: Option<f64>,
+    /// Fee rate as an exact decimal: sat/vB for Bitcoin, DOGE per kB for
+    /// Dogecoin.
+    pub fee_rate_svb: Option<String>,
     /// UTXO fee in satoshis (BCH, BSV, LTC, DOGE).
     pub fee_sat: Option<u64>,
-    /// Sui gas budget in SUI.
-    pub gas_budget: Option<f64>,
-    /// Cardano fee in ADA.
-    pub fee_amount: Option<f64>,
+    /// Sui gas budget in SUI, as an exact decimal.
+    pub gas_budget: Option<String>,
+    /// Cardano fee in ADA, as an exact decimal.
+    pub fee_amount: Option<String>,
     /// EVM overrides (nonce, custom gas fees). Typed; Rust assembles the
     /// payload fragment internally — no JSON shuttle from Swift.
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
@@ -221,7 +164,7 @@ pub struct SendExecutionResult {
 
 /// Why a send cannot land, once the fee is counted.
 ///
-/// `route_send_asset`'s preflight already refuses `amount > available_balance`.
+/// The preflight already refuses `amount > available_balance`.
 /// That is half the question: the fee comes out of the chain's gas asset,
 /// which for a token send is a different balance entirely, and the half that
 /// knew about it lived in Swift.
@@ -243,7 +186,7 @@ pub enum SendAffordability {
     FeeExceedsGasBalance {
         gas_symbol: String,
         fee: String,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
     },
 }
 
@@ -253,7 +196,7 @@ pub enum SendAffordability {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendAffordabilityInput {
     pub is_native: bool,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// The asset being sent.
     pub symbol: String,
     /// Exact decimals, all of them: this decides whether funds leave.
@@ -275,13 +218,10 @@ pub struct SendAffordabilityInput {
 /// front end's own bundle.
 #[uniffi::export]
 pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
-    let chain = crate::registry::Chain::from_str_id(&input.chain_id);
-    if chain.is_none() || (!input.is_native && input.gas_balance.is_none()) {
+    if !input.is_native && input.gas_balance.is_none() {
         return SendAffordability::Unavailable;
     }
-    let gas_symbol = chain
-        .map(|c| c.coin_symbol().to_string())
-        .unwrap_or_default();
+    let gas_symbol = input.chain_id.coin_symbol().to_string();
     use crate::decimal::{add, compare};
     use std::cmp::Ordering::Greater;
     // An amount that is not a decimal cannot be judged, and is not sent.
@@ -322,213 +262,73 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     }
 }
 
-pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoute {
-    let network = crate::registry::Chain::from_str_id(&input.chain_id);
-    let native_name = network.map(|c| c.mainnet_counterpart().chain_display_name());
-    let submit_kind = if network.is_some_and(|c| c.is_evm()) {
-        Some("ethereum")
-    } else if input.supports_solana_send_coin {
-        Some("solana")
-    } else if input.supports_near_token_send {
-        Some("near")
-    } else if native_name == Some("Tron") {
-        Some("tron")
-    } else if input.is_native {
-        match native_name {
-            Some("Bitcoin") => Some("bitcoin"),
-            Some("Bitcoin Cash") => Some("bitcoinCash"),
-            Some("Bitcoin SV") => Some("bitcoinSV"),
-            Some("Litecoin") => Some("litecoin"),
-            Some("Dogecoin") => Some("dogecoin"),
-            Some("XRP Ledger") => Some("xrp"),
-            Some("Stellar") => Some("stellar"),
-            Some("Monero") => Some("monero"),
-            Some("Cardano") => Some("cardano"),
-            Some("Sui") => Some("sui"),
-            Some("Aptos") => Some("aptos"),
-            Some("TON") => Some("ton"),
-            Some("Internet Computer") => Some("icp"),
-            Some("NEAR") => Some("near"),
-            Some("Polkadot") => Some("polkadot"),
-            Some("Bittensor") => Some("bittensor"),
-            Some("Zcash") => Some("zcash"),
-            Some("Bitcoin Gold") => Some("bitcoin-gold"),
-            Some("Decred") => Some("decred"),
-            Some("Kaspa") => Some("kaspa"),
-            Some("Dash") => Some("dash"),
-            _ => None,
-        }
-    } else {
-        None
-    }
-    .map(str::to_string);
-
-    let native_evm_symbol = native_evm_symbol_for_chain(&input.chain_id);
-    let is_native_evm_asset = native_evm_symbol.is_some() && input.is_native;
-
-    SendAssetRoute {
-        preview_kind: submit_kind.clone(),
-        submit_kind,
-        native_evm_symbol,
-        is_native_evm_asset,
-        allows_zero_amount: is_native_evm_asset,
-    }
-}
-
+/// Can this send be made? `asset` is `None` when the holding is missing or on
+/// a chain core does not know.
 pub fn validate_send_preflight(
-    request: SendSubmitPreflightRequest,
+    wallet_found: bool,
+    asset: Option<&SendAsset>,
+    available_balance: &str,
+    destination_address: &str,
+    amount_input: &str,
 ) -> Result<SendPreflight, String> {
-    let token = request.token.clone();
-    if !request.wallet_found {
+    if !wallet_found {
         return Err("Select a wallet".to_string());
     }
-    if !request.asset_found {
-        return Err("Select an asset".to_string());
+    let asset = asset.ok_or_else(|| "Select an asset".to_string())?;
+    if !asset.is_sendable() {
+        return Err(format!("{} transfers are not enabled yet.", asset.symbol));
     }
 
-    let asset = request.asset.ok_or_else(|| "Select an asset".to_string())?;
-    let route = route_send_asset(&asset);
-    let submit_kind = route
-        .submit_kind
-        .clone()
-        .ok_or_else(|| format!("{} transfers are not enabled yet.", asset.symbol))?;
-
-    let normalized_destination_address = request.destination_address.trim().to_string();
+    let normalized_destination_address = destination_address.trim().to_string();
     if normalized_destination_address.is_empty() {
         return Err("Enter a destination address".to_string());
     }
 
-    let amount_input = request.amount_input.trim();
+    let amount_input = amount_input.trim();
     let exact = crate::decimal::canonical(amount_input)
         .ok_or_else(|| "Enter a valid amount".to_string())?;
-    let amount = crate::decimal::to_f64(&exact);
-
-    if !route.allows_zero_amount && crate::decimal::is_zero(&exact) {
+    if !asset.allows_zero_amount() && crate::decimal::is_zero(&exact) {
         return Err("Enter a valid amount".to_string());
     }
-
-    if crate::decimal::compare(&exact, &request.available_balance)
+    if crate::decimal::compare(&exact, available_balance)
         .is_none_or(|o| o == std::cmp::Ordering::Greater)
     {
         return Err("Amount exceeds the available balance".to_string());
     }
 
-    // NEAR is the one chain where this depends on the asset: its native send
-    // is the shared shape and a token on it is not.
-    let chain = crate::registry::Chain::from_str_id(&asset.chain_id);
-    let uses_generic_submit =
-        chain.is_some_and(|chain| chain.uses_generic_send_submit() && asset.is_native);
-    // Only a token send needs it: the native asset pays its own fee out of the
-    // amount, which the balance check above already covers.
-    let token_send_gas_reserve = token
-        .as_ref()
-        .and(chain)
-        .and_then(|chain| chain.token_send_gas_reserve());
-
+    let token = asset.token();
     Ok(SendPreflight {
-        submit_kind,
-        preview_kind: route.preview_kind,
+        chain: asset.chain,
+        symbol: asset.symbol.clone(),
         normalized_destination_address,
-        amount,
-        amount_str: amount_input.to_string(),
-        chain_id: asset.chain_id,
-        symbol: asset.symbol,
-        native_evm_symbol: route.native_evm_symbol,
-        is_native_evm_asset: route.is_native_evm_asset,
-        allows_zero_amount: route.allows_zero_amount,
-        uses_generic_submit,
-        token_contract_address: token.as_ref().map(|token| token.contract.clone()),
+        amount: amount_input.to_string(),
+        token_contract_address: token.map(|token| token.contract.clone()),
         token_decimals: token.map(|token| token.decimals),
-        token_send_gas_reserve,
+        // Only a token send needs it: the native asset pays its own fee out
+        // of the amount, which the balance check above already covers.
+        token_send_gas_reserve: token
+            .and(asset.chain.token_send_gas_reserve())
+            .map(str::to_string),
     })
-}
-
-/// The asset an EVM chain pays fees in, or `None` off the EVM family.
-///
-/// Seven chains were named here, so on the other sixteen EVM mainnets this
-/// answered `None` — which made `is_native_evm_asset` false for the chain's own
-/// gas token and `allows_zero_amount` false with it.
-fn native_evm_symbol_for_chain(chain_id: &str) -> Option<String> {
-    crate::registry::Chain::from_str_id(chain_id)
-        .filter(|chain| chain.is_evm())
-        .map(|chain| chain.coin_symbol().to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        SendAssetRoutingInput, SendExecutionRequest, SendSubmitPreflightRequest, SendTokenIdentity,
-        route_send_asset, validate_send_preflight,
+        SendAsset, SendAssetKind, SendExecutionRequest, SendTokenIdentity, validate_send_preflight,
     };
+    use crate::registry::Chain;
 
-    /// Every chain the router sends down the shared preview path has a shape
-    /// for it: a routing kind outside the seven with a preview path of their
-    /// own is a chain `simple_preview_chain` answers for.
+    /// Every chain sends its native asset, so every chain can name a fee: its
+    /// own preview path, a shared-path shape, or a fallback.
     #[test]
-    fn every_shared_path_routing_kind_has_a_preview_shape() {
-        use crate::registry::Chain;
-
-        const DEDICATED: &[&str] = &[
-            "bitcoin",
-            "bitcoinCash",
-            "bitcoinSV",
-            "litecoin",
-            "ethereum",
-            "dogecoin",
-            "tron",
-        ];
-        for chain in Chain::all().filter(|c| !c.is_testnet()) {
-            let route = route_send_asset(&SendAssetRoutingInput {
-                is_native: true,
-                chain_id: chain.str_id().to_string(),
-                symbol: chain.coin_symbol().to_string(),
-                is_evm_chain: chain.is_evm(),
-                supports_solana_send_coin: false,
-                supports_near_token_send: false,
-            });
-            let Some(kind) = route.preview_kind.as_deref() else {
-                continue;
-            };
-            if DEDICATED.contains(&kind) {
-                continue;
-            }
-            // A chain that routes must be able to name a fee: through a
-            // shared-path preview, or through the fallback the generic submit
-            // uses when there is no preview to ask. Zcash, Bitcoin Gold,
-            // Decred, Kaspa and Dash are the second kind — their sends were
-            // written and wired into `execute_send`, and only this table was
-            // missing them.
+    fn every_chain_has_a_send_preview() {
+        for chain in Chain::all() {
             assert!(
-                chain.simple_preview_chain().is_some()
-                    || chain.send_execution_shape().fee_fallback > 0.0,
-                "{} routes as \"{kind}\" with neither a preview shape nor a fee fallback",
+                chain.has_send_preview(),
+                "{} sends but the screen would say it has no network preview",
                 chain.str_id()
             );
-        }
-    }
-
-    /// `has_send_preview` and the router agree: a chain the router gives a
-    /// preview kind is a chain the send screen can show a network card for.
-    #[test]
-    fn every_routable_chain_has_a_send_preview() {
-        use crate::registry::Chain;
-
-        for chain in Chain::all() {
-            let route = route_send_asset(&SendAssetRoutingInput {
-                is_native: true,
-                chain_id: chain.str_id().to_string(),
-                symbol: chain.coin_symbol().to_string(),
-                is_evm_chain: chain.is_evm(),
-                supports_solana_send_coin: false,
-                supports_near_token_send: false,
-            });
-            if route.preview_kind.is_some() {
-                assert!(
-                    chain.has_send_preview(),
-                    "{} routes a send but the screen would say it has no network preview",
-                    chain.str_id()
-                );
-            }
         }
     }
 
@@ -543,7 +343,7 @@ mod tests {
         let mixed = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
         for chain in Chain::all().filter(|c| c.is_evm()) {
             assert_eq!(
-                normalize_address(chain.str_id(), mixed),
+                normalize_address(chain, mixed),
                 mixed.to_lowercase(),
                 "{} left a mixed-case address as typed",
                 chain.str_id()
@@ -564,7 +364,7 @@ mod tests {
             }
             let sample = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2";
             assert_eq!(
-                normalize_address(chain.str_id(), sample),
+                normalize_address(chain, sample),
                 sample,
                 "{} altered an address whose case is significant",
                 chain.str_id()
@@ -580,14 +380,14 @@ mod tests {
         use crate::send::flow::{HighRiskSendRequest, evaluate_high_risk_send_reasons};
 
         let request = |chain: Chain, destination: &str| HighRiskSendRequest {
-            chain_id: chain.str_id().to_string(),
+            chain_id: chain,
             symbol: chain.coin_symbol().to_string(),
-            amount: 1.0,
-            holding_amount: 100.0,
+            amount: "1".into(),
+            holding_amount: "100".into(),
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_chain_id: chain.str_id().to_string(),
+            wallet_chain_id: chain,
             address_book_entries: Vec::new(),
             tx_addresses: Vec::new(),
         };
@@ -626,9 +426,8 @@ mod tests {
         use crate::registry::Chain;
 
         for chain in Chain::all().filter(|c| c.is_evm()) {
-            let asset =
-                crate::fetch::history_decode::history_evm_native_asset(chain.str_id().to_string())
-                    .unwrap_or_else(|| panic!("{} has no native asset", chain.str_id()));
+            let asset = crate::fetch::history_decode::history_evm_native_asset(chain)
+                .unwrap_or_else(|| panic!("{} has no native asset", chain.str_id()));
             assert_eq!(asset.symbol, chain.entry().gas_token_symbol);
             assert!(
                 !asset.symbol.is_empty(),
@@ -638,7 +437,10 @@ mod tests {
             assert!(!asset.asset_display_name.is_empty());
         }
         // And a chain that is not EVM is still refused.
-        assert!(crate::fetch::history_decode::history_evm_native_asset("bitcoin".into()).is_none());
+        assert!(
+            crate::fetch::history_decode::history_evm_native_asset(crate::registry::Chain::Bitcoin)
+                .is_none()
+        );
     }
 
     /// The MWEB overhead belongs to Litecoin and to MWEB destinations only.
@@ -662,11 +464,11 @@ mod tests {
         );
         // The composer's badge asks the same rule.
         assert!(crate::send::flow::is_extension_block_send_destination(
-            "litecoin".into(),
+            crate::registry::Chain::Litecoin,
             mweb.into()
         ));
         assert!(!crate::send::flow::is_extension_block_send_destination(
-            "bitcoin".into(),
+            crate::registry::Chain::Bitcoin,
             mweb.into()
         ));
         // And no other chain charges it, whatever the destination looks like.
@@ -680,188 +482,38 @@ mod tests {
         }
     }
 
-    /// And nothing has a shape it cannot be routed to.
-    #[test]
-    fn every_preview_shape_belongs_to_a_chain_that_routes_there() {
-        use crate::registry::Chain;
-
-        for chain in Chain::all().filter(|c| !c.is_testnet()) {
-            if chain.simple_preview_chain().is_none() {
-                continue;
-            }
-            let route = route_send_asset(&SendAssetRoutingInput {
-                is_native: true,
-                chain_id: chain.str_id().to_string(),
-                symbol: chain.coin_symbol().to_string(),
-                is_evm_chain: chain.is_evm(),
-                // Native SOL has no `(chain, symbol)` arm of its own; it routes
-                // through the token rule, which the service answers `true` for
-                // the native coin. Stating that here is what keeps this test
-                // about the shape mapping rather than about the token list.
-                supports_solana_send_coin: chain == Chain::Solana,
-                supports_near_token_send: false,
-            });
-            assert!(
-                route.preview_kind.is_some(),
-                "{} has a shared preview shape and routes nowhere",
-                chain.str_id()
-            );
+    fn asset(chain: Chain, symbol: &str, kind: SendAssetKind) -> SendAsset {
+        SendAsset {
+            chain,
+            symbol: symbol.into(),
+            kind,
         }
-    }
-
-    #[test]
-    fn routes_evm_native_assets_with_native_symbol_metadata() {
-        let route = route_send_asset(&SendAssetRoutingInput {
-            is_native: true,
-            chain_id: "avalanche".to_string(),
-            symbol: "AVAX".to_string(),
-            is_evm_chain: true,
-            supports_solana_send_coin: false,
-            supports_near_token_send: false,
-        });
-
-        assert_eq!(route.preview_kind.as_deref(), Some("ethereum"));
-        assert_eq!(route.native_evm_symbol.as_deref(), Some("AVAX"));
-        assert!(route.is_native_evm_asset);
-        assert!(route.allows_zero_amount);
-    }
-
-    /// The preview and the submit are the same routing decision. Asserting
-    /// both fields of one route is what says they cannot drift.
-    #[test]
-    fn routes_supported_solana_assets_to_solana_preview_and_submit() {
-        let route = route_send_asset(&SendAssetRoutingInput {
-            is_native: false,
-            chain_id: "solana".to_string(),
-            symbol: "USDC".to_string(),
-            is_evm_chain: false,
-            supports_solana_send_coin: true,
-            supports_near_token_send: false,
-        });
-
-        assert_eq!(route.preview_kind.as_deref(), Some("solana"));
-        assert_eq!(route.submit_kind.as_deref(), Some("solana"));
-
-        // And an untracked mint routes nowhere, rather than to Solana.
-        let untracked = route_send_asset(&SendAssetRoutingInput {
-            is_native: false,
-            chain_id: "solana".to_string(),
-            symbol: "USDC".to_string(),
-            is_evm_chain: false,
-            supports_solana_send_coin: false,
-            supports_near_token_send: false,
-        });
-        assert_eq!(untracked.submit_kind, None);
-    }
-
-    /// The routing kinds are a closed set, and every chain that can send has
-    /// one. `submitSend` switches on these strings, so a renamed kind would
-    /// silently drop a chain into "not enabled yet"; this test fails instead.
-    #[test]
-    fn every_sendable_chain_has_a_routing_kind_from_the_known_set() {
-        use crate::registry::Chain;
-        const KNOWN: &[&str] = &[
-            "bitcoin",
-            "bitcoinCash",
-            "bitcoinSV",
-            "litecoin",
-            "dogecoin",
-            "tron",
-            "xrp",
-            "stellar",
-            "monero",
-            "cardano",
-            "sui",
-            "aptos",
-            "ton",
-            "icp",
-            "near",
-            "polkadot",
-            "bittensor",
-            "ethereum",
-            "solana",
-            "zcash",
-            "bitcoin-gold",
-            "decred",
-            "kaspa",
-            "dash",
-        ];
-        let mut unrouted = Vec::new();
-        for chain in Chain::mainnets() {
-            let symbol = chain.entry().gas_token_symbol.clone();
-            let route = route_send_asset(&SendAssetRoutingInput {
-                is_native: true,
-                chain_id: chain.str_id().to_string(),
-                symbol,
-                is_evm_chain: chain.is_evm(),
-                supports_solana_send_coin: chain == Chain::Solana,
-                supports_near_token_send: false,
-            });
-            match route.submit_kind.as_deref() {
-                Some(kind) => assert!(
-                    KNOWN.contains(&kind),
-                    "{} routes to {kind:?}, which `submitSend` does not switch on",
-                    chain.str_id()
-                ),
-                None => unrouted.push(chain.str_id()),
-            }
-        }
-        // The chains with no send path are named, so adding one is a decision
-        // rather than something that shows up as a dead branch. The list is
-        // empty, and that is the assertion: every mainnet the app offers can
-        // send.
-        assert!(
-            unrouted.is_empty(),
-            "these chains cannot send: {unrouted:?}"
-        );
     }
 
     #[test]
     fn rejects_zero_amount_for_non_evm_native_sends() {
-        let error = validate_send_preflight(SendSubmitPreflightRequest {
-            wallet_found: true,
-            asset_found: true,
-            destination_address: "bc1qdestination".to_string(),
-            amount_input: "0".to_string(),
-            available_balance: "1".into(),
-            asset: Some(SendAssetRoutingInput {
-                is_native: true,
-                chain_id: "bitcoin".to_string(),
-                symbol: "BTC".to_string(),
-                is_evm_chain: false,
-                supports_solana_send_coin: false,
-                supports_near_token_send: false,
-            }),
-            token: None,
-        })
-        .expect_err("bitcoin zero-value sends should be rejected in preflight");
-
+        let btc = asset(Chain::Bitcoin, "BTC", SendAssetKind::Native);
+        let error = validate_send_preflight(true, Some(&btc), "1", "bc1qdestination", "0")
+            .expect_err("bitcoin zero-value sends should be rejected in preflight");
         assert_eq!(error, "Enter a valid amount");
     }
 
     #[test]
     fn preserves_zero_amount_for_native_evm_preflight() {
-        let plan = validate_send_preflight(SendSubmitPreflightRequest {
-            wallet_found: true,
-            asset_found: true,
-            destination_address: "0xabc".to_string(),
-            amount_input: "0".to_string(),
-            available_balance: "1".into(),
-            asset: Some(SendAssetRoutingInput {
-                is_native: true,
-                chain_id: "ethereum".to_string(),
-                symbol: "ETH".to_string(),
-                is_evm_chain: true,
-                supports_solana_send_coin: false,
-                supports_near_token_send: false,
-            }),
-            token: None,
-        })
-        .expect("native EVM zero-value sends remain allowed");
+        let eth = asset(Chain::Ethereum, "ETH", SendAssetKind::Native);
+        let plan = validate_send_preflight(true, Some(&eth), "1", "0xabc", "0")
+            .expect("native EVM zero-value sends remain allowed");
+        assert_eq!(plan.amount, "0");
+    }
 
-        assert_eq!(plan.submit_kind, "ethereum");
-        assert_eq!(plan.amount, 0.0);
-        assert!(plan.allows_zero_amount);
+    /// A token nothing tracks is refused, whatever chain it is on. The EVM
+    /// and Tron routes used to let one through with no contract to send.
+    #[test]
+    fn an_untracked_token_is_refused() {
+        let usdt = asset(Chain::Ethereum, "USDT", SendAssetKind::UntrackedToken);
+        let error = validate_send_preflight(true, Some(&usdt), "10", "0xabc", "1")
+            .expect_err("an untracked token has no contract to send");
+        assert_eq!(error, "USDT transfers are not enabled yet.");
     }
 
     /// The gas floor a NEP-141 send has to clear is a fact about NEAR, so core
@@ -869,63 +521,44 @@ mod tests {
     /// out of the amount, and every other chain estimates one.
     #[test]
     fn a_near_token_send_carries_the_chains_gas_floor() {
-        let near = |symbol: &str, token: Option<SendTokenIdentity>| {
-            validate_send_preflight(SendSubmitPreflightRequest {
-                wallet_found: true,
-                asset_found: true,
-                destination_address: "receiver.near".to_string(),
-                amount_input: "1".to_string(),
-                available_balance: "10".into(),
-                asset: Some(SendAssetRoutingInput {
-                    is_native: true,
-                    chain_id: "near".to_string(),
-                    symbol: symbol.to_string(),
-                    is_evm_chain: false,
-                    supports_solana_send_coin: false,
-                    supports_near_token_send: token.is_some(),
-                }),
-                token,
+        let preflight = |asset: &SendAsset, destination: &str| {
+            validate_send_preflight(true, Some(asset), "10", destination, "1")
+                .expect("a sendable asset")
+        };
+        let token = |contract: &str, decimals| {
+            SendAssetKind::Token(SendTokenIdentity {
+                contract: contract.into(),
+                decimals,
             })
-            .expect("a routable NEAR send")
         };
 
-        let token = near(
-            "USDC",
-            Some(SendTokenIdentity {
-                contract: "usdc.near".to_string(),
-                decimals: 6,
-            }),
+        let usdc = asset(Chain::Near, "USDC", token("usdc.near", 6));
+        assert_eq!(
+            preflight(&usdc, "receiver.near")
+                .token_send_gas_reserve
+                .as_deref(),
+            Some("0.001")
         );
-        assert_eq!(token.token_send_gas_reserve, Some(0.001));
-        assert_eq!(near("NEAR", None).token_send_gas_reserve, None);
+        let near = asset(Chain::Near, "NEAR", SendAssetKind::Native);
+        assert_eq!(
+            preflight(&near, "receiver.near").token_send_gas_reserve,
+            None
+        );
 
-        let tron = validate_send_preflight(SendSubmitPreflightRequest {
-            wallet_found: true,
-            asset_found: true,
-            destination_address: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".to_string(),
-            amount_input: "1".to_string(),
-            available_balance: "10".into(),
-            asset: Some(SendAssetRoutingInput {
-                is_native: false,
-                chain_id: "tron".to_string(),
-                symbol: "USDT".to_string(),
-                is_evm_chain: false,
-                supports_solana_send_coin: false,
-                supports_near_token_send: false,
-            }),
-            token: Some(SendTokenIdentity {
-                contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-                decimals: 6,
-            }),
-        })
-        .expect("a routable Tron token send");
+        let usdt = asset(
+            Chain::Tron,
+            "USDT",
+            token("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),
+        );
+        let tron = preflight(&usdt, "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7");
         assert_eq!(tron.token_send_gas_reserve, None);
+        assert_eq!(tron.token_decimals, Some(6));
     }
 
     #[test]
     fn send_execution_request_scrubs_secret_fields() {
         let mut request = SendExecutionRequest {
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             wallet_id: "w".into(),
             password: Some("password".into()),
             to_address: "0xto".into(),
@@ -948,36 +581,26 @@ mod tests {
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod every_chain_with_a_send_implementation_can_route {
-    /// A chain `execute_send` can broadcast is a chain the preflight routes.
+mod the_generic_submit_chains_can_name_a_fee {
+    /// Zcash, Bitcoin Gold, Decred, Kaspa and Dash take the shared submit path
+    /// with no shared-path preview, so their fee comes from the fallback.
     #[test]
-    fn the_five_that_were_unroutable_now_route() {
-        for (name, symbol, kind) in [
-            ("zcash", "ZEC", "zcash"),
-            ("bitcoin-gold", "BTG", "bitcoin-gold"),
-            ("decred", "DCR", "decred"),
-            ("kaspa", "KAS", "kaspa"),
-            ("dash", "DASH", "dash"),
+    fn each_has_a_fee_fallback() {
+        use crate::registry::Chain;
+        for chain in [
+            Chain::Zcash,
+            Chain::BitcoinGold,
+            Chain::Decred,
+            Chain::Kaspa,
+            Chain::Dash,
         ] {
-            let route = super::route_send_asset(&super::SendAssetRoutingInput {
-                is_native: true,
-                chain_id: name.to_string(),
-                symbol: symbol.to_string(),
-                is_evm_chain: false,
-                supports_solana_send_coin: false,
-                supports_near_token_send: false,
-            });
-            assert_eq!(route.submit_kind.as_deref(), Some(kind), "{name}");
-
-            let chain = crate::registry::Chain::from_str_id(name).unwrap();
+            let name = chain.str_id();
             assert!(
                 chain.uses_generic_send_submit(),
                 "{name} must take the shared submit path"
             );
-            // Without a fallback the generic submit refuses for want of a fee
-            // estimate, and none of these has a shared-path preview.
             assert!(
-                chain.send_execution_shape().fee_fallback > 0.0,
+                chain.send_execution_shape().fee_fallback.is_some(),
                 "{name} needs a fee fallback"
             );
             assert!(chain.simple_preview_chain().is_none(), "{name}");
@@ -992,10 +615,10 @@ mod token_decimals_are_not_assumed {
     #[test]
     fn a_chain_can_host_tokens_of_different_decimals() {
         use std::collections::{HashMap, HashSet};
-        let mut by_chain: HashMap<String, HashSet<u32>> = HashMap::new();
-        for token in crate::tokens::list_token_deployments(String::new()) {
+        let mut by_chain: HashMap<crate::registry::Chain, HashSet<u32>> = HashMap::new();
+        for token in crate::tokens::list_token_deployments(None) {
             by_chain
-                .entry(token.chain_id.clone())
+                .entry(token.chain_id)
                 .or_default()
                 .insert(token.decimals);
         }
@@ -1005,14 +628,16 @@ mod token_decimals_are_not_assumed {
             .map(|(c, d)| {
                 let mut v: Vec<_> = d.iter().copied().collect();
                 v.sort_unstable();
-                (c.clone(), v)
+                (*c, v)
             })
             .collect();
         assert!(
             !mixed.is_empty(),
             "if this ever holds, the assumption a caller could make is at least true"
         );
-        let tron = by_chain.get("tron").expect("tron hosts tokens");
+        let tron = by_chain
+            .get(&crate::registry::Chain::Tron)
+            .expect("tron hosts tokens");
         assert!(
             tron.len() > 1,
             "tron's tokens are all {tron:?} decimals — the hardcoded 6 would have been harmless"
@@ -1024,11 +649,10 @@ mod token_decimals_are_not_assumed {
 mod affordability_reads_the_chain_rather_than_the_caller {
     use super::{SendAffordability, SendAffordabilityInput, send_affordability};
 
-    fn input(chain: &str, symbol: &str) -> SendAffordabilityInput {
+    fn input(chain: crate::registry::Chain, symbol: &str) -> SendAffordabilityInput {
         SendAffordabilityInput {
-            is_native: crate::registry::Chain::from_str_id(chain)
-                .is_some_and(|c| c.coin_symbol() == symbol),
-            chain_id: chain.to_string(),
+            is_native: chain.coin_symbol() == symbol,
+            chain_id: chain,
             symbol: symbol.to_string(),
             amount: "1".into(),
             network_fee: "0.5".into(),
@@ -1046,16 +670,16 @@ mod affordability_reads_the_chain_rather_than_the_caller {
         // asset would check the fee against the ARB balance — the same pair,
         // and the same mistake, the destination probe's five-symbol list made.
         assert_eq!(
-            send_affordability(input("arbitrum", "ARB")),
+            send_affordability(input(crate::registry::Chain::Arbitrum, "ARB")),
             SendAffordability::FeeExceedsGasBalance {
                 gas_symbol: "ETH".to_string(),
                 fee: "0.5".to_string(),
-                chain_id: "arbitrum".to_string(),
+                chain_id: crate::registry::Chain::Arbitrum,
             }
         );
         // Tron's own asset, which its Swift caller matched with a literal.
         assert_eq!(
-            send_affordability(input("tron", "TRX")),
+            send_affordability(input(crate::registry::Chain::Tron, "TRX")),
             SendAffordability::AmountPlusFeeExceedsBalance {
                 symbol: "TRX".to_string(),
                 required: "1.5".to_string(),
@@ -1065,7 +689,7 @@ mod affordability_reads_the_chain_rather_than_the_caller {
 
     #[test]
     fn the_fee_is_quoted_to_the_chains_own_decimals() {
-        let mut btc = input("bitcoin", "BTC");
+        let mut btc = input(crate::registry::Chain::Bitcoin, "BTC");
         btc.amount = "2".into();
         assert_eq!(
             send_affordability(btc),
@@ -1078,7 +702,7 @@ mod affordability_reads_the_chain_rather_than_the_caller {
 
     #[test]
     fn a_token_send_is_refused_on_its_own_balance_before_the_fee_is_looked_at() {
-        let mut over = input("ethereum", "USDC");
+        let mut over = input(crate::registry::Chain::Ethereum, "USDC");
         over.amount = "5".into();
         assert_eq!(
             send_affordability(over),
@@ -1090,23 +714,12 @@ mod affordability_reads_the_chain_rather_than_the_caller {
 
     #[test]
     fn both_fitting_is_affordable() {
-        let mut ok = input("ethereum", "USDC");
+        let mut ok = input(crate::registry::Chain::Ethereum, "USDC");
         ok.gas_balance = Some("2".into());
         assert_eq!(send_affordability(ok), SendAffordability::Affordable);
 
-        let mut native = input("ethereum", "ETH");
+        let mut native = input(crate::registry::Chain::Ethereum, "ETH");
         native.holding_balance = "10".into();
         assert_eq!(send_affordability(native), SendAffordability::Affordable);
-    }
-
-    /// A chain nobody can resolve has no gas symbol to check a token against,
-    /// so it takes the native path — which still refuses amount + fee over the
-    /// balance rather than answering `Affordable` by default.
-    #[test]
-    fn an_unresolvable_chain_still_refuses_rather_than_waving_it_through() {
-        assert!(matches!(
-            send_affordability(input("Not A Chain", "WAT")),
-            SendAffordability::Unavailable
-        ));
     }
 }

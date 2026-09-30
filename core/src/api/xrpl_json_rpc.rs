@@ -12,7 +12,6 @@ use crate::api::http::HttpClient;
 pub struct XrpBalance {
     /// XRP drops (1 XRP = 1_000_000 drops).
     pub drops: u64,
-    pub xrp_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,10 +75,7 @@ impl XrplClient {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
             .ok_or("account_info: missing Balance")?;
-        Ok(XrpBalance {
-            drops,
-            xrp_display: format_xrp(drops),
-        })
+        Ok(XrpBalance { drops })
     }
 
     pub async fn fetch_sequence(&self, address: &str) -> Result<u32, String> {
@@ -224,17 +220,6 @@ fn xrp_history_from_transactions(
         });
     }
     Ok(entries)
-}
-
-fn format_xrp(drops: u64) -> String {
-    let whole = drops / 1_000_000;
-    let frac = drops % 1_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:06}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 impl XrplClient {

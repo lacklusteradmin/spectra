@@ -1,7 +1,6 @@
 //! Device-local Monero scanning and CLSAG/Bulletproof+ signing.
 //! Only public daemon requests cross the transport; keys and scan results stay local.
 use crate::api::monero_daemon_rpc::Daemon;
-use crate::registry::Chain;
 use monero_wallet::{
     OutputWithDecoys, Scanner, ViewPair, WalletOutput,
     address::{MoneroAddress, Network},
@@ -33,7 +32,8 @@ pub(crate) struct LocalTransfer {
 #[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct LocalWallet {
     pub wallet_id: String,
-    pub chain_id: String,
+    #[zeroize(skip)]
+    pub chain_id: crate::registry::Chain,
     pub sender: String,
     pub restore_height: u64,
     pub next_height: u64,
@@ -282,7 +282,7 @@ pub(crate) async fn prepare(
     encryption_key: &[u8],
     priority: u32,
 ) -> Result<PreparedMoneroTransaction, String> {
-    let chain = Chain::from_str_id(&wallet.chain_id).ok_or("Unknown Monero chain")?;
+    let chain = wallet.chain_id;
     let network = match chain.monero_network_name()? {
         "mainnet" => Network::Mainnet,
         "stagenet" => Network::Stagenet,

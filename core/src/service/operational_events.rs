@@ -11,7 +11,7 @@ impl WalletService {
         level: DiagnosticLogLevel,
         category: &str,
         message: String,
-        chain_id: Option<String>,
+        chain_id: Option<crate::registry::Chain>,
         transaction_hash: Option<String>,
     ) {
         let _ = self
@@ -46,7 +46,7 @@ impl WalletService {
                 level,
                 "Transaction Status",
                 message.into(),
-                Some(change.chain_id.clone()),
+                Some(change.chain_id),
                 change.transaction_hash.clone(),
             )
             .await;
@@ -57,7 +57,7 @@ impl WalletService {
     #[cfg(test)]
     pub(crate) async fn append_chain_operational_event(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         level: DiagnosticLogLevel,
         message: String,
         transaction_hash: Option<String>,
@@ -80,7 +80,7 @@ impl WalletService {
     /// Forget a chain's events, or every chain's. Internal, like the append.
     pub async fn clear_operational_events(
         &self,
-        chain_id: Option<String>,
+        chain_id: Option<crate::registry::Chain>,
     ) -> Result<(), SpectraBridgeError> {
         self.apply_diagnostic_command(DiagnosticCommand::ClearLogs { chain_id })
             .await
@@ -95,7 +95,7 @@ impl WalletService {
     /// The durable log's own rows. This returned a second record shape with a
     /// second level enum, mapped from the first with a fallback that turned an
     /// unknown level into `info`.
-    pub async fn operational_events(&self, chain_id: String) -> Vec<DiagnosticLog> {
+    pub async fn operational_events(&self, chain_id: crate::registry::Chain) -> Vec<DiagnosticLog> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -103,7 +103,7 @@ impl WalletService {
                 .await
                 .logs
                 .into_iter()
-                .filter(|l| l.input.chain_id.as_deref() == Some(&chain_id))
+                .filter(|l| l.input.chain_id == Some(chain_id))
                 .take(200)
                 .collect()
         })

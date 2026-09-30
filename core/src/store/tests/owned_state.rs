@@ -137,7 +137,7 @@ async fn field_intents_do_not_overwrite_each_other_or_resurrect_wallets() {
     let wallet = WalletState::single_address(
         "intent",
         "Original",
-        "ethereum",
+        crate::registry::Chain::Ethereum,
         "0x1111111111111111111111111111111111111111",
         None,
         true,

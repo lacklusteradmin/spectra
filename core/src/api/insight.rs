@@ -73,7 +73,6 @@ struct InsightScriptPubKey {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DcrBalance {
     pub balance_atoms: u64,
-    pub balance_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,7 +133,6 @@ impl InsightClient {
             .unwrap_or_else(|| (info.balance * 1e8).round() as u64);
         Ok(DcrBalance {
             balance_atoms: atoms,
-            balance_display: format_dcr(atoms),
         })
     }
 
@@ -257,15 +255,4 @@ impl InsightClient {
         })
         .await
     }
-}
-
-fn format_dcr(atoms: u64) -> String {
-    let whole = atoms / 100_000_000;
-    let frac = atoms % 100_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:08}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }

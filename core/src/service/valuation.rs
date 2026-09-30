@@ -26,7 +26,7 @@ pub struct PortfolioValuation {
 }
 
 pub(super) fn price(state: &CoreAppState, holding: &AssetHolding) -> Option<f64> {
-    if holding.chain()?.is_testnet() {
+    if holding.chain_id.is_testnet() {
         return None;
     }
     state
@@ -88,9 +88,7 @@ pub(super) fn total<'a>(
     let mut total = 0.0;
     let mut unpriced_count = 0;
     for holding in holdings {
-        if holding.chain().is_some_and(|chain| chain.is_testnet())
-            || crate::decimal::is_zero(&holding.amount)
-        {
+        if (holding.chain_id.is_testnet()) || crate::decimal::is_zero(&holding.amount) {
             continue;
         }
         match value(state, holding) {

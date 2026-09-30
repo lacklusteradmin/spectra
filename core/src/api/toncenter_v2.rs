@@ -12,7 +12,6 @@ use crate::api::http::{HttpClient, RetryProfile, race};
 pub struct TonBalance {
     /// Nanotons (1 TON = 1_000_000_000 nanotons).
     pub nanotons: u64,
-    pub ton_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,10 +72,7 @@ impl ToncenterV2Client {
             .get(&format!("/getAddressBalance?address={address}"))
             .await?;
         let nanotons: u64 = resp.result.parse().unwrap_or(0);
-        Ok(TonBalance {
-            nanotons,
-            ton_display: format_ton(nanotons),
-        })
+        Ok(TonBalance { nanotons })
     }
 
     pub async fn fetch_seqno(&self, address: &str) -> Result<u32, String> {
@@ -201,22 +197,6 @@ fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
         }
     }
     entries
-}
-
-fn format_ton(nanotons: u64) -> String {
-    let whole = nanotons / 1_000_000_000;
-    let frac = nanotons % 1_000_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:09}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
 }
 
 impl ToncenterV2Client {

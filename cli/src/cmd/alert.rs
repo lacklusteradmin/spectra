@@ -104,7 +104,7 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
         for alert in &alerts {
             println!(
                 "  {}  {:<22} {}",
-                out::tint("●", &alert.chain_id).bold(),
+                out::tint("●", alert.chain_id).bold(),
                 describe(alert).bold(),
                 out::hint(if alert.has_triggered {
                     "triggered"
@@ -227,7 +227,7 @@ fn check(ctx: &Ctx, out: Out, stored: bool) -> CliResult<()> {
         for notification in &notifications {
             println!(
                 "  {}  {} crossed {:.2}",
-                out::tint("!", &notification.chain_id).bold(),
+                out::tint("!", notification.chain_id).bold(),
                 notification.symbol.bold(),
                 notification.target_price,
             );

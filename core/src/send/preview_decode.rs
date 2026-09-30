@@ -8,8 +8,6 @@
 
 use serde::{Deserialize, Serialize};
 
-const SAT_PER_COIN: f64 = 100_000_000.0;
-
 /// Extract a top-level JSON field as a string. Numeric/bool values are stringified.
 /// Missing keys or invalid JSON return "". Callers use this for loose scraping of
 /// send-result JSON where the value may be a hash, signature, index, digest, etc.
@@ -27,11 +25,15 @@ pub fn extract_json_string_field(json: String, key: String) -> String {
     }
 }
 
-fn obj_f64(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<f64> {
-    o.get(k).and_then(|v| {
-        v.as_f64()
-            .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
-    })
+/// A money field of core's own preview JSON: an exact decimal string, or a
+/// JSON integer. A JSON float is refused — it is the rounding this path no
+/// longer does.
+fn obj_decimal(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<String> {
+    match o.get(k)? {
+        serde_json::Value::String(s) => crate::decimal::canonical(s),
+        serde_json::Value::Number(n) if n.is_u64() => Some(n.to_string()),
+        _ => None,
+    }
 }
 
 fn obj_u64(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<u64> {
@@ -45,183 +47,34 @@ fn obj_str(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<St
     o.get(k).and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
-// ----- UTXO (BTC / BCH / BSV / LTC / DOGE base fields) -----
+/// Every UTXO chain this previews counts in eight-decimal units.
+const UTXO_DECIMALS: u32 = 8;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct UtxoSendPreview {
-    pub estimated_fee_rate_sat_vb: u64,
-    pub estimated_network_fee_coin: f64,
-    pub fee_rate_description: String,
-    pub spendable_balance: f64,
-    pub estimated_transaction_bytes: i64,
-    pub selected_input_count: i64,
-    pub max_sendable: f64,
-    pub estimated_fee_sat: u64,
-    pub spendable_sat: u64,
-    pub max_sendable_sat: u64,
+fn coins(sat: u64) -> String {
+    crate::decimal::from_units(u128::from(sat), UTXO_DECIMALS)
 }
 
-pub fn decode_utxo_send_preview(json: String) -> Option<UtxoSendPreview> {
-    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
+/// The fields of core's UTXO capacity quote, in satoshis.
+struct UtxoQuote {
+    fee_rate_sat_vb: u64,
+    fee_sat: u64,
+    tx_bytes: i64,
+    input_count: i64,
+    spendable_sat: u64,
+    max_sendable_sat: u64,
+}
+
+fn utxo_quote(json: &str) -> Option<UtxoQuote> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let o = v.as_object()?;
-    let rate = obj_u64(o, "fee_rate_svb").unwrap_or(1);
-    let fee_sat = obj_u64(o, "estimated_fee_sat").unwrap_or(0);
-    let tx_bytes = obj_u64(o, "estimated_tx_bytes").unwrap_or(0) as i64;
-    let input_count = obj_u64(o, "selected_input_count").unwrap_or(0) as i64;
-    let spend_sat = obj_u64(o, "spendable_balance_sat").unwrap_or(0);
-    let max_sat = obj_u64(o, "max_sendable_sat").unwrap_or(0);
-    Some(UtxoSendPreview {
-        estimated_fee_rate_sat_vb: rate,
-        estimated_network_fee_coin: fee_sat as f64 / SAT_PER_COIN,
-        fee_rate_description: format!("{} sat/vB", rate),
-        spendable_balance: spend_sat as f64 / SAT_PER_COIN,
-        estimated_transaction_bytes: tx_bytes,
-        selected_input_count: input_count,
-        max_sendable: max_sat as f64 / SAT_PER_COIN,
-        estimated_fee_sat: fee_sat,
-        spendable_sat: spend_sat,
-        max_sendable_sat: max_sat,
+    Some(UtxoQuote {
+        fee_rate_sat_vb: obj_u64(o, "fee_rate_svb").unwrap_or(1),
+        fee_sat: obj_u64(o, "estimated_fee_sat").unwrap_or(0),
+        tx_bytes: obj_u64(o, "estimated_tx_bytes").unwrap_or(0) as i64,
+        input_count: obj_u64(o, "selected_input_count").unwrap_or(0) as i64,
+        spendable_sat: obj_u64(o, "spendable_balance_sat").unwrap_or(0),
+        max_sendable_sat: obj_u64(o, "max_sendable_sat").unwrap_or(0),
     })
-}
-
-// ----- Bitcoin HD (xpub) -----
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct BitcoinHdSendPreview {
-    pub estimated_fee_rate_sat_vb: u64,
-    pub estimated_network_fee_btc: f64,
-    pub fee_rate_description: String,
-    pub spendable_balance: f64,
-    pub estimated_transaction_bytes: i64,
-    pub max_sendable: f64,
-}
-
-/// The Bitcoin HD send preview, from the two numbers it actually needs.
-///
-/// Took two JSON strings before — the serialized xpub balance and the
-/// serialized fee rate — and dug `confirmed_sats` and `sats_per_vbyte` back
-/// out of them. Both were produced typed one call away and serialized only to
-/// reach this function.
-pub fn decode_bitcoin_hd_send_preview(
-    confirmed_sats: u64,
-    sats_per_vbyte: f64,
-) -> Option<BitcoinHdSendPreview> {
-    let rate = sats_per_vbyte.ceil().max(1.0) as u64;
-    let bytes: u64 = 250;
-    let fee_sat = rate * bytes;
-    let spendable_sat = confirmed_sats.saturating_sub(fee_sat);
-    Some(BitcoinHdSendPreview {
-        estimated_fee_rate_sat_vb: rate,
-        estimated_network_fee_btc: fee_sat as f64 / SAT_PER_COIN,
-        fee_rate_description: format!("{} sat/vB", rate),
-        spendable_balance: confirmed_sats as f64 / SAT_PER_COIN,
-        estimated_transaction_bytes: bytes as i64,
-        max_sendable: spendable_sat as f64 / SAT_PER_COIN,
-    })
-}
-
-// ----- Dogecoin -----
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct DogecoinSendPreviewDecoded {
-    pub spendable_balance_doge: f64,
-    pub requested_amount_doge: f64,
-    pub estimated_network_fee_doge: f64,
-    pub estimated_fee_rate_doge_per_kb: f64,
-    pub estimated_transaction_bytes: i64,
-    pub selected_input_count: i64,
-    pub uses_change_output: bool,
-    pub max_sendable_doge: f64,
-    pub fee_rate_description: String,
-}
-
-pub fn decode_dogecoin_send_preview(
-    json: String,
-    requested_amount: f64,
-) -> Option<DogecoinSendPreviewDecoded> {
-    let base = decode_utxo_send_preview(json)?;
-    if base.spendable_sat == 0 {
-        return None;
-    }
-    let requested_sat = (requested_amount * SAT_PER_COIN) as u64;
-    let uses_change = base.spendable_sat > requested_sat + base.estimated_fee_sat;
-    Some(DogecoinSendPreviewDecoded {
-        spendable_balance_doge: base.spendable_balance,
-        requested_amount_doge: requested_amount,
-        estimated_network_fee_doge: base.estimated_network_fee_coin,
-        estimated_fee_rate_doge_per_kb: base.estimated_fee_rate_sat_vb as f64 * 1000.0
-            / SAT_PER_COIN,
-        estimated_transaction_bytes: base.estimated_transaction_bytes,
-        selected_input_count: base.selected_input_count,
-        uses_change_output: uses_change,
-        max_sendable_doge: base.max_sendable,
-        fee_rate_description: base.fee_rate_description,
-    })
-}
-
-// ----- Tron -----
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct TronSendPreviewDecoded {
-    pub estimated_network_fee_trx: f64,
-    pub fee_limit_sun: i64,
-    pub spendable_balance: f64,
-    pub max_sendable: f64,
-    pub fee_rate_description: Option<String>,
-}
-
-pub fn decode_tron_send_preview(json: String) -> Option<TronSendPreviewDecoded> {
-    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
-    let o = v.as_object()?;
-    let fee_trx = obj_f64(o, "estimated_fee_trx").unwrap_or(0.0);
-    let fee_limit_sun = o.get("fee_limit_sun").and_then(|v| v.as_i64()).unwrap_or(0);
-    let spendable = obj_f64(o, "spendable_balance").unwrap_or(0.0);
-    let max_sendable = obj_f64(o, "max_sendable").unwrap_or(spendable);
-    Some(TronSendPreviewDecoded {
-        estimated_network_fee_trx: fee_trx,
-        fee_limit_sun,
-        spendable_balance: spendable,
-        max_sendable,
-        fee_rate_description: obj_str(o, "fee_rate_description"),
-    })
-}
-
-// ----- Simple-fee chains -----
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SimpleSendPreview {
-    pub fee_display: f64,
-    pub fee_raw: String,
-    pub fee_rate_description: String,
-    pub balance_display: f64,
-    pub max_sendable: f64,
-}
-
-pub fn decode_simple_send_preview(json: String) -> SimpleSendPreview {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
-        return SimpleSendPreview::default();
-    };
-    let Some(o) = v.as_object() else {
-        return SimpleSendPreview::default();
-    };
-    let fee_display = obj_f64(o, "fee_display").unwrap_or(0.0);
-    let fee_raw = obj_str(o, "fee_raw").unwrap_or_default();
-    let fee_rate = obj_str(o, "fee_rate_description").unwrap_or_default();
-    let balance = obj_f64(o, "balance_display").unwrap_or(0.0);
-    let max_sendable =
-        obj_f64(o, "max_sendable").unwrap_or_else(|| (balance - fee_display).max(0.0));
-    SimpleSendPreview {
-        fee_display,
-        fee_raw,
-        fee_rate_description: fee_rate,
-        balance_display: balance,
-        max_sendable,
-    }
 }
 
 /// Which decode shape a shared-path preview comes back in.
@@ -244,8 +97,8 @@ pub enum SimpleChain {
     Bittensor,
 }
 
-// Unified record builders: return the final UniFFI preview record directly;
-// decoding and wrapping happen in Rust.
+// Record builders: the final UniFFI preview record, straight from smallest
+// units.
 
 pub fn build_evm_send_preview_record(
     input: crate::send::ethereum::EvmPreviewDecodeInput,
@@ -269,73 +122,86 @@ pub fn build_evm_send_preview_record(
 pub fn build_utxo_send_preview_record(
     json: String,
 ) -> Option<crate::send::preview_types::BitcoinSendPreview> {
-    let d = decode_utxo_send_preview(json)?;
-    if d.spendable_sat == 0 {
+    let q = utxo_quote(&json)?;
+    if q.spendable_sat == 0 {
         return None;
     }
     Some(crate::send::preview_types::BitcoinSendPreview {
-        estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
-        estimatedNetworkFee: d.estimated_network_fee_coin,
-        feeRateDescription: Some(d.fee_rate_description),
-        spendableBalance: Some(d.spendable_balance),
-        estimatedTransactionBytes: Some(d.estimated_transaction_bytes),
-        selectedInputCount: Some(d.selected_input_count),
+        estimatedFeeRateSatVb: q.fee_rate_sat_vb,
+        estimatedNetworkFee: coins(q.fee_sat),
+        feeRateDescription: Some(format!("{} sat/vB", q.fee_rate_sat_vb)),
+        spendableBalance: Some(coins(q.spendable_sat)),
+        estimatedTransactionBytes: Some(q.tx_bytes),
+        selectedInputCount: Some(q.input_count),
         usesChangeOutput: None,
-        maxSendable: Some(d.max_sendable),
+        maxSendable: Some(coins(q.max_sendable_sat)),
     })
 }
 
+/// The Bitcoin HD send preview, from the two numbers it actually needs. The
+/// rate is a node's float estimate; it is rounded up to whole sat/vB here,
+/// and everything after that is integer satoshis.
 pub fn build_bitcoin_hd_send_preview_record(
     confirmed_sats: u64,
     sats_per_vbyte: f64,
 ) -> Option<crate::send::preview_types::BitcoinSendPreview> {
-    let d = decode_bitcoin_hd_send_preview(confirmed_sats, sats_per_vbyte)?;
+    let rate = sats_per_vbyte.ceil().max(1.0) as u64;
+    let bytes: u64 = 250;
+    let fee_sat = rate.checked_mul(bytes)?;
     Some(crate::send::preview_types::BitcoinSendPreview {
-        estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
-        estimatedNetworkFee: d.estimated_network_fee_btc,
-        feeRateDescription: Some(d.fee_rate_description),
-        spendableBalance: Some(d.spendable_balance),
-        estimatedTransactionBytes: Some(d.estimated_transaction_bytes),
+        estimatedFeeRateSatVb: rate,
+        estimatedNetworkFee: coins(fee_sat),
+        feeRateDescription: Some(format!("{rate} sat/vB")),
+        spendableBalance: Some(coins(confirmed_sats)),
+        estimatedTransactionBytes: Some(bytes as i64),
         selectedInputCount: None,
         usesChangeOutput: None,
-        maxSendable: Some(d.max_sendable),
+        maxSendable: Some(coins(confirmed_sats.saturating_sub(fee_sat))),
     })
 }
 
+/// `requested_amount` is the exact amount typed; it decides only whether the
+/// send leaves change.
 pub fn build_dogecoin_send_preview_record(
     json: String,
-    requested_amount: f64,
+    requested_amount: &str,
 ) -> Option<crate::send::preview_types::DogecoinSendPreview> {
-    let d = decode_dogecoin_send_preview(json, requested_amount)?;
+    let q = utxo_quote(&json)?;
+    if q.spendable_sat == 0 {
+        return None;
+    }
+    let requested_sat =
+        u64::try_from(crate::decimal::to_units(requested_amount, UTXO_DECIMALS)?).ok()?;
+    let uses_change = q.spendable_sat > requested_sat.saturating_add(q.fee_sat);
     Some(crate::send::preview_types::DogecoinSendPreview {
-        spendableBalanceDoge: d.spendable_balance_doge,
-        requestedAmountDoge: d.requested_amount_doge,
-        estimatedNetworkFee: d.estimated_network_fee_doge,
-        estimatedFeeRateDogePerKb: d.estimated_fee_rate_doge_per_kb,
-        estimatedTransactionBytes: d.estimated_transaction_bytes,
-        selectedInputCount: d.selected_input_count,
-        usesChangeOutput: d.uses_change_output,
-        maxSendableDoge: d.max_sendable_doge,
-        spendableBalance: d.spendable_balance_doge,
-        feeRateDescription: Some(d.fee_rate_description),
-        maxSendable: d.max_sendable_doge,
+        estimatedNetworkFee: coins(q.fee_sat),
+        // sat/vB × 1000 is satoshis per kB.
+        estimatedFeeRateDogePerKb: coins(q.fee_rate_sat_vb.checked_mul(1000)?),
+        estimatedTransactionBytes: q.tx_bytes,
+        selectedInputCount: q.input_count,
+        usesChangeOutput: uses_change,
+        spendableBalance: coins(q.spendable_sat),
+        feeRateDescription: Some(format!("{} sat/vB", q.fee_rate_sat_vb)),
+        maxSendable: coins(q.max_sendable_sat),
     })
 }
 
 pub fn build_tron_send_preview_record(
     json: String,
 ) -> Option<crate::send::preview_types::TronSendPreview> {
-    let d = decode_tron_send_preview(json)?;
+    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
+    let o = v.as_object()?;
+    let spendable = obj_decimal(o, "spendable_balance")?;
     Some(crate::send::preview_types::TronSendPreview {
-        estimatedNetworkFee: d.estimated_network_fee_trx,
-        feeLimitSun: d.fee_limit_sun,
+        estimatedNetworkFee: obj_decimal(o, "estimated_fee_trx")?,
+        feeLimitSun: o.get("fee_limit_sun").and_then(|v| v.as_i64()).unwrap_or(0),
         simulationUsed: false,
-        spendableBalance: d.spendable_balance,
-        feeRateDescription: d.fee_rate_description,
+        maxSendable: obj_decimal(o, "max_sendable").unwrap_or_else(|| spendable.clone()),
+        spendableBalance: spendable,
+        feeRateDescription: obj_str(o, "fee_rate_description"),
         estimatedTransactionBytes: None,
         selectedInputCount: None,
         usesChangeOutput: None,
-        maxSendable: d.max_sendable,
     })
 }
 
@@ -384,15 +250,21 @@ pub enum SimpleChainPreview {
     },
 }
 
-pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleChainPreview {
+/// `None` when the fee or the balance is missing: a zero standing in for
+/// either would offer a wrong maximum.
+pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<SimpleChainPreview> {
     use crate::send::preview_types::*;
-    let p = decode_simple_send_preview(json);
-    let fee = p.fee_display;
-    let bal = p.balance_display;
-    let desc = p.fee_rate_description.clone();
-    let max = p.max_sendable;
-    let raw = p.fee_raw.clone();
-    match chain {
+    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
+    let o = v.as_object()?;
+    let fee = obj_decimal(o, "fee_display")?;
+    let bal = obj_decimal(o, "balance_display")?;
+    let max = match obj_decimal(o, "max_sendable") {
+        Some(max) => max,
+        None => crate::decimal::sub_or_zero(&bal, &fee)?,
+    };
+    let desc = obj_str(o, "fee_rate_description").unwrap_or_default();
+    let raw = obj_str(o, "fee_raw").unwrap_or_default();
+    Some(match chain {
         SimpleChain::Solana => SimpleChainPreview::Solana {
             preview: SolanaSendPreview {
                 estimatedNetworkFee: fee,
@@ -542,7 +414,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
                 maxSendable: max,
             },
         },
-    }
+    })
 }
 
 #[cfg(test)]
@@ -550,62 +422,77 @@ mod tests {
     use super::*;
 
     #[test]
-    fn utxo_decode_basic() {
-        let json = r#"{"fee_rate_svb":5,"estimated_fee_sat":1000,"estimated_tx_bytes":200,"selected_input_count":2,"spendable_balance_sat":500000000,"max_sendable_sat":499999000}"#;
-        let d = decode_utxo_send_preview(json.into()).unwrap();
-        assert_eq!(d.estimated_fee_rate_sat_vb, 5);
-        assert_eq!(d.fee_rate_description, "5 sat/vB");
-        assert!((d.spendable_balance - 5.0).abs() < 1e-9);
-        assert_eq!(d.selected_input_count, 2);
+    fn utxo_amounts_are_exact_coins() {
+        let json = r#"{"fee_rate_svb":5,"estimated_fee_sat":1000,"estimated_tx_bytes":200,"selected_input_count":2,"spendable_balance_sat":500000001,"max_sendable_sat":499999001}"#;
+        let d = build_utxo_send_preview_record(json.into()).unwrap();
+        assert_eq!(d.estimatedFeeRateSatVb, 5);
+        assert_eq!(d.feeRateDescription.as_deref(), Some("5 sat/vB"));
+        assert_eq!(d.estimatedNetworkFee, "0.00001");
+        assert_eq!(d.spendableBalance.as_deref(), Some("5.00000001"));
+        assert_eq!(d.maxSendable.as_deref(), Some("4.99999001"));
+        assert_eq!(d.selectedInputCount, Some(2));
     }
 
     #[test]
-    fn bitcoin_hd_decode() {
-        let d = decode_bitcoin_hd_send_preview(100_000, 2.3).unwrap();
-        assert_eq!(d.estimated_fee_rate_sat_vb, 3); // ceil(2.3)
-        assert_eq!(d.estimated_transaction_bytes, 250);
-        // spendable = 100000 - 3*250 = 99250
-        assert!((d.max_sendable - 99250.0 / 100_000_000.0).abs() < 1e-12);
+    fn bitcoin_hd_rounds_the_rate_up_then_counts_satoshis() {
+        let d = build_bitcoin_hd_send_preview_record(100_000, 2.3).unwrap();
+        assert_eq!(d.estimatedFeeRateSatVb, 3);
+        assert_eq!(d.estimatedTransactionBytes, Some(250));
+        // 100000 - 3*250
+        assert_eq!(d.maxSendable.as_deref(), Some("0.0009925"));
     }
 
     #[test]
-    fn dogecoin_uses_change_flag() {
+    fn dogecoin_change_and_rate_per_kb() {
         let json = r#"{"fee_rate_svb":1,"estimated_fee_sat":1000,"estimated_tx_bytes":200,"selected_input_count":1,"spendable_balance_sat":1000000000,"max_sendable_sat":999999000}"#;
-        let d = decode_dogecoin_send_preview(json.into(), 1.0).unwrap();
-        assert!(d.uses_change_output);
-        assert!((d.estimated_fee_rate_doge_per_kb - 0.00001).abs() < 1e-12);
+        let d = build_dogecoin_send_preview_record(json.into(), "1").unwrap();
+        assert!(d.usesChangeOutput);
+        assert_eq!(d.estimatedFeeRateDogePerKb, "0.00001");
+        assert_eq!(d.maxSendable, "9.99999");
+        // The whole spendable amount leaves nothing to change.
+        assert!(
+            !build_dogecoin_send_preview_record(json.into(), "9.99999")
+                .unwrap()
+                .usesChangeOutput
+        );
+        // An amount finer than a satoshi is not quoted.
+        assert!(build_dogecoin_send_preview_record(json.into(), "0.000000001").is_none());
     }
 
     #[test]
-    fn tron_decode() {
-        let json = r#"{"estimated_fee_trx":0.27,"fee_limit_sun":1000000,"spendable_balance":42.0,"max_sendable":41.73,"fee_rate_description":"bandwidth ok"}"#;
-        let d = decode_tron_send_preview(json.into()).unwrap();
-        assert_eq!(d.fee_limit_sun, 1_000_000);
-        assert!((d.max_sendable - 41.73).abs() < 1e-9);
-        assert_eq!(d.fee_rate_description.as_deref(), Some("bandwidth ok"));
+    fn tron_reads_exact_decimals_and_refuses_floats() {
+        let json = r#"{"estimated_fee_trx":"0.27","fee_limit_sun":1000000,"spendable_balance":"42","max_sendable":"41.73","fee_rate_description":"bandwidth ok"}"#;
+        let d = build_tron_send_preview_record(json.into()).unwrap();
+        assert_eq!(d.feeLimitSun, 1_000_000);
+        assert_eq!(d.maxSendable, "41.73");
+        assert_eq!(d.feeRateDescription.as_deref(), Some("bandwidth ok"));
+        let float = r#"{"estimated_fee_trx":0.27,"spendable_balance":"42"}"#;
+        assert!(build_tron_send_preview_record(float.into()).is_none());
     }
 
     #[test]
-    fn simple_decode_computes_max_sendable_when_absent() {
-        let json = r#"{"fee_display":0.00005,"fee_raw":"5000","fee_rate_description":"5000 lamports","balance_display":2.5}"#;
-        let d = decode_simple_send_preview(json.into());
-        assert!((d.max_sendable - (2.5 - 0.00005)).abs() < 1e-9);
-        assert_eq!(d.fee_raw, "5000");
+    fn simple_preview_subtracts_the_fee_exactly_when_no_maximum_is_given() {
+        let json = r#"{"fee_display":"0.000005","fee_raw":"5000","fee_rate_description":"rpc","balance_display":"2.5"}"#;
+        let SimpleChainPreview::Solana { preview } =
+            build_simple_chain_preview(json.into(), SimpleChain::Solana).unwrap()
+        else {
+            panic!("solana shape")
+        };
+        assert_eq!(preview.maxSendable, "2.499995");
+        assert_eq!(preview.estimatedNetworkFee, "0.000005");
     }
 
     #[test]
-    fn simple_decode_uses_explicit_max_sendable() {
-        let json = r#"{"fee_display":0.1,"fee_raw":"100","fee_rate_description":"100 stroops","balance_display":10.0,"max_sendable":9.5}"#;
-        let d = decode_simple_send_preview(json.into());
-        assert_eq!(d.max_sendable, 9.5);
-    }
-
-    #[test]
-    fn simple_decode_handles_missing_fields() {
-        let d = decode_simple_send_preview("{}".into());
-        assert_eq!(d.fee_display, 0.0);
-        assert_eq!(d.balance_display, 0.0);
-        assert_eq!(d.fee_raw, "");
+    fn simple_preview_uses_an_explicit_maximum_and_refuses_missing_fields() {
+        let json =
+            r#"{"fee_display":"0.1","fee_raw":"100","balance_display":"10","max_sendable":"9.5"}"#;
+        let SimpleChainPreview::Stellar { preview } =
+            build_simple_chain_preview(json.into(), SimpleChain::Stellar).unwrap()
+        else {
+            panic!("stellar shape")
+        };
+        assert_eq!(preview.maxSendable, "9.5");
+        assert!(build_simple_chain_preview("{}".into(), SimpleChain::Solana).is_none());
     }
 
     #[test]
@@ -620,9 +507,6 @@ mod tests {
             ""
         );
     }
-
-    #[test]
-    fn simple_chain_default_fees() {}
 }
 
 /// Add an extra output's bytes to a UTXO preview.
@@ -639,16 +523,17 @@ pub fn with_extra_output_overhead(
     if overhead_bytes == 0 {
         return preview;
     }
-    let additional_fee =
-        overhead_bytes as f64 * preview.estimatedFeeRateSatVb as f64 / 100_000_000.0;
+    let additional_fee = coins(overhead_bytes.saturating_mul(preview.estimatedFeeRateSatVb));
     crate::send::preview_types::BitcoinSendPreview {
-        estimatedNetworkFee: preview.estimatedNetworkFee + additional_fee,
+        estimatedNetworkFee: crate::decimal::add(&preview.estimatedNetworkFee, &additional_fee)
+            .unwrap_or_else(|| preview.estimatedNetworkFee.clone()),
         estimatedTransactionBytes: Some(
             preview.estimatedTransactionBytes.unwrap_or(0) + overhead_bytes as i64,
         ),
         maxSendable: preview
             .maxSendable
-            .map(|max| (max - additional_fee).max(0.0)),
+            .as_deref()
+            .and_then(|max| crate::decimal::sub_or_zero(max, &additional_fee)),
         ..preview
     }
 }
@@ -661,13 +546,13 @@ mod extra_output_overhead_tests {
     fn preview() -> BitcoinSendPreview {
         BitcoinSendPreview {
             estimatedFeeRateSatVb: 10,
-            estimatedNetworkFee: 0.000_02,
+            estimatedNetworkFee: "0.00002".into(),
             feeRateDescription: None,
-            spendableBalance: Some(1.0),
+            spendableBalance: Some("1".into()),
             estimatedTransactionBytes: Some(200),
             selectedInputCount: Some(1),
             usesChangeOutput: Some(true),
-            maxSendable: Some(0.5),
+            maxSendable: Some("0.5".into()),
         }
     }
 
@@ -678,10 +563,10 @@ mod extra_output_overhead_tests {
         // Litecoin's MWEB peg-in: 1017 bytes at 10 sat/vB is 10,170 sats.
         let adjusted = with_extra_output_overhead(preview(), 1017);
         assert_eq!(adjusted.estimatedTransactionBytes, Some(1217));
-        assert!((adjusted.estimatedNetworkFee - (0.000_02 + 0.000_101_7)).abs() < 1e-12);
-        assert!((adjusted.maxSendable.unwrap() - (0.5 - 0.000_101_7)).abs() < 1e-12);
+        assert_eq!(adjusted.estimatedNetworkFee, "0.0001217");
+        assert_eq!(adjusted.maxSendable.as_deref(), Some("0.4998983"));
         // Untouched fields stay put.
-        assert_eq!(adjusted.spendableBalance, Some(1.0));
+        assert_eq!(adjusted.spendableBalance.as_deref(), Some("1"));
         assert_eq!(adjusted.selectedInputCount, Some(1));
     }
 
@@ -695,10 +580,12 @@ mod extra_output_overhead_tests {
     #[test]
     fn max_sendable_stops_at_zero() {
         let mut small = preview();
-        small.maxSendable = Some(0.000_01);
+        small.maxSendable = Some("0.00001".into());
         assert_eq!(
-            with_extra_output_overhead(small, 1017).maxSendable,
-            Some(0.0)
+            with_extra_output_overhead(small, 1017)
+                .maxSendable
+                .as_deref(),
+            Some("0")
         );
     }
 }

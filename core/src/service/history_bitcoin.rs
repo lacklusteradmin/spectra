@@ -31,7 +31,7 @@ impl WalletService {
         limit: Option<u32>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
         let chain = Chain::Bitcoin;
-        let chain_id = chain.str_id().to_string();
+        let chain_id = chain;
         let limit = limit
             .unwrap_or(DEFAULT_BITCOIN_LIMIT)
             .clamp(MIN_BITCOIN_LIMIT, MAX_BITCOIN_LIMIT);
@@ -41,7 +41,7 @@ impl WalletService {
             state
                 .wallets
                 .iter()
-                .filter(|wallet| wallet.family() == Some(chain))
+                .filter(|wallet| wallet.family() == chain)
                 .filter(|wallet| {
                     wallet_ids.is_empty()
                         || wallet_ids
@@ -68,7 +68,7 @@ impl WalletService {
             let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
             if load_more {
                 if self
-                    .history_cursor(chain_id.clone(), wallet.id.clone())
+                    .history_cursor(chain_id, wallet.id.clone())
                     .is_exhausted
                 {
                     continue;
@@ -76,19 +76,18 @@ impl WalletService {
             } else {
                 self.reset_history(
                     crate::service::history_cursor::HistoryScope::ChainAndWallet {
-                        chain_id: chain_id.clone(),
+                        chain_id,
                         wallet_id: wallet.id.clone(),
                     },
                 );
             }
-            let cursor = self
-                .history_cursor(chain_id.clone(), wallet.id.clone())
-                .next_cursor;
+            let cursor = self.history_cursor(chain_id, wallet.id.clone()).next_cursor;
 
-            let network = wallet
-                .chain()
-                .filter(|network| network.mainnet_counterpart() == chain)
-                .unwrap_or(chain);
+            let network = if wallet.family() == chain {
+                wallet.chain_id
+            } else {
+                chain
+            };
             match self
                 .bitcoin_history_page(&wallet, &overrides, network, limit, cursor.as_deref())
                 .await
@@ -134,7 +133,7 @@ impl WalletService {
 
         // A failed database write must not consume fetched history.
         for (wallet_id, next) in cursor_updates {
-            self.advance_history_cursor(chain_id.clone(), wallet_id, next);
+            self.advance_history_cursor(chain_id, wallet_id, next);
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
@@ -260,12 +259,11 @@ impl WalletService {
         let path = wallet
             .addresses
             .iter()
-            .find(|a| a.chain_id == network.str_id())
+            .find(|a| a.chain_id == network)
             .and_then(|a| a.derivation_path.clone())
             .or_else(|| wallet.derivation_path.clone())
             .unwrap_or_else(|| {
-                crate::app_core::default_path_from_catalog(Chain::Bitcoin.str_id())
-                    .unwrap_or_default()
+                crate::app_core::default_path_from_catalog(Chain::Bitcoin).unwrap_or_default()
             });
         let account_path = path.split('/').take(4).collect::<Vec<_>>().join("/");
         // The wallet's own passphrase, not the empty string. Derived without
@@ -307,8 +305,8 @@ fn bitcoin_record(
         wallet_name: wallet.name.clone(),
         asset_display_name: chain.chain_display_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
-        chain_id: chain.str_id().to_string(),
-        amount: crate::decimal::amount_from_f64(snapshot.amount_btc),
+        chain_id: chain,
+        amount: snapshot.amount_btc.clone(),
         address: snapshot.counterparty_address,
         transaction_hash: Some(snapshot.txid).filter(|txid| !txid.is_empty()),
         nonce: None,
@@ -319,7 +317,6 @@ fn bitcoin_record(
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,
-        estimated_fee_rate_per_kb: None,
         used_change_output: None,
         source_derivation_path: None,
         change_derivation_path: None,

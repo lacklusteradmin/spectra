@@ -9,7 +9,7 @@ fn native(chain: Chain) -> AssetHolding {
         id: String::new(),
         name: chain.coin_name().into(),
         symbol: chain.coin_symbol().into(),
-        chain_id: chain.str_id().into(),
+        chain_id: chain,
         token_standard: "Native".into(),
         coingecko_id: chain.coingecko_id().into(),
         contract_address: None,
@@ -22,7 +22,7 @@ fn native_and_protocol_mnt_share_a_token_but_not_a_deployment() {
     let native = crate::tokens::deployment("mantle:native").unwrap();
     let contract = crate::tokens::catalog()
         .iter()
-        .find(|t| t.symbol == "MNT" && t.chain_id == "ethereum")
+        .find(|t| t.symbol == "MNT" && t.chain_id == crate::registry::Chain::Ethereum)
         .unwrap();
     assert!(native.is_native());
     assert!(!contract.is_native());
@@ -68,7 +68,7 @@ async fn invalid_protocol_identity_is_refused_before_storage() {
     let mut wallet = WalletState::single_address(
         "w",
         "W",
-        "ethereum",
+        crate::registry::Chain::Ethereum,
         "0x1111111111111111111111111111111111111111",
         None,
         true,
@@ -100,7 +100,7 @@ fn a_contract_called_eth_is_encoded_as_erc20() {
     use crate::send::ethereum::*;
     let contract = "0x1111111111111111111111111111111111111111";
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-        chain_id: "ethereum".into(),
+        chain_id: crate::registry::Chain::Ethereum,
         deployment_id: crate::tokens::deployment_id_for(
             crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
             Some(&String::from(contract)),
@@ -131,7 +131,7 @@ fn display_precision_is_deployment_specific() {
     );
     let usdc = crate::tokens::catalog()
         .iter()
-        .find(|t| t.chain_id == "ethereum" && t.token_id == "usd-coin")
+        .find(|t| t.chain_id == crate::registry::Chain::Ethereum && t.token_id == "usd-coin")
         .unwrap();
     assert_eq!(
         token_display_decimals(Some(usdc.deployment_id.clone()), None),

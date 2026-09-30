@@ -323,11 +323,8 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     // must not leave a key stored for a wallet that can never sign with it.
     // Core does the deriving — this call is the same rule the commit below
     // applies, asked early enough to keep the key out of the store.
-    spectra_core::derivation::import::derive_private_key_import_address(
-        &private_key,
-        &[chain.str_id().to_string()],
-    )
-    .map_err(CliError::rejected)?;
+    spectra_core::derivation::import::derive_private_key_import_address(&private_key, &[chain])
+        .map_err(CliError::rejected)?;
 
     let password = args.creation.password()?;
 
@@ -431,9 +428,7 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     let mut request = request_for(&[chain], &name);
     request.is_watch_only_import = true;
     request.watch_only_entries = WalletImportWatchOnlyEntries {
-        by_chain_id: [(chain.str_id().to_string(), args.address.clone())]
-            .into_iter()
-            .collect(),
+        by_chain_id: [(chain, args.address.clone())].into_iter().collect(),
         bitcoin_xpub: None,
     };
 
@@ -491,9 +486,9 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
         for wallet in &wallets {
             println!(
                 "  {}  {}  {}{}",
-                out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
+                out::wallet_dot(wallet.chain_id, wallet.is_watch_only()),
                 wallet.name.bold(),
-                out::tint(&super::chain_name(&wallet.chain_id), &wallet.chain_id).bold(),
+                out::tint(&super::chain_name(wallet.chain_id), wallet.chain_id).bold(),
                 if wallet.is_watch_only() {
                     out::hint(" watch").to_string()
                 } else {
@@ -542,15 +537,14 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 /// Repeated calls reuse the reserved index.
 fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
-    let network = wallet.chain().unwrap_or(chain);
+    let network = wallet.chain_id;
     let chain_name = network.chain_display_name().to_string();
     let symbol = network.coin_symbol().to_string();
     let address = ctx
         .rt
         .block_on(
             ctx.service()?
-                .receive_address(wallet.id.clone(), network.str_id().into(), true),
+                .receive_address(wallet.id.clone(), network, true),
         )
         .map_err(CliError::from)?
         .ok_or_else(|| {
@@ -563,10 +557,7 @@ fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
         println!();
         println!("  {}", address.bold());
         println!();
-        out::field(
-            "chain",
-            &out::tint(&chain_name, network.str_id()).to_string(),
-        );
+        out::field("chain", &out::tint(&chain_name, network).to_string());
         out::field("symbol", &symbol);
     });
     out.emit(serde_json::json!({
@@ -614,7 +605,7 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
         return Err(CliError::usage(format!(
             "this deletes \"{}\" ({}), its history and its seed — re-run with --yes",
             wallet.name,
-            super::chain_name(&wallet.chain_id)
+            super::chain_name(wallet.chain_id)
         )));
     }
 
@@ -723,11 +714,9 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 /// The derivation path a wallet is created with: the caller's, or the chain's
 /// catalog default resolved by core.
 fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
-    let resolution = spectra_core::resolve_derivation_path(
-        chain.str_id().to_string(),
-        requested.unwrap_or_default().to_string(),
-    )
-    .map_err(CliError::from)?;
+    let resolution =
+        spectra_core::resolve_derivation_path(chain, requested.unwrap_or_default().to_string())
+            .map_err(CliError::from)?;
     Ok(resolution)
 }
 
@@ -736,7 +725,7 @@ fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
 fn request_for(chains: &[Chain], name: &str) -> WalletImportRequest {
     WalletImportRequest {
         wallet_name: name.to_string(),
-        selected_chain_ids: chains.iter().map(|c| c.str_id().to_string()).collect(),
+        selected_chain_ids: chains.to_vec(),
         is_watch_only_import: false,
         is_private_key_import: false,
         watch_only_entries: WalletImportWatchOnlyEntries::default(),
@@ -778,7 +767,7 @@ fn print_wallet_of_kind(wallet: &WalletState, signing: Option<&str>) {
     out::field("name", &wallet.name.bold().to_string());
     out::field(
         "chain",
-        &out::tint(&super::chain_name(&wallet.chain_id), &wallet.chain_id).to_string(),
+        &out::tint(&super::chain_name(wallet.chain_id), wallet.chain_id).to_string(),
     );
     out::field(
         "type",
@@ -818,7 +807,7 @@ fn wallet_json(wallet: &WalletState) -> serde_json::Value {
         "addresses": wallet
             .addresses
             .iter()
-            .map(|entry| (entry.chain_id.clone(), serde_json::json!(entry.address)))
+            .map(|entry| (entry.chain_id.str_id().to_string(), serde_json::json!(entry.address)))
             .collect::<serde_json::Map<String, serde_json::Value>>(),
         "derivationPath": wallet.derivation_path,
         "isWatchOnly": wallet.is_watch_only(),

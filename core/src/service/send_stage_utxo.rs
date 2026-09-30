@@ -38,6 +38,7 @@ impl WalletService {
         let quoted_fee = if chain.mainnet_counterpart() == Chain::Dogecoin {
             request.fee_sat.or(request
                 .fee_rate_svb
+                .as_deref()
                 .map(crate::send::payload::dogecoin_fee)
                 .transpose()?)
         } else {

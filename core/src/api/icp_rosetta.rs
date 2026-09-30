@@ -6,17 +6,12 @@ use serde_json::Value;
 
 use crate::api::http::{HttpClient, RetryProfile, race};
 
-// ── Constants
-
-pub(crate) const E8S_PER_ICP: u64 = 100_000_000;
-
 // ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IcpBalance {
     /// E8s (1 ICP = 100_000_000 e8s).
     pub e8s: u64,
-    pub icp_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,10 +100,7 @@ impl IcpClient {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        Ok(IcpBalance {
-            e8s,
-            icp_display: format_icp(e8s),
-        })
+        Ok(IcpBalance { e8s })
     }
 
     pub async fn fetch_history(
@@ -206,17 +198,6 @@ fn icp_history_from_transactions(
         });
     }
     Ok(entries)
-}
-
-fn format_icp(e8s: u64) -> String {
-    let whole = e8s / E8S_PER_ICP;
-    let frac = e8s % E8S_PER_ICP;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:08}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 impl IcpClient {

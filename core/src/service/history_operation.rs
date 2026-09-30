@@ -11,7 +11,7 @@ pub enum HistoryRefreshScope {
 }
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ChainHistoryRefresh {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub outcome: Option<HistoryRefreshOutcome>,
     pub error: Option<String>,
 }
@@ -50,11 +50,9 @@ impl WalletService {
                 ),
                 _ => None,
             };
-            let mut groups = std::collections::BTreeMap::<String, Vec<HistoryRefreshKey>>::new();
+            let mut groups = std::collections::BTreeMap::<Chain, Vec<HistoryRefreshKey>>::new();
             for wallet in &state.wallets {
-                let Some(chain) = wallet.family() else {
-                    continue;
-                };
+                let chain = wallet.family();
                 let selected = match &scope {
                     HistoryRefreshScope::All => true,
                     HistoryRefreshScope::Wallets { wallet_ids } => wallet_ids
@@ -64,13 +62,13 @@ impl WalletService {
                         .as_ref()
                         .unwrap()
                         .iter()
-                        .any(|c| *c == chain || Some(*c) == wallet.chain()),
+                        .any(|c| *c == chain || *c == wallet.chain_id),
                 };
                 if selected {
                     groups
-                        .entry(chain.str_id().into())
+                        .entry(chain)
                         .or_default()
-                        .push(HistoryRefreshKey::new(&wallet.id, &wallet.chain_id));
+                        .push(HistoryRefreshKey::new(&wallet.id, wallet.chain_id));
                 }
             }
             drop(state);
@@ -83,30 +81,26 @@ impl WalletService {
                 };
                 let mut ids: Vec<_> = keys.iter().map(|key| key.wallet_id.clone()).collect();
                 if load_more {
-                    ids.retain(|id| {
-                        !this
-                            .history_cursor(chain_id.clone(), id.clone())
-                            .is_exhausted
-                    });
+                    ids.retain(|id| !this.history_cursor(chain_id, id.clone()).is_exhausted);
                 }
                 if ids.is_empty() {
                     continue;
                 }
-                let chain = Chain::from_str_id(&chain_id).unwrap();
+                let chain = chain_id;
                 let result = match chain.history_refresh_kind() {
                     crate::registry::HistoryRefreshKind::Bitcoin => {
                         this.refresh_bitcoin_history(ids, load_more, limit).await
                     }
                     crate::registry::HistoryRefreshKind::Evm => {
-                        this.refresh_evm_chain_history(chain_id.clone(), ids, load_more, limit)
+                        this.refresh_evm_chain_history(chain_id, ids, load_more, limit)
                             .await
                     }
                     crate::registry::HistoryRefreshKind::Utxo => {
-                        this.refresh_utxo_chain_history(chain_id.clone(), ids, load_more)
+                        this.refresh_utxo_chain_history(chain_id, ids, load_more)
                             .await
                     }
                     crate::registry::HistoryRefreshKind::Normalized => {
-                        this.refresh_chain_history(chain_id.clone(), ids).await
+                        this.refresh_chain_history(chain_id, ids).await
                     }
                 };
                 this.record_history_run(chain, &result).await;
@@ -152,13 +146,13 @@ impl WalletService {
         result: &Result<HistoryRefreshOutcome, SpectraBridgeError>,
     ) {
         use crate::service::DiagnosticCommand;
-        let chain_id = chain.str_id().to_string();
-        crate::diagnostics::diagnostics_record_history_run(chain_id.clone());
+        let chain_id = chain;
+        crate::diagnostics::diagnostics_record_history_run(chain_id);
         let command = match result {
             Ok(outcome) => {
                 for row in &outcome.diagnostics {
                     crate::diagnostics::diagnostics_record(
-                        chain_id.clone(),
+                        chain_id,
                         crate::diagnostics::HistoryDiagnostics {
                             wallet_id: row.wallet_id.clone(),
                             identifier: row.identifier.clone(),

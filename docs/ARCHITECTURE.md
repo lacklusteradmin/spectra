@@ -92,6 +92,13 @@ without a configurable TOML flag.
 Address formats, derivation paths, address slots, EVM membership and routing
 facts belong there rather than in caller-owned lists.
 
+A chain crosses every boundary as `Chain`, never as its id string. Records and
+parameters carry the enum (a field may keep the name `chain_id`, which is what
+it serializes as); `Chain` serializes, stores in SQLite and prints as its
+catalog id, and an id the catalog does not know fails where it is read. The
+only string parsing left is at the edges that receive text: the CLI's
+arguments, the catalog TOML files and the database columns.
+
 Chain-specific implementations live directly in each domain directory, for
 example `derivation/bitcoin.rs`, `fetch/bitcoin.rs` and `send/bitcoin.rs`.
 Keep differences that carry protocol meaning; share cryptographic primitives

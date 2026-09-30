@@ -53,6 +53,13 @@ endpoint = "https://mempool.emzy.de/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "bitcoin.mainnet.blockcypher"
+api = "blockcypher"
+chain_id = "bitcoin"
+endpoint = "https://api.blockcypher.com/v1/btc/main"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "bitcoin.testnet.blockstream"
 api = "esplora"
 chain_id = "bitcoin-testnet"
@@ -74,6 +81,13 @@ endpoint = "https://mempool.space/testnet4/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "bitcoin.testnet4.mempool_emzy"
+api = "esplora"
+chain_id = "bitcoin-testnet-4"
+endpoint = "https://mempool.emzy.de/testnet4/api"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "bitcoin.signet.blockstream"
 api = "esplora"
 chain_id = "bitcoin-signet"
@@ -88,10 +102,24 @@ endpoint = "https://mempool.space/signet/api"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "bitcoin.signet.mempool_emzy"
+api = "esplora"
+chain_id = "bitcoin-signet"
+endpoint = "https://mempool.emzy.de/signet/api"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "bitcoinsv.whatsonchain.api"
 api = "whatsonchain"
 chain_id = "bitcoin-sv"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
+id = "bitcoinsv.testnet.whatsonchain"
+api = "whatsonchain"
+chain_id = "bitcoin-sv-testnet"
+endpoint = "https://api.whatsonchain.com/v1/bsv/test"
 capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
@@ -102,6 +130,13 @@ endpoint = "https://rest.bch.actorforth.org/v2"
 # The only keyless Bitcoin Cash indexer left answering; it quotes no fee, so
 # sends use the 1 sat/B floor. Slow for addresses with long histories.
 capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
+id = "bitcoincash.mainnet.zelcore"
+api = "blockbook"
+chain_id = "bitcoin-cash"
+endpoint = "https://blockbook.bch.zelcore.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "litecoin.litecoinspace.api"
@@ -118,10 +153,66 @@ endpoint = "https://api.blockcypher.com/v1/ltc/main"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "litecoin.mainnet.zelcore"
+api = "blockbook"
+chain_id = "litecoin"
+endpoint = "https://blockbook.ltc.zelcore.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "litecoin.testnet.litecoinspace"
+api = "esplora"
+chain_id = "litecoin-testnet"
+endpoint = "https://litecoinspace.org/testnet/api"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "dogecoin.mainnet.blockcypher"
 api = "blockcypher"
 chain_id = "dogecoin"
 endpoint = "https://api.blockcypher.com/v1/doge/main"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dogecoin.mainnet.zelcore"
+api = "blockbook"
+chain_id = "dogecoin"
+endpoint = "https://blockbook.doge.zelcore.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dash.mainnet.blockcypher"
+api = "blockcypher"
+chain_id = "dash"
+endpoint = "https://api.blockcypher.com/v1/dash/main"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "zcash.mainnet.zelcore"
+api = "blockbook"
+chain_id = "zcash"
+endpoint = "https://blockbook.zec.zelcore.io"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
+id = "bitcoingold.mainnet.zelcore"
+api = "blockbook"
+chain_id = "bitcoin-gold"
+endpoint = "https://blockbook.btg.zelcore.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dash.mainnet.zelcore"
+api = "blockbook"
+chain_id = "dash"
+endpoint = "https://blockbook.dash.zelcore.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dash.mainnet.atomicwallet"
+api = "blockbook"
+chain_id = "dash"
+endpoint = "https://dash.atomicwallet.io"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
@@ -146,6 +237,20 @@ endpoint = "https://tron-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
 
 [[endpoints]]
+id = "tron.nile.accounts.trongrid"
+api = "trongrid-v1"
+chain_id = "tron-nile"
+endpoint = "https://nile.trongrid.io/v1/accounts"
+capabilities = ["history", "token-discovery", "token-history"]
+
+[[endpoints]]
+id = "tron.nile.rpc.trongrid"
+api = "tron-http"
+chain_id = "tron-nile"
+endpoint = "https://nile.trongrid.io"
+capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
+
+[[endpoints]]
 id = "solana.rpc.mainnet"
 api = "solana-json-rpc"
 chain_id = "solana"
@@ -158,6 +263,13 @@ api = "solana-json-rpc"
 chain_id = "solana"
 endpoint = "https://solana-rpc.publicnode.com"
 capabilities = ["balance", "history", "fee", "token-balance", "token-discovery", "token-history", "verification", "staking"]
+
+[[endpoints]]
+id = "solana.devnet.rpc"
+api = "solana-json-rpc"
+chain_id = "solana-devnet"
+endpoint = "https://api.devnet.solana.com"
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "xrp.rpc.s1"
@@ -181,6 +293,20 @@ endpoint = "https://xrplcluster.com/"
 capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "xrp.testnet.altnet"
+api = "xrpl-json-rpc"
+chain_id = "xrp-testnet"
+endpoint = "https://s.altnet.rippletest.net:51234/"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "xrp.testnet.xrpllabs"
+api = "xrpl-json-rpc"
+chain_id = "xrp-testnet"
+endpoint = "https://testnet.xrpl-labs.com/"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "cardano.koios.primary"
 api = "koios"
 chain_id = "cardano"
@@ -192,6 +318,13 @@ id = "cardano.koios.xray"
 api = "koios"
 chain_id = "cardano"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
+capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
+
+[[endpoints]]
+id = "cardano.preprod.koios.xray"
+api = "koios"
+chain_id = "cardano-preprod"
+endpoint = "https://graph.xray.app/output/services/koios/preprod/api/v1"
 capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
 
 [[endpoints]]
@@ -209,6 +342,13 @@ endpoint = "https://mainnet.aptoslabs.com/v1"
 capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
+id = "aptos.testnet.aptoslabs"
+api = "aptos-rest"
+chain_id = "aptos-testnet"
+endpoint = "https://api.testnet.aptoslabs.com/v1"
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
+
+[[endpoints]]
 id = "ton.api.v2"
 api = "toncenter-v2"
 chain_id = "ton"
@@ -220,6 +360,20 @@ id = "ton.api.v3"
 api = "toncenter-v3"
 chain_id = "ton"
 endpoint = "https://toncenter.com/api/v3"
+capabilities = ["token-balance", "token-discovery"]
+
+[[endpoints]]
+id = "ton.testnet.v2"
+api = "toncenter-v2"
+chain_id = "ton-testnet"
+endpoint = "https://testnet.toncenter.com/api/v2"
+capabilities = ["balance", "history", "fee", "broadcast", "verification", "token-balance"]
+
+[[endpoints]]
+id = "ton.testnet.v3"
+api = "toncenter-v3"
+chain_id = "ton-testnet"
+endpoint = "https://testnet.toncenter.com/api/v3"
 capabilities = ["token-balance", "token-discovery"]
 
 [[endpoints]]
@@ -251,6 +405,20 @@ endpoint = "https://rpc-mainnet.suiscan.xyz"
 capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
+id = "sui.rpc.1rpc"
+api = "sui-json-rpc"
+chain_id = "sui"
+endpoint = "https://1rpc.io/sui"
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
+
+[[endpoints]]
+id = "sui.testnet.rpc.publicnode"
+api = "sui-json-rpc"
+chain_id = "sui-testnet"
+endpoint = "https://sui-testnet-rpc.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
+
+[[endpoints]]
 id = "near.rpc.mainnet"
 api = "near-json-rpc"
 chain_id = "near"
@@ -272,6 +440,27 @@ endpoint = "https://api.nearblocks.io/v1"
 capabilities = ["history"]
 
 [[endpoints]]
+id = "near.testnet.rpc"
+api = "near-json-rpc"
+chain_id = "near-testnet"
+endpoint = "https://rpc.testnet.near.org"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "near.testnet.fastnear"
+api = "near-json-rpc"
+chain_id = "near-testnet"
+endpoint = "https://test.rpc.fastnear.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "near.testnet.nearblocks"
+api = "nearblocks"
+chain_id = "near-testnet"
+endpoint = "https://api-testnet.nearblocks.io/v1"
+capabilities = ["history"]
+
+[[endpoints]]
 id = "polkadot.rpc.onfinality"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
@@ -288,6 +477,20 @@ endpoint = "https://rpc.polkadot.io"
 capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
+id = "polkadot.rpc.publicnode"
+api = "substrate-json-rpc"
+chain_id = "polkadot"
+endpoint = "https://polkadot-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
+
+[[endpoints]]
+id = "polkadot.westend.rpc.official"
+api = "substrate-json-rpc"
+chain_id = "polkadot-westend"
+endpoint = "https://westend-rpc.polkadot.io"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "stellar.horizon.primary"
 api = "horizon"
 chain_id = "stellar"
@@ -302,10 +505,45 @@ endpoint = "https://horizon.stellar.lobstr.co"
 capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "stellar.testnet.horizon"
+api = "horizon"
+chain_id = "stellar-testnet"
+endpoint = "https://horizon-testnet.stellar.org"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "monero.daemon.cake"
 api = "monero-daemon-rpc"
 chain_id = "monero"
 endpoint = "http://xmr-node.cakewallet.com:18081"
+capabilities = ["fee", "broadcast"]
+
+[[endpoints]]
+id = "monero.stagenet.xmrtw"
+api = "monero-daemon-rpc"
+chain_id = "monero-stagenet"
+endpoint = "http://stagenet.xmr-tw.org:38081"
+capabilities = ["fee", "broadcast"]
+
+[[endpoints]]
+id = "monero.stagenet.monerodevs"
+api = "monero-daemon-rpc"
+chain_id = "monero-stagenet"
+endpoint = "http://node.monerodevs.org:38089"
+capabilities = ["fee", "broadcast"]
+
+[[endpoints]]
+id = "monero.stagenet.monerodevs2"
+api = "monero-daemon-rpc"
+chain_id = "monero-stagenet"
+endpoint = "http://node2.monerodevs.org:38089"
+capabilities = ["fee", "broadcast"]
+
+[[endpoints]]
+id = "monero.stagenet.boldsuck"
+api = "monero-daemon-rpc"
+chain_id = "monero-stagenet"
+endpoint = "http://xmr-lux.boldsuck.org:38081"
 capabilities = ["fee", "broadcast"]
 
 [[endpoints]]
@@ -345,10 +583,24 @@ endpoint = "https://ethereum-sepolia-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "ethereum.sepolia.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "ethereum-sepolia"
+endpoint = "https://1rpc.io/sepolia"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "ethereum.hoodi.rpc.publicnode"
 api = "evm-json-rpc"
 chain_id = "ethereum-hoodi"
 endpoint = "https://ethereum-hoodi-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "ethereum.hoodi.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "ethereum-hoodi"
+endpoint = "https://1rpc.io/hoodi"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -366,6 +618,27 @@ api = "blockscout"
 chain_id = "ethereum-classic"
 endpoint = "https://etc.blockscout.com"
 capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "ethereumclassic.mordor.rpc.etccooperative"
+api = "evm-json-rpc"
+chain_id = "ethereum-classic-mordor"
+endpoint = "https://rpc.mordor.etccooperative.org"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "ethereumclassic.mordor.rpc.etcnetwork"
+api = "evm-json-rpc"
+chain_id = "ethereum-classic-mordor"
+endpoint = "https://geth-mordor.etc-network.info"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "ethereumclassic.mordor.rpc.0xrpc"
+api = "evm-json-rpc"
+chain_id = "ethereum-classic-mordor"
+endpoint = "https://0xrpc.io/mordor"
+capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "arbitrum.rpc.publicnode"
@@ -389,6 +662,13 @@ endpoint = "https://1rpc.io/arb"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "arbitrum.sepolia.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "arbitrum-sepolia"
+endpoint = "https://arbitrum-sepolia-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "optimism.rpc.mainnet"
 api = "evm-json-rpc"
 chain_id = "optimism"
@@ -407,6 +687,13 @@ id = "optimism.rpc.1rpc"
 api = "evm-json-rpc"
 chain_id = "optimism"
 endpoint = "https://1rpc.io/op"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "optimism.sepolia.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "optimism-sepolia"
+endpoint = "https://optimism-sepolia-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -438,6 +725,27 @@ endpoint = "https://bsc-dataseed1.ninicoin.io"
 capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "bnb.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "bnb"
+endpoint = "https://bsc-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "bnb.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "bnb"
+endpoint = "https://1rpc.io/bnb"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "bnb.testnet.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "bnb-testnet"
+endpoint = "https://bsc-testnet-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "avalanche.rpc.primary"
 api = "evm-json-rpc"
 chain_id = "avalanche"
@@ -459,10 +767,45 @@ endpoint = "https://1rpc.io/avax/c"
 capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "avalanche.fuji.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "avalanche-fuji"
+endpoint = "https://avalanche-fuji-c-chain-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "hyperliquid.rpc.primary"
 api = "evm-json-rpc"
 chain_id = "hyperliquid"
 endpoint = "https://rpc.hyperliquid.xyz/evm"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "hyperliquid.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "hyperliquid"
+endpoint = "https://hyperliquid-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "hyperliquid.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "hyperliquid"
+endpoint = "https://1rpc.io/hyperliquid"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "hyperliquid.testnet.rpc.primary"
+api = "evm-json-rpc"
+chain_id = "hyperliquid-testnet"
+endpoint = "https://rpc.hyperliquid-testnet.xyz/evm"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "hyperliquid.testnet.rpc.drpc"
+api = "evm-json-rpc"
+chain_id = "hyperliquid-testnet"
+endpoint = "https://hyperliquid-testnet.drpc.org"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -484,6 +827,13 @@ id = "base.rpc.1rpc"
 api = "evm-json-rpc"
 chain_id = "base"
 endpoint = "https://1rpc.io/base"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "base.sepolia.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "base-sepolia"
+endpoint = "https://base-sepolia-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -571,6 +921,13 @@ endpoint = "https://1rpc.io/matic"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "polygon.amoy.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "polygon-amoy"
+endpoint = "https://polygon-amoy-bor-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "decred.mainnet.dcrdata"
 api = "insight"
 chain_id = "decred"
@@ -585,10 +942,24 @@ endpoint = "https://api.kaspa.org"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
 [[endpoints]]
+id = "kaspa.testnet.kaspaorg"
+api = "kaspa-rest"
+chain_id = "kaspa-testnet"
+endpoint = "https://api-tn10.kaspa.org"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
 id = "sei.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "sei"
 endpoint = "https://evm-rpc.sei-apis.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "sei.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "sei"
+endpoint = "https://sei-evm-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -599,10 +970,38 @@ endpoint = "https://forno.celo.org"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "celo.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "celo"
+endpoint = "https://celo-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "celo.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "celo"
+endpoint = "https://1rpc.io/celo"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "cronos.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "cronos"
 endpoint = "https://evm.cronos.org"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "cronos.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "cronos"
+endpoint = "https://cronos-evm-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "cronos.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "cronos"
+endpoint = "https://1rpc.io/cro"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -613,10 +1012,31 @@ endpoint = "https://opbnb-mainnet-rpc.bnbchain.org"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "opbnb.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "opbnb"
+endpoint = "https://opbnb-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "opbnb.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "opbnb"
+endpoint = "https://1rpc.io/opbnb"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "zkSyncEra.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "zksync-era"
 endpoint = "https://mainnet.era.zksync.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "zksync-era.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "zksync-era"
+endpoint = "https://1rpc.io/zksync2-era"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -627,10 +1047,31 @@ endpoint = "https://rpc.soniclabs.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "sonic.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "sonic"
+endpoint = "https://sonic-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "sonic.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "sonic"
+endpoint = "https://1rpc.io/sonic"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "berachain.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "berachain"
 endpoint = "https://rpc.berachain.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "berachain.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "berachain"
+endpoint = "https://berachain-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -641,10 +1082,31 @@ endpoint = "https://mainnet.unichain.org"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
+id = "unichain.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "unichain"
+endpoint = "https://unichain-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "unichain.rpc.1rpc"
+api = "evm-json-rpc"
+chain_id = "unichain"
+endpoint = "https://1rpc.io/unichain"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
 id = "ink.mainnet.evm"
 api = "evm-json-rpc"
 chain_id = "ink"
 endpoint = "https://rpc-gel.inkonchain.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "ink.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "ink"
+endpoint = "https://ink-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -745,4 +1207,53 @@ id = "mantle.history.keyless"
 api = "blockscout"
 chain_id = "mantle"
 endpoint = "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "ethereum-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "ethereum-sepolia"
+endpoint = "https://eth-sepolia.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "ethereum-hoodi.history.keyless"
+api = "blockscout"
+chain_id = "ethereum-hoodi"
+endpoint = "https://eth-hoodi.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "ethereum-classic-mordor.history.keyless"
+api = "blockscout"
+chain_id = "ethereum-classic-mordor"
+endpoint = "https://etc-mordor.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "arbitrum-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "arbitrum-sepolia"
+endpoint = "https://arbitrum-sepolia.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "optimism-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "optimism-sepolia"
+endpoint = "https://testnet-explorer.optimism.io"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "base-sepolia.history.keyless"
+api = "blockscout"
+chain_id = "base-sepolia"
+endpoint = "https://base-sepolia.blockscout.com"
+capabilities = ["history", "token-history"]
+
+[[endpoints]]
+id = "avalanche-fuji.history.keyless"
+api = "blockscout"
+chain_id = "avalanche-fuji"
+endpoint = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan"
 capabilities = ["history", "token-history"]

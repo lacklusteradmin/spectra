@@ -54,10 +54,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
                 seed_phrase,
                 passphrase: args.passphrase.clone(),
             },
-            args.chain
-                .as_ref()
-                .map(|n| resolve_chain(n).map(|c| c.str_id().to_string()))
-                .transpose()?,
+            args.chain.as_ref().map(|n| resolve_chain(n)).transpose()?,
         )
         .map_err(CliError::from)?;
     let candidates = scan.candidates();

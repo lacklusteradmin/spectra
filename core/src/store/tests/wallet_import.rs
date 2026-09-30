@@ -4,12 +4,12 @@ use crate::store::wallet_domain::{CoreSeedDerivationPreset, CoreWalletDerivation
 
 const MNEMONIC: &str = "test test test test test test test test test test test junk";
 
-fn commit(chains: &[&str]) -> WalletImportCommit {
+fn commit(chains: &[crate::registry::Chain]) -> WalletImportCommit {
     WalletImportCommit {
         password: None,
         request: WalletImportRequest {
             wallet_name: String::new(),
-            selected_chain_ids: chains.iter().map(|c| c.to_string()).collect(),
+            selected_chain_ids: chains.to_vec(),
             is_watch_only_import: false,
             is_private_key_import: false,
             watch_only_entries: Default::default(),
@@ -35,7 +35,7 @@ async fn imported_wallets_land_in_core_state() {
         .await
         .unwrap();
     let outcome = service
-        .import_wallets(commit(&["solana"]))
+        .import_wallets(commit(&[crate::registry::Chain::Solana]))
         .await
         .expect("import");
 
@@ -47,16 +47,16 @@ async fn imported_wallets_land_in_core_state() {
         .expect("snapshot")
         .wallets;
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].chain_id, "solana");
+    assert_eq!(stored[0].chain_id, crate::registry::Chain::Solana);
     assert_eq!(
         stored[0].addresses.get("solana").map(String::as_str),
         Some(
             crate::derivation::import::derive_import_addresses(
                 MNEMONIC,
-                &["solana".into()],
+                &[crate::registry::Chain::Solana],
                 &crate::app_core::seed_derivation_paths_for_account(0).unwrap(),
                 &CoreWalletDerivationOverrides::default()
-            )["solana"]
+            )[&crate::registry::Chain::Solana]
                 .as_str()
         )
     );
@@ -78,7 +78,7 @@ async fn a_seed_import_stores_one_address_per_network_of_its_family() {
         .open_state(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
-    let mut commit = commit(&["bitcoin"]);
+    let mut commit = commit(&[crate::registry::Chain::Bitcoin]);
     commit.seed_phrase = Some(MNEMONIC.to_string());
     commit.seed_derivation_paths =
         crate::app_core::seed_derivation_paths_for_account(0).expect("default paths");
@@ -130,39 +130,48 @@ async fn a_network_selection_applies_only_to_its_own_family() {
     // The selection is core's own setting, not something the commit carries.
     service
         .apply_state_command(crate::store::state::StateCommand::SelectChainForFamily {
-            chain_id: "bitcoin-testnet".into(),
+            chain_id: crate::registry::Chain::BitcoinTestnet,
         })
         .await
         .unwrap();
     let outcome = service
-        .import_wallets(commit(&["bitcoin", "solana"]))
+        .import_wallets(commit(&[
+            crate::registry::Chain::Bitcoin,
+            crate::registry::Chain::Solana,
+        ]))
         .await
         .expect("import");
 
     let by_chain: std::collections::HashMap<_, _> = outcome
         .wallets
         .iter()
-        .map(|w| {
-            let family = crate::registry::Chain::from_str_id(&w.chain_id)
-                .unwrap()
-                .mainnet_counterpart()
-                .str_id();
-            (family, w)
-        })
+        .map(|w| (w.chain_id.mainnet_counterpart(), w))
         .collect();
-    assert_eq!(by_chain["bitcoin"].chain_id, "bitcoin-testnet");
+    assert_eq!(
+        by_chain[&crate::registry::Chain::Bitcoin].chain_id,
+        crate::registry::Chain::BitcoinTestnet
+    );
     // Choosing Bitcoin testnet must not drag the Solana wallet with it.
-    assert_eq!(by_chain["solana"].chain_id, "solana");
+    assert_eq!(
+        by_chain[&crate::registry::Chain::Solana].chain_id,
+        crate::registry::Chain::Solana
+    );
     // Each wallet starts with its own network's native holding, and no other.
-    let holdings = |chain: &str| {
-        by_chain[chain]
+    let holdings = |chain: crate::registry::Chain| {
+        by_chain[&chain]
             .holdings
             .iter()
-            .map(|h| h.chain_id.clone())
+            .map(|h| h.chain_id)
             .collect::<Vec<_>>()
     };
-    assert_eq!(holdings("bitcoin"), vec!["bitcoin-testnet".to_string()]);
-    assert_eq!(holdings("solana"), vec!["solana".to_string()]);
+    assert_eq!(
+        holdings(crate::registry::Chain::Bitcoin),
+        vec![crate::registry::Chain::BitcoinTestnet]
+    );
+    assert_eq!(
+        holdings(crate::registry::Chain::Solana),
+        vec![crate::registry::Chain::Solana]
+    );
 }
 
 #[derive(Default)]
@@ -217,7 +226,10 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
         .open_state(path.to_string_lossy().into())
         .await
         .unwrap();
-    let input = commit(&["ethereum", "solana"]);
+    let input = commit(&[
+        crate::registry::Chain::Ethereum,
+        crate::registry::Chain::Solana,
+    ]);
     assert!(service.import_wallets(input.clone()).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());
     assert_eq!(store.inner.len(), 0);
@@ -267,14 +279,17 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
         .open_state(path.to_string_lossy().into())
         .await
         .unwrap();
-    let mut missing = commit(&["solana"]);
+    let mut missing = commit(&[crate::registry::Chain::Solana]);
     missing.seed_phrase = None;
     assert!(service.import_wallets(missing).await.is_err());
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute_batch("CREATE TRIGGER fail_import BEFORE INSERT ON wallets BEGIN SELECT RAISE(ABORT, 'injected'); END;").unwrap();
     assert!(
         service
-            .import_wallets(commit(&["ethereum", "solana"]))
+            .import_wallets(commit(&[
+                crate::registry::Chain::Ethereum,
+                crate::registry::Chain::Solana
+            ]))
             .await
             .is_err()
     );
@@ -292,12 +307,12 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
         crate::store::secret_backends::InMemorySecretStore::new(),
     ));
     service.open_state(path.clone()).await.unwrap();
-    let mut named = commit(&["solana"]);
+    let mut named = commit(&[crate::registry::Chain::Solana]);
     named.request.wallet_name = "Wallet 1".into();
     service.import_wallets(named).await.unwrap();
     let (one, two) = tokio::join!(
-        service.import_wallets(commit(&["solana"])),
-        service.import_wallets(commit(&["solana"]))
+        service.import_wallets(commit(&[crate::registry::Chain::Solana])),
+        service.import_wallets(commit(&[crate::registry::Chain::Solana]))
     );
     let names: std::collections::HashSet<_> = [
         one.unwrap().wallets[0].name.clone(),
@@ -316,7 +331,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
     reopened.open_state(path).await.unwrap();
     assert_eq!(
         reopened
-            .import_wallets(commit(&["solana"]))
+            .import_wallets(commit(&[crate::registry::Chain::Solana]))
             .await
             .unwrap()
             .wallets[0]
@@ -338,13 +353,16 @@ async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
         .open_state(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
-    let mut raw = commit(&["ethereum"]);
+    let mut raw = commit(&[crate::registry::Chain::Ethereum]);
     raw.seed_phrase = Some(format!(
         "  {}  ",
         MNEMONIC.to_uppercase().replace(' ', "\t\n")
     ));
     let imported = service.import_wallets(raw).await.unwrap();
-    let normal = service.import_wallets(commit(&["ethereum"])).await.unwrap();
+    let normal = service
+        .import_wallets(commit(&[crate::registry::Chain::Ethereum]))
+        .await
+        .unwrap();
     assert_eq!(imported.wallets[0].addresses, normal.wallets[0].addresses);
     assert_eq!(
         service
@@ -380,14 +398,17 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
         wants_price_refresh: false,
     };
     let intent = AppRefreshIntent::DeepRescan {
-        chain_id: "bitcoin".into(),
+        chain_id: crate::registry::Chain::Bitcoin,
     };
     let empty = service
         .refresh_app(intent.clone(), conditions.clone())
         .await
         .unwrap();
     assert!(empty.failures.is_empty());
-    service.import_wallets(commit(&["bitcoin"])).await.unwrap();
+    service
+        .import_wallets(commit(&[crate::registry::Chain::Bitcoin]))
+        .await
+        .unwrap();
     // No configured providers: all network work must fail locally and remain visible.
     let result = service.refresh_app(intent, conditions).await.unwrap();
     assert!(!result.failures.is_empty());
@@ -407,7 +428,7 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
     service.open_state(db.clone()).await.unwrap();
-    let mut input = commit(&["bitcoin"]);
+    let mut input = commit(&[crate::registry::Chain::Bitcoin]);
     input.password = Some("test-password".into());
     // Custom mainnet and testnet paths must not overwrite each other.
     input
@@ -434,24 +455,14 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
         (Chain::Bitcoin, "m/84'/0'/2'/0/0"),
     ] {
         service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: chain.str_id().into(),
-            })
+            .apply_state_command(StateCommand::SelectChainForFamily { chain_id: chain })
             .await
             .unwrap();
         let state = service.app_state().await;
         let wallet = &state.wallets[0];
         assert_eq!(wallet.derivation_path.as_deref(), Some(path));
-        let expected = crate::derivation::dispatch::derive_for_chain_id(
-            chain.str_id(),
-            MNEMONIC,
-            path,
-            None,
-            None,
-            None,
-            true,
-            false,
-            false,
+        let expected = crate::derivation::dispatch::derive_for_chain(
+            chain, MNEMONIC, path, None, None, None, true, false, false,
         )
         .unwrap()
         .address
@@ -459,11 +470,7 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
         assert_eq!(wallet.address_on(chain), Some(expected.as_str()));
         assert_eq!(
             service
-                .send_identity_address(
-                    wallet_id.clone(),
-                    chain.str_id().into(),
-                    Some("test-password".into())
-                )
+                .send_identity_address(wallet_id.clone(), chain, Some("test-password".into()))
                 .await
                 .unwrap(),
             expected
@@ -476,11 +483,11 @@ fn an_absent_testnet_address_never_falls_back_to_mainnet() {
     let mut wallet = crate::store::state::WalletState::single_address(
         "w",
         "Wallet",
-        "bitcoin",
+        crate::registry::Chain::Bitcoin,
         "bc1main",
         Some("m/84'/0'/0'/0/0".into()),
         false,
     );
-    wallet.chain_id = "bitcoin-testnet-4".into();
+    wallet.chain_id = crate::registry::Chain::BitcoinTestnet4;
     assert!(wallet.active_address().is_none());
 }

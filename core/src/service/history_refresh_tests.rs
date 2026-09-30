@@ -9,7 +9,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
             password_protected: false,
         },
         include_in_portfolio_total: true,
-        chain_id: chain.str_id().into(),
+        chain_id: chain,
         xpub: None,
         derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
         derivation_path: None,
@@ -18,7 +18,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         addresses: addresses
             .iter()
             .map(|(chain, address)| WalletAddress {
-                chain_id: chain.str_id().to_string(),
+                chain_id: *chain,
                 address: (*address).to_string(),
                 kind: "receive".to_string(),
                 derivation_path: None,
@@ -71,12 +71,12 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
         )],
         ..Default::default()
     };
-    state.settings.selected_chain_by_family.insert(
-        Chain::Bitcoin.str_id().to_string(),
-        Chain::BitcoinTestnet4.str_id().to_string(),
-    );
+    state
+        .settings
+        .selected_chain_by_family
+        .insert(Chain::Bitcoin, Chain::BitcoinTestnet4);
 
-    state.wallets[0].chain_id = "bitcoin-testnet-4".into();
+    state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
     let target = &targets(&state, Chain::Bitcoin, &[])[0];
     assert_eq!(target.network, Chain::BitcoinTestnet4, "fetched from");
     assert_eq!(target.address, "tb1test");
@@ -90,15 +90,19 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
             status: "confirmed".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "tBTC".to_string(),
-            chain_id: "bitcoin-testnet-4".to_string(),
-            amount: 1.0,
+            chain_id: crate::registry::Chain::BitcoinTestnet4,
+            amount: "1".into(),
             counterparty: "tb1other".to_string(),
             tx_hash: "abc".to_string(),
             block_height: None,
             timestamp: 1.0,
         },
     );
-    assert_eq!(record.chain_id, "bitcoin-testnet-4", "filed under");
+    assert_eq!(
+        record.chain_id,
+        crate::registry::Chain::BitcoinTestnet4,
+        "filed under"
+    );
     assert_eq!(
         record.deployment_id.as_deref(),
         Some("bitcoin-testnet-4:native")
@@ -124,8 +128,8 @@ fn an_undated_entry_is_stored_as_unknown() {
         status: "pending".to_string(),
         asset_display_name: "Litecoin".to_string(),
         symbol: "LTC".to_string(),
-        chain_id: "litecoin".to_string(),
-        amount: 1.0,
+        chain_id: crate::registry::Chain::Litecoin,
+        amount: "1".into(),
         counterparty: String::new(),
         tx_hash: "abc".to_string(),
         block_height: None,
@@ -158,15 +162,12 @@ fn a_target_follows_the_network_the_wallet_is_on() {
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "bc1main");
 
     state.settings = AppSettings {
-        selected_chain_by_family: [(
-            Chain::Bitcoin.str_id().to_string(),
-            Chain::BitcoinTestnet4.str_id().to_string(),
-        )]
-        .into_iter()
-        .collect(),
+        selected_chain_by_family: [(Chain::Bitcoin, Chain::BitcoinTestnet4)]
+            .into_iter()
+            .collect(),
         ..AppSettings::default()
     };
-    state.wallets[0].chain_id = "bitcoin-testnet-4".into();
+    state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "tb1test");
 }
 
@@ -189,8 +190,8 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
             status: "confirmed".to_string(),
             asset_display_name: "Solana".to_string(),
             symbol: "SOL".to_string(),
-            chain_id: "solana".to_string(),
-            amount: 1.5,
+            chain_id: crate::registry::Chain::Solana,
+            amount: "1.5".into(),
             counterparty: "So2".to_string(),
             tx_hash: "sig".to_string(),
             block_height: Some(7),
@@ -219,8 +220,8 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
         status: "confirmed".to_string(),
         asset_display_name: "Solana".to_string(),
         symbol: "SOL".to_string(),
-        chain_id: "solana".to_string(),
-        amount: 0.0,
+        chain_id: crate::registry::Chain::Solana,
+        amount: "0".into(),
         counterparty: String::new(),
         tx_hash: String::new(),
         block_height: None,
@@ -244,7 +245,11 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
 #[test]
 fn descriptors_are_the_enabled_tokens_for_the_chain() {
     use crate::store::wallet_domain::{CoreTokenPreferenceCategory, CoreTokenPreferenceEntry};
-    fn entry(chain: &str, contract: &str, enabled: bool) -> CoreTokenPreferenceEntry {
+    fn entry(
+        chain: crate::registry::Chain,
+        contract: &str,
+        enabled: bool,
+    ) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
@@ -253,7 +258,7 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain_id: chain.to_string(),
+                chain_id: chain,
                 name: "Token".to_string(),
                 symbol: "TKN".to_string(),
                 token_standard: "erc20".to_string(),
@@ -274,17 +279,17 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
     let state = CoreAppState {
         token_preferences: vec![
             entry(
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                 true,
             ),
             entry(
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
                 false,
             ),
             entry(
-                "solana",
+                crate::registry::Chain::Solana,
                 "So11111111111111111111111111111111111111112",
                 true,
             ),
@@ -328,7 +333,7 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
         .expect("wallet");
 
     let outcome = service
-        .refresh_evm_chain_history(Chain::Cronos.str_id().to_string(), Vec::new(), false, None)
+        .refresh_evm_chain_history(Chain::Cronos, Vec::new(), false, None)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
@@ -364,19 +369,12 @@ async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
         .expect("wallet");
 
     let outcome = service
-        .refresh_utxo_chain_history(Chain::Litecoin.str_id().to_string(), Vec::new(), false)
+        .refresh_utxo_chain_history(Chain::Litecoin, Vec::new(), false)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
     assert_eq!(outcome.wallets_failed, 0);
     assert_eq!(outcome.added, 0);
-
-    assert!(
-        service
-            .refresh_utxo_chain_history("not-a-chain".to_string(), Vec::new(), false)
-            .await
-            .is_err()
-    );
 }
 
 /// A UTXO wallet one of whose addresses did not answer stores nothing.
@@ -416,7 +414,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
 
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
         capabilities: crate::EndpointCapability::ALL.to_vec(),
-        chain_id: Chain::Litecoin.str_id().into(),
+        chain_id: Chain::Litecoin,
         endpoints: vec![server.uri()],
     }])
     .expect("service");
@@ -439,7 +437,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
     service
         .register_owned_address(
             "w1".to_string(),
-            Chain::Litecoin.str_id().to_string(),
+            Chain::Litecoin,
             REFUSES.to_string(),
             None,
             None,
@@ -449,7 +447,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .expect("owned address");
 
     let outcome = service
-        .refresh_utxo_chain_history(Chain::Litecoin.str_id().to_string(), Vec::new(), false)
+        .refresh_utxo_chain_history(Chain::Litecoin, Vec::new(), false)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
@@ -461,7 +459,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
     assert_eq!(outcome.updated, 0);
     assert!(
         !service
-            .history_cursor(Chain::Litecoin.str_id().to_string(), "w1".to_string())
+            .history_cursor(Chain::Litecoin, "w1".to_string())
             .is_exhausted,
         "a wallet that failed must stay loadable"
     );
@@ -512,7 +510,7 @@ async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
     assert!(!outcome.exhausted, "a failed page is not the last page");
     assert!(
         !service
-            .history_cursor(Chain::Bitcoin.str_id().to_string(), "w1".to_string())
+            .history_cursor(Chain::Bitcoin, "w1".to_string())
             .is_exhausted,
         "a failure must not mark the wallet exhausted"
     );
@@ -533,19 +531,14 @@ async fn a_non_evm_chain_is_refused() {
     let service = WalletService::new(Vec::new()).expect("service");
     assert!(
         service
-            .refresh_evm_chain_history(Chain::Solana.str_id().to_string(), Vec::new(), false, None)
+            .refresh_evm_chain_history(Chain::Solana, Vec::new(), false, None)
             .await
             .is_err()
     );
     // With no wallets there is nothing to fetch, no error and no store to
     // write to.
     let outcome = service
-        .refresh_evm_chain_history(
-            Chain::Ethereum.str_id().to_string(),
-            Vec::new(),
-            false,
-            None,
-        )
+        .refresh_evm_chain_history(Chain::Ethereum, Vec::new(), false, None)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
@@ -557,17 +550,11 @@ async fn a_non_evm_chain_is_refused() {
 async fn a_chain_with_no_wallets_refreshes_nothing() {
     let service = WalletService::new(Vec::new()).expect("service");
     let outcome = service
-        .refresh_chain_history(Chain::Solana.str_id().to_string(), Vec::new())
+        .refresh_chain_history(Chain::Solana, Vec::new())
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
     assert_eq!(outcome.added, 0);
-    assert!(
-        service
-            .refresh_chain_history("not-a-chain".to_string(), Vec::new())
-            .await
-            .is_err()
-    );
 }
 
 #[tokio::test]
@@ -629,14 +616,18 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
     }
     assert!(
         !service
-            .history_cursor("cronos".into(), "w1".into())
+            .history_cursor(crate::registry::Chain::Cronos, "w1".into())
             .is_exhausted
     );
     // The run records its own outcome where the diagnostics screen reads it:
     // a failed read marks the chain degraded, in the English template the
     // screen localizes.
     assert_eq!(
-        service.diagnostic_state().await.degraded.get("cronos"),
+        service
+            .diagnostic_state()
+            .await
+            .degraded
+            .get(&crate::registry::Chain::Cronos),
         Some(&crate::service::ChainDegradation::HistoryRefreshFailed)
     );
 }
@@ -688,7 +679,7 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
             .unwrap();
     }
     service
-        .record_history_refresh(HistoryRefreshKey::new("a", "cronos"))
+        .record_history_refresh(HistoryRefreshKey::new("a", crate::registry::Chain::Cronos))
         .await;
     let scope = |id: &str| HistoryRefreshScope::Wallets {
         wallet_ids: vec![id.into()],
@@ -729,7 +720,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             "0x1111111111111111111111111111111111111111",
         )],
     );
-    w.chain_id = Chain::EthereumSepolia.str_id().into();
+    w.chain_id = Chain::EthereumSepolia;
     service
         .apply_state_command(crate::store::state::StateCommand::UpsertWallet { wallet: w })
         .await
@@ -750,7 +741,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0x1111111111111111111111111111111111111111".into(),
-            chain_id: Chain::EthereumSepolia.str_id().into(),
+            chain_id: Chain::EthereumSepolia,
             token_source_used: None,
             native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
@@ -788,9 +779,9 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         stored[0].status,
         crate::store::wallet_domain::CoreTransactionStatus::Failed
     );
-    assert_eq!(stored[0].chain_id, Chain::EthereumSepolia.str_id());
+    assert_eq!(stored[0].chain_id, Chain::EthereumSepolia);
     let mut wrong_network = fetched.clone();
-    wrong_network.chain_id = "ethereum".into();
+    wrong_network.chain_id = crate::registry::Chain::Ethereum;
     wrong_network.id = "wrong-network".into();
     assert!(
         service
@@ -858,7 +849,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
             native: vec![],
         },
         normalized_address: "from".into(),
-        chain_id: "ethereum".into(),
+        chain_id: crate::registry::Chain::Ethereum,
         token_source_used: None,
         native_asset_display_name: "Ether".into(),
         native_asset_symbol: "ETH".into(),
@@ -876,7 +867,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
             existing_transactions: vec![],
             incoming_transactions: rows,
             strategy: crate::fetch::transactions::TransactionMergeStrategy::Evm,
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             preserve_created_at_sentinel_unix: None,
         },
     );

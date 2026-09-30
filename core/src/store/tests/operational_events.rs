@@ -19,7 +19,7 @@ async fn events_survive_reopening_the_database() {
     service.open_state(db.clone()).await.expect("open");
     service
         .append_chain_operational_event(
-            "bitcoin".into(),
+            crate::registry::Chain::Bitcoin,
             DiagnosticLogLevel::Warning,
             "broadcast deferred".into(),
             Some("abc123".into()),
@@ -29,7 +29,9 @@ async fn events_survive_reopening_the_database() {
 
     let reopened = WalletService::new(Vec::new()).expect("service");
     reopened.open_state(db.clone()).await.expect("open");
-    let events = reopened.operational_events("bitcoin".into()).await;
+    let events = reopened
+        .operational_events(crate::registry::Chain::Bitcoin)
+        .await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].input.message, "broadcast deferred");
     assert_eq!(events[0].input.level, DiagnosticLogLevel::Warning);
@@ -49,7 +51,7 @@ async fn the_log_is_newest_first_and_bounded() {
     for index in 0..205 {
         service
             .append_chain_operational_event(
-                "solana".into(),
+                crate::registry::Chain::Solana,
                 DiagnosticLogLevel::Info,
                 format!("event {index}"),
                 None,
@@ -57,14 +59,16 @@ async fn the_log_is_newest_first_and_bounded() {
             .await
             .expect("append");
     }
-    let events = service.operational_events("solana".into()).await;
+    let events = service
+        .operational_events(crate::registry::Chain::Solana)
+        .await;
     assert_eq!(events.len(), 200, "the cap did not hold");
     assert_eq!(events[0].input.message, "event 204");
     assert_eq!(events[199].input.message, "event 5");
     // A different chain keeps its own list.
     assert!(
         service
-            .operational_events("bitcoin".into())
+            .operational_events(crate::registry::Chain::Bitcoin)
             .await
             .is_empty()
     );
@@ -73,10 +77,13 @@ async fn the_log_is_newest_first_and_bounded() {
 #[tokio::test]
 async fn clearing_one_chain_leaves_the_others() {
     let service = WalletService::new(Vec::new()).expect("service");
-    for chain in ["bitcoin", "solana"] {
+    for chain in [
+        crate::registry::Chain::Bitcoin,
+        crate::registry::Chain::Solana,
+    ] {
         service
             .append_chain_operational_event(
-                chain.into(),
+                chain,
                 DiagnosticLogLevel::Error,
                 "send failed".into(),
                 None,
@@ -85,22 +92,33 @@ async fn clearing_one_chain_leaves_the_others() {
             .expect("append");
     }
     service
-        .clear_operational_events(Some("bitcoin".into()))
+        .clear_operational_events(Some(crate::registry::Chain::Bitcoin))
         .await
         .expect("clear one");
     assert!(
         service
-            .operational_events("bitcoin".into())
+            .operational_events(crate::registry::Chain::Bitcoin)
             .await
             .is_empty()
     );
-    assert_eq!(service.operational_events("solana".into()).await.len(), 1);
+    assert_eq!(
+        service
+            .operational_events(crate::registry::Chain::Solana)
+            .await
+            .len(),
+        1
+    );
 
     service
         .clear_operational_events(None)
         .await
         .expect("clear all");
-    assert!(service.operational_events("solana".into()).await.is_empty());
+    assert!(
+        service
+            .operational_events(crate::registry::Chain::Solana)
+            .await
+            .is_empty()
+    );
 }
 
 /// Core logs the work it performs, so every front end gets the same lines: a
@@ -125,13 +143,15 @@ async fn core_records_its_own_refresh_and_recheck_outcomes() {
     service
         .refresh_app(
             AppRefreshIntent::DeepRescan {
-                chain_id: "bitcoin".into(),
+                chain_id: crate::registry::Chain::Bitcoin,
             },
             offline,
         )
         .await
         .expect("an offline rescan answers with its failure");
-    let rescan = service.operational_events("bitcoin".into()).await;
+    let rescan = service
+        .operational_events(crate::registry::Chain::Bitcoin)
+        .await;
     assert!(
         rescan
             .iter()
@@ -168,7 +188,7 @@ async fn appended_lines_are_trimmed_and_capped_at_eight_hundred() {
         level: DiagnosticLogLevel::Info,
         category: "  Network  ".into(),
         message,
-        chain_id: Some(" bitcoin ".into()),
+        chain_id: Some(crate::registry::Chain::Bitcoin),
         wallet_id: Some("   ".into()),
         transaction_hash: None,
         source: Some(" rpc ".into()),
@@ -187,7 +207,7 @@ async fn appended_lines_are_trimmed_and_capped_at_eight_hundred() {
     let newest = &logs[0].input;
     assert_eq!(newest.message, "Event 809");
     assert_eq!(newest.category, "Network");
-    assert_eq!(newest.chain_id.as_deref(), Some("bitcoin"));
+    assert_eq!(newest.chain_id, Some(crate::registry::Chain::Bitcoin));
     assert_eq!(newest.source.as_deref(), Some("rpc"));
     assert_eq!(newest.wallet_id, None, "a blank field is no field");
     assert_eq!(logs[799].input.message, "Event 10");

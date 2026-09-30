@@ -211,6 +211,33 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
 
 // ── Static catalog
 
+/// The catalog's ids, in the order `Chain` is declared in.
+///
+/// Read apart from the rest of the catalog: building it joins each chain's
+/// native token, and the token catalog names its chains by `Chain`, so a
+/// chain's id cannot wait for the whole catalog.
+static IDS: LazyLock<Vec<String>> = LazyLock::new(|| {
+    #[derive(Deserialize)]
+    struct File {
+        chains: Vec<Row>,
+    }
+    #[derive(Deserialize)]
+    struct Row {
+        id: String,
+    }
+    toml::from_str::<File>(CHAINS_TOML)
+        .expect("chains.toml is embedded at compile time and must be valid TOML")
+        .chains
+        .into_iter()
+        .map(|row| row.id)
+        .collect()
+});
+
+pub(crate) fn catalog_id(index: usize) -> &'static str {
+    IDS.get(index)
+        .expect("enum declaration order is the catalog's order")
+}
+
 static CATALOG: LazyLock<Vec<ChainEntry>> =
     LazyLock::new(|| load_catalog(CHAINS_TOML, CHAIN_UI_TOML));
 
@@ -250,7 +277,7 @@ fn load_catalog(chains: &str, presentation: &str) -> Vec<ChainEntry> {
             let native = crate::tokens::deployment(&format!("{}:native", c.id))
                 .expect("unknown native token deployment");
             assert!(
-                native.is_native() && native.chain_id == c.id,
+                native.is_native() && native.chain_id == chain,
                 "native deployment belongs to another network"
             );
             let is_testnet = c.environment == "testnet";
@@ -357,8 +384,10 @@ pub fn chain_by_str_id(id: &str) -> Option<&'static ChainEntry> {
 }
 
 /// The catalog's default derivation path template for a chain id.
-pub(crate) fn default_derivation_path_template(chain_id: &str) -> Option<&'static str> {
-    chain_by_str_id(chain_id).and_then(default_template_of)
+pub(crate) fn default_derivation_path_template(
+    chain: crate::registry::Chain,
+) -> Option<&'static str> {
+    default_template_of(chain.entry())
 }
 
 fn default_template_of(chain: &'static ChainEntry) -> Option<&'static str> {

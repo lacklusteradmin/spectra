@@ -66,7 +66,7 @@ impl WalletService {
             if let Some(crate::send::flow::SendPreview::Ethereum { preview }) = &mut quote.preview {
                 if input.overrides.as_ref().and_then(|o| o.nonce).is_none() {
                     let state = this.app_state().await;
-                    let chain = chain_for_id(&quote.request.chain_id)?;
+                    let chain = quote.request.chain_id;
                     let wallet = state
                         .wallets
                         .iter()
@@ -85,23 +85,19 @@ impl WalletService {
                 fees.nonce = Some(preview.nonce);
                 fees.gas_limit = Some(preview.gasLimit);
                 fees.custom_fees = Some(crate::send::ethereum::EvmCustomFeeConfiguration {
-                    max_fee_per_gas_gwei: preview.maxFeePerGasGwei,
-                    max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei,
+                    max_fee_per_gas_gwei: preview.maxFeePerGasGwei.clone(),
+                    max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei.clone(),
                 });
             }
-            let chain = chain_for_id(&quote.request.chain_id)?;
+            let chain = quote.request.chain_id;
             let resolved = this
                 .verify_send_destination(
-                    quote.request.chain_id.clone(),
+                    quote.request.chain_id,
                     input.destination.clone(),
                     quote.request.to_address.clone(),
                 )
                 .await?;
-            let amount = input
-                .amount
-                .trim()
-                .parse::<f64>()
-                .map_err(|_| "Invalid amount")?;
+            let amount = crate::decimal::canonical(&input.amount).ok_or("Invalid amount")?;
             let warnings = this
                 .high_risk_send_reasons(
                     input.wallet_id.clone(),
@@ -184,7 +180,7 @@ impl WalletService {
                 .ok_or("Send review missing or already consumed; review again")?;
             reviewed.validate_input(&input)?;
             let state = this.app_state().await;
-            let chain = chain_for_id(&reviewed.request.chain_id)?;
+            let chain = reviewed.request.chain_id;
             super::send_execution::send_chain_for(&state, &input.wallet_id, chain)?;
             let wallet = state
                 .wallets
@@ -195,7 +191,7 @@ impl WalletService {
                 || !wallet
                     .holdings
                     .iter()
-                    .any(|h| h.deployment_id() == input.holding_key && h.chain() == Some(chain))
+                    .any(|h| h.deployment_id() == input.holding_key && h.chain_id == chain)
             {
                 return Err("Sending identity changed; review again".into());
             }
@@ -214,7 +210,7 @@ impl WalletService {
                 return Err("Token identity changed; review again".into());
             }
             this.verify_send_destination(
-                reviewed.request.chain_id.clone(),
+                reviewed.request.chain_id,
                 input.destination,
                 reviewed.request.to_address.clone(),
             )
@@ -245,7 +241,7 @@ mod tests {
             sender: format!("0x{}", "22".repeat(20)),
             created: std::time::Instant::now(),
             request: crate::send::SendExecutionRequest {
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 wallet_id: input.wallet_id.clone(),
                 password: None,
                 to_address: input.destination.clone(),
@@ -383,7 +379,7 @@ mod tests {
                 .await;
             let service = WalletService::new(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 endpoints: vec![server.uri()],
             }])
             .unwrap();
@@ -400,12 +396,12 @@ mod tests {
             let mut wallet = WalletState::single_address(
                 "w",
                 "W",
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
             );
-            let mut holding = native_coin_template("ethereum").unwrap();
+            let mut holding = native_coin_template(crate::registry::Chain::Ethereum).unwrap();
             holding.amount = "10".into();
             wallet.holdings.push(holding);
             wallet.signing = crate::store::state::WalletSigning::SeedPhrase {

@@ -40,7 +40,7 @@ struct Collector(Mutex<Collected>);
 impl RefreshObserver for Collector {
     fn on_balance_updated(
         &self,
-        _chain_id: String,
+        _chain_id: spectra_core::registry::Chain,
         wallet_id: String,
         summary: Option<WalletState>,
     ) {
@@ -73,13 +73,11 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
 
     let service = ctx.service()?;
     if let Some(endpoint) = args.endpoint {
-        let chain = wallets[0]
-            .chain()
-            .ok_or_else(|| CliError::rejected("unknown wallet network"))?;
+        let chain = wallets[0].chain_id;
         ctx.rt
             .block_on(service.update_endpoints(vec![ChainEndpoints {
                 capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
-                chain_id: chain.str_id().into(),
+                chain_id: chain,
                 endpoints: vec![endpoint],
             }]))
             .map_err(CliError::from)?;
@@ -121,9 +119,9 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
             match summary {
                 Some(summary) => println!(
                     "  {}  {:<18} {}",
-                    out::wallet_dot(&summary.chain_id, summary.is_watch_only()),
+                    out::wallet_dot(summary.chain_id, summary.is_watch_only()),
                     name,
-                    out::hint(&super::chain_name(&summary.chain_id)),
+                    out::hint(&super::chain_name(summary.chain_id)),
                 ),
                 None => println!(
                     "  {}  {:<18} {}",

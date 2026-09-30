@@ -230,14 +230,14 @@ mod tests {
 /// Operations implemented by Spectra's adapter. This is an editing constraint,
 /// never a claim that any particular provider enables those operations.
 #[uniffi::export]
-pub fn endpoint_capability_options(chain_id: String, api: EndpointApi) -> Vec<EndpointCapability> {
+pub fn endpoint_capability_options(
+    chain: crate::registry::Chain,
+    api: EndpointApi,
+) -> Vec<EndpointCapability> {
     use EndpointApi::*;
     use EndpointCapability::{
         Balance, Broadcast, Fee, History, Staking, TokenBalance, TokenDiscovery, TokenHistory,
         Utxo, Verification,
-    };
-    let Some(chain) = crate::registry::Chain::from_str_id(&chain_id) else {
-        return vec![];
     };
     let values: &[EndpointCapability] = match api {
         EvmJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance],

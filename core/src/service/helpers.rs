@@ -14,15 +14,12 @@ use serde::Serialize;
 
 // ── Chain ID lookup ───────────────────────────────────────────────────────
 
-pub(super) fn chain_for_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> {
-    Chain::from_str_id(chain_id)
-        .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))
-}
-
-pub(super) fn evm_network_for_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> {
-    Chain::from_str_id(chain_id)
-        .filter(|c| c.is_evm())
-        .ok_or_else(|| SpectraBridgeError::from(format!("unsupported EVM chain_id: {chain_id}")))
+pub(super) fn evm_network(chain: Chain) -> Result<Chain, SpectraBridgeError> {
+    if chain.is_evm() {
+        Ok(chain)
+    } else {
+        Err(format!("unsupported EVM chain_id: {chain}").into())
+    }
 }
 
 /// Serialize a value to JSON, returning the bridge error type directly.
@@ -85,79 +82,7 @@ pub(super) fn fee_or_static(
     Ok(fee)
 }
 
-// ── Decimal scaling ───────────────────────────────────────────────────────
-
-/// Format a smallest-unit `u128` amount as a fixed-decimal string. Used for
-/// chains whose typed balance struct doesn't already provide a `_display` field.
-pub(crate) fn format_units(raw: u128, decimals: u32, max_frac: usize) -> String {
-    if decimals == 0 {
-        return raw.to_string();
-    }
-    let scale = 10u128.pow(decimals);
-    let whole = raw / scale;
-    let frac = raw % scale;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
-    let trimmed = frac_str.trim_end_matches('0');
-    if trimmed.is_empty() {
-        return whole.to_string();
-    }
-    let capped = if trimmed.len() > max_frac {
-        &trimmed[..max_frac]
-    } else {
-        trimmed
-    };
-    format!("{whole}.{capped}")
-}
-
-pub(super) fn format_smallest_unit_decimal(amount: u128, decimals: u32) -> String {
-    format_units(amount, decimals, usize::MAX)
-}
-
-/// Scale a raw integer by `10^decimals` into a human-readable decimal string
-/// with up to 6 fractional digits of precision.
-pub(super) fn format_decimals(raw: u128, decimals: u8) -> String {
-    format_units(raw, decimals as u32, 6)
-}
-
 // ── Balance projection ────────────────────────────────────────────────────
-
-/// The native balance in display units, from the typed summary.
-pub(super) fn summary_display_balance(
-    chain_id: &str,
-    summary: &crate::service::types::NativeBalanceSummary,
-) -> Result<f64, SpectraBridgeError> {
-    // A balance nobody could read is not a balance of zero: the caller
-    // subtracts a fee from the result and offers the difference as the send
-    // sheet's maximum.
-    let unreadable = |field: &str, value: &str| {
-        SpectraBridgeError::from(format!("{chain_id} {field}: not a number: {value:?}"))
-    };
-    let chain = chain_for_id(chain_id)?;
-    // NEAR's smallest unit is 10^24 yocto. Dividing that through an f64 loses
-    // precision well before the decimal point, so the client's own display
-    // string is the better source.
-    if chain == Chain::Near {
-        return summary
-            .amount_display
-            .parse::<f64>()
-            .map_err(|_| unreadable("amount_display", &summary.amount_display));
-    }
-    let factor = 10f64.powi(chain.native_decimals() as i32);
-    summary
-        .smallest_unit
-        .parse::<f64>()
-        .map(|units| units / factor)
-        .map_err(|_| unreadable("smallest_unit", &summary.smallest_unit))
-}
-
-/// The same scaling for a token, whose decimals come off its contract rather
-/// than the catalog.
-pub(super) fn token_display_balance(raw: u128, decimals: u8) -> f64 {
-    raw as f64 / 10f64.powi(i32::from(decimals))
-}
 
 // ── Fee estimate ──────────────────────────────────────────────────────────
 
@@ -218,8 +143,8 @@ pub(super) fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> Str
 
 /// Return a zero-amount AssetHolding template for the native coin of each
 /// chain. Used as the default when the holding doesn't exist yet.
-pub(crate) fn native_coin_template(chain_id: &str) -> Option<AssetHolding> {
-    Chain::from_str_id(chain_id).map(Chain::native_holding_template)
+pub(crate) fn native_coin_template(chain_id: crate::registry::Chain) -> Option<AssetHolding> {
+    Some(Chain::native_holding_template(chain_id))
 }
 
 /// Returns `true` when `s` starts with a BIP-32 extended public key prefix.
@@ -239,71 +164,4 @@ pub(super) fn decode_secret_array<const N: usize>(
         .try_into()
         .map_err(|_| SpectraBridgeError::from(format!("private key must be {N} bytes")))?;
     Ok(zeroize::Zeroizing::new(*array))
-}
-
-#[cfg(test)]
-mod display_balance_from_a_typed_summary {
-    use super::summary_display_balance;
-    use crate::service::types::NativeBalanceSummary;
-
-    fn summary(smallest: &str, display: &str) -> NativeBalanceSummary {
-        NativeBalanceSummary {
-            smallest_unit: smallest.to_string(),
-            amount_display: display.to_string(),
-        }
-    }
-
-    /// Every chain divides its smallest unit by its own decimals.
-    #[test]
-    fn each_chain_divides_by_its_own_decimals() {
-        // (chain_id, smallest unit, expected display)
-        for (chain_id, smallest, expected) in [
-            ("solana", "1500000000", 1.5),     // 9 decimals, was "lamports"
-            ("stellar", "15000000", 1.5),      // 7 decimals, was "stroops"
-            ("polkadot", "12500000000", 1.25), // 10 decimals, was "planck"
-            ("bitcoin", "150000000", 1.5),     // 8 decimals, was "confirmed_sats"
-            ("ton", "1500000000", 1.5),        // 9 decimals, was "nanotons"
-            ("cardano", "1500000", 1.5),       // 6 decimals, was "lovelace"
-            ("tron", "1500000", 1.5),          // 6 decimals, was "sun"
-        ] {
-            let got = summary_display_balance(chain_id, &summary(smallest, "ignored")).unwrap();
-            assert!(
-                (got - expected).abs() < 1e-9,
-                "{chain_id}: {smallest} -> {got}, expected {expected}"
-            );
-        }
-    }
-
-    /// NEAR is the exception, and it is the reason the exception exists:
-    /// 10^24 yocto does not survive an f64 division intact, so the client's
-    /// own display string is read instead — exactly what the JSON version
-    /// did when it preferred `near_display` over dividing `yocto_near`.
-    #[test]
-    fn near_reads_the_display_string_rather_than_dividing_yocto() {
-        let s = summary("100000000000000000000000", "0.1");
-        assert_eq!(summary_display_balance("near", &s).unwrap(), 0.1);
-        // And the smallest-unit path would not have produced it exactly.
-        let divided = 1e23 / 10f64.powi(24);
-        assert!(
-            (divided - 0.1).abs() > 0.0 || divided != 0.1,
-            "if f64 division were exact here the special case would be unnecessary"
-        );
-    }
-
-    /// What cannot be read is refused, not reported as an empty wallet.
-    ///
-    /// All three of these answered `0.0`, and the caller subtracts a fee from
-    /// the result and offers the difference as the send sheet's maximum — so a
-    /// balance nobody could read showed the holder nothing to send.
-    #[test]
-    fn an_unreadable_balance_is_an_error_and_not_an_empty_wallet() {
-        assert!(summary_display_balance("not-a-chain", &summary("100", "1")).is_err());
-        assert!(summary_display_balance("solana", &summary("not-a-number", "1")).is_err());
-        assert!(summary_display_balance("near", &summary("100", "not-a-number")).is_err());
-        // A real zero still reads as zero.
-        assert_eq!(
-            summary_display_balance("solana", &summary("0", "0")).unwrap(),
-            0.0
-        );
-    }
 }

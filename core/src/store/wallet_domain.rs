@@ -76,7 +76,7 @@ impl CoreSeedDerivationPreset {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolding {
     /// The deployment this is a holding of — `deployment_id()`, carried so a
@@ -87,7 +87,7 @@ pub struct AssetHolding {
     pub name: String,
     pub symbol: String,
     pub coingecko_id: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub token_standard: String,
     pub contract_address: Option<String>,
     /// The balance, as an exact decimal in the asset's own units.
@@ -104,20 +104,14 @@ impl AssetHolding {
                 .is_none_or(|c| c.is_empty())
     }
 
-    pub fn chain(&self) -> Option<crate::registry::Chain> {
-        crate::registry::Chain::from_str_id(&self.chain_id)
-    }
-
     pub fn deployment_id(&self) -> String {
         let network = &self.chain_id;
         if self.is_native() {
             return format!("{network}:native");
         }
-        let contract = crate::tokens::normalize_token_identifier(
-            self.contract_address.clone(),
-            self.chain_id.clone(),
-        )
-        .unwrap_or_default();
+        let contract =
+            crate::tokens::normalize_token_identifier(self.contract_address.clone(), self.chain_id)
+                .unwrap_or_default();
         format!(
             "{network}:{}:{contract}",
             self.token_standard.to_lowercase()
@@ -139,12 +133,10 @@ impl AssetHolding {
 
     /// Validate identity before persistence and derive catalog-owned display facts.
     pub fn canonicalize(&mut self) -> Result<(), String> {
-        let network = self.chain().ok_or("unknown holding network")?;
+        let network = self.chain_id;
         self.amount = crate::decimal::canonical(&self.amount).ok_or("invalid holding amount")?;
-        self.contract_address = crate::tokens::normalize_token_identifier(
-            self.contract_address.clone(),
-            self.chain_id.clone(),
-        );
+        self.contract_address =
+            crate::tokens::normalize_token_identifier(self.contract_address.clone(), self.chain_id);
         if self.token_standard == "Native" {
             if self.contract_address.is_some() {
                 return Err("native token cannot carry a contract".into());
@@ -295,14 +287,14 @@ impl CoreSeedDerivationPaths {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletView {
     pub id: String,
     pub name: String,
     /// The network this wallet is on, as a registry chain id — the chain's
     /// own id on a family with one network.
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// `Chain::address_slot()` → address for this wallet.
     ///
     /// A wallet belongs to one chain (`chain_id`), so in practice this
@@ -333,8 +325,7 @@ impl WalletView {
     /// The address for the wallet's own chain — what the UI shows and what
     /// balance/history calls query.
     pub fn primary_address(&self) -> Option<&str> {
-        crate::registry::Chain::from_str_id(&self.chain_id)
-            .and_then(|chain| self.address_for(chain))
+        self.address_for(self.chain_id)
     }
 }
 
@@ -355,9 +346,7 @@ impl WalletView {
         use crate::registry::Chain;
         use crate::store::state::{WalletAddress, WalletState};
 
-        let invalid = |message: String| crate::SpectraBridgeError::InvalidInput { message };
-        let chain = Chain::from_str_id(&self.chain_id)
-            .ok_or_else(|| invalid(format!("unknown wallet network: {}", self.chain_id)))?;
+        let chain = self.chain_id;
         let derivation_path = self
             .seed_derivation_paths
             .path_for(chain)
@@ -367,7 +356,7 @@ impl WalletView {
             id: self.id.clone(),
             name: self.name.clone(),
             signing: self.signing,
-            chain_id: chain.str_id().to_string(),
+            chain_id: chain,
             include_in_portfolio_total: self.include_in_portfolio_total,
             xpub: self.bitcoin_xpub.clone(),
             derivation_preset: self.seed_derivation_preset,
@@ -398,7 +387,7 @@ impl WalletView {
                         let owner =
                             Chain::all().find(|candidate| candidate.address_slot() == slot)?;
                         Some(WalletAddress {
-                            chain_id: owner.str_id().to_string(),
+                            chain_id: owner,
                             address: address.clone(),
                             kind: "receive".to_string(),
                             derivation_path: self
@@ -422,32 +411,28 @@ impl crate::store::state::WalletState {
     ///
     /// `WalletState` remains the authority. This produces a view model.
     pub fn to_wallet_view(&self, defaults: &CoreSeedDerivationPaths) -> WalletView {
-        use crate::registry::Chain;
-
-        let chain = Chain::from_str_id(&self.chain_id);
         let mut seed_derivation_paths = defaults.clone();
         for address in &self.addresses {
-            if let (Some(network), Some(path)) = (
-                Chain::from_str_id(&address.chain_id),
-                address.derivation_path.as_deref(),
-            ) {
-                seed_derivation_paths.set_path_for(network, path);
+            if let Some(path) = address.derivation_path.as_deref() {
+                seed_derivation_paths.set_path_for(address.chain_id, path);
             }
         }
-        if let (Some(chain), Some(path)) = (chain, self.derivation_path.as_deref()) {
-            seed_derivation_paths.set_path_for(chain, path);
+        if let Some(path) = self.derivation_path.as_deref() {
+            seed_derivation_paths.set_path_for(self.chain_id, path);
         }
 
         WalletView {
             id: self.id.clone(),
             name: self.name.clone(),
-            chain_id: self.chain_id.clone(),
+            chain_id: self.chain_id,
             addresses: self
                 .addresses
                 .iter()
-                .filter_map(|entry| {
-                    Chain::from_str_id(&entry.chain_id)
-                        .map(|chain| (chain.address_slot().to_string(), entry.address.clone()))
+                .map(|entry| {
+                    (
+                        entry.chain_id.address_slot().to_string(),
+                        entry.address.clone(),
+                    )
                 })
                 .collect(),
             bitcoin_xpub: self.xpub.clone(),
@@ -512,7 +497,7 @@ impl CoreTokenPreferenceEntry {
 
     /// The chain hosting this token.
     pub fn hosting_chain(&self) -> Option<crate::registry::Chain> {
-        crate::registry::Chain::from_str_id(&self.token.chain_id).filter(|c| c.hosts_tokens())
+        Some(self.token.chain_id).filter(|c| c.hosts_tokens())
     }
 }
 
@@ -585,7 +570,7 @@ mod roundtrip_tests {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain_id: "bnb-chain".to_string(),
+                chain_id: crate::registry::Chain::BnbChain,
                 name: "Tether USD".to_string(),
                 symbol: "USDT".to_string(),
                 token_standard: "BEP-20".to_string(),
@@ -600,7 +585,7 @@ mod roundtrip_tests {
             },
         };
         let json = serde_json::to_string(&entry).unwrap();
-        assert!(json.contains("\"chainId\":\"bnb-chain\""));
+        assert!(json.contains("\"chainId\":\"bnb\""));
         assert!(json.contains("\"category\":\"stablecoin\""));
         assert!(json.contains("\"coingeckoId\""));
         assert!(json.contains("\"isBuiltIn\":true"));
@@ -608,7 +593,7 @@ mod roundtrip_tests {
         assert_eq!(decoded, entry);
 
         // Identity is the token's, not a stored string.
-        assert_eq!(entry.id(), "bnb-chain|0x55d39897");
+        assert_eq!(entry.id(), "bnb|0x55d39897");
         // And the category the tags imply, rather than a second copy of it.
         assert_eq!(
             CoreTokenPreferenceEntry::category_from_tags(&entry.token.tags),

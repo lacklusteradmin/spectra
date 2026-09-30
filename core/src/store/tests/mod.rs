@@ -18,7 +18,6 @@ mod owned_state;
 mod pinned_dashboard_assets;
 mod resident_state_round_trip;
 mod send_execution_shape;
-mod send_rules;
 mod status_trackers;
 mod tracked_tokens_persist;
 mod transaction_merge;

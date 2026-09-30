@@ -81,7 +81,7 @@ impl WalletService {
                     "Transaction already signed or review does not match; inspect it again".into(),
                 );
             }
-            let chain = chain_for_id(&stored.view.chain_id)?;
+            let chain = stored.view.chain_id;
             super::send_execution::send_chain_for(
                 &this.app_state().await,
                 &stored.view.wallet_id,
@@ -94,7 +94,7 @@ impl WalletService {
                     password.as_ref().map(|p| p.as_str()),
                 )
                 .await?;
-            if crate::send::flow::normalize_address(chain.str_id(), &stored.view.sender)
+            if crate::send::flow::normalize_address(chain, &stored.view.sender)
                 != signer.from_address
             {
                 return Err("Signer changed; build and review again".into());
@@ -103,7 +103,7 @@ impl WalletService {
             let (submission, resources) = match &stored.prepared {
                 PreparedPayload::Evm(p) => {
                     let client = EvmClient::new(
-                        this.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+                        this.endpoints_for(chain, &[EndpointCapability::Verification])
                             .await,
                         chain.evm_chain_id()?,
                     );
@@ -171,14 +171,13 @@ impl WalletService {
     /// Actual configured destinations, in the order the service will use them.
     pub async fn send_endpoints(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let chain = chain_for_id(&chain_id)?;
             Ok(this
-                .endpoints_for(chain.str_id(), &[EndpointCapability::Broadcast])
+                .endpoints_for(chain, &[EndpointCapability::Broadcast])
                 .await
                 .as_ref()
                 .clone())
@@ -225,7 +224,7 @@ impl WalletService {
         super::send_execution::send_chain_for(
             &state,
             &stored.view.wallet_id,
-            chain_for_id(&stored.view.chain_id)?,
+            stored.view.chain_id,
         )?;
         let db = self.bound_database().await?;
         let stored = stored.clone();
@@ -240,7 +239,7 @@ impl WalletService {
         endpoints: Vec<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let initial = self.load_send_artifact(id.clone()).await?;
-        let chain = chain_for_id(&initial.view.chain_id)?;
+        let chain = initial.view.chain_id;
         let _guard = self.lock_sender(chain, &initial.view.sender).await?;
         let mut stored = self.load_send_artifact(id).await?;
         let submission = stored
@@ -250,8 +249,8 @@ impl WalletService {
         if endpoints.is_empty() {
             return Err("Select at least one broadcast endpoint".into());
         }
-        let chain = chain_for_id(&stored.view.chain_id)?;
-        let configured = self.send_endpoints(chain.str_id().into()).await?;
+        let chain = stored.view.chain_id;
+        let configured = self.send_endpoints(chain).await?;
         let mut unique = std::collections::HashSet::new();
         // Validate every destination before submitting to any of them.
         for endpoint in &endpoints {
@@ -377,7 +376,7 @@ impl WalletService {
                 level,
                 "Broadcast",
                 message,
-                Some(chain.str_id().into()),
+                Some(chain),
                 submission.transaction_hash.clone(),
             )
             .await;
@@ -407,7 +406,7 @@ impl WalletService {
         request.zeroize_sensitive_fields();
         request.password = None;
         request.sign_only = false;
-        let chain = chain_for_id(&request.chain_id)?;
+        let chain = request.chain_id;
         if let Some(reason) = chain.transparent_send_unavailable_reason() {
             return Err(reason.into());
         }
@@ -423,16 +422,11 @@ impl WalletService {
             .address_on(chain)
             .ok_or("Wallet has no address on this network")?
             .to_string();
-        if !crate::send::flow::is_valid_send_address(
-            chain.str_id().into(),
-            request.to_address.clone(),
-        ) {
+        if !crate::send::flow::is_valid_send_address(chain, request.to_address.clone()) {
             return Err("Invalid destination for selected network".into());
         }
         let prepared = if chain.is_evm() {
-            let endpoints = self
-                .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
-                .await;
+            let endpoints = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
             let mut overrides = request
                 .evm_overrides
                 .clone()
@@ -443,7 +437,7 @@ impl WalletService {
             }
             let (to, value, data) = if let Some(contract) = &request.contract_address {
                 let metadata = EvmClient::new(
-                    self.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                    self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
                         .await,
                     chain.evm_chain_id()?,
                 )
@@ -525,7 +519,7 @@ impl WalletService {
                 revision: 0,
                 stage: SendStage::Prepared,
                 wallet_id: request.wallet_id.clone(),
-                chain_id: request.chain_id.clone(),
+                chain_id: request.chain_id,
                 sender,
                 recipient: request.to_address.clone(),
                 amount: request.amount_str.clone(),

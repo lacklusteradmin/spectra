@@ -96,7 +96,7 @@ use crate::tokens;
 /// second name for the same call.
 #[uniffi::export]
 pub fn list_all_builtin_token_deployments() -> Vec<tokens::TokenDeploymentEntry> {
-    tokens::list_token_deployments(String::new())
+    tokens::list_token_deployments(None)
 }
 
 /// Generate a new random BIP-39 mnemonic of `word_count` words.

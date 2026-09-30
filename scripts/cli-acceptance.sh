@@ -362,7 +362,9 @@ assert all("kind" not in r for r in records)
 assert all(r["api"] is not None or not r["capabilities"] for r in records)
 configured = {r["chainId"]: r["endpoints"] for r in catalog["configured"]}
 btc = configured["bitcoin"]
-assert btc and all(any(r["endpoint"] == url and r["api"] == "esplora" for r in records) for url in btc)
+# Bitcoin speaks Esplora and BlockCypher alike, and uses both.
+assert btc and all(any(r["endpoint"] == url and r["api"] in ("esplora", "blockcypher") for r in records) for url in btc)
+assert "https://api.blockcypher.com/v1/btc/main" in btc
 assert "https://blockchain.info/multiaddr" not in btc
 assert configured["ton"] == ["https://toncenter.com/api/v2"]
 # A transport list holds every API a chain's own client speaks; secondary
@@ -371,9 +373,9 @@ assert all(":" not in chain for chain in configured)
 assert [r["endpoint"] for r in records if r["chainId"] == "ton" and r["api"] == "toncenter-v3"] == ["https://toncenter.com/api/v3"]
 assert configured["tron"] == ["https://api.trongrid.io", "https://tron-rpc.publicnode.com"]
 assert not any(r["api"] in ("taostats", "subscan", "ethplorer") for r in records)
-# Litecoin speaks Esplora and BlockCypher alike, and uses both.
-assert configured["litecoin"] == ["https://litecoinspace.org/api", "https://api.blockcypher.com/v1/ltc/main"]
-assert configured["bitcoin-cash"] == ["https://rest.bch.actorforth.org/v2"]
+# Litecoin speaks Blockbook, Esplora and BlockCypher alike, and uses all three.
+assert configured["litecoin"] == ["https://litecoinspace.org/api", "https://api.blockcypher.com/v1/ltc/main", "https://blockbook.ltc.zelcore.io"]
+assert configured["bitcoin-cash"] == ["https://rest.bch.actorforth.org/v2", "https://blockbook.bch.zelcore.io"]
 assert configured["monero"]
 assert all(any(r["endpoint"] == url and r["api"] == "monero-daemon-rpc" for r in records) for url in configured["monero"])
 PYAPI
@@ -899,7 +901,7 @@ check "non-empty access list needs explicit gas" $REJECTED \
     spectra send overrides --access-list "$access_list_fixture"
 
 section "custom EVM fees"
-contains "returns parsed fees from core" '"maxFeePerGasGwei":30.25' \
+contains "returns parsed fees from core" '"maxFeePerGasGwei":"30.25"' \
     spectra --json send fees --max-fee ' 30.25 ' --priority-fee 1
 check "accepts a one-wei priority fee" $OK \
     spectra send fees --max-fee 1 --priority-fee 0.000000001
@@ -915,7 +917,7 @@ for bad_fee in inf NaN -1 0 1e-10 1e100; do
 done
 
 section "send affordability"
-# The fee half of "can this send land". `route_send_asset` already refuses
+# The fee half of "can this send land". The send preflight already refuses
 # amount > balance; this counts the fee against the chain's own asset.
 contains "counts the fee against a native balance" '"verdict":"amountPlusFeeExceedsBalance"' \
     spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2

@@ -8,8 +8,8 @@ pub fn token_artwork_name(token_id: String) -> String {
         .unwrap_or_default()
 }
 #[uniffi::export]
-pub fn chain_artwork_name(chain_id: String) -> String {
-    crate::chains::chain_by_str_id(&chain_id)
+pub fn chain_artwork_name(chain_id: crate::registry::Chain) -> String {
+    Some(chain_id.entry())
         .map(|c| c.artwork_name.clone())
         .unwrap_or_default()
 }
@@ -50,7 +50,7 @@ mod tests {
         impostor.contract_address = Some("unknown-contract".into());
         assert_eq!(deployment_artwork_name(Some(impostor.deployment_id())), "");
         assert_eq!(token_artwork_name("USDC".into()), "");
-        assert_eq!(chain_artwork_name("base".into()), "base");
+        assert_eq!(chain_artwork_name(crate::registry::Chain::Base), "base");
     }
     #[test]
     fn every_named_mark_ships_a_file() {

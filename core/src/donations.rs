@@ -4,7 +4,6 @@
 //! rather than trusted: a known mainnet, one address per network, and an
 //! address that is already its chain's valid, normalized form.
 
-use crate::registry::Chain;
 use serde::Deserialize;
 use std::sync::LazyLock;
 
@@ -14,7 +13,7 @@ static DONATIONS_TOML: &str = include_str!("../data/donations.toml");
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, uniffi::Record)]
 #[serde(deny_unknown_fields)]
 pub struct DonationDestination {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub address: String,
 }
 
@@ -34,15 +33,14 @@ fn load(text: &str) -> Result<Vec<DonationDestination>, String> {
         .donations;
     let mut seen = std::collections::HashSet::new();
     for donation in &donations {
-        let id = &donation.chain_id;
-        let chain = Chain::from_str_id(id).ok_or_else(|| format!("unknown chain_id {id:?}"))?;
-        if chain.is_testnet() {
+        let id = donation.chain_id;
+        if id.is_testnet() {
             return Err(format!("{id}: a donation address belongs on a mainnet"));
         }
         if !seen.insert(id) {
             return Err(format!("{id}: more than one donation address"));
         }
-        if !crate::send::flow::is_valid_send_address(id.clone(), donation.address.clone())
+        if !crate::send::flow::is_valid_send_address(id, donation.address.clone())
             || crate::send::flow::normalize_address(id, &donation.address) != donation.address
         {
             return Err(format!(

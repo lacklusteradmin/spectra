@@ -21,7 +21,7 @@ fn every_built_in_has_a_unique_id() {
 #[test]
 fn the_catalog_chain_ids_all_resolve() {
     for token in crate::tokens::catalog() {
-        let chain = crate::registry::Chain::from_str_id(&token.chain_id).unwrap();
+        let chain = token.chain_id;
         if !token.is_native() {
             assert!(chain.hosts_tokens(), "{}", token.deployment_id);
         }
@@ -47,7 +47,7 @@ async fn merging_keeps_what_the_user_chose() {
         .expect("an enabled built-in");
     let id = target.id().clone();
     let key = crate::store::state::CoreTokenPreferenceKey {
-        chain_id: target.token.chain_id.clone(),
+        chain_id: target.token.chain_id,
         contract: target.token.contract.clone(),
     };
     service
@@ -87,7 +87,7 @@ fn built_ins_toggle_as_one_token_and_cannot_be_removed() {
     let usdc = state
         .token_preferences
         .iter()
-        .find(|e| e.token.symbol == "USDC" && e.token.chain_id == "ethereum")
+        .find(|e| e.token.symbol == "USDC" && e.token.chain_id == crate::registry::Chain::Ethereum)
         .expect("USDC is built in")
         .token
         .clone();
@@ -96,7 +96,7 @@ fn built_ins_toggle_as_one_token_and_cannot_be_removed() {
     let events = reduce_state_in_place(
         &mut state,
         StateCommand::RemoveCustomToken {
-            chain_id: usdc.chain_id.clone(),
+            chain_id: usdc.chain_id,
             contract: usdc.contract.clone(),
         },
     );

@@ -175,7 +175,7 @@ where
             .filter(|(net, _)| *net != 0)
             .map(|(net, row)| CoreBitcoinHistorySnapshot {
                 txid: row.txid,
-                amount_btc: net.unsigned_abs() as f64 / 100_000_000.0,
+                amount_btc: crate::decimal::from_units(net.unsigned_abs(), 8),
                 kind: if net > 0 { "receive" } else { "send" }.into(),
                 status: if row.confirmed {
                     "confirmed"
@@ -303,7 +303,7 @@ mod tests {
         assert!(
             items
                 .iter()
-                .all(|r| r.amount_btc == 0.00000001 && r.kind == "receive")
+                .all(|r| r.amount_btc == "0.00000001" && r.kind == "receive")
         );
         assert_eq!(
             items.iter().map(|r| &r.txid).collect::<HashSet<_>>().len(),

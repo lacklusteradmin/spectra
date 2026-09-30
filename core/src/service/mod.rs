@@ -141,25 +141,23 @@ pub use types::*;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct EndpointIndex {
-    capabilities: std::collections::HashMap<String, Vec<EndpointCapability>>,
-    endpoints: std::collections::HashMap<String, Arc<Vec<String>>>,
+    capabilities: std::collections::HashMap<Chain, Vec<EndpointCapability>>,
+    endpoints: std::collections::HashMap<Chain, Arc<Vec<String>>>,
 }
 
 impl EndpointIndex {
     fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
         for row in &list {
-            let chain = Chain::from_str_id(&row.chain_id)
-                .ok_or_else(|| format!("Unknown endpoint network: {}", row.chain_id))?;
             for url in &row.endpoints {
-                crate::endpoint_api::validate_configured_endpoint(chain, url)?;
+                crate::endpoint_api::validate_configured_endpoint(row.chain_id, url)?;
             }
         }
 
         let mut endpoints = std::collections::HashMap::with_capacity(list.len());
         let mut capabilities = std::collections::HashMap::new();
         for entry in list {
-            capabilities.insert(entry.chain_id.clone(), entry.capabilities);
-            endpoints.insert(entry.chain_id.clone(), Arc::new(entry.endpoints));
+            capabilities.insert(entry.chain_id, entry.capabilities);
+            endpoints.insert(entry.chain_id, Arc::new(entry.endpoints));
         }
         Ok(Self {
             endpoints,
@@ -292,22 +290,21 @@ impl WalletService {
         let [api] = chain.endpoint_apis() else {
             return Err(format!("{} has no single fetch API", chain.str_id()).into());
         };
-        Ok((*api, self.endpoints_for(chain.str_id(), required).await))
+        Ok((*api, self.endpoints_for(chain, required).await))
     }
 
-    pub(crate) async fn configured_endpoint_urls(&self, chain_id: &str) -> Arc<Vec<String>> {
+    pub(crate) async fn configured_endpoint_urls(&self, chain: Chain) -> Arc<Vec<String>> {
         let base = self
             .endpoints
             .read()
             .await
             .endpoints
-            .get(chain_id)
+            .get(&chain)
             .cloned()
             .unwrap_or_default();
         if self
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
-            && let Some(chain) = Chain::from_str_id(chain_id)
         {
             let mut custom = self
                 .custom_api_endpoints(chain, chain.endpoint_apis(), &[])
@@ -337,8 +334,8 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
         }
         endpoints.push(ChainEndpoints {
             capabilities: vec![],
-            chain_id: chain.str_id().into(),
-            endpoints: crate::filtered_endpoint_records_for_chain(chain.str_id().into(), &[])?
+            chain_id: chain,
+            endpoints: crate::filtered_endpoint_records_for_chain(chain, &[])?
                 .into_iter()
                 .filter(|record| {
                     apis.contains(&record.api)
@@ -362,8 +359,8 @@ mod a_primary_endpoint_can_serve_a_primary_read {
         let mut checked = 0;
         for row in catalog_endpoints().expect("catalog endpoints") {
             for endpoint in &row.endpoints {
-                let chain = Chain::from_str_id(&row.chain_id).unwrap();
-                let record = crate::filtered_endpoint_records_for_chain(row.chain_id.clone(), &[])
+                let chain = row.chain_id;
+                let record = crate::filtered_endpoint_records_for_chain(row.chain_id, &[])
                     .unwrap()
                     .into_iter()
                     .find(|record| &record.endpoint == endpoint)
@@ -387,7 +384,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
         let litecoin = catalog_endpoints()
             .unwrap()
             .into_iter()
-            .find(|row| row.chain_id == "litecoin")
+            .find(|row| row.chain_id == crate::registry::Chain::Litecoin)
             .unwrap();
         assert!(
             litecoin

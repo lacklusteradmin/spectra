@@ -21,8 +21,8 @@ use spectra_core::registry::Chain;
 /// One lookup, so `bitcoin`, `Bitcoin` and `BTC` behave the same everywhere.
 /// The previous CLI had three near-identical resolvers and they disagreed.
 /// The display name for a chain id, for text a person reads.
-pub fn chain_name(chain_id: &str) -> String {
-    Chain::display_name_for_id(chain_id)
+pub fn chain_name(chain: Chain) -> String {
+    chain.chain_display_name().to_string()
 }
 
 pub fn resolve_chain(needle: &str) -> CliResult<Chain> {

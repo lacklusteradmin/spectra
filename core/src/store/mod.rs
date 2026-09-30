@@ -49,7 +49,7 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
         .filter_map(|token| {
             // A catalog row on a chain that cannot host tokens is a data
             // mistake, and skipping it is how it stays one.
-            crate::registry::Chain::from_str_id(&token.chain_id).filter(|c| c.hosts_tokens())?;
+            Some(token.chain_id).filter(|c| c.hosts_tokens())?;
             Some(wallet_domain::CoreTokenPreferenceEntry {
                 category: wallet_domain::CoreTokenPreferenceEntry::category_from_tags(&token.tags),
                 is_built_in: true,
@@ -97,7 +97,8 @@ pub fn merge_built_in_token_preferences(
     merged.sort_by(|lhs, rhs| {
         lhs.token
             .chain_id
-            .cmp(&rhs.token.chain_id)
+            .str_id()
+            .cmp(rhs.token.chain_id.str_id())
             .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
             .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
     });
@@ -148,7 +149,7 @@ pub struct PriceAlertEvaluationAlert {
     pub holding_key: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub target_price: f64,
     pub condition: wallet_domain::CorePriceAlertCondition,
     pub is_enabled: bool,
@@ -180,7 +181,7 @@ pub struct PriceAlertNotification {
     pub id: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub target_price: f64,
     pub live_price: f64,
     pub condition: wallet_domain::CorePriceAlertCondition,
@@ -282,7 +283,7 @@ pub fn new_event_id() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRecipientPreflightRequest {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub holding_symbol: String,
     pub token_symbol: Option<String>,
     pub recipient_has_code: Option<bool>,
@@ -301,17 +302,20 @@ pub struct EvmRecipientPreflightRequest {
 pub enum EvmRecipientPreflightWarning {
     /// The recipient has contract code, so it may not be able to receive
     /// `symbol`.
-    RecipientIsContract { chain_id: String, symbol: String },
+    RecipientIsContract {
+        chain_id: crate::registry::Chain,
+        symbol: String,
+    },
     /// The recipient's code could not be read.
-    RecipientCodeUnknown { chain_id: String },
+    RecipientCodeUnknown { chain_id: crate::registry::Chain },
     /// The token contract has no code on this chain.
     TokenContractMissing {
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         token_symbol: String,
     },
     /// The token contract's code could not be read.
     TokenCodeUnknown {
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         token_symbol: String,
     },
 }
@@ -327,13 +331,11 @@ pub fn evm_recipient_preflight_warnings(
     let chain_id = request.chain_id;
     match request.recipient_has_code {
         Some(true) => warnings.push(EvmRecipientPreflightWarning::RecipientIsContract {
-            chain_id: chain_id.clone(),
+            chain_id,
             symbol: request.holding_symbol,
         }),
         Some(false) => {}
-        None => warnings.push(EvmRecipientPreflightWarning::RecipientCodeUnknown {
-            chain_id: chain_id.clone(),
-        }),
+        None => warnings.push(EvmRecipientPreflightWarning::RecipientCodeUnknown { chain_id }),
     }
     if let Some(token_symbol) = request.token_symbol {
         match request.token_has_code {
@@ -519,7 +521,6 @@ pub struct ResolvedPendingStatus {
     pub status: String,
     pub confirmations: Option<u32>,
     pub receipt_block_number: Option<i64>,
-    pub confirmed_network_fee: Option<f64>,
     /// What the EVM receipt says the transaction cost.
     pub evm_receipt_cost: Option<EvmReceiptCost>,
 }
@@ -535,9 +536,11 @@ pub struct ResolvedPendingStatus {
 pub struct EvmReceiptCost {
     /// Gas consumed, as a decimal integer string.
     pub gas_used: String,
-    pub effective_gas_price_gwei: f64,
-    /// `gas_used × effective_gas_price`, in the chain's gas token.
-    pub network_fee: f64,
+    /// Exact decimal gwei.
+    pub effective_gas_price_gwei: String,
+    /// `gas_used × effective_gas_price`, as an exact decimal in the chain's
+    /// gas token.
+    pub network_fee: String,
 }
 
 impl EvmReceiptCost {
@@ -553,8 +556,11 @@ impl EvmReceiptCost {
         let price = effective_gas_price_wei?.parse::<u128>().ok()?;
         Some(Self {
             gas_used: gas.to_string(),
-            effective_gas_price_gwei: price as f64 / 1e9,
-            network_fee: gas.saturating_mul(price) as f64 / 10f64.powi(i32::from(native_decimals)),
+            effective_gas_price_gwei: crate::decimal::from_units(price, 9),
+            network_fee: crate::decimal::from_units(
+                gas.checked_mul(price)?,
+                u32::from(native_decimals),
+            ),
         })
     }
 }
@@ -566,7 +572,7 @@ impl EvmReceiptCost {
 #[serde(rename_all = "camelCase")]
 pub struct TransactionStatusChange {
     pub id: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub transaction_hash: Option<String>,
     pub old_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub new_status: crate::store::wallet_domain::CoreTransactionStatus,
@@ -709,8 +715,8 @@ mod evm_receipt_cost_tests {
     fn a_receipt_cost_needs_both_fields_and_uses_the_gas_token_places() {
         let cost = EvmReceiptCost::from_receipt(Some("21000"), Some("2000000000"), 18).unwrap();
         assert_eq!(cost.gas_used, "21000");
-        assert_eq!(cost.effective_gas_price_gwei, 2.0);
-        assert!((cost.network_fee - 0.000042).abs() < 1e-15);
+        assert_eq!(cost.effective_gas_price_gwei, "2");
+        assert_eq!(cost.network_fee, "0.000042");
         assert_eq!(EvmReceiptCost::from_receipt(Some("21000"), None, 18), None);
         assert_eq!(EvmReceiptCost::from_receipt(None, Some("1"), 18), None);
         assert_eq!(

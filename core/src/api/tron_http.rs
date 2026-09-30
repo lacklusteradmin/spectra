@@ -14,7 +14,6 @@ use sha2::{Digest, Sha256};
 pub struct TronBalance {
     /// SUN (1 TRX = 1_000_000 SUN).
     pub sun: u64,
-    pub trx_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +48,7 @@ pub struct Trc20Metadata {
 use crate::api::tron_metadata_cache::{self as metadata_cache, MetadataCache};
 
 pub struct TronHttpClient {
-    metadata_cache: Option<(String, std::sync::Arc<MetadataCache>)>,
+    metadata_cache: Option<(crate::registry::Chain, std::sync::Arc<MetadataCache>)>,
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
@@ -66,11 +65,11 @@ impl TronHttpClient {
     /// Balance reads share metadata across wallets; signing uses `new` and fresh metadata.
     pub(crate) fn with_metadata_cache(
         endpoints: std::sync::Arc<Vec<String>>,
-        chain: &str,
+        chain: crate::registry::Chain,
         cache: std::sync::Arc<MetadataCache>,
     ) -> Self {
         Self {
-            metadata_cache: Some((chain.to_owned(), cache)),
+            metadata_cache: Some((chain, cache)),
             ..Self::new(endpoints)
         }
     }
@@ -81,7 +80,7 @@ impl TronHttpClient {
                 cache
                     .get_or_fetch(
                         metadata_cache::Key {
-                            chain: chain.clone(),
+                            chain: *chain,
                             endpoints: self.endpoints.clone(),
                             contract: contract.to_owned(),
                         },
@@ -125,10 +124,7 @@ impl TronHttpClient {
             )
             .await?;
         let sun = resp.get("balance").and_then(|v| v.as_u64()).unwrap_or(0);
-        Ok(TronBalance {
-            sun,
-            trx_display: format_trx(sun),
-        })
+        Ok(TronBalance { sun })
     }
 
     /// Read the live balance and share cached symbol/decimals when this client
@@ -142,7 +138,7 @@ impl TronHttpClient {
             .fetch_trc20_balance_of(contract_base58, holder_base58)
             .await?;
         let metadata = self.read_metadata(contract_base58).await?;
-        let balance_display = crate::api::evm_json_rpc::format_token_amount(raw, metadata.decimals);
+        let balance_display = crate::decimal::from_units(raw, u32::from(metadata.decimals));
         Ok(Trc20Balance {
             contract: contract_base58.to_string(),
             holder: holder_base58.to_string(),
@@ -278,17 +274,6 @@ pub(crate) fn parse_abi_u128(hex_str: &str) -> Result<u128, String> {
         return Err("TRC20 integer exceeds u128 range".into());
     }
     u128::from_str_radix(&word[32..], 16).map_err(|e| format!("TRC20 integer: {e}"))
-}
-
-pub(crate) fn format_trx(sun: u64) -> String {
-    let whole = sun / 1_000_000;
-    let frac = sun % 1_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:06}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 /// Only the block reference is supplied by the node, never a transaction/hash.
@@ -429,8 +414,11 @@ mod metadata_cache_rpc_tests {
         let holder = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7";
         // Separate short-lived clients, just like separate wallet refreshes.
         let results = futures::future::join_all((0..8).map(|_| {
-            let client =
-                TronHttpClient::with_metadata_cache(endpoints.clone(), "tron", cache.clone());
+            let client = TronHttpClient::with_metadata_cache(
+                endpoints.clone(),
+                crate::registry::Chain::Tron,
+                cache.clone(),
+            );
             async move { client.fetch_trc20_balance(contract, holder).await.unwrap() }
         }))
         .await;
@@ -442,15 +430,23 @@ mod metadata_cache_rpc_tests {
         assert_eq!(server.received_requests().await.unwrap().len(), 10);
         // Even a cache-enabled client must bypass the cache for the explicit
         // metadata API used by the send builder.
-        let reader = TronHttpClient::with_metadata_cache(endpoints.clone(), "tron", cache.clone());
+        let reader = TronHttpClient::with_metadata_cache(
+            endpoints.clone(),
+            crate::registry::Chain::Tron,
+            cache.clone(),
+        );
         reader.fetch_trc20_metadata(contract).await.unwrap();
-        TronHttpClient::with_metadata_cache(endpoints.clone(), "tron-nile", cache.clone())
-            .read_metadata(contract)
-            .await
-            .unwrap();
+        TronHttpClient::with_metadata_cache(
+            endpoints.clone(),
+            crate::registry::Chain::TronNile,
+            cache.clone(),
+        )
+        .read_metadata(contract)
+        .await
+        .unwrap();
         // A changed endpoint list is a different source, even for the same chain.
         let changed = Arc::new(vec![format!("{}/", server.uri())]);
-        TronHttpClient::with_metadata_cache(changed, "tron", cache)
+        TronHttpClient::with_metadata_cache(changed, crate::registry::Chain::Tron, cache)
             .read_metadata(contract)
             .await
             .unwrap();

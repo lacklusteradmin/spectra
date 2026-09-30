@@ -14,8 +14,8 @@ pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
     }
 }
 
-pub fn derive_for_chain_id(
-    chain_id: &str,
+pub fn derive_for_chain(
+    chain: crate::registry::Chain,
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
@@ -41,12 +41,6 @@ pub fn derive_for_chain_id(
     let wa = want_address;
     let wp = want_public_key;
     let wk = want_private_key;
-
-    let Some(chain) = crate::registry::Chain::from_str_id(chain_id) else {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: format!("unsupported chain: {chain_id}"),
-        });
-    };
 
     // Keyed on `Chain`, not on the display name. The string match this replaces
     // had seventy-eight arms and no way to say it had them all; a name with a
@@ -138,7 +132,7 @@ pub fn derive_for_chain_id(
 /// match, so a chain that lands here was named by a caller rather than chosen
 /// in the app.
 pub fn derive_from_private_key(
-    chain_id: String,
+    chain: crate::registry::Chain,
     private_key_hex: String,
     want_address: bool,
     want_public_key: bool,
@@ -148,9 +142,6 @@ pub fn derive_from_private_key(
     };
     use crate::registry::Chain;
 
-    let Some(chain) = Chain::from_str_id(&chain_id) else {
-        return Ok(None);
-    };
     let result = match chain.mainnet_counterpart() {
         c if c.is_evm() => {
             evm::derive_evm_from_private_key(private_key_hex, want_address, want_public_key)?
@@ -193,15 +184,15 @@ mod dispatch_export_tests {
     #[test]
     fn the_registry_flag_and_the_dispatcher_agree_on_every_chain() {
         const KEY: &str = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
-        let derives = |name: &str| {
-            derive_from_private_key(name.to_string(), KEY.to_string(), true, false)
+        let derives = |chain| {
+            derive_from_private_key(chain, KEY.to_string(), true, false)
                 .expect("a valid key never errors")
                 .and_then(|r| r.address)
         };
 
         for chain in crate::registry::Chain::all() {
             let claimed = chain.derives_from_private_key();
-            let produced = derives(chain.str_id()).is_some();
+            let produced = derives(chain).is_some();
             assert_eq!(
                 claimed,
                 produced,
@@ -255,19 +246,10 @@ mod dispatch_export_tests {
             // Every chain, with no `continue`: a chain the catalog gives no
             // path for answers "", and the arms that ignore the path do not
             // mind receiving one.
-            let path = crate::app_core::default_path_for_chain(chain.str_id())
+            let path = crate::app_core::default_path_for_chain(chain)
                 .expect("a registry chain always has an answer, even when it is none");
-            let result = derive_for_chain_id(
-                chain.str_id(),
-                PHRASE,
-                &path,
-                None,
-                None,
-                None,
-                true,
-                false,
-                false,
-            );
+            let result =
+                derive_for_chain(chain, PHRASE, &path, None, None, None, true, false, false);
             match result {
                 Ok(r) if r.address.is_some() => {}
                 _ => missing.push(chain.str_id()),

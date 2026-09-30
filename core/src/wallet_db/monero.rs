@@ -4,12 +4,12 @@ use rusqlite::OptionalExtension;
 pub(crate) fn monero_load(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
 ) -> Result<Option<(u64, String)>, String> {
     with_conn(database, |conn| {
         conn.query_row(
             "SELECT revision,payload FROM monero_wallets WHERE wallet_id=?1 AND chain_id=?2",
-            [wallet_id, chain_id],
+            params![wallet_id, chain_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
@@ -19,7 +19,7 @@ pub(crate) fn monero_load(
 pub(crate) fn monero_save(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
     revision: Option<u64>,
     payload: &str,
 ) -> Result<(), String> {

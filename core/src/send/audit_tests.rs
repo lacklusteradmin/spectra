@@ -1,6 +1,6 @@
 //! Offline SDK oracles: derive real mnemonic keys, then use production signers.
 use super::*;
-use crate::{derivation::dispatch::derive_for_chain_id, send::keys::Ed25519Seed};
+use crate::{derivation::dispatch::derive_for_chain, send::keys::Ed25519Seed};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::Value;
 /// The SPL Token program id. Production reads it off the mint's owner in the
@@ -11,8 +11,11 @@ fn spl_token_program_id() -> [u8; 32] {
 fn vectors() -> Value {
     serde_json::from_str(include_str!("../../testdata/send-audit-vectors.json")).unwrap()
 }
-fn derived(chain: &str, path: &str) -> crate::derivation::types::DerivationResult {
-    derive_for_chain_id(
+fn derived(
+    chain: crate::registry::Chain,
+    path: &str,
+) -> crate::derivation::types::DerivationResult {
+    derive_for_chain(
         chain,
         vectors()["mnemonic"].as_str().unwrap(),
         path,
@@ -33,7 +36,7 @@ fn key(result: &crate::derivation::types::DerivationResult) -> Ed25519Seed {
 fn audit_aptos_mnemonic_address_and_signed_message_match_official_sdk() {
     let v = vectors();
     let expected = &v["aptos"];
-    let d = derived("aptos", "m/44'/637'/0'/0'/0'");
+    let d = derived(crate::registry::Chain::Aptos, "m/44'/637'/0'/0'/0'");
     assert_eq!(d.address.as_deref().unwrap(), expected["address"]);
     assert_eq!(d.public_key_hex.as_deref().unwrap(), expected["public_key"]);
     let prepared = aptos::prepare_transfer(
@@ -84,7 +87,7 @@ fn audit_aptos_mnemonic_address_and_signed_message_match_official_sdk() {
 fn audit_sui_local_ptb_and_intent_signature_match_official_sdk() {
     let v = vectors();
     let expected = &v["sui"];
-    let d = derived("sui", "m/44'/784'/0'/0'/0'");
+    let d = derived(crate::registry::Chain::Sui, "m/44'/784'/0'/0'/0'");
     assert_eq!(d.address.as_deref().unwrap(), expected["address"]);
     assert_eq!(d.public_key_hex.as_deref().unwrap(), expected["public_key"]);
     let coins = [sui::GasCoin {
@@ -125,7 +128,7 @@ fn audit_sui_local_ptb_and_intent_signature_match_official_sdk() {
 fn audit_tron_local_native_and_token_bytes_match_tronweb() {
     let v = vectors();
     let t = &v["tron"];
-    let d = derived("tron", "m/44'/195'/0'/0/0");
+    let d = derived(crate::registry::Chain::Tron, "m/44'/195'/0'/0/0");
     assert_eq!(d.address.as_deref().unwrap(), t["from"]);
     assert_eq!(d.private_key_hex.as_deref().unwrap(), t["key"]);
     let key = hex::decode(t["key"].as_str().unwrap()).unwrap();
@@ -174,7 +177,10 @@ fn audit_tron_local_native_and_token_bytes_match_tronweb() {
 fn audit_solana_mnemonic_native_and_spl_instructions_match_official_sdk() {
     let v = vectors();
     let expected = &v["solana"];
-    let d = derived("solana", expected["path"].as_str().unwrap());
+    let d = derived(
+        crate::registry::Chain::Solana,
+        expected["path"].as_str().unwrap(),
+    );
     assert_eq!(d.address.as_deref().unwrap(), expected["address"]);
     let key = key(&d);
     let from = key.public_key();
@@ -283,7 +289,7 @@ fn audit_local_builders_refuse_unfunded_or_mismatched_inputs() {
     assert!(prepare(0).is_err());
     assert!(prepare(u64::MAX).is_err());
     assert!(prepare(1).unwrap().sign(&[1; 32]).is_err());
-    let d = derived("sui", "m/44'/784'/0'/0'/0'");
+    let d = derived(crate::registry::Chain::Sui, "m/44'/784'/0'/0'/0'");
     let coins = [
         sui::GasCoin {
             id: [0x33; 32],
@@ -328,7 +334,10 @@ async fn audit_failed_sui_execution_is_not_a_successful_send() {
 #[test]
 fn audit_solana_self_transfers_merge_account_privileges() {
     let v = vectors();
-    let d = derived("solana", v["solana"]["path"].as_str().unwrap());
+    let d = derived(
+        crate::registry::Chain::Solana,
+        v["solana"]["path"].as_str().unwrap(),
+    );
     let key = key(&d);
     let owner = key.public_key();
     let hash = v["solana"]["blockhash"].as_str().unwrap();

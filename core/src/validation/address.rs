@@ -847,20 +847,12 @@ mod every_chain_accepts_what_it_derives {
             let Some(path) = crate::store::wallet_domain::CoreSeedDerivationPaths::default()
                 .path_for(chain)
                 .map(str::to_string)
-                .or_else(|| crate::app_core::default_path_from_catalog(chain.str_id()).ok())
+                .or_else(|| crate::app_core::default_path_from_catalog(chain).ok())
             else {
                 continue;
             };
-            let derived = crate::derivation::dispatch::derive_for_chain_id(
-                chain.str_id(),
-                MNEMONIC,
-                &path,
-                None,
-                None,
-                None,
-                true,
-                false,
-                false,
+            let derived = crate::derivation::dispatch::derive_for_chain(
+                chain, MNEMONIC, &path, None, None, None, true, false, false,
             );
             let Ok(result) = derived else { continue };
             let Some(address) = result.address.filter(|a| !a.is_empty()) else {

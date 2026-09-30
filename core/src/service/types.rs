@@ -124,7 +124,7 @@ pub enum SeedPhraseReveal {
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct EndpointProbe {
     pub api: crate::EndpointApi,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub endpoint: String,
     /// Operations the endpoint declares.
     pub capabilities: Vec<crate::EndpointCapability>,
@@ -169,7 +169,7 @@ pub enum TransactionCommand {
     /// property of the chain and comes from `registry::Chain`.
     Merge {
         incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         preserve_created_at_sentinel_unix: Option<f64>,
     },
     Remove {
@@ -187,7 +187,7 @@ pub enum TransactionCommand {
 pub struct ChainEndpoints {
     /// Declared operations for explicit URLs absent from the directory.
     pub capabilities: Vec<crate::EndpointCapability>,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub endpoints: Vec<String>,
 }
 

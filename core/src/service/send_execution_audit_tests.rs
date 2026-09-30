@@ -70,7 +70,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         }).mount(&server).await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -107,7 +107,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                 wallet: WalletState::single_address(
                     "w",
                     "Test",
-                    chain.str_id(),
+                    chain,
                     address,
                     Some(path.into()),
                     false,
@@ -123,7 +123,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         };
         let request = crate::send::SendExecutionRequest {
             wallet_id: "w".into(),
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             password: None,
             to_address: destination,
             amount_str: if token || chain == Chain::Tron {
@@ -229,7 +229,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         .into_owned();
     let service = WalletService::new(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
-        chain_id: "ethereum".into(),
+        chain_id: crate::registry::Chain::Ethereum,
         endpoints: vec![server.uri()],
     }])
     .unwrap();
@@ -241,7 +241,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
             wallet: WalletState::single_address(
                 "w",
                 "W",
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
@@ -295,13 +295,13 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         })
         .mount(&server)
         .await;
-    let mut request = super::tests::request_fixture::req("ethereum", "ethereum");
+    let mut request = super::tests::request_fixture::req(crate::registry::Chain::Ethereum);
     request.to_address = "0x1111111111111111111111111111111111111111".into();
     request.evm_overrides = Some(EvmSendOverridesInput {
         gas_limit: Some(21_000),
         custom_fees: Some(EvmCustomFeeConfiguration {
-            max_fee_per_gas_gwei: 2.0,
-            max_priority_fee_per_gas_gwei: 1.0,
+            max_fee_per_gas_gwei: "2".into(),
+            max_priority_fee_per_gas_gwei: "1".into(),
         }),
         ..Default::default()
     });
@@ -319,7 +319,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     drop(service);
     let reopened = WalletService::new(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
-        chain_id: "ethereum".into(),
+        chain_id: crate::registry::Chain::Ethereum,
         endpoints: vec![server.uri()],
     }])
     .unwrap();
@@ -368,7 +368,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     }
     assert!(
         reopened
-            .stale_pending_failure_ids("ethereum".into())
+            .stale_pending_failure_ids(crate::registry::Chain::Ethereum)
             .await
             .unwrap()
             .is_empty(),

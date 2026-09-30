@@ -8,7 +8,7 @@ use tokio::{
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(super) struct Key {
-    pub chain: String,
+    pub chain: crate::registry::Chain,
     pub endpoints: Arc<Vec<String>>,
     pub contract: String,
 }
@@ -93,7 +93,7 @@ mod tests {
     use super::*;
     fn key(contract: &str) -> Key {
         Key {
-            chain: "tron".into(),
+            chain: crate::registry::Chain::Tron,
             endpoints: Arc::new(vec![]),
             contract: contract.into(),
         }

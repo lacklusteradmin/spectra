@@ -16,8 +16,8 @@ pub enum ChainDegradation {
 
 impl ChainDegradation {
     /// English, for logs and exports read by whoever debugs them.
-    pub fn log_text(&self, chain_id: &str) -> String {
-        let name = crate::registry::Chain::display_name_for_id(chain_id);
+    pub fn log_text(&self, chain_id: crate::registry::Chain) -> String {
+        let name = chain_id.chain_display_name();
         match self {
             Self::HistoryRefreshFailed => {
                 format!("{name} history refresh failed. Using cached history.")
@@ -32,8 +32,8 @@ impl ChainDegradation {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct DiagnosticState {
-    pub degraded: HashMap<String, ChainDegradation>,
-    pub last_good_unix: HashMap<String, f64>,
+    pub degraded: HashMap<crate::registry::Chain, ChainDegradation>,
+    pub last_good_unix: HashMap<crate::registry::Chain, f64>,
     pub logs: Vec<DiagnosticLog>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -60,7 +60,7 @@ pub struct DiagnosticLogInput {
     pub level: DiagnosticLogLevel,
     pub category: String,
     pub message: String,
-    pub chain_id: Option<String>,
+    pub chain_id: Option<crate::registry::Chain>,
     pub wallet_id: Option<String>,
     pub transaction_hash: Option<String>,
     pub source: Option<String>,
@@ -72,17 +72,17 @@ pub enum DiagnosticCommand {
         input: DiagnosticLogInput,
     },
     Healthy {
-        chain_id: String,
+        chain_id: crate::registry::Chain,
     },
     Synced {
-        chain_id: String,
+        chain_id: crate::registry::Chain,
     },
     Degraded {
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         reason: ChainDegradation,
     },
     ClearLogs {
-        chain_id: Option<String>,
+        chain_id: Option<crate::registry::Chain>,
     },
     Reset,
 }
@@ -91,7 +91,6 @@ impl DiagnosticState {
         input.category = input.category.trim().into();
         input.message = input.message.trim().into();
         for text in [
-            &mut input.chain_id,
             &mut input.wallet_id,
             &mut input.transaction_hash,
             &mut input.source,
@@ -140,7 +139,7 @@ impl WalletService {
                 | DiagnosticCommand::Degraded { chain_id, .. } => Some(chain_id),
                 _ => None,
             };
-            if chain_id.is_some_and(|s| Chain::from_str_id(s).is_none()) {
+            if chain_id.is_some_and(|s| Some(s).is_none()) {
                 return Err("unknown diagnostic chain".into());
             }
             let result = this
@@ -152,8 +151,7 @@ impl WalletService {
                             d.last_good_unix.insert(chain_id, crate::store::now_unix());
                         }
                         DiagnosticCommand::Healthy { chain_id } => {
-                            d.last_good_unix
-                                .insert(chain_id.clone(), crate::store::now_unix());
+                            d.last_good_unix.insert(chain_id, crate::store::now_unix());
                             if d.degraded.remove(&chain_id).is_some() {
                                 d.append(sync_log(
                                     chain_id,
@@ -165,11 +163,10 @@ impl WalletService {
                         DiagnosticCommand::Degraded { chain_id, reason } => {
                             // A partial load is also a live read.
                             if reason == ChainDegradation::HistoryPartiallyLoaded {
-                                d.last_good_unix
-                                    .insert(chain_id.clone(), crate::store::now_unix());
+                                d.last_good_unix.insert(chain_id, crate::store::now_unix());
                             }
-                            let text = reason.log_text(&chain_id);
-                            d.degraded.insert(chain_id.clone(), reason);
+                            let text = reason.log_text(chain_id);
+                            d.degraded.insert(chain_id, reason);
                             d.append(sync_log(chain_id, DiagnosticLogLevel::Warning, text));
                         }
                         DiagnosticCommand::ClearLogs { chain_id } => d
@@ -197,7 +194,7 @@ pub struct DiagnosticsSourceCount {
 /// built from exactly those.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainDiagnostics {
-    pub network_id: String,
+    pub network_id: crate::registry::Chain,
     pub wallet_count: u32,
     /// Most used first; blank sources are not a source.
     pub history_sources: Vec<DiagnosticsSourceCount>,
@@ -223,13 +220,12 @@ impl WalletService {
     /// network id reads that network.
     pub async fn chain_diagnostics(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<ChainDiagnostics, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
-            let requested = chain_for_id(&chain_id)?;
             let settings = this.app_state().await.settings;
-            Ok(chain_diagnostics_for(requested, &settings))
+            Ok(chain_diagnostics_for(chain, &settings))
         })
         .await
     }
@@ -287,7 +283,7 @@ fn chain_diagnostics_for(
     } else {
         requested
     };
-    let recorded = crate::diagnostics::diagnostics_recorded(family.str_id(), network.str_id());
+    let recorded = crate::diagnostics::diagnostics_recorded(family, network);
     let mut counts: HashMap<String, u32> = HashMap::new();
     for row in &recorded.history {
         let source = row.source_used.trim();
@@ -314,7 +310,7 @@ fn chain_diagnostics_for(
     )
     .unwrap_or_else(|| "{}".into());
     ChainDiagnostics {
-        network_id: network.str_id().into(),
+        network_id: network,
         wallet_count: recorded.history.len() as u32,
         history_sources,
         history_run_at_unix: recorded.history_run_at_unix,
@@ -324,7 +320,11 @@ fn chain_diagnostics_for(
     }
 }
 
-fn sync_log(chain: String, level: DiagnosticLogLevel, message: String) -> DiagnosticLogInput {
+fn sync_log(
+    chain: crate::registry::Chain,
+    level: DiagnosticLogLevel,
+    message: String,
+) -> DiagnosticLogInput {
     DiagnosticLogInput {
         level,
         category: "Chain Sync".into(),
@@ -369,34 +369,46 @@ mod tests {
             error: None,
             per_source: Vec::new(),
         };
-        diagnostics_record("litecoin".into(), row("w1", "blockbook"));
-        diagnostics_record("litecoin".into(), row("w2", "blockbook"));
-        diagnostics_record("litecoin".into(), row("w3", " "));
-        diagnostics_record_history_run("litecoin".into());
+        diagnostics_record(crate::registry::Chain::Litecoin, row("w1", "blockbook"));
+        diagnostics_record(crate::registry::Chain::Litecoin, row("w2", "blockbook"));
+        diagnostics_record(crate::registry::Chain::Litecoin, row("w3", " "));
+        diagnostics_record_history_run(crate::registry::Chain::Litecoin);
         let probe = |endpoint: &str| EndpointProbe {
             api: crate::EndpointApi::Esplora,
-            chain_id: String::new(),
+            chain_id: crate::registry::Chain::Bitcoin,
             endpoint: endpoint.into(),
             capabilities: Vec::new(),
             checked: true,
             reachable: false,
             detail: "timeout".into(),
         };
-        diagnostics_record_endpoints("litecoin".into(), vec![probe("https://main")]);
-        diagnostics_record_endpoints("litecoin-testnet".into(), vec![probe("https://test")]);
+        diagnostics_record_endpoints(
+            crate::registry::Chain::Litecoin,
+            vec![probe("https://main")],
+        );
+        diagnostics_record_endpoints(
+            crate::registry::Chain::LitecoinTestnet,
+            vec![probe("https://test")],
+        );
 
-        let mainnet = service.chain_diagnostics("litecoin".into()).await.unwrap();
-        assert_eq!(mainnet.network_id, "litecoin");
+        let mainnet = service
+            .chain_diagnostics(crate::registry::Chain::Litecoin)
+            .await
+            .unwrap();
+        assert_eq!(mainnet.network_id, Chain::Litecoin);
         assert_eq!(mainnet.endpoints[0].endpoint, "https://main");
 
         service
             .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: "litecoin-testnet".into(),
+                chain_id: crate::registry::Chain::LitecoinTestnet,
             })
             .await
             .unwrap();
-        let selected = service.chain_diagnostics("litecoin".into()).await.unwrap();
-        assert_eq!(selected.network_id, "litecoin-testnet");
+        let selected = service
+            .chain_diagnostics(crate::registry::Chain::Litecoin)
+            .await
+            .unwrap();
+        assert_eq!(selected.network_id, Chain::LitecoinTestnet);
         assert_eq!(selected.wallet_count, 3);
         assert_eq!(
             selected.history_sources,
@@ -447,7 +459,7 @@ mod tests {
             .unwrap();
         service
             .apply_diagnostic_command(DiagnosticCommand::Degraded {
-                chain_id: "solana".into(),
+                chain_id: crate::registry::Chain::Solana,
                 reason: ChainDegradation::Failed {
                     message: "timeout".into(),
                 },
@@ -456,13 +468,16 @@ mod tests {
             .unwrap();
         let d = service
             .apply_diagnostic_command(DiagnosticCommand::Healthy {
-                chain_id: "solana".into(),
+                chain_id: crate::registry::Chain::Solana,
             })
             .await
             .unwrap();
         assert!(d.degraded.is_empty());
         assert_eq!(d.logs.len(), 2);
-        assert!(d.last_good_unix.contains_key("solana"));
+        assert!(
+            d.last_good_unix
+                .contains_key(&crate::registry::Chain::Solana)
+        );
         let reopened = WalletService::new(vec![]).unwrap();
         assert_eq!(
             reopened
@@ -480,7 +495,7 @@ mod tests {
 /// tests a different provider and reports it as the configured node.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ConfiguredSelfTestReport {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub rpc_endpoint: Option<String>,
     pub results: Vec<crate::diagnostics::self_tests::ChainSelfTestResult>,
 }
@@ -489,24 +504,23 @@ pub struct ConfiguredSelfTestReport {
 impl WalletService {
     pub async fn run_configured_self_tests(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<ConfiguredSelfTestReport, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
             use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
-            let requested = chain_for_id(&chain_id)?;
-            let chain = if requested == requested.mainnet_counterpart() {
+            let chain = if chain == chain.mainnet_counterpart() {
                 this.app_state()
                     .await
                     .settings
-                    .selected_chain_for_family(requested)
+                    .selected_chain_for_family(chain)
             } else {
-                requested
+                chain
             };
-            let mut results = self_tests_run_chain(chain.str_id().into());
+            let mut results = self_tests_run_chain(chain);
             let rpc_endpoint = if chain.is_evm() {
-                let endpoints = this.configured_endpoint_urls(chain.str_id()).await;
+                let endpoints = this.configured_endpoint_urls(chain).await;
                 let rpc = endpoints
                     .first()
                     .ok_or("No RPC configured for this network")?
@@ -533,16 +547,10 @@ impl WalletService {
                     ),
                 )
             };
-            this.record_event(
-                level,
-                "Self-Tests",
-                message,
-                Some(chain.str_id().into()),
-                None,
-            )
-            .await;
+            this.record_event(level, "Self-Tests", message, Some(chain), None)
+                .await;
             Ok(ConfiguredSelfTestReport {
-                chain_id: chain.str_id().into(),
+                chain_id: chain,
                 rpc_endpoint,
                 results,
             })
@@ -584,10 +592,7 @@ mod configured_tests {
                             EndpointCapability::Broadcast,
                             EndpointCapability::Verification,
                         ],
-                        chain_id: crate::registry::Chain::from_str_id(chain)
-                            .unwrap()
-                            .str_id()
-                            .into(),
+                        chain_id: crate::registry::Chain::parse(chain).unwrap(),
                         api: "evm-json-rpc".into(),
                         endpoint: server.uri(),
                     },
@@ -597,15 +602,15 @@ mod configured_tests {
         }
         service
             .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: "ethereum-sepolia".into(),
+                chain_id: crate::registry::Chain::EthereumSepolia,
             })
             .await
             .unwrap();
         let selected = service
-            .run_configured_self_tests("ethereum".into())
+            .run_configured_self_tests(crate::registry::Chain::Ethereum)
             .await
             .unwrap();
-        assert_eq!(selected.chain_id, "ethereum-sepolia");
+        assert_eq!(selected.chain_id, crate::registry::Chain::EthereumSepolia);
         assert_eq!(
             selected.rpc_endpoint.as_deref(),
             Some(server.uri().as_str())
@@ -617,12 +622,12 @@ mod configured_tests {
         );
         service
             .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
             })
             .await
             .unwrap();
         let mainnet = service
-            .run_configured_self_tests("ethereum".into())
+            .run_configured_self_tests(crate::registry::Chain::Ethereum)
             .await
             .unwrap();
         assert!(
@@ -632,7 +637,7 @@ mod configured_tests {
                 .any(|r| r.name == "RPC Chain ID" && !r.passed)
         );
         let explicit = service
-            .run_configured_self_tests("ethereum-sepolia".into())
+            .run_configured_self_tests(crate::registry::Chain::EthereumSepolia)
             .await
             .unwrap();
         assert!(explicit.results.iter().all(|r| r.passed));

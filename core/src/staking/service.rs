@@ -26,8 +26,8 @@ impl StakingService {
     /// here is what makes the two the same answer: a chain the app can select
     /// is a chain this routes, and one it cannot is `NotYetImplemented` rather
     /// than a fall-through nobody stated.
-    fn staking_chain(&self, chain_id: &str) -> Result<Chain, StakingError> {
-        Chain::from_str_id(chain_id)
+    fn staking_chain(&self, chain: Chain) -> Result<Chain, StakingError> {
+        Some(chain)
             .filter(|chain| chain.supports_staking())
             .ok_or(StakingError::NotYetImplemented)
     }
@@ -38,7 +38,7 @@ impl StakingService {
         let eps = |chain: Chain| -> Vec<String> {
             endpoints
                 .iter()
-                .find(|e| e.chain_id == chain.str_id())
+                .find(|e| e.chain_id == chain)
                 .map(|e| e.endpoints.clone())
                 .unwrap_or_default()
         };
@@ -56,9 +56,9 @@ impl StakingService {
 
     pub async fn fetch_validators(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
     ) -> Result<Vec<StakingValidator>, StakingError> {
-        match self.staking_chain(&chain_id)? {
+        match self.staking_chain(chain_id)? {
             Chain::Solana => self.solana.fetch_validators().await,
             Chain::Sui => self.sui.fetch_validators().await,
             Chain::Aptos => self.aptos.fetch_validators().await,
@@ -71,10 +71,10 @@ impl StakingService {
 
     pub async fn fetch_positions(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         wallet_address: String,
     ) -> Result<Vec<StakingPosition>, StakingError> {
-        match self.staking_chain(&chain_id)? {
+        match self.staking_chain(chain_id)? {
             Chain::Solana => self.solana.fetch_positions(&wallet_address).await,
             Chain::Sui => self.sui.fetch_positions(&wallet_address).await,
             Chain::Aptos => self.aptos.fetch_positions(&wallet_address).await,
@@ -102,7 +102,7 @@ mod tests {
         let service = StakingService::new(vec![]);
         for chain in Chain::all() {
             let routed = !matches!(
-                service.fetch_validators(chain.str_id().to_string()).await,
+                service.fetch_validators(chain).await,
                 Err(StakingError::NotYetImplemented)
             );
             assert_eq!(

@@ -97,7 +97,7 @@ pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, St
 /// Only decode and validate signed artifacts belonging to this sender or wallet.
 pub(crate) fn signed_sends_for_sender(
     database: &WalletDatabase,
-    chain: &str,
+    chain: crate::registry::Chain,
     sender: &str,
 ) -> Result<Vec<StoredSend>, String> {
     signed_sends_where(
@@ -110,7 +110,7 @@ pub(crate) fn signed_sends_for_sender(
 
 pub(crate) fn signed_sends_for_wallet(
     database: &WalletDatabase,
-    chain: &str,
+    chain: crate::registry::Chain,
     wallet: &str,
 ) -> Result<Vec<StoredSend>, String> {
     signed_sends_where(
@@ -124,7 +124,7 @@ pub(crate) fn signed_sends_for_wallet(
 fn signed_sends_where(
     database: &WalletDatabase,
     predicate: &str,
-    chain: &str,
+    chain: crate::registry::Chain,
     owner: &str,
 ) -> Result<Vec<StoredSend>, String> {
     with_conn(database, |conn| {
@@ -214,12 +214,12 @@ mod query_tests {
             Ok(())
         }).unwrap();
         assert!(
-            signed_sends_for_sender(&db, "ethereum", "0xABC")
+            signed_sends_for_sender(&db, crate::registry::Chain::Ethereum, "0xABC")
                 .unwrap()
                 .is_empty()
         );
         assert!(
-            signed_sends_for_wallet(&db, "ethereum", "w")
+            signed_sends_for_wallet(&db, crate::registry::Chain::Ethereum, "w")
                 .unwrap()
                 .is_empty()
         );
@@ -227,7 +227,7 @@ mod query_tests {
             conn.execute("UPDATE send_artifacts SET payload = json_set(payload, '$.view.stage', 'Signed') WHERE id = 'unsigned'", []).unwrap();
             Ok(())
         }).unwrap();
-        assert!(signed_sends_for_sender(&db, "ethereum", "0xABC").is_err());
-        assert!(signed_sends_for_wallet(&db, "ethereum", "w").is_err());
+        assert!(signed_sends_for_sender(&db, crate::registry::Chain::Ethereum, "0xABC").is_err());
+        assert!(signed_sends_for_wallet(&db, crate::registry::Chain::Ethereum, "w").is_err());
     }
 }

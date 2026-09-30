@@ -76,8 +76,8 @@ fn a_derived_address_is_kept_on_a_testnet_import() {
         &addresses(&[("bitcoin", derived)]),
         &crate::derivation::import::ImportNetworks {
             by_family: std::collections::HashMap::from([(
-                "bitcoin".to_string(),
-                "bitcoin-testnet-4".to_string(),
+                crate::registry::Chain::Bitcoin,
+                crate::registry::Chain::BitcoinTestnet4,
             )]),
         },
     );
@@ -107,6 +107,7 @@ fn a_rejection_names_the_address_not_the_slot() {
 /// one where the address is typed rather than derived.
 mod watch_only {
     use crate::derivation::import::{ImportNetworks, WalletImportWatchOnlyEntries};
+    use crate::registry::Chain;
     use std::collections::HashMap;
 
     /// Mainnet, as above.
@@ -123,19 +124,16 @@ mod watch_only {
         crate::derivation::import::validated_watch_only_entries(entries, &networks)
     }
 
-    fn entries(slot: &str, addresses: &[&str]) -> WalletImportWatchOnlyEntries {
+    fn entries(slot: Chain, addresses: &[&str]) -> WalletImportWatchOnlyEntries {
         WalletImportWatchOnlyEntries {
-            by_chain_id: HashMap::from([(
-                slot.to_string(),
-                addresses.iter().map(|a| a.to_string()).collect(),
-            )]),
+            by_chain_id: HashMap::from([(slot, addresses.iter().map(|a| a.to_string()).collect())]),
             bitcoin_xpub: None,
         }
     }
 
     #[test]
     fn a_malformed_watch_address_is_refused() {
-        let (kept, rejected) = validated_watch_only_entries(&entries("solana", &["garbage"]));
+        let (kept, rejected) = validated_watch_only_entries(&entries(Chain::Solana, &["garbage"]));
         assert!(kept.by_chain_id.is_empty(), "kept: {:?}", kept.by_chain_id);
         assert_eq!(rejected, vec!["garbage".to_string()]);
     }
@@ -143,11 +141,14 @@ mod watch_only {
     #[test]
     fn valid_watch_addresses_survive_and_are_normalised() {
         let (kept, rejected) = validated_watch_only_entries(&entries(
-            "ethereum",
+            crate::registry::Chain::Ethereum,
             &["0X742D35CC6634C0532925A3B844BC454E4438F44E"],
         ));
         assert!(rejected.is_empty());
-        let stored = kept.by_chain_id.get("ethereum").expect("kept");
+        let stored = kept
+            .by_chain_id
+            .get(&crate::registry::Chain::Ethereum)
+            .expect("kept");
         assert_eq!(stored.len(), 1);
         assert!(stored[0].starts_with("0x"));
     }
@@ -156,20 +157,20 @@ mod watch_only {
     #[test]
     fn every_slot_normalises_without_help_from_the_caller() {
         let padded = "0x0000000000000000000000000000000000000000000000000000000000000ABC";
-        let cases: [(&str, &str, &str); 3] = [
+        let cases: [(Chain, &str, &str); 3] = [
             (
-                "ethereum",
+                Chain::Ethereum,
                 "0x742D35CC6634C0532925A3B844BC454E4438F44E",
                 "0x742d35cc6634c0532925a3b844bc454e4438f44e",
             ),
-            ("sui", padded, &padded.to_lowercase()),
-            ("aptos", padded, &padded.to_lowercase()),
+            (Chain::Sui, padded, &padded.to_lowercase()),
+            (Chain::Aptos, padded, &padded.to_lowercase()),
         ];
         for (slot, typed, expected) in cases {
             let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
             assert!(rejected.is_empty(), "{slot}: rejected {typed}");
             assert_eq!(
-                kept.by_chain_id.get(slot).map(Vec::as_slice),
+                kept.by_chain_id.get(&slot).map(Vec::as_slice),
                 Some([expected.to_string()].as_slice()),
                 "{slot} did not normalise"
             );
@@ -189,26 +190,26 @@ mod watch_only {
         // carries a CRC32 prefix, so there is no fixture to write here
         // without computing a real one, and a fixture the validator
         // rejects would test nothing.
-        let cases: [(&str, &str, &str); 5] = [
+        let cases: [(Chain, Chain, &str); 5] = [
             (
-                "ethereum",
-                "ethereum",
+                Chain::Ethereum,
+                Chain::Ethereum,
                 "0x742D35CC6634C0532925A3B844BC454E4438F44E",
             ),
             (
-                "sui",
-                "sui",
+                Chain::Sui,
+                Chain::Sui,
                 "0x0000000000000000000000000000000000000000000000000000000000000ABC",
             ),
             (
-                "aptos",
-                "aptos",
+                Chain::Aptos,
+                Chain::Aptos,
                 "0x0000000000000000000000000000000000000000000000000000000000000ABC",
             ),
-            ("near", "near", "Example.NEAR"),
+            (Chain::Near, Chain::Near, "Example.NEAR"),
             (
-                "solana",
-                "solana",
+                Chain::Solana,
+                Chain::Solana,
                 "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX",
             ),
         ];
@@ -217,10 +218,10 @@ mod watch_only {
             assert!(rejected.is_empty(), "{chain_id}: rejected {typed}");
             let imported = kept
                 .by_chain_id
-                .get(slot)
+                .get(&slot)
                 .and_then(|list| list.first())
                 .unwrap();
-            let sent = normalized_send_address(chain_id.to_string(), typed.to_string());
+            let sent = normalized_send_address(chain_id, typed.to_string());
             assert_eq!(
                 imported, &sent,
                 "{chain_id}: import normalised to {imported}, send to {sent}"
@@ -231,12 +232,14 @@ mod watch_only {
     #[test]
     fn surrounding_whitespace_is_not_the_caller_s_problem_either() {
         let (kept, rejected) = validated_watch_only_entries(&entries(
-            "ethereum",
+            crate::registry::Chain::Ethereum,
             &["  0x742d35cc6634c0532925a3b844bc454e4438f44e  "],
         ));
         assert!(rejected.is_empty());
         assert_eq!(
-            kept.by_chain_id.get("ethereum").map(Vec::as_slice),
+            kept.by_chain_id
+                .get(&crate::registry::Chain::Ethereum)
+                .map(Vec::as_slice),
             Some(["0x742d35cc6634c0532925a3b844bc454e4438f44e".to_string()].as_slice())
         );
     }
@@ -253,22 +256,27 @@ mod watch_only {
         // tb1 prefix — valid Bitcoin testnet, invalid on mainnet.
         let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
         let (kept, rejected) = validated_watch_only_entries_on(
-            &entries("bitcoin", &[typed]),
+            &entries(Chain::Bitcoin, &[typed]),
             ImportNetworks {
                 by_family: std::collections::HashMap::from([(
-                    "bitcoin".to_string(),
-                    "bitcoin-testnet".to_string(),
+                    Chain::Bitcoin,
+                    Chain::BitcoinTestnet,
                 )]),
             },
         );
         assert!(rejected.is_empty(), "testnet address refused: {rejected:?}");
-        assert_eq!(kept.by_chain_id.get("bitcoin").map(Vec::len), Some(1));
+        assert_eq!(
+            kept.by_chain_id
+                .get(&crate::registry::Chain::Bitcoin)
+                .map(Vec::len),
+            Some(1)
+        );
     }
 
     #[test]
     fn a_testnet_watch_address_is_still_refused_on_mainnet() {
         let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
-        let (kept, rejected) = validated_watch_only_entries(&entries("bitcoin", &[typed]));
+        let (kept, rejected) = validated_watch_only_entries(&entries(Chain::Bitcoin, &[typed]));
         assert_eq!(rejected, vec![typed.to_string()]);
         assert!(kept.by_chain_id.is_empty());
     }
@@ -276,14 +284,20 @@ mod watch_only {
     #[test]
     fn one_bad_address_does_not_discard_the_good_ones() {
         let (kept, rejected) = validated_watch_only_entries(&entries(
-            "ethereum",
+            crate::registry::Chain::Ethereum,
             &[
                 "0X742D35CC6634C0532925A3B844BC454E4438F44E",
                 "0xnothex",
                 "0x0000000000000000000000000000000000000001",
             ],
         ));
-        assert_eq!(kept.by_chain_id.get("ethereum").expect("kept").len(), 2);
+        assert_eq!(
+            kept.by_chain_id
+                .get(&crate::registry::Chain::Ethereum)
+                .expect("kept")
+                .len(),
+            2
+        );
         assert_eq!(rejected, vec!["0xnothex".to_string()]);
     }
 }
@@ -294,15 +308,20 @@ fn watch_only_chain_identity_is_not_an_evm_storage_slot() {
     let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e".to_string();
     let entries = WalletImportWatchOnlyEntries {
         by_chain_id: std::collections::HashMap::from([
-            ("arbitrum".into(), vec![address.clone()]),
-            ("ethereum".into(), vec![address.clone()]),
-            ("unknown".into(), vec![address]),
+            (crate::registry::Chain::Arbitrum, vec![address.clone()]),
+            (crate::registry::Chain::Ethereum, vec![address]),
         ]),
         bitcoin_xpub: None,
     };
     let (valid, rejected) = validated_watch_only_entries(&entries, &Default::default());
     assert_eq!(valid.by_chain_id.len(), 2);
-    assert_eq!(valid.by_chain_id["arbitrum"].len(), 1);
-    assert_eq!(valid.by_chain_id["ethereum"].len(), 1);
-    assert_eq!(rejected.len(), 1);
+    assert_eq!(
+        valid.by_chain_id[&crate::registry::Chain::Arbitrum].len(),
+        1
+    );
+    assert_eq!(
+        valid.by_chain_id[&crate::registry::Chain::Ethereum].len(),
+        1
+    );
+    assert!(rejected.is_empty());
 }

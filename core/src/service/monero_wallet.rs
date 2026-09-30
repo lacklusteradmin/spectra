@@ -43,12 +43,12 @@ impl WalletService {
                 .iter()
                 .find(|w| w.id == wallet_id)
                 .ok_or("Wallet removed")?;
-            let chain = chain_for_id(&wallet.chain_id)?;
+            let chain = wallet.chain_id;
             if chain.mainnet_counterpart() != Chain::Monero {
                 return Ok(None);
             }
             let db = this.bound_database().await?;
-            if crate::wallet_db::monero_load(&db, &wallet_id, chain.str_id())?.is_none() {
+            if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_none() {
                 return Ok(Some(MoneroSyncStatus {
                     wallet_id,
                     scanned_height: 0,
@@ -81,7 +81,7 @@ impl WalletService {
                 .iter()
                 .find(|w| w.id == wallet_id)
                 .ok_or("Wallet removed")?;
-            let chain = chain_for_id(&wallet.chain_id)?;
+            let chain = wallet.chain_id;
             chain.monero_network_name()?;
             let signer = this
                 .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
@@ -103,7 +103,7 @@ impl WalletService {
                 .map_err(|e| e.to_string())?;
             let db = this.bound_database().await?;
             let (revision, mut cached, key) =
-                if crate::wallet_db::monero_load(&db, &wallet_id, chain.str_id())?.is_some() {
+                if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_some() {
                     if restore_height.is_some() {
                         return Err(
                             "Restore height can only be set before the first Monero sync".into(),
@@ -116,7 +116,7 @@ impl WalletService {
                         None,
                         LocalWallet {
                             wallet_id: wallet_id.clone(),
-                            chain_id: chain.str_id().into(),
+                            chain_id: chain,
                             sender: signer.from_address.clone(),
                             restore_height: restore_height.unwrap_or(0),
                             next_height: restore_height.unwrap_or(0),
@@ -157,7 +157,7 @@ impl WalletService {
         let owner = state
             .wallets
             .iter()
-            .find(|w| w.chain_id == chain.str_id() && w.address_on(chain) == Some(address))
+            .find(|w| w.chain_id == chain && w.address_on(chain) == Some(address))
             .ok_or("Monero history requires an owned local wallet")?;
         let (_, wallet, _) = self.load_monero(&owner.id).await?;
         if wallet.next_height < wallet.target_height {
@@ -170,7 +170,7 @@ impl WalletService {
         chain: Chain,
         required: &[EndpointCapability],
     ) -> Result<String, SpectraBridgeError> {
-        self.endpoints_for(chain.str_id(), required)
+        self.endpoints_for(chain, required)
             .await
             .first()
             .cloned()
@@ -196,13 +196,10 @@ impl WalletService {
             .iter()
             .find(|w| w.id == wallet_id)
             .ok_or("Wallet removed")?;
-        let chain = chain_for_id(&owner.chain_id)?;
-        let (revision, payload) = crate::wallet_db::monero_load(
-            self.bound_database().await?.as_ref(),
-            wallet_id,
-            chain.str_id(),
-        )?
-        .ok_or("Sync the local Monero wallet before building a transaction")?;
+        let chain = owner.chain_id;
+        let (revision, payload) =
+            crate::wallet_db::monero_load(self.bound_database().await?.as_ref(), wallet_id, chain)?
+                .ok_or("Sync the local Monero wallet before building a transaction")?;
         let plaintext = Zeroizing::new(crate::store::seed_envelope::decrypt(
             payload.as_bytes(),
             &key,
@@ -238,7 +235,7 @@ impl WalletService {
         crate::wallet_db::monero_save(
             self.bound_database().await?.as_ref(),
             &wallet.wallet_id,
-            &wallet.chain_id,
+            wallet.chain_id,
             revision,
             &encrypted,
         )?;
@@ -250,13 +247,13 @@ impl WalletService {
         amount: u64,
     ) -> Result<PreparedMoneroTransaction, SpectraBridgeError> {
         let (_, initial, _) = self.load_monero(&request.wallet_id).await?;
-        let chain = chain_for_id(&initial.chain_id)?;
+        let chain = initial.chain_id;
         let _guard = self.lock_sender(chain, &initial.sender).await?;
         let (_, mut wallet, key) = self.load_monero(&request.wallet_id).await?;
         let db = self.bound_database().await?;
         let wallet_id = request.wallet_id.clone();
         let saved_sends = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::signed_sends_for_wallet(&db, chain.str_id(), &wallet_id)
+            crate::wallet_db::signed_sends_for_wallet(&db, chain, &wallet_id)
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -324,7 +321,7 @@ impl WalletService {
         private: &str,
     ) -> Result<(String, String), SpectraBridgeError> {
         let (revision, mut wallet, key) = self.load_monero(wallet_id).await?;
-        let chain = chain_for_id(&wallet.chain_id)?;
+        let chain = wallet.chain_id;
         let rpc = crate::api::monero_daemon_rpc::daemon(
             &self
                 .monero_endpoint(chain, &[EndpointCapability::Verification])

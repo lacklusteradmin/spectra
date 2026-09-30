@@ -30,11 +30,8 @@ impl WalletService {
     pub fn begin_funds_scan(
         &self,
         request: FundsFinderRequest,
-        chain_id: Option<String>,
+        chain_id: Option<crate::registry::Chain>,
     ) -> Result<Arc<FundsScan>, SpectraBridgeError> {
-        if let Some(id) = &chain_id {
-            chain_for_id(id)?;
-        }
         let mut candidates = generate_funds_finder_candidates(request)?;
         if let Some(id) = chain_id {
             candidates.retain(|c| c.chain_id == id);
@@ -65,10 +62,7 @@ impl FundsScan {
                 .map(|candidate| async {
                     let result = this
                         .service
-                        .fetch_native_balance_summary(
-                            candidate.chain_id.clone(),
-                            candidate.address.clone(),
-                        )
+                        .fetch_native_balance_summary(candidate.chain_id, candidate.address.clone())
                         .await
                         .and_then(|balance| {
                             funded(&balance.smallest_unit).map(|is_funded| (balance, is_funded))
@@ -143,7 +137,7 @@ mod scan_tests {
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -153,7 +147,7 @@ mod scan_tests {
             candidates: Arc::new(
                 (1..=3)
                     .map(|n| FundsFinderCandidate {
-                        chain_id: "ethereum".into(),
+                        chain_id: crate::registry::Chain::Ethereum,
                         derivation_path: "fixture".into(),
                         path_label: "fixture".into(),
                         address: format!("0x{n:040x}"),

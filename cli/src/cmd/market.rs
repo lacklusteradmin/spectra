@@ -72,9 +72,7 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
             .ok_or_else(|| CliError::usage("specify a chain, --stored or --refresh"))?,
     )?;
     // Core fetches the quote and converts it with its own stored rate.
-    let quote = ctx
-        .rt
-        .block_on(ctx.service()?.native_spot_price(chain.str_id().into()))?;
+    let quote = ctx.rt.block_on(ctx.service()?.native_spot_price(chain))?;
 
     out.text(|| {
         println!();
@@ -84,10 +82,10 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
             .unwrap_or_else(|| "—".into());
         println!(
             "  {}  {} {}  {}",
-            out::tint("●", chain.str_id()).bold(),
+            out::tint("●", chain).bold(),
             price.bold(),
             out::hint(&quote.currency),
-            out::tint(chain.coin_symbol(), chain.str_id()).bold(),
+            out::tint(chain.coin_symbol(), chain).bold(),
         );
     });
     let mut json = serde_json::to_value(&quote).map_err(|e| CliError::failure(e.to_string()))?;
@@ -148,7 +146,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
             out.text(|| {
                 println!(
                     "  {}  {:<14}  {}",
-                    out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
+                    out::wallet_dot(wallet.chain_id, wallet.is_watch_only()),
                     wallet.name,
                     out::hint(&format!("unavailable — {error}")),
                 )
@@ -199,7 +197,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
                         .unwrap_or_else(|| holding.amount.clone());
                 println!(
                     "  {}  {:<14}  {:>14}  {}",
-                    out::wallet_dot(&wallet.chain_id, wallet.signing.is_watch_only()),
+                    out::wallet_dot(wallet.chain_id, wallet.signing.is_watch_only()),
                     wallet.name,
                     format!("{amount} {}", holding.symbol),
                     fiat(values.and_then(|v| v.get(&holding.id)).copied()).bold(),

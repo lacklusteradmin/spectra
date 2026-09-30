@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmCustomFeeConfiguration {
-    pub max_fee_per_gas_gwei: f64,
-    pub max_priority_fee_per_gas_gwei: f64,
+    /// Exact decimal gwei.
+    pub max_fee_per_gas_gwei: String,
+    /// Exact decimal gwei.
+    pub max_priority_fee_per_gas_gwei: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error, uniffi::Error)]
@@ -20,19 +22,16 @@ pub enum EvmCustomFeeError {
 }
 
 impl EvmCustomFeeConfiguration {
-    /// The send path uses whole wei. Reject values that would round to zero or
-    /// saturate its u64 conversion; checking only `> 0` also accepts infinity.
-    /// Reject sub-wei inputs rather than quietly rounding them up.
+    /// The send path uses whole wei. A fee of zero, one finer than a wei, or
+    /// one past the u64 the signer carries is refused, never rounded.
     pub(crate) fn to_wei(&self) -> Result<(u128, u128), EvmCustomFeeError> {
-        fn wei(gwei: f64) -> Option<u128> {
-            let scaled = (gwei * 1e9).round();
-            (gwei.is_finite() && gwei >= 1e-9 && scaled < u64::MAX as f64)
-                .then_some(scaled as u64 as u128)
+        fn wei(gwei: &str) -> Option<u128> {
+            crate::decimal::to_units(gwei, 9).filter(|&wei| wei > 0 && wei <= u128::from(u64::MAX))
         }
-        let max = wei(self.max_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidMaxFee)?;
-        let priority =
-            wei(self.max_priority_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidPriorityFee)?;
-        if self.max_fee_per_gas_gwei < self.max_priority_fee_per_gas_gwei {
+        let max = wei(&self.max_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidMaxFee)?;
+        let priority = wei(&self.max_priority_fee_per_gas_gwei)
+            .ok_or(EvmCustomFeeError::InvalidPriorityFee)?;
+        if max < priority {
             return Err(EvmCustomFeeError::MaxBelowPriority);
         }
         Ok((max, priority))
@@ -46,14 +45,10 @@ pub fn parse_evm_custom_fees(
     priority_fee_gwei_raw: String,
 ) -> Result<EvmCustomFeeConfiguration, EvmCustomFeeError> {
     let fees = EvmCustomFeeConfiguration {
-        max_fee_per_gas_gwei: max_fee_gwei_raw
-            .trim()
-            .parse()
-            .map_err(|_| EvmCustomFeeError::InvalidMaxFee)?,
-        max_priority_fee_per_gas_gwei: priority_fee_gwei_raw
-            .trim()
-            .parse()
-            .map_err(|_| EvmCustomFeeError::InvalidPriorityFee)?,
+        max_fee_per_gas_gwei: crate::decimal::canonical(&max_fee_gwei_raw)
+            .ok_or(EvmCustomFeeError::InvalidMaxFee)?,
+        max_priority_fee_per_gas_gwei: crate::decimal::canonical(&priority_fee_gwei_raw)
+            .ok_or(EvmCustomFeeError::InvalidPriorityFee)?,
     };
     fees.to_wei()?;
     Ok(fees)
@@ -119,7 +114,7 @@ pub struct EvmSupportedToken {
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmSendAssemblyInput {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// The asset being sent, by deployment. The chain's native deployment is a
     /// value transfer; any other must be the deployment `token`'s contract
     /// names. A ticker decides nothing: another token may carry the gas
@@ -153,7 +148,7 @@ pub enum EvmSendError {
     #[error("Invalid from address")]
     InvalidFromAddress,
     #[error("Unsupported chain: {0}")]
-    UnsupportedChain(String),
+    UnsupportedChain(crate::registry::Chain),
     #[error("Unsupported asset for chain")]
     UnsupportedAsset,
     #[error("Invalid amount")]
@@ -167,15 +162,6 @@ fn normalize_evm_address(address: &str) -> String {
 fn is_valid_evm_address(address: &str) -> bool {
     let a = normalize_evm_address(address);
     a.len() == 42 && a.starts_with("0x") && a[2..].chars().all(|c| c.is_ascii_hexdigit())
-}
-
-/// Whether an EVM send can be assembled for this chain at all.
-///
-/// This named seven chains. The registry knows twenty-three EVM mainnets, and
-/// the sixteen outside the list got `UnsupportedChain` here, no fee preview in
-/// the send sheet, and a blocked send behind "Unable to estimate network fee".
-pub fn is_supported_evm_chain(chain_id: &str) -> bool {
-    crate::registry::Chain::from_str_id(chain_id).is_some_and(crate::registry::Chain::is_evm)
 }
 
 /// Shift a typed decimal amount into the asset's smallest unit.
@@ -222,8 +208,11 @@ fn encode_erc20_transfer_data(
 pub fn prepare_evm_send_assembly(
     input: EvmSendAssemblyInput,
 ) -> Result<EvmSendAssembly, EvmSendError> {
-    if !is_supported_evm_chain(&input.chain_id) {
-        return Err(EvmSendError::UnsupportedChain(input.chain_id));
+    // Every EVM chain the registry knows: a name list here once named seven
+    // of twenty-three, and the rest could not assemble a send at all.
+    let chain = input.chain_id;
+    if !chain.is_evm() {
+        return Err(EvmSendError::UnsupportedChain(chain));
     }
     if !is_valid_evm_address(&input.from_address) {
         return Err(EvmSendError::InvalidFromAddress);
@@ -232,8 +221,6 @@ pub fn prepare_evm_send_assembly(
         return Err(EvmSendError::InvalidDestination);
     }
     let destination = normalize_evm_address(&input.resolved_destination);
-    let chain = crate::registry::Chain::from_str_id(&input.chain_id)
-        .ok_or_else(|| EvmSendError::UnsupportedChain(input.chain_id.clone()))?;
 
     if input.deployment_id == chain.entry().native_deployment_id {
         // The gas asset moves as a value transfer and carries no contract; one
@@ -291,12 +278,12 @@ pub struct EvmPreviewDecodeInput {
 pub struct EvmPreviewDecoded {
     pub nonce: i64,
     pub gas_limit: i64,
-    pub max_fee_per_gas_gwei: f64,
-    pub max_priority_fee_per_gas_gwei: f64,
-    pub estimated_network_fee_eth: f64,
-    pub spendable_balance: Option<f64>,
+    pub max_fee_per_gas_gwei: String,
+    pub max_priority_fee_per_gas_gwei: String,
+    pub estimated_network_fee_eth: String,
+    pub spendable_balance: Option<String>,
     pub fee_rate_description: Option<String>,
-    pub max_sendable: Option<f64>,
+    pub max_sendable: Option<String>,
 }
 
 pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPreviewDecoded> {
@@ -312,61 +299,57 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
         .get("gas_limit")
         .and_then(|v| v.as_i64())
         .unwrap_or(21_000);
-    let live_fee_gwei = obj
-        .get("max_fee_per_gas_gwei")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    let live_prio_gwei = obj
-        .get("max_priority_fee_per_gas_gwei")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    let (max_fee_gwei, prio_gwei, fee_eth, fee_desc) = match input.custom_fees {
+    // Everything below is whole wei; gwei and ether exist only as the exact
+    // decimals the record carries.
+    let wei = |key: &str| -> Option<u128> { obj.get(key)?.as_str()?.parse().ok() };
+    let (max_fee_wei, prio_wei, fee_desc) = match input.custom_fees {
         Some(cf) => {
-            cf.to_wei().ok()?;
-            let fee_wei = (gas_limit as f64) * cf.max_fee_per_gas_gwei * 1_000_000_000.0;
-            let fee_eth = fee_wei / 1_000_000_000_000_000_000.0;
+            let (max, prio) = cf.to_wei().ok()?;
             let desc = format!(
-                "Max {:.2} gwei / Priority {:.2} gwei (custom)",
+                "Max {} gwei / Priority {} gwei (custom)",
                 cf.max_fee_per_gas_gwei, cf.max_priority_fee_per_gas_gwei
             );
-            (
-                cf.max_fee_per_gas_gwei,
-                cf.max_priority_fee_per_gas_gwei,
-                fee_eth,
-                Some(desc),
-            )
+            (max, prio, Some(desc))
         }
         None => {
-            let fee_eth = obj
-                .get("estimated_fee_eth")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
             let desc = obj
                 .get("fee_rate_description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            (live_fee_gwei, live_prio_gwei, fee_eth, desc)
+            (
+                wei("max_fee_per_gas_wei")?,
+                wei("max_priority_fee_per_gas_wei")?,
+                desc,
+            )
         }
     };
+    let fee_wei = u128::try_from(gas_limit).ok()?.checked_mul(max_fee_wei)?;
     let spendable = if obj.get("is_token").and_then(|v| v.as_bool()) == Some(false) {
-        // The quoted spendable may already be clamped to zero. Adding its old
-        // fee back would invent balance when a custom fee is lower.
-        let balance = obj
-            .get("native_balance_wei")?
-            .as_str()?
-            .parse::<u128>()
-            .ok()?;
-        Some((balance as f64 / 1e18 - fee_eth).max(0.0))
+        // Recomputed from the balance rather than adjusted from the quoted
+        // spendable, which may already be clamped to zero: adding an old fee
+        // back would invent balance when a custom fee is lower.
+        Some(crate::decimal::from_units(
+            wei("native_balance_wei")?.saturating_sub(fee_wei),
+            18,
+        ))
     } else {
-        obj.get("spendable_balance").and_then(|v| v.as_f64())
+        obj.get("spendable_balance")
+            .and_then(|v| v.as_str())
+            .and_then(crate::decimal::canonical)
     };
+    let gwei = |wei: u128| crate::decimal::from_units(wei, 9);
+    let (max_fee_gwei, prio_gwei, fee_eth) = (
+        gwei(max_fee_wei),
+        gwei(prio_wei),
+        crate::decimal::from_units(fee_wei, 18),
+    );
     Some(EvmPreviewDecoded {
         nonce,
         gas_limit,
         max_fee_per_gas_gwei: max_fee_gwei,
         max_priority_fee_per_gas_gwei: prio_gwei,
         estimated_network_fee_eth: fee_eth,
-        spendable_balance: spendable,
+        spendable_balance: spendable.clone(),
         fee_rate_description: fee_desc,
         max_sendable: spendable,
     })
@@ -392,7 +375,7 @@ mod one_amount_one_conversion {
 
     fn native_wei(amount: &str) -> Result<String, EvmSendError> {
         prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             deployment_id: crate::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 None,
@@ -459,7 +442,7 @@ mod one_amount_one_conversion {
     #[test]
     fn a_token_amount_uses_the_contract_precision() {
         let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             deployment_id: crate::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 Some(&String::from("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
@@ -487,7 +470,7 @@ mod one_amount_one_conversion {
         // One decimal past the contract's precision is refused, not truncated.
         assert!(
             prepare_evm_send_assembly(EvmSendAssemblyInput {
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 deployment_id: crate::tokens::deployment_id_for(
                     crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                     Some(&String::from("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"))
@@ -523,7 +506,7 @@ mod every_evm_chain_can_assemble {
         let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
         for chain in crate::registry::Chain::all().filter(|c| c.is_evm() && !c.is_testnet()) {
             let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-                chain_id: chain.str_id().to_string(),
+                chain_id: chain,
                 deployment_id: crate::tokens::deployment_id_for(
                     crate::registry::Chain::from_str_id(&String::from(chain.str_id())).unwrap(),
                     None,
@@ -558,7 +541,7 @@ mod every_evm_chain_can_assemble {
         };
         let assemble = |deployment_id: String, token: Option<EvmSupportedToken>| {
             prepare_evm_send_assembly(EvmSendAssemblyInput {
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 deployment_id,
                 from_address: address.into(),
                 resolved_destination: address.into(),
@@ -591,20 +574,20 @@ mod every_evm_chain_can_assemble {
         let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
         for (chain_id, symbol, contract) in [
             (
-                "arbitrum",
+                crate::registry::Chain::Arbitrum,
                 "ARB",
                 "0x912ce59144191c1204e64559fe8253a0e49e6548",
             ),
             (
-                "optimism",
+                crate::registry::Chain::Optimism,
                 "OP",
                 "0x4200000000000000000000000000000000000042",
             ),
         ] {
             let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-                chain_id: chain_id.to_string(),
+                chain_id,
                 deployment_id: crate::tokens::deployment_id_for(
-                    crate::registry::Chain::from_str_id(&String::from(chain_id)).unwrap(),
+                    chain_id,
                     Some(&String::from(contract)),
                 )
                 .unwrap(),
@@ -635,7 +618,7 @@ mod tests {
     #[test]
     fn native_eth_assembly() {
         let a = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             deployment_id: crate::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 None,
@@ -657,7 +640,7 @@ mod tests {
     #[test]
     fn erc20_assembly_has_transfer_selector() {
         let a = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             deployment_id: crate::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 Some(&String::from("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")),
@@ -687,7 +670,7 @@ mod tests {
     #[test]
     fn invalid_destination_rejected() {
         let err = prepare_evm_send_assembly(EvmSendAssemblyInput {
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             deployment_id: crate::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 None,
@@ -704,18 +687,18 @@ mod tests {
 
     #[test]
     fn preview_decode_with_custom_fees() {
-        let json = r#"{"nonce":7,"gas_limit":21000,"max_fee_per_gas_gwei":30.0,"max_priority_fee_per_gas_gwei":2.0,"estimated_fee_eth":0.00063,"fee_rate_description":"live desc","spendable_balance":4.2}"#;
+        let json = r#"{"nonce":7,"gas_limit":21000,"max_fee_per_gas_wei":"30000000000","max_priority_fee_per_gas_wei":"2000000000","fee_rate_description":"live desc","spendable_balance":"4.2"}"#;
         let decoded = decode_evm_send_preview(EvmPreviewDecodeInput {
             raw_json: json.into(),
             explicit_nonce: Some(12),
             custom_fees: Some(EvmCustomFeeConfiguration {
-                max_fee_per_gas_gwei: 50.0,
-                max_priority_fee_per_gas_gwei: 3.0,
+                max_fee_per_gas_gwei: "50".into(),
+                max_priority_fee_per_gas_gwei: "3".into(),
             }),
         })
         .unwrap();
         assert_eq!(decoded.nonce, 12);
-        assert_eq!(decoded.max_fee_per_gas_gwei, 50.0);
+        assert_eq!(decoded.max_fee_per_gas_gwei, "50");
         assert!(
             decoded
                 .fee_rate_description
@@ -724,13 +707,13 @@ mod tests {
                 .contains("custom")
         );
         // 21000 * 50 gwei = 0.00105 ETH
-        assert!((decoded.estimated_network_fee_eth - 0.00105).abs() < 1e-9);
-        assert_eq!(decoded.spendable_balance, Some(4.2));
+        assert_eq!(decoded.estimated_network_fee_eth, "0.00105");
+        assert_eq!(decoded.spendable_balance, Some("4.2".into()));
     }
 
     #[test]
     fn preview_decode_without_overrides_uses_rpc() {
-        let json = r#"{"nonce":3,"gas_limit":21000,"max_fee_per_gas_gwei":20.0,"max_priority_fee_per_gas_gwei":1.5,"estimated_fee_eth":0.00042,"fee_rate_description":"rpc desc","spendable_balance":2.0}"#;
+        let json = r#"{"nonce":3,"gas_limit":21000,"max_fee_per_gas_wei":"20000000000","max_priority_fee_per_gas_wei":"1500000000","fee_rate_description":"rpc desc","spendable_balance":"2"}"#;
         let decoded = decode_evm_send_preview(EvmPreviewDecodeInput {
             raw_json: json.into(),
             explicit_nonce: None,
@@ -738,7 +721,9 @@ mod tests {
         })
         .unwrap();
         assert_eq!(decoded.nonce, 3);
-        assert_eq!(decoded.max_fee_per_gas_gwei, 20.0);
+        assert_eq!(decoded.max_fee_per_gas_gwei, "20");
+        assert_eq!(decoded.max_priority_fee_per_gas_gwei, "1.5");
+        assert_eq!(decoded.estimated_network_fee_eth, "0.00042");
         assert_eq!(decoded.fee_rate_description.as_deref(), Some("rpc desc"));
     }
 }
@@ -792,8 +777,8 @@ mod custom_fee_tests {
             raw_json: r#"{"gas_limit":21000}"#.into(),
             explicit_nonce: None,
             custom_fees: Some(EvmCustomFeeConfiguration {
-                max_fee_per_gas_gwei: f64::INFINITY,
-                max_priority_fee_per_gas_gwei: 1.0,
+                max_fee_per_gas_gwei: "inf".into(),
+                max_priority_fee_per_gas_gwei: "1".into(),
             }),
         });
         assert!(preview.is_none());
@@ -851,35 +836,36 @@ mod shortcut_fee_tests {
     #[test]
     fn lowering_fees_does_not_reconstruct_balance_from_a_clamped_quote() {
         let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
-            raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":0.0,
-                "estimated_fee_eth":0.1,"is_token":false,"native_balance_wei":"1000000000000"})
+            raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":"0",
+                "is_token":false,"native_balance_wei":"1000000000000"})
             .to_string(),
             explicit_nonce: None,
             custom_fees: Some(EvmCustomFeeConfiguration {
-                max_fee_per_gas_gwei: 20.0,
-                max_priority_fee_per_gas_gwei: 1.0,
+                max_fee_per_gas_gwei: "20".into(),
+                max_priority_fee_per_gas_gwei: "1".into(),
             }),
         })
         .unwrap();
-        assert_eq!(preview.max_sendable, Some(0.0));
+        assert_eq!(preview.max_sendable, Some("0".into()));
     }
     #[test]
     fn custom_fees_reduce_native_maximum_but_not_token_units() {
         for is_token in [false, true] {
             let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
-                raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":1.0,
-                    "estimated_fee_eth":0.00021,"is_token":is_token,
+                raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":"1",
+                    "is_token":is_token,
                     "native_balance_wei":"1000210000000000000"})
                 .to_string(),
                 explicit_nonce: None,
                 custom_fees: Some(EvmCustomFeeConfiguration {
-                    max_fee_per_gas_gwei: 20.0,
-                    max_priority_fee_per_gas_gwei: 1.0,
+                    max_fee_per_gas_gwei: "20".into(),
+                    max_priority_fee_per_gas_gwei: "1".into(),
                 }),
             })
             .unwrap();
-            let expected = if is_token { 1.0 } else { 0.99979 };
-            assert!((preview.max_sendable.unwrap() - expected).abs() < 1e-12);
+            // 1.00021 ETH less 21000 × 20 gwei (0.00042), exactly.
+            let expected = if is_token { "1" } else { "0.99979" };
+            assert_eq!(preview.max_sendable.as_deref(), Some(expected));
         }
     }
 }

@@ -80,7 +80,7 @@ mod tests {
                 password_protected: false,
             },
             include_in_portfolio_total: true,
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
@@ -116,7 +116,10 @@ mod tests {
         service
             .record_status_poll("orphan".into(), StatusPollOutcome::Failed)
             .await;
-        let key = crate::fetch::refresh_policy::HistoryRefreshKey::new("w", "ethereum");
+        let key = crate::fetch::refresh_policy::HistoryRefreshKey::new(
+            "w",
+            crate::registry::Chain::Ethereum,
+        );
         service.record_history_refresh(key.clone()).await;
         let result = service
             .reset_data(vec![

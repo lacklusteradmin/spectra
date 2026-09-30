@@ -8,7 +8,8 @@
 /// Every chain Spectra knows about.
 ///
 /// This crosses the FFI boundary as the one chain type every front end uses.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+/// Ordered as declared, which is the catalog's order.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, uniffi::Enum)]
 pub enum Chain {
     Bitcoin,
     Ethereum,
@@ -92,19 +93,45 @@ pub enum Chain {
     MoneroStagenet,
 }
 
-// All variants in stable order. Used by Chain::all().
-/// What a chain requires before a holding may be sent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SendRule {
-    /// Only the chain's native asset.
-    NativeOnly,
-    /// The native asset, or a token the app supports on this chain.
-    NativeOrSupportedToken,
-    /// Solana's own list of sendable coins.
-    SupportedSolanaCoin,
-    /// No extra restriction beyond the chain supporting sends at all.
-    Any,
+/// Stored and printed as its catalog id (`"bitcoin"`). An id the catalog does
+/// not know fails to deserialize: a row naming no chain is refused where it is
+/// read, not carried as a string until something parses it.
+impl serde::Serialize for Chain {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.str_id())
+    }
 }
+
+impl<'de> serde::Deserialize<'de> for Chain {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let id = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
+        Chain::parse(&id).map_err(serde::de::Error::custom)
+    }
+}
+
+/// A chain column holds the catalog id, and a row naming no known chain fails
+/// to read rather than surfacing as a string nothing can use.
+impl rusqlite::types::ToSql for Chain {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.str_id().into())
+    }
+}
+
+impl rusqlite::types::FromSql for Chain {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        let id = value.as_str()?;
+        Chain::parse(id).map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))
+    }
+}
+
+impl std::fmt::Display for Chain {
+    /// The catalog id, as a log line or an error message names the chain.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.str_id())
+    }
+}
+
+// All variants in stable order. Used by Chain::all().
 
 const ALL_CHAINS: &[Chain] = &[
     Chain::Bitcoin,
@@ -216,7 +243,6 @@ impl Chain {
         matches!(self, Self::Near | Self::NearTestnet)
     }
 
-    /// Stable string id matching `chains.toml` `id` field.
     /// This chain's row in the catalog.
     ///
     /// The enum is declared in `chains.toml` order, so a variant *is* an index
@@ -230,15 +256,19 @@ impl Chain {
 
     /// Stable string id — the catalog's `id`.
     pub fn str_id(self) -> &'static str {
-        self.entry().id.as_str()
+        crate::chains::catalog_id(self as usize)
     }
 
-    /// Parse a string id (from `chains.toml` or the FFI boundary) into a `Chain`.
-    /// Parse a string id (from `chains.toml` or the FFI boundary) into a `Chain`.
+    /// Parse a string id (from `chains.toml`, storage or a command line).
     pub fn from_str_id(id: &str) -> Option<Self> {
         static BY_ID: std::sync::LazyLock<std::collections::HashMap<&'static str, Chain>> =
             std::sync::LazyLock::new(|| Chain::all().map(|c| (c.str_id(), c)).collect());
         BY_ID.get(id).copied()
+    }
+
+    /// [`Chain::from_str_id`], with the refusal a caller reports.
+    pub fn parse(id: &str) -> Result<Self, String> {
+        Self::from_str_id(id).ok_or_else(|| format!("Unknown network: {id}"))
     }
 
     /// Key under which this chain's address is stored during wallet import.
@@ -396,7 +426,7 @@ impl Chain {
         self.is_evm()
             || !self.uses_generic_send_submit()
             || self.simple_preview_chain().is_some()
-            || self.send_execution_shape().fee_fallback > 0.0
+            || self.send_execution_shape().fee_fallback.is_some()
     }
 
     /// This chain's send builder can sign a transaction and stop, without
@@ -455,7 +485,7 @@ impl Chain {
     /// For Monero "no path" is the answer, not an error. See
     /// `default_path_from_catalog`.
     pub fn uses_derivation_path(self) -> bool {
-        crate::chains::default_derivation_path_template(self.str_id()).is_some()
+        crate::chains::default_derivation_path_template(self).is_some()
     }
 
     /// Returns `true` for chains that are testnets.
@@ -633,7 +663,7 @@ impl Chain {
             .ok()
             .and_then(|catalog| {
                 catalog.endpoint_records.iter().find(|record| {
-                    record.chain_id == self.str_id()
+                    record.chain_id == self
                         && record.api == crate::EndpointApi::Blockscout
                         && record
                             .capabilities
@@ -654,7 +684,7 @@ impl Chain {
             name: self.coin_name().to_string(),
             symbol: self.coin_symbol().to_string(),
             coingecko_id: self.coingecko_id().to_string(),
-            chain_id: self.str_id().to_string(),
+            chain_id: self,
             token_standard: "Native".to_string(),
             contract_address: None,
             amount: "0".to_string(),
@@ -760,19 +790,19 @@ impl Chain {
         match chain {
             Chain::Sui => SendExecutionShape {
                 fee_field: SendFeeField::GasBudget,
-                fee_fallback: 0.0,
+                fee_fallback: None,
             },
             Chain::Cardano => SendExecutionShape {
                 fee_field: SendFeeField::FeeAmount,
-                fee_fallback: 0.0,
+                fee_fallback: None,
             },
             Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
-                fee_fallback: 0.00001,
+                fee_fallback: Some("0.00001"),
             },
             Chain::Litecoin => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
-                fee_fallback: 0.0001,
+                fee_fallback: Some("0.0001"),
             },
             // The five whose send existed but was unroutable. `fee_fallback`
             // is the default `execute_send` already applies when the request
@@ -782,15 +812,15 @@ impl Chain {
             // the generic submit refuses for want of an estimate.
             Chain::Zcash | Chain::BitcoinGold | Chain::Kaspa => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
-                fee_fallback: 0.00001,
+                fee_fallback: Some("0.00001"),
             },
             Chain::Decred | Chain::Dash => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
-                fee_fallback: 0.00002,
+                fee_fallback: Some("0.00002"),
             },
             _ => SendExecutionShape {
                 fee_field: SendFeeField::None,
-                fee_fallback: 0.0,
+                fee_fallback: None,
             },
         }
     }
@@ -828,17 +858,18 @@ impl Chain {
         }
     }
 
-    /// The EVM family gates a non-native asset on it being a supported token.
+    /// Whether a tracked token on this chain can be sent. Every chain sends
+    /// its own asset.
     ///
-    /// One rule now, on the side that refuses early: being told no is better
-    /// than a signed transaction that cannot land.
-    pub fn send_rule(self) -> SendRule {
+    /// The chains whose send builder has a token transfer. Sui, Aptos and TON
+    /// host tokens and have none; Ethereum Classic and Hyperliquid stay
+    /// native-only, the stricter side for funds.
+    pub fn sends_tokens(self) -> bool {
         let chain = self.mainnet_counterpart();
         match chain {
-            Chain::EthereumClassic | Chain::Hyperliquid => SendRule::NativeOnly,
-            Chain::Solana => SendRule::SupportedSolanaCoin,
-            _ if chain.is_evm() => SendRule::NativeOrSupportedToken,
-            _ => SendRule::Any,
+            Chain::EthereumClassic | Chain::Hyperliquid => false,
+            Chain::Solana | Chain::Tron | Chain::Near => true,
+            _ => chain.is_evm(),
         }
     }
 
@@ -917,9 +948,9 @@ impl Chain {
     ///
     /// NEAR is the one chain that routes a token send with no fee estimate to
     /// check against, so the floor is the whole check.
-    pub fn token_send_gas_reserve(self) -> Option<f64> {
+    pub fn token_send_gas_reserve(self) -> Option<&'static str> {
         match self {
-            Chain::Near => Some(0.001),
+            Chain::Near => Some("0.001"),
             _ => None,
         }
     }
@@ -1198,12 +1229,6 @@ impl Chain {
         Self::all().filter(|c| !c.is_testnet())
     }
 
-    /// The display name for a chain id, for a sentence a person reads. An id
-    /// the registry does not know is shown as it is.
-    pub fn display_name_for_id(id: &str) -> String {
-        Self::from_str_id(id).map_or_else(|| id.to_string(), |c| c.chain_display_name().to_string())
-    }
-
     /// Resolve a chain from the display name used on the boundary.
     ///
     /// No special cases: the enum and `chains.toml` agree on every name, and
@@ -1230,9 +1255,10 @@ pub enum SendFeeField {
 #[derive(Debug, Clone, Copy)]
 pub struct SendExecutionShape {
     pub fee_field: SendFeeField,
-    /// Fee to assume when no preview is available, in native units. Zero
-    /// where the chain always has a preview by the time a send is submitted.
-    pub fee_fallback: f64,
+    /// Fee to assume when no preview is available, as an exact decimal in
+    /// native units. `None` where the chain always has a preview by the time
+    /// a send is submitted.
+    pub fee_fallback: Option<&'static str>,
 }
 
 /// How a chain's pending transactions are polled for confirmation.
@@ -1257,7 +1283,7 @@ pub enum PendingStatusPoll {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NetworkChoice {
     /// Registry id — what `SelectChainForFamily` takes.
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// What to show in a picker: "Bitcoin", "Bitcoin Testnet4", …
     pub title: String,
     pub is_testnet: bool,
@@ -1624,7 +1650,7 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
                 .network_choices()
                 .into_iter()
                 .map(|c| NetworkChoice {
-                    chain_id: c.str_id().to_string(),
+                    chain_id: c,
                     title: c.chain_display_name().to_string(),
                     is_testnet: c.is_testnet(),
                 })

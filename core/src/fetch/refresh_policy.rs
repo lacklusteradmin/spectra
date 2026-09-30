@@ -10,13 +10,13 @@ use crate::store::state::AppSettings;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct HistoryRefreshKey {
     pub wallet_id: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
 }
 impl HistoryRefreshKey {
-    pub(crate) fn new(wallet_id: &str, chain_id: &str) -> Self {
+    pub(crate) fn new(wallet_id: &str, chain_id: crate::registry::Chain) -> Self {
         Self {
             wallet_id: wallet_id.to_lowercase(),
-            chain_id: chain_id.to_string(),
+            chain_id,
         }
     }
 }
@@ -312,9 +312,9 @@ mod tests {
     #[test]
     fn history_cooldown_is_per_wallet_and_network() {
         let mut clock = RefreshClock::default();
-        let a = HistoryRefreshKey::new("A", "ethereum");
-        let b = HistoryRefreshKey::new("b", "ethereum");
-        let testnet = HistoryRefreshKey::new("a", "ethereum-sepolia");
+        let a = HistoryRefreshKey::new("A", crate::registry::Chain::Ethereum);
+        let b = HistoryRefreshKey::new("b", crate::registry::Chain::Ethereum);
+        let testnet = HistoryRefreshKey::new("a", crate::registry::Chain::EthereumSepolia);
         clock.record_history(a.clone(), 900.0);
         assert_eq!(
             history_plans(

@@ -52,17 +52,11 @@ pub(super) fn add(
         .iter()
         .flat_map(|w| &w.holdings)
         .find(|h| h.deployment_id() == key)
-        .map(|h| (h.name.clone(), h.symbol.clone(), h.chain_id.clone()))
+        .map(|h| (h.name.clone(), h.symbol.clone(), h.chain_id))
         .or_else(|| {
             crate::registry::Chain::all()
                 .find(|c| c.entry().native_deployment_id == key)
-                .map(|c| {
-                    (
-                        c.coin_name().into(),
-                        c.coin_symbol().into(),
-                        c.str_id().into(),
-                    )
-                })
+                .map(|c| (c.coin_name().into(), c.coin_symbol().into(), c))
         });
     let Some((asset_display_name, symbol, chain_id)) = metadata else {
         return rejected(PriceAlertRejection::UnknownAsset);

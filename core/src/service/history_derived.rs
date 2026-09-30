@@ -32,7 +32,7 @@ pub struct ReplaceableSend {
     pub wallet_id: String,
     /// The catalog id of the chain the pending send is on — the chain the
     /// replacement must be signed for, not whichever one the composer shows.
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub symbol: String,
     pub to_address: String,
     /// Exact decimal.
@@ -63,14 +63,14 @@ pub(crate) fn replaceable_send(
         .as_deref()
         .map(str::trim)
         .filter(|hash| !hash.is_empty())?;
-    let chain = crate::registry::Chain::from_str_id(&record.chain_id)?;
+    let chain = record.chain_id;
     if !chain.is_evm() {
         return None;
     }
     Some(ReplaceableSend {
         transaction_id: record.id.clone(),
         wallet_id: wallet_id.to_owned(),
-        chain_id: chain.str_id().to_owned(),
+        chain_id: chain,
         symbol: record.symbol.clone(),
         to_address: record.address.clone(),
         amount: record.amount.clone(),
@@ -160,7 +160,7 @@ mod tests {
             &crate::store::state::WalletState::single_address(
                 "w1",
                 "W",
-                "bitcoin",
+                crate::registry::Chain::Bitcoin,
                 "bc1qreceive",
                 None,
                 true,
@@ -233,12 +233,12 @@ mod replaceable_tests {
     fn every_evm_chain_offers_replacement_and_nothing_else_does() {
         let ethereum =
             replaceable_send(&record("a", "ethereum", "ETH", json!({}))).expect("ethereum");
-        assert_eq!(ethereum.chain_id, "ethereum");
+        assert_eq!(ethereum.chain_id, crate::registry::Chain::Ethereum);
         assert!(ethereum.can_speed_up);
 
         let arbitrum = replaceable_send(&record("b", "arbitrum", "ETH", json!({"nonce": 7})))
             .expect("arbitrum");
-        assert_eq!(arbitrum.chain_id, "arbitrum");
+        assert_eq!(arbitrum.chain_id, crate::registry::Chain::Arbitrum);
         assert_eq!(arbitrum.recorded_nonce, Some(7));
         assert!(arbitrum.can_speed_up);
 
@@ -248,7 +248,6 @@ mod replaceable_tests {
                 "{chain}"
             );
         }
-        assert!(replaceable_send(&record("d", "Not A Chain", "ETH", json!({}))).is_none());
     }
 
     /// A token transfer cannot be rebuilt from the record, so it may be
@@ -306,7 +305,7 @@ mod replaceable_tests {
             &crate::store::state::WalletState::single_address(
                 "wallet-1",
                 "W",
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,
@@ -345,8 +344,11 @@ mod replaceable_tests {
             .await
             .unwrap();
 
-        let expected = vec!["optimism".to_string(), "base".to_string()];
-        let chains: Vec<String> = service
+        let expected = vec![
+            crate::registry::Chain::Optimism,
+            crate::registry::Chain::Base,
+        ];
+        let chains: Vec<crate::registry::Chain> = service
             .replaceable_sends()
             .await
             .unwrap()
@@ -378,7 +380,7 @@ mod replaceable_tests {
         );
         assert!(
             service
-                .poll_pending_transactions("ethereum".into())
+                .poll_pending_transactions(crate::registry::Chain::Ethereum)
                 .await
                 .is_err(),
             "unopened storage must not read as no pending transactions"

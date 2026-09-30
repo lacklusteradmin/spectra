@@ -45,9 +45,9 @@ with tempfile.TemporaryDirectory(prefix="spectra-endpoints-") as directory:
 
 # Missing built-in providers stay empty, while supported custom APIs still work.
 with tempfile.TemporaryDirectory(prefix="spectra-empty-endpoints-") as directory:
-    for chain, api in [("zcash", "blockbook"), ("bitcoin-gold", "blockbook"),
-                       ("dash", "blockbook"), ("dogecoin-testnet", "blockcypher"),
-                       ("monero-stagenet", "monero-daemon-rpc")]:
+    for chain, api in [("zcash-testnet", "blockbook"), ("bitcoin-cash-testnet", "blockbook"),
+                       ("dash-testnet", "blockbook"), ("dogecoin-testnet", "blockcypher"),
+                       ("decred-testnet", "insight")]:
         assert run("send", "configured-endpoints", chain)["endpoints"] == [], chain
         health = run("endpoints", "--chain", chain)
         assert not health["ok"] and health["networksWithoutApis"] == [chain], health
@@ -65,18 +65,15 @@ with tempfile.TemporaryDirectory(prefix="spectra-empty-endpoints-") as directory
 import http.server
 import threading
 with tempfile.TemporaryDirectory(prefix="spectra-health-") as directory:
+    # Every EVM network now has public providers, so this runs on Blockbook;
+    # EVM's identity-then-reads order is covered by core's endpoint_health tests.
     state = {"fail": False}
     seen = []
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_): pass
-        def do_POST(self):
-            call = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            method = call["method"]
-            seen.append(method)
-            values = {"eth_chainId": "0x66eee", "eth_blockNumber": "0x123", "eth_getBalance": "0x0"}
-            response = {"jsonrpc": "2.0", "id": call["id"], "result": values[method]}
-            if state["fail"] and method == "eth_blockNumber":
-                response = {"jsonrpc": "2.0", "id": call["id"], "error": {"code": -32046, "message": "Cannot fulfill request"}}
+        def do_GET(self):
+            seen.append(self.path)
+            response = {"error": "Internal server error"} if state["fail"] else {"blockbook": {"bestHeight": 123}}
             payload = json.dumps(response).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(payload)))
             self.end_headers(); self.wfile.write(payload)
@@ -84,14 +81,14 @@ with tempfile.TemporaryDirectory(prefix="spectra-health-") as directory:
     worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
     try:
         url = f"http://127.0.0.1:{server.server_port}"
-        run("endpoints", "--chain", "arbitrum-sepolia", "--api", "evm-json-rpc", "--capabilities", "balance,fee,broadcast", "--add", url)
-        health = run("endpoints", "--chain", "arbitrum-sepolia")
+        run("endpoints", "--chain", "zcash-testnet", "--api", "blockbook", "--capabilities", "balance,fee,broadcast", "--add", url)
+        health = run("endpoints", "--chain", "zcash-testnet")
         assert health["ok"] and health["uncheckedApis"] == 0, health
-        assert seen == ["eth_chainId", "eth_blockNumber", "eth_getBalance"], seen
+        assert seen == ["/api/v2"], seen
         state["fail"] = True
-        health = run("endpoints", "--chain", "arbitrum-sepolia")
+        health = run("endpoints", "--chain", "zcash-testnet")
         assert not health["ok"] and health["unreachable"] == 1, health
-        assert "eth_blockNumber" in health["endpoints"][0]["detail"], health
+        assert health["endpoints"][0]["detail"], health
     finally:
         server.shutdown(); server.server_close(); worker.join()
-    print("CLI health rejects a node whose identity responds but chain reads fail")
+    print("CLI health rejects a node that answers without the fields it must report")

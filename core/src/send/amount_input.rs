@@ -145,28 +145,6 @@ pub fn send_amount_shortcut(maximum: String, decimals: u32, percentage: u32) -> 
     )
 }
 
-/// The same over a fee-adjusted estimate a preview decoded as `f64`. Takes
-/// the preceding representable value: the float may have rounded the
-/// provider's integer balance upwards, and reserving one ULP keeps that
-/// uncertainty on the safe side instead of manufacturing spendable units.
-pub(crate) fn estimate_shortcut(maximum: f64, decimals: u32, percentage: u32) -> Option<String> {
-    if !maximum.is_finite() || maximum <= 0.0 || decimals > 38 {
-        return None;
-    }
-    let bits = maximum.to_bits().checked_sub(1)?;
-    let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023 - 52;
-    let mantissa = (bits & ((1u64 << 52) - 1)) | (1u64 << 52);
-    // Split powers of ten so the intermediate fits for 24-decimal chains.
-    let scaled = u128::from(mantissa).checked_mul(5u128.checked_pow(decimals)?)?;
-    let shift = exponent + decimals as i32;
-    let units = if shift >= 0 {
-        scaled.checked_mul(1u128.checked_shl(shift as u32)?)?
-    } else {
-        scaled.checked_shr((-shift) as u32).unwrap_or(0)
-    };
-    shortcut_of_units(units, decimals, percentage)
-}
-
 fn shortcut_of_units(units: u128, decimals: u32, percentage: u32) -> Option<String> {
     if decimals > 38 || !(1..=100).contains(&percentage) {
         return None;
@@ -179,23 +157,6 @@ fn shortcut_of_units(units: u128, decimals: u32, percentage: u32) -> Option<Stri
 #[cfg(test)]
 mod shortcut_tests {
     use super::*;
-    #[test]
-    fn shortcuts_never_exceed_the_fee_adjusted_quote() {
-        assert_eq!(
-            estimate_shortcut(0.99999, 8, 100).as_deref(),
-            Some("0.99998999")
-        );
-        assert_eq!(estimate_shortcut(1.0, 8, 50).as_deref(), Some("0.49999999"));
-        let near = estimate_shortcut(1.0, 24, 100).unwrap();
-        assert!(parse_raw_amount(&near, 24).unwrap() < 10u128.pow(24));
-        assert!(!near.contains('e'));
-        for maximum in [f64::NAN, f64::INFINITY, -1.0, 0.0, 1e-30] {
-            assert!(estimate_shortcut(maximum, 8, 100).is_none());
-        }
-        assert!(estimate_shortcut(1.0, 8, 0).is_none());
-        assert!(estimate_shortcut(1.0, 8, 101).is_none());
-        assert!(estimate_shortcut(1.0, 39, 100).is_none());
-    }
     #[test]
     fn exact_shortcuts_floor_without_a_float() {
         assert_eq!(

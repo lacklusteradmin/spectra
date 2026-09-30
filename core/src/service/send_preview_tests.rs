@@ -69,22 +69,15 @@ async fn seed_probe_holding(
     use crate::store::wallet_domain::{
         AssetHolding, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
     };
-    let chain_id = chain.str_id().to_string();
     let mut state = service.wallet_state.write().await;
-    let mut wallet = WalletState::single_address(
-        "probe-wallet",
-        "Probe",
-        chain_id.clone(),
-        "sender",
-        None,
-        false,
-    );
+    let mut wallet =
+        WalletState::single_address("probe-wallet", "Probe", chain, "sender", None, false);
     wallet.holdings = vec![AssetHolding {
         id: String::new(),
         name: symbol.to_string(),
         symbol: symbol.to_string(),
         coingecko_id: String::new(),
-        chain_id: chain_id.clone(),
+        chain_id: chain,
         token_standard: if token.is_none() {
             "Native".into()
         } else {
@@ -106,7 +99,7 @@ async fn seed_probe_holding(
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain_id: chain.str_id().to_string(),
+                chain_id: chain,
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
                 token_standard: String::new(),
@@ -190,13 +183,21 @@ mod destination_resolution_tests {
         let reviewed = "0x1111111111111111111111111111111111111111";
         let changed = "0x2222222222222222222222222222222222222222";
         let same = service
-            .verify_send_destination("ethereum".into(), reviewed.into(), reviewed.into())
+            .verify_send_destination(
+                crate::registry::Chain::Ethereum,
+                reviewed.into(),
+                reviewed.into(),
+            )
             .await
             .expect("the reviewed address verifies");
         assert_eq!(same.address, reviewed);
         assert!(
             service
-                .verify_send_destination("ethereum".into(), changed.into(), reviewed.into())
+                .verify_send_destination(
+                    crate::registry::Chain::Ethereum,
+                    changed.into(),
+                    reviewed.into()
+                )
                 .await
                 .is_err()
         );
@@ -209,7 +210,7 @@ mod destination_resolution_tests {
         let service = WalletService::new(Vec::new()).expect("service");
         let resolved = service
             .resolve_send_destination(
-                "ethereum".into(),
+                crate::registry::Chain::Ethereum,
                 "  0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  ".into(),
             )
             .await
@@ -226,7 +227,7 @@ mod destination_resolution_tests {
     async fn an_empty_destination_is_refused() {
         let service = WalletService::new(Vec::new()).expect("service");
         let err = service
-            .resolve_send_destination("bitcoin".into(), "   ".into())
+            .resolve_send_destination(crate::registry::Chain::Bitcoin, "   ".into())
             .await
             .expect_err("an empty destination is not an address");
         assert!(format!("{err:?}").contains("Bitcoin"));
@@ -241,9 +242,14 @@ mod destination_resolution_tests {
     #[tokio::test]
     async fn a_name_is_not_looked_up_off_the_chain_that_registers_it() {
         let service = WalletService::new(Vec::new()).expect("service");
-        for chain_id in ["arbitrum", "base", "polygon", "bitcoin"] {
+        for chain_id in [
+            crate::registry::Chain::Arbitrum,
+            crate::registry::Chain::Base,
+            crate::registry::Chain::Polygon,
+            crate::registry::Chain::Bitcoin,
+        ] {
             let err = service
-                .resolve_send_destination(chain_id.into(), "vitalik.eth".into())
+                .resolve_send_destination(chain_id, "vitalik.eth".into())
                 .await
                 .expect_err("a name off Ethereum is not a destination");
             assert!(
@@ -251,18 +257,6 @@ mod destination_resolution_tests {
                 "{chain_id} should refuse the name, got {err:?}"
             );
         }
-    }
-
-    /// An unknown chain is an error, not a destination.
-    #[tokio::test]
-    async fn an_unknown_chain_resolves_nothing() {
-        let service = WalletService::new(Vec::new()).expect("service");
-        assert!(
-            service
-                .resolve_send_destination("not-a-chain".into(), "0xabc".into())
-                .await
-                .is_err()
-        );
     }
 }
 
@@ -300,7 +294,7 @@ mod failed_reads {
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -345,13 +339,13 @@ mod failed_reads {
             }).mount(&server).await;
             let service = WalletService::new(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 endpoints: vec![server.uri()],
             }])
             .unwrap();
             let preview = service
                 .fetch_evm_send_preview_json(
-                    "ethereum",
+                    crate::registry::Chain::Ethereum,
                     "from".into(),
                     "to".into(),
                     "1".into(),
@@ -370,7 +364,7 @@ mod failed_reads {
                 assert!(
                     service
                         .fetch_evm_send_preview_json(
-                            "ethereum",
+                            crate::registry::Chain::Ethereum,
                             "from".into(),
                             "to".into(),
                             value.into(),
@@ -406,13 +400,13 @@ mod failed_reads {
             }
             let service = WalletService::new(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
-                chain_id: "tron".into(),
+                chain_id: crate::registry::Chain::Tron,
                 endpoints: vec![server.uri()],
             }])
             .unwrap();
             let result = service
                 .fetch_token_balances(
-                    "tron".into(),
+                    crate::registry::Chain::Tron,
                     "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                     vec![TokenDescriptor {
                         contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
@@ -448,7 +442,7 @@ mod a_preview_quotes_the_asset_it_moves {
     const ETH_BALANCE_WEI: &str = "0xde0b6b3a7640000";
     const TOKEN_DECIMALS: u128 = 8;
     const TOKEN_RAW: u128 = 25_000_000_000; // 250.0 at 8 decimals
-    const TOKEN_DISPLAY: f64 = 250.0;
+    const TOKEN_DISPLAY: &str = "250";
 
     /// Answer one JSON-RPC call. `eth_call` dispatches on the ABI selector so
     /// the token contract can hold a balance the account does not.
@@ -501,14 +495,14 @@ mod a_preview_quotes_the_asset_it_moves {
         let server = evm_node().await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum-sepolia".into(),
+            chain_id: crate::registry::Chain::EthereumSepolia,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
         let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "tETH", None).await;
         {
             let mut state = service.wallet_state.write().await;
-            state.wallets[0].chain_id = "ethereum-sepolia".into();
+            state.wallets[0].chain_id = crate::registry::Chain::EthereumSepolia;
             state.wallets[0].addresses[0].address = format!("0x{}", "11".repeat(20));
         }
         for amount in ["NaN", "-1", "0.0000000000000000001"] {
@@ -559,13 +553,13 @@ mod a_preview_quotes_the_asset_it_moves {
     ) -> serde_json::Value {
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
         let raw = service
             .fetch_evm_send_preview_json(
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 format!("0x{}", "11".repeat(20)),
                 to,
                 value_wei.into(),
@@ -591,12 +585,17 @@ mod a_preview_quotes_the_asset_it_moves {
 
         assert_eq!(value["spendable_balance"], json!(TOKEN_DISPLAY));
         assert_ne!(
-            value["spendable_balance"].as_f64().unwrap().round(),
-            1.0,
+            value["spendable_balance"],
+            json!("1"),
             "the gas coin's balance is not the token's"
         );
         // The fee is still quoted in the gas coin: it is a separate claim.
-        assert!(value["estimated_fee_eth"].as_f64().unwrap() > 0.0);
+        let fee_wei: u128 = value["estimated_fee_wei"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(fee_wei > 0);
     }
 
     /// A native send pays its fee out of the balance it is moving, so the fee
@@ -613,9 +612,20 @@ mod a_preview_quotes_the_asset_it_moves {
         )
         .await;
 
-        let fee = value["estimated_fee_eth"].as_f64().unwrap();
-        assert!(fee > 0.0);
-        assert_eq!(value["spendable_balance"].as_f64().unwrap(), 1.0 - fee);
+        let fee_wei: u128 = value["estimated_fee_wei"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(fee_wei > 0);
+        // One ether less the fee, to the wei.
+        assert_eq!(
+            value["spendable_balance"],
+            json!(crate::decimal::from_units(
+                1_000_000_000_000_000_000 - fee_wei,
+                18
+            ))
+        );
     }
 
     /// TRC-20 decimals are the contract's. The fixed `1e6` that stood here is
@@ -642,7 +652,7 @@ mod a_preview_quotes_the_asset_it_moves {
         }
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "tron".into(),
+            chain_id: crate::registry::Chain::Tron,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -656,8 +666,8 @@ mod a_preview_quotes_the_asset_it_moves {
             .expect("preview")
             .expect("valid typed preview");
 
-        assert_eq!(value.spendableBalance, 4.2);
-        assert_eq!(value.maxSendable, 4.2);
+        assert_eq!(value.spendableBalance, "4.2");
+        assert_eq!(value.maxSendable, "4.2");
     }
 
     /// A token balance nobody could read is not a zero holding — the send
@@ -671,7 +681,7 @@ mod a_preview_quotes_the_asset_it_moves {
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "tron".into(),
+            chain_id: crate::registry::Chain::Tron,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -714,7 +724,7 @@ mod destination_probe_tests {
             // result is unknown/error, rather than an invented empty history.
             let service = WalletService::new(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
-                chain_id: Chain::BnbChain.str_id().into(),
+                chain_id: Chain::BnbChain,
                 endpoints: vec![server.uri()],
             }])
             .unwrap();
@@ -761,7 +771,7 @@ mod destination_probe_tests {
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: Chain::BnbChain.str_id().into(),
+            chain_id: Chain::BnbChain,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -789,7 +799,7 @@ mod destination_probe_tests {
             .await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "litecoin".into(),
+            chain_id: crate::registry::Chain::Litecoin,
             endpoints: vec![server.uri()],
         }])
         .unwrap();

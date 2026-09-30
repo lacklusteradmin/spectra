@@ -36,7 +36,7 @@ pub struct BitcoinSendParams {
     pub available_utxos: Vec<Utxo>,
     /// Which network, as a registry chain id (`"bitcoin"`,
     /// `"bitcoin-testnet-4"`, …).
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// Whether to signal RBF (replace-by-fee) on inputs.
     pub enable_rbf: bool,
     /// Minimum change output in satoshis; dust below this is absorbed into fee.
@@ -170,9 +170,7 @@ fn parse_spend_identity(
     secp: &Secp256k1<bitcoin::secp256k1::All>,
     params: &BitcoinSendParams,
 ) -> Result<SpendIdentity, String> {
-    let network = crate::registry::Chain::from_str_id(&params.chain_id)
-        .unwrap_or(crate::registry::Chain::Bitcoin)
-        .bitcoin_network();
+    let network = params.chain_id.bitcoin_network();
 
     let mut key_bytes = zeroize::Zeroizing::new(
         hex::decode(params.private_key_hex.as_bytes())
@@ -560,7 +558,7 @@ mod tests {
                 sats_per_vbyte: 10.0,
             },
             available_utxos: utxos,
-            chain_id: "bitcoin".to_string(),
+            chain_id: crate::registry::Chain::Bitcoin,
             enable_rbf: true,
             dust_threshold: None,
             pinned_utxos: None,
@@ -727,7 +725,7 @@ mod tests {
 /// Frozen inputs and outputs for all four supported Bitcoin address scripts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedBitcoinTransaction {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub from: String,
     pub to: String,
     pub amount: u64,
@@ -739,7 +737,7 @@ pub(crate) struct PreparedBitcoinTransaction {
 impl PreparedBitcoinTransaction {
     fn params(&self, key: String) -> BitcoinSendParams {
         BitcoinSendParams {
-            chain_id: self.chain_id.clone(),
+            chain_id: self.chain_id,
             from_address: self.from.clone(),
             to_address: self.to.clone(),
             amount_sats: self.amount,
@@ -765,7 +763,7 @@ impl PreparedBitcoinTransaction {
             return Err("Invalid Bitcoin fee rate".into());
         }
         let mut result = Self {
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             from: from.into(),
             to: to.into(),
             amount,

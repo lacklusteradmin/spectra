@@ -40,8 +40,6 @@ pub(crate) fn parse_hex_u64(s: &str) -> Result<u64, String> {
 pub struct EvmBalance {
     /// Native token balance in the chain's smallest unit (wei for ETH).
     pub balance_wei: String,
-    /// Human-readable balance (18 decimal places).
-    pub balance_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +86,7 @@ pub struct Erc20Balance {
     pub holder: String,
     /// Raw balance in the token's smallest unit (u256 encoded as decimal string).
     pub balance_raw: String,
-    /// Human-readable balance scaled by `decimals`, up to 6 fractional digits.
+    /// The balance scaled by `decimals`, exactly.
     pub balance_display: String,
     /// Token decimals (cached from the contract).
     pub decimals: u8,
@@ -281,10 +279,8 @@ impl EvmClient {
             .await?;
         let hex = result.as_str().ok_or("eth_getBalance: expected string")?;
         let wei = parse_hex_u128(hex)?;
-        let balance_display = format_ether(wei);
         Ok(EvmBalance {
             balance_wei: wei.to_string(),
-            balance_display,
         })
     }
 
@@ -333,7 +329,7 @@ impl EvmClient {
     ) -> Result<Erc20Balance, String> {
         let raw = self.fetch_erc20_balance_of(contract, holder).await?;
         let metadata = self.fetch_erc20_metadata(contract).await?;
-        let balance_display = format_token_amount(raw, metadata.decimals);
+        let balance_display = crate::decimal::from_units(raw, u32::from(metadata.decimals));
         Ok(Erc20Balance {
             contract: contract.to_lowercase(),
             holder: holder.to_lowercase(),
@@ -562,57 +558,6 @@ pub fn decode_abi_string_or_bytes32(hex_str: &str) -> Option<String> {
         .collect();
     let s = String::from_utf8(trimmed).ok()?;
     if s.is_empty() { None } else { Some(s) }
-}
-
-// ── Formatting
-
-/// Format a raw `u128` token amount with the given decimals, trimming trailing
-/// zeros and capping to 6 fractional digits for display.
-pub fn format_token_amount(raw: u128, decimals: u8) -> String {
-    if decimals == 0 {
-        return raw.to_string();
-    }
-    let scale: u128 = 10u128.pow(decimals as u32);
-    let whole = raw / scale;
-    let frac = raw % scale;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
-}
-
-/// Format a raw integer token amount string by `decimals`.
-/// Equivalent to `format_token_amount` but accepts a decimal string as input
-/// (Etherscan returns large values as strings to avoid JSON number overflow).
-pub fn format_evm_decimals(raw_str: &str, decimals: u8) -> String {
-    let raw: u128 = raw_str.parse().unwrap_or(0);
-    format_token_amount(raw, decimals)
-}
-
-/// Format wei as a decimal ETH string with up to 6 significant decimal places.
-pub fn format_ether(wei: u128) -> String {
-    let whole = wei / 1_000_000_000_000_000_000u128;
-    let frac = wei % 1_000_000_000_000_000_000u128;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    // 18-digit fractional, trim trailing zeros.
-    let frac_str = format!("{:018}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    // Show at most 6 decimal places.
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
 }
 
 /// Percent-encode a string for use in a URL path component.

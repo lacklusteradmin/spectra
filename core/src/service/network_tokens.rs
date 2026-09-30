@@ -84,17 +84,12 @@ impl WalletService {
     /// string an attacker cannot choose.
     pub async fn discover_token_balances(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         address: String,
     ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
-                SpectraBridgeError::from(format!(
-                    "discover_token_balances: unsupported chain_id: {chain_id}"
-                ))
-            })?;
             // The registry says which chains have a node that answers "what does
             // this address hold?". Refusing here rather than in the match below
             // keeps the two from drifting apart, which is how a chain ends up
@@ -108,7 +103,7 @@ impl WalletService {
                 )));
             }
             let endpoints = this
-                .endpoints_for(chain.str_id(), &[EndpointCapability::TokenDiscovery])
+                .endpoints_for(chain, &[EndpointCapability::TokenDiscovery])
                 .await;
             // Not `unwrap_or_default()` on any arm: a node that will not answer is
             // not an address that holds nothing, and the difference is what a user
@@ -140,9 +135,9 @@ impl WalletService {
                         .await
                         .map_err(SpectraBridgeError::from)?;
                     TronHttpClient::with_metadata_cache(
-                        this.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+                        this.endpoints_for(chain, &[EndpointCapability::TokenBalance])
                             .await,
-                        chain.str_id(),
+                        chain,
                         this.trc20_metadata.clone(),
                     )
                     .name_trc20_holdings(held)
@@ -180,7 +175,7 @@ impl WalletService {
                 }
             };
             let known: std::collections::HashMap<String, crate::tokens::TokenDeploymentEntry> =
-                crate::tokens::list_token_deployments(chain.str_id().to_string())
+                crate::tokens::list_token_deployments(Some(chain))
                     .into_iter()
                     .map(|t| (t.contract.clone(), t))
                     .collect();
@@ -204,9 +199,9 @@ impl WalletService {
                             .unwrap_or_default(),
                         decimals,
                         balance_raw: b.balance_raw.to_string(),
-                        balance_display: crate::api::evm_json_rpc::format_token_amount(
+                        balance_display: crate::decimal::from_units(
                             b.balance_raw,
-                            decimals,
+                            u32::from(decimals),
                         ),
                         is_known: entry.is_some(),
                     }
@@ -220,21 +215,15 @@ impl WalletService {
 impl WalletService {
     pub async fn fetch_token_balances(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         address: String,
         tokens: Vec<TokenDescriptor>,
     ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }
-
-        let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "fetch_token_balances: unsupported chain_id: {chain_id}"
-            ))
-        })?;
         let endpoints = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+            .endpoints_for(chain, &[EndpointCapability::TokenBalance])
             .await;
 
         macro_rules! coin_token_balances {
@@ -265,7 +254,10 @@ impl WalletService {
                                 symbol,
                                 decimals,
                                 balance_raw: raw.to_string(),
-                                balance_display: format_decimals(raw as u128, decimals),
+                                balance_display: crate::decimal::from_units(
+                                    raw as u128,
+                                    u32::from(decimals),
+                                ),
                                 is_known: true,
                             })
                         }
@@ -280,7 +272,7 @@ impl WalletService {
                 use futures::future::join_all;
                 let client = std::sync::Arc::new(TronHttpClient::with_metadata_cache(
                     endpoints,
-                    chain.str_id(),
+                    chain,
                     self.trc20_metadata.clone(),
                 ));
                 let futs: Vec<_> = tokens
@@ -372,7 +364,7 @@ impl WalletService {
                             let raw = raw?;
                             let decimals =
                                 crate::api::checked_token_decimals(u128::from(meta?.decimals))?;
-                            let display = format_decimals(raw, decimals);
+                            let display = crate::decimal::from_units(raw, u32::from(decimals));
                             Ok::<_, String>(TokenBalanceResult {
                                 contract_address: contract,
                                 symbol,
@@ -425,7 +417,7 @@ impl WalletService {
                             symbol: t.symbol.clone(),
                             decimals,
                             balance_raw: raw.to_string(),
-                            balance_display: format_decimals(raw, decimals),
+                            balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
                             is_known: true,
                         })
                     })
@@ -461,7 +453,7 @@ impl WalletService {
                             symbol: token.symbol.clone(),
                             decimals,
                             balance_raw: raw.to_string(),
-                            balance_display: format_decimals(raw, decimals),
+                            balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
                             is_known: true,
                         })
                     });
@@ -492,7 +484,7 @@ mod discovery_names_only_what_the_catalog_vouches_for {
         let service = crate::service::WalletService::new(Vec::new()).expect("service");
         for chain in Chain::all() {
             let err = service
-                .discover_token_balances(chain.str_id().into(), "whatever".into())
+                .discover_token_balances(chain, "whatever".into())
                 .await
                 .expect_err("no endpoints are configured, so nothing can succeed")
                 .to_string();
@@ -576,7 +568,7 @@ mod decimals_come_from_the_chain {
         ] {
             let results = service
                 .fetch_token_balances(
-                    chain.str_id().into(),
+                    chain,
                     "whoever".into(),
                     vec![TokenDescriptor {
                         contract: "0xdeadbeef".into(),
@@ -645,7 +637,7 @@ mod decimals_come_from_the_chain {
 
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: crate::EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -657,7 +649,7 @@ mod decimals_come_from_the_chain {
         };
         let rows = service
             .fetch_token_balances(
-                "ethereum".into(),
+                crate::registry::Chain::Ethereum,
                 holder,
                 vec![descriptor(&bad), descriptor(&good), descriptor("")],
             )
@@ -672,7 +664,11 @@ mod decimals_come_from_the_chain {
     async fn no_tokens_is_no_round_trip() {
         let service = WalletService::new(Vec::new()).expect("service");
         let out = service
-            .fetch_token_balances("ethereum".into(), "whoever".into(), Vec::new())
+            .fetch_token_balances(
+                crate::registry::Chain::Ethereum,
+                "whoever".into(),
+                Vec::new(),
+            )
             .await
             .expect("an empty request cannot fail");
         assert!(out.is_empty());

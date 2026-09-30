@@ -12,7 +12,6 @@ use crate::api::http::{HttpClient, RetryProfile, race};
 pub struct AptosBalance {
     /// Octas (1 APT = 100_000_000 octas).
     pub octas: u64,
-    pub apt_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,10 +85,7 @@ impl AptosClient {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
             .ok_or("balance: missing coin value")?;
-        Ok(AptosBalance {
-            octas,
-            apt_display: format_apt(octas),
-        })
+        Ok(AptosBalance { octas })
     }
 
     /// A coin type's own decimals, from the `CoinInfo<T>` the publishing
@@ -304,17 +300,6 @@ fn aptos_history_from_transactions(
         });
     }
     Ok(entries)
-}
-
-fn format_apt(octas: u64) -> String {
-    let whole = octas / 100_000_000;
-    let frac = octas % 100_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:08}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 impl AptosClient {

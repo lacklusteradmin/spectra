@@ -58,7 +58,7 @@ pub fn service_for_chain(
     any_of: &[EndpointCapability],
 ) -> CliResult<Arc<WalletService>> {
     let service = ctx.service()?;
-    let records = spectra_core::filtered_endpoint_records_for_chain(chain.str_id().into(), any_of)?;
+    let records = spectra_core::filtered_endpoint_records_for_chain(chain, any_of)?;
     if !records
         .iter()
         .any(|row| chain.endpoint_apis().contains(&row.api))
@@ -89,8 +89,8 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
         for chain in &listed {
             println!(
                 "  {}  {:<22} {:<8} {}",
-                out::tint("●", chain.str_id()).bold(),
-                out::tint(chain.chain_display_name(), chain.str_id()),
+                out::tint("●", *chain).bold(),
+                out::tint(chain.chain_display_name(), *chain),
                 chain.coin_symbol(),
                 out::hint(chain.str_id()),
             );
@@ -173,7 +173,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     if let Some(url) = args.add {
         let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
             update: spectra_core::store::state::AppSettingUpdate::AddCustomEndpoint {
-                chain_id: chains[0].str_id().into(),
+                chain_id: chains[0],
                 api: args.api.unwrap(),
                 endpoint: url,
                 capabilities: args
@@ -201,10 +201,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         let records: Vec<_> = entries
             .into_iter()
             .filter(|entry| {
-                (args.chain.is_none()
-                    || chains
-                        .iter()
-                        .any(|chain| chain.str_id() == entry.record.chain_id))
+                (args.chain.is_none() || chains.contains(&entry.record.chain_id))
                     && args
                         .source
                         .as_deref()
@@ -239,22 +236,21 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         out.emit(serde_json::json!({
             "catalog": true,
             "settingsGroups": spectra_core::chain_endpoints()?.into_iter()
-                .filter(|row| chains.iter().any(|chain| chain.str_id() == row.chain_id))
+                .filter(|row| chains.contains(&row.chain_id))
                 .flat_map(|row| row.grouped_settings)
-                .filter(|group| chains.iter().any(|chain| chain.str_id() == group.chain_id))
+                .filter(|group| chains.contains(&group.chain_id))
                 .map(|group| serde_json::json!({
                     "chainId": group.chain_id, "title": group.title, "endpoints": group.endpoints,
                 })).collect::<Vec<_>>(),
             "configured": ctx.rt.block_on(service.configured_endpoints()).into_iter()
-                .filter(|row| chains.iter().any(|chain| row.chain_id == chain.str_id()
-                    || row.chain_id.starts_with(&format!("{}:", chain.str_id()))))
+                .filter(|row| chains.contains(&row.chain_id))
                 .map(|row| serde_json::json!({"chainId": row.chain_id, "endpoints": row.endpoints}))
                 .collect::<Vec<_>>(),
             "total": records.len(),
             "endpoints": records.iter().map(|r| serde_json::json!({
                 "chainId": r.record.chain_id, "endpoint": r.record.endpoint,
                 "api": r.record.api, "capabilities": r.record.capabilities, "isBuiltIn": r.is_built_in,
-                "supportedCapabilities": spectra_core::endpoint_capability_options(r.record.chain_id.clone(), r.record.api),
+                "supportedCapabilities": spectra_core::endpoint_capability_options(r.record.chain_id, r.record.api),
             })).collect::<Vec<_>>(),
         }));
         return Ok(());
@@ -264,9 +260,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     let mut rows = Vec::new();
     let mut networks_without_apis = Vec::new();
     for chain in chains {
-        let probes = ctx
-            .rt
-            .block_on(service.probe_chain_endpoints(chain.str_id().to_string()))?;
+        let probes = ctx.rt.block_on(service.probe_chain_endpoints(chain))?;
         if probes.is_empty() {
             networks_without_apis.push(chain.str_id());
         }
@@ -288,7 +282,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             };
             println!(
                 "  {mark}  {:<18} {}",
-                super::chain_name(&r.chain_id),
+                super::chain_name(r.chain_id),
                 r.endpoint
             );
             if r.checked && !r.reachable {
@@ -342,7 +336,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
                 chain.chain_display_name()
             )));
         }
-        let url = spectra_core::transaction_explorer_link(chain.str_id().into(), hash)
+        let url = spectra_core::transaction_explorer_link(chain, hash)
             .map(|link| link.url)
             .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?;
         out.text(|| println!("{url}"));
@@ -351,14 +345,14 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
     }
     let explorers: Vec<_> = spectra_core::transaction_explorers()
         .into_iter()
-        .filter(|e| chain.is_none_or(|chain| chain.str_id() == e.chain_id))
+        .filter(|e| chain.is_none_or(|chain| chain == e.chain_id))
         .collect();
     out.text(|| {
         println!();
         for e in &explorers {
             println!(
                 "  {:<22} {:<24} {}",
-                super::chain_name(&e.chain_id),
+                super::chain_name(e.chain_id),
                 e.name,
                 out::hint(&e.tx_url)
             );
@@ -380,7 +374,7 @@ pub fn donations(out: Out) -> CliResult<()> {
     out.text(|| {
         println!();
         for d in &donations {
-            println!("  {:<12} {}", super::chain_name(&d.chain_id), d.address);
+            println!("  {:<12} {}", super::chain_name(d.chain_id), d.address);
         }
         println!();
     });
@@ -395,24 +389,21 @@ pub fn donations(out: Out) -> CliResult<()> {
 
 pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
+    let chain = wallet.chain_id.mainnet_counterpart();
     let service = service_for_chain(ctx, chain, &[EndpointCapability::Balance])?;
 
     let summary = ctx
         .rt
-        .block_on(service.fetch_native_balance_summary(
-            chain.str_id().to_string(),
-            wallet_address(&wallet).to_string(),
-        ))
+        .block_on(service.fetch_native_balance_summary(chain, wallet_address(&wallet).to_string()))
         .map_err(CliError::from)?;
 
     out.text(|| {
         println!();
         println!(
             "  {}  {} {}",
-            out::wallet_dot(&wallet.chain_id, wallet.is_watch_only()),
+            out::wallet_dot(wallet.chain_id, wallet.is_watch_only()),
             summary.amount_display.bold(),
-            out::tint(chain.coin_symbol(), &wallet.chain_id).bold(),
+            out::tint(chain.coin_symbol(), wallet.chain_id).bold(),
         );
         out::field("raw", &out::hint(&summary.smallest_unit).to_string());
     });
@@ -504,12 +495,12 @@ fn save_history(
 
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
-    let network = wallet.chain().unwrap_or(chain);
+    let chain = wallet.chain_id.mainnet_counterpart();
+    let network = wallet.chain_id;
     let service = if let Some(endpoint) = args.endpoint {
         WalletService::new(vec![ChainEndpoints {
             capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
-            chain_id: network.str_id().into(),
+            chain_id: network,
             endpoints: vec![endpoint],
         }])
         .map_err(CliError::from)?
@@ -531,7 +522,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         .rt
         .block_on(
             service.fetch_normalized_history(
-                network.str_id().to_string(),
+                network,
                 wallet
                     .active_address()
                     .ok_or_else(|| CliError::rejected("wallet has no address on selected network"))?
@@ -567,7 +558,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
                     mark.truecolor(255, 110, 130).bold()
                 },
                 amount.bold(),
-                out::tint(&entry.symbol, &wallet.chain_id),
+                out::tint(&entry.symbol, wallet.chain_id),
                 out::info(&entry.counterparty),
                 out::hint(&out::relative_time(entry.timestamp as i64)),
             );

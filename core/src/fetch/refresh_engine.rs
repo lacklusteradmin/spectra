@@ -526,7 +526,12 @@ pub trait RefreshObserver: Send + Sync {
     /// the end of the sweep. `summary` is the updated `WalletState` (already
     /// applied to the Rust store), or `None` if the native amount could not be
     /// parsed or the wallet is not in the in-memory state.
-    fn on_balance_updated(&self, chain_id: String, wallet_id: String, summary: Option<WalletState>);
+    fn on_balance_updated(
+        &self,
+        chain_id: crate::registry::Chain,
+        wallet_id: String,
+        summary: Option<WalletState>,
+    );
 
     /// Called once the full sweep of all registered entries completes.
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);
@@ -552,7 +557,7 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
 
 pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Option<RefreshEntry> {
     use crate::registry::Chain;
-    let chain = wallet.family()?;
+    let chain = wallet.family();
     let address = wallet
         .xpub
         .as_deref()
@@ -560,8 +565,8 @@ pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Op
         .filter(|xpub| chain == Chain::Bitcoin && !xpub.is_empty())
         .or_else(|| wallet.active_address())?;
     Some(RefreshEntry {
-        holding_chain_id: chain.str_id().to_string(),
-        chain_id: wallet.chain().unwrap_or(chain).str_id().to_string(),
+        holding_chain_id: chain,
+        chain_id: wallet.chain_id,
         wallet_id: wallet.id.clone(),
         address: address.to_string(),
     })
@@ -576,10 +581,10 @@ pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Op
 pub struct RefreshEntry {
     /// The chain the balance is *filed* under: the wallet's family, which is
     /// what its holding is named after and what pricing keys on.
-    pub holding_chain_id: String,
+    pub holding_chain_id: crate::registry::Chain,
     /// Network to fetch the balance from. Keep it distinct from the holding
     /// identity so testnet fetches use testnet endpoints without renaming assets.
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub wallet_id: String,
     /// The canonical fetch key: a wallet address for most chains, or an
     /// xpub/ypub/zpub for Bitcoin HD wallets.
@@ -600,7 +605,7 @@ mod refresh_entry_tests {
                 password_protected: false,
             },
             include_in_portfolio_total: true,
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
@@ -609,7 +614,7 @@ mod refresh_entry_tests {
             addresses: addresses
                 .iter()
                 .map(|(chain, address)| WalletAddress {
-                    chain_id: chain.str_id().to_string(),
+                    chain_id: *chain,
                     address: (*address).to_string(),
                     kind: "receive".to_string(),
                     derivation_path: None,
@@ -639,20 +644,20 @@ mod refresh_entry_tests {
         assert_eq!(mainnet[0].address, "bc1main");
 
         // The app's selection moves the whole family.
-        state.settings.selected_chain_by_family.insert(
-            Chain::Bitcoin.str_id().to_string(),
-            Chain::BitcoinTestnet4.str_id().to_string(),
-        );
+        state
+            .settings
+            .selected_chain_by_family
+            .insert(Chain::Bitcoin, Chain::BitcoinTestnet4);
         assert_eq!(
             refresh_entries_for(&state)[0].address,
             "bc1main",
             "settings cannot retarget a stored wallet"
         );
-        state.wallets[0].chain_id = "bitcoin-testnet-4".into();
+        state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
         assert_eq!(refresh_entries_for(&state)[0].address, "tb1test");
 
         // A wallet's own network wins over the app's selection.
-        state.wallets[0].chain_id = Chain::Bitcoin.str_id().to_string();
+        state.wallets[0].chain_id = Chain::Bitcoin;
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
     }
 
@@ -684,7 +689,7 @@ mod refresh_entry_tests {
         let entries = refresh_entries_for(&state);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].wallet_id, "w2");
-        assert_eq!(entries[0].chain_id, Chain::Solana.str_id());
+        assert_eq!(entries[0].chain_id, Chain::Solana);
     }
 
     /// The EVM family shares one address, so an Ethereum wallet's entry is its
@@ -698,7 +703,7 @@ mod refresh_entry_tests {
         let entries = refresh_entries_for(&state);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].address, "0xabc");
-        assert_eq!(entries[0].chain_id, Chain::Arbitrum.str_id());
+        assert_eq!(entries[0].chain_id, Chain::Arbitrum);
     }
 
     /// The maintenance loop runs while the app is active with something to
@@ -716,7 +721,13 @@ mod refresh_entry_tests {
 
         struct Ticks(AtomicU32, AtomicU32);
         impl RefreshObserver for Ticks {
-            fn on_balance_updated(&self, _: String, _: String, _: Option<WalletState>) {}
+            fn on_balance_updated(
+                &self,
+                _: crate::registry::Chain,
+                _: String,
+                _: Option<WalletState>,
+            ) {
+            }
             fn on_refresh_cycle_complete(&self, _: u32, _: u32) {}
             fn on_refresh_complete(&self, _: AppRefreshResult) {
                 self.0.fetch_add(1, Ordering::SeqCst);
@@ -759,7 +770,7 @@ mod refresh_entry_tests {
                 wallet: WalletState::single_address(
                     "w",
                     "W",
-                    "ethereum",
+                    crate::registry::Chain::Ethereum,
                     "0x1111111111111111111111111111111111111111",
                     None,
                     true,
@@ -812,7 +823,7 @@ mod refresh_entry_tests {
             wallet: WalletState::single_address(
                 "w",
                 name,
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,

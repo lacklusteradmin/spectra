@@ -2,13 +2,13 @@ use crate::service::WalletService;
 use crate::store::state::{StateCommand, WalletState};
 use crate::store::wallet_domain::AssetHolding;
 
-fn holding(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
+fn holding(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHolding {
     AssetHolding {
         id: String::new(),
         name: symbol.to_string(),
         symbol: symbol.to_string(),
         coingecko_id: symbol.to_lowercase(),
-        chain_id: chain.to_string(),
+        chain_id: chain,
         token_standard: "Native".to_string(),
         contract_address: None,
         amount: crate::decimal::from_f64(amount).unwrap(),
@@ -16,7 +16,7 @@ fn holding(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
 }
 
 async fn service_with(
-    wallets: Vec<(&str, &str, Vec<AssetHolding>)>,
+    wallets: Vec<(&str, crate::registry::Chain, Vec<AssetHolding>)>,
 ) -> std::sync::Arc<WalletService> {
     let service = WalletService::new(Vec::new()).expect("service");
     for (id, chain, holdings) in wallets {
@@ -38,9 +38,21 @@ async fn service_with(
 #[tokio::test]
 async fn a_row_is_per_asset_and_breaks_down_by_chain() {
     let service = service_with(vec![
-        ("w1", "ethereum", vec![holding("ETH", "ethereum", 1.0)]),
-        ("w2", "ethereum", vec![holding("ETH", "ethereum", 2.0)]),
-        ("w3", "arbitrum", vec![holding("ETH", "arbitrum", 5.0)]),
+        (
+            "w1",
+            crate::registry::Chain::Ethereum,
+            vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
+        ),
+        (
+            "w2",
+            crate::registry::Chain::Ethereum,
+            vec![holding("ETH", crate::registry::Chain::Ethereum, 2.0)],
+        ),
+        (
+            "w3",
+            crate::registry::Chain::Arbitrum,
+            vec![holding("ETH", crate::registry::Chain::Arbitrum, 5.0)],
+        ),
     ])
     .await;
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
@@ -58,13 +70,16 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
     assert_eq!(row.holdings.len(), 2, "one breakdown entry per chain");
 
     // The row is presented as the place most of it is.
-    assert_eq!(row.holdings[0].coin.chain_id, "arbitrum");
+    assert_eq!(
+        row.holdings[0].coin.chain_id,
+        crate::registry::Chain::Arbitrum
+    );
     assert_eq!(row.holdings[0].coin.amount, "5");
     // And the two wallets on one chain are one entry.
     let ethereum = row
         .holdings
         .iter()
-        .find(|h| h.coin.chain_id == "ethereum")
+        .find(|h| h.coin.chain_id == crate::registry::Chain::Ethereum)
         .expect("an Ethereum entry");
     assert_eq!(ethereum.coin.amount, "3");
 }
@@ -78,23 +93,23 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
 /// lookalike on another chain as one balance.
 #[tokio::test]
 async fn an_unvouched_token_is_never_merged_by_symbol() {
-    let mut real = holding("USDX", "ethereum", 1.0);
+    let mut real = holding("USDX", crate::registry::Chain::Ethereum, 1.0);
     real.token_standard = "ERC-20".into();
     real.contract_address = Some("0x000000000000000000000000000000000000aaaa".into());
     real.coingecko_id = String::new();
-    let mut lookalike = holding("USDX", "tron", 999.0);
+    let mut lookalike = holding("USDX", crate::registry::Chain::Tron, 999.0);
     lookalike.token_standard = "TRC-20".into();
     lookalike.contract_address = Some("T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb".into());
     lookalike.coingecko_id = String::new();
     // And a second contract on the same chain, same symbol.
-    let mut sibling = holding("USDX", "ethereum", 2.0);
+    let mut sibling = holding("USDX", crate::registry::Chain::Ethereum, 2.0);
     sibling.token_standard = "ERC-20".into();
     sibling.contract_address = Some("0x000000000000000000000000000000000000bbbb".into());
     sibling.coingecko_id = String::new();
 
     let service = service_with(vec![
-        ("w1", "ethereum", vec![real, sibling]),
-        ("w2", "tron", vec![lookalike]),
+        ("w1", crate::registry::Chain::Ethereum, vec![real, sibling]),
+        ("w2", crate::registry::Chain::Tron, vec![lookalike]),
     ])
     .await;
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
@@ -134,8 +149,8 @@ fn row_value(g: &crate::store::wallet_domain::CoreDashboardAssetGroup) -> Option
 async fn an_unquoted_holding_stays_unpriced_until_a_quote_arrives() {
     let service = service_with(vec![(
         "w1",
-        "ethereum",
-        vec![holding("ETH", "ethereum", 2.0)],
+        crate::registry::Chain::Ethereum,
+        vec![holding("ETH", crate::registry::Chain::Ethereum, 2.0)],
     )])
     .await;
     let stored = service.portfolio_snapshot().await.expect("snapshot").groups;
@@ -164,13 +179,13 @@ async fn an_unquoted_holding_stays_unpriced_until_a_quote_arrives() {
 async fn a_testnet_row_has_no_value() {
     let service = service_with(vec![(
         "w1",
-        "ethereum",
-        vec![holding("ETH", "ethereum-sepolia", 2.0)],
+        crate::registry::Chain::Ethereum,
+        vec![holding("ETH", crate::registry::Chain::EthereumSepolia, 2.0)],
     )])
     .await;
     service
         .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: "ethereum-sepolia".into(),
+            chain_id: crate::registry::Chain::EthereumSepolia,
         })
         .await
         .expect("select");
@@ -194,8 +209,8 @@ async fn a_testnet_row_has_no_value() {
 async fn a_pinned_asset_held_nowhere_holds_nothing() {
     let service = service_with(vec![(
         "w1",
-        "ethereum",
-        vec![holding("ETH", "ethereum", 1.0)],
+        crate::registry::Chain::Ethereum,
+        vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
     )])
     .await;
     service
@@ -213,7 +228,7 @@ async fn a_pinned_asset_held_nowhere_holds_nothing() {
         solana.holdings
     );
     assert_eq!(solana.identity.symbol, "SOL", "and still names itself");
-    assert_eq!(solana.identity.chain_id, "solana");
+    assert_eq!(solana.identity.chain_id, crate::registry::Chain::Solana);
 
     let ethereum = groups.iter().find(|g| g.id == "ethereum").expect("a row");
     assert_eq!(ethereum.holdings.len(), 1, "a held asset keeps its places");
@@ -229,10 +244,10 @@ async fn a_pinned_asset_held_nowhere_holds_nothing() {
 async fn pinned_rows_lead_in_pin_order() {
     let service = service_with(vec![(
         "w1",
-        "ethereum",
+        crate::registry::Chain::Ethereum,
         vec![
-            holding("ETH", "ethereum", 1.0),
-            holding("BTC", "bitcoin", 1.0),
+            holding("ETH", crate::registry::Chain::Ethereum, 1.0),
+            holding("BTC", crate::registry::Chain::Bitcoin, 1.0),
         ],
     )])
     .await;
@@ -259,8 +274,8 @@ async fn pinned_rows_lead_in_pin_order() {
 async fn portfolio_snapshot_keeps_wallets_groups_and_valuation_on_one_version() {
     let service = service_with(vec![(
         "w1",
-        "ethereum",
-        vec![holding("ETH", "ethereum", 2.0)],
+        crate::registry::Chain::Ethereum,
+        vec![holding("ETH", crate::registry::Chain::Ethereum, 2.0)],
     )])
     .await;
     service

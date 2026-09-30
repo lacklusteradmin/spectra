@@ -12,7 +12,6 @@ use crate::api::http::HttpClient;
 pub struct SolanaBalance {
     /// Lamports (1 SOL = 1_000_000_000 lamports).
     pub lamports: u64,
-    pub sol_display: String,
 }
 
 /// Unified history entry covering both native SOL and SPL token transfers.
@@ -91,10 +90,7 @@ impl SolanaClient {
             .get("value")
             .and_then(|v| v.as_u64())
             .ok_or("getBalance: missing value")?;
-        Ok(SolanaBalance {
-            lamports,
-            sol_display: format_sol(lamports),
-        })
+        Ok(SolanaBalance { lamports })
     }
 
     /// Fetch SPL token balances for a list of mint addresses.
@@ -147,40 +143,41 @@ impl SolanaClient {
                 let Some(token_amount) = info.get("tokenAmount") else {
                     continue;
                 };
-                let balance_raw = token_amount
+                let raw: u128 = token_amount
                     .get("amount")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("0")
-                    .to_string();
+                    .ok_or("SPL token account has no amount")?
+                    .parse()
+                    .map_err(|_| "SPL token account amount is not an integer")?;
                 // A closed or emptied account is not a holding.
-                if balance_raw == "0" {
+                if raw == 0 {
                     continue;
                 }
                 let decimals = token_amount
                     .get("decimals")
                     .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u8;
-                let balance_display = token_amount
-                    .get("uiAmountString")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("0")
-                    .to_string();
+                    .and_then(|d| u8::try_from(d).ok())
+                    .ok_or("SPL token account has no decimals")?;
                 // One mint can have several accounts; sum them.
-                if let Some(existing) = out.iter_mut().find(|b| b.mint == mint) {
-                    let a: u128 = existing.balance_raw.parse().unwrap_or(0);
-                    let b: u128 = balance_raw.parse().unwrap_or(0);
-                    existing.balance_raw = (a + b).to_string();
-                    existing.balance_display =
-                        crate::api::evm_json_rpc::format_token_amount(a + b, decimals);
-                } else {
-                    out.push(SplBalance {
-                        mint: mint.to_string(),
-                        owner: owner.to_string(),
-                        balance_raw,
-                        balance_display,
-                        decimals,
-                        symbol: String::new(),
-                    });
+                let balance = |raw: u128| SplBalance {
+                    mint: mint.to_string(),
+                    owner: owner.to_string(),
+                    balance_raw: raw.to_string(),
+                    balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
+                    decimals,
+                    symbol: String::new(),
+                };
+                match out.iter_mut().find(|b| b.mint == mint) {
+                    Some(existing) => {
+                        let sum = existing
+                            .balance_raw
+                            .parse::<u128>()
+                            .ok()
+                            .and_then(|a| a.checked_add(raw))
+                            .ok_or("SPL balance overflow")?;
+                        *existing = balance(sum);
+                    }
+                    None => out.push(balance(raw)),
                 }
             }
         }
@@ -251,9 +248,7 @@ impl SolanaClient {
                         mint,
                         owner,
                         balance_raw: raw.to_string(),
-                        balance_display: crate::api::evm_json_rpc::format_token_amount(
-                            raw, decimals,
-                        ),
+                        balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
                         decimals,
                         symbol: String::new(),
                     }))
@@ -466,22 +461,6 @@ fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<
         }
     }
     result
-}
-
-fn format_sol(lamports: u64) -> String {
-    let whole = lamports / 1_000_000_000;
-    let frac = lamports % 1_000_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:09}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
 }
 
 impl SolanaClient {

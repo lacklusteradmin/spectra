@@ -16,6 +16,212 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-30 — No float on the send path: fees, maxima and history amounts are exact
+
+- **Before:** every send preview carried its fee, spendable balance and
+  maximum as `f64`, built by dividing integer units by a float factor
+  (satoshis by `1e8`, wei by `1e18`, a TRX balance by `1e6`). The quote turned
+  that float back into a decimal for the affordability check, into fee units
+  for signing, and into amount shortcuts — the last through a helper that
+  subtracted one ULP to cover the rounding it had just introduced, so a
+  maximum of 4.2 offered 4.199999. The registry's fallback fees, NEAR's token
+  gas reserve, the request's Sui gas budget, Cardano fee and fee rate, EVM
+  custom fees in gwei, the replacement fee bump (`× 1.2` printed with
+  `{:.3}`), EVM receipt costs and history amounts were all `f64`. Core's own
+  preview JSON carried floats between two of its functions. Five
+  intermediate preview records and three Dogecoin duplicates
+  (`spendableBalanceDoge`, `maxSendableDoge`, `requestedAmountDoge`) crossed
+  the FFI unread. `estimated_fee_rate_per_kb` and
+  `ResolvedPendingStatus.confirmed_network_fee` had no writer.
+- **After:** those values are exact decimal strings, computed in the chain's
+  smallest unit and converted once with `decimal::from_units`. A maximum is
+  the fee subtracted exactly (`decimal::sub_or_zero`), a shortcut is a share
+  of those units, and 4.2 offers 4.2. EVM fees are whole wei: a custom fee
+  finer than a wei, zero, or past u64 is refused rather than rounded; the
+  replacement bump is `ceil(wei × 1.2)`, at least 0.1 gwei. Core's preview
+  JSON carries decimal strings and wei integers, and a float there is
+  refused. History amounts are exact where the source gave units or a
+  decimal string, and the shortest spelling of what a float-only source said
+  otherwise; multi-address netting sums the legs exactly. The unread records,
+  duplicates and writerless fields are deleted. Floats remain only for
+  quantities that are approximate by nature — prices, display-currency
+  values, portfolio totals, timestamps, the large-send percentage, and a
+  node's fractional sat/vB estimate, which the Bitcoin builder rounds up to
+  whole satoshis.
+- **Why:** a fee, a balance and a maximum are funds. Each float conversion
+  rounded somewhere, and the code had grown compensation for its own
+  rounding (the ULP reservation, `{:.3}`) instead of not rounding.
+- **CLI check:** `spectra --json send fees --max-fee ' 30.25 ' --priority-fee
+  1` prints `"maxFeePerGasGwei":"30.25"`; `spectra send fees --max-fee
+  1.0000000001 --priority-fee 1` is refused; `spectra --json history …`
+  prints amounts as strings (`"amount":"2.5"`). Offline coverage:
+  `send::preview_decode::tests`, `decimal::tests`,
+  `send::flow::…evm_bump_scales_existing_to_the_wei`.
+- **Verification:** `make verify` — rustfmt and clippy clean, 864 core
+  tests, 453 CLI acceptance checks, iOS test suite passed. The working tree
+  also held other sessions' uncommitted changes, which the run included.
+
+## 2026-09-30 — A chain crosses every boundary as `Chain`, not as its id string
+
+- **Before:** about 160 record fields and most service parameters carried a
+  chain as `chain_id: String`, and core re-parsed it with `Chain::from_str_id`
+  roughly 150 times, each with its own "unknown chain" branch. The FFI took
+  and returned strings, so Swift built ids with `chain.id` and turned them
+  back with `Chain(id:)` / `Chain.displayName(forId:)`. The family → network
+  selection was a `String → String` map. Maps keyed by chain (endpoint index,
+  keypool owned addresses, diagnostics, watch-only entries) were keyed by
+  string. The foreign-address send warning matched the exact ids `tron`,
+  `solana`, `xrp` and `monero`, so their testnets never raised it. EVM
+  recipient warnings on iOS printed the chain *id* ("ethereum") where the
+  sentence wanted its name.
+- **After:** records, parameters, map keys and warning payloads carry
+  `registry::Chain`; the family selection is `Chain → Chain`. `Chain`
+  serializes, stores in SQLite and prints as its catalog id, so stored JSON,
+  columns and CLI output keep the same spelling. A row naming an id the catalog
+  does not know now fails where it is read instead of travelling as a string.
+  String parsing remains only where text arrives: CLI arguments, the catalog
+  TOML files and database columns. The foreign-address warning applies to a
+  family's testnets too, and iOS words EVM recipient and high-risk warnings
+  with the chain's display name. Tests that fed a made-up chain id to check
+  the "unknown chain" branches are gone with the branches. The chain catalog's
+  ids are read on their own, so the token catalog can name chains while the
+  chain catalog is still being built.
+- **Why:** one chain identity instead of two spellings of it. A misspelt id
+  was a runtime refusal (or a silent miss in a string comparison, as with the
+  testnet warnings); now it does not compile. Storage refuses early rather
+  than carrying an id nothing can resolve, the stricter side for funds and
+  addresses.
+- **CLI check:** `spectra --json wallet list` and `spectra --json send review
+  …` print `"chain":"bitcoin"`-style ids exactly as before;
+  `scripts/cli-acceptance.sh` passes unchanged apart from a comment.
+- **Verification:** `make verify` — rustfmt and clippy clean, 869 core
+  tests, 453 CLI acceptance checks, iOS test suite passed.
+
+## 2026-09-30 — Token balances are stored exactly; one decimal formatter
+
+- **Before:** sixteen chain clients each formatted smallest units to a decimal
+  string by hand, and several capped the result at six fractional digits.
+  EVM ERC-20, SPL and TRC-20 balances went through the capped formatter and
+  were stored on the holding truncated, so an 18-decimal token lost its
+  dust: the stored balance, the "exceeds the available balance" check and a
+  send-max all read the truncated figure. A malformed amount from an indexer
+  parsed as `0`. Native balance structs carried `*_display` strings nothing
+  read.
+- **After:** `decimal::from_units` / `from_unit_digits` are the only
+  conversions, exact at any size; balances are stored with every digit. A
+  malformed indexer amount is an error, not a zero transfer. The unread
+  display fields and the per-chain formatters are deleted. Display rounding
+  is the front end's job.
+- **Why:** a balance is funds; truncating it is guessing. Sixteen copies of
+  one conversion had already drifted (capped and uncapped).
+- **CLI check:** none offline — the affected path is a live balance read.
+  Covered by `decimal::tests::unit_digits_of_any_size` and the adapter tests.
+- **Verification:** as the entry above.
+
+## 2026-09-30 — One rule decides whether a holding can be sent
+
+- **Before:** two rules. The send button used `SendRule` (EVM: native or a
+  tracked token; ETC and Hyperliquid native only; everything else any asset,
+  so Sui, Aptos and TON tokens showed a send button). The preflight used
+  `route_send_asset`, which matched chain *display names* to string
+  "submit kinds" nobody read, let an untracked EVM or Tron token through with
+  no contract, and returned a `preview_kind` always equal to `submit_kind`.
+  The route was exported (`send_asset_routing`) and printed by
+  `spectra send review`.
+- **After:** `send::SendAsset` answers for both: every chain sends its native
+  asset; a token only when the user tracks it and `Chain::sends_tokens()`
+  (EVM except ETC and Hyperliquid, Solana, Tron, NEAR — the chains whose
+  builder has a token transfer). `SendRule`, the routing record, its export
+  and the unread `SendPreflight` fields are gone; the preflight carries
+  `chain` and the exact `amount` string instead of an `f64`.
+  `spectra send review` prints only `{"preflight": …}`.
+- **Why:** two models of one question disagreed in both directions. An
+  untracked token has no contract or scale to send with, so it is refused.
+- **CLI check:** `spectra --json send review --wallet <w> --holding <h>
+  --amount 1 --destination <addr>` on an untracked token answers
+  "… transfers are not enabled yet."; covered offline by
+  `send::tests::an_untracked_token_is_refused` and
+  `send::transfer::tests`.
+- **Verification:** as the first entry.
+
+## 2026-09-30 — Zcash, Bitcoin Gold and fifteen testnets have providers
+
+- **Before:** Zcash and Bitcoin Gold had no endpoint, because their Trezor
+  Blockbook rows had died. Fifteen testnets had none either: Litecoin, BSV,
+  Kaspa, Hyperliquid, Tron Nile, Solana Devnet, XRP, Stellar, Aptos, TON, NEAR,
+  Westend and Monero stagenet, plus ETC Mordor (history only, no node) and
+  Avalanche Fuji (a node, no history). Dogecoin, Litecoin, Bitcoin Cash and
+  Dash spoke Blockbook but listed no Blockbook instance.
+- **After:** 33 rows are added, each probed live on 2026-09-30.
+  - Zelcore's Blockbook serves Zcash, Bitcoin Gold, Dash, Dogecoin, Litecoin
+    and Bitcoin Cash, and Atomic Wallet's serves Dash. The Zcash row claims no
+    `fee`: zcashd has removed `estimatefee`, and Zcash fees are ZIP-317,
+    computed in core.
+  - Testnet rows use the same APIs as their mainnets: litecoinspace testnet,
+    WhatsOnChain `bsv/test`, Kaspa TN10, Hyperliquid's own RPC and dRPC, three
+    Mordor RPCs, Routescan for Fuji history, TronGrid Nile, the Solana devnet
+    RPC, XRPL altnet and XRPL Labs, Horizon testnet, the Aptos Labs testnet,
+    toncenter testnet v2/v3, NEAR's RPC and FastNEAR with NearBlocks testnet,
+    Westend's official RPC, and four stagenet daemons.
+  - No testnet row claims `staking`, which only mainnets support.
+  - Still without a provider: the Bitcoin Cash, Dogecoin, Zcash and Dash
+    testnets (none found), and the Decred testnet (`testnet.dcrdata.org`
+    answered 503). Dash testnet's Insight server would need Dash to speak
+    Insight.
+  - `cli-endpoints.py` exercised health against a keyless EVM testnet, but none
+    remains. It now uses a Blockbook fixture on `zcash-testnet`; core's
+    `evm_checks_reads_after_chain_identity_and_rejects_wrong_network` still
+    covers EVM's identity-then-reads order.
+- **Why:** a chain with no row cannot read a balance, estimate a fee or
+  broadcast. Zcash and Bitcoin Gold were mainnets offered in the app with no
+  working source at all.
+- **CLI check:** `spectra endpoints --chain zcash` reports
+  `https://blockbook.zec.zelcore.io` reachable; `spectra endpoints --chain
+  monero-stagenet` reports four reachable daemons.
+- **Verification:** run on the same `git archive HEAD` export as the entry
+  below, for the same reason. 879 core tests and 453 CLI acceptance checks
+  passed. No Rust changed in this entry, so clippy was not rerun. `test-ios`
+  was not run.
+
+## 2026-09-30 — Providers already in the catalog serve every chain they answer for
+
+- **Before:** PublicNode, 1RPC, Blockscout, BlockCypher, mempool.emzy.de and
+  Xray were each listed for only some of the chains they serve. Dash, Cardano
+  Preprod, Sui Testnet and six EVM testnets (Arbitrum/Optimism/Base Sepolia,
+  BNB Testnet, Avalanche Fuji, Polygon Amoy) had no endpoint at all. Sepolia and
+  Hoodi had one RPC and no history. Sei, Celo, Cronos, opBNB, Sonic,
+  Berachain, Unichain, Ink and Hyperliquid each depended on a single RPC.
+  Bitcoin spoke BlockCypher but listed no BlockCypher row.
+- **After:** 40 rows are added. PublicNode adds RPCs for BNB and its testnet,
+  opBNB, Sonic, Berachain, Unichain, Celo, Cronos, Sei, Ink, Hyperliquid,
+  Polkadot, Sui Testnet and the six EVM testnets. 1RPC adds BNB, opBNB,
+  zkSync Era, Celo, Cronos, Sonic, Unichain, Hyperliquid, Sui, Sepolia and
+  Hoodi. Blockscout adds history for Sepolia, Hoodi, Arbitrum/Base/Optimism
+  Sepolia and ETC Mordor. BlockCypher adds Bitcoin and Dash mainnet;
+  mempool.emzy.de adds Signet and Testnet4; Xray's Koios adds Cardano Preprod.
+  Each was probed live on 2026-09-30. Left out: 1RPC Mantle and Aptos (Mantle
+  answers `eth_chainId` and refuses every read without a paid plan; the Aptos
+  node is pruned), BlockCypher `btc/test3` (about 150,000 blocks behind), and
+  every BlockPI public RPC except Sui (521, "Payment Required" or "Apikey not
+  found"). Sui Testnet claims no `staking`, which the adapter refuses there. A
+  testnet may now name its own explorer; it still never inherits its mainnet's.
+- **Why:** a provider already trusted for one chain costs nothing to use on
+  another, and a chain with no row has no way to read, fee or broadcast. The
+  "testnets have no history" assertion recorded what the catalog held, not a
+  rule. The rule is the one from 2026-09-23: a testnet never inherits mainnet
+  history.
+- **CLI check:** `spectra endpoints --chain dash` reports
+  `https://api.blockcypher.com/v1/dash/main` reachable; `spectra endpoints
+  --chain arbitrum-sepolia` reports the PublicNode RPC and the Blockscout
+  explorer reachable.
+- **Verification:** run on a `git archive HEAD` export with these changes
+  applied, because the working tree held an unrelated refactor in progress
+  that did not compile. rustfmt and clippy were clean; 879 core tests and 453
+  CLI acceptance checks passed. `test-ios` was not run: the same refactor
+  blocks the build. The Sepolia and Hoodi expectations in
+  `testEthereumTestNetworksExposeExpectedContextsAndEndpoints` were updated
+  but have not been run.
+
 ## 2026-09-29 — CLI acceptance is confined to loopback
 
 - **Before:** `scripts/cli-acceptance.sh` claimed "no external network", but

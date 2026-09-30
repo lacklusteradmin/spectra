@@ -212,13 +212,13 @@ fn bsv_history_from_details(
     details: Vec<(WocHistoryItem, WocTxDetail)>,
     address: &str,
 ) -> Result<Vec<UtxoHistoryEntry>, String> {
+    // WoC answers in floating-point BTC. Its shortest spelling is what it
+    // said; more than eight places is not a satoshi amount and reads as 0.
     let sats = |value: f64| {
-        let sats = (value * 100_000_000.0).round();
-        if sats.is_finite() && sats >= 0.0 {
-            sats as i64
-        } else {
-            0
-        }
+        crate::decimal::from_f64(value)
+            .and_then(|btc| crate::decimal::to_units(&btc, 8))
+            .and_then(|sats| i64::try_from(sats).ok())
+            .unwrap_or(0)
     };
     let pays_address = |vout: &WocTxVout| {
         vout.script_pub_key

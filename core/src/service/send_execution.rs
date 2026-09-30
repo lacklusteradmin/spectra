@@ -21,13 +21,13 @@ pub(super) fn validate_execution_amount(
             .and_then(|a| a.for_network(chain.is_testnet()))
             .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
     }
-    if let Some(fee) = request.fee_amount {
+    if let Some(fee) = &request.fee_amount {
         crate::send::payload::fee_units(fee, u32::from(chain.native_decimals()))?;
     }
-    if let Some(budget) = request.gas_budget {
+    if let Some(budget) = &request.gas_budget {
         crate::send::payload::fee_units(budget, u32::from(chain.native_decimals()))?;
     }
-    if let Some(rate) = request.fee_rate_svb {
+    if let Some(rate) = &request.fee_rate_svb {
         crate::send::payload::fee_units(rate, 8)?;
     }
     let decimals = if request.contract_address.is_none() {
@@ -97,7 +97,7 @@ impl WalletService {
         let _execution = self.send_execute_lock.lock().await;
         let sign_only = request.wants_sign_only();
         let password = request.password.take().map(Zeroizing::new);
-        let chain = chain_for_id(&request.chain_id)?;
+        let chain = request.chain_id;
         validate_execution_amount(chain, &request)?;
         if let Some(overrides) = &request.evm_overrides {
             overrides.resolve(chain)?;
@@ -110,8 +110,8 @@ impl WalletService {
                 .find(|w| w.id == request.wallet_id)
                 .and_then(|w| w.address_on(chain))
                 .ok_or("Sending wallet removed")?;
-            if crate::send::flow::normalize_address(chain.str_id(), current)
-                != crate::send::flow::normalize_address(chain.str_id(), &sender)
+            if crate::send::flow::normalize_address(chain, current)
+                != crate::send::flow::normalize_address(chain, &sender)
             {
                 return Err("Sending identity changed; review again".into());
             }
@@ -140,7 +140,7 @@ impl WalletService {
         let completed = if sign_only {
             signed
         } else {
-            let endpoints = self.send_endpoints(chain.str_id().into()).await?;
+            let endpoints = self.send_endpoints(chain).await?;
             let completed = self.broadcast_send(signed.id, endpoints).await?;
             if !completed
                 .attempts
@@ -211,9 +211,7 @@ pub(crate) fn send_chain_for(
         .ok_or_else(|| SpectraBridgeError::InvalidInput {
             message: "send wallet does not exist".into(),
         })?;
-    let selected = wallet
-        .chain()
-        .ok_or("wallet has an invalid network identity")?;
+    let selected = wallet.chain_id;
     if selected.mainnet_counterpart() == requested.mainnet_counterpart() && selected != requested {
         return Err(
             "selected asset network differs from wallet network; select an asset on that network"
@@ -231,7 +229,7 @@ impl WalletService {
         contract: &str,
     ) -> Result<Option<u32>, SpectraBridgeError> {
         let endpoints = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+            .endpoints_for(chain, &[EndpointCapability::TokenBalance])
             .await;
         if chain.is_evm() {
             let client = crate::api::evm_json_rpc::EvmClient::new(endpoints, chain.evm_chain_id()?);

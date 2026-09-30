@@ -16,7 +16,7 @@ const HASH_PLACEHOLDER: &str = "{hash}";
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, uniffi::Record)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionExplorer {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// What the explorer calls itself, such as "Etherscan".
     pub name: String,
     /// The transaction page, with `{hash}` where the hash goes.
@@ -56,8 +56,7 @@ fn load(text: &str) -> Result<Vec<TransactionExplorer>, String> {
         .explorers;
     let mut seen = std::collections::HashSet::new();
     for explorer in &explorers {
-        let id = &explorer.chain_id;
-        Chain::from_str_id(id).ok_or_else(|| format!("unknown chain_id {id:?}"))?;
+        let id = explorer.chain_id;
         if !seen.insert(id) {
             return Err(format!("{id}: more than one explorer"));
         }
@@ -77,7 +76,7 @@ fn load(text: &str) -> Result<Vec<TransactionExplorer>, String> {
 
 impl Chain {
     pub fn transaction_explorer(self) -> Option<&'static TransactionExplorer> {
-        EXPLORERS.iter().find(|e| e.chain_id == self.str_id())
+        EXPLORERS.iter().find(|e| e.chain_id == self)
     }
 }
 
@@ -94,12 +93,10 @@ pub fn transaction_explorers() -> Vec<TransactionExplorer> {
 /// explorer or there is no hash to show.
 #[uniffi::export]
 pub fn transaction_explorer_link(
-    chain_id: String,
+    chain_id: crate::registry::Chain,
     transaction_hash: String,
 ) -> Option<TransactionExplorerLink> {
-    Chain::from_str_id(&chain_id)?
-        .transaction_explorer()?
-        .link(&transaction_hash)
+    chain_id.transaction_explorer()?.link(&transaction_hash)
 }
 
 #[cfg(test)]
@@ -115,28 +112,24 @@ mod tests {
     #[test]
     fn the_hash_is_placed_where_the_template_says() {
         assert_eq!(
-            transaction_explorer_link("ethereum".into(), " 0xabc ".into()),
+            transaction_explorer_link(crate::registry::Chain::Ethereum, " 0xabc ".into()),
             Some(TransactionExplorerLink {
                 name: "Etherscan".into(),
                 url: "https://etherscan.io/tx/0xabc".into()
             })
         );
         assert_eq!(
-            transaction_explorer_link("aptos".into(), "0xabc".into())
+            transaction_explorer_link(crate::registry::Chain::Aptos, "0xabc".into())
                 .map(|l| l.url)
                 .as_deref(),
             Some("https://explorer.aptoslabs.com/txn/0xabc?network=mainnet")
         );
         assert_eq!(
-            transaction_explorer_link("ethereum".into(), "  ".into()),
+            transaction_explorer_link(crate::registry::Chain::Ethereum, "  ".into()),
             None
         );
         assert_eq!(
-            transaction_explorer_link("nowhere".into(), "0xabc".into()),
-            None
-        );
-        assert_eq!(
-            transaction_explorer_link("ethereum-sepolia".into(), "0xabc".into()),
+            transaction_explorer_link(crate::registry::Chain::EthereumSepolia, "0xabc".into()),
             None
         );
     }

@@ -2,19 +2,19 @@ use crate::registry::{Chain, SendFeeField};
 
 #[test]
 fn protocol_fee_fields_and_fallbacks_match_execution_requirements() {
-    let cases: &[(&str, SendFeeField, f64)] = &[
-        ("sui", SendFeeField::GasBudget, 0.0),
-        ("aptos", SendFeeField::None, 0.0),
-        ("ton", SendFeeField::None, 0.0),
-        ("xrp", SendFeeField::None, 0.0),
-        ("stellar", SendFeeField::None, 0.0),
-        ("monero", SendFeeField::None, 0.0),
-        ("cardano", SendFeeField::FeeAmount, 0.0),
-        ("near", SendFeeField::None, 0.0),
-        ("polkadot", SendFeeField::None, 0.0),
-        ("bitcoin-cash", SendFeeField::FeeSats, 0.00001),
-        ("bitcoin-sv", SendFeeField::FeeSats, 0.00001),
-        ("litecoin", SendFeeField::FeeSats, 0.0001),
+    let cases: &[(&str, SendFeeField, Option<&str>)] = &[
+        ("sui", SendFeeField::GasBudget, None),
+        ("aptos", SendFeeField::None, None),
+        ("ton", SendFeeField::None, None),
+        ("xrp", SendFeeField::None, None),
+        ("stellar", SendFeeField::None, None),
+        ("monero", SendFeeField::None, None),
+        ("cardano", SendFeeField::FeeAmount, None),
+        ("near", SendFeeField::None, None),
+        ("polkadot", SendFeeField::None, None),
+        ("bitcoin-cash", SendFeeField::FeeSats, Some("0.00001")),
+        ("bitcoin-sv", SendFeeField::FeeSats, Some("0.00001")),
+        ("litecoin", SendFeeField::FeeSats, Some("0.0001")),
     ];
     for (name, field, fallback) in cases {
         let chain = Chain::from_str_id(name).expect(name);

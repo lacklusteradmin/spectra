@@ -22,18 +22,25 @@ pub struct HistoryCursor {
 #[derive(Debug, Clone, PartialEq)]
 pub enum HistoryScope {
     /// One wallet's feed on one chain: pull-to-refresh, or a send confirming.
-    ChainAndWallet { chain_id: String, wallet_id: String },
+    ChainAndWallet {
+        chain_id: crate::registry::Chain,
+        wallet_id: String,
+    },
     /// Everything: account wipe.
     All,
 }
 
 impl WalletService {
     /// Where the next history fetch for this (chain, wallet) starts.
-    pub fn history_cursor(&self, chain_id: String, wallet_id: String) -> HistoryCursor {
+    pub fn history_cursor(
+        &self,
+        chain_id: crate::registry::Chain,
+        wallet_id: String,
+    ) -> HistoryCursor {
         HistoryCursor {
-            next_cursor: self.history_pagination.cursor(&chain_id, &wallet_id),
-            next_page: self.history_pagination.page(&chain_id, &wallet_id),
-            is_exhausted: self.history_pagination.is_exhausted(&chain_id, &wallet_id),
+            next_cursor: self.history_pagination.cursor(chain_id, &wallet_id),
+            next_page: self.history_pagination.page(chain_id, &wallet_id),
+            is_exhausted: self.history_pagination.is_exhausted(chain_id, &wallet_id),
         }
     }
 
@@ -46,11 +53,9 @@ impl WalletService {
             .wallets
             .iter()
             .filter(|wallet| {
-                wallet.family().is_some_and(|family| {
-                    !self
-                        .history_pagination
-                        .is_exhausted(family.str_id(), &wallet.id)
-                })
+                !self
+                    .history_pagination
+                    .is_exhausted(wallet.family(), &wallet.id)
             })
             .map(|wallet| wallet.id.clone())
             .collect()
@@ -68,7 +73,7 @@ impl WalletService {
             HistoryScope::ChainAndWallet {
                 chain_id,
                 wallet_id,
-            } => self.history_pagination.reset(&chain_id, &wallet_id),
+            } => self.history_pagination.reset(chain_id, &wallet_id),
             HistoryScope::All => self.history_pagination.reset_all(),
         }
     }
@@ -82,12 +87,12 @@ impl WalletService {
     /// this marks the chain as exhausted.
     pub fn advance_history_cursor(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         wallet_id: String,
         next_cursor: Option<String>,
     ) {
         self.history_pagination
-            .advance_cursor(&chain_id, &wallet_id, next_cursor);
+            .advance_cursor(chain_id, &wallet_id, next_cursor);
     }
 
     /// Record the page just fetched, and whether it was the last one.
@@ -96,15 +101,14 @@ impl WalletService {
     /// than a cursor. One write, so a reader never sees half an update.
     pub fn set_history_page(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         wallet_id: String,
         page: u32,
         is_exhausted: bool,
     ) {
+        self.history_pagination.set_page(chain_id, &wallet_id, page);
         self.history_pagination
-            .set_page(&chain_id, &wallet_id, page);
-        self.history_pagination
-            .set_exhausted(&chain_id, &wallet_id, is_exhausted);
+            .set_exhausted(chain_id, &wallet_id, is_exhausted);
     }
 }
 
@@ -114,37 +118,41 @@ mod tests {
     #[test]
     fn pagination_updates_and_resets_do_not_cross_wallet_or_chain_boundaries() {
         let service = WalletService::new(vec![]).unwrap();
-        service.advance_history_cursor("bitcoin".into(), "a".into(), Some("next".into()));
-        service.set_history_page("ethereum".into(), "a".into(), 4, true);
-        service.set_history_page("ethereum".into(), "b".into(), 2, false);
+        service.advance_history_cursor(
+            crate::registry::Chain::Bitcoin,
+            "a".into(),
+            Some("next".into()),
+        );
+        service.set_history_page(crate::registry::Chain::Ethereum, "a".into(), 4, true);
+        service.set_history_page(crate::registry::Chain::Ethereum, "b".into(), 2, false);
         assert_eq!(
             service
-                .history_cursor("bitcoin".into(), "a".into())
+                .history_cursor(crate::registry::Chain::Bitcoin, "a".into())
                 .next_cursor
                 .as_deref(),
             Some("next")
         );
         assert!(
             service
-                .history_cursor("ethereum".into(), "a".into())
+                .history_cursor(crate::registry::Chain::Ethereum, "a".into())
                 .is_exhausted
         );
         service.history_pagination.reset_all_for_wallet("a");
         assert_eq!(
             service
-                .history_cursor("ethereum".into(), "a".into())
+                .history_cursor(crate::registry::Chain::Ethereum, "a".into())
                 .next_page,
             0
         );
         assert_eq!(
             service
-                .history_cursor("ethereum".into(), "b".into())
+                .history_cursor(crate::registry::Chain::Ethereum, "b".into())
                 .next_page,
             2
         );
         assert!(
             service
-                .history_cursor("bitcoin".into(), "a".into())
+                .history_cursor(crate::registry::Chain::Bitcoin, "a".into())
                 .next_cursor
                 .is_none()
         );

@@ -33,7 +33,7 @@ fn diagnostics_bundle_redacts_secrets_and_refuses_missing_fields() {
     let bundle=DiagnosticsBundlePayload {
         schema_version:1,generated_at:123.0,
         environment:serde_json::from_value(serde_json::json!({"appVersion":"test","buildNumber":"1","osVersion":"test","localeIdentifier":"en","timeZoneIdentifier":"UTC","selectedFiatCurrency":"USD","walletCount":1,"transactionCount":0})).unwrap(),
-        chain_degraded:std::collections::HashMap::from([("ethereum".into(),crate::service::ChainDegradation::Failed { message: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into() })]),
+        chain_degraded:std::collections::HashMap::from([(crate::registry::Chain::Ethereum,crate::service::ChainDegradation::Failed { message: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into() })]),
         chain_diagnostics_json:std::collections::HashMap::new(),
     };
     let encoded = diagnostics_bundle_to_json(bundle).unwrap();
@@ -55,10 +55,10 @@ fn applying_a_setting_is_the_reducers_rule() {
         defaults.clone(),
         AppSettingUpdate::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "monero".into(),
+                crate::registry::Chain::Monero,
                 crate::EndpointApi::MoneroDaemonRpc,
             ),
-            chain_id: "monero".into(),
+            chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),
             endpoint: "  https://wallet.example \n".into(),
         },

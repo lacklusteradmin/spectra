@@ -112,9 +112,9 @@ pub enum SendCommand {
         #[arg(long)]
         gas_limit: Option<i64>,
         #[arg(long, requires = "priority_fee_gwei")]
-        max_fee_gwei: Option<f64>,
+        max_fee_gwei: Option<String>,
         #[arg(long, requires = "max_fee_gwei")]
-        priority_fee_gwei: Option<f64>,
+        priority_fee_gwei: Option<String>,
     },
     /// Build a tracked holding from user edits, persisting its risk review.
     BuildOwned {
@@ -153,7 +153,7 @@ pub enum SendCommand {
     },
     /// Show the actual configured endpoint table offline, in service order.
     ConfiguredEndpoints { chain: String },
-    /// Review stored-asset routing and submit preflight offline; never signs.
+    /// Check a stored holding can be sent offline; never signs.
     Review {
         #[arg(long)]
         wallet: String,
@@ -265,14 +265,12 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             priority_fee_gwei,
         } => {
             let wallet = ctx.find_wallet(&from)?;
-            let chain = wallet
-                .chain()
-                .ok_or_else(|| CliError::usage("Invalid wallet network"))?;
-            let service = staged_service(ctx, chain.str_id(), endpoint.into_iter().collect())?;
+            let chain = wallet.chain_id;
+            let service = staged_service(ctx, chain, endpoint.into_iter().collect())?;
             let artifact =
                 ctx.rt.block_on(
                     service.build_send(SendExecutionRequest {
-                        chain_id: chain.str_id().into(),
+                        chain_id: chain,
                         wallet_id: wallet.id,
                         password: None,
                         to_address: to,
@@ -337,7 +335,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 .rt
                 .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
             let password = signing_password(ctx, &artifact.wallet_id, password_file, password_env)?;
-            let service = staged_service(ctx, &artifact.chain_id, endpoint.into_iter().collect())?;
+            let service = staged_service(ctx, artifact.chain_id, endpoint.into_iter().collect())?;
             let artifact =
                 ctx.rt
                     .block_on(service.sign_send(transaction_id, review_digest, password))?;
@@ -355,7 +353,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             let artifact = ctx
                 .rt
                 .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
-            let service = staged_service(ctx, &artifact.chain_id, endpoint.clone())?;
+            let service = staged_service(ctx, artifact.chain_id, endpoint.clone())?;
             let artifact = ctx
                 .rt
                 .block_on(service.broadcast_send(transaction_id, endpoint))?;
@@ -364,9 +362,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         }
         SendCommand::ConfiguredEndpoints { chain } => {
             let chain = resolve_chain(&chain)?;
-            let endpoints = ctx
-                .rt
-                .block_on(ctx.service()?.send_endpoints(chain.str_id().into()))?;
+            let endpoints = ctx.rt.block_on(ctx.service()?.send_endpoints(chain))?;
             out.text(|| {
                 for (index, endpoint) in endpoints.iter().enumerate() {
                     println!("{} {}", index + 1, endpoint);
@@ -383,17 +379,13 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             destination,
         } => {
             let wallet = ctx.find_wallet(&wallet)?;
-            let service = ctx.service()?;
-            let route = ctx
-                .rt
-                .block_on(service.send_asset_routing(wallet.id.clone(), holding.clone()));
-            let preflight = ctx.rt.block_on(service.send_submit_preflight(
+            let preflight = ctx.rt.block_on(ctx.service()?.send_submit_preflight(
                 wallet.id,
                 holding,
                 destination,
                 amount,
             ))?;
-            out.emit(serde_json::json!({"route":route,"preflight":preflight}));
+            out.emit(serde_json::json!({"preflight":preflight}));
             Ok(())
         }
         SendCommand::Preview {
@@ -546,7 +538,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         } => {
             let wallet = ctx.find_wallet(&args.from)?;
             if let Some(chain) = args.chain.as_deref()
-                && resolve_chain(chain)?.str_id() != wallet.chain_id
+                && resolve_chain(chain)? != wallet.chain_id
             {
                 return Err(CliError::usage(
                     "Monero sync must use the wallet's selected network",
@@ -622,15 +614,16 @@ fn signing_password(
 
 fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.from)?;
-    let chain = resolve_chain(args.chain.as_deref().unwrap_or(&wallet.chain_id))?;
+    let chain = match args.chain.as_deref() {
+        Some(name) => resolve_chain(name)?,
+        None => wallet.chain_id,
+    };
     let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());
-    let address = ctx.rt.block_on(service.send_identity_address(
-        wallet.id.clone(),
-        chain.str_id().into(),
-        password,
-    ))?;
+    let address =
+        ctx.rt
+            .block_on(service.send_identity_address(wallet.id.clone(), chain, password))?;
     out.text(|| println!("  {} sender: {address}", chain.chain_display_name()));
     out.emit(
         serde_json::json!({ "walletId": wallet.id, "chain": chain.str_id(), "address": address }),
@@ -686,13 +679,13 @@ pub struct FeeUnitsArgs {
     #[arg(long)]
     chain: String,
     #[arg(long, allow_hyphen_values = true)]
-    amount: f64,
+    amount: String,
 }
 
 fn fee_units(out: Out, args: FeeUnitsArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let raw =
-        spectra_core::send::payload::fee_units(args.amount, u32::from(chain.native_decimals()))?;
+        spectra_core::send::payload::fee_units(&args.amount, u32::from(chain.native_decimals()))?;
     out.text(|| println!("  {raw} native integer units"));
     out.emit(serde_json::json!({"ok": true, "rawFee": raw.to_string()}));
     Ok(())
@@ -806,14 +799,14 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
         .unwrap_or_else(|| chain.entry().native_deployment_id.clone());
     let token = spectra_core::tokens::deployment(&deployment_id)
         .ok_or_else(|| CliError::usage("unknown deployment"))?;
-    if token.chain_id != chain.str_id() || token.symbol != args.symbol {
+    if token.chain_id != chain || token.symbol != args.symbol {
         return Err(CliError::usage(
             "deployment does not match the selected network and symbol",
         ));
     }
     let verdict = send_affordability(SendAffordabilityInput {
         is_native: token.is_native(),
-        chain_id: chain.str_id().to_string(),
+        chain_id: chain,
         symbol: args.symbol,
         amount: args.amount,
         network_fee: args.fee,
@@ -864,7 +857,7 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
                 fee,
                 chain_id,
             } => {
-                let chain_name = super::chain_name(chain_id);
+                let chain_name = super::chain_name(*chain_id);
                 println!(
                     "  {}  not enough {gas_symbol} for the ~{fee} {chain_name} fee",
                     "\u{2717}".red()
@@ -897,7 +890,7 @@ pub struct ProbeArgs {
 /// the CLI supplies the wording.
 fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let wallet_chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
+    let wallet_chain = wallet.chain_id.mainnet_counterpart();
     let symbol = args
         .asset
         .clone()
@@ -908,7 +901,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         .holdings
         .iter()
         .filter(|h| h.symbol.eq_ignore_ascii_case(&symbol))
-        .filter(|h| on_chain.is_none_or(|c| c.str_id() == h.chain_id))
+        .filter(|h| on_chain.is_none_or(|c| c == h.chain_id))
         .collect();
     let holding = match candidates.as_slice() {
         [] => {
@@ -919,17 +912,14 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         }
         [one] => *one,
         many => {
-            let chains: Vec<String> = many
-                .iter()
-                .map(|h| super::chain_name(&h.chain_id))
-                .collect();
+            let chains: Vec<String> = many.iter().map(|h| super::chain_name(h.chain_id)).collect();
             return Err(CliError::usage(format!(
                 "{symbol} is held on {} — narrow it with --chain",
                 chains.join(", ")
             )));
         }
     };
-    let chain = resolve_chain(&holding.chain_id)?;
+    let chain = holding.chain_id;
 
     // Both halves in one service: the holding and the token row come from the
     // opened state, the balance and history reads from the chain's endpoints.
@@ -1001,10 +991,8 @@ pub struct ScanArgs {
 /// address this chain accepts, so a script can assert the refusal.
 fn scan(out: Out, args: ScanArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let Some(address) = spectra_core::send::flow::scanned_send_address(
-        chain.str_id().to_string(),
-        args.payload.clone(),
-    ) else {
+    let Some(address) = spectra_core::send::flow::scanned_send_address(chain, args.payload.clone())
+    else {
         return Err(CliError::rejected(format!(
             "no {} address in that payload",
             chain.chain_display_name()
@@ -1038,12 +1026,12 @@ fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
             match args.expected {
                 Some(expected) => {
                     service
-                        .verify_send_destination(chain.str_id().into(), args.to.clone(), expected)
+                        .verify_send_destination(chain, args.to.clone(), expected)
                         .await
                 }
                 None => {
                     service
-                        .resolve_send_destination(chain.str_id().into(), args.to.clone())
+                        .resolve_send_destination(chain, args.to.clone())
                         .await
                 }
             }
@@ -1201,11 +1189,11 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 .into_iter()
                 .find(|row| row.id.eq_ignore_ascii_case(&id))
                 .ok_or_else(|| CliError::rejected("Transaction not found."))?;
-            let chain = resolve_chain(&transaction.chain_id)?;
+            let chain = transaction.chain_id;
             ctx.rt.block_on(service.update_endpoints(vec![
                 spectra_core::service::ChainEndpoints {
                     capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
-                    chain_id: chain.str_id().into(),
+                    chain_id: chain,
                     endpoints: vec![endpoint],
                 },
             ]))?;
@@ -1239,7 +1227,10 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let chains = ctx
             .rt
             .block_on(ctx.service()?.pending_maintenance_chains())?;
-        out.text(|| println!("{}", chains.join(", ")));
+        out.text(|| {
+            let names: Vec<_> = chains.iter().map(|c| c.str_id()).collect();
+            println!("{}", names.join(", "))
+        });
         out.emit(serde_json::json!({"chains":chains}));
         return Ok(());
     }
@@ -1250,7 +1241,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let service = WalletService::new(
             spectra_core::service::catalog_endpoints()?
                 .into_iter()
-                .filter(|row| row.chain_id == network.str_id())
+                .filter(|row| row.chain_id == network)
                 .collect(),
         )
         .map_err(CliError::from)?;
@@ -1260,7 +1251,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         ctx.prepare_transport(&service)?;
         let changes = ctx
             .rt
-            .block_on(service.poll_pending_transactions(chain.str_id().into()))
+            .block_on(service.poll_pending_transactions(chain))
             .map_err(CliError::from)?;
         out.text(|| println!("  {} transaction status changes", changes.len()));
         out.emit(serde_json::json!({"ok":true,"changes":changes}));
@@ -1301,7 +1292,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 "  {}  {:>12}  {}  {}",
                 colored_mark,
                 format!("{:.6}", record.amount),
-                out::tint(&record.symbol, &record.chain_id).bold(),
+                out::tint(&record.symbol, record.chain_id).bold(),
                 out::hint(&record.address),
             );
             if let Some(hash) = &record.transaction_hash {
@@ -1386,7 +1377,7 @@ fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             println!(
                 "  {:>12}  {}  {}",
                 format!("{:.6}", send.amount),
-                out::tint(&send.symbol, &send.chain_id).bold(),
+                out::tint(&send.symbol, send.chain_id).bold(),
                 out::hint(&out::short_hash(&send.transaction_hash)),
             );
             println!(
@@ -1436,9 +1427,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     // which chain id is signed and which endpoints the send reads. Core
     // resolves it the same way, so the two agree on one rule
     // (`WalletState::chain`) rather than each having its own.
-    let chain = wallet
-        .chain()
-        .unwrap_or(resolve_chain(&wallet.chain_id)?.mainnet_counterpart());
+    let chain = wallet.chain_id;
 
     let amount: f64 = args
         .amount
@@ -1475,7 +1464,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     service.set_secret_store(ctx.secrets.clone());
     ctx.rt.block_on(service.open_state(ctx.db_path()))?;
     let request = SendExecutionRequest {
-        chain_id: chain.str_id().to_string(),
+        chain_id: chain,
         wallet_id: wallet.id.clone(),
         password,
         to_address: args.to.clone(),
@@ -1596,7 +1585,7 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
     let deployment_id = spectra_core::tokens::deployment_id_for(chain, args.contract.as_deref())
         .ok_or_else(|| CliError::rejected("the contract is not valid on this chain"))?;
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-        chain_id: chain.str_id().to_string(),
+        chain_id: chain,
         deployment_id,
         from_address: args.from.clone(),
         resolved_destination: args.to.clone(),
@@ -1635,7 +1624,7 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
 
 fn staged_service(
     ctx: &Ctx,
-    chain_id: &str,
+    chain_id: spectra_core::registry::Chain,
     endpoints: Vec<String>,
 ) -> CliResult<std::sync::Arc<WalletService>> {
     if endpoints.is_empty() {
@@ -1643,7 +1632,7 @@ fn staged_service(
     }
     let service = WalletService::new(vec![spectra_core::service::ChainEndpoints {
         capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
-        chain_id: chain_id.into(),
+        chain_id,
         endpoints,
     }])?;
     service.set_secret_store(ctx.secrets.clone());

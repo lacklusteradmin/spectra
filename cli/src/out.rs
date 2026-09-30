@@ -4,11 +4,9 @@
 //! The colour table here maps a *semantic* name to a terminal colour. Which
 //! colour a chain has is a chain fact and comes from `chain-ui.toml`.
 
-use std::collections::HashMap;
-use std::sync::LazyLock;
-
 use colored::Colorize;
 use spectra_core::chains::CatalogColor;
+use spectra_core::registry::Chain;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Out {
@@ -72,13 +70,6 @@ pub fn field(label: &str, value: &str) {
 
 /// Built from `chain-ui.toml`, so a new chain is tinted without a change here.
 /// The previous CLI hardcoded 30 of the 78 and rendered the rest grey.
-static CHAIN_COLOR: LazyLock<HashMap<String, CatalogColor>> = LazyLock::new(|| {
-    spectra_core::chains::list_all_chains()
-        .into_iter()
-        .map(|chain| (chain.id, chain.color))
-        .collect()
-});
-
 /// Exhaustive over the catalog's palette, so a colour added there is a compile
 /// error here rather than a grey chain.
 fn rgb_for_color(color: CatalogColor) -> (u8, u8, u8) {
@@ -98,24 +89,17 @@ fn rgb_for_color(color: CatalogColor) -> (u8, u8, u8) {
     }
 }
 
-fn chain_rgb(chain_id: &str) -> (u8, u8, u8) {
-    CHAIN_COLOR
-        .get(chain_id)
-        .map(|color| rgb_for_color(*color))
-        .unwrap_or((200, 200, 210))
-}
-
-pub fn tint(s: &str, chain_id: &str) -> colored::ColoredString {
-    let (r, g, b) = chain_rgb(chain_id);
+pub fn tint(s: &str, chain: Chain) -> colored::ColoredString {
+    let (r, g, b) = rgb_for_color(chain.entry().color);
     s.truecolor(r, g, b)
 }
 
 /// Filled dot for a spending wallet, hollow for watch-only.
-pub fn wallet_dot(chain_id: &str, is_watch_only: bool) -> colored::ColoredString {
+pub fn wallet_dot(chain: Chain, is_watch_only: bool) -> colored::ColoredString {
     if is_watch_only {
-        tint("○", chain_id)
+        tint("○", chain)
     } else {
-        tint("●", chain_id).bold()
+        tint("●", chain).bold()
     }
 }
 

@@ -5,7 +5,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 fn record(chain: Chain, api: EndpointApi, endpoint: String) -> AppCoreEndpointRecord {
     AppCoreEndpointRecord {
         id: "test".into(),
-        chain_id: chain.str_id().into(),
+        chain_id: chain,
         api,
         endpoint,
         capabilities: vec![crate::EndpointCapability::History],
@@ -18,7 +18,7 @@ fn every_builtin_api_has_a_probe_on_its_own_origin() {
         .unwrap()
         .endpoint_records
     {
-        let chain = Chain::from_str_id(&record.chain_id).unwrap();
+        let chain = record.chain_id;
         let checks = checks(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
         assert!(!checks.is_empty());
         for check in checks {

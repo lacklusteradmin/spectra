@@ -148,7 +148,7 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
             let name = if let Some(id) = args.token_id {
                 spectra_core::store::token_artwork_name(id)
             } else if let Some(id) = args.chain_id {
-                spectra_core::store::chain_artwork_name(id)
+                spectra_core::store::chain_artwork_name(resolve_chain(&id)?)
             } else {
                 spectra_core::store::deployment_artwork_name(args.deployment_id)
             };
@@ -170,7 +170,7 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
 
 fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let tokens = spectra_core::tokens::list_token_deployments(chain.str_id().to_string());
+    let tokens = spectra_core::tokens::list_token_deployments(Some(chain));
 
     out.text(|| {
         println!();
@@ -181,7 +181,7 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
         for token in &tokens {
             println!(
                 "  {}  {:<8} {:<24} {}",
-                out::tint("●", chain.str_id()).bold(),
+                out::tint("●", chain).bold(),
                 token.symbol.bold(),
                 token.name,
                 out::hint(&format!("{} decimals", token.decimals)),
@@ -291,7 +291,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
 
     let transition = ctx.apply(StateCommand::SetTokenPreferencesEnabled {
         tokens: vec![CoreTokenPreferenceKey {
-            chain_id: chain.str_id().to_string(),
+            chain_id: chain,
             contract: entry.token.contract.clone(),
         }],
         is_enabled,
@@ -322,7 +322,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
 /// refused and the list comes back sorted.
 fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
-        chain_id: resolve_chain(&args.chain)?.str_id().to_string(),
+        chain_id: resolve_chain(&args.chain)?,
         contract: args.contract,
         symbol: args.symbol,
         name: args.name,
@@ -336,7 +336,7 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 }
 
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
-    let chain_id = resolve_chain(&args.chain)?.str_id().to_string();
+    let chain_id = resolve_chain(&args.chain)?;
     let transition = ctx.apply(StateCommand::AddCustomToken {
         chain_id,
         symbol: args.symbol.clone(),
@@ -356,7 +356,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
     out.text(|| {
         println!("  {} added {}", out::ok_mark(), stored.token.symbol.bold());
-        out::field("chain", &stored.token.chain_id);
+        out::field("chain", stored.token.chain_id.str_id());
         out::field("contract", &stored.token.contract);
         out::field("decimals", &stored.token.decimals.to_string());
     });
@@ -371,9 +371,9 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 }
 
 fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
-    let chain_id = resolve_chain(&args.chain)?.str_id().to_string();
+    let chain_id = resolve_chain(&args.chain)?;
     let transition = ctx.apply(StateCommand::RemoveCustomToken {
-        chain_id: chain_id.clone(),
+        chain_id,
         contract: args.contract.clone(),
     })?;
     reject_on_event(&transition)?;
@@ -385,9 +385,9 @@ fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
 }
 
 fn decimals(ctx: &Ctx, out: Out, args: DecimalsArgs) -> CliResult<()> {
-    let chain_id = resolve_chain(&args.chain)?.str_id().to_string();
+    let chain_id = resolve_chain(&args.chain)?;
     let transition = ctx.apply(StateCommand::SetCustomTokenDecimals {
-        chain_id: chain_id.clone(),
+        chain_id,
         contract: args.contract.clone(),
         decimals: args.decimals,
     })?;
@@ -448,7 +448,7 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
 
 fn discover(ctx: &Ctx, out: Out, args: DiscoverArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
+    let chain = wallet.chain_id.mainnet_counterpart();
     let address = wallet_address(&wallet).to_string();
     if address.is_empty() {
         return Err(CliError::rejected(format!(
@@ -460,7 +460,7 @@ fn discover(ctx: &Ctx, out: Out, args: DiscoverArgs) -> CliResult<()> {
     let service = ctx.service()?;
     let held = ctx
         .rt
-        .block_on(service.discover_token_balances(chain.str_id().to_string(), address))
+        .block_on(service.discover_token_balances(chain, address))
         .map_err(CliError::from)?;
 
     out.text(|| {
@@ -505,7 +505,7 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
     let asset_decimals = match &args.symbol {
         Some(symbol) => {
             let symbol_upper = symbol.to_uppercase();
-            let entry = spectra_core::tokens::list_token_deployments(chain.str_id().to_string())
+            let entry = spectra_core::tokens::list_token_deployments(Some(chain))
                 .into_iter()
                 .find(|t| t.symbol.eq_ignore_ascii_case(&symbol_upper))
                 .ok_or_else(|| {

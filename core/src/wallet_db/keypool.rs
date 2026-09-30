@@ -16,7 +16,7 @@ pub struct KeypoolState {
 pub fn keypool_save(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
     state: &KeypoolState,
 ) -> Result<(), String> {
     with_conn(database, |conn| {
@@ -49,7 +49,10 @@ pub fn keypool_save(
 pub fn keypool_load_all(
     database: &WalletDatabase,
 ) -> Result<
-    std::collections::HashMap<String, std::collections::HashMap<String, KeypoolState>>,
+    std::collections::HashMap<
+        crate::registry::Chain,
+        std::collections::HashMap<String, KeypoolState>,
+    >,
     String,
 > {
     with_conn(database, |conn| {
@@ -62,8 +65,8 @@ pub fn keypool_load_all(
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?, // chain_id
-                    row.get::<_, String>(1)?, // wallet_id
+                    row.get::<_, crate::registry::Chain>(0)?, // chain_id
+                    row.get::<_, String>(1)?,                 // wallet_id
                     KeypoolState {
                         next_external_index: row.get(2)?,
                         next_change_index: row.get(3)?,
@@ -73,7 +76,7 @@ pub fn keypool_load_all(
             })
             .map_err(|e| format!("keypool_load_all query: {e}"))?;
         let mut outer: std::collections::HashMap<
-            String,
+            crate::registry::Chain,
             std::collections::HashMap<String, KeypoolState>,
         > = std::collections::HashMap::new();
         for row in rows {

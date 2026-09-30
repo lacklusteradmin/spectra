@@ -94,10 +94,9 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
         DiagnosticsCommand::Bundle => bundle(ctx, out),
         DiagnosticsCommand::Configured { chain } => {
             let chain = resolve_chain(&chain)?;
-            let report = ctx.rt.block_on(
-                ctx.service()?
-                    .run_configured_self_tests(chain.str_id().into()),
-            )?;
+            let report = ctx
+                .rt
+                .block_on(ctx.service()?.run_configured_self_tests(chain))?;
             let passed = report.results.iter().all(|r| r.passed);
             out.text(|| println!("{}", serde_json::to_string_pretty(&report).unwrap()));
             out.emit(serde_json::json!({"ok": passed, "report": report}));
@@ -115,22 +114,20 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
     let by_chain = match &args.chain {
         Some(name) => {
             let chain = resolve_chain(name)?;
-            let results = spectra_core::diagnostics::self_tests::self_tests_run_chain(
-                chain.str_id().to_string(),
-            );
+            let results = spectra_core::diagnostics::self_tests::self_tests_run_chain(chain);
             if results.is_empty() {
                 return Err(CliError::rejected(format!(
                     "{} has no self-tests",
                     chain.chain_display_name()
                 )));
             }
-            std::collections::HashMap::from([(chain.str_id().to_string(), results)])
+            std::collections::HashMap::from([(chain, results)])
         }
         None => spectra_core::diagnostics::self_tests::self_tests_run_all(),
     };
 
     let mut chains: Vec<_> = by_chain.into_iter().collect();
-    chains.sort_by(|a, b| a.0.cmp(&b.0));
+    chains.sort_by_key(|a| a.0);
 
     let total: usize = chains.iter().map(|(_, results)| results.len()).sum();
     let failed: usize = chains
@@ -149,7 +146,7 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
                 } else {
                     out::fail_mark()
                 },
-                super::chain_name(chain_id).bold(),
+                super::chain_name(*chain_id).bold(),
                 out::hint(&format!("{} checks", results.len())),
             );
             for result in results.iter().filter(|result| !result.passed) {
@@ -192,9 +189,7 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
 
 fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let diagnostics = ctx
-        .rt
-        .block_on(ctx.service()?.chain_diagnostics(chain.str_id().into()))?;
+    let diagnostics = ctx.rt.block_on(ctx.service()?.chain_diagnostics(chain))?;
     out.text(|| println!("{}", diagnostics.document));
     out.emit(serde_json::json!({
         "ok": true,

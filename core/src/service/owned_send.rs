@@ -8,7 +8,7 @@ use crate::send::flow::SendPreview;
 pub struct OwnedSendPreview {
     pub wallet_id: String,
     pub holding_key: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// The amount quoted, exactly as it was asked for. A value or fee shown
     /// beside a different amount field belongs to another quote.
     pub amount: String,
@@ -81,10 +81,7 @@ pub struct SendPreviewDetails {
 
 impl SendPreviewDetails {
     fn from_core(core: crate::send::flow::SendPreviewDetailsCore, decimals: u32) -> Self {
-        let exact = |v: Option<f64>| {
-            v.and_then(crate::decimal::from_f64)
-                .and_then(|d| crate::decimal::truncate(&d, decimals))
-        };
+        let exact = |v: Option<String>| v.and_then(|d| crate::decimal::truncate(&d, decimals));
         Self {
             spendable_balance: exact(core.spendableBalance),
             fee_rate_description: core.feeRateDescription,
@@ -108,10 +105,8 @@ fn owned_preview(
 ) -> OwnedSendPreview {
     let holding_key = holding.deployment_id();
     let is_native = holding.is_native();
-    let balance = crate::decimal::to_f64(&holding.amount);
     let gas_decimals = u32::from(chain.native_decimals());
-    let network_fee = crate::decimal::from_f64(preview.network_fee())
-        .and_then(|fee| crate::decimal::truncate(&fee, gas_decimals));
+    let network_fee = crate::decimal::truncate(preview.network_fee(), gas_decimals);
     let network_fee_value = network_fee.as_deref().and_then(|fee| {
         super::valuation::display_value_of(state, &chain.native_holding_template(), fee)
     });
@@ -121,7 +116,7 @@ fn owned_preview(
         .filter_map(|percent| {
             let exact = crate::send::flow::quoted_send_amount(
                 Some(preview.clone()),
-                chain.str_id().into(),
+                chain,
                 is_native,
                 decimals,
                 percent,
@@ -132,8 +127,10 @@ fn owned_preview(
             ))
         })
         .collect();
-    let mut details =
-        crate::send::flow::compute_send_preview_details(Some(preview.clone()), balance);
+    let mut details = crate::send::flow::compute_send_preview_details(
+        Some(preview.clone()),
+        Some(&holding.amount),
+    );
     if !is_native
         && !matches!(
             preview,
@@ -148,7 +145,7 @@ fn owned_preview(
     OwnedSendPreview {
         wallet_id,
         holding_key,
-        chain_id: chain.str_id().into(),
+        chain_id: chain,
         amount: amount.to_string(),
         preview,
         network_fee,
@@ -190,7 +187,7 @@ impl WalletService {
                         .destination_probe_target(&wallet_id, &holding_key)
                         .await?;
                     let address = this
-                        .resolve_send_destination(chain.str_id().into(), destination.clone())
+                        .resolve_send_destination(chain, destination.clone())
                         .await?
                         .address;
                     this.is_own_address(chain, &address).await
@@ -243,11 +240,9 @@ impl WalletService {
         let (network, token) =
             super::send_destination::destination_probe_asset(holding, &state.token_preferences)?;
         let chain = super::send_execution::send_chain_for(&state, &wallet_id, network)?;
-        let route = self
-            .send_asset_routing(wallet_id.clone(), holding_key.clone())
-            .await
-            .ok_or("asset has no route")?;
-        if route.preview_kind.is_none() {
+        if !crate::send::SendAsset::of(holding, &state.token_preferences)
+            .is_some_and(|asset| asset.is_sendable())
+        {
             return Ok(None);
         }
         let token_decimals = token.as_ref().map(|t| u32::from(t.decimals));
@@ -292,33 +287,30 @@ impl WalletService {
         let destination = if destination.trim().is_empty() {
             String::new()
         } else {
-            self.resolve_send_destination(chain.str_id().into(), destination)
+            self.resolve_send_destination(chain, destination)
                 .await?
                 .address
         };
         let preview = match chain.mainnet_counterpart() {
             Chain::Bitcoin => {
                 if let Some(xpub) = wallet.xpub.as_ref().filter(|x| !x.trim().is_empty()) {
-                    self.fetch_bitcoin_hd_send_preview(chain.str_id().into(), xpub.clone(), 20, 20)
+                    self.fetch_bitcoin_hd_send_preview(chain, xpub.clone(), 20, 20)
                         .await?
                 } else {
-                    self.fetch_utxo_fee_preview(chain.str_id().into(), address, 0, destination)
+                    self.fetch_utxo_fee_preview(chain, address, 0, destination)
                         .await?
                 }
                 .map(|preview| SendPreview::Utxo { preview })
             }
             Chain::BitcoinCash | Chain::BitcoinSV | Chain::Litecoin => self
-                .fetch_utxo_fee_preview(chain.str_id().into(), address, 0, destination)
+                .fetch_utxo_fee_preview(chain, address, 0, destination)
                 .await?
                 .map(|preview| SendPreview::Utxo { preview }),
             Chain::Dogecoin => {
                 // This legacy provider preview accepts a display amount; signing parses the exact input separately.
-                self.fetch_dogecoin_send_preview(
-                    address,
-                    amount.parse().map_err(|_| "invalid amount")?,
-                )
-                .await?
-                .map(|preview| SendPreview::Dogecoin { preview })
+                self.fetch_dogecoin_send_preview(address, amount.clone())
+                    .await?
+                    .map(|preview| SendPreview::Dogecoin { preview })
             }
             Chain::Tron => self
                 .fetch_tron_send_preview(
@@ -328,11 +320,10 @@ impl WalletService {
                 )
                 .await?
                 .map(|preview| SendPreview::Tron { preview }),
-            _ => Some(
-                self.fetch_simple_chain_send_preview(chain.str_id().into(), address)
-                    .await?
-                    .into(),
-            ),
+            _ => self
+                .fetch_simple_chain_send_preview(chain, address)
+                .await?
+                .map(Into::into),
         };
         Ok(preview.map(wrap))
     }
@@ -359,24 +350,24 @@ impl From<crate::send::preview_decode::SimpleChainPreview> for SendPreview {
 }
 
 impl SendPreview {
-    fn network_fee(&self) -> f64 {
+    fn network_fee(&self) -> &str {
         match self {
-            Self::Utxo { preview } => preview.estimatedNetworkFee,
-            Self::Dogecoin { preview } => preview.estimatedNetworkFee,
-            Self::Ethereum { preview } => preview.estimatedNetworkFee,
-            Self::Tron { preview } => preview.estimatedNetworkFee,
-            Self::Solana { preview } => preview.estimatedNetworkFee,
-            Self::Xrp { preview } => preview.estimatedNetworkFee,
-            Self::Stellar { preview } => preview.estimatedNetworkFee,
-            Self::Monero { preview } => preview.estimatedNetworkFee,
-            Self::Cardano { preview } => preview.estimatedNetworkFee,
-            Self::Sui { preview } => preview.estimatedNetworkFee,
-            Self::Aptos { preview } => preview.estimatedNetworkFee,
-            Self::Ton { preview } => preview.estimatedNetworkFee,
-            Self::Icp { preview } => preview.estimatedNetworkFee,
-            Self::Near { preview } => preview.estimatedNetworkFee,
-            Self::Polkadot { preview } => preview.estimatedNetworkFee,
-            Self::Bittensor { preview } => preview.estimatedNetworkFee,
+            Self::Utxo { preview } => &preview.estimatedNetworkFee,
+            Self::Dogecoin { preview } => &preview.estimatedNetworkFee,
+            Self::Ethereum { preview } => &preview.estimatedNetworkFee,
+            Self::Tron { preview } => &preview.estimatedNetworkFee,
+            Self::Solana { preview } => &preview.estimatedNetworkFee,
+            Self::Xrp { preview } => &preview.estimatedNetworkFee,
+            Self::Stellar { preview } => &preview.estimatedNetworkFee,
+            Self::Monero { preview } => &preview.estimatedNetworkFee,
+            Self::Cardano { preview } => &preview.estimatedNetworkFee,
+            Self::Sui { preview } => &preview.estimatedNetworkFee,
+            Self::Aptos { preview } => &preview.estimatedNetworkFee,
+            Self::Ton { preview } => &preview.estimatedNetworkFee,
+            Self::Icp { preview } => &preview.estimatedNetworkFee,
+            Self::Near { preview } => &preview.estimatedNetworkFee,
+            Self::Polkadot { preview } => &preview.estimatedNetworkFee,
+            Self::Bittensor { preview } => &preview.estimatedNetworkFee,
         }
     }
 }
@@ -416,13 +407,13 @@ impl WalletService {
             .iter()
             .find(|h| h.deployment_id() == holding_key)
             .ok_or("holding does not exist")?;
-        let chain = holding.chain().ok_or("invalid network")?;
+        let chain = holding.chain_id;
         super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
         if let Some(input) = &overrides {
             input.resolve(chain)?;
         }
         let destination = self
-            .resolve_send_destination(chain.str_id().into(), destination)
+            .resolve_send_destination(chain, destination)
             .await?
             .address;
         let preview = self
@@ -439,14 +430,14 @@ impl WalletService {
         let shape = chain.send_execution_shape();
         let fee = preview
             .as_ref()
-            .map(SendPreview::network_fee)
+            .map(|preview| preview.network_fee().to_string())
             .or(preflight.token_send_gas_reserve)
-            .or_else(|| (shape.fee_fallback > 0.0).then_some(shape.fee_fallback))
-            .or_else(|| (shape.fee_field == crate::registry::SendFeeField::None).then_some(0.0))
+            .or_else(|| shape.fee_fallback.map(str::to_string))
+            .or_else(|| {
+                (shape.fee_field == crate::registry::SendFeeField::None).then(|| "0".into())
+            })
             .ok_or("Unable to estimate network fee")?;
-        if !fee.is_finite() || fee < 0.0 {
-            return Err("invalid network fee".into());
-        }
+        let fee = crate::decimal::canonical(&fee).ok_or("invalid network fee")?;
         let latest = self.app_state().await;
         let wallet = latest
             .wallets
@@ -461,15 +452,15 @@ impl WalletService {
             .ok_or("holding was removed")?;
         let verdict = crate::send::send_affordability(crate::send::SendAffordabilityInput {
             is_native: holding.is_native(),
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             symbol: holding.symbol.clone(),
-            amount: preflight.amount_str.clone(),
-            network_fee: crate::decimal::from_f64(fee).ok_or("invalid network fee")?,
+            amount: preflight.amount.clone(),
+            network_fee: fee.clone(),
             holding_balance: holding.amount.clone(),
             gas_balance: wallet
                 .holdings
                 .iter()
-                .find(|h| h.is_native() && h.chain() == Some(chain))
+                .find(|h| h.is_native() && h.chain_id == chain)
                 .map(|h| h.amount.clone()),
         });
         use crate::send::SendAffordability;
@@ -481,7 +472,7 @@ impl WalletService {
             SendAffordability::AmountExceedsBalance { symbol } =>
                 return Err(format!("Insufficient {symbol} balance").into()),
             SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_id } => {
-                let network = crate::registry::Chain::display_name_for_id(&chain_id);
+                let network = chain_id.chain_display_name();
                 return Err(format!("Insufficient {gas_symbol} for the {network} network fee ({fee} {gas_symbol})").into());
             }
         }
@@ -489,15 +480,17 @@ impl WalletService {
             Some(SendPreview::Utxo { preview })
                 if chain.mainnet_counterpart() == Chain::Bitcoin =>
             {
-                Some(preview.estimatedFeeRateSatVb as f64)
+                Some(preview.estimatedFeeRateSatVb.to_string())
             }
-            Some(SendPreview::Dogecoin { preview }) => Some(preview.estimatedFeeRateDogePerKb),
+            Some(SendPreview::Dogecoin { preview }) => {
+                Some(preview.estimatedFeeRateDogePerKb.clone())
+            }
             _ => None,
         };
         use crate::registry::SendFeeField;
         Ok(OwnedSendQuote {
             request: crate::send::SendExecutionRequest {
-                chain_id: chain.str_id().into(),
+                chain_id: chain,
                 wallet_id,
                 password: None,
                 to_address: destination,
@@ -507,14 +500,14 @@ impl WalletService {
                 fee_rate_svb,
                 fee_sat: if shape.fee_field == SendFeeField::FeeSats {
                     Some(crate::send::payload::fee_units(
-                        fee,
+                        &fee,
                         chain.native_decimals().into(),
                     )?)
                 } else {
                     None
                 },
-                gas_budget: (shape.fee_field == SendFeeField::GasBudget).then_some(fee),
-                fee_amount: (shape.fee_field == SendFeeField::FeeAmount).then_some(fee),
+                gas_budget: (shape.fee_field == SendFeeField::GasBudget).then(|| fee.clone()),
+                fee_amount: (shape.fee_field == SendFeeField::FeeAmount).then(|| fee.clone()),
                 evm_overrides: overrides,
                 monero_priority: None,
                 sign_only: false,
@@ -558,8 +551,7 @@ impl WalletService {
                 );
             }
             let state = this.app_state().await;
-            let chain =
-                Chain::from_str_id(&pending.chain_id).ok_or("invalid transaction network")?;
+            let chain = pending.chain_id;
             let wallet = state
                 .wallets
                 .iter()
@@ -569,7 +561,7 @@ impl WalletService {
             let holding = wallet
                 .holdings
                 .iter()
-                .find(|h| h.is_native() && h.chain() == Some(chain))
+                .find(|h| h.is_native() && h.chain_id == chain)
                 .ok_or("wallet has no native holding on transaction network")?;
             let destination = if cancel {
                 wallet
@@ -602,11 +594,10 @@ impl WalletService {
                 .await?
                 .ok_or("Unable to estimate replacement fees")?;
             let bump = crate::send::flow::evm_replacement_fee_bump(
-                Some(preview.maxFeePerGasGwei.to_string()),
-                Some(preview.maxPriorityFeePerGasGwei.to_string()),
-                preview.maxFeePerGasGwei,
-                preview.maxPriorityFeePerGasGwei,
-            );
+                &preview.maxFeePerGasGwei,
+                &preview.maxPriorityFeePerGasGwei,
+            )
+            .ok_or("Unable to estimate replacement fees")?;
             Ok(OwnedReplacementDraft {
                 wallet_id: wallet.id.clone(),
                 holding_key: holding.deployment_id(),
@@ -641,10 +632,10 @@ impl WalletService {
             .iter()
             .find(|h| h.deployment_id() == holding_key)
             .ok_or("holding does not exist")?;
-        let chain = holding.chain().ok_or("invalid asset network")?;
+        let chain = holding.chain_id;
         super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
         let destination = self
-            .resolve_send_destination(chain.str_id().into(), destination)
+            .resolve_send_destination(chain, destination)
             .await?
             .address;
         self.is_own_address(chain, &destination).await
@@ -658,9 +649,8 @@ impl WalletService {
         chain: Chain,
         destination: &str,
     ) -> Result<bool, SpectraBridgeError> {
-        let normalize = |address: &str| {
-            crate::send::flow::normalized_send_address(chain.str_id().into(), address.into())
-        };
+        let normalize =
+            |address: &str| crate::send::flow::normalized_send_address(chain, address.into());
         let destination = normalize(destination);
         Ok(self
             .send_owned_addresses(chain)
@@ -679,14 +669,11 @@ impl WalletService {
                 owned.push(address.to_string());
             }
             owned.extend(
-                self.owned_addresses_for_wallet(wallet.id.clone(), Some(chain.str_id().into()))
+                self.owned_addresses_for_wallet(wallet.id.clone(), Some(chain))
                     .await,
             );
-            if chain.supports_deep_utxo_discovery() && wallet.chain() == Some(chain) {
-                owned.extend(
-                    self.known_utxo_addresses(wallet.id.clone(), chain.str_id().into())
-                        .await?,
-                );
+            if chain.supports_deep_utxo_discovery() && wallet.chain_id == chain {
+                owned.extend(self.known_utxo_addresses(wallet.id.clone(), chain).await?);
             }
         }
         Ok(owned)
@@ -715,8 +702,8 @@ mod quote_projection_tests {
     fn a_native_fee_quote_does_not_claim_a_token_balance_or_maximum() {
         let preview = SendPreview::Solana {
             preview: crate::send::preview_types::SolanaSendPreview {
-                spendableBalance: 10.0,
-                maxSendable: 9.0,
+                spendableBalance: "10".into(),
+                maxSendable: "9".into(),
                 ..Default::default()
             },
         };

@@ -1,35 +1,43 @@
 use crate::fetch::transactions::TransactionMergeStrategy as S;
 use crate::registry::Chain;
 
-fn strategy(chain_id: &str) -> S {
-    Chain::from_str_id(chain_id)
-        .unwrap_or_else(|| panic!("unknown chain {chain_id}"))
-        .transaction_merge_strategy()
+fn strategy(chain_id: crate::registry::Chain) -> S {
+    chain_id.transaction_merge_strategy()
 }
 
 #[test]
 fn history_protocols_select_their_merge_semantics() {
-    for name in ["bitcoin", "bitcoin-cash", "bitcoin-sv", "litecoin"] {
+    for name in [
+        crate::registry::Chain::Bitcoin,
+        crate::registry::Chain::BitcoinCash,
+        crate::registry::Chain::BitcoinSV,
+        crate::registry::Chain::Litecoin,
+    ] {
         assert_eq!(strategy(name), S::StandardUtxo, "{name}");
     }
-    assert_eq!(strategy("dogecoin"), S::Dogecoin);
+    assert_eq!(strategy(crate::registry::Chain::Dogecoin), S::Dogecoin);
     for name in [
-        "tron",
-        "solana",
-        "cardano",
-        "xrp",
-        "stellar",
-        "monero",
-        "sui",
-        "aptos",
-        "ton",
-        "internet-computer",
-        "near",
-        "polkadot",
+        crate::registry::Chain::Tron,
+        crate::registry::Chain::Solana,
+        crate::registry::Chain::Cardano,
+        crate::registry::Chain::Xrp,
+        crate::registry::Chain::Stellar,
+        crate::registry::Chain::Monero,
+        crate::registry::Chain::Sui,
+        crate::registry::Chain::Aptos,
+        crate::registry::Chain::Ton,
+        crate::registry::Chain::Icp,
+        crate::registry::Chain::Near,
+        crate::registry::Chain::Polkadot,
     ] {
         assert_eq!(strategy(name), S::AccountBased, "{name}");
     }
-    for name in ["ethereum", "arbitrum", "base", "polygon"] {
+    for name in [
+        crate::registry::Chain::Ethereum,
+        crate::registry::Chain::Arbitrum,
+        crate::registry::Chain::Base,
+        crate::registry::Chain::Polygon,
+    ] {
         assert_eq!(strategy(name), S::Evm, "{name}");
     }
 }

@@ -23,7 +23,7 @@ struct ChainRecord {
 
 #[derive(Default)]
 struct DiagnosticsRegistry {
-    chains: HashMap<String, ChainRecord>,
+    chains: HashMap<crate::registry::Chain, ChainRecord>,
 }
 
 fn registry() -> &'static Mutex<DiagnosticsRegistry> {
@@ -35,7 +35,7 @@ fn registry() -> &'static Mutex<DiagnosticsRegistry> {
 /// Record one wallet's history-diagnostics row for a chain.
 ///
 /// Internal: `refresh_history` records its own rows.
-pub fn diagnostics_record(chain_id: String, entry: HistoryDiagnostics) {
+pub fn diagnostics_record(chain_id: crate::registry::Chain, entry: HistoryDiagnostics) {
     registry()
         .lock()
         .unwrap()
@@ -47,7 +47,7 @@ pub fn diagnostics_record(chain_id: String, entry: HistoryDiagnostics) {
 }
 
 /// Stamp a chain's history run, whatever it found.
-pub fn diagnostics_record_history_run(chain_id: String) {
+pub fn diagnostics_record_history_run(chain_id: crate::registry::Chain) {
     registry()
         .lock()
         .unwrap()
@@ -58,7 +58,10 @@ pub fn diagnostics_record_history_run(chain_id: String) {
 }
 
 /// Replace a network's endpoint results with a check that just finished.
-pub fn diagnostics_record_endpoints(chain_id: String, endpoints: Vec<EndpointProbe>) {
+pub fn diagnostics_record_endpoints(
+    chain_id: crate::registry::Chain,
+    endpoints: Vec<EndpointProbe>,
+) {
     let mut reg = registry().lock().unwrap();
     let record = reg.chains.entry(chain_id).or_default();
     record.endpoints = endpoints;
@@ -74,10 +77,13 @@ pub(crate) struct RecordedChainDiagnostics {
     pub endpoints_checked_at_unix: Option<f64>,
 }
 
-pub(crate) fn diagnostics_recorded(family_id: &str, network_id: &str) -> RecordedChainDiagnostics {
+pub(crate) fn diagnostics_recorded(
+    family: crate::registry::Chain,
+    network: crate::registry::Chain,
+) -> RecordedChainDiagnostics {
     let reg = registry().lock().unwrap();
-    let family = reg.chains.get(family_id);
-    let network = reg.chains.get(network_id);
+    let family = reg.chains.get(&family);
+    let network = reg.chains.get(&network);
     let mut history: Vec<HistoryDiagnostics> = family
         .map(|c| c.history.values().cloned().collect())
         .unwrap_or_default();
@@ -117,8 +123,8 @@ pub(crate) fn diagnostics_test_lock() -> std::sync::MutexGuard<'static, ()> {
 
 /// A chain's history rows, keyed by wallet.
 #[cfg(test)]
-pub fn diagnostics_all(chain_id: String) -> HashMap<String, HistoryDiagnostics> {
-    diagnostics_recorded(&chain_id, &chain_id)
+pub fn diagnostics_all(chain_id: crate::registry::Chain) -> HashMap<String, HistoryDiagnostics> {
+    diagnostics_recorded(chain_id, chain_id)
         .history
         .into_iter()
         .map(|row| (row.wallet_id.clone(), row))
@@ -151,14 +157,14 @@ mod tests {
     fn recording_one_wallet_leaves_the_others_alone() {
         let _g = test_lock();
         diagnostics_clear_all();
-        assert!(diagnostics_all("bitcoin".into()).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::Bitcoin).is_empty());
 
-        diagnostics_record("bitcoin".into(), sample("w1"));
-        diagnostics_record("bitcoin".into(), sample("w2"));
-        assert_eq!(diagnostics_all("bitcoin".into()).len(), 2);
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w1"));
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w2"));
+        assert_eq!(diagnostics_all(crate::registry::Chain::Bitcoin).len(), 2);
 
-        diagnostics_record("bitcoin".into(), sample("w3"));
-        let stored = diagnostics_all("bitcoin".into());
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w3"));
+        let stored = diagnostics_all(crate::registry::Chain::Bitcoin);
         assert_eq!(
             stored.len(),
             3,
@@ -168,12 +174,12 @@ mod tests {
 
         // And a wallet that goes away takes its rows with it, on every chain.
         diagnostics_forget_wallet("w1".into());
-        let stored = diagnostics_all("bitcoin".into());
+        let stored = diagnostics_all(crate::registry::Chain::Bitcoin);
         assert_eq!(stored.len(), 2);
         assert!(!stored.contains_key("w1"));
 
         diagnostics_clear_all();
-        assert!(diagnostics_all("bitcoin".into()).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::Bitcoin).is_empty());
     }
 
     /// History is the family's, endpoints the selected network's, and each
@@ -182,26 +188,35 @@ mod tests {
     fn recorded_diagnostics_join_family_history_with_network_endpoints() {
         let _g = test_lock();
         diagnostics_clear_all();
-        let empty = diagnostics_recorded("bitcoin", "bitcoin-testnet");
+        let empty = diagnostics_recorded(
+            crate::registry::Chain::Bitcoin,
+            crate::registry::Chain::BitcoinTestnet,
+        );
         assert!(empty.history.is_empty() && empty.endpoints.is_empty());
         assert!(empty.history_run_at_unix.is_none() && empty.endpoints_checked_at_unix.is_none());
 
-        diagnostics_record("bitcoin".into(), sample("w2"));
-        diagnostics_record("bitcoin".into(), sample("w1"));
-        diagnostics_record_history_run("bitcoin".into());
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w2"));
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w1"));
+        diagnostics_record_history_run(crate::registry::Chain::Bitcoin);
         let probe = |endpoint: &str| EndpointProbe {
             api: crate::EndpointApi::Esplora,
-            chain_id: String::new(),
+            chain_id: crate::registry::Chain::Bitcoin,
             endpoint: endpoint.into(),
             capabilities: Vec::new(),
             checked: true,
             reachable: true,
             detail: String::new(),
         };
-        diagnostics_record_endpoints("bitcoin".into(), vec![probe("https://main")]);
-        diagnostics_record_endpoints("bitcoin-testnet".into(), vec![probe("https://test")]);
+        diagnostics_record_endpoints(crate::registry::Chain::Bitcoin, vec![probe("https://main")]);
+        diagnostics_record_endpoints(
+            crate::registry::Chain::BitcoinTestnet,
+            vec![probe("https://test")],
+        );
 
-        let recorded = diagnostics_recorded("bitcoin", "bitcoin-testnet");
+        let recorded = diagnostics_recorded(
+            crate::registry::Chain::Bitcoin,
+            crate::registry::Chain::BitcoinTestnet,
+        );
         let wallets: Vec<_> = recorded
             .history
             .iter()
@@ -222,13 +237,13 @@ mod tests {
     fn chains_keep_separate_buckets() {
         let _g = test_lock();
         diagnostics_clear_all();
-        diagnostics_record("bitcoin".into(), sample("w"));
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w"));
 
-        assert_eq!(diagnostics_all("bitcoin".into()).len(), 1);
-        assert!(diagnostics_all("litecoin".into()).is_empty());
-        assert!(diagnostics_all("bitcoin-cash".into()).is_empty());
-        assert!(diagnostics_all("ethereum".into()).is_empty());
-        assert!(diagnostics_all("tron".into()).is_empty());
+        assert_eq!(diagnostics_all(crate::registry::Chain::Bitcoin).len(), 1);
+        assert!(diagnostics_all(crate::registry::Chain::Litecoin).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::BitcoinCash).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::Ethereum).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::Tron).is_empty());
         diagnostics_clear_all();
     }
 
@@ -237,13 +252,13 @@ mod tests {
     fn one_wallet_on_two_chains_keeps_a_row_on_each() {
         let _g = test_lock();
         diagnostics_clear_all();
-        diagnostics_record("bitcoin".into(), sample("w"));
-        diagnostics_record("litecoin".into(), sample("w"));
-        assert_eq!(diagnostics_all("bitcoin".into()).len(), 1);
-        assert_eq!(diagnostics_all("litecoin".into()).len(), 1);
+        diagnostics_record(crate::registry::Chain::Bitcoin, sample("w"));
+        diagnostics_record(crate::registry::Chain::Litecoin, sample("w"));
+        assert_eq!(diagnostics_all(crate::registry::Chain::Bitcoin).len(), 1);
+        assert_eq!(diagnostics_all(crate::registry::Chain::Litecoin).len(), 1);
 
         diagnostics_forget_wallet("w".into());
-        assert!(diagnostics_all("bitcoin".into()).is_empty());
-        assert!(diagnostics_all("litecoin".into()).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::Bitcoin).is_empty());
+        assert!(diagnostics_all(crate::registry::Chain::Litecoin).is_empty());
     }
 }

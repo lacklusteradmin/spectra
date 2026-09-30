@@ -12,7 +12,6 @@ use crate::api::http::HttpClient;
 pub struct SuiBalance {
     /// MIST (1 SUI = 1_000_000_000 MIST).
     pub mist: u64,
-    pub sui_display: String,
 }
 
 /// One transaction's effect on an address's SUI, fee excluded.
@@ -76,10 +75,7 @@ impl SuiClient {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
             .ok_or("suix_getBalance: missing totalBalance")?;
-        Ok(SuiBalance {
-            mist,
-            sui_display: format_sui(mist),
-        })
+        Ok(SuiBalance { mist })
     }
 
     /// The address's SUI transfers, newest first.
@@ -300,22 +296,6 @@ fn sui_history_from_blocks(
     // Undated transactions are the newest.
     entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms.unwrap_or(u64::MAX)));
     Ok(entries)
-}
-
-fn format_sui(mist: u64) -> String {
-    let whole = mist / 1_000_000_000;
-    let frac = mist % 1_000_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:09}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
 }
 
 impl SuiClient {

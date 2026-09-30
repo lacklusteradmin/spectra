@@ -13,7 +13,6 @@ use crate::api::http::{
 pub struct CardanoBalance {
     /// Lovelace (1 ADA = 1_000_000 lovelace).
     pub lovelace: u64,
-    pub ada_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,10 +185,7 @@ impl KoiosClient {
             .next()
             .and_then(|r| r.balance.parse().ok())
             .unwrap_or(0);
-        Ok(CardanoBalance {
-            lovelace,
-            ada_display: format_ada(lovelace),
-        })
+        Ok(CardanoBalance { lovelace })
     }
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<CardanoUtxo>, String> {
@@ -269,17 +265,6 @@ impl KoiosClient {
             .map(|t| t.abs_slot)
             .ok_or_else(|| "tip: empty response".to_string())
     }
-}
-
-fn format_ada(lovelace: u64) -> String {
-    let whole = lovelace / 1_000_000;
-    let frac = lovelace % 1_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:06}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
 }
 
 impl KoiosClient {

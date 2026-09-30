@@ -90,17 +90,16 @@ impl WalletService {
                     .flat_map(|(chain, per_wallet)| {
                         per_wallet
                             .into_iter()
-                            .map(move |(wallet, state)| (keypool_key(&wallet, &chain), state))
+                            .map(move |(wallet, state)| (keypool_key(&wallet, chain), state))
                     })
                     .collect();
 
-                let mut by_chain: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>> =
-                    HashMap::new();
+                let mut by_chain: HashMap<
+                    crate::registry::Chain,
+                    Vec<crate::wallet_db::OwnedAddressRecord>,
+                > = HashMap::new();
                 for record in owned {
-                    by_chain
-                        .entry(record.chain_id.clone())
-                        .or_default()
-                        .push(record);
+                    by_chain.entry(record.chain_id).or_default().push(record);
                 }
 
                 let mut state = loaded.clone();
@@ -140,8 +139,6 @@ impl WalletService {
             let this = &this;
             let validate =
                 |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
-                    crate::registry::Chain::from_str_id(&wallet.chain_id)
-                        .ok_or("unknown wallet network")?;
                     for holding in &mut wallet.holdings {
                         holding.canonicalize()?;
                     }
@@ -451,17 +448,15 @@ impl WalletService {
                 service.history_pagination.reset_all_for_wallet(id);
                 crate::diagnostics::diagnostics_forget_wallet(id.clone());
             }
-            for name in &reset_chains {
-                if let Some(chain) = crate::registry::Chain::from_str_id(name) {
-                    service
-                        .history_pagination
-                        .reset_chain(chain.mainnet_counterpart().str_id());
-                }
+            for chain in &reset_chains {
+                service
+                    .history_pagination
+                    .reset_chain(chain.mainnet_counterpart());
             }
             if esplora_changed {
                 service
                     .history_pagination
-                    .reset_chain(crate::registry::Chain::Bitcoin.str_id());
+                    .reset_chain(crate::registry::Chain::Bitcoin);
             }
             let snapshot = service.publish_state(snapshot).await;
             // The HTTP layer reads the Tor policy per request rather than the
@@ -568,24 +563,24 @@ mod utxo_discovery_is_the_registrys_chain_set {
     #[tokio::test]
     async fn a_chain_without_the_walk_does_nothing() {
         let service = crate::service::WalletService::new(Vec::new()).expect("service");
-        let evm = Chain::Ethereum.str_id().to_string();
+        let evm = Chain::Ethereum;
         assert!(
             service
-                .discover_utxo_addresses("w".into(), evm.clone())
+                .discover_utxo_addresses("w".into(), evm)
                 .await
                 .expect("ok")
                 .is_empty()
         );
         assert!(
             service
-                .known_utxo_addresses("w".into(), evm.clone())
+                .known_utxo_addresses("w".into(), evm)
                 .await
                 .expect("ok")
                 .is_empty()
         );
         assert!(
             service
-                .utxo_receive_address("w".into(), evm.clone(), false)
+                .utxo_receive_address("w".into(), evm, false)
                 .await
                 .expect("ok")
                 .is_none()
@@ -626,9 +621,6 @@ fn derive_wallet_state(
     let token_preferences = &state.token_preferences;
     // The network the user picked for a holding's family, and whether that
     // network is quoted at all.
-    let network_of = |chain_id: &str| -> Option<crate::registry::Chain> {
-        crate::registry::Chain::from_str_id(chain_id)
-    };
     let signing: HashSet<&str> = signing_material_wallet_ids
         .iter()
         .map(String::as_str)
@@ -659,17 +651,12 @@ fn derive_wallet_state(
             .map(AssetHolding::identified)
         {
             let holding = &holding;
-            let network = network_of(&holding.chain_id);
+            let network = holding.chain_id;
             // Identity is per *network*: testnet BTC groups separately from
             // mainnet BTC and is quoted separately (which is to say, not).
             let identity_key = holding.deployment_id();
-            // Whether a holding's chain is live, sendable or receivable is one
-            // question: does the registry know it.
-            let chain_is_known = crate::registry::Chain::from_str_id(&holding.chain_id).is_some();
 
-            if network.is_none_or(|chain| !chain.is_testnet())
-                && seen_price_keys.insert(identity_key.clone())
-            {
+            if !network.is_testnet() && seen_price_keys.insert(identity_key.clone()) {
                 unique_price_request_coins.push(holding.clone());
             }
 
@@ -686,29 +673,22 @@ fn derive_wallet_state(
                     .ok_or("portfolio total out of range")?;
             }
 
-            let selected_network = wallet.chain();
-            let on_selected_network = match (holding.chain(), selected_network) {
-                (Some(asset), Some(selected))
-                    if asset.mainnet_counterpart() == selected.mainnet_counterpart() =>
-                {
-                    asset == selected
-                }
-                _ => true,
-            };
+            // A holding on another network of the wallet's family is not the
+            // one the wallet sends from.
+            let selected = wallet.chain_id;
+            let on_selected_network = network.mainnet_counterpart()
+                != selected.mainnet_counterpart()
+                || network == selected;
             if on_selected_network
                 && crate::send::transfer::can_send_coin(
                     holding,
                     has_signing_material,
-                    chain_is_known,
-                    chain_is_known,
                     token_preferences,
                 )
             {
                 send_coins.push(holding.clone());
             }
-            if chain_is_known {
-                receive_coins.push(holding.clone());
-            }
+            receive_coins.push(holding.clone());
         }
 
         if !send_coins.is_empty() {
@@ -748,7 +728,7 @@ fn dashboard_pin_options_from(
 ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
     use crate::store::wallet_domain::CoreDashboardPinOption;
     let pinned = state.settings.pinned_dashboard_assets();
-    let catalog = crate::tokens::list_token_deployments(String::new());
+    let catalog = crate::tokens::list_token_deployments(None);
     let coins = catalog
         .iter()
         .chain(state.token_preferences.iter().map(|e| &e.token))
@@ -756,7 +736,7 @@ fn dashboard_pin_options_from(
         .chain(state.wallets.iter().flat_map(|w| w.holdings.clone()));
     let mut options = std::collections::BTreeMap::<String, CoreDashboardPinOption>::new();
     for coin in coins {
-        if coin.chain().is_none_or(|n| n.is_testnet()) {
+        if coin.chain_id.is_testnet() {
             continue;
         }
         let token_id = coin.token_identity();
@@ -770,11 +750,11 @@ fn dashboard_pin_options_from(
                 subtitle: if token_id.starts_with("custom:") {
                     format!(
                         "{} · {}",
-                        coin.chain().unwrap().chain_display_name(),
+                        coin.chain_id.chain_display_name(),
                         coin.contract_address.as_deref().unwrap_or("")
                     )
                 } else {
-                    coin.chain().unwrap().chain_display_name().to_string()
+                    coin.chain_id.chain_display_name().to_string()
                 },
                 artwork_name: Some(crate::store::deployment_artwork_name(Some(
                     coin.deployment_id(),
@@ -839,7 +819,7 @@ fn dashboard_groups_from(
         for coin in coins {
             let contract = crate::tokens::normalize_token_identifier(
                 coin.contract_address.clone(),
-                coin.chain_id.clone(),
+                coin.chain_id,
             )
             .unwrap_or_else(|| "native".to_string());
             let place = format!(
@@ -876,10 +856,7 @@ fn dashboard_groups_from(
             if (l - r).abs() > 0.000_001 {
                 return r.total_cmp(&l);
             }
-            lhs.coin
-                .chain_id
-                .to_lowercase()
-                .cmp(&rhs.coin.chain_id.to_lowercase())
+            lhs.coin.chain_id.str_id().cmp(rhs.coin.chain_id.str_id())
         });
         let Some(largest) = holdings.first() else {
             continue;
@@ -978,7 +955,7 @@ fn pinned_prototype(
         coin.amount = "0".to_string();
         return Some(coin);
     }
-    let tokens = crate::tokens::list_token_deployments(String::new());
+    let tokens = crate::tokens::list_token_deployments(None);
     tokens
         .iter()
         .chain(state.token_preferences.iter().map(|e| &e.token))

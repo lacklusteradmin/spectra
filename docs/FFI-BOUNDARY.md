@@ -89,5 +89,5 @@ callback-interface `vtablePtr` statics itself.
 |---|---|
 | `Cannot find type 'CoreFoo' in scope` | Regenerate bindings and confirm the declaration is exported |
 | `does not conform to protocol 'Codable'` | UniFFI does not generate `Codable`; add the appropriate Swift conformance |
-| `unknown chain_id` | Resolve through the registry and check the supplied id |
+| `Unknown network: …` | A stored row or TOML entry names an id the catalog does not have; chains cross the FFI as `Chain`, so the text came from storage or a file |
 | A key path into a subscript will not compile | Avoid `dict[key, default:]` in key paths; provide a suitable subscript |

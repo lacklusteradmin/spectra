@@ -61,7 +61,7 @@ fn apply_price_result(
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeSpotPrice {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub symbol: String,
     /// `None` on a testnet, whose coin has no market, or when no provider
     /// quoted it.
@@ -77,9 +77,8 @@ impl WalletService {
     /// missing price, not a USD figure labelled in another currency.
     pub async fn native_spot_price(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<NativeSpotPrice, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id).ok_or("unknown chain")?;
         let key = chain.entry().native_deployment_id.clone();
         let price_usd = if chain.is_testnet() {
             None
@@ -100,7 +99,7 @@ impl WalletService {
         };
         let state = self.refresh_owned_fiat_rates(false).await?;
         Ok(NativeSpotPrice {
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             symbol: chain.coin_symbol().into(),
             price_usd,
             price: price_usd.and_then(|usd| super::valuation::to_display(&state, usd)),
@@ -156,10 +155,7 @@ impl WalletService {
             }
             let mut requests = HashMap::new();
             for coin in coins {
-                let Some(chain) = Chain::from_str_id(&coin.chain_id) else {
-                    continue;
-                };
-                let network = chain;
+                let network = coin.chain_id;
                 if network.is_testnet() {
                     continue;
                 }

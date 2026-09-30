@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::http::{HttpClient, RetryProfile, race};
-use crate::api::tron_http::format_trx;
 
 /// Unified history entry covering both native TRX and TRC-20 token transfers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,7 +152,7 @@ fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>
             is_incoming: to == address,
             from,
             to,
-            amount_display: format_trx(sun),
+            amount_display: crate::decimal::from_units(u128::from(sun), 6),
             symbol: "TRX".to_string(),
         });
     }
@@ -197,22 +196,11 @@ fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>,
             from: text("/from")?.to_string(),
             is_incoming: to == address,
             to,
-            amount_display: format_units(raw, decimals),
+            amount_display: crate::decimal::from_units(raw, decimals),
             symbol: text("/token_info/symbol").unwrap_or("?").to_string(),
         });
     }
     Ok(entries)
-}
-
-/// `raw` in whole units, exactly: no rounding, trailing zeros trimmed.
-fn format_units(raw: u128, decimals: u32) -> String {
-    let divisor = 10u128.pow(decimals);
-    let (whole, frac) = (raw / divisor, raw % divisor);
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac = format!("{frac:0>width$}", width = decimals as usize);
-    format!("{whole}.{}", frac.trim_end_matches('0'))
 }
 
 #[cfg(test)]
@@ -297,15 +285,5 @@ mod history_tests {
             .await
             .is_err()
         );
-    }
-
-    #[test]
-    fn token_amounts_are_exact() {
-        assert_eq!(
-            format_units(1_000_000_000_000_000_001, 18),
-            "1.000000000000000001"
-        );
-        assert_eq!(format_units(5, 0), "5");
-        assert_eq!(format_units(2_000_000, 6), "2");
     }
 }

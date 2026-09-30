@@ -22,7 +22,7 @@ fn service() -> std::sync::Arc<WalletService> {
 fn add(name: &str, address: &str) -> StateCommand {
     StateCommand::AddAddressBookEntry {
         name: name.to_string(),
-        chain_id: "bitcoin".to_string(),
+        chain_id: crate::registry::Chain::Bitcoin,
         address: address.to_string(),
         note: String::new(),
     }
@@ -122,7 +122,7 @@ async fn the_same_address_on_another_chain_is_not_a_duplicate() {
     let transition = service
         .apply_state_command(StateCommand::AddAddressBookEntry {
             name: "LTC".to_string(),
-            chain_id: "litecoin".to_string(),
+            chain_id: crate::registry::Chain::Litecoin,
             address: "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n9".to_string(),
             note: String::new(),
         })
@@ -212,7 +212,7 @@ async fn case_distinct_base58_addresses_are_different_recipients() {
     let service = service();
     let add_sol = |name: &str, address: &str| StateCommand::AddAddressBookEntry {
         name: name.to_string(),
-        chain_id: "solana".to_string(),
+        chain_id: crate::registry::Chain::Solana,
         address: address.to_string(),
         note: String::new(),
     };

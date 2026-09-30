@@ -39,7 +39,7 @@ impl WalletService {
         let destination = if destination.trim().is_empty() {
             from.clone()
         } else {
-            self.resolve_send_destination(chain.str_id().into(), destination)
+            self.resolve_send_destination(chain, destination)
                 .await?
                 .address
         };
@@ -50,7 +50,7 @@ impl WalletService {
                 .ok_or("the held token's contract is not valid on this network")?;
         let assembly = crate::send::ethereum::prepare_evm_send_assembly(
             crate::send::ethereum::EvmSendAssemblyInput {
-                chain_id: chain.str_id().into(),
+                chain_id: chain,
                 deployment_id,
                 from_address: from.clone(),
                 resolved_destination: destination,
@@ -66,7 +66,7 @@ impl WalletService {
             message: e.to_string(),
         })?;
         self.fetch_evm_send_preview(
-            chain.str_id().into(),
+            chain,
             from,
             assembly.to_address,
             assembly.value_wei,
@@ -103,12 +103,10 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<NativeFeeEstimate, SpectraBridgeError> {
-        let endpoints = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
-            .await;
+        let endpoints = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
         let native = |raw: u128, source: &'static str| NativeFeeEstimate {
             raw: raw.to_string(),
-            display: format_decimals(raw, chain.native_decimals()),
+            display: crate::decimal::from_units(raw, u32::from(chain.native_decimals())),
             source,
         };
         match chain {
@@ -145,15 +143,10 @@ impl WalletService {
 
     pub(crate) async fn fetch_utxo_fee_preview_json(
         &self,
-        chain_id: &str,
+        chain: crate::registry::Chain,
         address: String,
         fee_rate_svb: u64,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "fetch_utxo_fee_preview_json: unsupported chain_id: {chain_id}"
-            ))
-        })?;
         let family = chain.mainnet_counterpart();
         if !matches!(
             family,
@@ -212,16 +205,14 @@ impl WalletService {
     /// the contract's own `decimals()` scales the answer.
     pub(crate) async fn fetch_evm_send_preview_json(
         &self,
-        chain_id: &str,
+        chain_id: crate::registry::Chain,
         from: String,
         to: String,
         value_wei: String,
         data_hex: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = evm_network_for_id(chain_id)?;
-        let eps = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Fee])
-            .await;
+        let chain = evm_network(chain_id)?;
+        let eps = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
         if value_wei.is_empty() || !value_wei.bytes().all(|b| b.is_ascii_digit()) {
@@ -244,17 +235,17 @@ impl WalletService {
             .map(|_| to.as_str());
 
         let verification = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            self.endpoints_for(chain, &[EndpointCapability::Verification])
                 .await,
             chain.evm_chain_id()?,
         );
         let balances = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &[EndpointCapability::Balance])
+            self.endpoints_for(chain, &[EndpointCapability::Balance])
                 .await,
             chain.evm_chain_id()?,
         );
         let tokens = EvmClient::new(
-            self.endpoints_for(chain.str_id(), &[EndpointCapability::TokenBalance])
+            self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
                 .await,
             chain.evm_chain_id()?,
         );
@@ -280,9 +271,7 @@ impl WalletService {
             .map_err(|_| SpectraBridgeError::from("invalid EVM balance"))?;
 
         let estimated_fee_wei: u128 = (gas_limit as u128).saturating_mul(fee.max_fee_per_gas_wei);
-        let max_fee_gwei = fee.max_fee_per_gas_wei as f64 / 1_000_000_000.0;
-        let priority_fee_gwei = fee.priority_fee_wei as f64 / 1_000_000_000.0;
-        let estimated_fee_eth = estimated_fee_wei as f64 / 1e18;
+        let gwei = |wei: u128| crate::decimal::from_units(wei, 9);
 
         // A token read that failed is not a zero holding: everything the send
         // sheet decides from this — whether the amount fits, whether it is the
@@ -294,22 +283,24 @@ impl WalletService {
                     .balance_raw
                     .parse()
                     .map_err(|_| SpectraBridgeError::from("invalid ERC-20 balance"))?;
-                token_display_balance(raw, token.decimals)
+                crate::decimal::from_units(raw, u32::from(token.decimals))
             }
-            None => (balance_wei_val.saturating_sub(estimated_fee_wei)) as f64 / 1e18,
+            None => {
+                crate::decimal::from_units(balance_wei_val.saturating_sub(estimated_fee_wei), 18)
+            }
         };
 
         Ok(json!({
             "nonce": nonce,
             "gas_limit": gas_limit,
-            "max_fee_per_gas_gwei": max_fee_gwei,
-            "max_priority_fee_per_gas_gwei": priority_fee_gwei,
-            "estimated_fee_eth": estimated_fee_eth,
+            "max_fee_per_gas_wei": fee.max_fee_per_gas_wei.to_string(),
+            "max_priority_fee_per_gas_wei": fee.priority_fee_wei.to_string(),
+            "estimated_fee_wei": estimated_fee_wei.to_string(),
             "spendable_balance": spendable_balance,
             "is_token": crate::api::evm_json_rpc::is_erc20_transfer(&data_hex),
             "native_balance_wei": balance_wei_val.to_string(),
-            "fee_rate_description": format!("Max {:.2} gwei / Priority {:.2} gwei",
-                max_fee_gwei, priority_fee_gwei),
+            "fee_rate_description": format!("Max {} gwei / Priority {} gwei",
+                gwei(fee.max_fee_per_gas_wei), gwei(fee.priority_fee_wei)),
         })
         .to_string())
     }
@@ -322,7 +313,7 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let eps = self
             .endpoints_for(
-                "tron",
+                crate::registry::Chain::Tron,
                 if contract_address.is_empty() {
                     &[EndpointCapability::Balance]
                 } else {
@@ -340,15 +331,16 @@ impl WalletService {
             }
             // TRX is the fee asset as well as the amount, so the fee comes out
             // of what is spendable. Only this branch needs the TRX balance.
-            let trx_balance = client
+            let balance_sun = client
                 .fetch_balance(&address)
                 .await
-                .map(|b| b.sun as f64 / 1_000_000.0)
+                .map(|b| b.sun)
                 .map_err(SpectraBridgeError::from)?;
-            let fee_trx = 1.0_f64;
-            let spendable = (trx_balance - fee_trx).max(0.0);
+            const FEE_SUN: u64 = 1_000_000;
+            let spendable =
+                crate::decimal::from_units(u128::from(balance_sun.saturating_sub(FEE_SUN)), 6);
             return Ok(json!({
-                "estimated_fee_trx": fee_trx,
+                "estimated_fee_trx": crate::decimal::from_units(u128::from(FEE_SUN), 6),
                 "fee_limit_sun": 0_i64,
                 "spendable_balance": spendable,
                 "max_sendable": spendable,
@@ -370,12 +362,11 @@ impl WalletService {
             .balance_raw
             .parse()
             .map_err(|_| SpectraBridgeError::from("invalid TRC-20 balance"))?;
-        let token_balance = token_display_balance(raw, token.decimals);
+        let token_balance = crate::decimal::from_units(raw, u32::from(token.decimals));
 
-        let fee_trx = 15.0_f64;
         let fee_limit_sun: i64 = 15_000_000;
         Ok(json!({
-            "estimated_fee_trx": fee_trx,
+            "estimated_fee_trx": crate::decimal::from_units(fee_limit_sun as u128, 6),
             "fee_limit_sun": fee_limit_sun,
             "spendable_balance": token_balance,
             "max_sendable": token_balance,
@@ -386,27 +377,29 @@ impl WalletService {
 
     pub(crate) async fn fetch_simple_chain_send_preview_json(
         &self,
-        chain_id: &str,
+        chain: crate::registry::Chain,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))?;
         let (fee, balance) = tokio::try_join!(
             self.native_fee_estimate(chain),
-            self.fetch_native_balance_summary(chain_id.to_string(), address),
+            self.fetch_native_balance_summary(chain, address),
         )?;
 
         // `max_sendable` is balance minus fee, so a zero standing in for either
         // one is a wrong maximum offered to the user: an unread fee makes the
         // whole balance look sendable, an unread balance makes none of it.
-        let fee_display = fee.display.parse::<f64>().map_err(|_| {
-            SpectraBridgeError::from(format!("{chain_id} fee: not a number: {:?}", fee.display))
-        })?;
+        let unreadable = |what: &str, value: &str| {
+            SpectraBridgeError::from(format!("{chain} {what}: not a number: {value:?}"))
+        };
+        let fee_display = crate::decimal::canonical(&fee.display)
+            .ok_or_else(|| unreadable("fee", &fee.display))?;
         let fee_raw = fee.raw;
         let fee_rate_description = fee.source.to_string();
 
-        let balance_display = summary_display_balance(chain_id, &balance)?;
-        let max_sendable = (balance_display - fee_display).max(0.0);
+        let balance_display = crate::decimal::canonical(&balance.amount_display)
+            .ok_or_else(|| unreadable("balance", &balance.amount_display))?;
+        let max_sendable = crate::decimal::sub_or_zero(&balance_display, &fee_display)
+            .ok_or_else(|| unreadable("balance", &balance_display))?;
 
         Ok(json!({
             "fee_display":          fee_display,
@@ -429,7 +422,7 @@ impl WalletService {
     /// overrides applied. Returns `None` when the decoder rejects the payload.
     pub async fn fetch_evm_send_preview(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         from: String,
         to: String,
         value_wei: String,
@@ -438,7 +431,7 @@ impl WalletService {
         custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_evm_send_preview_json(&chain_id, from, to, value_wei, data_hex)
+            .fetch_evm_send_preview_json(chain_id, from, to, value_wei, data_hex)
             .await?;
         Ok(crate::send::preview_decode::build_evm_send_preview_record(
             crate::send::ethereum::EvmPreviewDecodeInput {
@@ -453,18 +446,18 @@ impl WalletService {
 impl WalletService {
     pub async fn fetch_bitcoin_hd_send_preview(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         xpub: String,
         receive_count: u32,
         change_count: u32,
     ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id)
-            .filter(|chain| chain.mainnet_counterpart() == Chain::Bitcoin)
-            .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: format!("{chain_id:?} is not a Bitcoin network"),
-            })?;
+        if chain.mainnet_counterpart() != Chain::Bitcoin {
+            return Err(SpectraBridgeError::InvalidInput {
+                message: format!("{chain} is not a Bitcoin network"),
+            });
+        }
         let (balance, rate) = tokio::try_join!(
-            self.bitcoin_xpub_balance(chain.str_id(), xpub, receive_count, change_count),
+            self.bitcoin_xpub_balance(chain, xpub, receive_count, change_count),
             self.bitcoin_fee_rate(chain),
         )?;
         Ok(
@@ -477,25 +470,26 @@ impl WalletService {
     pub async fn fetch_dogecoin_send_preview(
         &self,
         address: String,
-        requested_amount: f64,
+        requested_amount: String,
     ) -> Result<Option<crate::send::preview_types::DogecoinSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_utxo_fee_preview_json(Chain::Dogecoin.str_id(), address, 0)
+            .fetch_utxo_fee_preview_json(Chain::Dogecoin, address, 0)
             .await?;
-        Ok(crate::send::preview_decode::build_dogecoin_send_preview_record(raw, requested_amount))
+        Ok(crate::send::preview_decode::build_dogecoin_send_preview_record(raw, &requested_amount))
     }
     pub async fn fetch_simple_chain_send_preview(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
-    ) -> Result<crate::send::preview_decode::SimpleChainPreview, SpectraBridgeError> {
-        let chain = crate::registry::Chain::from_str_id(&chain_id)
-            .and_then(|chain| chain.simple_preview_chain())
-            .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: format!("{chain_id} has no shared-path send preview"),
-            })?;
+    ) -> Result<Option<crate::send::preview_decode::SimpleChainPreview>, SpectraBridgeError> {
+        let chain =
+            chain_id
+                .simple_preview_chain()
+                .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                    message: format!("{chain_id} has no shared-path send preview"),
+                })?;
         let raw = self
-            .fetch_simple_chain_send_preview_json(&chain_id, address)
+            .fetch_simple_chain_send_preview_json(chain_id, address)
             .await?;
         Ok(crate::send::preview_decode::build_simple_chain_preview(
             raw, chain,
@@ -516,18 +510,16 @@ impl WalletService {
     }
     pub async fn fetch_utxo_fee_preview(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
         fee_rate_svb: u64,
         destination_address: String,
     ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_utxo_fee_preview_json(&chain_id, address, fee_rate_svb)
+            .fetch_utxo_fee_preview_json(chain_id, address, fee_rate_svb)
             .await?;
         let preview = crate::send::preview_decode::build_utxo_send_preview_record(raw);
-        let overhead = Chain::from_str_id(&chain_id)
-            .map(|chain| chain.extra_output_overhead_bytes(&destination_address))
-            .unwrap_or(0);
+        let overhead = chain_id.extra_output_overhead_bytes(&destination_address);
         Ok(preview.map(|preview| {
             crate::send::preview_decode::with_extra_output_overhead(preview, overhead)
         }))

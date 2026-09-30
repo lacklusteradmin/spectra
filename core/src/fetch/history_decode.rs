@@ -13,8 +13,9 @@ pub struct NormalizedHistoryItem {
     pub status: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_id: String,
-    pub amount: f64,
+    pub chain_id: crate::registry::Chain,
+    /// The magnitude, as an exact decimal; `kind` says which way it went.
+    pub amount: String,
     pub counterparty: String,
     pub tx_hash: String,
     pub block_height: Option<i64>,
@@ -60,29 +61,6 @@ pub struct EvmHistoryPageDecoded {
     pub native: Vec<EvmNativeTransferItem>,
 }
 
-pub(crate) fn decimal_string_from_wei(wei_str: &str) -> String {
-    // Divide the integer wei string by 1e18 without floats.
-    let digits: &str = wei_str.trim_start_matches('-');
-    let negative = wei_str.starts_with('-');
-    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
-        return "0".to_string();
-    }
-    let (int_part, frac_part) = if digits.len() <= 18 {
-        let pad = "0".repeat(18 - digits.len());
-        ("0".to_string(), format!("{pad}{digits}"))
-    } else {
-        let split = digits.len() - 18;
-        (digits[..split].to_string(), digits[split..].to_string())
-    };
-    let frac_trimmed = frac_part.trim_end_matches('0');
-    let body = if frac_trimmed.is_empty() {
-        int_part
-    } else {
-        format!("{int_part}.{frac_trimmed}")
-    };
-    if negative { format!("-{body}") } else { body }
-}
-
 // ────────────────────────────────────────────────────────────────────
 // EVM history page → per-wallet transaction record projection.
 // Given a decoded page and the target wallets, emits one record per
@@ -100,7 +78,7 @@ pub struct EvmHistoryTransactionRecord {
     pub kind: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub amount_decimal: String,
     pub counterparty: String,
     pub transaction_hash: String,
@@ -120,7 +98,7 @@ pub struct EvmTransactionRecordWalletInput {
 pub struct EvmTransactionRecordRequest {
     pub decoded_page: EvmHistoryPageDecoded,
     pub normalized_address: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub token_source_used: Option<String>,
     pub native_asset_display_name: String,
     pub native_asset_symbol: String,
@@ -157,17 +135,16 @@ pub fn build_evm_transaction_records(
             };
             out.push(EvmHistoryTransactionRecord {
                 status: "confirmed".into(),
-                deployment_id: crate::registry::Chain::from_str_id(&request.chain_id).and_then(
-                    |chain| {
-                        crate::tokens::deployment_id_for(chain, Some(&transfer.contract_address))
-                    },
+                deployment_id: crate::tokens::deployment_id_for(
+                    request.chain_id,
+                    Some(&transfer.contract_address),
                 ),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
                 asset_display_name: transfer.token_name.clone(),
                 symbol: transfer.symbol.clone(),
-                chain_id: request.chain_id.clone(),
+                chain_id: request.chain_id,
                 amount_decimal: transfer.amount_decimal.clone(),
                 counterparty,
                 transaction_hash: transfer.transaction_hash.clone(),
@@ -195,14 +172,13 @@ pub fn build_evm_transaction_records(
             };
             out.push(EvmHistoryTransactionRecord {
                 status: transfer.status.clone(),
-                deployment_id: crate::registry::Chain::from_str_id(&request.chain_id)
-                    .and_then(|chain| crate::tokens::deployment_id_for(chain, None)),
+                deployment_id: crate::tokens::deployment_id_for(request.chain_id, None),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
                 asset_display_name: request.native_asset_display_name.clone(),
                 symbol: request.native_asset_symbol.clone(),
-                chain_id: request.chain_id.clone(),
+                chain_id: request.chain_id,
                 amount_decimal: transfer.amount_decimal.clone(),
                 counterparty,
                 transaction_hash: transfer.transaction_hash.clone(),
@@ -233,7 +209,8 @@ pub struct AggregatedTransaction {
     pub hash: String,
     pub kind: String,
     pub status: String,
-    pub amount: f64,
+    /// The net magnitude, as an exact decimal.
+    pub amount: String,
     pub counterparty: String,
     pub block_number: Option<i64>,
     /// Earliest known non-distant-past timestamp (Unix seconds). 0 when unknown.
@@ -267,21 +244,30 @@ pub fn history_aggregate_by_transaction(
         let Some(first) = group.first().cloned() else {
             continue;
         };
-        let signed: f64 = group
-            .iter()
-            .map(|s| {
-                if s.kind == "receive" {
-                    s.amount
-                } else {
-                    -s.amount
-                }
-            })
-            .sum();
-        if signed.abs() == 0.0 {
+        // Net in exact decimals: the received and sent legs summed apart,
+        // then the smaller taken from the larger. A leg whose amount is not a
+        // decimal drops the transaction rather than netting it wrongly.
+        let total = |receive: bool| {
+            group
+                .iter()
+                .filter(|s| (s.kind == "receive") == receive)
+                .try_fold("0".to_string(), |sum, s| {
+                    crate::decimal::add(&sum, &s.amount)
+                })
+        };
+        let (Some(received), Some(sent)) = (total(true), total(false)) else {
             continue;
-        }
-        let kind = if signed > 0.0 { "receive" } else { "send" };
-        let amount = signed.abs();
+        };
+        let (kind, amount) = match crate::decimal::compare(&received, &sent) {
+            Some(std::cmp::Ordering::Greater) => {
+                ("receive", crate::decimal::sub_or_zero(&received, &sent))
+            }
+            Some(std::cmp::Ordering::Less) => {
+                ("send", crate::decimal::sub_or_zero(&sent, &received))
+            }
+            _ => continue,
+        };
+        let Some(amount) = amount else { continue };
         let status = if group.iter().any(|s| s.status == "pending") {
             "pending"
         } else {
@@ -333,10 +319,9 @@ pub struct EvmNativeAsset {
 
 /// Native asset name/symbol for an EVM `chain_id`. Returns `None` when
 /// the chain name is not a known EVM chain.
-pub fn history_evm_native_asset(chain_id: String) -> Option<EvmNativeAsset> {
+pub fn history_evm_native_asset(chain: crate::registry::Chain) -> Option<EvmNativeAsset> {
     // Both halves are catalog columns, so every EVM network has an asset to
     // name.
-    let chain = crate::registry::Chain::from_str_id(&chain_id)?;
     if !chain.is_evm() {
         return None;
     }
@@ -379,7 +364,7 @@ mod tests {
         let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0xself".into(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             token_source_used: Some("rust/etherscan".into()),
             native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
@@ -422,7 +407,7 @@ mod tests {
         let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,
             normalized_address: "0xself".into(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             token_source_used: None,
             native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
@@ -436,13 +421,6 @@ mod tests {
     }
 
     #[test]
-    fn wei_conversion_fractional() {
-        assert_eq!(decimal_string_from_wei("1500000000000000000"), "1.5");
-        assert_eq!(decimal_string_from_wei("500000000000000"), "0.0005");
-        assert_eq!(decimal_string_from_wei("0"), "0");
-    }
-
-    #[test]
     fn dogecoin_aggregate_nets_amounts() {
         let entry =
             |kind: &str, amount, counterparty: &str, ts: f64, status: &str| NormalizedHistoryItem {
@@ -451,7 +429,7 @@ mod tests {
                 status: status.into(),
                 asset_display_name: "Dogecoin".into(),
                 symbol: "DOGE".into(),
-                chain_id: "dogecoin".into(),
+                chain_id: crate::registry::Chain::Dogecoin,
                 amount,
                 counterparty: counterparty.into(),
                 tx_hash: "tx1".into(),
@@ -461,24 +439,30 @@ mod tests {
         let out = history_aggregate_by_transaction(MultiAddressAggregateInput {
             own_addresses: vec!["Own1".into()],
             entries: vec![
-                entry("receive", 10.0, "External", 1700000000.0, "confirmed"),
-                entry("send", 3.0, "Own1", 1700000005.0, "confirmed"),
+                entry(
+                    "receive",
+                    "10".into(),
+                    "External",
+                    1700000000.0,
+                    "confirmed",
+                ),
+                entry("send", "3".into(), "Own1", 1700000005.0, "confirmed"),
             ],
         });
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].kind, "receive");
-        assert!((out[0].amount - 7.0).abs() < 1e-9);
+        assert_eq!(out[0].amount, "7");
         assert_eq!(out[0].counterparty, "External");
         assert_eq!(out[0].created_at_unix, 1700000000.0);
     }
 
     #[test]
     fn evm_native_asset_lookup() {
-        let eth = history_evm_native_asset("ethereum".into()).unwrap();
+        let eth = history_evm_native_asset(crate::registry::Chain::Ethereum).unwrap();
         assert_eq!(eth.symbol, "ETH");
-        let bnb = history_evm_native_asset("bnb".into()).unwrap();
+        let bnb = history_evm_native_asset(crate::registry::Chain::BnbChain).unwrap();
         assert_eq!(bnb.asset_display_name, "BNB");
-        assert!(history_evm_native_asset("bitcoin".into()).is_none());
+        assert!(history_evm_native_asset(crate::registry::Chain::Bitcoin).is_none());
     }
 
     /// Every chain the registry knows can be paged, and iOS's "load more"
@@ -507,14 +491,14 @@ mod aggregation_is_not_chain_specific {
     /// One record per transaction, netted across the wallet's own addresses.
     #[test]
     fn two_legs_of_one_transaction_become_one_record() {
-        let leg = |addr: &str, kind: &str, amount: f64| NormalizedHistoryItem {
+        let leg = |addr: &str, kind: &str, amount: &str| NormalizedHistoryItem {
             deployment_id: None,
             kind: kind.to_string(),
             status: "confirmed".to_string(),
             asset_display_name: "Litecoin".to_string(),
             symbol: "LTC".to_string(),
-            chain_id: "litecoin".to_string(),
-            amount,
+            chain_id: crate::registry::Chain::Litecoin,
+            amount: amount.into(),
             counterparty: addr.to_string(),
             tx_hash: "abc".to_string(),
             block_height: Some(10),
@@ -523,17 +507,14 @@ mod aggregation_is_not_chain_specific {
         let out = history_aggregate_by_transaction(MultiAddressAggregateInput {
             own_addresses: vec!["ltc1own".into(), "ltc1change".into()],
             entries: vec![
-                leg("ltc1own", "send", 5.0),
-                leg("ltc1change", "receive", 2.0),
+                leg("ltc1own", "send", "5"),
+                leg("ltc1change", "receive", "2"),
             ],
         });
         assert_eq!(out.len(), 1, "one transaction, one record");
         assert_eq!(out[0].hash, "abc");
         // Net of the legs: 5 out, 2 back as change.
-        assert!(
-            (out[0].amount - 3.0).abs() < 1e-9,
-            "amount was {}",
-            out[0].amount
-        );
+        assert_eq!(out[0].amount, "3");
+        assert_eq!(out[0].kind, "send");
     }
 }

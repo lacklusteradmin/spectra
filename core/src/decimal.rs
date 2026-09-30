@@ -37,8 +37,19 @@ pub fn is_zero(text: &str) -> bool {
 }
 
 /// `units` smallest units of an asset with `decimals` places, exactly.
+///
+/// The one conversion from a chain's integer amount to a decimal: no
+/// rounding, no display cap. A front end truncates for display itself.
 pub fn from_units(units: u128, decimals: u32) -> String {
-    let digits = units.to_string();
+    from_unit_digits(&units.to_string(), decimals).expect("an integer's digits are a decimal")
+}
+
+/// [`from_units`] for a count written out in base 10, of any size — a u256
+/// from an indexer, say. `None` when `digits` is not all ASCII digits.
+pub fn from_unit_digits(digits: &str, decimals: u32) -> Option<String> {
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
     let decimals = decimals as usize;
     let text = if digits.len() > decimals {
         let (whole, fraction) = digits.split_at(digits.len() - decimals);
@@ -46,7 +57,7 @@ pub fn from_units(units: u128, decimals: u32) -> String {
     } else {
         format!("0.{}{digits}", "0".repeat(decimals - digits.len()))
     };
-    canonical(&text).unwrap_or_else(|| "0".to_string())
+    canonical(&text)
 }
 
 /// A value that arrived as a float, in its shortest round-trip spelling.
@@ -60,12 +71,6 @@ pub fn from_f64(value: f64) -> Option<String> {
     // `{}` never uses an exponent for f64, and prints the shortest string
     // that reads back as the same value.
     canonical(&format!("{value}"))
-}
-
-/// A magnitude that arrived as a float, as a stored amount. The sign is the
-/// transfer's direction, which records carry separately.
-pub fn amount_from_f64(value: f64) -> String {
-    from_f64(value.abs()).unwrap_or_else(|| "0".to_string())
 }
 
 /// `text` cut to at most `places` fractional digits, never rounded up: a
@@ -110,6 +115,33 @@ pub fn add(a: &str, b: &str) -> Option<String> {
     Some(from_units(a.checked_add(b)?, scale as u32))
 }
 
+/// `a - b`, exactly, and zero where `b` is the larger: what is left after a
+/// fee is never negative. `None` when either is not a decimal.
+pub fn sub_or_zero(a: &str, b: &str) -> Option<String> {
+    let (a, b, scale) = aligned(a, b)?;
+    Some(from_units(a.saturating_sub(b), scale as u32))
+}
+
+/// `text` as a count of smallest units at `decimals` places. `None` when it
+/// is not a decimal or carries more places than that — never rounded.
+pub fn to_units(text: &str, decimals: u32) -> Option<u128> {
+    let exact = canonical(text)?;
+    let (whole, fraction) = exact.split_once('.').unwrap_or((&exact, ""));
+    if fraction.len() > decimals as usize {
+        return None;
+    }
+    let digits = format!(
+        "{whole}{fraction}{}",
+        "0".repeat(decimals as usize - fraction.len())
+    );
+    let digits = digits.trim_start_matches('0');
+    if digits.is_empty() {
+        Some(0)
+    } else {
+        digits.parse().ok()
+    }
+}
+
 pub fn compare(a: &str, b: &str) -> Option<Ordering> {
     let (a, b, _) = aligned(a, b)?;
     Some(a.cmp(&b))
@@ -128,6 +160,38 @@ mod tests {
         for bad in ["", ".", "-1", "1e3", "1,5", "1.2.3", "NaN"] {
             assert_eq!(canonical(bad), None, "{bad}");
         }
+    }
+
+    /// A count too large for a `u128` — a u256 an indexer returns — still
+    /// scales exactly, and a malformed one is refused rather than read as 0.
+    #[test]
+    fn unit_digits_of_any_size() {
+        assert_eq!(
+            from_unit_digits("1500000000000000000", 18).as_deref(),
+            Some("1.5")
+        );
+        assert_eq!(
+            from_unit_digits("500000000000000", 18).as_deref(),
+            Some("0.0005")
+        );
+        assert_eq!(
+            from_unit_digits("1000000000000000000000000000000000000000001", 18).as_deref(),
+            Some("1000000000000000000000000.000000000000000001")
+        );
+        assert_eq!(from_unit_digits("7", 0).as_deref(), Some("7"));
+        for bad in ["", "-1", "1.5", "0x10"] {
+            assert_eq!(from_unit_digits(bad, 18), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn subtraction_stops_at_zero_and_units_refuse_extra_places() {
+        assert_eq!(sub_or_zero("1.5", "0.25").as_deref(), Some("1.25"));
+        assert_eq!(sub_or_zero("0.1", "0.3").as_deref(), Some("0"));
+        assert_eq!(sub_or_zero("x", "1"), None);
+        assert_eq!(to_units("1.5", 8), Some(150_000_000));
+        assert_eq!(to_units("0.000000001", 8), None);
+        assert_eq!(to_units("0", 18), Some(0));
     }
 
     #[test]

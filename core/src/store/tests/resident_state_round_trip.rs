@@ -49,7 +49,7 @@ fn alerts_contacts_and_currency_survive_reopening() {
         &mut state,
         StateCommand::AddAddressBookEntry {
             name: "Alice".into(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".into(),
             note: String::new(),
         },
@@ -89,28 +89,28 @@ fn resetting_settings_restores_every_default() {
     for update in [
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "base".into(),
+                crate::registry::Chain::Base,
                 crate::EndpointApi::EvmJsonRpc,
             ),
-            chain_id: "base".into(),
+            chain_id: crate::registry::Chain::Base,
             api: "evm-json-rpc".into(),
             endpoint: "https://x.example".into(),
         },
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "monero".into(),
+                crate::registry::Chain::Monero,
                 crate::EndpointApi::MoneroDaemonRpc,
             ),
-            chain_id: "monero".into(),
+            chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "bitcoin".into(),
+                crate::registry::Chain::Bitcoin,
                 crate::EndpointApi::Esplora,
             ),
-            chain_id: "bitcoin".into(),
+            chain_id: crate::registry::Chain::Bitcoin,
             api: "esplora".into(),
             endpoint: "https://a.example".into(),
         },
@@ -135,7 +135,7 @@ fn resetting_settings_restores_every_default() {
     reduce_state_in_place(
         &mut state,
         StateCommand::SelectChainForFamily {
-            chain_id: "bitcoin-testnet".into(),
+            chain_id: crate::registry::Chain::BitcoinTestnet,
         },
     );
     assert_ne!(state.settings, defaults, "nothing was actually changed");
@@ -163,38 +163,38 @@ fn every_settings_field_round_trips() {
     let updates = vec![
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "ethereum".into(),
+                crate::registry::Chain::Ethereum,
                 crate::EndpointApi::EvmJsonRpc,
             ),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             api: "evm-json-rpc".into(),
             endpoint: "https://rpc.example".into(),
         },
         // The second one is the point: each chain keeps its own override.
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "base".into(),
+                crate::registry::Chain::Base,
                 crate::EndpointApi::EvmJsonRpc,
             ),
-            chain_id: "base".into(),
+            chain_id: crate::registry::Chain::Base,
             api: "evm-json-rpc".into(),
             endpoint: "https://base.example".into(),
         },
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "monero".into(),
+                crate::registry::Chain::Monero,
                 crate::EndpointApi::MoneroDaemonRpc,
             ),
-            chain_id: "monero".into(),
+            chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "bitcoin".into(),
+                crate::registry::Chain::Bitcoin,
                 crate::EndpointApi::Esplora,
             ),
-            chain_id: "bitcoin".into(),
+            chain_id: crate::registry::Chain::Bitcoin,
             api: "esplora".into(),
             endpoint: "https://a.example".into(),
         },
@@ -263,10 +263,10 @@ fn a_setting_outside_its_range_is_bounded() {
         &mut state,
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
-                "monero".into(),
+                crate::registry::Chain::Monero,
                 crate::EndpointApi::MoneroDaemonRpc,
             ),
-            chain_id: "monero".into(),
+            chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),
             endpoint: "  https://wallet.example\n".into(),
         },

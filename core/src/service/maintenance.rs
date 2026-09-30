@@ -97,8 +97,14 @@ mod boundary_tests {
                 .await
                 .refresh_live_prices
         );
-        let eth = crate::fetch::refresh_policy::HistoryRefreshKey::new("w", "ethereum");
-        let btc = crate::fetch::refresh_policy::HistoryRefreshKey::new("w", "bitcoin");
+        let eth = crate::fetch::refresh_policy::HistoryRefreshKey::new(
+            "w",
+            crate::registry::Chain::Ethereum,
+        );
+        let btc = crate::fetch::refresh_policy::HistoryRefreshKey::new(
+            "w",
+            crate::registry::Chain::Bitcoin,
+        );
         service.record_history_refresh(eth.clone()).await;
         let due = service
             .history_refresh_plans(vec![eth, btc.clone()], 120.0)

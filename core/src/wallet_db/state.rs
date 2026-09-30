@@ -28,7 +28,7 @@ pub(super) const META_FIAT_RATES: &str = "fiat_rates_from_usd";
 /// service writer is held. Unchanged collections are neither encoded nor written.
 pub(crate) struct AppStateChanges {
     replace: bool,
-    reset_chains: Vec<String>,
+    reset_chains: Vec<crate::registry::Chain>,
     wallets: Vec<(usize, WalletState, String)>,
     removed_wallets: Vec<String>,
     addresses: Vec<(usize, AddressBookEntry, String)>,
@@ -332,17 +332,15 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, String>
 }
 
 /// All members of a changed family are invalidated in the settings transaction.
-pub(crate) fn changed_selected_chains(before: &CoreAppState, after: &CoreAppState) -> Vec<String> {
+pub(crate) fn changed_selected_chains(
+    before: &CoreAppState,
+    after: &CoreAppState,
+) -> Vec<crate::registry::Chain> {
     crate::registry::Chain::mainnets()
         .filter(|c| {
             before.settings.selected_chain_for_family(*c)
                 != after.settings.selected_chain_for_family(*c)
         })
-        .flat_map(|c| {
-            c.network_choices()
-                .iter()
-                .map(|n| n.str_id().to_string())
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|c| c.network_choices().to_vec())
         .collect()
 }

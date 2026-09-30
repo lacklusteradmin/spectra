@@ -15,7 +15,7 @@ fn summary() -> WalletState {
             password_protected: false,
         },
         include_in_portfolio_total: true,
-        chain_id: "bitcoin-testnet-4".to_string(),
+        chain_id: crate::registry::Chain::BitcoinTestnet4,
         xpub: Some("zpub123".to_string()),
         derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Account2,
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
@@ -25,13 +25,13 @@ fn summary() -> WalletState {
             name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
             coingecko_id: "bitcoin".to_string(),
-            chain_id: "bitcoin".to_string(),
+            chain_id: crate::registry::Chain::Bitcoin,
             token_standard: "Native".to_string(),
             contract_address: None,
             amount: "1.5".into(),
         }],
         addresses: vec![WalletAddress {
-            chain_id: "bitcoin".to_string(),
+            chain_id: crate::registry::Chain::Bitcoin,
             address: "bc1qexample".to_string(),
             kind: "receive".to_string(),
             derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
@@ -44,7 +44,7 @@ fn summary() -> WalletState {
 fn the_view_model_carries_what_the_app_shows() {
     let view = summary().to_wallet_view(&defaults());
     assert_eq!(view.id, "w1");
-    assert_eq!(view.chain_id, "bitcoin-testnet-4");
+    assert_eq!(view.chain_id, crate::registry::Chain::BitcoinTestnet4);
     assert_eq!(view.bitcoin_xpub.as_deref(), Some("zpub123"));
     assert_eq!(view.address_for(Chain::Bitcoin), Some("bc1qexample"));
     assert_eq!(view.holdings.len(), 1);

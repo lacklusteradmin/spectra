@@ -95,7 +95,7 @@ pub struct SendArtifact {
     pub revision: u64,
     pub stage: SendStage,
     pub wallet_id: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub sender: String,
     pub recipient: String,
     pub amount: String,

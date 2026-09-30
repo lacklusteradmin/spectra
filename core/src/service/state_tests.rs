@@ -38,7 +38,7 @@ async fn concurrent_commands_and_events_match_reopened_database() {
                 .await
                 .unwrap();
             s.append_chain_operational_event(
-                "bitcoin".into(),
+                crate::registry::Chain::Bitcoin,
                 crate::service::DiagnosticLogLevel::Info,
                 i.to_string(),
                 None,
@@ -55,10 +55,15 @@ async fn concurrent_commands_and_events_match_reopened_database() {
         serde_json::to_value(reopened.open_state(db).await.unwrap()).unwrap(),
         serde_json::to_value(s.app_state().await).unwrap()
     );
-    let events = s.operational_events("bitcoin".into()).await;
+    let events = s.operational_events(crate::registry::Chain::Bitcoin).await;
     assert_eq!(events.len(), 40);
     assert_eq!(
-        serde_json::to_value(reopened.operational_events("bitcoin".into()).await).unwrap(),
+        serde_json::to_value(
+            reopened
+                .operational_events(crate::registry::Chain::Bitcoin)
+                .await
+        )
+        .unwrap(),
         serde_json::to_value(events).unwrap()
     );
 }
@@ -98,7 +103,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     sql(&db, "CREATE TRIGGER reject_pool BEFORE INSERT ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;
         CREATE TRIGGER reject_address BEFORE INSERT ON wallet_owned_addresses BEGIN SELECT RAISE(FAIL, 'injected'); END;");
     assert!(
-        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        s.reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
             .await
             .is_err()
     );
@@ -106,7 +111,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     assert!(
         s.register_owned_address(
             "w".into(),
-            "bitcoin".into(),
+            crate::registry::Chain::Bitcoin,
             "address".into(),
             None,
             None,
@@ -121,7 +126,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
         "DROP TRIGGER reject_pool; DROP TRIGGER reject_address;",
     );
     assert_eq!(
-        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        s.reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
             .await
             .unwrap(),
         1
@@ -132,13 +137,13 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     );
     assert!(
         s.apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: "bitcoin-testnet-4".into()
+            chain_id: crate::registry::Chain::BitcoinTestnet4
         })
         .await
         .is_err()
     );
     assert_eq!(
-        s.keypool_state("w".into(), "bitcoin".into())
+        s.keypool_state("w".into(), crate::registry::Chain::Bitcoin)
             .await
             .unwrap()
             .reserved_receive_index,
@@ -152,7 +157,7 @@ async fn failed_log_commit_does_not_publish() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     s.append_chain_operational_event(
-        "bitcoin".into(),
+        crate::registry::Chain::Bitcoin,
         crate::service::DiagnosticLogLevel::Info,
         "original".into(),
         None,
@@ -164,10 +169,21 @@ async fn failed_log_commit_does_not_publish() {
         "CREATE TRIGGER reject_log BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;",
     );
     assert!(s.clear_operational_events(None).await.is_err());
-    assert_eq!(s.operational_events("bitcoin".into()).await.len(), 1);
+    assert_eq!(
+        s.operational_events(crate::registry::Chain::Bitcoin)
+            .await
+            .len(),
+        1
+    );
     let reopened = service();
     reopened.open_state(db).await.unwrap();
-    assert_eq!(reopened.operational_events("bitcoin".into()).await.len(), 1);
+    assert_eq!(
+        reopened
+            .operational_events(crate::registry::Chain::Bitcoin)
+            .await
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -215,12 +231,12 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let used = s
-        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
         .await
         .unwrap();
     s.register_owned_address(
         "w".into(),
-        "bitcoin".into(),
+        crate::registry::Chain::Bitcoin,
         "bc1qknown".into(),
         None,
         Some("external".into()),
@@ -229,7 +245,7 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     .await
     .unwrap();
     assert_eq!(
-        s.advance_receive_index_if_current("w".into(), "bitcoin".into(), used)
+        s.advance_receive_index_if_current("w".into(), crate::registry::Chain::Bitcoin, used)
             .await
             .unwrap(),
         Some(11)
@@ -238,7 +254,7 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     reopened.open_state(db).await.unwrap();
     assert_eq!(
         reopened
-            .keypool_state("w".into(), "bitcoin".into())
+            .keypool_state("w".into(), crate::registry::Chain::Bitcoin)
             .await
             .unwrap()
             .reserved_receive_index,
@@ -256,7 +272,7 @@ async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
         wallet: WalletState::single_address(
             "w",
             "Wallet",
-            "bitcoin",
+            crate::registry::Chain::Bitcoin,
             "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
             None,
             true,
@@ -300,7 +316,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let reserved = s
-        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
         .await
         .unwrap();
     sql(
@@ -309,7 +325,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     );
     for _ in 0..3 {
         assert_eq!(
-            s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+            s.reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
                 .await
                 .unwrap(),
             reserved
@@ -326,7 +342,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     assert_eq!(count(), 0);
     s.register_owned_address(
         "w".into(),
-        "bitcoin".into(),
+        crate::registry::Chain::Bitcoin,
         "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu".into(),
         Some("m/84'/0'/0'/0/10".into()),
         Some("external".into()),
@@ -335,7 +351,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     .await
     .unwrap();
     assert_eq!(
-        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        s.reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
             .await
             .unwrap(),
         reserved
@@ -354,29 +370,36 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     let held = s
-        .reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        .reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
         .await
         .unwrap();
     let before = s.keypool.read().await.indices().clone();
     sql(&db, "DROP TABLE history_records;");
-    assert!(s.keypool_state("w".into(), "bitcoin".into()).await.is_err());
     assert!(
-        s.reserve_receive_index("w".into(), "bitcoin".into(), 1)
+        s.keypool_state("w".into(), crate::registry::Chain::Bitcoin)
             .await
             .is_err()
     );
     assert!(
-        s.reserve_change_index("w".into(), "bitcoin".into())
+        s.reserve_receive_index("w".into(), crate::registry::Chain::Bitcoin, 1)
             .await
             .is_err()
     );
     assert!(
-        s.advance_receive_index_if_current("w".into(), "bitcoin".into(), held)
+        s.reserve_change_index("w".into(), crate::registry::Chain::Bitcoin)
+            .await
+            .is_err()
+    );
+    assert!(
+        s.advance_receive_index_if_current("w".into(), crate::registry::Chain::Bitcoin, held)
             .await
             .is_err()
     );
     assert_eq!(*s.keypool.read().await.indices(), before);
-    assert_eq!(stored_keypool(&db), before[&keypool_key("w", "bitcoin")]);
+    assert_eq!(
+        stored_keypool(&db),
+        before[&keypool_key("w", crate::registry::Chain::Bitcoin)]
+    );
 }
 
 /// Tor policy, the display-currency catalog and the fiat rates are core state
@@ -542,7 +565,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
                 holding_key: "ethereum:native".into(),
                 asset_display_name: "Ethereum".into(),
                 symbol: "ETH".into(),
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 target_price: 2.0,
                 condition: crate::store::wallet_domain::CorePriceAlertCondition::Above,
                 is_enabled: true,
@@ -555,7 +578,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
         .unwrap();
     service
         .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: "ethereum-sepolia".into(),
+            chain_id: crate::registry::Chain::EthereumSepolia,
         })
         .await
         .unwrap();
@@ -583,7 +606,7 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
             wallet: WalletState::single_address(
                 "watch",
                 "Watch",
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,
@@ -593,19 +616,19 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
         .unwrap();
     assert!(
         service
-            .receive_address("missing".into(), "ethereum".into(), true)
+            .receive_address("missing".into(), crate::registry::Chain::Ethereum, true)
             .await
             .is_err()
     );
     assert!(
         service
-            .receive_address("watch".into(), "bitcoin".into(), true)
+            .receive_address("watch".into(), crate::registry::Chain::Bitcoin, true)
             .await
             .unwrap()
             .is_none()
     );
     let read = service
-        .receive_address("watch".into(), "ethereum".into(), false)
+        .receive_address("watch".into(), crate::registry::Chain::Ethereum, false)
         .await
         .unwrap()
         .unwrap();
@@ -617,7 +640,7 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
     );
     assert_eq!(
         service
-            .receive_address("watch".into(), "ethereum".into(), true)
+            .receive_address("watch".into(), crate::registry::Chain::Ethereum, true)
             .await
             .unwrap(),
         Some(read.clone())
@@ -632,7 +655,7 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
     );
     assert!(
         reopened
-            .discover_chain_addresses("bitcoin".into())
+            .discover_chain_addresses(crate::registry::Chain::Bitcoin)
             .await
             .unwrap()
             .is_empty()
@@ -645,7 +668,9 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     let service = WalletService::new_catalog().unwrap();
     let path = database();
     service.open_state(path.clone()).await.unwrap();
-    let original = service.configured_endpoint_urls("ethereum").await;
+    let original = service
+        .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+        .await;
     assert!(!original.is_empty());
     assert!(
         !service
@@ -662,10 +687,10 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
                 capabilities: crate::endpoint_capability_options(
-                    "ethereum".into(),
+                    crate::registry::Chain::Ethereum,
                     crate::EndpointApi::EvmJsonRpc,
                 ),
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 api: "evm-json-rpc".into(),
                 endpoint: "http://127.0.0.1:8545".into(),
             },
@@ -673,32 +698,43 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .await
         .unwrap();
     assert_eq!(
-        service.configured_endpoint_urls("ethereum").await[0],
+        service
+            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .await[0],
         "http://127.0.0.1:8545"
     );
     let reopened = WalletService::new_catalog().unwrap();
     reopened.open_state(path.clone()).await.unwrap();
     assert_eq!(
-        reopened.configured_endpoint_urls("ethereum").await[0],
+        reopened
+            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .await[0],
         "http://127.0.0.1:8545"
     );
     reopened
         .update_endpoints(vec![crate::service::ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec!["http://127.0.0.1:9545".into()],
         }])
         .await
         .unwrap();
     assert_eq!(
-        &*reopened.configured_endpoint_urls("ethereum").await,
+        &*reopened
+            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .await,
         &["http://127.0.0.1:9545"]
     );
     service
         .reset_data(vec![crate::store::state::ResetScope::SettingsAndEndpoints])
         .await
         .unwrap();
-    assert_eq!(service.configured_endpoint_urls("ethereum").await, original);
+    assert_eq!(
+        service
+            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .await,
+        original
+    );
     let _ = std::fs::remove_file(path);
 }
 
@@ -756,7 +792,7 @@ async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
                     state.wallets = vec![crate::store::state::WalletState::single_address(
                         format!("w{i}"),
                         "watch",
-                        "ethereum",
+                        crate::registry::Chain::Ethereum,
                         "0x1111111111111111111111111111111111111111",
                         None,
                         true,
@@ -811,6 +847,6 @@ async fn committed_versions_order_reads_and_failed_writes_do_not_advance_them() 
 /// The keypool row core persisted for wallet `w` on Bitcoin.
 fn stored_keypool(db: &str) -> crate::wallet_db::KeypoolState {
     crate::wallet_db::keypool_load_all(&crate::wallet_db::WalletDatabase::new(db)).unwrap()
-        ["bitcoin"]["w"]
+        [&crate::registry::Chain::Bitcoin]["w"]
         .clone()
 }

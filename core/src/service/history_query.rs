@@ -117,9 +117,9 @@ pub(crate) fn transaction_endpoints_for(
     owned: &[String],
     known: &[KnownHolder],
 ) -> TransactionEndpoints {
-    let normalize = |value: &str| crate::send::flow::normalize_address(&record.chain_id, value);
+    let normalize = |value: &str| crate::send::flow::normalize_address(record.chain_id, value);
     let owned: std::collections::HashSet<String> = owned.iter().map(|a| normalize(a)).collect();
-    let holder_of = |value: &str| holder_of(&record.chain_id, value, known);
+    let holder_of = |value: &str| holder_of(record.chain_id, value, known);
     let named = |value: &Option<String>| {
         value
             .as_deref()
@@ -163,7 +163,7 @@ pub(crate) fn transaction_endpoints_for(
 /// The first of `known` to list `address` on `chain_id`, compared in the
 /// chain's own normal form.
 pub(crate) fn holder_of(
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
     address: &str,
     known: &[KnownHolder],
 ) -> Option<EndpointHolder> {
@@ -184,7 +184,7 @@ impl WalletService {
     pub async fn address_holder(
         &self,
         wallet_id: String,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
     ) -> Result<Option<EndpointHolder>, SpectraBridgeError> {
         let this = self.clone();
@@ -192,9 +192,9 @@ impl WalletService {
             let this = &this;
             let owned = this.known_wallet_addresses(wallet_id.clone()).await?;
             let known = this
-                .known_holders(Some(&wallet_id), None, &chain_id, &owned)
+                .known_holders(Some(&wallet_id), None, chain_id, &owned)
                 .await;
-            Ok(holder_of(&chain_id, &address, &known))
+            Ok(holder_of(chain_id, &address, &known))
         })
         .await
     }
@@ -218,7 +218,7 @@ impl WalletService {
                 .known_holders(
                     record.wallet_id.as_deref(),
                     Some(&record.wallet_name),
-                    &record.chain_id,
+                    record.chain_id,
                     &owned,
                 )
                 .await;
@@ -311,7 +311,7 @@ impl WalletService {
         &self,
         wallet_id: Option<&str>,
         recorded_name: Option<&str>,
-        chain_id: &str,
+        chain_id: crate::registry::Chain,
         owned: &[String],
     ) -> Vec<KnownHolder> {
         let (own_name, others, contacts) = {
@@ -354,10 +354,7 @@ impl WalletService {
             });
         }
         for (id, name, mut addresses) in others {
-            addresses.extend(
-                self.owned_addresses_for_wallet(id, Some(chain_id.to_string()))
-                    .await,
-            );
+            addresses.extend(self.owned_addresses_for_wallet(id, Some(chain_id)).await);
             known.push(KnownHolder {
                 holder: EndpointHolder::Wallet { name },
                 addresses,

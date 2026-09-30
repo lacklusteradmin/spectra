@@ -20,7 +20,7 @@ async fn wallet(
             wallet: WalletState::single_address(
                 "w",
                 "Wallet",
-                "ethereum",
+                crate::registry::Chain::Ethereum,
                 address,
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
@@ -38,7 +38,7 @@ async fn stored_mnemonic_resolves_the_same_identity_on_evm_chains() {
     for chain in [Chain::Ethereum, Chain::Arbitrum, Chain::Polygon] {
         assert_eq!(
             service
-                .send_identity_address("w".into(), chain.str_id().into(), None)
+                .send_identity_address("w".into(), chain, None)
                 .await
                 .unwrap(),
             ETH
@@ -51,7 +51,7 @@ async fn mismatched_missing_and_watch_only_wallets_are_refused() {
     let (service, _) = wallet(KEY_ADDRESS, None).await;
     assert!(
         service
-            .send_identity_address("w".into(), "ethereum".into(), None)
+            .send_identity_address("w".into(), crate::registry::Chain::Ethereum, None)
             .await
             .unwrap_err()
             .to_string()
@@ -59,7 +59,7 @@ async fn mismatched_missing_and_watch_only_wallets_are_refused() {
     );
     assert!(
         service
-            .send_identity_address("w".into(), "solana".into(), None)
+            .send_identity_address("w".into(), crate::registry::Chain::Solana, None)
             .await
             .unwrap_err()
             .to_string()
@@ -67,7 +67,7 @@ async fn mismatched_missing_and_watch_only_wallets_are_refused() {
     );
     assert!(
         service
-            .send_identity_address("missing".into(), "ethereum".into(), None)
+            .send_identity_address("missing".into(), crate::registry::Chain::Ethereum, None)
             .await
             .is_err()
     );
@@ -79,7 +79,7 @@ async fn mismatched_missing_and_watch_only_wallets_are_refused() {
         .unwrap();
     assert!(
         service
-            .send_identity_address("w".into(), "ethereum".into(), None)
+            .send_identity_address("w".into(), crate::registry::Chain::Ethereum, None)
             .await
             .unwrap_err()
             .to_string()
@@ -93,7 +93,7 @@ async fn ambiguous_stored_material_is_refused_instead_of_preferring_a_key() {
     store_private_key(&*secrets, "w", &format!("{:064x}", 1), None).unwrap();
     assert!(
         service
-            .send_identity_address("w".into(), "ethereum".into(), None)
+            .send_identity_address("w".into(), crate::registry::Chain::Ethereum, None)
             .await
             .unwrap_err()
             .to_string()
@@ -114,7 +114,7 @@ async fn private_key_wallet_needs_no_caller_or_stored_derivation_path() {
         .unwrap();
     assert_eq!(
         service
-            .send_identity_address("w".into(), "ethereum".into(), None)
+            .send_identity_address("w".into(), crate::registry::Chain::Ethereum, None)
             .await
             .unwrap(),
         KEY_ADDRESS
@@ -127,14 +127,18 @@ async fn passwords_unlock_stored_material_and_wrong_passwords_fail() {
     for password in [None, Some("wrong".into())] {
         assert!(
             service
-                .send_identity_address("w".into(), "ethereum".into(), password)
+                .send_identity_address("w".into(), crate::registry::Chain::Ethereum, password)
                 .await
                 .is_err()
         );
     }
     assert_eq!(
         service
-            .send_identity_address("w".into(), "ethereum".into(), Some("secret".into()))
+            .send_identity_address(
+                "w".into(),
+                crate::registry::Chain::Ethereum,
+                Some("secret".into())
+            )
             .await
             .unwrap(),
         ETH
@@ -148,10 +152,9 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
     service.set_secret_store(secrets.clone());
     let defaults = crate::derivation_paths_for_preset(Default::default()).unwrap();
     for chain in Chain::all() {
-        let name = chain.str_id();
         let path = defaults.path_for(chain).unwrap_or_default();
-        let derived = crate::derivation::dispatch::derive_for_chain_id(
-            name, SEED, path, None, None, None, true, false, false,
+        let derived = crate::derivation::dispatch::derive_for_chain(
+            chain, SEED, path, None, None, None, true, false, false,
         )
         .unwrap();
         let address = derived.address.unwrap();
@@ -160,7 +163,7 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
                 wallet: WalletState::single_address(
                     "w",
                     "Wallet",
-                    name,
+                    chain,
                     &address,
                     Some(path.into()),
                     false,
@@ -169,12 +172,10 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
             .await
             .unwrap();
         store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
-        let resolved = service
-            .send_identity_address("w".into(), chain.str_id().into(), None)
-            .await;
+        let resolved = service.send_identity_address("w".into(), chain, None).await;
         assert_eq!(
             resolved.unwrap_or_else(|e| panic!("{chain:?}: {e}")),
-            crate::send::flow::normalize_address(name, &address)
+            crate::send::flow::normalize_address(chain, &address)
         );
     }
 }
@@ -188,13 +189,20 @@ async fn near_named_accounts_are_resolved_but_implicit_accounts_must_match_the_k
     for (address, valid) in [("alice.near".to_string(), true), ("11".repeat(32), false)] {
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address("w", "Wallet", "near", &address, None, false),
+                wallet: WalletState::single_address(
+                    "w",
+                    "Wallet",
+                    crate::registry::Chain::Near,
+                    &address,
+                    None,
+                    false,
+                ),
             })
             .await
             .unwrap();
         assert_eq!(
             service
-                .send_identity_address("w".into(), "near".into(), None)
+                .send_identity_address("w".into(), crate::registry::Chain::Near, None)
                 .await
                 .is_ok(),
             valid

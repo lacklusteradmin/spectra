@@ -153,9 +153,9 @@ fn book_list(ctx: &Ctx, out: Out) -> CliResult<()> {
         for entry in &entries {
             println!(
                 "  {}  {}  {}",
-                out::tint("●", &entry.chain_id).bold(),
+                out::tint("●", entry.chain_id).bold(),
                 entry.name.bold(),
-                out::tint(&super::chain_name(&entry.chain_id), &entry.chain_id),
+                out::tint(&super::chain_name(entry.chain_id), entry.chain_id),
             );
             println!("     {}", out::info(&entry.address));
             if !entry.note.is_empty() {
@@ -185,7 +185,7 @@ fn book_add(ctx: &Ctx, out: Out, args: BookAddArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let transition = ctx.apply(StateCommand::AddAddressBookEntry {
         name: args.name.clone(),
-        chain_id: chain.str_id().to_string(),
+        chain_id: chain,
         address: args.address.clone(),
         note: args.note.clone(),
     })?;

@@ -2,16 +2,14 @@ use crate::service::WalletService;
 use crate::store::state::StateCommand;
 use crate::store::wallet_domain::AssetHolding;
 
-fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
+fn coin(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHolding {
     AssetHolding {
         id: String::new(),
         name: symbol.to_string(),
         symbol: symbol.to_string(),
         coingecko_id: symbol.to_lowercase(),
-        chain_id: chain.to_string(),
-        token_standard: if crate::registry::Chain::from_str_id(chain)
-            .is_some_and(|c| c.coin_symbol() == symbol)
-        {
+        chain_id: chain,
+        token_standard: if chain.coin_symbol() == symbol {
             "Native".into()
         } else {
             "ERC-20".into()
@@ -26,7 +24,7 @@ fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
 }
 
 async fn service_with(
-    wallets: Vec<(&str, &str, Vec<AssetHolding>, bool)>,
+    wallets: Vec<(&str, crate::registry::Chain, Vec<AssetHolding>, bool)>,
 ) -> std::sync::Arc<WalletService> {
     let service = WalletService::new(Vec::new()).expect("service");
     for (id, chain, holdings, included) in wallets {
@@ -57,8 +55,18 @@ async fn service_with(
 #[tokio::test]
 async fn portfolio_sums_the_same_asset_across_wallets() {
     let service = service_with(vec![
-        ("w1", "bitcoin", vec![coin("BTC", "bitcoin", 1.5)], true),
-        ("w2", "bitcoin", vec![coin("BTC", "bitcoin", 0.5)], true),
+        (
+            "w1",
+            crate::registry::Chain::Bitcoin,
+            vec![coin("BTC", crate::registry::Chain::Bitcoin, 1.5)],
+            true,
+        ),
+        (
+            "w2",
+            crate::registry::Chain::Bitcoin,
+            vec![coin("BTC", crate::registry::Chain::Bitcoin, 0.5)],
+            true,
+        ),
     ])
     .await;
     let derived = service.wallet_derived_state().await.expect("derived");
@@ -69,8 +77,18 @@ async fn portfolio_sums_the_same_asset_across_wallets() {
 #[tokio::test]
 async fn wallets_excluded_from_the_total_contribute_nothing() {
     let service = service_with(vec![
-        ("w1", "bitcoin", vec![coin("BTC", "bitcoin", 1.0)], true),
-        ("w2", "bitcoin", vec![coin("BTC", "bitcoin", 9.0)], false),
+        (
+            "w1",
+            crate::registry::Chain::Bitcoin,
+            vec![coin("BTC", crate::registry::Chain::Bitcoin, 1.0)],
+            true,
+        ),
+        (
+            "w2",
+            crate::registry::Chain::Bitcoin,
+            vec![coin("BTC", crate::registry::Chain::Bitcoin, 9.0)],
+            false,
+        ),
     ])
     .await;
     let derived = service.wallet_derived_state().await.expect("derived");
@@ -81,23 +99,21 @@ async fn wallets_excluded_from_the_total_contribute_nothing() {
 /// Every family's testnet is unpriced.
 #[tokio::test]
 async fn no_testnet_coin_is_quoted_on_any_family() {
-    for (chain, testnet_id) in [
-        ("bitcoin", "bitcoin-testnet"),
-        ("ethereum", "ethereum-sepolia"),
-        ("dogecoin", "dogecoin-testnet"),
+    use crate::registry::Chain;
+    for (chain, network) in [
+        (Chain::Bitcoin, Chain::BitcoinTestnet),
+        (Chain::Ethereum, Chain::EthereumSepolia),
+        (Chain::Dogecoin, Chain::DogecoinTestnet),
     ] {
-        let network = crate::registry::Chain::from_str_id(testnet_id).unwrap();
         let service = service_with(vec![(
             "w1",
             chain,
-            vec![coin(network.coin_symbol(), network.str_id(), 1.0)],
+            vec![coin(network.coin_symbol(), network, 1.0)],
             true,
         )])
         .await;
         service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: testnet_id.into(),
-            })
+            .apply_state_command(StateCommand::SelectChainForFamily { chain_id: network })
             .await
             .expect("select");
         let derived = service.wallet_derived_state().await.expect("derived");
@@ -115,7 +131,7 @@ async fn choosing_mainnet_stores_its_explicit_id() {
     let service = WalletService::new(Vec::new()).expect("service");
     let after_testnet = service
         .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: "bitcoin-testnet-4".into(),
+            chain_id: crate::registry::Chain::BitcoinTestnet4,
         })
         .await
         .expect("select");
@@ -126,7 +142,7 @@ async fn choosing_mainnet_stores_its_explicit_id() {
 
     let after_mainnet = service
         .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: "bitcoin".into(),
+            chain_id: crate::registry::Chain::Bitcoin,
         })
         .await
         .expect("select");
@@ -135,9 +151,8 @@ async fn choosing_mainnet_stores_its_explicit_id() {
             .state
             .settings
             .selected_chain_by_family
-            .get("bitcoin")
-            .map(String::as_str),
-        Some("bitcoin")
+            .get(&crate::registry::Chain::Bitcoin),
+        Some(&crate::registry::Chain::Bitcoin)
     );
 }
 
@@ -145,8 +160,8 @@ async fn choosing_mainnet_stores_its_explicit_id() {
 async fn sending_needs_signing_material_on_a_live_chain() {
     let service = service_with(vec![(
         "w1",
-        "bitcoin",
-        vec![coin("BTC", "bitcoin", 1.0)],
+        crate::registry::Chain::Bitcoin,
+        vec![coin("BTC", crate::registry::Chain::Bitcoin, 1.0)],
         true,
     )])
     .await;
@@ -173,8 +188,11 @@ async fn sending_needs_signing_material_on_a_live_chain() {
 async fn an_untracked_token_on_ethereum_cannot_be_sent() {
     let service = service_with(vec![(
         "w1",
-        "ethereum",
-        vec![coin("ETH", "ethereum", 1.0), coin("SHIB", "ethereum", 1.0)],
+        crate::registry::Chain::Ethereum,
+        vec![
+            coin("ETH", crate::registry::Chain::Ethereum, 1.0),
+            coin("SHIB", crate::registry::Chain::Ethereum, 1.0),
+        ],
         true,
     )])
     .await;

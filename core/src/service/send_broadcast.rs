@@ -6,11 +6,11 @@ impl WalletService {
     /// Returns the field value as a string, or an empty string when missing.
     pub(crate) async fn broadcast_raw_extract(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         payload: String,
         result_field: String,
     ) -> Result<String, SpectraBridgeError> {
-        let json = self.broadcast_raw(&chain_id, payload).await?;
+        let json = self.broadcast_raw(chain_id, payload).await?;
         Ok(crate::send::preview_decode::extract_json_string_field(
             json,
             result_field,
@@ -21,12 +21,9 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn broadcast_raw(
         &self,
-        chain_id: &str,
+        chain: crate::registry::Chain,
         payload: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
-        })?;
         // Every endpoint gets the payload, and every submission runs to its
         // end: one acceptance does not cut another short.
         let endpoints = self

@@ -6,8 +6,7 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 
 pub(super) fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<Chain, String> {
-    let chain = Chain::from_str_id(&record.chain_id)
-        .ok_or("Status recheck is not available for this transaction.")?;
+    let chain = record.chain_id;
     let PendingStatusPoll::Utxo { require_send_kind } = chain.pending_status_poll() else {
         return Err("Status recheck is not available for this transaction.".into());
     };
@@ -70,10 +69,7 @@ impl WalletService {
         let chain = recheck_chain(&expected)
             .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
         let status = self
-            .fetch_utxo_tx_status(
-                chain.str_id().into(),
-                expected.transaction_hash.clone().unwrap(),
-            )
+            .fetch_utxo_tx_status(chain, expected.transaction_hash.clone().unwrap())
             .await?;
         if !status
             .txid
@@ -103,7 +99,7 @@ impl WalletService {
         };
         let confirmed = status.confirmed;
         let (change, tracker) = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_update_chain(&database, chain.str_id(), |rows| {
+            crate::wallet_db::history_update_chain(&database, chain, |rows| {
                 let mut row = rows
                     .into_iter()
                     .find(|row| row.payload.id.eq_ignore_ascii_case(&expected.id))
@@ -156,7 +152,7 @@ impl WalletService {
                 }
                 let change = TransactionStatusChange {
                     id: current.id.clone(),
-                    chain_id: current.chain_id.clone(),
+                    chain_id: current.chain_id,
                     transaction_hash: current.transaction_hash.clone(),
                     old_status: current_status,
                     new_status,

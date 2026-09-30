@@ -9,7 +9,7 @@ const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml")
 pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
     /// Concrete network ID → record indices, preserving endpoint order.
-    endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>>,
+    endpoint_records_by_chain: std::collections::HashMap<crate::registry::Chain, Vec<usize>>,
 }
 
 /// The file's shape, kept separate from the record that crosses the FFI —
@@ -25,7 +25,7 @@ struct TomlEndpointFile {
 #[serde(deny_unknown_fields)]
 struct TomlEndpoint {
     id: String,
-    chain_id: String,
+    chain_id: crate::registry::Chain,
     api: EndpointApi,
     endpoint: String,
     capabilities: Vec<EndpointCapability>,
@@ -35,15 +35,13 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
     type Error = String;
 
     fn try_from(e: TomlEndpoint) -> Result<Self, Self::Error> {
-        crate::registry::Chain::from_str_id(&e.chain_id)
-            .ok_or_else(|| format!("{}: unknown endpoint chain_id {:?}", e.id, e.chain_id))?;
         if e.capabilities.is_empty() {
             return Err(format!(
                 "{}: an endpoint must declare what it is used for",
                 e.id
             ));
         }
-        let supported = crate::endpoint_capability_options(e.chain_id.clone(), e.api);
+        let supported = crate::endpoint_capability_options(e.chain_id, e.api);
         if let Some(claim) = e.capabilities.iter().find(|c| !supported.contains(c)) {
             return Err(format!(
                 "{}: {} has no {} adapter on this network",
@@ -67,7 +65,7 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
 pub struct AppCoreEndpointRecord {
     pub id: String,
     pub api: EndpointApi,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub endpoint: String,
     /// What this endpoint is used for: a claim that has to be true of the
     /// endpoint, and one Spectra's adapter for its API can act on.
@@ -77,7 +75,7 @@ pub struct AppCoreEndpointRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreGroupedSettingsEntry {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub title: String,
     pub endpoints: Vec<String>,
 }
@@ -96,10 +94,10 @@ static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::ne
 /// or the chain's catalog default when the caller named none.
 #[uniffi::export]
 pub fn resolve_derivation_path(
-    chain_id: String,
+    chain: crate::registry::Chain,
     derivation_path: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    let default_path = default_path_from_catalog(&chain_id)?;
+    let default_path = default_path_from_catalog(chain)?;
     Ok(normalize_derivation_path(&derivation_path, &default_path))
 }
 
@@ -113,19 +111,20 @@ pub fn derivation_paths_for_preset(
 /// A chain's endpoint records that declare any of `any_of`, or all of them
 /// when `any_of` is empty.
 pub fn filtered_endpoint_records_for_chain(
-    chain_id: String,
+    chain: crate::registry::Chain,
     any_of: &[EndpointCapability],
 ) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
-    crate::registry::Chain::from_str_id(&chain_id)
-        .ok_or_else(|| format!("Unknown endpoint chain_id: {chain_id}"))?;
-    let catalog = endpoint_catalog()?;
-    Ok(endpoint_records_for_chain(catalog, &chain_id, any_of))
+    Ok(endpoint_records_for_chain(
+        endpoint_catalog()?,
+        chain,
+        any_of,
+    ))
 }
 
 /// Everything the endpoint catalog holds for one chain.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct AppCoreChainEndpoints {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// What the settings screen shows, grouped by network.
     pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
 }
@@ -136,7 +135,7 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
     let catalog = endpoint_catalog()?;
     Ok(crate::registry::Chain::all()
         .map(|chain| AppCoreChainEndpoints {
-            chain_id: chain.str_id().to_string(),
+            chain_id: chain,
             grouped_settings: grouped_settings_entries(catalog, chain),
         })
         .collect())
@@ -158,11 +157,13 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
         .into_iter()
         .map(AppCoreEndpointRecord::try_from)
         .collect::<Result<Vec<_>, _>>()?;
-    let mut endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut endpoint_records_by_chain: std::collections::HashMap<
+        crate::registry::Chain,
+        Vec<usize>,
+    > = std::collections::HashMap::new();
     for (idx, record) in endpoint_records.iter().enumerate() {
         endpoint_records_by_chain
-            .entry(record.chain_id.clone())
+            .entry(record.chain_id)
             .or_default()
             .push(idx);
     }
@@ -174,12 +175,12 @@ fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
 
 fn endpoint_records_for_chain(
     catalog: &AppCoreCatalog,
-    chain_id: &str,
+    chain: crate::registry::Chain,
     any_of: &[EndpointCapability],
 ) -> Vec<AppCoreEndpointRecord> {
     catalog
         .endpoint_records_by_chain
-        .get(chain_id)
+        .get(&chain)
         .into_iter()
         .flatten()
         .map(|&idx| &catalog.endpoint_records[idx])
@@ -200,13 +201,13 @@ fn grouped_settings_entries(
         })
         .filter_map(|network| {
             let mut endpoints = Vec::new();
-            for record in endpoint_records_for_chain(catalog, network.str_id(), &[]) {
+            for record in endpoint_records_for_chain(catalog, network, &[]) {
                 if !endpoints.contains(&record.endpoint) {
                     endpoints.push(record.endpoint);
                 }
             }
             (!endpoints.is_empty()).then(|| AppCoreGroupedSettingsEntry {
-                chain_id: network.str_id().to_string(),
+                chain_id: network,
                 title: network.chain_display_name().to_string(),
                 endpoints,
             })
@@ -224,7 +225,10 @@ mod tests {
         use crate::registry::Chain;
 
         assert!(!Chain::Monero.uses_derivation_path());
-        assert_eq!(default_path_for_chain("monero").expect("an answer"), "");
+        assert_eq!(
+            default_path_for_chain(Chain::Monero).expect("an answer"),
+            ""
+        );
 
         // Monero is the only mainnet that says it, so a second one appearing
         // is a catalog edit to notice rather than a silent empty path.
@@ -235,15 +239,12 @@ mod tests {
                 chain.str_id()
             );
         }
-
-        // A chain the registry does not know is still an error: the fallback
-        // is for rows that say "none", not for names that say nothing.
-        assert!(default_path_for_chain("Not A Chain").is_err());
     }
 
     #[test]
     fn resolves_bitcoin_taproot_path() {
-        let default_path = default_path_for_chain("bitcoin").expect("default path");
+        let default_path =
+            default_path_for_chain(crate::registry::Chain::Bitcoin).expect("default path");
         let normalized = normalize_derivation_path("m/86'/0'/2'/0/0", &default_path);
         assert_eq!(normalized, "m/86'/0'/2'/0/0");
     }
@@ -265,8 +266,7 @@ mod tests {
 
         let paths = seed_derivation_paths_for_account(0).expect("paths");
         for chain in Chain::all() {
-            let expected =
-                crate::chains::default_derivation_path_template(chain.str_id()).is_some();
+            let expected = crate::chains::default_derivation_path_template(chain).is_some();
             assert_eq!(
                 paths.path_for(chain).is_some(),
                 expected,
@@ -353,7 +353,7 @@ pub(super) fn seed_derivation_paths_for_account(
         // Keyed by id rather than display name — ids are the stable key, and
         // `every_catalog_name_resolves` guarantees every name resolves back to
         // the id it belongs to.
-        if let Some(template) = crate::chains::default_derivation_path_template(chain.str_id()) {
+        if let Some(template) = crate::chains::default_derivation_path_template(chain) {
             by_chain.insert(
                 chain.str_id().to_string(),
                 render_derivation_path_template(template, account),
@@ -370,14 +370,15 @@ fn render_derivation_path_template(template: &str, account: u32) -> String {
     template.replace("{account}", &account.to_string())
 }
 
-pub(super) fn default_path_from_catalog(chain_id: &str) -> Result<String, String> {
-    default_path_from_catalog_for_account(chain_id, 0)
+pub(super) fn default_path_from_catalog(chain: crate::registry::Chain) -> Result<String, String> {
+    default_path_from_catalog_for_account(chain, 0)
 }
 
-fn default_path_from_catalog_for_account(chain_id: &str, account: u32) -> Result<String, String> {
-    use crate::registry::Chain;
-
-    let template = crate::chains::default_derivation_path_template(chain_id);
+fn default_path_from_catalog_for_account(
+    chain: crate::registry::Chain,
+    account: u32,
+) -> Result<String, String> {
+    let template = crate::chains::default_derivation_path_template(chain);
     if let Some(template) = template {
         return Ok(render_derivation_path_template(template, account));
     }
@@ -385,16 +386,21 @@ fn default_path_from_catalog_for_account(chain_id: &str, account: u32) -> Result
     // without one — that is what `derivation_path = []` says, and Monero is
     // the mainnet that says it. That is an answer, not a broken catalog row,
     // so it is not an error.
-    match Chain::from_str_id(chain_id) {
-        Some(chain) if !chain.uses_derivation_path() => Ok(String::new()),
-        _ => Err(format!("Missing default derivation path for {chain_id}.")),
+    if chain.uses_derivation_path() {
+        Err(format!("Missing default derivation path for {chain}."))
+    } else {
+        Ok(String::new())
     }
 }
 
 /// Extract a UTXO discovery index only when the path prefix matches the
 /// chain's default path and the penultimate segment is the requested branch.
-pub(crate) fn utxo_discovery_index(raw_path: &str, chain_id: &str, branch: u32) -> Option<u32> {
-    let default_path = default_path_from_catalog(chain_id).ok()?;
+pub(crate) fn utxo_discovery_index(
+    raw_path: &str,
+    chain: crate::registry::Chain,
+    branch: u32,
+) -> Option<u32> {
+    let default_path = default_path_from_catalog(chain).ok()?;
     let path = parse_derivation_path_str(raw_path)?;
     let mut candidate = parse_derivation_path_str(&default_path)?;
     if path.len() != candidate.len() || path.len() < 5 {
@@ -421,8 +427,8 @@ pub(crate) fn utxo_discovery_index(raw_path: &str, chain_id: &str, branch: u32) 
 }
 
 #[cfg(test)]
-pub(super) fn default_path_for_chain(chain_id: &str) -> Result<String, String> {
-    default_path_from_catalog(chain_id)
+pub(super) fn default_path_for_chain(chain: crate::registry::Chain) -> Result<String, String> {
+    default_path_from_catalog(chain)
 }
 
 // ── FFI surface ──────────────────────────────────────────────────────────
@@ -474,8 +480,7 @@ mod testnet_derivation_paths {
     #[test]
     fn every_testnet_resolves_its_own_catalog_path() {
         for chain in Chain::all().filter(|c| c.is_testnet()) {
-            let resolved =
-                super::resolve_derivation_path(chain.str_id().to_string(), String::new());
+            let resolved = super::resolve_derivation_path(chain, String::new());
             assert!(
                 resolved.is_ok(),
                 "{} failed to resolve: {:?}",
@@ -487,11 +492,10 @@ mod testnet_derivation_paths {
 
     #[test]
     fn bitcoin_testnet_uses_coin_type_one() {
-        let testnet =
-            super::resolve_derivation_path("bitcoin-testnet-4".to_string(), String::new())
-                .expect("testnet4");
+        let testnet = super::resolve_derivation_path(Chain::BitcoinTestnet4, String::new())
+            .expect("testnet4");
         let mainnet =
-            super::resolve_derivation_path("bitcoin".to_string(), String::new()).expect("bitcoin");
+            super::resolve_derivation_path(Chain::Bitcoin, String::new()).expect("bitcoin");
         assert_eq!(testnet, "m/84'/1'/0'/0/0");
         assert_eq!(mainnet, "m/84'/0'/0'/0/0");
     }
@@ -502,7 +506,7 @@ mod endpoint_network_index_tests {
     use super::*;
 
     /// The network index every endpoint consumer reads through.
-    fn rpc_endpoints(chain_id: &str) -> Vec<String> {
+    fn rpc_endpoints(chain_id: crate::registry::Chain) -> Vec<String> {
         endpoint_records_for_chain(endpoint_catalog().expect("catalog"), chain_id, &[])
             .into_iter()
             .filter(|r| r.api == EndpointApi::EvmJsonRpc)
@@ -514,18 +518,24 @@ mod endpoint_network_index_tests {
     #[test]
     fn a_testnet_resolves_its_own_rpc_endpoints() {
         assert_eq!(
-            rpc_endpoints("ethereum-sepolia"),
-            vec!["https://ethereum-sepolia-rpc.publicnode.com".to_string()]
+            rpc_endpoints(crate::registry::Chain::EthereumSepolia),
+            vec![
+                "https://ethereum-sepolia-rpc.publicnode.com".to_string(),
+                "https://1rpc.io/sepolia".to_string(),
+            ]
         );
         assert_eq!(
-            rpc_endpoints("ethereum-hoodi"),
-            vec!["https://ethereum-hoodi-rpc.publicnode.com".to_string()]
+            rpc_endpoints(crate::registry::Chain::EthereumHoodi),
+            vec![
+                "https://ethereum-hoodi-rpc.publicnode.com".to_string(),
+                "https://1rpc.io/hoodi".to_string(),
+            ]
         );
     }
 
     #[test]
     fn a_mainnet_rpc_list_holds_no_testnet_endpoints() {
-        for endpoint in rpc_endpoints("ethereum") {
+        for endpoint in rpc_endpoints(crate::registry::Chain::Ethereum) {
             assert!(
                 !endpoint.contains("sepolia") && !endpoint.contains("hoodi"),
                 "Ethereum mainnet RPC list contains {endpoint}"
@@ -552,17 +562,17 @@ mod endpoint_network_index_tests {
     fn every_record_belongs_to_exactly_its_network() {
         let catalog = endpoint_catalog().expect("catalog");
         for chain in crate::registry::Chain::all() {
-            let rows = endpoint_records_for_chain(catalog, chain.str_id(), &[]);
+            let rows = endpoint_records_for_chain(catalog, chain, &[]);
             let expected: Vec<_> = catalog
                 .endpoint_records
                 .iter()
-                .filter(|r| r.chain_id == chain.str_id())
+                .filter(|r| r.chain_id == chain)
                 .cloned()
                 .collect();
             assert_eq!(rows, expected);
             let groups = grouped_settings_entries(catalog, chain);
             for group in groups {
-                let network = crate::registry::Chain::from_str_id(&group.chain_id).unwrap();
+                let network = group.chain_id;
                 assert!(
                     network == chain
                         || (!chain.is_testnet() && network.mainnet_counterpart() == chain)
@@ -582,7 +592,7 @@ capabilities = ["balance"]"#;
         let row = toml::from_str::<TomlEndpoint>(valid).unwrap();
         assert_eq!(
             AppCoreEndpointRecord::try_from(row).unwrap().chain_id,
-            "ethereum-sepolia"
+            crate::registry::Chain::EthereumSepolia
         );
         assert!(
             toml::from_str::<TomlEndpoint>(&valid.replace("evm-json-rpc", "made-up-api")).is_err()
@@ -602,10 +612,11 @@ capabilities = ["balance"]"#;
         let unused = toml::from_str::<TomlEndpoint>(&valid.replace("[\"balance\"]", "[]")).unwrap();
         assert!(AppCoreEndpointRecord::try_from(unused).is_err());
 
+        // A row naming no catalog chain does not parse at all.
         for bad in ["Ethereum Sepolia", "unknown-network", ""] {
-            let row =
-                toml::from_str::<TomlEndpoint>(&valid.replace("ethereum-sepolia", bad)).unwrap();
-            assert!(AppCoreEndpointRecord::try_from(row).is_err());
+            assert!(
+                toml::from_str::<TomlEndpoint>(&valid.replace("ethereum-sepolia", bad)).is_err()
+            );
         }
         for field in ["chain_id", "group_title", "kind", "explorer_label"] {
             assert!(
@@ -613,14 +624,12 @@ capabilities = ["balance"]"#;
                     .is_err()
             );
         }
-        assert!(filtered_endpoint_records_for_chain("Ethereum".into(), &[]).is_err());
     }
 }
 
 #[cfg(test)]
 mod endpoint_capabilities {
     use crate::EndpointCapability;
-    use crate::registry::Chain;
 
     fn records() -> Vec<super::AppCoreEndpointRecord> {
         toml::from_str::<super::TomlEndpointFile>(super::APP_ENDPOINT_DIRECTORY_TOML)
@@ -645,10 +654,7 @@ mod endpoint_capabilities {
     #[test]
     fn no_evm_node_claims_history() {
         for record in records() {
-            let Some(chain) = Chain::from_str_id(&record.chain_id) else {
-                continue;
-            };
-            if !chain.is_evm() || record.api != crate::EndpointApi::EvmJsonRpc {
+            if !record.chain_id.is_evm() || record.api != crate::EndpointApi::EvmJsonRpc {
                 continue;
             }
             assert!(
@@ -668,11 +674,14 @@ mod endpoint_capabilities {
     #[test]
     fn token_capabilities_select_the_api_that_can_answer() {
         let selected = |chain: &str, capability: &str| {
-            super::filtered_endpoint_records_for_chain(chain.into(), &[capability.parse().unwrap()])
-                .unwrap()
-                .into_iter()
-                .map(|r| r.id)
-                .collect::<Vec<_>>()
+            super::filtered_endpoint_records_for_chain(
+                crate::registry::Chain::parse(chain).unwrap(),
+                &[capability.parse().unwrap()],
+            )
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect::<Vec<_>>()
         };
         let balances = selected("ethereum", "token-balance");
         assert!(balances.contains(&"ethereum.rpc.publicnode".into()));

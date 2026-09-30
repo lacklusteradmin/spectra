@@ -74,7 +74,7 @@ struct TomlToken {
 #[serde(deny_unknown_fields)]
 struct TomlDeployment {
     token_id: String,
-    chain_id: String,
+    chain_id: crate::registry::Chain,
     kind: String,
     #[serde(default)]
     contract: String,
@@ -100,7 +100,7 @@ pub struct TokenDeploymentEntry {
     pub deployment_id: String,
     pub token_id: String,
     pub kind: TokenKind,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub name: String,
     pub symbol: String,
     pub token_standard: String,
@@ -123,7 +123,7 @@ impl TokenDeploymentEntry {
             name: self.name.clone(),
             symbol: self.symbol.clone(),
             coingecko_id: self.coingecko_id.clone(),
-            chain_id: self.chain_id.clone(),
+            chain_id: self.chain_id,
             token_standard: self.token_standard.clone(),
             contract_address: (!self.contract.is_empty()).then(|| self.contract.clone()),
             amount: "0".to_string(),
@@ -135,16 +135,13 @@ impl TokenDeploymentEntry {
         matches!(self.kind, TokenKind::Native)
     }
     pub fn matches_holding(&self, holding: &crate::store::wallet_domain::AssetHolding) -> bool {
-        let network = crate::registry::Chain::from_str_id(&self.chain_id);
         (self.is_native() || !self.contract.trim().is_empty())
-            && network.is_some()
-            && network == holding.chain()
-            && crate::tokens::normalize_token_identifier(
-                Some(self.contract.clone()),
-                self.chain_id.clone(),
-            ) == holding.contract_address.clone().and_then(|c| {
-                crate::tokens::normalize_token_identifier(Some(c), holding.chain_id.clone())
-            })
+            && self.chain_id == holding.chain_id
+            && normalize_token_identifier(Some(self.contract.clone()), self.chain_id)
+                == holding
+                    .contract_address
+                    .clone()
+                    .and_then(|c| normalize_token_identifier(Some(c), holding.chain_id))
             && self.is_native() == holding.is_native()
     }
 }
@@ -190,8 +187,8 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
             let network = chains
                 .chains
                 .iter()
-                .find(|n| n.id == d.chain_id)
-                .unwrap_or_else(|| panic!("unknown deployment chain_id {:?}", d.chain_id));
+                .find(|n| n.id == d.chain_id.str_id())
+                .expect("a chain id parses only from the catalog");
             // Derived, not declared: an id written beside the facts it
             // restates can disagree with them, and the file spelled 268 of
             // them for the build to check character by character.
@@ -270,7 +267,7 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
                     }
                     other => panic!("unknown deployment kind {other}"),
                 },
-                chain_id: d.chain_id.clone(),
+                chain_id: d.chain_id,
                 name: t.name.clone(),
                 symbol: t.symbol.clone(),
                 token_standard: if d.kind == "native" {
@@ -298,18 +295,14 @@ pub fn deployment(id: &str) -> Option<&'static TokenDeploymentEntry> {
 
 // ── Public API
 
-/// Return token entries for `chain_id`, or all chains when `chain_id` is `""`.
+/// Token entries on `chain`, or on every chain for `None`.
 #[uniffi::export]
-pub fn list_token_deployments(chain_id: String) -> Vec<TokenDeploymentEntry> {
-    if chain_id.is_empty() {
-        CATALOG.clone()
-    } else {
-        CATALOG
-            .iter()
-            .filter(|t| t.chain_id == chain_id)
-            .cloned()
-            .collect()
-    }
+pub fn list_token_deployments(chain: Option<crate::registry::Chain>) -> Vec<TokenDeploymentEntry> {
+    CATALOG
+        .iter()
+        .filter(|t| chain.is_none_or(|chain| t.chain_id == chain))
+        .cloned()
+        .collect()
 }
 
 /// Return a reference to the static catalog slice.
@@ -428,25 +421,18 @@ pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
 /// resolve.
 pub fn normalize_token_identifier(
     contract_address: Option<String>,
-    chain_id: String,
+    chain: crate::registry::Chain,
 ) -> Option<String> {
     let raw = contract_address?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    match crate::registry::Chain::from_str_id(&chain_id).map(|c| c.mainnet_counterpart()) {
-        Some(crate::registry::Chain::Sui) => {
-            Some(normalize_sui_token_identifier(trimmed.to_string()))
-        }
-        Some(crate::registry::Chain::Aptos) => {
-            Some(normalize_aptos_token_identifier(trimmed.to_string()))
-        }
-        Some(
-            crate::registry::Chain::Ton
-            | crate::registry::Chain::Solana
-            | crate::registry::Chain::Tron,
-        ) => Some(trimmed.to_string()),
+    use crate::registry::Chain;
+    match chain.mainnet_counterpart() {
+        Chain::Sui => Some(normalize_sui_token_identifier(trimmed.to_string())),
+        Chain::Aptos => Some(normalize_aptos_token_identifier(trimmed.to_string())),
+        Chain::Ton | Chain::Solana | Chain::Tron => Some(trimmed.to_string()),
         _ => Some(trimmed.to_lowercase()),
     }
 }
@@ -496,8 +482,15 @@ mod tests {
             .iter()
             .find(|t| t.deployment_id == "bitcoin:native")
             .expect("the catalog lists bitcoin");
-        assert_eq!(bitcoin.chain_id, "bitcoin", "the catalog stores a str id");
-        assert_eq!(bitcoin.holding_template().chain_id, "bitcoin");
+        assert_eq!(
+            bitcoin.chain_id,
+            crate::registry::Chain::Bitcoin,
+            "the catalog stores a str id"
+        );
+        assert_eq!(
+            bitcoin.holding_template().chain_id,
+            crate::registry::Chain::Bitcoin
+        );
         assert_eq!(
             bitcoin.holding_template().chain_id,
             crate::registry::Chain::Bitcoin
@@ -544,39 +537,48 @@ mod tests {
     #[test]
     fn token_identifier_normalisation_is_per_chain() {
         for chain in [
-            "solana",
-            "solana-devnet",
-            "tron",
-            "tron-nile",
-            "ton",
-            "ton-testnet",
+            crate::registry::Chain::Solana,
+            crate::registry::Chain::SolanaDevnet,
+            crate::registry::Chain::Tron,
+            crate::registry::Chain::TronNile,
+            crate::registry::Chain::Ton,
+            crate::registry::Chain::TonTestnet,
         ] {
             assert_eq!(
-                normalize_token_identifier(Some(" AbCd ".into()), chain.into()),
+                normalize_token_identifier(Some(" AbCd ".into()), chain),
                 Some("AbCd".into()),
                 "{chain}"
             );
         }
 
         assert_eq!(
-            normalize_token_identifier(Some("  ".into()), "ethereum".into()),
+            normalize_token_identifier(Some("  ".into()), crate::registry::Chain::Ethereum),
             None
         );
-        assert_eq!(normalize_token_identifier(None, "ethereum".into()), None);
         assert_eq!(
-            normalize_token_identifier(Some("0xABCDEF".into()), "ethereum".into()),
+            normalize_token_identifier(None, crate::registry::Chain::Ethereum),
+            None
+        );
+        assert_eq!(
+            normalize_token_identifier(Some("0xABCDEF".into()), crate::registry::Chain::Ethereum),
             Some("0xabcdef".into())
         );
         assert_eq!(
-            normalize_token_identifier(Some("0x0002::Foo::bar".into()), "sui".into()),
+            normalize_token_identifier(
+                Some("0x0002::Foo::bar".into()),
+                crate::registry::Chain::Sui
+            ),
             Some("0x2::Foo::bar".into())
         );
         assert_eq!(
-            normalize_token_identifier(Some("0x001::coin::USDC".into()), "aptos".into()),
+            normalize_token_identifier(
+                Some("0x001::coin::USDC".into()),
+                crate::registry::Chain::Aptos
+            ),
             Some("0x1::coin::USDC".into())
         );
         assert_eq!(
-            normalize_token_identifier(Some("  EQAbC  ".into()), "ton".into()),
+            normalize_token_identifier(Some("  EQAbC  ".into()), crate::registry::Chain::Ton),
             Some("EQAbC".into()),
             "a jetton master address keeps its case"
         );
@@ -789,11 +791,9 @@ tags = []
     #[test]
     fn every_catalog_contract_is_already_normalized() {
         for entry in CATALOG.iter().filter(|e| !e.is_native()) {
-            let chain = crate::registry::Chain::from_str_id(&entry.chain_id)
-                .expect("a deployment network is a registry chain");
+            let chain = entry.chain_id;
             assert_eq!(
-                normalize_token_identifier(Some(entry.contract.clone()), chain.str_id().into())
-                    .as_deref(),
+                normalize_token_identifier(Some(entry.contract.clone()), chain).as_deref(),
                 Some(entry.contract.as_str()),
                 "{} is not in normalized form",
                 entry.deployment_id
@@ -836,19 +836,18 @@ pub(crate) fn token_display_decimals(
 pub fn deployment_id_for(chain: crate::registry::Chain, contract: Option<&str>) -> Option<String> {
     match contract {
         None => Some(chain.entry().native_deployment_id.clone()),
-        Some(contract) => normalize_token_identifier(Some(contract.into()), chain.str_id().into())
-            .map(|id| {
-                format!(
-                    "{}:{}:{}",
-                    chain.str_id(),
-                    chain
-                        .mainnet_counterpart()
-                        .entry()
-                        .token_standard
-                        .to_lowercase(),
-                    id
-                )
-            }),
+        Some(contract) => normalize_token_identifier(Some(contract.into()), chain).map(|id| {
+            format!(
+                "{}:{}:{}",
+                chain.str_id(),
+                chain
+                    .mainnet_counterpart()
+                    .entry()
+                    .token_standard
+                    .to_lowercase(),
+                id
+            )
+        }),
     }
 }
 

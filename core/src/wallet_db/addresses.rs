@@ -6,7 +6,7 @@ use super::*;
 #[serde(rename_all = "camelCase")]
 pub struct OwnedAddressRecord {
     pub wallet_id: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub address: String,
     pub derivation_path: Option<String>,
     pub branch: Option<String>,

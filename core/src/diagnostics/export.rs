@@ -112,7 +112,7 @@ pub struct DiagnosticsBundlePayload {
     pub schema_version: i32,
     pub generated_at: f64,
     pub environment: DiagnosticsEnvironmentMetadata,
-    pub chain_degraded: HashMap<String, crate::service::ChainDegradation>,
+    pub chain_degraded: HashMap<crate::registry::Chain, crate::service::ChainDegradation>,
     /// `Chain::str_id()` of every mainnet → that family's diagnostics document.
     /// Keyed rather than one field per chain: the bundle is
     /// written for human inspection and nothing reads individual chains, so a

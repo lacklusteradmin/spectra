@@ -46,7 +46,7 @@ fn prose_for(token_id: &str) -> (&'static str, &'static str) {
 /// second flag that could disagree.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 pub struct AssetWikiPlace {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub token_standard: String,
     pub contract: String,
     pub decimals: u32,
@@ -97,7 +97,7 @@ fn build() -> Vec<AssetWikiEntry> {
                 out.len() - 1
             });
         out[slot].lives_on.push(AssetWikiPlace {
-            chain_id: chain.id.clone(),
+            chain_id: crate::registry::Chain::parse(&chain.id).expect("a catalog chain"),
             token_standard: "Native".to_string(),
             contract: String::new(),
             decimals: chain.native_decimals,
@@ -113,7 +113,7 @@ fn build() -> Vec<AssetWikiEntry> {
             out.len() - 1
         });
         out[slot].lives_on.push(AssetWikiPlace {
-            chain_id: token.chain_id.clone(),
+            chain_id: token.chain_id,
             token_standard: token.token_standard.clone(),
             contract: token.contract.clone(),
             decimals: token.decimals,
@@ -130,9 +130,7 @@ fn build() -> Vec<AssetWikiEntry> {
                 if a.is_native {
                     std::cmp::Ordering::Equal
                 } else {
-                    let name = |place: &AssetWikiPlace| {
-                        chains::chain_by_str_id(&place.chain_id).map(|c| c.name.clone())
-                    };
+                    let name = |place: &AssetWikiPlace| place.chain_id.entry().name.clone();
                     name(a).cmp(&name(b))
                 }
             })
@@ -221,7 +219,7 @@ mod the_wiki_is_one_asset_table {
         assert!(eth.lives_on.iter().all(|p| p.contract.is_empty()));
         // Presented as its home chain, because native places sort first and
         // the catalog lists Ethereum before its rollups.
-        assert_eq!(eth.lives_on[0].chain_id, "ethereum");
+        assert_eq!(eth.lives_on[0].chain_id, crate::registry::Chain::Ethereum);
         assert_eq!(eth.name, "Ethereum");
         assert!(!eth.total_circulation_model.is_empty());
     }
@@ -236,9 +234,9 @@ mod the_wiki_is_one_asset_table {
         let cro = asset("crypto-com-chain");
         assert_eq!(cro.lives_on.len(), 2);
         assert!(cro.lives_on[0].is_native);
-        assert_eq!(cro.lives_on[0].chain_id, "cronos");
+        assert_eq!(cro.lives_on[0].chain_id, crate::registry::Chain::Cronos);
         assert!(!cro.lives_on[1].is_native);
-        assert_eq!(cro.lives_on[1].chain_id, "ethereum");
+        assert_eq!(cro.lives_on[1].chain_id, crate::registry::Chain::Ethereum);
         assert_eq!(cro.lives_on[1].token_standard, "ERC-20");
         assert!(!cro.lives_on[1].contract.is_empty());
     }
@@ -255,7 +253,11 @@ mod the_wiki_is_one_asset_table {
             usdc.lives_on.iter().map(|p| p.decimals).collect();
         assert!(!widths.is_empty());
         // Chain names are resolved, not left as ids.
-        assert!(usdc.lives_on.iter().any(|p| p.chain_id == "ethereum"));
+        assert!(
+            usdc.lives_on
+                .iter()
+                .any(|p| p.chain_id == crate::registry::Chain::Ethereum)
+        );
     }
 
     /// `crypto-wiki.toml` has no row nothing claims.
@@ -282,11 +284,7 @@ mod the_wiki_is_one_asset_table {
     fn the_table_is_exactly_the_two_catalogs() {
         let expected: std::collections::BTreeSet<&str> = crate::tokens::catalog()
             .iter()
-            .filter(|t| {
-                !crate::registry::Chain::from_str_id(&t.chain_id)
-                    .unwrap()
-                    .is_testnet()
-            })
+            .filter(|t| !t.chain_id.is_testnet())
             .map(|t| t.token_id.as_str())
             .collect();
         let got: std::collections::BTreeSet<&str> =

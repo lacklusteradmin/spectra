@@ -58,7 +58,7 @@ fn targets(state: &CoreAppState, chain: Chain, wallet_ids: &[String]) -> Vec<Tar
     state
         .wallets
         .iter()
-        .filter(|wallet| wallet.family() == Some(chain))
+        .filter(|wallet| wallet.family() == chain)
         .filter(|wallet| {
             wallet_ids.is_empty()
                 || wallet_ids
@@ -70,7 +70,7 @@ fn targets(state: &CoreAppState, chain: Chain, wallet_ids: &[String]) -> Vec<Tar
                 wallet_id: wallet.id.clone(),
                 wallet_name: wallet.name.clone(),
                 address: wallet.active_address()?.to_string(),
-                network: wallet.chain().unwrap_or(chain),
+                network: wallet.chain_id,
             })
         })
         .collect()
@@ -116,8 +116,8 @@ fn record_for(
         wallet_name: target.wallet_name.clone(),
         asset_display_name: entry.asset_display_name,
         symbol: entry.symbol,
-        chain_id: target.network.str_id().to_string(),
-        amount: crate::decimal::amount_from_f64(entry.amount),
+        chain_id: target.network,
+        amount: entry.amount,
         address: entry.counterparty,
         transaction_hash: Some(entry.tx_hash).filter(|hash| !hash.is_empty()),
         nonce: None,
@@ -128,7 +128,6 @@ fn record_for(
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,
-        estimated_fee_rate_per_kb: None,
         used_change_output: None,
         source_derivation_path: None,
         change_derivation_path: None,
@@ -158,11 +157,9 @@ impl WalletService {
     /// "loaded with partial provider failures" banner was already saying.
     pub async fn refresh_chain_history(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         wallet_ids: Vec<String>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
-        let chain = crate::registry::Chain::from_str_id(&chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain {chain_id:?}")))?;
         let targets = {
             let state = self.app_state().await;
             targets(&state, chain, &wallet_ids)
@@ -174,22 +171,16 @@ impl WalletService {
         // Owned pairs rather than borrows of `targets`: the exported method's
         // future has to be `'static`, and a closure borrowing from the
         // enclosing scope is not.
-        let requests: Vec<(usize, String, String)> = targets
+        let requests: Vec<(usize, Chain, String)> = targets
             .iter()
             .enumerate()
-            .map(|(index, target)| {
-                (
-                    index,
-                    target.network.str_id().to_string(),
-                    target.address.clone(),
-                )
-            })
+            .map(|(index, target)| (index, target.network, target.address.clone()))
             .collect();
         let fetched: Vec<(usize, Option<Vec<_>>)> = stream::iter(requests)
-            .map(|(index, chain_id, address)| async move {
+            .map(|(index, chain, address)| async move {
                 (
                     index,
-                    self.fetch_normalized_history(chain_id, address).await.ok(),
+                    self.fetch_normalized_history(chain, address).await.ok(),
                 )
             })
             .buffer_unordered(4)
@@ -218,7 +209,7 @@ impl WalletService {
         let change = self.merge_fetched_history(incoming).await?;
 
         for id in completed_wallets {
-            self.set_history_page(chain_id.clone(), id, 1, true);
+            self.set_history_page(chain, id, 1, true);
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
@@ -272,7 +263,7 @@ fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::
         .filter_map(|entry| {
             let contract = crate::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),
-                chain.str_id().to_string(),
+                chain,
             )?;
             Some(crate::service::TokenDescriptor {
                 contract,
@@ -292,14 +283,12 @@ impl WalletService {
     /// first, and leaves a group that already reported a short page alone.
     pub async fn refresh_evm_chain_history(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         wallet_ids: Vec<String>,
         load_more: bool,
         page_size: Option<u32>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id)
-            .filter(|chain| chain.is_evm())
-            .ok_or_else(|| SpectraBridgeError::from(format!("{chain_id:?} is not an EVM chain")))?;
+        let chain = super::evm_network(chain_id)?;
         let (groups, descriptors, wallet_names, networks) = {
             let state = self.app_state().await;
             let targets = targets(&state, chain, &wallet_ids);
@@ -319,12 +308,12 @@ impl WalletService {
         let page_size = page_size
             .unwrap_or(DEFAULT_EVM_PAGE_SIZE)
             .clamp(MIN_EVM_PAGE_SIZE, MAX_EVM_PAGE_SIZE);
-        let native =
-            crate::fetch::history_decode::history_evm_native_asset(chain.str_id().to_string())
-                .unwrap_or(crate::fetch::history_decode::EvmNativeAsset {
-                    asset_display_name: "Ether".to_string(),
-                    symbol: "ETH".to_string(),
-                });
+        let native = crate::fetch::history_decode::history_evm_native_asset(chain).unwrap_or(
+            crate::fetch::history_decode::EvmNativeAsset {
+                asset_display_name: "Ether".to_string(),
+                symbol: "ETH".to_string(),
+            },
+        );
 
         let mut incoming = Vec::new();
         let mut diagnostics = Vec::new();
@@ -340,20 +329,17 @@ impl WalletService {
                 for wallet_id in &group_wallet_ids {
                     self.reset_history(
                         crate::service::history_cursor::HistoryScope::ChainAndWallet {
-                            chain_id: chain_id.clone(),
+                            chain_id,
                             wallet_id: wallet_id.clone(),
                         },
                     );
-                    self.set_history_page(chain_id.clone(), wallet_id.clone(), 1, false);
+                    self.set_history_page(chain_id, wallet_id.clone(), 1, false);
                 }
-            } else if self
-                .history_cursor(chain_id.clone(), first.clone())
-                .is_exhausted
-            {
+            } else if self.history_cursor(chain_id, first.clone()).is_exhausted {
                 continue;
             }
             let current = self
-                .history_cursor(chain_id.clone(), first.clone())
+                .history_cursor(chain_id, first.clone())
                 .next_page
                 .max(1);
             let page = if load_more { current + 1 } else { current };
@@ -361,7 +347,7 @@ impl WalletService {
             let network = networks.get(&first).copied().unwrap_or(chain);
             let fetched = self
                 .fetch_evm_history_page(
-                    network.str_id().to_string(),
+                    network,
                     normalized_address.clone(),
                     descriptors.clone(),
                     page,
@@ -407,7 +393,7 @@ impl WalletService {
                 crate::fetch::history_decode::EvmTransactionRecordRequest {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
-                    chain_id: network.str_id().to_string(),
+                    chain_id: network,
                     token_source_used: Some("rust/etherscan".to_string()),
                     native_asset_display_name: native.asset_display_name.clone(),
                     native_asset_symbol: native.symbol.clone(),
@@ -432,7 +418,7 @@ impl WalletService {
         let change = self.merge_fetched_history(incoming).await?;
 
         for (id, page, exhausted) in cursor_updates {
-            self.set_history_page(chain_id.clone(), id, page, exhausted);
+            self.set_history_page(chain_id, id, page, exhausted);
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
@@ -471,7 +457,6 @@ fn evm_record(
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,
-        estimated_fee_rate_per_kb: None,
         used_change_output: None,
         source_derivation_path: None,
         change_derivation_path: None,
@@ -498,12 +483,10 @@ impl WalletService {
     /// already marked exhausted.
     pub async fn refresh_utxo_chain_history(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         wallet_ids: Vec<String>,
         load_more: bool,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain {chain_id:?}")))?;
         let wallets: Vec<(String, String, Chain)> = {
             let state = self.app_state().await;
             targets(&state, chain, &wallet_ids)
@@ -517,10 +500,7 @@ impl WalletService {
         let mut wallets_failed = 0;
         let mut completed_wallets = Vec::new();
         for (wallet_id, wallet_name, network) in wallets {
-            let addresses = match self
-                .known_utxo_addresses(wallet_id.clone(), chain_id.clone())
-                .await
-            {
+            let addresses = match self.known_utxo_addresses(wallet_id.clone(), chain).await {
                 Ok(addresses) => addresses,
                 Err(_) => {
                     wallets_failed += 1;
@@ -531,16 +511,13 @@ impl WalletService {
                 continue;
             }
             if load_more {
-                if self
-                    .history_cursor(chain_id.clone(), wallet_id.clone())
-                    .is_exhausted
-                {
+                if self.history_cursor(chain, wallet_id.clone()).is_exhausted {
                     continue;
                 }
             } else {
                 self.reset_history(
                     crate::service::history_cursor::HistoryScope::ChainAndWallet {
-                        chain_id: chain_id.clone(),
+                        chain_id: chain,
                         wallet_id: wallet_id.clone(),
                     },
                 );
@@ -550,7 +527,7 @@ impl WalletService {
             let mut failed = false;
             for address in &addresses {
                 match self
-                    .fetch_normalized_history(network.str_id().to_string(), address.clone())
+                    .fetch_normalized_history(network, address.clone())
                     .await
                 {
                     Ok(fetched) => entries.extend(fetched),
@@ -580,13 +557,7 @@ impl WalletService {
                 },
             );
             incoming.extend(aggregated.into_iter().map(|aggregate| {
-                aggregated_record(
-                    &wallet_id,
-                    &wallet_name,
-                    network,
-                    network.str_id(),
-                    aggregate,
-                )
+                aggregated_record(&wallet_id, &wallet_name, network, network, aggregate)
             }));
         }
 
@@ -597,7 +568,7 @@ impl WalletService {
         let change = self.merge_fetched_history(incoming).await?;
 
         for id in completed_wallets {
-            self.set_history_page(chain_id.clone(), id, 1, true);
+            self.set_history_page(chain, id, 1, true);
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
@@ -617,7 +588,7 @@ fn aggregated_record(
     wallet_id: &str,
     wallet_name: &str,
     chain: Chain,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
     aggregate: crate::fetch::history_decode::AggregatedTransaction,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
@@ -629,8 +600,8 @@ fn aggregated_record(
         wallet_name: wallet_name.to_string(),
         asset_display_name: chain.chain_display_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
-        chain_id: chain.str_id().to_string(),
-        amount: crate::decimal::amount_from_f64(aggregate.amount),
+        chain_id: chain,
+        amount: aggregate.amount,
         address: aggregate.counterparty,
         transaction_hash: Some(aggregate.hash).filter(|hash| !hash.is_empty()),
         nonce: None,
@@ -641,7 +612,6 @@ fn aggregated_record(
         fee_rate_description: None,
         confirmation_count: None,
         confirmed_network_fee: None,
-        estimated_fee_rate_per_kb: None,
         used_change_output: None,
         source_derivation_path: None,
         change_derivation_path: None,

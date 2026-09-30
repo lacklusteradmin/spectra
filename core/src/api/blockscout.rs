@@ -5,7 +5,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::api::evm_json_rpc::format_evm_decimals;
 use crate::api::http::{HttpClient, RetryProfile};
 use crate::registry::EvmHistorySource;
 
@@ -221,7 +220,9 @@ impl BlockscoutClient {
             .into_iter()
             .map(|tx| {
                 let decimals: u8 = tx.token_decimal.parse().unwrap_or(18);
-                let amount_display = format_evm_decimals(&tx.value, decimals);
+                let amount_display =
+                    crate::decimal::from_unit_digits(&tx.value, u32::from(decimals))
+                        .ok_or_else(|| format!("token transfer {}: malformed value", tx.hash))?;
                 let timestamp =
                     crate::api::time::confirmed_history_time(tx.time_stamp.parse().ok(), &tx.hash)?;
                 Ok(EvmTokenTransferEntry {
@@ -328,15 +329,17 @@ mod every_evm_chain_says_where_its_history_comes_from {
         for chain in Chain::all().filter(|chain| chain.is_evm()) {
             if let EvmHistorySource::Open(url) = chain.evm_history_source() {
                 assert!(catalog.endpoint_records.iter().any(|record| {
-                    record.chain_id == chain.str_id()
+                    record.chain_id == chain
                         && record.endpoint == url
                         && record
                             .capabilities
                             .contains(&crate::EndpointCapability::History)
                 }));
             }
-            if chain != chain.mainnet_counterpart() {
-                assert_eq!(chain.evm_history_source(), EvmHistorySource::Unavailable);
+            // A testnet reads its own explorer or none, never its mainnet's.
+            let mainnet = chain.mainnet_counterpart();
+            if chain != mainnet && matches!(chain.evm_history_source(), EvmHistorySource::Open(_)) {
+                assert_ne!(chain.evm_history_source(), mainnet.evm_history_source());
             }
         }
     }

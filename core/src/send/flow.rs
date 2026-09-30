@@ -19,15 +19,9 @@ pub struct EvmReceiptClassification {
 ///
 /// Thin wrapper over [`Chain::address_validation_kind`]; the mapping itself
 /// lives in the registry.
-pub(crate) fn chain_kind(chain_id: &str) -> Option<&'static str> {
-    Chain::from_str_id(chain_id).map(Chain::address_validation_kind)
-}
-
 #[uniffi::export]
-pub fn is_valid_send_address(chain_id: String, address: String) -> bool {
-    let Some(kind) = chain_kind(&chain_id) else {
-        return false;
-    };
+pub fn is_valid_send_address(chain: Chain, address: String) -> bool {
+    let kind = chain.address_validation_kind();
     // Normalized first, as `AddAddressBookEntry` does: on Sui a 64-hex address
     // typed without its `0x` prefix is invalid raw and valid once
     // `AddressNormalization::LowercaseHexPrefixed` has added the prefix.
@@ -35,17 +29,14 @@ pub fn is_valid_send_address(chain_id: String, address: String) -> bool {
     // construction, and it is the form that gets stored and sent either way.
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
-        value: normalize_address(&chain_id, &address),
+        value: normalize_address(chain, &address),
     })
     .is_valid
 }
 
-pub(crate) fn normalize_address(chain_id: &str, address: &str) -> String {
+pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
     use crate::registry::AddressNormalization;
     let t = address.trim();
-    let Some(chain) = crate::registry::Chain::from_str_id(chain_id) else {
-        return t.to_string();
-    };
     match chain.address_normalization() {
         // Bech32 and CashAddr are case-insensitive but written in one case;
         // an all-uppercase form (a QR code's) is the same address, and its
@@ -81,8 +72,8 @@ pub(crate) fn normalize_address(chain_id: &str, address: &str) -> String {
 }
 
 /// Internal: core normalizes wherever it resolves or binds a destination.
-pub fn normalized_send_address(chain_id: String, address: String) -> String {
-    normalize_address(&chain_id, &address)
+pub fn normalized_send_address(chain: Chain, address: String) -> String {
+    normalize_address(chain, &address)
 }
 
 /// The address a scanned payment payload yields on `chain_id`, or `None`.
@@ -99,11 +90,11 @@ pub fn normalized_send_address(chain_id: String, address: String) -> String {
 /// selected — putting an unchecked string from a camera straight into the send
 /// field. There is no address without a chain to judge it against.
 #[uniffi::export]
-pub fn scanned_send_address(chain_id: String, payload: String) -> Option<String> {
-    let kind = chain_kind(&chain_id)?;
+pub fn scanned_send_address(chain: Chain, payload: String) -> Option<String> {
+    let kind = chain.address_validation_kind();
     scanned_address_candidates(&payload)
         .into_iter()
-        .map(|candidate| normalize_address(&chain_id, &candidate))
+        .map(|candidate| normalize_address(chain, &candidate))
         .find(|normalized| {
             validate_address(AddressValidationRequest {
                 kind: kind.to_string(),
@@ -236,17 +227,19 @@ pub enum SendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SendPreviewDetailsCore {
-    pub spendableBalance: Option<f64>,
+    pub spendableBalance: Option<String>,
     pub feeRateDescription: Option<String>,
     pub estimatedTransactionBytes: Option<i64>,
     pub selectedInputCount: Option<i64>,
     pub usesChangeOutput: Option<bool>,
-    pub maxSendable: Option<f64>,
+    pub maxSendable: Option<String>,
 }
 
+/// `coin_amount` is the holding's exact balance, or `None` where a missing
+/// maximum must stay missing rather than fall back to it.
 pub(crate) fn compute_send_preview_details(
     preview: Option<SendPreview>,
-    coin_amount: f64,
+    coin_amount: Option<&str>,
 ) -> Option<SendPreviewDetailsCore> {
     let preview = preview?;
 
@@ -341,9 +334,11 @@ pub(crate) fn compute_send_preview_details(
             }
         };
 
-    let fallback = est_fee.map(|fee| (coin_amount - fee).max(0.0));
+    let fallback = est_fee
+        .zip(coin_amount)
+        .and_then(|(fee, amount)| crate::decimal::sub_or_zero(amount, &fee));
     Some(SendPreviewDetailsCore {
-        spendableBalance: spendable.or(fallback),
+        spendableBalance: spendable.or_else(|| fallback.clone()),
         feeRateDescription: fee_rate,
         estimatedTransactionBytes: tx_bytes,
         selectedInputCount: input_count,
@@ -355,17 +350,17 @@ pub(crate) fn compute_send_preview_details(
 /// Field selection shared by the account-model chains.
 #[allow(clippy::type_complexity)]
 fn simple(
-    spendable: f64,
+    spendable: String,
     fee_rate: Option<String>,
-    max_sendable: f64,
+    max_sendable: String,
 ) -> (
-    Option<f64>,
+    Option<String>,
     Option<String>,
     Option<i64>,
     Option<i64>,
     Option<bool>,
-    Option<f64>,
-    Option<f64>,
+    Option<String>,
+    Option<String>,
 ) {
     (
         Some(spendable),
@@ -384,7 +379,7 @@ mod tests {
 
     fn utxo_preview() -> BitcoinSendPreview {
         BitcoinSendPreview {
-            estimatedNetworkFee: 0.5,
+            estimatedNetworkFee: "0.5".into(),
             feeRateDescription: Some("12 sat/vB".to_string()),
             spendableBalance: None,
             estimatedTransactionBytes: Some(226),
@@ -403,11 +398,11 @@ mod tests {
             Some(SendPreview::Utxo {
                 preview: utxo_preview(),
             }),
-            2.0,
+            Some("2"),
         )
         .expect("details");
-        assert_eq!(d.spendableBalance, Some(1.5));
-        assert_eq!(d.maxSendable, Some(1.5));
+        assert_eq!(d.spendableBalance, Some("1.5".into()));
+        assert_eq!(d.maxSendable, Some("1.5".into()));
         assert_eq!(d.estimatedTransactionBytes, Some(226));
         assert_eq!(d.selectedInputCount, Some(2));
         assert_eq!(d.usesChangeOutput, Some(true));
@@ -421,22 +416,22 @@ mod tests {
             Some(SendPreview::Utxo {
                 preview: utxo_preview(),
             }),
-            0.1,
+            Some("0.1"),
         )
         .expect("details");
-        assert_eq!(d.spendableBalance, Some(0.0));
+        assert_eq!(d.spendableBalance, Some("0".into()));
     }
 
     /// A preview's own values win over the fallback.
     #[test]
     fn utxo_preview_values_take_precedence_over_the_fallback() {
         let mut preview = utxo_preview();
-        preview.spendableBalance = Some(9.0);
-        preview.maxSendable = Some(8.0);
-        let d = compute_send_preview_details(Some(SendPreview::Utxo { preview }), 2.0)
+        preview.spendableBalance = Some("9".into());
+        preview.maxSendable = Some("8".into());
+        let d = compute_send_preview_details(Some(SendPreview::Utxo { preview }), Some("2"))
             .expect("details");
-        assert_eq!(d.spendableBalance, Some(9.0));
-        assert_eq!(d.maxSendable, Some(8.0));
+        assert_eq!(d.spendableBalance, Some("9".into()));
+        assert_eq!(d.maxSendable, Some("8".into()));
     }
 
     /// Account-model chains contribute balance, fee text and max sendable, and
@@ -446,20 +441,20 @@ mod tests {
         let d = compute_send_preview_details(
             Some(SendPreview::Tron {
                 preview: TronSendPreview {
-                    spendableBalance: 100.0,
+                    spendableBalance: "100".into(),
                     feeRateDescription: Some("1 TRX".to_string()),
                     estimatedTransactionBytes: Some(300),
                     selectedInputCount: Some(1),
                     usesChangeOutput: Some(true),
-                    maxSendable: 99.0,
+                    maxSendable: "99".into(),
                     ..Default::default()
                 },
             }),
-            100.0,
+            Some("100"),
         )
         .expect("details");
-        assert_eq!(d.spendableBalance, Some(100.0));
-        assert_eq!(d.maxSendable, Some(99.0));
+        assert_eq!(d.spendableBalance, Some("100".into()));
+        assert_eq!(d.maxSendable, Some("99".into()));
         assert_eq!(d.estimatedTransactionBytes, None);
         assert_eq!(d.selectedInputCount, None);
         assert_eq!(d.usesChangeOutput, None);
@@ -471,14 +466,14 @@ mod tests {
         let d = compute_send_preview_details(
             Some(SendPreview::Polkadot {
                 preview: PolkadotSendPreview {
-                    spendableBalance: 10.0,
+                    spendableBalance: "10".into(),
                     feeRateDescription: None,
                     estimatedTransactionBytes: Some(144),
-                    maxSendable: 9.0,
+                    maxSendable: "9".into(),
                     ..Default::default()
                 },
             }),
-            10.0,
+            Some("10"),
         )
         .expect("details");
         assert_eq!(d.estimatedTransactionBytes, Some(144));
@@ -487,7 +482,7 @@ mod tests {
 
     #[test]
     fn absent_preview_yields_no_details() {
-        assert!(compute_send_preview_details(None, 1.0).is_none());
+        assert!(compute_send_preview_details(None, Some("1")).is_none());
     }
 
     #[test]
@@ -509,23 +504,24 @@ mod tests {
 /// A chain_id + address pair used in the high-risk send evaluation.
 #[derive(Debug, Clone)]
 pub struct HighRiskChainAddress {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub address: String,
 }
 
 /// Typed input for high-risk send evaluation.
 #[derive(Debug, Clone)]
 pub struct HighRiskSendRequest {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub symbol: String,
-    pub amount: f64,
-    pub holding_amount: f64,
+    /// Exact decimals.
+    pub amount: String,
+    pub holding_amount: String,
     pub destination_address: String,
     pub destination_input: String,
     pub used_ens_resolution: bool,
     /// The network of the wallet sending, which a send on another network
     /// contradicts.
-    pub wallet_chain_id: String,
+    pub wallet_chain_id: Chain,
     pub address_book_entries: Vec<HighRiskChainAddress>,
     pub tx_addresses: Vec<HighRiskChainAddress>,
 }
@@ -542,7 +538,7 @@ pub struct HighRiskSendRequest {
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum HighRiskSendWarning {
     /// The destination does not parse as an address on `chain`.
-    InvalidFormat { chain: String },
+    InvalidFormat { chain: Chain },
     /// Neither the address book nor this wallet's history has sent here.
     NewAddress,
     /// An ENS `name` was resolved to `address`.
@@ -550,13 +546,13 @@ pub enum HighRiskSendWarning {
     /// The send is `percent` of the `symbol` holding, at 25% or more.
     LargeSend { percent: u64, symbol: String },
     /// An EVM `chain`, and a destination shaped like another family's address.
-    NonEvmOnEvm { chain: String },
+    NonEvmOnEvm { chain: Chain },
     /// An ENS name on an EVM `chain` whose names do not resolve through ENS.
-    EnsOffEthereum { chain: String },
+    EnsOffEthereum { chain: Chain },
     /// A chain that is not EVM, and a destination shaped like an EVM address.
-    EthOnUtxo { chain: String },
+    EthOnUtxo { chain: Chain },
     /// A destination shaped like another chain's address on `chain`.
-    ForeignAddressFormat { chain: String },
+    ForeignAddressFormat { chain: Chain },
     /// The holding's chain is not the wallet's.
     ChainMismatch,
 }
@@ -583,7 +579,7 @@ impl HighRiskSendWarning {
 /// Not exported: `WalletService::high_risk_send_reasons` is the entry point,
 /// because the address book and the send history this reads are core's.
 pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<HighRiskSendWarning> {
-    let chain_id = &request.chain_id;
+    let chain = request.chain_id;
     let mut warnings: Vec<HighRiskSendWarning> = Vec::new();
 
     // 1. Address format validation.
@@ -595,10 +591,8 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     // `AddressNormalization::LowercaseHexPrefixed` has added the prefix, so
     // the composer accepted it, the store accepted it, and this stood beside
     // them calling it `invalid_format`. One question, one form, one answer.
-    if !is_valid_send_address(chain_id.clone(), request.destination_address.clone()) {
-        warnings.push(HighRiskSendWarning::InvalidFormat {
-            chain: chain_id.clone(),
-        });
+    if !is_valid_send_address(chain, request.destination_address.clone()) {
+        warnings.push(HighRiskSendWarning::InvalidFormat { chain });
     }
 
     // The chain's own normalization is the comparison form, and nothing more
@@ -610,17 +604,17 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     // together let a lookalike of an address in the book pass as one already
     // seen, and the `new_address` warning — the one that catches a swapped
     // destination — did not fire.
-    let norm_dest = normalize_address(chain_id, &request.destination_address);
+    let norm_dest = normalize_address(chain, &request.destination_address);
 
     // 2. New address detection.
     let has_address_book = request
         .address_book_entries
         .iter()
-        .any(|e| e.chain_id == *chain_id && normalize_address(chain_id, &e.address) == norm_dest);
+        .any(|e| e.chain_id == chain && normalize_address(chain, &e.address) == norm_dest);
     let has_tx_history = request
         .tx_addresses
         .iter()
-        .any(|e| e.chain_id == *chain_id && normalize_address(chain_id, &e.address) == norm_dest);
+        .any(|e| e.chain_id == chain && normalize_address(chain, &e.address) == norm_dest);
     if !has_address_book && !has_tx_history {
         warnings.push(HighRiskSendWarning::NewAddress);
     }
@@ -634,8 +628,11 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     }
 
     // 4. Large send percentage (≥25 % of holding balance).
-    if request.holding_amount > 0.0 {
-        let ratio = request.amount / request.holding_amount;
+    // A share shown as a whole percent: approximate on purpose, from exact
+    // amounts.
+    let holding = crate::decimal::to_f64(&request.holding_amount);
+    if holding > 0.0 {
+        let ratio = crate::decimal::to_f64(&request.amount) / holding;
         if ratio >= 0.25 {
             let pct = (ratio * 100.0).round() as u64;
             warnings.push(HighRiskSendWarning::LargeSend {
@@ -647,16 +644,14 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
 
     // 5-10. Cross-chain prefix mismatch checks.
     let lowered = request.destination_input.to_lowercase();
-    let chain = crate::registry::Chain::from_str_id(chain_id);
     // Membership is the registry's. Seven of the twenty-three EVM mainnets were
     // named here, and this gate decides whether the EVM destination checks run
     // at all — a name list here silently means "no warning" for whichever
     // chains it forgets.
-    let is_evm = chain.is_some_and(|c| c.is_evm());
+    let is_evm = chain.is_evm();
     // ENS resolves on Ethereum; anywhere else the resolved address is worth a
     // second look.
-    let is_ens_foreign_chain = is_evm
-        && chain.is_some_and(|c| c.mainnet_counterpart() != crate::registry::Chain::Ethereum);
+    let is_ens_foreign_chain = is_evm && chain.mainnet_counterpart() != Chain::Ethereum;
     let is_ens_candidate = is_ens_name_candidate(&lowered);
 
     if is_evm {
@@ -668,49 +663,41 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
             || lowered.starts_with('d')
             || lowered.starts_with('a');
         if looks_non_evm {
-            warnings.push(HighRiskSendWarning::NonEvmOnEvm {
-                chain: chain_id.clone(),
-            });
+            warnings.push(HighRiskSendWarning::NonEvmOnEvm { chain });
         }
         if is_ens_foreign_chain && is_ens_candidate {
-            warnings.push(HighRiskSendWarning::EnsOffEthereum {
-                chain: chain_id.clone(),
-            });
+            warnings.push(HighRiskSendWarning::EnsOffEthereum { chain });
         }
-    } else if crate::registry::Chain::from_str_id(chain_id)
-        .is_some_and(|c| c.flags_evm_address_as_wrong_chain())
-    {
+    } else if chain.flags_evm_address_as_wrong_chain() {
         if lowered.starts_with("0x") || is_ens_candidate {
-            warnings.push(HighRiskSendWarning::EthOnUtxo {
-                chain: chain_id.clone(),
-            });
+            warnings.push(HighRiskSendWarning::EthOnUtxo { chain });
         }
     } else {
-        let foreign = match chain_id.as_str() {
-            "tron" => lowered.starts_with("0x") || lowered.starts_with("bc1"),
-            "solana" => {
+        // Each family's testnets too: a Tron Nile destination shaped like a
+        // Bitcoin address is as wrong as a mainnet one.
+        let foreign = match chain.mainnet_counterpart() {
+            Chain::Tron => lowered.starts_with("0x") || lowered.starts_with("bc1"),
+            Chain::Solana => {
                 lowered.starts_with("0x")
                     || lowered.starts_with("bc1")
                     || lowered.starts_with("ltc1")
                     || lowered.starts_with('t')
             }
-            "xrp" => {
+            Chain::Xrp => {
                 lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('t')
             }
-            "monero" => {
+            Chain::Monero => {
                 lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('r')
             }
             _ => false,
         };
         if foreign {
-            warnings.push(HighRiskSendWarning::ForeignAddressFormat {
-                chain: chain_id.clone(),
-            });
+            warnings.push(HighRiskSendWarning::ForeignAddressFormat { chain });
         }
     }
 
     // 11. Wallet-chain context mismatch.
-    if !request.wallet_chain_id.is_empty() && request.wallet_chain_id != *chain_id {
+    if request.wallet_chain_id != chain {
         warnings.push(HighRiskSendWarning::ChainMismatch);
     }
 
@@ -730,7 +717,7 @@ use crate::SpectraBridgeError;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct RebroadcastDispatch {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub result_field: String,
     pub wrap_key: Option<String>,
     pub extract_field: Option<String>,
@@ -745,175 +732,175 @@ pub fn rebroadcast_dispatch_for_format(
     // 11 cardano, 12 sui, 13 aptos, 14 ton, 15 icp, 16 near, 17 polkadot
     let entry: Option<RebroadcastDispatch> = match format.as_str() {
         "bitcoin.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: "bitcoin".into(),
+            chain_id: Chain::Bitcoin,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "bitcoin_cash.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: "bitcoin-cash".into(),
+            chain_id: Chain::BitcoinCash,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "bitcoin_sv.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: "bitcoin-sv".into(),
+            chain_id: Chain::BitcoinSV,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "litecoin.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: "litecoin".into(),
+            chain_id: Chain::Litecoin,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "dogecoin.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: "dogecoin".into(),
+            chain_id: Chain::Dogecoin,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "tron.signed_json" => Some(RebroadcastDispatch {
-            chain_id: "tron".into(),
+            chain_id: Chain::Tron,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "solana.base64" => Some(RebroadcastDispatch {
-            chain_id: "solana".into(),
+            chain_id: Chain::Solana,
             result_field: "signature".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "xrp.blob_hex" => Some(RebroadcastDispatch {
-            chain_id: "xrp".into(),
+            chain_id: Chain::Xrp,
             result_field: "txid".into(),
             wrap_key: Some("tx_blob_hex".into()),
             extract_field: None,
         }),
         "stellar.xdr" => Some(RebroadcastDispatch {
-            chain_id: "stellar".into(),
+            chain_id: Chain::Stellar,
             result_field: "txid".into(),
             wrap_key: Some("signed_xdr_b64".into()),
             extract_field: None,
         }),
         "cardano.cbor_hex" => Some(RebroadcastDispatch {
-            chain_id: "cardano".into(),
+            chain_id: Chain::Cardano,
             result_field: "txid".into(),
             wrap_key: Some("cbor_hex".into()),
             extract_field: None,
         }),
         "near.base64" => Some(RebroadcastDispatch {
-            chain_id: "near".into(),
+            chain_id: Chain::Near,
             result_field: "txid".into(),
             wrap_key: Some("signed_tx_b64".into()),
             extract_field: None,
         }),
         "polkadot.extrinsic_hex" => Some(RebroadcastDispatch {
-            chain_id: "polkadot".into(),
+            chain_id: Chain::Polkadot,
             result_field: "txid".into(),
             wrap_key: Some("extrinsic_hex".into()),
             extract_field: None,
         }),
         "aptos.signed_json" => Some(RebroadcastDispatch {
-            chain_id: "aptos".into(),
+            chain_id: Chain::Aptos,
             result_field: "txid".into(),
             wrap_key: Some("signed_body_json".into()),
             extract_field: None,
         }),
         "ton.boc" => Some(RebroadcastDispatch {
-            chain_id: "ton".into(),
+            chain_id: Chain::Ton,
             result_field: "message_hash".into(),
             wrap_key: Some("boc_b64".into()),
             extract_field: None,
         }),
         "bitcoin.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "bitcoin".into(),
+            chain_id: Chain::Bitcoin,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: Some("raw_tx_hex".into()),
         }),
         "bitcoin_cash.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "bitcoin-cash".into(),
+            chain_id: Chain::BitcoinCash,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: Some("raw_tx_hex".into()),
         }),
         "bitcoin_sv.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "bitcoin-sv".into(),
+            chain_id: Chain::BitcoinSV,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: Some("raw_tx_hex".into()),
         }),
         "litecoin.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "litecoin".into(),
+            chain_id: Chain::Litecoin,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: Some("raw_tx_hex".into()),
         }),
         "dogecoin.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "dogecoin".into(),
+            chain_id: Chain::Dogecoin,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: Some("raw_tx_hex".into()),
         }),
         "solana.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "solana".into(),
+            chain_id: Chain::Solana,
             result_field: "signature".into(),
             wrap_key: None,
             extract_field: Some("signed_tx_base64".into()),
         }),
         "tron.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "tron".into(),
+            chain_id: Chain::Tron,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: Some("signed_tx_json".into()),
         }),
         "xrp.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "xrp".into(),
+            chain_id: Chain::Xrp,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "stellar.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "stellar".into(),
+            chain_id: Chain::Stellar,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "cardano.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "cardano".into(),
+            chain_id: Chain::Cardano,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "polkadot.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "polkadot".into(),
+            chain_id: Chain::Polkadot,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "sui.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "sui".into(),
+            chain_id: Chain::Sui,
             result_field: "digest".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "aptos.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "aptos".into(),
+            chain_id: Chain::Aptos,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "ton.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "ton".into(),
+            chain_id: Chain::Ton,
             result_field: "message_hash".into(),
             wrap_key: None,
             extract_field: None,
         }),
         "near.rust_json" => Some(RebroadcastDispatch {
-            chain_id: "near".into(),
+            chain_id: Chain::Near,
             result_field: "txid".into(),
             wrap_key: None,
             extract_field: None,
@@ -935,7 +922,7 @@ pub fn rebroadcast_dispatch_for_format(
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PreparedBroadcastPayload {
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub broadcast_payload: String,
     pub result_field: String,
 }
@@ -947,7 +934,7 @@ pub fn rebroadcast_prepare_payload(
     if format == "sui.signed_json" {
         let remapped = sui_signed_json_remap(&raw_payload).unwrap_or_else(|| raw_payload.clone());
         return Ok(PreparedBroadcastPayload {
-            chain_id: "sui".into(),
+            chain_id: Chain::Sui,
             broadcast_payload: remapped,
             result_field: "digest".to_string(),
         });
@@ -1022,76 +1009,61 @@ pub struct EvmReplacementFeeBump {
     pub priority_fee_gwei: String,
 }
 
+/// Fees for a replacement: 20% over the pending transaction's, rounded up to
+/// a whole wei and never below 0.1 gwei. `None` when a fee is not a gwei
+/// decimal.
 pub fn evm_replacement_fee_bump(
-    existing_max_fee_gwei: Option<String>,
-    existing_priority_fee_gwei: Option<String>,
-    default_max_fee_gwei: f64,
-    default_priority_fee_gwei: f64,
-) -> EvmReplacementFeeBump {
-    let parse = |s: Option<&str>| -> Option<f64> {
-        s.and_then(|v| {
-            let trimmed = v.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                trimmed.parse::<f64>().ok()
-            }
-        })
+    max_fee_gwei: &str,
+    priority_fee_gwei: &str,
+) -> Option<EvmReplacementFeeBump> {
+    const FLOOR_WEI: u128 = 100_000_000;
+    let bump = |gwei: &str| -> Option<String> {
+        let wei = crate::decimal::to_units(gwei, 9)?;
+        let bumped = wei.checked_mul(12)?.div_ceil(10).max(FLOOR_WEI);
+        Some(crate::decimal::from_units(bumped, 9))
     };
-    let have_max = parse(existing_max_fee_gwei.as_deref());
-    let have_pri = parse(existing_priority_fee_gwei.as_deref());
-    if have_max.is_none() || have_pri.is_none() {
-        return EvmReplacementFeeBump {
-            max_fee_gwei: format!("{:.1}", default_max_fee_gwei),
-            priority_fee_gwei: format!("{:.1}", default_priority_fee_gwei),
-        };
-    }
-    let bumped_max = (have_max.unwrap() * 1.2).max(0.1);
-    let bumped_pri = (have_pri.unwrap() * 1.2).max(0.1);
-    EvmReplacementFeeBump {
-        max_fee_gwei: format!("{:.3}", bumped_max),
-        priority_fee_gwei: format!("{:.3}", bumped_pri),
-    }
+    Some(EvmReplacementFeeBump {
+        max_fee_gwei: bump(max_fee_gwei)?,
+        priority_fee_gwei: bump(priority_fee_gwei)?,
+    })
 }
 
 #[cfg(test)]
 mod flow_helpers_tests {
     use super::*;
 
-    /// `chain_kind` reads the registry, so every mainnet has addresses the
+    /// The validator is the registry's, so every mainnet has addresses the
     /// send flow accepts.
     #[test]
     fn every_evm_chain_accepts_an_evm_address() {
         let evm = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
         for chain in crate::registry::Chain::mainnets().filter(|c| c.is_evm()) {
-            let chain = chain.str_id();
             assert_eq!(
-                chain_kind(chain),
-                Some("evm"),
+                chain.address_validation_kind(),
+                "evm",
                 "{chain} must resolve to the EVM validator"
             );
             assert!(
-                is_valid_send_address(chain.to_string(), evm.to_string()),
+                is_valid_send_address(chain, evm.to_string()),
                 "{chain} must accept a valid EVM address"
             );
         }
 
         // Non-EVM chains too.
         for (chain, kind) in [
-            ("zcash", "zcash"),
-            ("bitcoin-gold", "bitcoinGold"),
-            ("decred", "decred"),
-            ("kaspa", "kaspa"),
-            ("dash", "dash"),
-            ("bittensor", "bittensor"),
+            (Chain::Zcash, "zcash"),
+            (Chain::BitcoinGold, "bitcoinGold"),
+            (Chain::Decred, "decred"),
+            (Chain::Kaspa, "kaspa"),
+            (Chain::Dash, "dash"),
+            (Chain::Bittensor, "bittensor"),
         ] {
-            assert_eq!(chain_kind(chain), Some(kind), "{chain} kind");
+            assert_eq!(chain.address_validation_kind(), kind, "{chain} kind");
         }
 
         // Still rejects what it should.
-        assert_eq!(chain_kind("Not A Chain"), None);
         assert!(!is_valid_send_address(
-            "polygon".to_string(),
+            crate::registry::Chain::Polygon,
             "not-an-address".to_string()
         ));
     }
@@ -1099,7 +1071,7 @@ mod flow_helpers_tests {
     #[test]
     fn rebroadcast_dispatch_btc() {
         let d = rebroadcast_dispatch_for_format("bitcoin.raw_hex".to_string()).unwrap();
-        assert_eq!(d.chain_id, "bitcoin");
+        assert_eq!(d.chain_id, crate::registry::Chain::Bitcoin);
         assert_eq!(d.result_field, "txid");
     }
 
@@ -1118,25 +1090,26 @@ mod flow_helpers_tests {
     }
 
     #[test]
-    fn evm_bump_defaults_when_blank() {
-        let r = evm_replacement_fee_bump(None, Some(" ".to_string()), 4.0, 2.0);
-        assert_eq!(r.max_fee_gwei, "4.0");
-        assert_eq!(r.priority_fee_gwei, "2.0");
+    fn evm_bump_refuses_what_is_not_a_fee() {
+        assert!(evm_replacement_fee_bump(" ", "2").is_none());
+        assert!(evm_replacement_fee_bump("1.0000000001", "2").is_none());
     }
 
     #[test]
-    fn evm_bump_scales_existing() {
-        let r =
-            evm_replacement_fee_bump(Some("5.0".to_string()), Some("2.5".to_string()), 4.0, 2.0);
-        assert_eq!(r.max_fee_gwei, "6.000");
-        assert_eq!(r.priority_fee_gwei, "3.000");
+    fn evm_bump_scales_existing_to_the_wei() {
+        let r = evm_replacement_fee_bump("5.0", "2.5").unwrap();
+        assert_eq!(r.max_fee_gwei, "6");
+        assert_eq!(r.priority_fee_gwei, "3");
+        // 20% of 1 wei rounds up, never down to the same fee.
+        let r = evm_replacement_fee_bump("1.000000001", "1.000000001").unwrap();
+        assert_eq!(r.max_fee_gwei, "1.200000002");
     }
 
     #[test]
     fn prepare_payload_sui_signed_json_remap() {
         let raw = r#"{"txBytesBase64":"AAAA","signatureBase64":"BBBB"}"#;
         let p = rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
-        assert_eq!(p.chain_id, "sui");
+        assert_eq!(p.chain_id, crate::registry::Chain::Sui);
         assert_eq!(p.result_field, "digest");
         let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
         assert_eq!(parsed["tx_bytes_b64"], "AAAA");
@@ -1153,7 +1126,7 @@ mod flow_helpers_tests {
     #[test]
     fn prepare_payload_wrap_key() {
         let p = rebroadcast_prepare_payload("xrp.blob_hex".into(), "deadbeef".into()).unwrap();
-        assert_eq!(p.chain_id, "xrp");
+        assert_eq!(p.chain_id, crate::registry::Chain::Xrp);
         assert_eq!(p.result_field, "txid");
         let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
         assert_eq!(parsed["tx_blob_hex"], "deadbeef");
@@ -1163,7 +1136,7 @@ mod flow_helpers_tests {
     fn prepare_payload_extract_field() {
         let raw = r#"{"raw_tx_hex":"ff00","other":"x"}"#;
         let p = rebroadcast_prepare_payload("bitcoin.rust_json".into(), raw.into()).unwrap();
-        assert_eq!(p.chain_id, "bitcoin");
+        assert_eq!(p.chain_id, crate::registry::Chain::Bitcoin);
         assert_eq!(p.broadcast_payload, "ff00");
     }
 
@@ -1180,19 +1153,20 @@ mod flow_helpers_tests {
 
     #[test]
     fn evm_bump_respects_floor() {
-        let r =
-            evm_replacement_fee_bump(Some("0.01".to_string()), Some("0.01".to_string()), 4.0, 2.0);
-        assert_eq!(r.max_fee_gwei, "0.100");
-        assert_eq!(r.priority_fee_gwei, "0.100");
+        let r = evm_replacement_fee_bump("0.01", "0.01").unwrap();
+        assert_eq!(r.max_fee_gwei, "0.1");
+        assert_eq!(r.priority_fee_gwei, "0.1");
     }
 }
 
 /// Whether a send is addressed to a private extension-block output, which the
 /// composer badges.
 #[uniffi::export]
-pub fn is_extension_block_send_destination(chain_id: String, destination: String) -> bool {
-    crate::registry::Chain::from_str_id(&chain_id)
-        .is_some_and(|chain| chain.is_extension_block_destination(&destination))
+pub fn is_extension_block_send_destination(
+    chain_id: crate::registry::Chain,
+    destination: String,
+) -> bool {
+    chain_id.is_extension_block_destination(&destination)
 }
 
 #[cfg(test)]
@@ -1203,16 +1177,16 @@ mod validating_and_normalising_cannot_disagree {
     };
     use crate::registry::Chain;
 
-    fn high_risk_codes(chain_id: &str, destination: &str) -> Vec<String> {
+    fn high_risk_codes(chain_id: crate::registry::Chain, destination: &str) -> Vec<String> {
         evaluate_high_risk_send_reasons(HighRiskSendRequest {
-            chain_id: chain_id.to_string(),
+            chain_id,
             symbol: "SUI".to_string(),
-            amount: 1.0,
-            holding_amount: 1000.0,
+            amount: "1".into(),
+            holding_amount: "1000".into(),
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_chain_id: chain_id.to_string(),
+            wallet_chain_id: chain_id,
             address_book_entries: vec![],
             tx_addresses: vec![],
         })
@@ -1227,10 +1201,17 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn the_high_risk_check_asks_the_same_question_the_composer_does() {
         let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-        for form in [bare.to_string(), normalize_address("sui", bare)] {
-            assert!(is_valid_send_address("sui".into(), form.clone()));
+        for form in [
+            bare.to_string(),
+            normalize_address(crate::registry::Chain::Sui, bare),
+        ] {
+            assert!(is_valid_send_address(
+                crate::registry::Chain::Sui,
+                form.clone()
+            ));
             assert!(
-                !high_risk_codes("sui", &form).contains(&"invalid_format".to_string()),
+                !high_risk_codes(crate::registry::Chain::Sui, &form)
+                    .contains(&"invalid_format".to_string()),
                 "{form} validates but was flagged invalid_format"
             );
         }
@@ -1255,16 +1236,16 @@ mod validating_and_normalising_cannot_disagree {
 
         let codes = |destination: &str| {
             evaluate_high_risk_send_reasons(HighRiskSendRequest {
-                chain_id: "solana".to_string(),
+                chain_id: crate::registry::Chain::Solana,
                 symbol: "SOL".to_string(),
-                amount: 1.0,
-                holding_amount: 1000.0,
+                amount: "1".into(),
+                holding_amount: "1000".into(),
                 destination_address: destination.to_string(),
                 destination_input: destination.to_string(),
                 used_ens_resolution: false,
-                wallet_chain_id: "solana".to_string(),
+                wallet_chain_id: crate::registry::Chain::Solana,
                 address_book_entries: vec![HighRiskChainAddress {
-                    chain_id: "solana".to_string(),
+                    chain_id: crate::registry::Chain::Solana,
                     address: known.to_string(),
                 }],
                 tx_addresses: vec![],
@@ -1295,16 +1276,16 @@ mod validating_and_normalising_cannot_disagree {
         assert_ne!(stored, typed);
 
         let codes = evaluate_high_risk_send_reasons(HighRiskSendRequest {
-            chain_id: "ethereum".to_string(),
+            chain_id: crate::registry::Chain::Ethereum,
             symbol: "ETH".to_string(),
-            amount: 1.0,
-            holding_amount: 1000.0,
+            amount: "1".into(),
+            holding_amount: "1000".into(),
             destination_address: typed.clone(),
             destination_input: typed,
             used_ens_resolution: false,
-            wallet_chain_id: "ethereum".to_string(),
+            wallet_chain_id: crate::registry::Chain::Ethereum,
             address_book_entries: vec![HighRiskChainAddress {
-                chain_id: "ethereum".to_string(),
+                chain_id: crate::registry::Chain::Ethereum,
                 address: stored.to_string(),
             }],
             tx_addresses: vec![],
@@ -1323,7 +1304,7 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn a_malformed_destination_is_still_flagged() {
         assert!(
-            high_risk_codes("sui", "definitely-not-an-address")
+            high_risk_codes(crate::registry::Chain::Sui, "definitely-not-an-address")
                 .contains(&"invalid_format".to_string())
         );
     }
@@ -1338,10 +1319,16 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn a_sui_address_without_its_prefix_is_accepted_either_way() {
         let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-        let normalized = normalize_address("sui", bare);
+        let normalized = normalize_address(crate::registry::Chain::Sui, bare);
         assert!(normalized.starts_with("0x"), "{normalized}");
-        assert!(is_valid_send_address("sui".into(), bare.to_string()));
-        assert!(is_valid_send_address("sui".into(), normalized));
+        assert!(is_valid_send_address(
+            crate::registry::Chain::Sui,
+            bare.to_string()
+        ));
+        assert!(is_valid_send_address(
+            crate::registry::Chain::Sui,
+            normalized
+        ));
     }
 
     /// Every chain, both orders, one answer. Whitespace and case are part of
@@ -1349,18 +1336,17 @@ mod validating_and_normalising_cannot_disagree {
     #[test]
     fn no_chain_answers_differently_before_and_after_normalising() {
         for chain in Chain::mainnets() {
-            let name = chain.str_id().to_string();
             for sample in [
                 "  0x742d35Cc6634C0532925a3b844Bc454e4438f44e  ",
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
                 "not-an-address",
                 "",
             ] {
-                let direct = is_valid_send_address(name.clone(), sample.to_string());
-                let after = is_valid_send_address(name.clone(), normalize_address(&name, sample));
+                let direct = is_valid_send_address(chain, sample.to_string());
+                let after = is_valid_send_address(chain, normalize_address(chain, sample));
                 assert_eq!(
                     direct, after,
-                    "{name} answers {direct} for {sample:?} and {after} once normalized"
+                    "{chain} answers {direct} for {sample:?} and {after} once normalized"
                 );
             }
         }
@@ -1371,12 +1357,11 @@ mod validating_and_normalising_cannot_disagree {
 /// simple-chain previews quote the native gas asset even for token holdings.
 pub(crate) fn quoted_send_amount(
     preview: Option<SendPreview>,
-    chain_id: String,
+    chain: crate::registry::Chain,
     is_native: bool,
     token_decimals: Option<u32>,
     percentage: u32,
 ) -> Option<String> {
-    let chain = Chain::from_str_id(&chain_id)?;
     let preview = preview?;
     let decimals = if is_native {
         u32::from(chain.native_decimals())
@@ -1390,8 +1375,8 @@ pub(crate) fn quoted_send_amount(
     };
     // No fallback to a caller's portfolio balance: a missing maximum is a
     // missing quote, not permission to offer the whole holding.
-    let maximum = compute_send_preview_details(Some(preview), f64::NAN)?.maxSendable?;
-    crate::send::amount_input::estimate_shortcut(maximum, decimals, percentage)
+    let maximum = compute_send_preview_details(Some(preview), None)?.maxSendable?;
+    crate::send::amount_input::send_amount_shortcut(maximum, decimals, percentage)
 }
 
 #[cfg(test)]
@@ -1399,23 +1384,41 @@ mod shortcut_preview_tests {
     use super::*;
     #[test]
     fn no_quote_and_gas_coin_quotes_cannot_fill_token_amounts() {
-        assert!(quoted_send_amount(None, "bitcoin".into(), true, None, 100).is_none());
+        assert!(
+            quoted_send_amount(None, crate::registry::Chain::Bitcoin, true, None, 100).is_none()
+        );
         let preview = SendPreview::Solana {
             preview: SolanaSendPreview {
-                maxSendable: 12.0,
+                maxSendable: "12".into(),
                 ..Default::default()
             },
         };
-        assert!(quoted_send_amount(Some(preview), "solana".into(), false, Some(6), 100).is_none());
+        assert!(
+            quoted_send_amount(
+                Some(preview),
+                crate::registry::Chain::Solana,
+                false,
+                Some(6),
+                100
+            )
+            .is_none()
+        );
         let preview = SendPreview::Ethereum {
             preview: EvmSendPreview {
-                maxSendable: Some(4.2),
+                maxSendable: Some("4.2".into()),
                 ..Default::default()
             },
         };
         assert_eq!(
-            quoted_send_amount(Some(preview), "ethereum".into(), false, Some(6), 100).as_deref(),
-            Some("4.199999")
+            quoted_send_amount(
+                Some(preview),
+                crate::registry::Chain::Ethereum,
+                false,
+                Some(6),
+                100
+            )
+            .as_deref(),
+            Some("4.2")
         );
     }
 }
@@ -1431,28 +1434,28 @@ mod scanned_payload_tests {
     #[test]
     fn payment_uris_reduce_to_the_address_they_carry() {
         let cases = [
-            ("bitcoin", BTC.to_string(), BTC),
-            ("bitcoin", format!("bitcoin:{BTC}"), BTC),
+            (Chain::Bitcoin, BTC.to_string(), BTC),
+            (Chain::Bitcoin, format!("bitcoin:{BTC}"), BTC),
             (
-                "bitcoin",
+                Chain::Bitcoin,
                 format!("bitcoin:{BTC}?amount=0.1&label=Shop"),
                 BTC,
             ),
-            ("bitcoin", format!("  {BTC}  "), BTC),
+            (Chain::Bitcoin, format!("  {BTC}  "), BTC),
             // EIP-681, with and without the chain-id pin and the function.
-            ("ethereum", format!("ethereum:{EVM}"), EVM),
-            ("ethereum", format!("ethereum:{EVM}@1"), EVM),
+            (Chain::Ethereum, format!("ethereum:{EVM}"), EVM),
+            (Chain::Ethereum, format!("ethereum:{EVM}@1"), EVM),
             (
-                "ethereum",
+                Chain::Ethereum,
                 format!("ethereum:{EVM}@1/transfer?value=1"),
                 EVM,
             ),
             // A scheme that puts the address in a path segment.
-            ("ethereum", format!("wc://x/{EVM}"), EVM),
+            (Chain::Ethereum, format!("wc://x/{EVM}"), EVM),
         ];
         for (chain, payload, expected) in cases {
             assert_eq!(
-                scanned_send_address(chain.into(), payload.clone()).as_deref(),
+                scanned_send_address(chain, payload.clone()).as_deref(),
                 Some(normalize_address(chain, expected)).as_deref(),
                 "{chain} did not read {payload}"
             );
@@ -1466,12 +1469,13 @@ mod scanned_payload_tests {
     #[test]
     fn the_address_comes_back_in_the_form_the_store_keeps() {
         assert_eq!(
-            scanned_send_address("ethereum".into(), format!("ethereum:{EVM}")).as_deref(),
+            scanned_send_address(crate::registry::Chain::Ethereum, format!("ethereum:{EVM}"))
+                .as_deref(),
             Some(EVM.to_lowercase().as_str())
         );
         let bare_sui = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
         assert_eq!(
-            scanned_send_address("sui".into(), format!("sui:{bare_sui}")).as_deref(),
+            scanned_send_address(crate::registry::Chain::Sui, format!("sui:{bare_sui}")).as_deref(),
             Some(format!("0x{bare_sui}").as_str())
         );
     }
@@ -1490,16 +1494,11 @@ mod scanned_payload_tests {
             BTC,
         ] {
             assert_eq!(
-                scanned_send_address("ethereum".into(), payload.into()),
+                scanned_send_address(crate::registry::Chain::Ethereum, payload.into()),
                 None,
                 "Ethereum accepted {payload}"
             );
         }
-        assert_eq!(
-            scanned_send_address("Not A Chain".into(), BTC.into()),
-            None,
-            "an unknown chain must judge nothing"
-        );
     }
 
     /// The whole payload is tried first, so a bare address is never split, and
@@ -1524,17 +1523,18 @@ mod scanned_payload_tests {
 #[cfg(test)]
 mod high_risk_warning_shape {
     use super::{HighRiskSendRequest, HighRiskSendWarning, evaluate_high_risk_send_reasons};
+    use crate::registry::Chain;
 
-    fn warnings(chain_id: &str, destination: &str) -> Vec<HighRiskSendWarning> {
+    fn warnings(chain_id: crate::registry::Chain, destination: &str) -> Vec<HighRiskSendWarning> {
         evaluate_high_risk_send_reasons(HighRiskSendRequest {
-            chain_id: chain_id.to_string(),
+            chain_id,
             symbol: "X".to_string(),
-            amount: 1.0,
-            holding_amount: 1000.0,
+            amount: "1".into(),
+            holding_amount: "1000".into(),
             destination_address: destination.to_string(),
             destination_input: destination.to_string(),
             used_ens_resolution: false,
-            wallet_chain_id: chain_id.to_string(),
+            wallet_chain_id: chain_id,
             address_book_entries: vec![],
             tx_addresses: vec![],
         })
@@ -1544,13 +1544,10 @@ mod high_risk_warning_shape {
     /// with it rather than being in its name.
     #[test]
     fn a_foreign_address_is_one_reason_that_names_its_chain() {
-        for chain in ["tron", "solana", "xrp", "monero"] {
+        for chain in [Chain::Tron, Chain::Solana, Chain::Xrp, Chain::Monero] {
             assert!(
-                warnings(chain, "0x1111111111111111111111111111111111111111").contains(
-                    &HighRiskSendWarning::ForeignAddressFormat {
-                        chain: chain.to_string()
-                    }
-                ),
+                warnings(chain, "0x1111111111111111111111111111111111111111")
+                    .contains(&HighRiskSendWarning::ForeignAddressFormat { chain }),
                 "{chain} did not flag an EVM-shaped destination"
             );
         }

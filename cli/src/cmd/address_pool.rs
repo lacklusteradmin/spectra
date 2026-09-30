@@ -37,10 +37,9 @@ pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
         PoolCommand::Show(args) => show(ctx, out, args),
         PoolCommand::DiscoverChain { chain } => {
             let chain = super::resolve_chain(&chain)?;
-            let results = ctx.rt.block_on(
-                ctx.service()?
-                    .discover_chain_addresses(chain.str_id().into()),
-            )?;
+            let results = ctx
+                .rt
+                .block_on(ctx.service()?.discover_chain_addresses(chain))?;
             out.text(|| println!("{results:?}"));
             out.emit(serde_json::json!({"results":results}));
             Ok(())
@@ -58,7 +57,7 @@ pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
 /// so the loop is here and the phrase does not leave the crate.
 fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = super::resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
+    let chain = wallet.chain_id.mainnet_counterpart();
     let service = super::chain::service_for_chain(
         ctx,
         chain,
@@ -74,7 +73,7 @@ fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 
     let addresses = ctx
         .rt
-        .block_on(service.discover_utxo_addresses(wallet.id.clone(), chain.str_id().to_string()))
+        .block_on(service.discover_utxo_addresses(wallet.id.clone(), chain))
         .map_err(crate::error::CliError::from)?;
 
     out.text(|| {
@@ -102,7 +101,7 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     // receive index was handed out as, read from what was recorded then.
     let row = ctx
         .rt
-        .block_on(service.keypool_diagnostics(wallet.chain_id.clone()))
+        .block_on(service.keypool_diagnostics(wallet.chain_id))
         .map_err(crate::error::CliError::from)?
         .into_iter()
         .find(|row| row.wallet_id == wallet.id)
@@ -115,7 +114,7 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
         out::field("wallet", &wallet.name.bold().to_string());
         out::field(
             "chain",
-            &out::tint(&super::chain_name(&wallet.chain_id), &wallet.chain_id).to_string(),
+            &out::tint(&super::chain_name(wallet.chain_id), wallet.chain_id).to_string(),
         );
         out::field("receive", &state.next_external_index.to_string());
         out::field("change", &state.next_change_index.to_string());
@@ -155,11 +154,11 @@ fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
         .block_on(async {
             if change {
                 service
-                    .reserve_change_index(wallet.id.clone(), wallet.chain_id.clone())
+                    .reserve_change_index(wallet.id.clone(), wallet.chain_id)
                     .await
             } else {
                 service
-                    .reserve_receive_index(wallet.id.clone(), wallet.chain_id.clone(), 0)
+                    .reserve_receive_index(wallet.id.clone(), wallet.chain_id, 0)
                     .await
             }
         })
@@ -168,9 +167,9 @@ fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
     let address = if change {
         None
     } else {
-        let chain = super::resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
+        let chain = wallet.chain_id.mainnet_counterpart();
         ctx.rt
-            .block_on(service.receive_address(wallet.id.clone(), chain.str_id().into(), false))
+            .block_on(service.receive_address(wallet.id.clone(), chain, false))
             .map_err(crate::error::CliError::from)?
     };
 

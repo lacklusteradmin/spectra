@@ -57,7 +57,7 @@ pub struct CorePersistedTransactionRecord {
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     /// Exact decimal in the asset's units.
     pub amount: String,
     pub address: String,
@@ -70,7 +70,8 @@ pub struct CorePersistedTransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_gas_used: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub receipt_effective_gas_price_gwei: Option<f64>,
+    /// Exact decimal gwei.
+    pub receipt_effective_gas_price_gwei: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Exact decimal in the gas asset.
     pub receipt_network_fee: Option<String>,
@@ -81,8 +82,6 @@ pub struct CorePersistedTransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Exact decimal in the gas asset.
     pub confirmed_network_fee: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub estimated_fee_rate_per_kb: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub used_change_output: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,7 +136,7 @@ mod tests {
             wallet_name: "Main".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
-            chain_id: "bitcoin".to_string(),
+            chain_id: crate::registry::Chain::Bitcoin,
             amount: "0".into(),
             address: "".to_string(),
             transaction_hash: None,
@@ -149,7 +148,6 @@ mod tests {
             fee_rate_description: None,
             confirmation_count: None,
             confirmed_network_fee: None,
-            estimated_fee_rate_per_kb: None,
             used_change_output: None,
             source_derivation_path: None,
             change_derivation_path: None,
@@ -171,14 +169,14 @@ mod tests {
             status: CoreTransactionStatus::Confirmed,
             asset_display_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
-            chain_id: "ethereum".to_string(),
+            chain_id: crate::registry::Chain::Ethereum,
             amount: "1.25".into(),
             address: "0xrecipient".to_string(),
             transaction_hash: Some("0xhash".to_string()),
             nonce: Some(7),
             receipt_block_number: Some(20_000_000),
             receipt_gas_used: Some("21000".to_string()),
-            receipt_effective_gas_price_gwei: Some(25.5),
+            receipt_effective_gas_price_gwei: Some("25.5".into()),
             receipt_network_fee: Some("0.000535".into()),
             confirmation_count: Some(12),
             used_change_output: Some(true),

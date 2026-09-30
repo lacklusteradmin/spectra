@@ -17,7 +17,7 @@ fn observe(state: &CoreAppState) -> Option<PortfolioMovementBaseline> {
         .filter(|w| w.include_in_portfolio_total)
     {
         for holding in &wallet.holdings {
-            let chain = holding.chain()?;
+            let chain = holding.chain_id;
             if chain.is_testnet() {
                 continue;
             }
@@ -103,7 +103,7 @@ mod tests {
             id: "wallet-a".into(),
             name: "A".into(),
             signing: crate::store::state::WalletSigning::WatchOnly,
-            chain_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
             include_in_portfolio_total: true,
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
@@ -114,7 +114,7 @@ mod tests {
                 id: String::new(),
                 name: "Ethereum".into(),
                 symbol: "ETH".into(),
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
                 coingecko_id: "ethereum".into(),
                 token_standard: "Native".into(),
                 contract_address: None,

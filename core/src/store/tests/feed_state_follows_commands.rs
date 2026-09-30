@@ -38,7 +38,7 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
             wallet: WalletState::single_address(
                 wallet_id.clone(),
                 "Watch",
-                "bitcoin",
+                crate::registry::Chain::Bitcoin,
                 "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
                 None,
                 true,
@@ -46,11 +46,11 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
         })
         .await
         .expect("upsert");
-    service.advance_history_cursor("bitcoin".into(), wallet_id.clone(), None);
-    crate::diagnostics::diagnostics_record("bitcoin".into(), row(&wallet_id));
+    service.advance_history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone(), None);
+    crate::diagnostics::diagnostics_record(crate::registry::Chain::Bitcoin, row(&wallet_id));
     assert!(
         service
-            .history_cursor("bitcoin".into(), wallet_id.clone())
+            .history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone())
             .is_exhausted
     );
 
@@ -63,10 +63,13 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
 
     assert!(
         !service
-            .history_cursor("bitcoin".into(), wallet_id.clone())
+            .history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone())
             .is_exhausted
     );
-    assert!(!crate::diagnostics::diagnostics_all("bitcoin".into()).contains_key(&wallet_id));
+    assert!(
+        !crate::diagnostics::diagnostics_all(crate::registry::Chain::Bitcoin)
+            .contains_key(&wallet_id)
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -76,28 +79,28 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(path.clone()).await.expect("open");
 
-    service.advance_history_cursor("bitcoin".into(), "w".into(), None);
+    service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
     service
         .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: "bitcoin-testnet".into(),
+            chain_id: crate::registry::Chain::BitcoinTestnet,
         })
         .await
         .expect("switch");
     assert!(
         !service
-            .history_cursor("bitcoin".into(), "w".into())
+            .history_cursor(crate::registry::Chain::Bitcoin, "w".into())
             .is_exhausted
     );
 
-    service.advance_history_cursor("bitcoin".into(), "w".into(), None);
+    service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: AppSettingUpdate::AddCustomEndpoint {
                 capabilities: crate::endpoint_capability_options(
-                    "bitcoin".into(),
+                    crate::registry::Chain::Bitcoin,
                     crate::EndpointApi::Esplora,
                 ),
-                chain_id: "bitcoin".into(),
+                chain_id: crate::registry::Chain::Bitcoin,
                 api: "esplora".into(),
                 endpoint: "https://custom.example/api".into(),
             },
@@ -106,12 +109,12 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
         .expect("esplora");
     assert!(
         !service
-            .history_cursor("bitcoin".into(), "w".into())
+            .history_cursor(crate::registry::Chain::Bitcoin, "w".into())
             .is_exhausted
     );
 
     // A change that is not about the feed leaves it where it was.
-    service.advance_history_cursor("bitcoin".into(), "w".into(), None);
+    service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: AppSettingUpdate::UsePriceAlerts { value: false },
@@ -120,7 +123,7 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
         .expect("unrelated");
     assert!(
         service
-            .history_cursor("bitcoin".into(), "w".into())
+            .history_cursor(crate::registry::Chain::Bitcoin, "w".into())
             .is_exhausted
     );
     let _ = std::fs::remove_file(&path);
@@ -155,14 +158,14 @@ async fn a_history_run_records_its_rows_and_the_chains_health() {
     service
         .record_history_run(Chain::Litecoin, &Ok(outcome(0, 1)))
         .await;
-    let rows = crate::diagnostics::diagnostics_all("litecoin".into());
+    let rows = crate::diagnostics::diagnostics_all(crate::registry::Chain::Litecoin);
     assert_eq!(
         rows.get(&wallet_id).map(|row| row.transaction_count),
         Some(3)
     );
     let state = service.diagnostic_state().await;
     assert_eq!(
-        state.degraded.get("litecoin"),
+        state.degraded.get(&crate::registry::Chain::Litecoin),
         Some(&crate::service::ChainDegradation::HistoryRefreshFailed)
     );
 
@@ -170,7 +173,15 @@ async fn a_history_run_records_its_rows_and_the_chains_health() {
         .record_history_run(Chain::Litecoin, &Ok(outcome(1, 0)))
         .await;
     let state = service.diagnostic_state().await;
-    assert!(!state.degraded.contains_key("litecoin"));
-    assert!(state.last_good_unix.contains_key("litecoin"));
+    assert!(
+        !state
+            .degraded
+            .contains_key(&crate::registry::Chain::Litecoin)
+    );
+    assert!(
+        state
+            .last_good_unix
+            .contains_key(&crate::registry::Chain::Litecoin)
+    );
     let _ = std::fs::remove_file(&path);
 }

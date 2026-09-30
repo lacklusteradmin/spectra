@@ -10,7 +10,7 @@ impl WalletService {
     /// functions in the same call. The struct is what crosses now.
     pub(crate) async fn bitcoin_xpub_balance(
         &self,
-        chain_id: &str,
+        chain_id: crate::registry::Chain,
         xpub: String,
         receive_count: u32,
         change_count: u32,
@@ -18,7 +18,7 @@ impl WalletService {
         // The network's endpoints, not Bitcoin's: an xpub on Testnet4 is
         // walked against Testnet4.
         let client = self
-            .utxo_client(chain_for_id(chain_id)?, &[EndpointCapability::Balance])
+            .utxo_client(chain_id, &[EndpointCapability::Balance])
             .await;
         Ok(crate::derivation::xpub_walker::fetch_xpub_balance(
             &client,

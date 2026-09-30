@@ -73,9 +73,7 @@ impl WalletService {
             {
                 return Err("Derivation overrides require a mnemonic wallet".into());
             }
-            for name in &commit.request.selected_chain_ids {
-                let chain =
-                    crate::registry::Chain::from_str_id(name).ok_or("Unknown import chain")?;
+            for &chain in &commit.request.selected_chain_ids {
                 commit.derivation_overrides.validate_for_chain(chain)?;
             }
             // Complete explicit overrides with network-local defaults before
@@ -123,10 +121,7 @@ impl WalletService {
                 if let Some(derived) = derived {
                     resolved_addresses.by_slot = derived
                         .into_iter()
-                        .filter_map(|(chain_id, address)| {
-                            crate::registry::Chain::from_str_id(&chain_id)
-                                .map(|chain| (chain.address_slot().to_string(), address))
-                        })
+                        .map(|(chain, address)| (chain.address_slot().to_string(), address))
                         .collect();
                     // Deriving nothing is a refusal, not an import. A secret the
                     // deriver cannot read — the wrong wordlist, an override that

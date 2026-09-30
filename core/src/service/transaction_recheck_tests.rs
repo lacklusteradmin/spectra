@@ -17,7 +17,7 @@ fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecor
 async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletService>, String) {
     let service = WalletService::new(vec![ChainEndpoints {
         capabilities: crate::EndpointCapability::ALL.to_vec(),
-        chain_id: chain.str_id().into(),
+        chain_id: chain,
         endpoints: vec![server.uri()],
     }])
     .unwrap();
@@ -115,7 +115,7 @@ async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
     assert!(!service.status_trackers.read().await["target"].polling_complete);
     assert_eq!(
         service.pending_maintenance_chains().await.unwrap(),
-        vec!["dogecoin"]
+        vec![crate::registry::Chain::Dogecoin]
     );
     server.verify().await;
 }
@@ -278,7 +278,7 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
         .mount(&server)
         .await;
     let changes = service
-        .poll_pending_transactions("dogecoin".into())
+        .poll_pending_transactions(crate::registry::Chain::Dogecoin)
         .await
         .unwrap();
     assert_eq!(changes.len(), 1);
@@ -296,14 +296,14 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
     );
     assert!(
         service
-            .poll_pending_transactions("dogecoin".into())
+            .poll_pending_transactions(crate::registry::Chain::Dogecoin)
             .await
             .unwrap()
             .is_empty()
     );
     let reopened = WalletService::new(vec![ChainEndpoints {
         capabilities: crate::EndpointCapability::ALL.to_vec(),
-        chain_id: "dogecoin".into(),
+        chain_id: crate::registry::Chain::Dogecoin,
         endpoints: vec![server.uri()],
     }])
     .unwrap();
@@ -318,7 +318,7 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
     );
     assert!(
         reopened
-            .poll_pending_transactions("dogecoin".into())
+            .poll_pending_transactions(crate::registry::Chain::Dogecoin)
             .await
             .unwrap()
             .is_empty()

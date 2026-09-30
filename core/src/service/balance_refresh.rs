@@ -40,7 +40,7 @@ impl WalletService {
                 .find(|w| w.id == wallet_id)
                 .and_then(refresh_entry_for)
                 .ok_or("wallet has no refreshable address")?;
-            let chain = chain_for_id(&entry.chain_id)?;
+            let chain = entry.chain_id;
             let known = state
                 .token_preferences
                 .iter()
@@ -92,14 +92,14 @@ impl WalletService {
         entry: RefreshEntry,
         known: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
     ) -> Result<WalletState, SpectraBridgeError> {
-        let chain = chain_for_id(&entry.chain_id)?;
+        let chain = entry.chain_id;
         let native = self
-            .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
+            .fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())
             .await?;
         let mut holdings = vec![
             AssetHolding {
                 amount: balance_amount(&native.amount_display)?,
-                ..native_coin_template(&entry.chain_id).ok_or("missing native asset")?
+                ..native_coin_template(entry.chain_id).ok_or("missing native asset")?
             }
             .identified(),
         ];
@@ -118,13 +118,13 @@ impl WalletService {
                 .collect::<Result<Vec<_>, SpectraBridgeError>>()?;
             // Failed tokens are omitted by the provider adapter; their prior balances survive.
             let balances = self
-                .fetch_token_balances(entry.chain_id.clone(), entry.address.clone(), descriptors)
+                .fetch_token_balances(entry.chain_id, entry.address.clone(), descriptors)
                 .await?;
             for result in balances {
-                let key = contract_key(chain.str_id(), &result.contract_address);
+                let key = contract_key(chain, &result.contract_address);
                 if let Some(p) = known
                     .iter()
-                    .find(|p| contract_key(chain.str_id(), &p.token.contract) == key)
+                    .find(|p| contract_key(chain, &p.token.contract) == key)
                 {
                     holdings.push(
                         AssetHolding {
@@ -190,8 +190,8 @@ impl WalletService {
 fn balance_amount(raw: &str) -> Result<String, SpectraBridgeError> {
     crate::decimal::canonical(raw).ok_or_else(|| "invalid balance amount".into())
 }
-fn contract_key(chain: &str, contract: &str) -> String {
-    crate::tokens::normalize_token_identifier(Some(contract.into()), chain.into())
+fn contract_key(chain: Chain, contract: &str) -> String {
+    crate::tokens::normalize_token_identifier(Some(contract.into()), chain)
         .unwrap_or_else(|| contract.into())
 }
 fn balance_key(h: &AssetHolding) -> String {
@@ -227,12 +227,12 @@ mod tests {
         let mut w = WalletState::single_address(
             "w",
             "Original",
-            "ethereum",
+            crate::registry::Chain::Ethereum,
             "0x1111111111111111111111111111111111111111",
             None,
             false,
         );
-        let mut coin = native_coin_template("ethereum").unwrap();
+        let mut coin = native_coin_template(crate::registry::Chain::Ethereum).unwrap();
         coin.amount = "4".into();
         w.holdings = vec![coin.clone()];
         service
@@ -272,7 +272,7 @@ mod tests {
 
         service
             .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: "ethereum-sepolia".into(),
+                chain_id: crate::registry::Chain::EthereumSepolia,
             })
             .await
             .unwrap();
@@ -315,13 +315,13 @@ mod lifecycle_tests {
         let db = rusqlite::Connection::open(&path).unwrap();
         db.execute_batch("CREATE TRIGGER reject_cleanup BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'fixture cleanup failure'); END;").unwrap();
         service
-            .reserve_receive_index("w".into(), "ethereum".into(), 0)
+            .reserve_receive_index("w".into(), crate::registry::Chain::Ethereum, 0)
             .await
             .unwrap();
         assert!(
             service
                 .apply_state_command(StateCommand::SelectChainForFamily {
-                    chain_id: "ethereum-sepolia".into()
+                    chain_id: crate::registry::Chain::EthereumSepolia
                 })
                 .await
                 .is_err()
@@ -337,7 +337,7 @@ mod lifecycle_tests {
         db.execute_batch("DROP TRIGGER reject_cleanup;").unwrap();
         service
             .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: "ethereum-sepolia".into(),
+                chain_id: crate::registry::Chain::EthereumSepolia,
             })
             .await
             .unwrap();
@@ -378,7 +378,7 @@ mod lifecycle_tests {
                 wallet: WalletState::single_address(
                     "w",
                     "W",
-                    "ethereum",
+                    crate::registry::Chain::Ethereum,
                     "0x1111111111111111111111111111111111111111",
                     None,
                     false,
@@ -387,7 +387,7 @@ mod lifecycle_tests {
             .await
             .unwrap();
         service
-            .reserve_receive_index("w".into(), "ethereum".into(), 0)
+            .reserve_receive_index("w".into(), crate::registry::Chain::Ethereum, 0)
             .await
             .unwrap();
         service
@@ -463,7 +463,7 @@ mod concurrency_tests {
         });
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: "stellar".into(),
+            chain_id: crate::registry::Chain::Stellar,
             endpoints: vec![endpoint],
         }])
         .unwrap();
@@ -481,7 +481,7 @@ mod concurrency_tests {
                     wallet: WalletState::single_address(
                         format!("w{i}"),
                         "Concurrent",
-                        "stellar",
+                        crate::registry::Chain::Stellar,
                         "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                         None,
                         true,
@@ -495,7 +495,7 @@ mod concurrency_tests {
             requested
                 .refresh_app(
                     AppRefreshIntent::AfterSend {
-                        chain_id: "stellar".into(),
+                        chain_id: crate::registry::Chain::Stellar,
                     },
                     crate::fetch::refresh_policy::DeviceConditions {
                         app_is_active: true,

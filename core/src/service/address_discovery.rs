@@ -13,19 +13,18 @@ impl WalletService {
     /// Select the wallets and their networks from core state for a chain rescan.
     pub async fn discover_chain_addresses(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<Vec<WalletAddressDiscovery>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let chain = chain_for_id(&chain_id)?;
             let wallets: Vec<_> = {
                 let state = this.wallet_state.read().await;
                 state
                     .wallets
                     .iter()
                     .filter_map(|w| {
-                        let network = w.chain()?;
+                        let network = w.chain_id;
                         (network.supports_deep_utxo_discovery()
                             && if chain.is_testnet() {
                                 network == chain
@@ -39,7 +38,7 @@ impl WalletService {
             let mut results = Vec::new();
             for (wallet_id, network) in wallets {
                 let result = this
-                    .discover_utxo_addresses(wallet_id.clone(), network.str_id().into())
+                    .discover_utxo_addresses(wallet_id.clone(), network)
                     .await;
                 results.push(match result {
                     Ok(addresses) => WalletAddressDiscovery {
@@ -63,13 +62,12 @@ impl WalletService {
     pub async fn receive_address(
         &self,
         wallet_id: String,
-        chain_id: String,
+        chain: crate::registry::Chain,
         reserve: bool,
     ) -> Result<Option<String>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let requested = chain_for_id(&chain_id)?;
             let (wallet_id, network, stored, xpub) = {
                 let state = this.wallet_state.read().await;
                 let wallet = state
@@ -79,12 +77,12 @@ impl WalletService {
                     .ok_or_else(|| SpectraBridgeError::InvalidInput {
                         message: "Wallet not found".into(),
                     })?;
-                let own = wallet.chain();
-                let network = if requested.is_testnet() {
-                    requested
+                let network = if chain.is_testnet() {
+                    chain
+                } else if wallet.family() == chain.mainnet_counterpart() {
+                    wallet.chain_id
                 } else {
-                    own.filter(|c| c.mainnet_counterpart() == requested.mainnet_counterpart())
-                        .unwrap_or_else(|| state.settings.selected_chain_for_family(requested))
+                    state.settings.selected_chain_for_family(chain)
                 };
                 (
                     wallet.id.clone(),
@@ -98,7 +96,7 @@ impl WalletService {
                 && let Some(xpub) = xpub.filter(|value| !value.trim().is_empty())
             {
                 use crate::derivation::xpub_walker::{HdNetwork, derive_children_on_network};
-                let id = network.str_id().to_string();
+                let id = network;
                 let hd_network = if network.is_testnet() {
                     HdNetwork::Testnet
                 } else {
@@ -107,10 +105,9 @@ impl WalletService {
                 // Validate before reserving any index.
                 derive_children_on_network(&xpub, 0, 0, 1, hd_network, None)?;
                 let index = if reserve {
-                    this.reserve_receive_index(wallet_id.clone(), id.clone(), 1)
-                        .await?
+                    this.reserve_receive_index(wallet_id.clone(), id, 1).await?
                 } else {
-                    this.keypool_state(wallet_id.clone(), id.clone())
+                    this.keypool_state(wallet_id.clone(), id)
                         .await?
                         .reserved_receive_index
                         .unwrap_or(0)
@@ -136,7 +133,7 @@ impl WalletService {
             }
             if network.supports_deep_utxo_discovery()
                 && let Some(address) = this
-                    .utxo_receive_address(wallet_id.clone(), network.str_id().into(), reserve)
+                    .utxo_receive_address(wallet_id.clone(), network, reserve)
                     .await?
             {
                 return Ok(Some(address));
@@ -144,21 +141,14 @@ impl WalletService {
             let Some(address) = stored.filter(|a| !a.trim().is_empty()) else {
                 return Ok(None);
             };
-            if !crate::send::flow::is_valid_send_address(network.str_id().into(), address.clone()) {
+            if !crate::send::flow::is_valid_send_address(network, address.clone()) {
                 return Err(SpectraBridgeError::InvalidInput {
                     message: "stored receive address is invalid for its network".into(),
                 });
             }
             if reserve {
-                this.register_owned_address(
-                    wallet_id,
-                    network.str_id().into(),
-                    address.clone(),
-                    None,
-                    None,
-                    None,
-                )
-                .await?;
+                this.register_owned_address(wallet_id, network, address.clone(), None, None, None)
+                    .await?;
             }
             Ok(Some(address))
         })
@@ -174,23 +164,19 @@ impl WalletService {
     pub async fn discover_utxo_addresses(
         &self,
         wallet_id: String,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
             const GAP_LIMIT: u32 = 3;
             const MAX_INDEX: u32 = 40;
-
-            let chain = chain_for_id(&chain_id)?;
             if !chain.supports_deep_utxo_discovery() {
                 return Ok(Vec::new());
             }
-            let chain_id = chain.str_id().to_string();
+            let chain = chain;
 
-            let mut ordered = this
-                .known_utxo_addresses(wallet_id.clone(), chain_id.clone())
-                .await?;
+            let mut ordered = this.known_utxo_addresses(wallet_id.clone(), chain).await?;
             let mut seen: std::collections::HashSet<String> =
                 ordered.iter().map(|a| a.to_lowercase()).collect();
 
@@ -201,9 +187,7 @@ impl WalletService {
                 return Ok(ordered);
             };
 
-            let state = this
-                .keypool_state(wallet_id.clone(), chain_id.clone())
-                .await?;
+            let state = this.keypool_state(wallet_id.clone(), chain).await?;
             let reserved = state.reserved_receive_index.unwrap_or(0).max(0) as u32;
             let upper = MAX_INDEX
                 .min((state.next_external_index.max(0) as u32).max(reserved + 1) + GAP_LIMIT);
@@ -223,11 +207,11 @@ impl WalletService {
                 })
                 .buffered(4);
             while let Some((index, address, path, active)) = probes.next().await {
-                push_utxo_address(&chain_id, &address, &mut ordered, &mut seen);
+                push_utxo_address(chain, &address, &mut ordered, &mut seen);
                 if active? {
                     this.register_owned_address(
                         wallet_id.clone(),
-                        chain_id.clone(),
+                        chain,
                         address,
                         Some(path),
                         Some("external".to_string()),
@@ -251,13 +235,11 @@ impl WalletService {
     pub(crate) async fn known_utxo_addresses(
         &self,
         wallet_id: String,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
         if !chain.supports_deep_utxo_discovery() {
             return Ok(Vec::new());
         }
-        let chain_id = chain.str_id().to_string();
         let mut ordered: Vec<String> = Vec::new();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -270,25 +252,25 @@ impl WalletService {
         };
 
         if let Some(address) = wallet.address_on(chain) {
-            push_utxo_address(&chain_id, address, &mut ordered, &mut seen);
+            push_utxo_address(chain, address, &mut ordered, &mut seen);
         }
         for address in self
-            .owned_addresses_for_wallet(wallet_id.clone(), Some(chain_id.clone()))
+            .owned_addresses_for_wallet(wallet_id.clone(), Some(chain))
             .await
         {
-            push_utxo_address(&chain_id, &address, &mut ordered, &mut seen);
+            push_utxo_address(chain, &address, &mut ordered, &mut seen);
         }
         for record in self
             .transactions_for_wallet(wallet_id)
             .await?
             .iter()
-            .filter(|r| r.chain_id == chain_id)
+            .filter(|r| r.chain_id == chain)
         {
             if let Some(address) = &record.source_address {
-                push_utxo_address(&chain_id, address, &mut ordered, &mut seen);
+                push_utxo_address(chain, address, &mut ordered, &mut seen);
             }
             if let Some(address) = &record.change_address {
-                push_utxo_address(&chain_id, address, &mut ordered, &mut seen);
+                push_utxo_address(chain, address, &mut ordered, &mut seen);
             }
         }
         Ok(ordered)
@@ -300,9 +282,8 @@ impl WalletService {
     /// whose address was checked; a stale probe cannot clear a newer reservation.
     pub(crate) async fn advance_used_utxo_reservations(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<(), SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
         if !chain.supports_deep_utxo_discovery() {
             return Ok(());
         }
@@ -312,7 +293,7 @@ impl WalletService {
                 .wallets
                 .iter()
                 .filter_map(|w| {
-                    let network = w.chain()?;
+                    let network = w.chain_id;
                     (if chain.is_testnet() {
                         network == chain
                     } else {
@@ -323,16 +304,16 @@ impl WalletService {
                 .collect()
         };
         for (wallet_id, network) in wallets {
-            let id = network.str_id().to_string();
+            let id = network;
             let Some(used) = self
-                .keypool_state(wallet_id.clone(), id.clone())
+                .keypool_state(wallet_id.clone(), id)
                 .await?
                 .reserved_receive_index
             else {
                 continue;
             };
             let Some(address) = self
-                .receive_address(wallet_id.clone(), network.str_id().into(), false)
+                .receive_address(wallet_id.clone(), network, false)
                 .await?
             else {
                 continue;
@@ -345,8 +326,7 @@ impl WalletService {
                 .await?
                 .is_some()
             {
-                self.receive_address(wallet_id, network.str_id().into(), true)
-                    .await?;
+                self.receive_address(wallet_id, network, true).await?;
             }
         }
         Ok(())
@@ -397,7 +377,7 @@ impl WalletService {
         let raw_path = wallet
             .addresses
             .iter()
-            .find(|a| a.chain_id == chain.str_id())
+            .find(|a| a.chain_id == chain)
             .and_then(|a| a.derivation_path.clone())
             .or_else(|| {
                 imported
@@ -407,8 +387,8 @@ impl WalletService {
                     .cloned()
             })
             .unwrap_or_default();
-        let chain_id = chain.str_id().to_string();
-        let resolved = crate::resolve_derivation_path(chain_id.clone(), raw_path).ok()?;
+        let chain_id = chain;
+        let resolved = crate::resolve_derivation_path(chain_id, raw_path).ok()?;
 
         tokio::task::spawn_blocking(move || {
             UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
@@ -503,15 +483,13 @@ impl UtxoDerivation {
 ///
 /// Validation is the registry's, judged against the chain the wallet is on.
 fn push_utxo_address(
-    chain_id: &str,
+    chain: Chain,
     address: &str,
     ordered: &mut Vec<String>,
     seen: &mut std::collections::HashSet<String>,
 ) {
     let trimmed = address.trim();
-    if trimmed.is_empty()
-        || !crate::send::flow::is_valid_send_address(chain_id.to_string(), trimmed.to_string())
-    {
+    if trimmed.is_empty() || !crate::send::flow::is_valid_send_address(chain, trimmed.to_string()) {
         return;
     }
     if seen.insert(trimmed.to_lowercase()) {
@@ -532,25 +510,23 @@ impl WalletService {
     pub async fn utxo_receive_address(
         &self,
         wallet_id: String,
-        chain_id: String,
+        chain: crate::registry::Chain,
         reserve: bool,
     ) -> Result<Option<String>, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
         if !chain.supports_deep_utxo_discovery() {
             return Ok(None);
         }
-        let chain_id = chain.str_id().to_string();
 
         let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
             return Ok(None);
         };
         let index = if reserve {
             Some(
-                self.reserve_receive_index(wallet_id.clone(), chain_id.clone(), 1)
+                self.reserve_receive_index(wallet_id.clone(), chain, 1)
                     .await?,
             )
         } else {
-            self.keypool_state(wallet_id.clone(), chain_id.clone())
+            self.keypool_state(wallet_id.clone(), chain)
                 .await?
                 .reserved_receive_index
         };
@@ -564,7 +540,7 @@ impl WalletService {
         if reserve {
             self.register_owned_address(
                 wallet_id,
-                chain_id,
+                chain,
                 address.clone(),
                 Some(path),
                 Some("external".to_string()),

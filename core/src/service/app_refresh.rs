@@ -9,9 +9,9 @@ pub enum AppRefreshIntent {
     Foreground,
     BalancesUpdated,
     User,
-    Chain { chain_id: String },
-    AfterSend { chain_id: String },
-    DeepRescan { chain_id: String },
+    Chain { chain_id: crate::registry::Chain },
+    AfterSend { chain_id: crate::registry::Chain },
+    DeepRescan { chain_id: crate::registry::Chain },
 }
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct AppRefreshResult {
@@ -45,7 +45,7 @@ impl WalletService {
         crate::worker::run(async move {
             let this = &this;
             let rescanned = match &intent {
-                AppRefreshIntent::DeepRescan { chain_id } => Some(chain_id.clone()),
+                AppRefreshIntent::DeepRescan { chain_id } => Some(*chain_id),
                 _ => None,
             };
             let diagnostics_before = this.diagnostics_fingerprint().await;
@@ -99,13 +99,17 @@ impl WalletService {
         format!("{newest:?}|{}", health.join(","))
     }
 
-    async fn record_refresh_outcome(&self, result: &AppRefreshResult, rescanned: Option<String>) {
+    async fn record_refresh_outcome(
+        &self,
+        result: &AppRefreshResult,
+        rescanned: Option<crate::registry::Chain>,
+    ) {
         for failure in &result.failures {
             self.record_event(
                 DiagnosticLogLevel::Error,
                 "Refresh",
                 failure.clone(),
-                rescanned.clone(),
+                rescanned,
                 None,
             )
             .await;
@@ -115,7 +119,7 @@ impl WalletService {
                 DiagnosticLogLevel::Error,
                 "Pending Transactions",
                 failure.message.clone(),
-                Some(failure.chain_id.clone()),
+                Some(failure.chain_id),
                 None,
             )
             .await;
@@ -150,7 +154,7 @@ impl WalletService {
         let chain = match &intent {
             AppRefreshIntent::Chain { chain_id }
             | AppRefreshIntent::AfterSend { chain_id }
-            | AppRefreshIntent::DeepRescan { chain_id } => Some(chain_for_id(chain_id)?),
+            | AppRefreshIntent::DeepRescan { chain_id } => Some(*chain_id),
             _ => None,
         };
         let deep_rescan = matches!(intent, AppRefreshIntent::DeepRescan { .. });
@@ -183,8 +187,8 @@ impl WalletService {
             }
         }
         if deep_rescan {
-            let id = chain.unwrap().str_id().to_string();
-            match self.discover_chain_addresses(id.clone()).await {
+            let id = chain.expect("a deep rescan names its chain");
+            match self.discover_chain_addresses(id).await {
                 Ok(rows) => {
                     for row in rows {
                         if let Some(error) = row.error {
@@ -228,11 +232,10 @@ impl WalletService {
             };
             let entries = entries.into_iter().filter(|entry| {
                 chain.is_none_or(|c| {
-                    entry.chain_id == c.str_id()
+                    entry.chain_id == c
                         || (deep_rescan
                             && !c.is_testnet()
-                            && chain_for_id(&entry.chain_id)
-                                .is_ok_and(|network| network.mainnet_counterpart() == c))
+                            && entry.chain_id.mainnet_counterpart() == c)
                 })
             });
             let outcomes = stream::iter(entries)
@@ -354,10 +357,10 @@ mod tests {
             AppRefreshIntent::User,
             AppRefreshIntent::Scheduled,
             AppRefreshIntent::Chain {
-                chain_id: "ethereum".into(),
+                chain_id: crate::registry::Chain::Ethereum,
             },
             AppRefreshIntent::AfterSend {
-                chain_id: "bitcoin".into(),
+                chain_id: crate::registry::Chain::Bitcoin,
             },
         ] {
             let result = service
@@ -372,7 +375,7 @@ mod tests {
         let result = service
             .refresh_app(
                 AppRefreshIntent::DeepRescan {
-                    chain_id: "bitcoin".into(),
+                    chain_id: crate::registry::Chain::Bitcoin,
                 },
                 conditions.clone(),
             )
@@ -384,20 +387,9 @@ mod tests {
             service
                 .refresh_app(
                     AppRefreshIntent::DeepRescan {
-                        chain_id: "ethereum".into()
+                        chain_id: crate::registry::Chain::Ethereum
                     },
                     conditions.clone()
-                )
-                .await
-                .is_err()
-        );
-        assert!(
-            service
-                .refresh_app(
-                    AppRefreshIntent::AfterSend {
-                        chain_id: "missing".into()
-                    },
-                    conditions
                 )
                 .await
                 .is_err()

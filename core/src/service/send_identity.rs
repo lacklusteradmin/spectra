@@ -23,11 +23,10 @@ impl WalletService {
     pub async fn send_identity_address(
         &self,
         wallet_id: String,
-        chain_id: String,
+        chain: crate::registry::Chain,
         password: Option<String>,
     ) -> Result<String, SpectraBridgeError> {
         let password = password.map(Zeroizing::new);
-        let chain = chain_for_id(&chain_id)?;
         Ok(self
             .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
             .await?
@@ -56,8 +55,8 @@ impl WalletService {
         let stored = wallet
             .address_on(chain)
             .ok_or_else(|| invalid("wallet has no address on the requested chain"))?;
-        let id = chain.str_id();
-        if !crate::send::flow::is_valid_send_address(id.into(), stored.into()) {
+        let id = chain;
+        if !crate::send::flow::is_valid_send_address(id, stored.into()) {
             return Err(invalid(
                 "stored sender address is invalid for the requested chain",
             ));
@@ -72,23 +71,20 @@ impl WalletService {
                 let path = wallet
                     .addresses
                     .iter()
-                    .find(|a| {
-                        crate::registry::Chain::from_str_id(&a.chain_id)
-                            .is_some_and(|owner| owner.address_slot() == chain.address_slot())
-                    })
+                    .find(|a| a.chain_id.address_slot() == chain.address_slot())
                     .and_then(|a| a.derivation_path.as_deref())
                     .or_else(|| {
-                        (wallet.chain_id == chain.str_id())
+                        (wallet.chain_id == chain)
                             .then_some(wallet.derivation_path.as_deref())
                             .flatten()
                     })
                     .or_else(|| defaults.path_for(chain))
                     .unwrap_or_default();
-                let path = crate::resolve_derivation_path(id.into(), path.into())?;
+                let path = crate::resolve_derivation_path(id, path.into())?;
                 let overrides = &sensitive_overrides.0;
                 overrides.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);
-                let mut derived = crate::derivation::dispatch::derive_for_chain_id(
+                let mut derived = crate::derivation::dispatch::derive_for_chain(
                     id,
                     &seed,
                     &path,
@@ -120,7 +116,7 @@ impl WalletService {
                         .to_string(),
                 );
                 let derived = crate::derivation::dispatch::derive_from_private_key(
-                    id.into(),
+                    id,
                     key.to_string(),
                     true,
                     true,

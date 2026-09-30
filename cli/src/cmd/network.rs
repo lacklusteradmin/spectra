@@ -85,20 +85,14 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     let chain = Chain::from_str_id(&args.chain_id)
         .ok_or_else(|| CliError::rejected(format!("no chain with id {}", args.chain_id)))?;
     let family = chain.mainnet_counterpart();
-    let transition = ctx.apply(StateCommand::SelectChainForFamily {
-        chain_id: chain.str_id().to_string(),
-    })?;
+    let transition = ctx.apply(StateCommand::SelectChainForFamily { chain_id: chain })?;
     let selected = transition.state.settings.selected_chain_for_family(family);
 
     // A switch invalidates what the family derived on the network it left:
     // reserved keypool indices belong to that network, and so do the addresses
     // discovered under them. The reset is part of the switch, not something a
     // front end remembers to do afterwards.
-    let cleared: Vec<String> = family
-        .network_choices()
-        .iter()
-        .map(|c| c.str_id().to_string())
-        .collect();
+    let cleared: Vec<Chain> = family.network_choices().to_vec();
 
     out.text(|| {
         println!(
@@ -111,7 +105,7 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
             println!(
                 "  {} cleared derivation state for {}",
                 out::ok_mark(),
-                super::chain_name(name)
+                super::chain_name(*name)
             );
         }
     });

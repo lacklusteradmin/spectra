@@ -18,16 +18,8 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
                 UtxoDerivation::new(chain, SEED, format!("m/{purpose}'/0'/2'/1/9")).unwrap();
             for index in [0, 1, 40] {
                 let (address, path) = context.derive(index).unwrap();
-                let expected = crate::derivation::dispatch::derive_for_chain_id(
-                    chain.str_id(),
-                    SEED,
-                    &path,
-                    None,
-                    None,
-                    None,
-                    true,
-                    false,
-                    false,
+                let expected = crate::derivation::dispatch::derive_for_chain(
+                    chain, SEED, &path, None, None, None, true, false, false,
                 )
                 .unwrap()
                 .address
@@ -49,7 +41,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     use crate::store::secret_backends::InMemorySecretStore;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
-        chain_id: "bitcoin".into(),
+        chain_id: crate::registry::Chain::Bitcoin,
         endpoints: vec![endpoint],
     }])
     .unwrap();
@@ -66,7 +58,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
             wallet: WalletState::single_address(
                 "scan",
                 "Scan",
-                "bitcoin",
+                crate::registry::Chain::Bitcoin,
                 "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
                 Some("m/84'/0'/0'/0/0".into()),
                 false,
@@ -112,7 +104,7 @@ async fn discovery_has_four_in_flight_probes_and_returns_index_order() {
     let scan_service = service.clone();
     let scan = tokio::spawn(async move {
         scan_service
-            .discover_utxo_addresses("scan".into(), "bitcoin".into())
+            .discover_utxo_addresses("scan".into(), crate::registry::Chain::Bitcoin)
             .await
     });
     for _ in 0..4 {
@@ -179,7 +171,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
             .await;
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: chain.str_id().into(),
+            chain_id: chain,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -203,7 +195,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
         .await;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
-        chain_id: Chain::BitcoinSV.str_id().into(),
+        chain_id: Chain::BitcoinSV,
         endpoints: vec![server.uri()],
     }])
     .unwrap();
@@ -226,24 +218,24 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         .await;
     let (service, _dir) = scanning_service(server.uri()).await;
     let before = service
-        .reserve_receive_index("scan".into(), "bitcoin".into(), 1)
+        .reserve_receive_index("scan".into(), crate::registry::Chain::Bitcoin, 1)
         .await
         .unwrap();
     assert!(
         service
-            .discover_utxo_addresses("scan".into(), "bitcoin".into())
+            .discover_utxo_addresses("scan".into(), crate::registry::Chain::Bitcoin)
             .await
             .is_err()
     );
     assert!(
         service
-            .advance_used_utxo_reservations("bitcoin".into())
+            .advance_used_utxo_reservations(crate::registry::Chain::Bitcoin)
             .await
             .is_err()
     );
     assert_eq!(
         service
-            .keypool_state("scan".into(), "bitcoin".into())
+            .keypool_state("scan".into(), crate::registry::Chain::Bitcoin)
             .await
             .unwrap()
             .reserved_receive_index,
@@ -270,8 +262,8 @@ fn owned_receive_derivation_uses_the_wallet_passphrase() {
     let context =
         UtxoDerivation::with_overrides(Chain::Bitcoin, SEED, path.clone(), &overrides).unwrap();
     let (address, derived_path) = context.derive(3).unwrap();
-    let expected = crate::derivation::dispatch::derive_for_chain_id(
-        "bitcoin",
+    let expected = crate::derivation::dispatch::derive_for_chain(
+        crate::registry::Chain::Bitcoin,
         SEED,
         &derived_path,
         Some("different wallet"),

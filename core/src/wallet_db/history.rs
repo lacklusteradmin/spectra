@@ -12,7 +12,7 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 pub struct HistoryRecord {
     pub id: String,
     pub wallet_id: Option<String>,
-    pub chain_id: String,
+    pub chain_id: crate::registry::Chain,
     pub tx_hash: Option<String>,
     pub created_at: f64,
     pub payload: crate::store::persistence_models::CorePersistedTransactionRecord,
@@ -45,7 +45,7 @@ pub fn history_record_from_payload(
     HistoryRecord {
         id: payload.id.to_lowercase(),
         wallet_id: payload.wallet_id.as_deref().map(str::to_lowercase),
-        chain_id: payload.chain_id.clone(),
+        chain_id: payload.chain_id,
         tx_hash: payload.transaction_hash.as_deref().map(str::to_lowercase),
         created_at: history_sort_key(&payload),
         payload,
@@ -57,7 +57,7 @@ pub fn history_record_from_payload(
 pub(crate) fn history_keypool_indices(
     database: &WalletDatabase,
     wallet_id: &str,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
 ) -> Result<(Option<i32>, Option<i32>), String> {
     with_conn(database, |conn| {
         let mut maxima = [None, None];
@@ -210,7 +210,7 @@ fn history_upsert_on_conn(
 /// A second refresh (including another connection) sees the first one's result.
 pub(crate) fn history_update_chain<T>(
     database: &WalletDatabase,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
     update: impl FnOnce(Vec<HistoryRecord>) -> Result<(Vec<HistoryRecord>, T), String>,
 ) -> Result<T, String> {
     history_update_chain_checked(database, chain_id, |_, rows| update(rows))
@@ -218,7 +218,7 @@ pub(crate) fn history_update_chain<T>(
 
 pub(crate) fn history_update_chain_checked<T>(
     database: &WalletDatabase,
-    chain_id: &str,
+    chain_id: crate::registry::Chain,
     update: impl FnOnce(
         &rusqlite::Connection,
         Vec<HistoryRecord>,
@@ -279,6 +279,8 @@ fn decode_history_rows(
             row.map_err(|e| format!("{context} row: {e}"))?;
         let payload = serde_json::from_str(&payload_json)
             .map_err(|e| format!("{context} decode payload: {e}"))?;
+        let chain_id =
+            crate::registry::Chain::parse(&chain_id).map_err(|e| format!("{context} row: {e}"))?;
         records.push(HistoryRecord {
             id,
             wallet_id,
@@ -423,7 +425,7 @@ pub(crate) fn history_save_send_progress(
 /// Indexed pending sends for nonce reservation; validate nonces in the owning service.
 pub(crate) fn history_pending_for_sender(
     database: &WalletDatabase,
-    chain: &str,
+    chain: crate::registry::Chain,
     sender: &str,
 ) -> Result<Vec<HistoryRecord>, String> {
     history_fetch_where(

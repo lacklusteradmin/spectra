@@ -3,10 +3,10 @@ use super::*;
 use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn service(chain: &str, server: &MockServer) -> Arc<WalletService> {
+fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
     WalletService::new(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
-        chain_id: chain.into(),
+        chain_id: chain,
         endpoints: vec![server.uri()],
     }])
     .unwrap()
@@ -32,10 +32,10 @@ async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
         .expect(1)
         .mount(&server)
         .await;
-    let svc = service(Chain::BitcoinTestnet4.str_id(), &server);
+    let svc = service(Chain::BitcoinTestnet4, &server);
     let preview = svc
         .fetch_utxo_fee_preview(
-            Chain::BitcoinTestnet4.str_id().into(),
+            Chain::BitcoinTestnet4,
             "sender".into(),
             2,
             "destination".into(),
@@ -44,10 +44,10 @@ async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
         .unwrap()
         .unwrap();
     assert_eq!(preview.selectedInputCount, Some(1), "dust is not spendable");
-    assert_eq!(preview.estimatedNetworkFee, 384.0 / 100_000_000.0);
-    assert_eq!(preview.maxSendable, Some(99616.0 / 100_000_000.0));
+    assert_eq!(preview.estimatedNetworkFee, "0.00000384");
+    assert_eq!(preview.maxSendable.as_deref(), Some("0.00099616"));
     let status = svc
-        .fetch_utxo_tx_status(Chain::BitcoinTestnet4.str_id().into(), "hash".into())
+        .fetch_utxo_tx_status(Chain::BitcoinTestnet4, "hash".into())
         .await
         .unwrap();
     assert!(status.confirmed);
@@ -57,7 +57,7 @@ async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
 #[tokio::test]
 async fn replacement_nonce_is_read_from_the_transaction_and_missing_is_an_error() {
     let server = MockServer::start().await;
-    let svc = service("ethereum", &server);
+    let svc = service(crate::registry::Chain::Ethereum, &server);
     for (result, expected) in [
         (json!({"nonce":"0x2a"}), Some(42)),
         (json!(null), None),
@@ -76,7 +76,7 @@ async fn replacement_nonce_is_read_from_the_transaction_and_missing_is_an_error(
             .mount(&server)
             .await;
         let result = svc
-            .fetch_evm_tx_nonce("ethereum".into(), "hash".into())
+            .fetch_evm_tx_nonce(crate::registry::Chain::Ethereum, "hash".into())
             .await;
         match expected {
             Some(n) => assert_eq!(result.unwrap(), n),
@@ -88,7 +88,7 @@ async fn replacement_nonce_is_read_from_the_transaction_and_missing_is_an_error(
 #[tokio::test]
 async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
     let server = MockServer::start().await;
-    let svc = service("solana", &server);
+    let svc = service(crate::registry::Chain::Solana, &server);
     Mock::given(method("POST"))
         .and(body_partial_json(json!({"method":"getBalance"})))
         .respond_with(
@@ -98,14 +98,15 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         .mount(&server)
         .await;
     let result = svc
-        .fetch_simple_chain_send_preview("solana".into(), "sender".into())
+        .fetch_simple_chain_send_preview(crate::registry::Chain::Solana, "sender".into())
         .await
+        .unwrap()
         .unwrap();
     let crate::send::preview_decode::SimpleChainPreview::Solana { preview } = result else {
         panic!("wrong chain")
     };
-    assert_eq!(preview.estimatedNetworkFee, 0.000005);
-    assert_eq!(preview.maxSendable, 1.999995);
+    assert_eq!(preview.estimatedNetworkFee, "0.000005");
+    assert_eq!(preview.maxSendable, "1.999995");
     server.reset().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(
@@ -114,12 +115,12 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         .mount(&server)
         .await;
     assert!(
-        svc.fetch_simple_chain_send_preview("solana".into(), "sender".into())
+        svc.fetch_simple_chain_send_preview(crate::registry::Chain::Solana, "sender".into())
             .await
             .is_err()
     );
     assert!(
-        svc.fetch_simple_chain_send_preview("ethereum".into(), "sender".into())
+        svc.fetch_simple_chain_send_preview(crate::registry::Chain::Ethereum, "sender".into())
             .await
             .is_err()
     );
@@ -136,14 +137,18 @@ async fn dogecoin_preview_excludes_spent_outputs_and_preserves_requested_amount(
         ]})))
         .mount(&server)
         .await;
-    let preview = service("dogecoin", &server)
-        .fetch_dogecoin_send_preview("sender".into(), 1.0)
+    let preview = service(crate::registry::Chain::Dogecoin, &server)
+        .fetch_dogecoin_send_preview("sender".into(), "1".into())
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(preview.requestedAmountDoge, 1.0);
-    assert!(preview.maxSendableDoge <= 2.0);
-    assert!(preview.maxSendableDoge > 1.0);
+    // 2 DOGE unspent, less the fee: more than the 1 asked for, and it leaves change.
+    assert!(
+        preview.maxSendable.starts_with("1.99"),
+        "{}",
+        preview.maxSendable
+    );
+    assert!(preview.usesChangeOutput);
     assert_eq!(preview.selectedInputCount, 1);
 }
 
@@ -177,20 +182,27 @@ fn private_key_editor_normalizes_only_a_complete_hex_key() {
 #[tokio::test]
 async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input() {
     let server = MockServer::start().await;
-    let svc = service("solana", &server);
+    let svc = service(crate::registry::Chain::Solana, &server);
     let address = "11111111111111111111111111111111";
     let mut wallet = crate::store::state::WalletState::single_address(
-        "watch", "Watch", "solana", address, None, true,
+        "watch",
+        "Watch",
+        crate::registry::Chain::Solana,
+        address,
+        None,
+        true,
     );
     wallet
         .holdings
         .push(crate::store::wallet_domain::AssetHolding {
             name: "Solana".into(),
             symbol: "SOL".into(),
-            chain_id: "solana".into(),
+            chain_id: crate::registry::Chain::Solana,
             token_standard: "Native".into(),
             amount: "2".into(),
-            ..Default::default()
+            id: String::new(),
+            coingecko_id: String::new(),
+            contract_address: None,
         });
     svc.wallet_state.write().await.wallets.push(wallet);
     for (amount, nonce) in [("0.0000000001", None), ("NaN", None), ("1", Some(1))] {
@@ -231,12 +243,12 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
         .unwrap();
     let Some(crate::send::flow::SendPreview::Solana { preview }) = result.map(|quote| {
         assert!(quote.shortcuts.contains_key(&100));
-        assert_eq!(quote.chain_id, "solana");
+        assert_eq!(quote.chain_id, crate::registry::Chain::Solana);
         quote.preview
     }) else {
         panic!("wrong preview")
     };
-    assert_eq!(preview.maxSendable, 1.999995);
+    assert_eq!(preview.maxSendable, "1.999995");
     svc.wallet_state.write().await.wallets[0].addresses.clear();
     let count = server.received_requests().await.unwrap().len();
     assert!(
@@ -275,8 +287,8 @@ async fn one_blockbook_adapter_reads_each_network_and_keeps_bch_address_rules() 
         } else {
             "holder"
         };
-        let balance = service(chain.str_id(), &server)
-            .fetch_native_balance_summary(chain.str_id().into(), address.into())
+        let balance = service(chain, &server)
+            .fetch_native_balance_summary(chain, address.into())
             .await
             .unwrap();
         assert_eq!(balance.smallest_unit, "123456789");
@@ -299,8 +311,8 @@ async fn balance_summary_keeps_sub_micro_native_amounts() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"result":"0x1"})))
         .mount(&server)
         .await;
-    let balance = service("ethereum", &server)
-        .fetch_native_balance_summary("ethereum".into(), "holder".into())
+    let balance = service(crate::registry::Chain::Ethereum, &server)
+        .fetch_native_balance_summary(crate::registry::Chain::Ethereum, "holder".into())
         .await
         .unwrap();
     assert_eq!(balance.amount_display, "0.000000000000000001");
@@ -311,7 +323,10 @@ async fn balance_summary_keeps_sub_micro_native_amounts() {
 #[tokio::test]
 async fn substrate_history_is_an_error_not_an_empty_list() {
     let service = WalletService::new(vec![]).unwrap();
-    for chain in ["polkadot", "bittensor"] {
+    for chain in [
+        crate::registry::Chain::Polkadot,
+        crate::registry::Chain::Bittensor,
+    ] {
         let history = service
             .fetch_history(chain, "address".into())
             .await
@@ -334,9 +349,9 @@ async fn a_polkadot_balance_is_read_from_system_account_storage() {
         })))
         .mount(&server)
         .await;
-    let summary = service("polkadot", &server)
+    let summary = service(crate::registry::Chain::Polkadot, &server)
         .fetch_native_balance_summary(
-            "polkadot".into(),
+            crate::registry::Chain::Polkadot,
             "13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB".into(),
         )
         .await

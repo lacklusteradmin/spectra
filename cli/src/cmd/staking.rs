@@ -41,9 +41,7 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
         StakingCommand::Positions(args) => positions(ctx, out, args),
         StakingCommand::Endpoints(args) => {
             let chain = resolve_chain(&args.chain)?;
-            let config = ctx
-                .rt
-                .block_on(ctx.service()?.staking_endpoints(chain.str_id().into()))?;
+            let config = ctx.rt.block_on(ctx.service()?.staking_endpoints(chain))?;
             out.emit(
                 serde_json::json!({"ok":true,"chain":config.chain_id,"endpoints":config.endpoints}),
             );
@@ -55,9 +53,7 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
 fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let service = ctx.service()?;
-    let validators = ctx
-        .rt
-        .block_on(service.fetch_staking_validators(chain.str_id().to_string()))?;
+    let validators = ctx.rt.block_on(service.fetch_staking_validators(chain))?;
 
     out.text(|| {
         println!();
@@ -68,7 +64,7 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
         for validator in validators.iter().take(args.limit) {
             println!(
                 "  {}  {:<34} {:>7}",
-                out::tint("●", chain.str_id()).bold(),
+                out::tint("●", chain).bold(),
                 validator.display_name,
                 format!("{:.2}%", validator.apy * 100.0).bold(),
             );
@@ -100,7 +96,7 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
 
 fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = resolve_chain(&wallet.chain_id)?.mainnet_counterpart();
+    let chain = wallet.chain_id.mainnet_counterpart();
     let service = ctx.service()?;
     let positions = ctx
         .rt
@@ -115,7 +111,7 @@ fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
         for position in &positions {
             println!(
                 "  {}  {:<30} {}",
-                out::tint("●", &wallet.chain_id).bold(),
+                out::tint("●", wallet.chain_id).bold(),
                 position.validator_display_name,
                 format!("{:?}", position.status).to_lowercase(),
             );

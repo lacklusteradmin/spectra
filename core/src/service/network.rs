@@ -31,36 +31,35 @@ impl WalletService {
     /// A pass never promises broadcast support.
     pub async fn probe_chain_endpoints(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let chain = chain_for_id(&chain_id)?;
             let mut records: Vec<_> = this
                 .endpoint_directory()
                 .await?
                 .into_iter()
-                .filter(|entry| entry.record.chain_id == chain_id)
+                .filter(|entry| entry.record.chain_id == chain)
                 .map(|entry| entry.record)
                 .collect();
 
             if let Some(api) = chain.default_api() {
-                for endpoint in this.configured_endpoint_urls(&chain_id).await.iter() {
+                for endpoint in this.configured_endpoint_urls(chain).await.iter() {
                     if records.iter().any(|r| &r.endpoint == endpoint) {
                         continue;
                     }
                     records.push(crate::AppCoreEndpointRecord {
                         id: format!("configured:{endpoint}"),
                         api,
-                        chain_id: chain_id.clone(),
+                        chain_id: chain,
                         endpoint: endpoint.clone(),
                         capabilities: this
                             .endpoints
                             .read()
                             .await
                             .capabilities
-                            .get(&chain_id)
+                            .get(&chain)
                             .cloned()
                             .unwrap_or_default(),
                     });
@@ -72,7 +71,7 @@ impl WalletService {
                     super::endpoint_health::probe(chain, &record).await;
                 out.push(EndpointProbe {
                     api: record.api,
-                    chain_id: chain_id.clone(),
+                    chain_id: chain,
                     endpoint: record.endpoint,
                     capabilities: record.capabilities.clone(),
                     checked,
@@ -80,7 +79,7 @@ impl WalletService {
                     detail,
                 });
             }
-            crate::diagnostics::diagnostics_record_endpoints(chain_id.clone(), out.clone());
+            crate::diagnostics::diagnostics_record_endpoints(chain, out.clone());
             Ok(out)
         })
         .await
@@ -103,7 +102,10 @@ impl WalletService {
         name: String,
     ) -> Result<Option<String>, SpectraBridgeError> {
         let eps = self
-            .endpoints_for("ethereum", &[EndpointCapability::Verification])
+            .endpoints_for(
+                crate::registry::Chain::Ethereum,
+                &[EndpointCapability::Verification],
+            )
             .await;
         let client = EvmClient::new(eps, 1);
         let address = client.resolve_ens(&name).await?;
@@ -116,14 +118,9 @@ impl WalletService {
     /// caller.
     pub async fn fetch_utxo_tx_status(
         &self,
-        chain_id: String,
+        chain: crate::registry::Chain,
         txid: String,
     ) -> Result<UtxoTxStatus, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
-            ))
-        })?;
         if chain.uses_utxo_client() {
             return Ok(self
                 .utxo_client(chain, &[EndpointCapability::Verification])
@@ -166,12 +163,12 @@ impl WalletService {
     /// caller.
     pub async fn evm_transaction_status(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         tx_hash: String,
     ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
-        let chain = evm_network_for_id(&chain_id)?;
+        let chain = evm_network(chain_id)?;
         let eps = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let receipt = client
@@ -203,12 +200,12 @@ impl WalletService {
     /// Read the live nonce for a core-owned replacement draft.
     pub async fn fetch_evm_tx_nonce(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         tx_hash: String,
     ) -> Result<u64, SpectraBridgeError> {
-        let chain = evm_network_for_id(&chain_id)?;
+        let chain = evm_network(chain_id)?;
         let eps = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
@@ -218,12 +215,12 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn fetch_evm_has_contract_code(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
     ) -> Result<bool, SpectraBridgeError> {
-        let chain = evm_network_for_id(&chain_id)?;
+        let chain = evm_network(chain_id)?;
         let eps = self
-            .endpoints_for(chain.str_id(), &[EndpointCapability::Verification])
+            .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let code = client.fetch_code(&address).await?;
@@ -240,7 +237,7 @@ mod history_page_failures {
         // BSC has no configured keyless history source. This fails offline,
         // before HTTP, and must not masquerade as an empty successful page.
         let result = service
-            .fetch_evm_history_page(Chain::BnbChain.str_id().into(), "from".into(), vec![], 2, 7)
+            .fetch_evm_history_page(Chain::BnbChain, "from".into(), vec![], 2, 7)
             .await;
         assert!(result.unwrap_err().to_string().contains("no explorer"));
     }

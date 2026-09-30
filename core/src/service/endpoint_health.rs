@@ -204,4 +204,5 @@ pub(super) async fn probe(chain: Chain, record: &AppCoreEndpointRecord) -> (bool
 }
 
 #[cfg(test)]
+#[path = "endpoint_health_tests.rs"]
 mod tests;

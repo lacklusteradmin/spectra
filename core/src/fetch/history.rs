@@ -14,8 +14,9 @@ pub struct ChainHistoryEntry {
     pub status: String, // "confirmed" | "pending"
     pub asset_display_name: String,
     pub symbol: String,
-    pub chain_id: String,
-    pub amount: f64,
+    pub chain_id: crate::registry::Chain,
+    /// The magnitude, as an exact decimal; `kind` says which way it went.
+    pub amount: String,
     pub counterparty: String,
     pub tx_hash: String,
     pub block_height: Option<i64>,
@@ -199,6 +200,22 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
 /// A JSON number, or a decimal string holding one. NEAR's yocto amounts and
 /// every EVM `value_wei` overflow an `f64`'s integer range and so arrive as
 /// strings.
+/// An amount's magnitude as an exact decimal. Base units shift exactly; a
+/// decimal string is taken as written; a JSON float is taken at its shortest
+/// spelling, which is all the source ever said.
+fn magnitude(value: &Value, in_base_units: bool, chain: Chain) -> Option<String> {
+    if in_base_units {
+        return exact_units(value)
+            .map(|units| crate::decimal::from_units(units, chain.native_decimals().into()));
+    }
+    match value {
+        Value::String(text) => crate::decimal::canonical(text.trim().trim_start_matches('-')),
+        _ => value
+            .as_f64()
+            .and_then(|n| crate::decimal::from_f64(n.abs())),
+    }
+}
+
 fn json_number(value: &Value) -> Option<f64> {
     value
         .as_f64()
@@ -217,6 +234,13 @@ fn exact_units(value: &Value) -> Option<u128> {
     if let Some(n) = value.as_u64() {
         return Some(n.into());
     }
+    // A whole number that arrived as a JSON float is still a whole number.
+    if let Some(n) = value
+        .as_f64()
+        .filter(|n| n.is_finite() && n.fract() == 0.0 && n.abs() < 2f64.powi(64))
+    {
+        return Some(n.abs() as u128);
+    }
     let text = value.as_str()?;
     let digits = text.strip_prefix('-').unwrap_or(text);
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -228,20 +252,18 @@ fn exact_units(value: &Value) -> Option<u128> {
 /// Convert a raw history JSON string (as returned by `fetch_history`) into
 /// normalized `ChainHistoryEntry` records that Swift can consume without
 /// any chain-specific parsing logic.
-pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHistoryEntry> {
+pub fn normalize_chain_history(
+    chain: crate::registry::Chain,
+    raw_json: &str,
+) -> Vec<ChainHistoryEntry> {
     let Ok(Value::Array(entries)) = serde_json::from_str::<Value>(raw_json) else {
-        return vec![];
-    };
-    let Some(chain) = Chain::from_str_id(chain_id) else {
         return vec![];
     };
     let Some(shape) = history_shape(chain) else {
         return vec![];
     };
 
-    let (asset_display_name, symbol, chain_id) =
-        (chain.coin_name(), chain.coin_symbol(), chain.str_id());
-    let factor = 10f64.powi(chain.native_decimals() as i32);
+    let (asset_display_name, symbol) = (chain.coin_name(), chain.coin_symbol());
 
     entries
         .iter()
@@ -331,19 +353,8 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
                 .to_string(),
                 asset_display_name: entry_asset.to_string(),
                 symbol: entry_symbol.to_string(),
-                chain_id: chain_id.to_string(),
-                amount: if shape.amount_in_base_units {
-                    exact_units(&entry[shape.amount])
-                        .map(|units| {
-                            crate::decimal::to_f64(&crate::decimal::from_units(
-                                units,
-                                chain.native_decimals().into(),
-                            ))
-                        })
-                        .unwrap_or(signed_amount.abs() / factor)
-                } else {
-                    signed_amount.abs()
-                },
+                chain_id: chain,
+                amount: magnitude(&entry[shape.amount], shape.amount_in_base_units, chain)?,
                 counterparty: shape
                     .counterparty
                     .map(|(incoming, outgoing)| {
@@ -368,7 +379,7 @@ mod normalize_chain_history_tests {
     #[test]
     fn spl_history_labels_resolve_by_network_and_case_sensitive_mint() {
         let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-        let normalize = |chain: &str, mint: &str, symbol: &str| {
+        let normalize = |chain: crate::registry::Chain, mint: &str, symbol: &str| {
             normalize_chain_history(
                 chain,
                 &serde_json::json!([{
@@ -381,15 +392,15 @@ mod normalize_chain_history_tests {
             .remove(0)
         };
         for supplied_symbol in [mint, "FAKE"] {
-            let row = normalize("solana", mint, supplied_symbol);
+            let row = normalize(crate::registry::Chain::Solana, mint, supplied_symbol);
             assert_eq!(row.symbol, "USDC");
             assert_eq!(row.asset_display_name, "USD Coin");
             assert_eq!(row.deployment_id, Some(format!("solana:spl:{mint}")));
-            assert_eq!(row.amount, 42.5);
+            assert_eq!(row.amount, "42.5");
         }
         for (chain, identifier) in [
-            ("solana-devnet", mint.to_string()),
-            ("solana", mint.to_lowercase()),
+            (crate::registry::Chain::SolanaDevnet, mint.to_string()),
+            (crate::registry::Chain::Solana, mint.to_lowercase()),
         ] {
             let row = normalize(chain, &identifier, "USDC");
             assert_eq!(row.symbol, identifier);
@@ -402,7 +413,7 @@ mod normalize_chain_history_tests {
     #[test]
     fn a_borrowed_ticker_does_not_borrow_an_identity() {
         let rows = normalize_chain_history(
-            "tron",
+            crate::registry::Chain::Tron,
             r#"[{"txid":"x","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","contract":"TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf","is_incoming":true}]"#,
         );
         assert_eq!(rows.len(), 1);
@@ -422,155 +433,155 @@ mod normalize_chain_history_tests {
     /// serializes, against the row it must normalize to. Field names, units
     /// and timestamp scales all live in `history_shape`, so this is where a
     /// wrong one shows up.
-    const CASES: &[(&str, &str, &str)] = &[
+    const CASES: &[(crate::registry::Chain, &str, &str)] = &[
         (
-            "bitcoin",
+            crate::registry::Chain::Bitcoin,
             r#"[{"txid":"a1","confirmed":true,"block_height":800000,"block_time":1700000000,"net_sats":-12345}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Bitcoin","symbol":"BTC","chain_id":"bitcoin","amount":0.00012345,"counterparty":"","tx_hash":"a1","block_height":800000,"timestamp":1700000000.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Bitcoin","symbol":"BTC","chain_id":"bitcoin","amount":"0.00012345","counterparty":"","tx_hash":"a1","block_height":800000,"timestamp":1700000000.0}]"#,
         ),
         (
-            "bitcoin",
+            crate::registry::Chain::Bitcoin,
             r#"[{"txid":"a2","confirmed":false,"block_height":null,"block_time":1700000001,"net_sats":6789}]"#,
-            r#"[{"kind":"receive","status":"pending","asset_display_name":"Bitcoin","symbol":"BTC","chain_id":"bitcoin","amount":0.00006789,"counterparty":"","tx_hash":"a2","block_height":null,"timestamp":1700000001.0}]"#,
+            r#"[{"kind":"receive","status":"pending","asset_display_name":"Bitcoin","symbol":"BTC","chain_id":"bitcoin","amount":"0.00006789","counterparty":"","tx_hash":"a2","block_height":null,"timestamp":1700000001.0}]"#,
         ),
         (
-            "litecoin",
+            crate::registry::Chain::Litecoin,
             r#"[{"txid":"b1","confirmed":true,"block_height":250000,"block_time":1700000002,"net_sats":-500000}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Litecoin","symbol":"LTC","chain_id":"litecoin","amount":0.005,"counterparty":"","tx_hash":"b1","block_height":250000,"timestamp":1700000002.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Litecoin","symbol":"LTC","chain_id":"litecoin","amount":"0.005","counterparty":"","tx_hash":"b1","block_height":250000,"timestamp":1700000002.0}]"#,
         ),
         (
-            "bitcoin-cash",
+            crate::registry::Chain::BitcoinCash,
             r#"[{"txid":"b2","confirmed":false,"block_height":null,"block_time":1700000003,"net_sats":700000}]"#,
-            r#"[{"kind":"receive","status":"pending","asset_display_name":"Bitcoin Cash","symbol":"BCH","chain_id":"bitcoin-cash","amount":0.007,"counterparty":"","tx_hash":"b2","block_height":null,"timestamp":1700000003.0}]"#,
+            r#"[{"kind":"receive","status":"pending","asset_display_name":"Bitcoin Cash","symbol":"BCH","chain_id":"bitcoin-cash","amount":"0.007","counterparty":"","tx_hash":"b2","block_height":null,"timestamp":1700000003.0}]"#,
         ),
         (
-            "bitcoin-sv",
+            crate::registry::Chain::BitcoinSV,
             r#"[{"txid":"b3","confirmed":true,"block_height":10,"block_time":1700000004,"net_sats":900000}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin SV","symbol":"BSV","chain_id":"bitcoin-sv","amount":0.009,"counterparty":"","tx_hash":"b3","block_height":10,"timestamp":1700000004.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin SV","symbol":"BSV","chain_id":"bitcoin-sv","amount":"0.009","counterparty":"","tx_hash":"b3","block_height":10,"timestamp":1700000004.0}]"#,
         ),
         (
-            "dogecoin",
+            crate::registry::Chain::Dogecoin,
             r#"[{"txid":"c1","confirmed":true,"block_height":5,"block_time":1700000005,"net_sats":-123456789}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Dogecoin","symbol":"DOGE","chain_id":"dogecoin","amount":1.23456789,"counterparty":"","tx_hash":"c1","block_height":5,"timestamp":1700000005.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Dogecoin","symbol":"DOGE","chain_id":"dogecoin","amount":"1.23456789","counterparty":"","tx_hash":"c1","block_height":5,"timestamp":1700000005.0}]"#,
         ),
         (
-            "xrp",
+            crate::registry::Chain::Xrp,
             r#"[{"txid":"d1","timestamp":1700000006,"from":"rFrom","to":"rTo","amount_drops":250000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"XRP","symbol":"XRP","chain_id":"xrp","amount":0.25,"counterparty":"rFrom","tx_hash":"d1","block_height":null,"timestamp":1700000006.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"XRP","symbol":"XRP","chain_id":"xrp","amount":"0.25","counterparty":"rFrom","tx_hash":"d1","block_height":null,"timestamp":1700000006.0}]"#,
         ),
         (
-            "stellar",
+            crate::registry::Chain::Stellar,
             r#"[{"txid":"e1","timestamp":1700000000,"from":"GFrom","to":"GTo","amount_stroops":3000000,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_id":"stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_id":"stellar","amount":"0.3","counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
         ),
         (
-            "stellar",
+            crate::registry::Chain::Stellar,
             r#"[{"txid":"e2","timestamp":1700000008,"from":"GFrom","to":"GTo","amount_stroops":-4000000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_id":"stellar","amount":0.4,"counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_id":"stellar","amount":"0.4","counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
         ),
         (
-            "cardano",
+            crate::registry::Chain::Cardano,
             r#"[{"txid":"f1","block_time":1700000009,"amount_lovelace":-5000000,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Cardano","symbol":"ADA","chain_id":"cardano","amount":5.0,"counterparty":"","tx_hash":"f1","block_height":null,"timestamp":1700000009.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Cardano","symbol":"ADA","chain_id":"cardano","amount":"5","counterparty":"","tx_hash":"f1","block_height":null,"timestamp":1700000009.0}]"#,
         ),
         (
-            "polkadot",
+            crate::registry::Chain::Polkadot,
             r#"[{"txid":"g1","amount_planck":60000000000.0,"timestamp":1700000010,"from":"5From","to":"5To","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Polkadot","symbol":"DOT","chain_id":"polkadot","amount":6.0,"counterparty":"5From","tx_hash":"g1","block_height":null,"timestamp":1700000010.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Polkadot","symbol":"DOT","chain_id":"polkadot","amount":"6","counterparty":"5From","tx_hash":"g1","block_height":null,"timestamp":1700000010.0}]"#,
         ),
         (
-            "solana",
+            crate::registry::Chain::Solana,
             r#"[{"signature":"h1","timestamp":1700000011,"is_incoming":false,"amount_display":"1.25","symbol":"SOL","mint":null,"from":"sFrom","to":"sTo"}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Solana","symbol":"SOL","chain_id":"solana","amount":1.25,"counterparty":"sTo","tx_hash":"h1","block_height":null,"timestamp":1700000011.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Solana","symbol":"SOL","chain_id":"solana","amount":"1.25","counterparty":"sTo","tx_hash":"h1","block_height":null,"timestamp":1700000011.0}]"#,
         ),
         (
-            "solana",
+            crate::registry::Chain::Solana,
             r#"[{"signature":"h2","timestamp":1700000012,"is_incoming":true,"amount_display":"42.5","symbol":"USDC","mint":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","from":"sFrom","to":"sTo"}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"USD Coin","symbol":"USDC","chain_id":"solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"USD Coin","symbol":"USDC","chain_id":"solana","amount":"42.5","counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
         ),
         (
-            "tron",
+            crate::registry::Chain::Tron,
             r#"[{"txid":"i1","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","contract":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tether USD","symbol":"USDT","chain_id":"tron","amount":7.5,"counterparty":"TFrom","tx_hash":"i1","block_height":null,"timestamp":1700000013.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tether USD","symbol":"USDT","chain_id":"tron","amount":"7.5","counterparty":"TFrom","tx_hash":"i1","block_height":null,"timestamp":1700000013.0}]"#,
         ),
         (
-            "tron",
+            crate::registry::Chain::Tron,
             r#"[{"txid":"i2","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"3.5","symbol":"TRX","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_id":"tron","amount":3.5,"counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_id":"tron","amount":"3.5","counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         // The token catalog names a TRC-20, so every token on the chain has a
         // name.
         (
-            "tron",
+            crate::registry::Chain::Tron,
             r#"[{"txid":"i3","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"2.0","symbol":"TUSD","contract":"TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"TrueUSD","symbol":"TUSD","chain_id":"tron","amount":2.0,"counterparty":"TFrom","tx_hash":"i3","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"TrueUSD","symbol":"TUSD","chain_id":"tron","amount":"2","counterparty":"TFrom","tx_hash":"i3","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         // A ticker the catalog does not carry stays the ticker: a row nobody
         // can name is still a row, and inventing a name for it would be worse.
         (
-            "tron",
+            crate::registry::Chain::Tron,
             r#"[{"txid":"i4","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"1.0","symbol":"NOTATOKEN","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_id":"tron","amount":1.0,"counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_id":"tron","amount":"1","counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         (
-            "sui",
+            crate::registry::Chain::Sui,
             r#"[{"digest":"j1","amount_mist":800000000,"timestamp_ms":1700000015000,"is_incoming":true,"from":"suiSender","to":"suiMe"}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Sui","symbol":"SUI","chain_id":"sui","amount":0.8,"counterparty":"suiSender","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Sui","symbol":"SUI","chain_id":"sui","amount":"0.8","counterparty":"suiSender","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
         ),
         (
-            "aptos",
+            crate::registry::Chain::Aptos,
             r#"[{"txid":"k1","amount_octas":900000000.0,"timestamp_us":1700000016000000,"from":"aFrom","to":"aTo","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Aptos","symbol":"APT","chain_id":"aptos","amount":9.0,"counterparty":"aTo","tx_hash":"k1","block_height":null,"timestamp":1700000016.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Aptos","symbol":"APT","chain_id":"aptos","amount":"9","counterparty":"aTo","tx_hash":"k1","block_height":null,"timestamp":1700000016.0}]"#,
         ),
         (
-            "ton",
+            crate::registry::Chain::Ton,
             r#"[{"txid":"l1","amount_nanotons":1000000000.0,"timestamp":1700000017,"from":"tFrom","to":"tTo","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Toncoin","symbol":"TON","chain_id":"ton","amount":1.0,"counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Toncoin","symbol":"TON","chain_id":"ton","amount":"1","counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
         ),
         (
-            "near",
+            crate::registry::Chain::Near,
             r#"[{"txid":"m1","timestamp_ns":1700000018000000000,"from":"nSigner","to":"nReceiver","amount_yocto":"1500000000000000000000000","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"NEAR","symbol":"NEAR","chain_id":"near","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"NEAR","symbol":"NEAR","chain_id":"near","amount":"1.5","counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
         ),
         (
-            "internet-computer",
+            crate::registry::Chain::Icp,
             r#"[{"block_index":42,"amount_e8s":250000000.0,"timestamp_ns":1700000019000000000,"from":"iFrom","to":"iTo","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Internet Computer","symbol":"ICP","chain_id":"internet-computer","amount":2.5,"counterparty":"iFrom","tx_hash":"42","block_height":null,"timestamp":1700000019.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Internet Computer","symbol":"ICP","chain_id":"internet-computer","amount":"2.5","counterparty":"iFrom","tx_hash":"42","block_height":null,"timestamp":1700000019.0}]"#,
         ),
         (
-            "monero",
+            crate::registry::Chain::Monero,
             r#"[{"txid":"o1","amount_piconeros":1250000000000.0,"timestamp":1700000020,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Monero","symbol":"XMR","chain_id":"monero","amount":1.25,"counterparty":"","tx_hash":"o1","block_height":null,"timestamp":1700000020.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Monero","symbol":"XMR","chain_id":"monero","amount":"1.25","counterparty":"","tx_hash":"o1","block_height":null,"timestamp":1700000020.0}]"#,
         ),
         (
-            "ethereum",
+            crate::registry::Chain::Ethereum,
             r#"[{"txid":"p1","is_incoming":true,"status":"confirmed","value_wei":"1500000000000000000","from":"0xFrom","to":"0xTo","block_number":18000000,"timestamp":1700000021}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Ethereum","symbol":"ETH","chain_id":"ethereum","amount":1.5,"counterparty":"0xFrom","tx_hash":"p1","block_height":18000000,"timestamp":1700000021.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Ethereum","symbol":"ETH","chain_id":"ethereum","amount":"1.5","counterparty":"0xFrom","tx_hash":"p1","block_height":18000000,"timestamp":1700000021.0}]"#,
         ),
         (
-            "polygon",
+            crate::registry::Chain::Polygon,
             r#"[{"txid":"p2","is_incoming":false,"status":"confirmed","value_wei":"250000000000000000","from":"0xFrom","to":"0xTo","block_number":49000000,"timestamp":1700000022}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Polygon","symbol":"POL","chain_id":"polygon","amount":0.25,"counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Polygon","symbol":"POL","chain_id":"polygon","amount":"0.25","counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
         ),
         (
-            "kaspa",
+            crate::registry::Chain::Kaspa,
             r#"[{"txid":"k1","block_daa_score":369401244,"timestamp":1772543921441,"amount_sompi":-39800000000,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Kaspa","symbol":"KAS","chain_id":"kaspa","amount":398.0,"counterparty":"","tx_hash":"k1","block_height":null,"timestamp":1772543921.441}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Kaspa","symbol":"KAS","chain_id":"kaspa","amount":"398","counterparty":"","tx_hash":"k1","block_height":null,"timestamp":1772543921.441}]"#,
         ),
         (
-            "decred",
+            crate::registry::Chain::Decred,
             r#"[{"txid":"d1","block_height":900000,"timestamp":1700000025,"amount_atoms":250000000,"fee_atoms":2980,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Decred","symbol":"DCR","chain_id":"decred","amount":2.5,"counterparty":"","tx_hash":"d1","block_height":900000,"timestamp":1700000025.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Decred","symbol":"DCR","chain_id":"decred","amount":"2.5","counterparty":"","tx_hash":"d1","block_height":900000,"timestamp":1700000025.0}]"#,
         ),
         (
-            "bitcoin-testnet",
+            crate::registry::Chain::BitcoinTestnet,
             r#"[{"txid":"q1","confirmed":true,"block_height":2500000,"block_time":1700000023,"net_sats":4242}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin","symbol":"tBTC","chain_id":"bitcoin-testnet","amount":0.00004242,"counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin","symbol":"tBTC","chain_id":"bitcoin-testnet","amount":"0.00004242","counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
         ),
         (
-            "litecoin-testnet",
+            crate::registry::Chain::LitecoinTestnet,
             r#"[{"txid":"q2","confirmed":true,"block_height":9,"block_time":1700000024,"net_sats":31337}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Litecoin","symbol":"tLTC","chain_id":"litecoin-testnet","amount":0.00031337,"counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Litecoin","symbol":"tLTC","chain_id":"litecoin-testnet","amount":"0.00031337","counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
         ),
     ];
 
@@ -578,17 +589,16 @@ mod normalize_chain_history_tests {
     #[test]
     fn base_unit_amounts_convert_exactly() {
         let rows = normalize_chain_history(
-            "near",
+            crate::registry::Chain::Near,
             r#"[{"txid":"n","timestamp_ns":1,"from":"a","to":"b","amount_yocto":"100000000000000000000000","is_incoming":true}]"#,
         );
-        assert_eq!(rows[0].amount, 0.1);
-        assert_eq!(crate::decimal::amount_from_f64(rows[0].amount), "0.1");
+        assert_eq!(rows[0].amount, "0.1");
     }
 
     #[test]
     fn every_chain_shape_normalizes_to_its_expected_row() {
         for (chain, raw, expected) in CASES {
-            let rows = normalize_chain_history(chain, raw);
+            let rows = normalize_chain_history(*chain, raw);
             let mut actual = serde_json::to_value(&rows).unwrap();
             let sources: Vec<Value> = serde_json::from_str(raw).unwrap();
             for (row, source) in actual.as_array_mut().unwrap().iter_mut().zip(&sources) {
@@ -604,8 +614,7 @@ mod normalize_chain_history_tests {
                     .or_else(|| source.get("contract"))
                     .and_then(Value::as_str)
                     .filter(|c| !c.is_empty());
-                let expected =
-                    crate::tokens::deployment_id_for(Chain::from_str_id(chain).unwrap(), contract);
+                let expected = crate::tokens::deployment_id_for(*chain, contract);
                 assert_eq!(identity, serde_json::to_value(expected).unwrap(), "{chain}");
             }
             assert_eq!(
@@ -621,13 +630,34 @@ mod normalize_chain_history_tests {
     #[test]
     fn testnets_normalize_like_their_mainnets() {
         for (testnet, mainnet) in [
-            ("bitcoin-testnet", "bitcoin"),
-            ("bitcoin-testnet-4", "bitcoin"),
-            ("bitcoin-signet", "bitcoin"),
-            ("litecoin-testnet", "litecoin"),
-            ("bitcoin-cash-testnet", "bitcoin-cash"),
-            ("dogecoin-testnet", "dogecoin"),
-            ("ethereum-sepolia", "ethereum"),
+            (
+                crate::registry::Chain::BitcoinTestnet,
+                crate::registry::Chain::Bitcoin,
+            ),
+            (
+                crate::registry::Chain::BitcoinTestnet4,
+                crate::registry::Chain::Bitcoin,
+            ),
+            (
+                crate::registry::Chain::BitcoinSignet,
+                crate::registry::Chain::Bitcoin,
+            ),
+            (
+                crate::registry::Chain::LitecoinTestnet,
+                crate::registry::Chain::Litecoin,
+            ),
+            (
+                crate::registry::Chain::BitcoinCashTestnet,
+                crate::registry::Chain::BitcoinCash,
+            ),
+            (
+                crate::registry::Chain::DogecoinTestnet,
+                crate::registry::Chain::Dogecoin,
+            ),
+            (
+                crate::registry::Chain::EthereumSepolia,
+                crate::registry::Chain::Ethereum,
+            ),
         ] {
             let raw = CASES
                 .iter()
@@ -650,27 +680,31 @@ mod normalize_chain_history_tests {
     #[test]
     fn amounts_are_magnitudes_whatever_sign_the_chain_reports() {
         let negative = r#"[{"txid":"x","amount_planck":-60000000000.0,"timestamp":1,"from":"a","to":"b","is_incoming":true}]"#;
-        let rows = normalize_chain_history("polkadot", negative);
-        assert_eq!(rows[0].amount, 6.0);
+        let rows = normalize_chain_history(crate::registry::Chain::Polkadot, negative);
+        assert_eq!(rows[0].amount, "6");
         assert_eq!(rows[0].kind, "receive");
 
         let unsigned = r#"[{"txid":"y","net_sats":-500,"confirmed":true,"block_time":1}]"#;
-        let rows = normalize_chain_history("bitcoin", unsigned);
-        assert_eq!(rows[0].amount, 0.000005);
+        let rows = normalize_chain_history(crate::registry::Chain::Bitcoin, unsigned);
+        assert_eq!(rows[0].amount, "0.000005");
         assert_eq!(
             rows[0].kind, "send",
             "no is_incoming flag: the sign decides"
         );
     }
 
-    /// An unknown chain, unparsable JSON, or a JSON document that is not an
-    /// array all yield nothing rather than a panic.
+    /// Unparsable JSON, or a JSON document that is not an array, yields
+    /// nothing rather than a panic.
     #[test]
     fn malformed_input_yields_no_rows() {
-        assert!(normalize_chain_history("not-a-chain", "[]").is_empty());
-        assert!(normalize_chain_history("bitcoin", "not json").is_empty());
-        assert!(normalize_chain_history("bitcoin", r#"{"txid":"a"}"#).is_empty());
-        assert!(normalize_chain_history("bitcoin", r#"[{"no_txid":1}]"#).is_empty());
+        assert!(normalize_chain_history(crate::registry::Chain::Bitcoin, "not json").is_empty());
+        assert!(
+            normalize_chain_history(crate::registry::Chain::Bitcoin, r#"{"txid":"a"}"#).is_empty()
+        );
+        assert!(
+            normalize_chain_history(crate::registry::Chain::Bitcoin, r#"[{"no_txid":1}]"#)
+                .is_empty()
+        );
     }
 
     /// Null is a transaction the chain has not dated yet, and normalizes to
@@ -680,7 +714,7 @@ mod normalize_chain_history_tests {
     fn only_null_is_an_unknown_time() {
         let row = |time: &str| {
             normalize_chain_history(
-                "litecoin",
+                crate::registry::Chain::Litecoin,
                 &format!(
                     r#"[{{"txid":"t","net_sats":1,"confirmed":false,"block_height":null{time}}}]"#
                 ),
@@ -704,7 +738,8 @@ mod normalize_chain_history_tests {
 #[serde(rename_all = "camelCase")]
 pub struct CoreBitcoinHistorySnapshot {
     pub txid: String,
-    pub amount_btc: f64,
+    /// The net movement, as an exact decimal in BTC.
+    pub amount_btc: String,
     pub kind: String,
     pub status: String,
     pub counterparty_address: String,

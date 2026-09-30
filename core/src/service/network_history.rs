@@ -8,14 +8,14 @@ impl WalletService {
     /// returning typed records directly across the FFI boundary.
     pub async fn fetch_normalized_history(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
     ) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let raw = this.fetch_history(&chain_id, address).await?;
-            let entries = crate::fetch::history::normalize_chain_history(&chain_id, &raw);
+            let raw = this.fetch_history(chain_id, address).await?;
+            let entries = crate::fetch::history::normalize_chain_history(chain_id, &raw);
             Ok(entries
                 .into_iter()
                 .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
@@ -39,10 +39,9 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn fetch_history(
         &self,
-        chain_id: &str,
+        chain: crate::registry::Chain,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = chain_for_id(chain_id)?;
         if chain.mainnet_counterpart() == Chain::Monero {
             return self.monero_history(chain, &address).await;
         }
@@ -61,7 +60,7 @@ impl WalletService {
     /// skip token transfers entirely.
     pub async fn fetch_evm_history_page(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
         tokens: Vec<TokenDescriptor>,
         page: u32,
@@ -72,7 +71,7 @@ impl WalletService {
         };
 
         // Only EVM chains are supported.
-        let chain = evm_network_for_id(&chain_id)?;
+        let chain = evm_network(chain_id)?;
 
         // History is served by indexers, independently for native and token transfers.
         let client = crate::api::blockscout::BlockscoutClient::new();
@@ -154,7 +153,7 @@ impl WalletService {
                 if dec != entry.decimals {
                     entry.decimals = dec;
                     entry.amount_display =
-                        crate::api::evm_json_rpc::format_evm_decimals(&entry.amount_raw, dec);
+                        crate::decimal::from_unit_digits(&entry.amount_raw, u32::from(dec))?;
                 }
                 if entry.from != addr_lower && entry.to != addr_lower {
                     return None;
@@ -175,20 +174,25 @@ impl WalletService {
             })
             .collect();
 
-        let native_decoded: Vec<EvmNativeTransferItem> = native_entries
+        let native_decoded = native_entries
             .into_iter()
-            .map(|e| EvmNativeTransferItem {
-                status: e.status,
-                // Compared against the lowercased wallet address, as token
-                // transfers already are; an explorer may answer checksummed.
-                from_address: e.from.to_lowercase(),
-                to_address: e.to.to_lowercase(),
-                amount_decimal: crate::fetch::history_decode::decimal_string_from_wei(&e.value_wei),
-                transaction_hash: e.txid,
-                block_number: e.block_number as i64,
-                timestamp: e.timestamp as f64,
+            .map(|e| {
+                // A value that is not an integer is not a transfer of nothing.
+                let amount_decimal = crate::decimal::from_unit_digits(&e.value_wei, 18)
+                    .ok_or_else(|| format!("transfer {}: malformed value", e.txid))?;
+                Ok(EvmNativeTransferItem {
+                    status: e.status,
+                    // Compared against the lowercased wallet address, as token
+                    // transfers already are; an explorer may answer checksummed.
+                    from_address: e.from.to_lowercase(),
+                    to_address: e.to.to_lowercase(),
+                    amount_decimal,
+                    transaction_hash: e.txid,
+                    block_number: e.block_number as i64,
+                    timestamp: e.timestamp as f64,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, SpectraBridgeError>>()?;
 
         Ok(EvmHistoryPageDecoded {
             tokens: tokens_decoded,
@@ -307,10 +311,10 @@ async fn fetch_history(
 impl WalletService {
     pub async fn fetch_history_summary(
         &self,
-        chain_id: String,
+        chain_id: crate::registry::Chain,
         address: String,
     ) -> Result<crate::diagnostics::HistorySummary, SpectraBridgeError> {
-        let raw = self.fetch_history(&chain_id, address).await?;
+        let raw = self.fetch_history(chain_id, address).await?;
         Ok(crate::diagnostics::diagnostics_history_summary(raw))
     }
 }
