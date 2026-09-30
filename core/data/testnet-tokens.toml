@@ -41,7 +41,7 @@ enabled = true
 
 [[tokens]]
 id = "bitcoin-signet"
-symbol = "tBTC"
+symbol = "sBTC"
 name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -670,7 +670,7 @@ enabled = true
 
 [[tokens]]
 id = "usd-coin-testnet"
-symbol = "USDC"
+symbol = "tUSDC"
 name = "USD Coin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -833,7 +833,7 @@ enabled = true
 
 [[tokens]]
 id = "paypal-usd-testnet"
-symbol = "PYUSD"
+symbol = "tPYUSD"
 name = "PayPal USD"
 coingecko_id = ""
 coinpaprika_id = ""

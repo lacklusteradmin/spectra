@@ -2596,3 +2596,46 @@ rendering in a real window.
   transport test, 442 offline CLI checks and 127 iPhone simulator tests. The
   simulator suite includes the exact-amount send rendering check and
   `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+
+## 2026-09-30 — Bitcoin Signet coins display sBTC
+
+- **Before:** Bitcoin Signet's native coin displayed `tBTC`, the same symbol as
+  Bitcoin Testnet and Testnet4, and chain search matched it on `tBTC`.
+- **After:** Signet's native coin displays `sBTC` and chain search matches it on
+  `sBTC`. Testnet and Testnet4 keep `tBTC`; token and deployment IDs are unchanged.
+- **Why:** Signet coins are a separate network's coins; a distinct symbol keeps
+  them from being mistaken for testnet coins in balances and history.
+- **CLI check:** `spectra --json token catalog --chain bitcoin-signet` shows
+  `"symbol":"sBTC"`.
+
+## 2026-09-30 — Testnet stablecoins display tUSDC and tPYUSD
+
+- **Before:** the testnet catalog's `usd-coin-testnet` and `paypal-usd-testnet`
+  displayed `USDC` and `PYUSD`, the same symbols as their mainnet tokens.
+- **After:** they display `tUSDC` and `tPYUSD`, like every other testnet asset's
+  `t` prefix. Token IDs, deployments and contracts are unchanged; the contracts'
+  own `symbol()` still answers `USDC` and `PYUSD`.
+- **Why:** a testnet stablecoin has no value; a symbol matching the mainnet
+  token invites mistaking test balances for real ones.
+- **CLI check:** `spectra --json token catalog --chain ethereum-sepolia` shows
+  `"symbol":"tUSDC"` and `"symbol":"tPYUSD"`.
+
+## 2026-09-30 — Testnets, Solana and Sui transactions link to an explorer
+
+- **Before:** `explorers.toml` listed mainnets only, and not Solana or Sui, so
+  a transaction on any testnet or on those two mainnets had no "Open In"
+  button, and Settings → Explorers listed none of them.
+- **After:** 38 testnets have a row pointing at their own network's explorer
+  (Sepolia at `sepolia.etherscan.io`, Aptos Testnet with `?network=testnet`,
+  Signet at `mempool.space/signet`, Solana Devnet at Solscan with
+  `?cluster=devnet`, Sui Testnet at `suiscan.xyz/testnet`, and so on).
+  Solana links to Solscan and Sui to Suiscan. Kaspa Testnet is the only
+  network left without one: its TN10 explorer did not answer.
+- **Why:** a testnet is a network like any other; a transaction sent there is
+  as worth checking as one on mainnet, and the explorer must be the testnet's,
+  never the mainnet page that would show nothing. Solana and Sui were simply
+  missing.
+- **CLI check:** `spectra --json explorers --chain ethereum-sepolia --tx 0xabc`
+  prints `https://sepolia.etherscan.io/tx/0xabc`;
+  `spectra --json explorers --chain solana-devnet --tx abc` prints
+  `https://solscan.io/tx/abc?cluster=devnet`.

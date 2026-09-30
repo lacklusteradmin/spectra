@@ -387,7 +387,7 @@ address_prefix_hint = ""
 
 [[chains]]
 chain_id = "bitcoin-signet"
-search_keywords = ["Bitcoin Signet", "signet", "tBTC"]
+search_keywords = ["Bitcoin Signet", "signet", "sBTC"]
 category = "bitcoin-family"
 color = "orange"
 artwork_name = "bitcoinsignet"

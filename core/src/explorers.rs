@@ -129,7 +129,13 @@ mod tests {
             None
         );
         assert_eq!(
-            transaction_explorer_link(crate::registry::Chain::EthereumSepolia, "0xabc".into()),
+            transaction_explorer_link(crate::registry::Chain::AptosTestnet, "0xabc".into())
+                .map(|l| l.url)
+                .as_deref(),
+            Some("https://explorer.aptoslabs.com/txn/0xabc?network=testnet")
+        );
+        assert_eq!(
+            transaction_explorer_link(crate::registry::Chain::KaspaTestnet, "abc".into()),
             None
         );
     }

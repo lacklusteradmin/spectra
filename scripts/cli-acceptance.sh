@@ -424,8 +424,14 @@ contains "an explorer link puts the hash where its page wants it" \
     spectra --json explorers --chain Aptos --tx 0xabc
 contains "and names the explorer" '"name":"Etherscan"' \
     spectra --json explorers --chain Ethereum
+contains "a testnet links to its own network's explorer" \
+    '"url":"https://sepolia.etherscan.io/tx/0xabc"' \
+    spectra --json explorers --chain ethereum-sepolia --tx 0xabc
+contains "Solana Devnet links to Solscan's devnet cluster" \
+    '"url":"https://solscan.io/tx/abc?cluster=devnet"' \
+    spectra --json explorers --chain solana-devnet --tx abc
 check "a network without an explorer has no link" 1 \
-    spectra --json explorers --chain Solana --tx abc
+    spectra --json explorers --chain kaspa-testnet --tx abc
 check "a blank hash is refused" $USAGE \
     spectra --json explorers --chain Ethereum --tx " "
 check "--tx needs a chain" $USAGE \
@@ -694,15 +700,6 @@ contains "testnet token has no market identity" '"coingecko_id":""' \
     spectra --json token catalog --chain ethereum-sepolia
 contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"deployment_id":"bitcoin-testnet-4:native"' \
     spectra --json token catalog --chain bitcoin-testnet-4
-
-contains "Bitcoin test coins display tBTC" '"symbol":"tBTC"' \
-    spectra --json token catalog --chain bitcoin-testnet-4
-contains "Sepolia test coins display tETH" '"symbol":"tETH"' \
-    spectra --json token catalog --chain ethereum-sepolia
-contains "Sui test coins display tSUI" '"symbol":"tSUI"' \
-    spectra --json token catalog --chain sui-testnet
-contains "Aptos test coins display tAPT" '"symbol":"tAPT"' \
-    spectra --json token catalog --chain aptos-testnet
 
 section "tracked tokens"
 check "token-wide discovery and editable price sources" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"

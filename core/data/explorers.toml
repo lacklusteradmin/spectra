@@ -31,6 +31,11 @@ name = "Dogechain"
 tx_url = "https://dogechain.info/tx/{hash}"
 
 [[explorers]]
+chain_id = "solana"
+name = "Solscan"
+tx_url = "https://solscan.io/tx/{hash}"
+
+[[explorers]]
 chain_id = "tron"
 name = "TronScan"
 tx_url = "https://tronscan.org/#/transaction/{hash}"
@@ -44,6 +49,11 @@ tx_url = "https://livenet.xrpl.org/transactions/{hash}"
 chain_id = "cardano"
 name = "Cardano Explorer"
 tx_url = "https://cexplorer.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "sui"
+name = "Suiscan"
+tx_url = "https://suiscan.xyz/mainnet/tx/{hash}"
 
 [[explorers]]
 chain_id = "aptos"
@@ -224,3 +234,195 @@ tx_url = "https://www.okx.com/web3/explorer/xlayer/tx/{hash}"
 chain_id = "bittensor"
 name = "Taostats"
 tx_url = "https://taostats.io/extrinsic/{hash}"
+
+# Testnets
+
+[[explorers]]
+chain_id = "bitcoin-testnet"
+name = "Mempool"
+tx_url = "https://mempool.space/testnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-testnet-4"
+name = "Mempool"
+tx_url = "https://mempool.space/testnet4/tx/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-signet"
+name = "Mempool"
+tx_url = "https://mempool.space/signet/tx/{hash}"
+
+[[explorers]]
+chain_id = "litecoin-testnet"
+name = "LitecoinSpace"
+tx_url = "https://litecoinspace.org/testnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-cash-testnet"
+name = "Loping"
+tx_url = "https://tbch.loping.net/tx/{hash}"
+
+[[explorers]]
+chain_id = "bitcoin-sv-testnet"
+name = "WhatsOnChain"
+tx_url = "https://test.whatsonchain.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "dogecoin-testnet"
+name = "Blockexplorer.one"
+tx_url = "https://blockexplorer.one/dogecoin/testnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "zcash-testnet"
+name = "Zcash Explorer"
+tx_url = "https://testnet.zcashexplorer.app/transactions/{hash}"
+
+[[explorers]]
+chain_id = "decred-testnet"
+name = "dcrdata"
+tx_url = "https://testnet.dcrdata.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "dash-testnet"
+name = "Dash Insight"
+tx_url = "https://insight.testnet.networks.dash.org/insight/tx/{hash}"
+
+[[explorers]]
+chain_id = "ethereum-sepolia"
+name = "Etherscan"
+tx_url = "https://sepolia.etherscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "ethereum-hoodi"
+name = "Etherscan"
+tx_url = "https://hoodi.etherscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "arbitrum-sepolia"
+name = "Arbiscan"
+tx_url = "https://sepolia.arbiscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "optimism-sepolia"
+name = "Optimism Etherscan"
+tx_url = "https://sepolia-optimism.etherscan.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "base-sepolia"
+name = "BaseScan"
+tx_url = "https://sepolia.basescan.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "bnb-testnet"
+name = "BscScan"
+tx_url = "https://testnet.bscscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "avalanche-fuji"
+name = "Snowtrace"
+tx_url = "https://testnet.snowtrace.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "polygon-amoy"
+name = "PolygonScan"
+tx_url = "https://amoy.polygonscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "hyperliquid-testnet"
+name = "Hyperliquid Explorer"
+tx_url = "https://app.hyperliquid-testnet.xyz/explorer/tx/{hash}"
+
+[[explorers]]
+chain_id = "linea-sepolia"
+name = "LineaScan"
+tx_url = "https://sepolia.lineascan.build/tx/{hash}"
+
+[[explorers]]
+chain_id = "celo-sepolia"
+name = "Blockscout"
+tx_url = "https://celo-sepolia.blockscout.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "cronos-testnet"
+name = "Cronos Explorer"
+tx_url = "https://explorer.cronos.org/testnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "zksync-era-sepolia"
+name = "zkSync Explorer"
+tx_url = "https://sepolia.explorer.zksync.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "sonic-testnet"
+name = "SonicScan"
+tx_url = "https://testnet.sonicscan.org/tx/{hash}"
+
+[[explorers]]
+chain_id = "ink-sepolia"
+name = "Ink Explorer"
+tx_url = "https://explorer-sepolia.inkonchain.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "x-layer-testnet"
+name = "OKX X Layer Explorer"
+tx_url = "https://www.okx.com/web3/explorer/xlayer-test/tx/{hash}"
+
+[[explorers]]
+chain_id = "ethereum-classic-mordor"
+name = "Blockscout"
+tx_url = "https://etc-mordor.blockscout.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "tron-nile"
+name = "TronScan"
+tx_url = "https://nile.tronscan.org/#/transaction/{hash}"
+
+[[explorers]]
+chain_id = "solana-devnet"
+name = "Solscan"
+tx_url = "https://solscan.io/tx/{hash}?cluster=devnet"
+
+[[explorers]]
+chain_id = "xrp-testnet"
+name = "XRP Explorer"
+tx_url = "https://testnet.xrpl.org/transactions/{hash}"
+
+[[explorers]]
+chain_id = "stellar-testnet"
+name = "Stellar Expert"
+tx_url = "https://stellar.expert/explorer/testnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "cardano-preprod"
+name = "Cardano Explorer"
+tx_url = "https://preprod.cexplorer.io/tx/{hash}"
+
+[[explorers]]
+chain_id = "sui-testnet"
+name = "Suiscan"
+tx_url = "https://suiscan.xyz/testnet/tx/{hash}"
+
+[[explorers]]
+chain_id = "aptos-testnet"
+name = "Aptos Explorer"
+tx_url = "https://explorer.aptoslabs.com/txn/{hash}?network=testnet"
+
+[[explorers]]
+chain_id = "ton-testnet"
+name = "Tonviewer"
+tx_url = "https://testnet.tonviewer.com/{hash}"
+
+[[explorers]]
+chain_id = "near-testnet"
+name = "NearBlocks"
+tx_url = "https://testnet.nearblocks.io/txns/{hash}"
+
+[[explorers]]
+chain_id = "polkadot-westend"
+name = "Subscan"
+tx_url = "https://westend.subscan.io/extrinsic/{hash}"
+
+[[explorers]]
+chain_id = "monero-stagenet"
+name = "Monero Explorer"
+tx_url = "https://stagenet.xmrchain.net/tx/{hash}"

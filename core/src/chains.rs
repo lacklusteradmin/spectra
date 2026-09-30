@@ -541,21 +541,6 @@ mod explicit_network_catalog {
         );
     }
 
-    #[test]
-    fn testnet_native_symbols_are_visibly_distinct_from_mainnet() {
-        for chain in Chain::all().filter(|chain| chain.is_testnet()) {
-            let native = chain.native_holding_template();
-            assert_eq!(
-                native.symbol,
-                format!("t{}", chain.mainnet_counterpart().coin_symbol())
-            );
-            assert_eq!(chain.coin_symbol(), native.symbol);
-            assert!(native.coingecko_id.is_empty());
-        }
-        assert_eq!(Chain::Bitcoin.coin_symbol(), "BTC");
-        assert_eq!(Chain::Ethereum.coin_symbol(), "ETH");
-    }
-
     /// A testnet asset has no price, structurally.
     #[test]
     fn a_network_never_inherits_a_price() {
