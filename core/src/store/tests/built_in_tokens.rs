@@ -28,59 +28,51 @@ fn the_catalog_chain_ids_all_resolve() {
     }
 }
 
-/// A user's choices survive the merge; the build's additions arrive.
+/// The catalog is the catalog: a merge brings every built-in and keeps the
+/// tokens the user added.
 #[tokio::test]
-async fn merging_keeps_what_the_user_chose() {
+async fn merging_keeps_what_the_user_added() {
     let service = WalletService::new(Vec::new()).expect("service");
-    let state = service
-        .apply_state_command(StateCommand::MergeBuiltInTokens)
-        .await
-        .map(|transition| transition.state)
-        .expect("merge");
-    assert!(!state.token_preferences.is_empty());
-
-    // Turn one off, then merge again.
-    let target = state
-        .token_preferences
-        .iter()
-        .find(|e| e.is_built_in && e.is_enabled)
-        .expect("an enabled built-in");
-    let id = target.id().clone();
-    let key = crate::store::state::CoreTokenPreferenceKey {
-        chain_id: target.token.chain_id,
-        contract: target.token.contract.clone(),
-    };
     service
-        .apply_state_command(StateCommand::SetTokenPreferencesEnabled {
-            tokens: vec![key],
-            is_enabled: false,
+        .apply_state_command(StateCommand::AddCustomToken {
+            chain_id: crate::registry::Chain::Base,
+            symbol: "MOON".into(),
+            name: "Moon".into(),
+            contract: format!("0x{}", "42".repeat(20)),
+            coingecko_id: String::new(),
+            coinpaprika_id: String::new(),
+            decimals: 18,
         })
         .await
-        .expect("store");
-
+        .expect("add");
     let after = service
         .apply_state_command(StateCommand::MergeBuiltInTokens)
         .await
         .map(|transition| transition.state)
-        .expect("merge again");
-    let kept = after
-        .token_preferences
-        .iter()
-        .find(|e| e.id() == id)
-        .expect("the entry survived");
+        .expect("merge");
+    let built_ins = crate::store::built_in_token_preferences();
+    assert_eq!(
+        after
+            .token_preferences
+            .iter()
+            .filter(|e| e.is_built_in)
+            .count(),
+        built_ins.len()
+    );
     assert!(
-        !kept.is_enabled,
-        "the merge re-enabled a token the user turned off"
+        after
+            .token_preferences
+            .iter()
+            .any(|e| !e.is_built_in && e.token.symbol == "MOON"),
+        "the merge dropped a token the user added"
     );
 }
 
-/// A built-in row is not the user's to remove, and toggling one deployment
-/// toggles the token on every network it is deployed to.
+/// A built-in row is not the user's to remove.
 #[test]
-fn built_ins_toggle_as_one_token_and_cannot_be_removed() {
+fn a_built_in_cannot_be_removed() {
     use crate::store::state::{
-        CoreAppState, CoreTokenPreferenceKey, StateEvent, TokenPreferenceRejection,
-        reduce_state_in_place,
+        CoreAppState, StateEvent, TokenPreferenceRejection, reduce_state_in_place,
     };
     let mut state = CoreAppState::default();
     reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
@@ -107,27 +99,4 @@ fn built_ins_toggle_as_one_token_and_cannot_be_removed() {
         })
     );
     assert_eq!(state.token_preferences.len(), count);
-
-    reduce_state_in_place(
-        &mut state,
-        StateCommand::SetTokenPreferencesEnabled {
-            tokens: vec![CoreTokenPreferenceKey {
-                chain_id: usdc.chain_id,
-                contract: usdc.contract,
-            }],
-            is_enabled: false,
-        },
-    );
-    assert_eq!(
-        state.token_preferences.len(),
-        count,
-        "untracking is not deleting"
-    );
-    let deployments: Vec<_> = state
-        .token_preferences
-        .iter()
-        .filter(|e| e.token.token_id == usdc.token_id)
-        .collect();
-    assert!(deployments.len() > 2);
-    assert!(deployments.iter().all(|e| !e.is_enabled));
 }

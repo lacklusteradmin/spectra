@@ -75,7 +75,7 @@ impl TronHttpClient {
         }
     }
 
-    async fn read_metadata(&self, contract: &str) -> Result<Trc20Metadata, ApiError> {
+    pub(crate) async fn read_metadata(&self, contract: &str) -> Result<Trc20Metadata, ApiError> {
         match &self.metadata_cache {
             Some((chain, cache)) => {
                 cache
@@ -183,32 +183,6 @@ impl TronHttpClient {
 
         // The result is a 32-byte big-endian integer hex string.
         parse_abi_u128(hex_str)
-    }
-
-    /// Name holdings another source enumerated: each contract's `decimals()`
-    /// and `symbol()` are read concurrently, and one that will not answer is
-    /// reported unnamed rather than dropped.
-    pub async fn name_trc20_holdings(
-        &self,
-        held: Vec<(String, u128)>,
-    ) -> Vec<crate::api::HeldToken> {
-        let metadata = futures::future::join_all(
-            held.iter()
-                .map(|(contract, _)| self.read_metadata(contract)),
-        )
-        .await;
-        held.into_iter()
-            .zip(metadata)
-            .map(|((contract, balance_raw), meta)| {
-                let meta = meta.ok();
-                crate::api::HeldToken {
-                    contract,
-                    balance_raw,
-                    decimals: meta.as_ref().map(|m| m.decimals),
-                    symbol: meta.map(|m| m.symbol),
-                }
-            })
-            .collect()
     }
 
     /// Fetch token symbol + decimals.

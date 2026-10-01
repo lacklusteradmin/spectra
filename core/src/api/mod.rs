@@ -42,21 +42,19 @@ pub mod trongrid_v1;
 pub mod whatsonchain;
 pub mod xrpl_json_rpc;
 
-/// One token holding an address turned out to have, as the chain itself
-/// reports it.
+/// One token holding an address turned out to have, as the service that
+/// enumerated it reports it.
 ///
-/// Discovery asks the chain what an address holds instead of asking a
-/// hand-kept list what to look for, so the contract address is the only field
-/// the chain always supplies. `decimals` and `symbol` are `None` where the
-/// chain reports a holding without them and the lookup that would resolve them
-/// failed — callers fall back to the catalog, and a token nobody vouches for
-/// is still reported, by its contract address, rather than hidden.
+/// Discovery asks what an address holds instead of asking a hand-kept list
+/// what to look for, so the contract address is the only field always
+/// supplied. `decimals` is `None` where the listing does not carry it; the
+/// caller reads it from the contract for the holdings it needs. No symbol is
+/// carried: an on-chain symbol is whatever the deployer wrote.
 #[derive(Debug, Clone)]
 pub struct HeldToken {
     pub contract: String,
     pub balance_raw: u128,
     pub decimals: Option<u8>,
-    pub symbol: Option<String>,
 }
 
 /// Core amounts use u128 and decimal scaling up to 10^38.

@@ -344,13 +344,13 @@ mod capability_tests {
         };
         let balances = selected("ethereum", "token-balance");
         assert!(balances.contains(&"ethereum.rpc.publicnode".into()));
-        for capability in ["history", "token-history"] {
+        // An EVM node answers about a holder you name; the explorer is what
+        // lists transfers and holdings.
+        for capability in ["history", "token-history", "token-discovery"] {
             let rows = selected("ethereum", capability);
             assert!(rows.contains(&"ethereum.explorer.blockscout".into()));
             assert!(!rows.contains(&"ethereum.rpc.publicnode".into()));
         }
-        // The implemented Blockscout adapter reads transfers, not holdings.
-        assert!(selected("ethereum", "token-discovery").is_empty());
         assert!(!balances.contains(&"ethereum.explorer.blockscout".into()));
         // Jetton discovery lives on v3, independently of v2's native history.
         // No TON adapter reads jetton transfers, so nothing claims them.
@@ -367,6 +367,8 @@ mod capability_tests {
         assert!(selected("ton", "history").contains(&"ton.api.v2".into()));
         assert!(selected("solana", "token-discovery").contains(&"solana.rpc.mainnet".into()));
         assert!(selected("near", "token-discovery").is_empty());
+        // An Aptos node cannot list fungible-asset stores.
+        assert!(selected("aptos", "token-discovery").is_empty());
         assert!(selected("near", "token-balance").contains(&"near.rpc.mainnet".into()));
     }
 

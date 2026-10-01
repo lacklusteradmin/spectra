@@ -91,7 +91,6 @@ async fn seed_probe_holding(
         state.token_preferences.push(CoreTokenPreferenceEntry {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
-            is_enabled: true,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
@@ -110,7 +109,6 @@ async fn seed_probe_holding(
                 tags: Vec::new(),
                 color: None,
                 artwork_name: String::new(),
-                enabled: true,
             },
         });
     }
@@ -280,14 +278,20 @@ mod failed_reads {
         Mock::given(any())
             .respond_with(|req: &Request| {
                 let body: serde_json::Value = req.body_json().unwrap();
-                let is_token_read = body["method"] == "eth_call";
-                ResponseTemplate::new(200).set_body_json(if is_token_read {
-                    json!({
-                        "jsonrpc": "2.0", "id": body["id"],
-                        "error": {"code": -32000, "message": "no code at address"},
-                    })
-                } else {
-                    json!({"jsonrpc": "2.0", "id": body["id"], "result": "0x1"})
+                // Token reads arrive batched; each call answers on its own.
+                let answer = |call: &serde_json::Value| {
+                    if call["method"] == "eth_call" {
+                        json!({
+                            "jsonrpc": "2.0", "id": call["id"],
+                            "error": {"code": -32000, "message": "no code at address"},
+                        })
+                    } else {
+                        json!({"jsonrpc": "2.0", "id": call["id"], "result": "0x1"})
+                    }
+                };
+                ResponseTemplate::new(200).set_body_json(match body.as_array() {
+                    Some(batch) => json!(batch.iter().map(answer).collect::<Vec<_>>()),
+                    None => answer(&body),
                 })
             })
             .mount(&server)
@@ -466,8 +470,8 @@ mod a_preview_quotes_the_asset_it_moves {
         }
     }
 
-    /// A node that answers single calls and JSON-RPC batches alike —
-    /// `fetch_erc20_metadata` batches its two reads and `balanceOf` does not.
+    /// A node that answers single calls and JSON-RPC batches alike — token
+    /// reads are batched and the account's own reads are not.
     async fn evm_node() -> MockServer {
         let server = MockServer::start().await;
         Mock::given(any())

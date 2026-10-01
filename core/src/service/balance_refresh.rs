@@ -44,7 +44,7 @@ impl WalletService {
             let known = state
                 .token_preferences
                 .iter()
-                .filter(|p| p.is_enabled && p.hosting_chain() == Some(chain))
+                .filter(|p| p.hosting_chain() == Some(chain))
                 .cloned()
                 .collect::<Vec<_>>();
             (entry, known)
@@ -116,7 +116,7 @@ impl WalletService {
                 .collect::<Result<Vec<_>, SpectraBridgeError>>()?;
             // Failed tokens are omitted by the provider adapter; their prior balances survive.
             let balances = self
-                .fetch_token_balances(entry.chain_id, entry.address.clone(), descriptors)
+                .known_token_balances(entry.chain_id, entry.address.clone(), descriptors)
                 .await?;
             for result in balances {
                 let key = contract_key(chain, &result.contract_address);

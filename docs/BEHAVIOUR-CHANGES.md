@@ -16,6 +16,127 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-01 — Aptos balances are read through view functions
+
+- **Before:** every Aptos balance was read as a resource: APT as
+  `0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>`, a token as
+  `CoinStore<T>` with decimals from `CoinInfo<T>`. Every catalog Aptos token is
+  a fungible asset (AIP-21) named by its metadata object's address, which has
+  neither resource, so every catalog Aptos token read failed and was left out.
+  An account that holds APT only as the migrated fungible asset — every account
+  created since the migration — has no `CoinStore<AptosCoin>` either, so its
+  APT read failed with `resource_not_found` and the wallet's whole refresh
+  counted as an error. Aptos testnet tokens were refused as an unsupported
+  chain.
+- **After:** `AptosClient` reads every balance and decimal count through
+  `POST /view`. An identifier without `::` is a fungible asset's metadata
+  address, read with `0x1::primary_fungible_store::balance` and
+  `0x1::fungible_asset::decimals` (type argument
+  `0x1::fungible_asset::Metadata`); one with `::` is a coin type, read with
+  `0x1::coin::balance<T>` and `0x1::coin::decimals<T>`. APT is read as the
+  coin `0x1::aptos_coin::AptosCoin`. `coin::balance` adds the `CoinStore` and
+  the paired fungible-asset store, so a migrated coin is counted wherever it
+  sits, and an owner with neither reads as zero instead of failing.
+  `aptos-testnet` tokens are read the same way. Aptos still does not claim
+  `token-discovery`: a node cannot list fungible-asset stores.
+- **Why:** the catalog's facts and the reads disagreed. The shape decides
+  rather than the catalog's `standard`, because the network has one standard
+  and a custom token takes it whichever shape it is; the two shapes are
+  exactly the two `aptosTokenType` accepts. Reading a coin through
+  `coin::balance` rather than its `CoinStore` is the same correction for the
+  coin case, and keeps one request shape for every Aptos read.
+- **CLI check:** `spectra wallet watch --chain aptos --address
+  0x0000000000000000000000000000000000000000000000000000000000000001` then
+  `spectra refresh` succeeds and stores APT, USDC and USDT (the account has no
+  `CoinStore<AptosCoin>`). Offline: `cli-portfolio.py`
+  `test_aptos_fungible_asset_refresh` (a loopback node that answers only
+  `/view`) and
+  `aptos_reads_a_fungible_asset_and_a_coin_through_view_functions`.
+- **Verification:** `make lint`, `make test`, `make test-cli`; `make test-ios`
+  not run.
+
+## 2026-10-01 — A wallet's token balances come from one listing where a service can list them
+
+- **Before:** a balance refresh read every enabled token separately. An EVM
+  token was two requests (`balanceOf`, then `decimals`+`symbol`), and tokens
+  were read **one after another**; Sui, Aptos and NEAR were two requests per
+  token, Solana one per mint, TON one listing plus one `decimals` read per
+  token. `discover_token_balances`, which lists holdings in one call, was
+  only used by `spectra token discover`. Two of those reads were broken: TON
+  parsed the indexer's `jetton` field as an object when it is an address
+  string, so every jetton read failed, and Aptos claimed `token-discovery`
+  although its node only lists legacy `CoinStore` coins, not the
+  fungible-asset stores every catalog Aptos token lives in.
+- **After:** a refresh first asks for the list of what the address holds —
+  Solana and Sui nodes, TronGrid, TON Center v3, and now Blockscout/Routescan
+  for EVM chains (`token-discovery` on every `blockscout` endpoint). A known
+  token in the list takes the listed balance and decimals; one missing from
+  it holds zero; a listed token the wallet does not know is ignored. A chain
+  with no such service (EVM chains without an explorer, NEAR, Aptos) or a
+  failed listing falls back to per-token reads, and EVM per-token reads go in
+  JSON-RPC batches of 20 contracts, concurrently. TON matches jetton masters
+  by raw address and takes decimals from the listing's metadata. Aptos no
+  longer claims `token-discovery`. `enumerates_holdings` is gone from
+  `chains.toml`: whether a chain can list holdings is whether its configured
+  endpoints declare `token-discovery`. Under an explicit endpoint override
+  (`spectra refresh --endpoint`), catalog indexers are not consulted, as
+  TronGrid already was not. `spectra token discover` reports only catalog
+  symbols, never an on-chain one.
+- **Why:** with every known token read (see the next entry), per-token reads
+  cost ~108 serial requests per Ethereum wallet refresh. One listing costs one
+  request however many tokens the catalog has, and the per-token path and the
+  listing path were two models of the same question.
+- **CLI check:** `spectra wallet watch --chain ethereum --address 0xd8dA…6045`
+  then `spectra refresh` stores the known tokens the explorer lists (USDC,
+  USDT, DAI, …); the same on `avalanche` goes through Routescan, on `bnb`
+  (no explorer) through batched `eth_call`s, and on `ton` reads USDT for
+  `UQAj-peZGPH-cC25EAv4Q-h8cBXszTmkch6ba6wXC8BM40qt`. `spectra token discover
+  --wallet <aptos wallet>` now says Aptos cannot enumerate holdings.
+  Offline: `a_listing_answers_for_every_known_token`,
+  `a_token_list_reads_both_dialects`, `jetton_wallets`.
+- **Verification:** `make lint`, `make test`, `make test-cli`, `make test-ios`.
+
+## 2026-10-01 — Every known token is read; the Known Tokens switch is gone
+
+- **Before:** each catalog token had an "enabled" flag, true for a handful by
+  default (157 deployments shipped off). The Known Tokens page drew a switch
+  per token; `spectra token track`/`untrack` set it. Balance refresh, token
+  history decoding, send preflight and the transfer builder all skipped a
+  token that was off — so a token the user held but had not switched on was
+  invisible and could not be sent.
+- **After:** no flag. `enabled` is gone from `tokens.toml`,
+  `testnet-tokens.toml`, `TokenDeploymentEntry` and
+  `CoreTokenPreferenceEntry`; `StateCommand::SetTokenPreferencesEnabled`,
+  `CoreTokenPreferenceKey`, `spectra token track`/`untrack` and the switch are
+  removed. Every catalog token and every custom token is read, decoded and
+  sendable. A catalog merge replaces the stored built-ins with the catalog's
+  and keeps custom rows. The Advanced page no longer counts enabled tokens.
+- **Why:** nobody wants a token they hold hidden, and the switch existed only
+  to cap per-token request cost, which the listing in the entry above removes.
+  A flag four paths had to remember to check was a second model of "which
+  tokens does this wallet have".
+- **CLI check:** `spectra --json token list` has no `isEnabled`;
+  `spectra token untrack --chain Ethereum USDC` is a usage error.
+- **Verification:** as above.
+
+## 2026-10-01 — Each wallet-setup page is its own pushed screen
+
+- **Before:** the whole setup flow was one pushed `SetupView` that swapped
+  pages through a `@State` page. To keep "back" a step back rather than a
+  jump out of the flow, it hid the system back button for a custom one, and
+  hiding it also turned off the edge swipe — no setup page could be swiped
+  back from.
+- **After:** each page is pushed onto the navigation stack as its own
+  `SetupView(page:)`. The system back button and the edge swipe step back one
+  page and leave the flow from the first. The custom back button,
+  `SetupFlow.previous(before:)` and the reset on a mode change are gone.
+  Entering backup verification still draws its challenge first.
+- **Why:** the navigation stack already models "pages pushed in order"; a
+  second page model inside one screen had to fake the back button and lost
+  the swipe doing it.
+- **CLI check:** none applies — page navigation is view state. Covered by the
+  iOS build and suite.
+
 ## 2026-10-01 — The import method is chosen before the chains
 
 - **Before:** Add Wallet offered one "Import Wallet". Its chain page listed

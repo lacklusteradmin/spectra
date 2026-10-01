@@ -130,9 +130,8 @@ impl SuiClient {
 
     /// Every coin type the address holds, as the node reports it.
     ///
-    /// `suix_getAllBalances` returns coin types and totals but no decimals, so
-    /// each type's metadata is read concurrently; a type whose metadata is
-    /// missing is reported unnamed rather than dropped.
+    /// `suix_getAllBalances` returns coin types and totals but no decimals; a
+    /// caller reads those for the coin types it needs.
     pub async fn fetch_all_coin_balances(
         &self,
         address: &str,
@@ -157,22 +156,13 @@ impl SuiClient {
             held.push((coin_type.to_string(), raw));
         }
 
-        let metadata = futures::future::join_all(
-            held.iter()
-                .map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
-        )
-        .await;
         Ok(held
             .into_iter()
-            .zip(metadata)
-            .map(
-                |((contract, balance_raw), decimals)| crate::api::HeldToken {
-                    contract,
-                    balance_raw,
-                    decimals,
-                    symbol: None,
-                },
-            )
+            .map(|(contract, balance_raw)| crate::api::HeldToken {
+                contract,
+                balance_raw,
+                decimals: None,
+            })
             .collect())
     }
 

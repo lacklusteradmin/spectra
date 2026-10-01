@@ -475,7 +475,6 @@ pub struct CoreTokenPreferenceEntry {
     pub category: CoreTokenPreferenceCategory,
     /// The catalog ships it; the user cannot edit or delete it.
     pub is_built_in: bool,
-    pub is_enabled: bool,
 }
 
 impl CoreTokenPreferenceEntry {
@@ -562,7 +561,6 @@ mod roundtrip_tests {
         let entry = CoreTokenPreferenceEntry {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
-            is_enabled: true,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
@@ -581,7 +579,6 @@ mod roundtrip_tests {
                 tags: vec!["stablecoin".to_string()],
                 color: Some(crate::chains::CatalogColor::Green),
                 artwork_name: "usdt".to_string(),
-                enabled: true,
             },
         };
         let json = serde_json::to_string(&entry).unwrap();

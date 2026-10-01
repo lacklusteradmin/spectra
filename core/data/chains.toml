@@ -35,7 +35,6 @@ name = "Solana"
 family = "solana"
 environment = "mainnet"
 token_standard = "SPL"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
   { tag = "legacy", path = "m/44'/501'/{account}'" },
@@ -92,7 +91,6 @@ name = "Tron"
 family = "tron"
 environment = "mainnet"
 token_standard = "TRC-20"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/195'/{account}'" },
@@ -166,7 +164,6 @@ name = "Sui"
 family = "sui"
 environment = "mainnet"
 token_standard = "Sui Coin"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
 ]
@@ -177,7 +174,6 @@ name = "Aptos"
 family = "aptos"
 environment = "mainnet"
 token_standard = "AIP-21"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
 ]
@@ -188,7 +184,6 @@ name = "TON"
 family = "ton"
 environment = "mainnet"
 token_standard = "TEP-74"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
 ]
@@ -786,7 +781,6 @@ name = "Tron Nile"
 family = "tron"
 environment = "testnet"
 token_standard = "TRC-20"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/195'/{account}'" },
@@ -799,7 +793,6 @@ name = "Solana Devnet"
 family = "solana"
 environment = "testnet"
 token_standard = "SPL"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
   { tag = "legacy", path = "m/44'/501'/{account}'" },
@@ -843,7 +836,6 @@ name = "Sui Testnet"
 family = "sui"
 environment = "testnet"
 token_standard = "Sui Coin"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
 ]
@@ -854,7 +846,6 @@ name = "Aptos Testnet"
 family = "aptos"
 environment = "testnet"
 token_standard = "AIP-21"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
 ]
@@ -865,7 +856,6 @@ name = "TON Testnet"
 family = "ton"
 environment = "testnet"
 token_standard = "TEP-74"
-enumerates_holdings = true
 derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
 ]

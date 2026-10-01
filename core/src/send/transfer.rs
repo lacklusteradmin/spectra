@@ -38,7 +38,7 @@ impl SendAsset {
         } else {
             preferences
                 .iter()
-                .find(|entry| entry.is_enabled && entry.token.matches_holding(holding))
+                .find(|entry| entry.token.matches_holding(holding))
                 .map_or(SendAssetKind::UntrackedToken, |entry| {
                     SendAssetKind::Token(SendTokenIdentity {
                         contract: entry.token.contract.clone(),
@@ -119,7 +119,6 @@ mod tests {
         CoreTokenPreferenceEntry {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
-            is_enabled: true,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
@@ -138,7 +137,6 @@ mod tests {
                 tags: Vec::new(),
                 color: None,
                 artwork_name: String::new(),
-                enabled: true,
             },
         }
     }

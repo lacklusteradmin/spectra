@@ -2,20 +2,9 @@
 //! reads jetton masters, which v2 cannot.
 
 use crate::api::error::ApiError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::http::{HttpClient, RetryProfile, race};
-
-/// One jetton (token) balance entry returned by the v3 API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TonJettonBalance {
-    /// Jetton master contract address (matches the known-token `contract` field).
-    pub master_address: String,
-    /// Jetton wallet contract address (holder's personal wallet for this token).
-    pub wallet_address: String,
-    /// Raw balance in the token's smallest unit.
-    pub balance_raw: u128,
-}
 
 pub struct ToncenterV3Client {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
@@ -46,43 +35,37 @@ impl ToncenterV3Client {
         .await
     }
 
-    /// Fetch all jetton (token) balances for `address` via the TonCenter v3 API.
-    /// Returns a list of `TonJettonBalance` entries — one per jetton wallet found.
+    /// Every jetton `address` holds: one row per jetton wallet with a
+    /// balance, keyed by its master's raw address (`0:HEX`), with the master's
+    /// decimals when the indexer has its metadata.
+    ///
+    /// The list is paged. A holder with more pages than this reads is refused
+    /// rather than truncated, since a caller reads a jetton missing from the
+    /// list as a zero balance.
     pub async fn fetch_jetton_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<TonJettonBalance>, ApiError> {
-        #[derive(Deserialize)]
-        struct Envelope {
-            jetton_wallets: Option<Vec<JettonEntry>>,
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
+        const PAGE_SIZE: usize = 1000;
+        const MAX_PAGES: usize = 10;
+        let mut held = Vec::new();
+        for page in 0..MAX_PAGES {
+            let offset = page * PAGE_SIZE;
+            let response: serde_json::Value = self
+                .get(&format!(
+                    "/jetton/wallets?owner_address={address}&limit={PAGE_SIZE}&offset={offset}"
+                ))
+                .await?;
+            let (rows, count) = parse_jetton_wallets(&response)?;
+            held.extend(rows);
+            if count < PAGE_SIZE {
+                return Ok(held);
+            }
         }
-        #[derive(Deserialize)]
-        struct JettonEntry {
-            balance: Option<String>,
-            address: Option<String>,
-            jetton: Option<AddressWrapper>,
-        }
-        #[derive(Deserialize)]
-        struct AddressWrapper {
-            address: Option<String>,
-        }
-
-        let path = format!("/jetton/wallets?owner_address={address}&limit=100");
-        let resp: Envelope = self.get(&path).await?;
-        let wallets = resp.jetton_wallets.unwrap_or_default();
-        Ok(wallets
-            .into_iter()
-            .filter_map(|entry| {
-                let master_address = entry.jetton?.address?;
-                let wallet_address = entry.address?;
-                let balance_raw: u128 = entry.balance?.parse().ok()?;
-                Some(TonJettonBalance {
-                    master_address,
-                    wallet_address,
-                    balance_raw,
-                })
-            })
-            .collect())
+        Err(ApiError::Rejected(format!(
+            "holds more than {} jetton wallets; the list cannot be read whole",
+            PAGE_SIZE * MAX_PAGES
+        )))
     }
 
     /// A jetton master's own decimals, from its content. `None` when the
@@ -116,39 +99,74 @@ impl ToncenterV3Client {
             .or_else(|| raw.as_str().and_then(|s| s.parse().ok()))
             .map(|d| d as u8)
     }
+}
 
-    /// Every jetton the address holds, with each jetton master's own decimals.
-    ///
-    /// `/jetton/wallets` enumerates the holdings but carries no content, so
-    /// each master's metadata is read concurrently; a master that will not
-    /// answer is reported unnamed rather than dropped.
-    pub async fn fetch_all_jetton_balances(
-        &self,
-        address: &str,
-    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
-        let wallets: Vec<TonJettonBalance> = self
-            .fetch_jetton_balances(address)
-            .await?
-            .into_iter()
-            .filter(|w| w.balance_raw > 0)
-            .collect();
-
-        let metadata = futures::future::join_all(
-            wallets
-                .iter()
-                .map(|w| self.fetch_jetton_decimals(&w.master_address)),
-        )
-        .await;
-
-        Ok(wallets
-            .into_iter()
-            .zip(metadata)
-            .map(|(w, decimals)| crate::api::HeldToken {
-                contract: w.master_address,
-                balance_raw: w.balance_raw,
-                decimals,
-                symbol: None,
+/// The holdings in one `/jetton/wallets` page, and how many wallets the page
+/// listed. `jetton` is the master's raw address; its decimals ride in the
+/// response's `metadata` when the indexer has read the master.
+fn parse_jetton_wallets(
+    response: &serde_json::Value,
+) -> Result<(Vec<crate::api::HeldToken>, usize), ApiError> {
+    use crate::api::error::OrDecode;
+    let wallets = response
+        .get("jetton_wallets")
+        .and_then(serde_json::Value::as_array)
+        .or_decode("jetton wallets: missing list")?;
+    let decimals = |master: &str| {
+        response
+            .pointer(&format!("/metadata/{master}/token_info"))?
+            .as_array()?
+            .iter()
+            .find(|info| info.get("type").and_then(|t| t.as_str()) == Some("jetton_masters"))?
+            .pointer("/extra/decimals")
+            .and_then(|raw| {
+                // TON metadata carries decimals as a string as often as a
+                // number, and both mean the same count.
+                raw.as_u64().or_else(|| raw.as_str()?.parse().ok())
             })
-            .collect())
+            .and_then(|d| crate::api::checked_token_decimals(u128::from(d)).ok())
+    };
+    let held = wallets
+        .iter()
+        .filter_map(|wallet| {
+            let master = wallet.get("jetton")?.as_str()?;
+            let balance_raw: u128 = wallet.get("balance")?.as_str()?.parse().ok()?;
+            (balance_raw > 0).then(|| crate::api::HeldToken {
+                contract: master.to_string(),
+                balance_raw,
+                decimals: decimals(master),
+            })
+        })
+        .collect();
+    Ok((held, wallets.len()))
+}
+
+#[cfg(test)]
+mod jetton_wallets {
+    use super::parse_jetton_wallets;
+    use serde_json::json;
+
+    /// The shape `toncenter.com/api/v3/jetton/wallets` returns: `jetton` is a
+    /// raw address string, and decimals live under `metadata`.
+    #[test]
+    fn a_page_names_each_master_and_its_decimals() {
+        let usdt = "0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE";
+        let other = "0:52E0FE119C45BE79C25E2E7EDA3F7C6E90167036D5B390A2290C986C774A2EE1";
+        let (held, count) = parse_jetton_wallets(&json!({
+            "jetton_wallets": [
+                {"address": "0:2626", "balance": "879187990649145", "jetton": usdt},
+                {"address": "0:07FE", "balance": "500000000000", "jetton": other},
+                {"address": "0:0000", "balance": "0", "jetton": other}
+            ],
+            "metadata": {
+                usdt: {"token_info": [{"type": "jetton_masters", "extra": {"decimals": "6"}}]}
+            }
+        }))
+        .expect("a page");
+        assert_eq!(count, 3, "the page size counts every wallet listed");
+        assert_eq!(held.len(), 2, "an empty jetton wallet is not a holding");
+        assert_eq!(held[0].contract, usdt);
+        assert_eq!(held[0].decimals, Some(6));
+        assert_eq!(held[1].decimals, None, "no metadata, no decimals");
     }
 }

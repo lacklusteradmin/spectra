@@ -257,7 +257,7 @@ pub fn endpoint_capability_options(
             TokenHistory,
             Staking,
         ],
-        SuiJsonRpc | AptosRest => &[
+        SuiJsonRpc => &[
             Balance,
             History,
             Fee,
@@ -265,6 +265,17 @@ pub fn endpoint_capability_options(
             Verification,
             TokenBalance,
             TokenDiscovery,
+            Staking,
+        ],
+        // An Aptos node lists the legacy coins an account stores, but not its
+        // fungible-asset stores, which hold the tokens that matter now.
+        AptosRest => &[
+            Balance,
+            History,
+            Fee,
+            Broadcast,
+            Verification,
+            TokenBalance,
             Staking,
         ],
         NearJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
@@ -276,7 +287,7 @@ pub fn endpoint_capability_options(
         }
         KaspaRest => &[Balance, History, Utxo, Fee, Broadcast, Verification],
         BchRestV2 => &[Balance, History, Utxo, Broadcast, Verification],
-        Blockscout => &[History, TokenHistory],
+        Blockscout => &[History, TokenHistory, TokenDiscovery],
         ToncenterV2 => &[Balance, History, Fee, Broadcast, Verification, TokenBalance],
         ToncenterV3 => &[TokenBalance, TokenDiscovery],
         Koios => &[Balance, History, Utxo, Fee, Broadcast, Verification],

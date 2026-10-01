@@ -150,11 +150,21 @@ impl EvmClient {
 
     /// Send a JSON-RPC 2.0 batch request. Returns one result per request in
     /// the same order as `requests` regardless of how the server orders the
-    /// batch response.
+    /// batch response; any failed request fails the batch.
     pub(crate) async fn call_batch(
         &self,
         requests: Vec<(&str, Value)>,
     ) -> Result<Vec<Value>, ApiError> {
+        self.call_batch_each(requests).await?.into_iter().collect()
+    }
+
+    /// A JSON-RPC 2.0 batch whose requests answer independently: the outer
+    /// error is the batch's (transport, shape), the inner ones each request's
+    /// own (a revert, an RPC error object).
+    pub(crate) async fn call_batch_each(
+        &self,
+        requests: Vec<(&str, Value)>,
+    ) -> Result<Vec<Result<Value, ApiError>>, ApiError> {
         let n = requests.len();
         if n == 0 {
             return Ok(vec![]);
@@ -199,7 +209,7 @@ impl EvmClient {
                         indexed.len()
                     )));
                 }
-                indexed
+                Ok(indexed
                     .into_iter()
                     .map(|(_, v)| {
                         if let Some(err) = v.get("error") {
@@ -209,7 +219,7 @@ impl EvmClient {
                             .cloned()
                             .or_decode("batch: missing result field")
                     })
-                    .collect()
+                    .collect())
             }
         })
         .await
@@ -343,6 +353,69 @@ impl EvmClient {
             decimals: metadata.decimals,
             symbol: metadata.symbol,
         })
+    }
+
+    /// `balanceOf(holder)` and `decimals()` for each contract, in input order.
+    ///
+    /// Every read rides in a JSON-RPC batch, a few contracts per request so a
+    /// node's batch limit is not the wallet's token limit, and the requests
+    /// run together. Each contract's answer is its own: one that reverts
+    /// (a self-destructed token) does not take the others with it.
+    pub async fn fetch_erc20_balances(
+        &self,
+        holder: &str,
+        contracts: &[String],
+    ) -> Vec<Result<(u128, u8), ApiError>> {
+        /// Contracts per batch: two calls each, well inside the batch limit
+        /// public nodes enforce.
+        const CONTRACTS_PER_BATCH: usize = 20;
+        let balance_of = match encode_erc20_balance_of(holder) {
+            Ok(data) => format!("0x{}", hex::encode(data)),
+            Err(error) => return contracts.iter().map(|_| Err(error.clone())).collect(),
+        };
+        let decimals = format!("0x{}", hex::encode(SEL_DECIMALS));
+        let batches = contracts.chunks(CONTRACTS_PER_BATCH).map(|chunk| {
+            let requests = chunk
+                .iter()
+                .flat_map(|contract| {
+                    [
+                        (
+                            "eth_call",
+                            json!([{"to": contract, "data": balance_of}, "latest"]),
+                        ),
+                        (
+                            "eth_call",
+                            json!([{"to": contract, "data": decimals}, "latest"]),
+                        ),
+                    ]
+                })
+                .collect();
+            async move {
+                match self.call_batch_each(requests).await {
+                    Ok(answers) => answers
+                        .chunks(2)
+                        .map(|pair| {
+                            let word = |answer: &Result<Value, ApiError>| {
+                                answer.clone().and_then(|value| {
+                                    parse_hex_u128(
+                                        value.as_str().or_decode("eth_call: expected string")?,
+                                    )
+                                })
+                            };
+                            let raw = word(&pair[0])?;
+                            let decimals = crate::api::checked_token_decimals(word(&pair[1])?)?;
+                            Ok((raw, decimals))
+                        })
+                        .collect::<Vec<_>>(),
+                    Err(error) => chunk.iter().map(|_| Err(error.clone())).collect(),
+                }
+            }
+        });
+        futures::future::join_all(batches)
+            .await
+            .into_iter()
+            .flatten()
+            .collect()
     }
 
     /// Raw `balanceOf` call — cheapest way to refresh a known-token balance.

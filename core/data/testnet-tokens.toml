@@ -20,7 +20,6 @@ token_id = "bitcoin-testnet"
 chain_id = "bitcoin-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "bitcoin-testnet-4"
@@ -37,7 +36,6 @@ token_id = "bitcoin-testnet-4"
 chain_id = "bitcoin-testnet-4"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "bitcoin-signet"
@@ -54,7 +52,6 @@ token_id = "bitcoin-signet"
 chain_id = "bitcoin-signet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "litecoin-testnet"
@@ -71,7 +68,6 @@ token_id = "litecoin-testnet"
 chain_id = "litecoin-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "bitcoin-cash-testnet"
@@ -88,7 +84,6 @@ token_id = "bitcoin-cash-testnet"
 chain_id = "bitcoin-cash-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "bitcoin-sv-testnet"
@@ -105,7 +100,6 @@ token_id = "bitcoin-sv-testnet"
 chain_id = "bitcoin-sv-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "dogecoin-testnet"
@@ -122,7 +116,6 @@ token_id = "dogecoin-testnet"
 chain_id = "dogecoin-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "zcash-testnet"
@@ -139,7 +132,6 @@ token_id = "zcash-testnet"
 chain_id = "zcash-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "decred-testnet"
@@ -156,7 +148,6 @@ token_id = "decred-testnet"
 chain_id = "decred-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "kaspa-testnet"
@@ -173,7 +164,6 @@ token_id = "kaspa-testnet"
 chain_id = "kaspa-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "dash-testnet"
@@ -190,7 +180,6 @@ token_id = "dash-testnet"
 chain_id = "dash-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "ethereum-sepolia"
@@ -207,7 +196,6 @@ token_id = "ethereum-sepolia"
 chain_id = "ethereum-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "ethereum-hoodi"
@@ -224,7 +212,6 @@ token_id = "ethereum-hoodi"
 chain_id = "ethereum-hoodi"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "arbitrum-sepolia"
@@ -241,7 +228,6 @@ token_id = "arbitrum-sepolia"
 chain_id = "arbitrum-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "optimism-sepolia"
@@ -258,7 +244,6 @@ token_id = "optimism-sepolia"
 chain_id = "optimism-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "base-sepolia"
@@ -275,7 +260,6 @@ token_id = "base-sepolia"
 chain_id = "base-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "bnb-testnet"
@@ -292,7 +276,6 @@ token_id = "bnb-testnet"
 chain_id = "bnb-testnet"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "avalanche-fuji"
@@ -309,7 +292,6 @@ token_id = "avalanche-fuji"
 chain_id = "avalanche-fuji"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "polygon-amoy"
@@ -326,7 +308,6 @@ token_id = "polygon-amoy"
 chain_id = "polygon-amoy"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "hyperliquid-testnet"
@@ -343,7 +324,6 @@ token_id = "hyperliquid-testnet"
 chain_id = "hyperliquid-testnet"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "linea-sepolia"
@@ -360,7 +340,6 @@ token_id = "linea-sepolia"
 chain_id = "linea-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "celo-sepolia"
@@ -377,7 +356,6 @@ token_id = "celo-sepolia"
 chain_id = "celo-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "cronos-testnet"
@@ -394,7 +372,6 @@ token_id = "cronos-testnet"
 chain_id = "cronos-testnet"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "zksync-era-sepolia"
@@ -411,7 +388,6 @@ token_id = "zksync-era-sepolia"
 chain_id = "zksync-era-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "sonic-testnet"
@@ -428,7 +404,6 @@ token_id = "sonic-testnet"
 chain_id = "sonic-testnet"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "ink-sepolia"
@@ -445,7 +420,6 @@ token_id = "ink-sepolia"
 chain_id = "ink-sepolia"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "x-layer-testnet"
@@ -462,7 +436,6 @@ token_id = "x-layer-testnet"
 chain_id = "x-layer-testnet"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "ethereum-classic-mordor"
@@ -479,7 +452,6 @@ token_id = "ethereum-classic-mordor"
 chain_id = "ethereum-classic-mordor"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[tokens]]
 id = "tron-nile"
@@ -496,7 +468,6 @@ token_id = "tron-nile"
 chain_id = "tron-nile"
 kind = "native"
 decimals = 6
-enabled = true
 
 [[tokens]]
 id = "solana-devnet"
@@ -513,7 +484,6 @@ token_id = "solana-devnet"
 chain_id = "solana-devnet"
 kind = "native"
 decimals = 9
-enabled = true
 
 [[tokens]]
 id = "xrp-testnet"
@@ -530,7 +500,6 @@ token_id = "xrp-testnet"
 chain_id = "xrp-testnet"
 kind = "native"
 decimals = 6
-enabled = true
 
 [[tokens]]
 id = "stellar-testnet"
@@ -547,7 +516,6 @@ token_id = "stellar-testnet"
 chain_id = "stellar-testnet"
 kind = "native"
 decimals = 7
-enabled = true
 
 [[tokens]]
 id = "cardano-preprod"
@@ -564,7 +532,6 @@ token_id = "cardano-preprod"
 chain_id = "cardano-preprod"
 kind = "native"
 decimals = 6
-enabled = true
 
 [[tokens]]
 id = "sui-testnet"
@@ -581,7 +548,6 @@ token_id = "sui-testnet"
 chain_id = "sui-testnet"
 kind = "native"
 decimals = 9
-enabled = true
 
 [[tokens]]
 id = "aptos-testnet"
@@ -598,7 +564,6 @@ token_id = "aptos-testnet"
 chain_id = "aptos-testnet"
 kind = "native"
 decimals = 8
-enabled = true
 
 [[tokens]]
 id = "ton-testnet"
@@ -615,7 +580,6 @@ token_id = "ton-testnet"
 chain_id = "ton-testnet"
 kind = "native"
 decimals = 9
-enabled = true
 
 [[tokens]]
 id = "near-testnet"
@@ -632,7 +596,6 @@ token_id = "near-testnet"
 chain_id = "near-testnet"
 kind = "native"
 decimals = 24
-enabled = true
 
 [[tokens]]
 id = "polkadot-westend"
@@ -649,7 +612,6 @@ token_id = "polkadot-westend"
 chain_id = "polkadot-westend"
 kind = "native"
 decimals = 10
-enabled = true
 
 [[tokens]]
 id = "monero-stagenet"
@@ -666,7 +628,6 @@ token_id = "monero-stagenet"
 chain_id = "monero-stagenet"
 kind = "native"
 decimals = 12
-enabled = true
 
 [[tokens]]
 id = "usd-coin-testnet"
@@ -685,7 +646,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -694,7 +654,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -703,7 +662,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -712,7 +670,6 @@ kind = "token"
 standard = "ARC-20"
 contract = "0x5425890298aed601595a70ab815c96711a31bc65"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -721,7 +678,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -730,7 +686,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x2b3370ee501b4a559b57d449569354196457d8ab"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -739,7 +694,6 @@ kind = "token"
 standard = "SPL"
 contract = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -748,7 +702,6 @@ kind = "token"
 standard = "Sui Coin"
 contract = "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -757,7 +710,6 @@ kind = "token"
 standard = "AIP-21"
 contract = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -766,7 +718,6 @@ kind = "token"
 standard = "NEP-141"
 contract = "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -775,7 +726,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xfece4462d57bd51a6a552365a011b95f0e16d9b7"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -784,7 +734,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x01c5c0122039549ad1493b8220cabedd739bc44e"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -793,7 +742,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xeb33dc5fac03833e132593659e1de7256ab59794"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -802,7 +750,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xae045de5638162fa134807cb558e15a3f5a7f853"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -811,7 +758,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x0ba304580ee7c9a980cf72e55f5ed2e9fd30bc51"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -820,7 +766,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xfabab97dce620294d2b0b0e46c68964e326300ac"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "usd-coin-testnet"
@@ -829,7 +774,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xdec90b78111ba2fc6fc6d84d8b9ec159a2d4b9b3"
 decimals = 6
-enabled = true
 
 [[tokens]]
 id = "paypal-usd-testnet"
@@ -848,7 +792,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xcac524bca292aaade2df8a05cc58f0a65b1b3bb9"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "paypal-usd-testnet"
@@ -857,7 +800,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x637a1259c6afd7e3adf63993ca7e58bb438ab1b1"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "paypal-usd-testnet"
@@ -866,7 +808,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x4549bb98c667aab626627c118102c28065e8f54c"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "paypal-usd-testnet"
@@ -875,7 +816,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0xba4966f36c90b280983468fb856cf1a375fd89aa"
 decimals = 6
-enabled = true
 
 [[deployments]]
 token_id = "paypal-usd-testnet"
@@ -884,4 +824,3 @@ kind = "token"
 standard = "SPL"
 contract = "CXk2AMBfi3TwaEL2468s6zP8xq9NxTXjp9gjMgzeUynM"
 decimals = 6
-enabled = true

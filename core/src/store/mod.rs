@@ -43,7 +43,7 @@ pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -
 /// `id` is derived from chain and contract rather than minted at random: a
 /// built-in's identity *is* its contract.
 pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
-    let mut entries: Vec<_> = crate::tokens::catalog()
+    crate::tokens::catalog()
         .iter()
         .filter(|token| !token.is_native())
         .filter_map(|token| {
@@ -53,46 +53,20 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
             Some(wallet_domain::CoreTokenPreferenceEntry {
                 category: wallet_domain::CoreTokenPreferenceEntry::category_from_tags(&token.tags),
                 is_built_in: true,
-                is_enabled: token.enabled,
                 token: token.clone(),
             })
         })
-        .collect();
-    unify_token_choices(&mut entries);
-    entries
+        .collect()
 }
 
-fn unify_token_choices(entries: &mut [wallet_domain::CoreTokenPreferenceEntry]) {
-    let enabled: std::collections::HashSet<_> = entries
-        .iter()
-        .filter(|e| e.is_enabled)
-        .map(|e| e.token.token_id.clone())
-        .collect();
-    for entry in entries {
-        entry.is_enabled = enabled.contains(&entry.token.token_id);
-    }
-}
-
-/// Merge built-in token registry entries with persisted user preferences:
-/// copies `is_enabled` from matching persisted built-ins,
-/// appends all non-built-in (custom) persisted entries, and returns the list
-/// sorted by (chain-label, built-in first, symbol).
+/// Merge the built-in catalog with persisted user preferences: the catalog's
+/// rows replace any persisted copy of them, every custom row is kept, and the
+/// list is sorted by (chain-label, built-in first, symbol).
 pub fn merge_built_in_token_preferences(
     built_ins: Vec<wallet_domain::CoreTokenPreferenceEntry>,
     persisted: Vec<wallet_domain::CoreTokenPreferenceEntry>,
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
-    let mut merged: Vec<wallet_domain::CoreTokenPreferenceEntry> = Vec::new();
-    for built_in in built_ins.into_iter() {
-        let choices: Vec<_> = persisted
-            .iter()
-            .filter(|entry| entry.is_built_in && entry.token.token_id == built_in.token.token_id)
-            .collect();
-        let mut updated = built_in;
-        if !choices.is_empty() {
-            updated.is_enabled = choices.iter().any(|entry| entry.is_enabled);
-        }
-        merged.push(updated);
-    }
+    let mut merged = built_ins;
     merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
     merged.sort_by(|lhs, rhs| {
         lhs.token

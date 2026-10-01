@@ -438,7 +438,7 @@ contains "Bitcoin exposes native history" '"history"' \
     spectra --json endpoints --catalog --chain Bitcoin
 lacks "Bitcoin does not claim token balances" '"token-balance"' \
     spectra --json endpoints --catalog --chain Bitcoin
-contains "an indexer only claims implemented history capabilities" '"capabilities":["history","token-history"]' \
+contains "an explorer lists history, transfers and holdings" '"capabilities":["history","token-discovery","token-history"]' \
     spectra --json endpoints --catalog --chain Ethereum
 contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["balance","history","fee","broadcast","token-balance","token-discovery","token-history","verification","staking"]' \
     spectra --json endpoints --catalog --chain Solana
@@ -741,7 +741,7 @@ contains "core builds the diagnostics bundle" '"chainDiagnosticsJson"' \
 contains "the bundle's header counts core's wallets" '"walletCount"' \
     spectra diagnostics bundle
 
-# ── Tracked tokens ──────────────────────────────────────────────────────────
+# ── Known tokens ────────────────────────────────────────────────────────────
 #
 # A token cannot display more places than it has, and the list has to survive a
 # reopen — every command here is a separate process, so this section is also
@@ -761,24 +761,16 @@ contains "testnet token has no market identity" '"coingecko_id":""' \
 contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"deployment_id":"bitcoin-testnet-4:native"' \
     spectra --json token catalog --chain bitcoin-testnet-4
 
-section "tracked tokens"
-check "token-wide discovery and editable price sources" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"
-# Tracking is `is_enabled` on a row core already holds — opening the store seeds
-# the catalog — not a row the caller assembles and writes back.
+section "known tokens"
+check "editable price sources survive reopening" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"
+# Every catalog token is known: opening the store seeds the catalog's rows, and
+# there is no switch to turn one off.
 contains "lists the built-in catalog" '"symbol":"USDC"' \
     spectra --json token catalog --chain Ethereum
 contains "opening seeds the catalog's own rows" '"symbol":"USDC"' \
     spectra --json token list
-check "refuses a token the catalog does not have" $REJECTED \
-    spectra token track --chain Ethereum NOTACOIN
-check "refuses tracking on a chain without tokens" $REJECTED \
-    spectra token track --chain Bitcoin USDC
-check "untracks a catalog token"                   $OK \
+check "has no switch to stop tracking one"         $USAGE \
     spectra token untrack --chain Ethereum USDC
-check "refuses untracking it twice"                $REJECTED \
-    spectra token untrack --chain Ethereum USDC
-contains "and the choice survives a new process"   '"isEnabled":true' \
-    spectra --json token track --chain Ethereum USDC
 
 section "custom tokens"
 # Every rule is the reducer's: the symbol, the contract judged by the chain that
@@ -815,8 +807,6 @@ check "and will not remove it twice"               $REJECTED \
     spectra token remove --chain Base --contract $EVM_ADDR
 check "will not reset without --yes"               $USAGE spectra token reset
 check "resets to the catalog"                      $OK spectra token reset --yes
-contains "which turns the untracked one back on"   '"isEnabled":false' \
-    spectra --json token untrack --chain Ethereum USDC
 
 # ── Amount display ──────────────────────────────────────────────────────────
 #

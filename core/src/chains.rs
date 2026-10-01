@@ -116,8 +116,6 @@ pub(crate) struct TomlChain {
     family: String,
     pub(crate) environment: String,
     pub(crate) token_standard: String,
-    #[serde(default)]
-    enumerates_holdings: bool,
     derivation_path: Vec<TomlDerivationPathEntry>,
 }
 
@@ -222,11 +220,6 @@ pub struct ChainEntry {
     pub color: CatalogColor,
     pub artwork_name: String,
     pub token_standard: String,
-    /// Whether the chain has an RPC that answers "what tokens does this
-    /// address hold?" without being told what to look for. False for the EVM
-    /// family and NEAR, where a token contract only answers about a holder you
-    /// name, so listing holdings needs an indexer rather than a node.
-    pub enumerates_holdings: bool,
     pub contract_address_prompt: String,
     pub native_coingecko_id: String,
     pub native_decimals: u32,
@@ -408,7 +401,6 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
                 color: ui.color,
                 artwork_name: ui.artwork_name,
                 token_standard: c.token_standard.clone(),
-                enumerates_holdings: c.enumerates_holdings,
                 contract_address_prompt: contract_address_prompt_for(&c.token_standard),
                 native_coingecko_id: native.coingecko_id.clone(),
                 native_decimals: native.decimals,

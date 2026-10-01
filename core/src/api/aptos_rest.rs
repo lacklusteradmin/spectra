@@ -1,5 +1,6 @@
-//! The Aptos REST adapter: account resources, coin and fungible-asset
-//! balances, gas price, history, simulation and submission of a signed body.
+//! The Aptos REST adapter: account resources, token balances and decimals
+//! through view functions, gas price, history, simulation and submission of
+//! a signed body.
 
 use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,46 @@ pub struct AptosSendResult {
     pub version: Option<u64>,
     /// JSON-encoded signed transaction body — stored for rebroadcast.
     pub signed_body_json: String,
+}
+
+/// What an Aptos token identifier names.
+///
+/// A fungible asset (AIP-21), which every catalog token is, is named by the
+/// address of its metadata object; a legacy coin by its Move type,
+/// `0xADDR::module::Name`. Those are the two shapes `aptosTokenType` accepts,
+/// and an address never contains `::`. The catalog's `standard` cannot tell
+/// them apart: the network has one, and a custom token takes it either way.
+#[derive(Debug, PartialEq)]
+enum AptosToken<'a> {
+    Asset { metadata: &'a str },
+    Coin { coin_type: &'a str },
+}
+
+impl<'a> AptosToken<'a> {
+    fn parse(identifier: &'a str) -> Self {
+        let identifier = identifier.trim();
+        if identifier.contains("::") {
+            AptosToken::Coin {
+                coin_type: identifier,
+            }
+        } else {
+            AptosToken::Asset {
+                metadata: identifier,
+            }
+        }
+    }
+}
+
+/// The type argument naming a fungible asset by its metadata object.
+const FUNGIBLE_ASSET_METADATA: &str = "0x1::fungible_asset::Metadata";
+
+/// A view function's first return value as a number. The node writes a
+/// `u64` as a decimal string and a `u8` as a JSON number.
+fn returned_number(values: &[Value]) -> Option<u64> {
+    match values.first()? {
+        Value::String(s) => s.parse().ok(),
+        other => other.as_u64(),
+    }
 }
 
 // ── Client
@@ -71,114 +112,87 @@ impl AptosClient {
         .await
     }
 }
-// Aptos fetch paths: balance, per-coin balance, account info, ledger info,
-// gas price, history.
+// Aptos fetch paths: balance, token balance and decimals, account info,
+// ledger info, gas price, history.
 
 impl AptosClient {
+    /// APT is a coin like any other to `0x1::coin::balance`. An account that
+    /// holds it only as the migrated fungible asset, as accounts created
+    /// since the migration do, has no `CoinStore<AptosCoin>` to read.
     pub async fn fetch_balance(&self, address: &str) -> Result<AptosBalance, ApiError> {
-        // The APT coin is stored in 0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>
-        let path = format!(
-            "/accounts/{address}/resource/0x1::coin::CoinStore%3C0x1::aptos_coin::AptosCoin%3E"
-        );
-        let resp: Value = self.get(&path).await?;
-        let octas: u64 = resp
-            .pointer("/data/coin/value")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok())
-            .or_decode("balance: missing coin value")?;
+        let octas = self
+            .fetch_token_balance(address, "0x1::aptos_coin::AptosCoin")
+            .await?;
         Ok(AptosBalance { octas })
     }
 
-    /// A coin type's own decimals, from the `CoinInfo<T>` the publishing
-    /// account holds. `None` when it is unreadable.
-    pub async fn fetch_coin_decimals(&self, coin_type: &str) -> Option<u8> {
-        let publisher = coin_type.split("::").next()?;
-        let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
-        let path = format!("/accounts/{publisher}/resource/0x1::coin::CoinInfo%3C{encoded}%3E");
-        self.get::<Value>(&path)
-            .await
-            .ok()?
-            .pointer("/data/decimals")?
-            .as_u64()
-            .map(|d| d as u8)
-    }
-
-    /// Every legacy `0x1::coin::CoinStore<T>` the account carries.
-    ///
-    /// An Aptos account stores its coins as its own resources, so one read
-    /// enumerates them. Decimals live in `CoinInfo<T>` on the account that
-    /// published `T`; those reads run concurrently and a coin whose `CoinInfo`
-    /// is unreadable is reported unnamed rather than dropped. Fungible-asset
-    /// stores (the newer standard) are not covered here.
-    pub async fn fetch_all_coin_balances(
+    /// The values a Move view function returns, in order.
+    async fn view(
         &self,
-        address: &str,
-    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
-        let resources: Value = self.get(&format!("/accounts/{address}/resources")).await?;
-        let mut held: Vec<(String, u128)> = Vec::new();
-        for res in resources
-            .as_array()
-            .map(|v| v.as_slice())
-            .unwrap_or_default()
-        {
-            let Some(ty) = res.get("type").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            let Some(inner) = ty
-                .strip_prefix("0x1::coin::CoinStore<")
-                .and_then(|rest| rest.strip_suffix('>'))
-            else {
-                continue;
-            };
-            if inner == "0x1::aptos_coin::AptosCoin" {
-                continue;
-            }
-            let raw = res
-                .pointer("/data/coin/value")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u128>().ok())
-                .unwrap_or(0);
-            if raw == 0 {
-                continue;
-            }
-            held.push((inner.to_string(), raw));
+        function: &str,
+        type_arguments: &[&str],
+        arguments: &[&str],
+    ) -> Result<Vec<Value>, ApiError> {
+        let body = serde_json::json!({
+            "function": function,
+            "type_arguments": type_arguments,
+            "arguments": arguments,
+        });
+        match self.post_val("/view", &body).await? {
+            Value::Array(values) => Ok(values),
+            other => Err(ApiError::Decode(format!(
+                "view {function}: expected an array, got {other}"
+            ))),
         }
-
-        let metadata = futures::future::join_all(
-            held.iter()
-                .map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
-        )
-        .await;
-        Ok(held
-            .into_iter()
-            .zip(metadata)
-            .map(
-                |((contract, balance_raw), decimals)| crate::api::HeldToken {
-                    contract,
-                    balance_raw,
-                    decimals,
-                    symbol: None,
-                },
-            )
-            .collect())
     }
 
-    /// Fetch the balance for a specific coin type stored in
-    /// `0x1::coin::CoinStore<{coin_type}>` (the legacy Aptos coin standard).
-    /// Returns the raw balance in octas (or smallest unit).
-    pub async fn fetch_coin_balance(
+    /// What `owner` holds of a token, in its smallest unit.
+    ///
+    /// A fungible asset is read from the owner's primary store, which reads
+    /// as zero when the owner has none. A coin is read through
+    /// `0x1::coin::balance`, which adds the `CoinStore<T>` and the store of
+    /// the asset the coin was migrated to: an account that holds the coin
+    /// only as an asset has no `CoinStore` to read.
+    pub async fn fetch_token_balance(
         &self,
-        address: &str,
-        coin_type: &str,
+        owner: &str,
+        identifier: &str,
     ) -> Result<u64, ApiError> {
-        // Encode '<' and '>' so they survive as a URL path segment.
-        let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
-        let path = format!("/accounts/{address}/resource/0x1::coin::CoinStore%3C{encoded}%3E");
-        let resp: Value = self.get(&path).await?;
-        resp.pointer("/data/coin/value")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok())
-            .ok_or_else(|| ApiError::Decode(format!("aptos: missing coin value for {coin_type}")))
+        let values = match AptosToken::parse(identifier) {
+            AptosToken::Asset { metadata } => {
+                self.view(
+                    "0x1::primary_fungible_store::balance",
+                    &[FUNGIBLE_ASSET_METADATA],
+                    &[owner, metadata],
+                )
+                .await?
+            }
+            AptosToken::Coin { coin_type } => {
+                self.view("0x1::coin::balance", &[coin_type], &[owner])
+                    .await?
+            }
+        };
+        returned_number(&values)
+            .ok_or_else(|| ApiError::Decode(format!("aptos: no balance returned for {identifier}")))
+    }
+
+    /// A token's own decimals, from its metadata object or its `CoinInfo<T>`.
+    /// `None` when it is unreadable.
+    pub async fn fetch_token_decimals(&self, identifier: &str) -> Option<u8> {
+        let values = match AptosToken::parse(identifier) {
+            AptosToken::Asset { metadata } => {
+                self.view(
+                    "0x1::fungible_asset::decimals",
+                    &[FUNGIBLE_ASSET_METADATA],
+                    &[metadata],
+                )
+                .await
+            }
+            AptosToken::Coin { coin_type } => {
+                self.view("0x1::coin::decimals", &[coin_type], &[]).await
+            }
+        };
+        u8::try_from(returned_number(&values.ok()?)?).ok()
     }
 
     pub async fn fetch_account_info(&self, address: &str) -> Result<(u64, u64), ApiError> {

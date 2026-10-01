@@ -1,10 +1,10 @@
 //! Token commands update core-owned preference rows. Core validates custom
-//! contracts and duplicates; tracking toggles `is_enabled`.
+//! contracts and duplicates.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::{
-    CoreTokenPreferenceKey, StateCommand, StateEvent, StateTransition, TokenPreferenceRejection,
+    StateCommand, StateEvent, StateTransition, TokenPreferenceRejection,
 };
 
 use super::resolve_chain;
@@ -18,12 +18,8 @@ pub enum TokenCommand {
     Catalog(CatalogArgs),
     /// Resolve bundled artwork by catalog identity; unknown identities have no mark.
     Artwork(ArtworkArgs),
-    /// Tokens this wallet tracks.
+    /// Tokens this wallet knows: the catalog's and the ones added to it.
     List,
-    /// Track a token: turn on the row core holds for it.
-    Track(TrackArgs),
-    /// Stop tracking a token.
-    Untrack(TrackArgs),
     /// Teach the wallet a token the catalog does not ship.
     Add(AddArgs),
     /// Edit a custom token without changing its network or identifier.
@@ -75,15 +71,6 @@ pub struct CatalogArgs {
     /// Chain display name, registry id or symbol.
     #[arg(long)]
     chain: String,
-}
-
-#[derive(Args)]
-pub struct TrackArgs {
-    /// Chain display name, registry id or symbol.
-    #[arg(long)]
-    chain: String,
-    /// Token symbol as the list spells it.
-    symbol: String,
 }
 
 #[derive(Args)]
@@ -156,8 +143,6 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
             Ok(())
         }
         TokenCommand::List => list(ctx, out),
-        TokenCommand::Track(args) => set_tracked(ctx, out, args, true),
-        TokenCommand::Untrack(args) => set_tracked(ctx, out, args, false),
         TokenCommand::Add(args) => add(ctx, out, args),
         TokenCommand::Edit(args) => edit(ctx, out, args),
         TokenCommand::Remove(args) => remove(ctx, out, args),
@@ -214,14 +199,14 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
 }
 
 fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
-    let tracked = ctx.state()?.token_preferences;
+    let known = ctx.state()?.token_preferences;
     out.text(|| {
         println!();
-        if tracked.is_empty() {
+        if known.is_empty() {
             println!("  {}", out::hint("no known tokens"));
             return;
         }
-        for entry in &tracked {
+        for entry in &known {
             println!(
                 "  {}  {:<8} {:<22} {}",
                 out::accent("●").bold(),
@@ -233,13 +218,12 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "tokens": tracked
+        "tokens": known
             .iter()
             .map(|entry| serde_json::json!({
                 "id": entry.token.deployment_id,
                 "token_id": entry.token.token_id,
                 "chain_id": entry.token.chain_id,
-                "isEnabled": entry.is_enabled,
                 "isBuiltIn": entry.is_built_in,
                 "coingecko_id": entry.token.coingecko_id,
                 "coinpaprika_id": entry.token.coinpaprika_id,
@@ -249,68 +233,6 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
                 "decimals": entry.token.decimals,
             }))
             .collect::<Vec<_>>(),
-    }));
-    Ok(())
-}
-
-/// Enable or disable a core-owned token preference.
-fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliResult<()> {
-    let chain = resolve_chain(&args.chain)?;
-    let chain_name = chain.chain_display_name().to_string();
-    if !chain.hosts_tokens() {
-        return Err(CliError::rejected(format!(
-            "{chain_name} does not support known tokens"
-        )));
-    }
-
-    let matches: Vec<_> = ctx
-        .state()?
-        .token_preferences
-        .into_iter()
-        .filter(|entry| {
-            entry.hosting_chain() == Some(chain)
-                && (entry.token.deployment_id == args.symbol
-                    || entry.token.symbol.eq_ignore_ascii_case(&args.symbol))
-        })
-        .collect();
-    if matches.len() > 1 {
-        return Err(CliError::usage(
-            "ambiguous token symbol; use the deployment id from token catalog/list",
-        ));
-    }
-    let entry = matches.into_iter().next().ok_or_else(|| {
-        CliError::rejected(format!("{chain_name} has no token {:?}", args.symbol))
-    })?;
-    if entry.is_enabled == is_enabled {
-        return Err(CliError::rejected(format!(
-            "{} is already {}",
-            entry.token.symbol,
-            if is_enabled { "tracked" } else { "untracked" }
-        )));
-    }
-
-    let transition = ctx.apply(StateCommand::SetTokenPreferencesEnabled {
-        tokens: vec![CoreTokenPreferenceKey {
-            chain_id: chain,
-            contract: entry.token.contract.clone(),
-        }],
-        is_enabled,
-    })?;
-    reject_on_event(&transition)?;
-
-    let verb = if is_enabled { "tracking" } else { "untracked" };
-    out.text(|| {
-        println!("  {} {verb} {}", out::ok_mark(), entry.token.symbol.bold());
-        out::field("decimals", &entry.token.decimals.to_string());
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "chain": chain.str_id(),
-        "id": entry.token.deployment_id,
-                "symbol": entry.token.symbol,
-        "contract": entry.token.contract,
-        "decimals": entry.token.decimals,
-        "isEnabled": is_enabled,
     }));
     Ok(())
 }

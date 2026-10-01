@@ -81,7 +81,6 @@ struct TomlDeployment {
     decimals: u32,
     #[serde(default)]
     standard: String,
-    enabled: bool,
 }
 
 /// Protocol identity is explicit; a missing contract never implies native.
@@ -112,7 +111,6 @@ pub struct TokenDeploymentEntry {
     /// `None` for a token the user added: the catalog has no colour for it.
     pub color: Option<crate::chains::CatalogColor>,
     pub artwork_name: String,
-    pub enabled: bool,
 }
 
 impl TokenDeploymentEntry {
@@ -267,7 +265,6 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
                 tags: t.tags.clone(),
                 color: Some(t.color),
                 artwork_name: t.artwork_name.clone(),
-                enabled: d.enabled,
             }
         })
         .collect()
@@ -582,7 +579,6 @@ token_id = "ether"
 chain_id = "ethereum"
 kind = "native"
 decimals = 18
-enabled = true
 
 [[deployments]]
 token_id = "usdc"
@@ -591,7 +587,6 @@ kind = "token"
 contract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 standard = "ERC-20"
 decimals = 6
-enabled = true
 
 [[tokens]]
 id = "usdc"

@@ -259,7 +259,7 @@ fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::
     state
         .token_preferences
         .iter()
-        .filter(|entry| entry.is_enabled && entry.hosting_chain() == Some(hosting))
+        .filter(|entry| entry.hosting_chain() == Some(hosting))
         .filter_map(|entry| {
             let contract = crate::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),

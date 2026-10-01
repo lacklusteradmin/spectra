@@ -205,15 +205,6 @@ pub enum TokenPreferenceRejection {
     UnknownToken,
 }
 
-/// A token preference addressed by what it actually is, rather than by an id
-/// two front ends have to spell the same way.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct CoreTokenPreferenceKey {
-    pub chain_id: crate::registry::Chain,
-    pub contract: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Settings that are part of the domain — every front end must agree on them,
@@ -725,15 +716,10 @@ pub enum StateCommand {
         contract: String,
         decimals: u32,
     },
-    /// Turn every deployment of each selected token identity on or off.
-    SetTokenPreferencesEnabled {
-        tokens: Vec<CoreTokenPreferenceKey>,
-        is_enabled: bool,
-    },
     /// Back to the catalog's own list, with every custom token dropped.
     ResetTokenPreferences,
-    /// Merge the catalog into stored preferences: preserve `is_enabled`,
-    /// include new built-ins, and retain user-added tokens.
+    /// Merge the catalog into stored preferences: refresh the built-ins and
+    /// retain user-added tokens.
     MergeBuiltInTokens,
     /// Add a recipient. `address` is normalized and validated by the reducer,
     /// which also assigns the entry's id; a rejected entry produces an
@@ -1277,7 +1263,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                             category:
                                 crate::store::wallet_domain::CoreTokenPreferenceCategory::Custom,
                             is_built_in: false,
-                            is_enabled: true,
                             token: crate::tokens::TokenDeploymentEntry {
                                 deployment_id: format!(
                                     "{}:{}:{}",
@@ -1306,7 +1291,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                 tags: Vec::new(),
                                 color: None,
                                 artwork_name: String::new(),
-                                enabled: true,
                             },
                         },
                     );
@@ -1404,31 +1388,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 }
             }
         },
-        StateCommand::SetTokenPreferencesEnabled { tokens, is_enabled } => {
-            let token_ids: Option<std::collections::HashSet<_>> = tokens
-                .iter()
-                .map(|key| {
-                    token_preference_index(state, key.chain_id, &key.contract)
-                        .map(|index| state.token_preferences[index].token.token_id.clone())
-                })
-                .collect();
-            let Some(token_ids) = token_ids else {
-                events.push(token_preference_rejected(
-                    TokenPreferenceRejection::UnknownToken,
-                ));
-                return events;
-            };
-            let mut changed = false;
-            for entry in &mut state.token_preferences {
-                if token_ids.contains(&entry.token.token_id) && entry.is_enabled != is_enabled {
-                    entry.is_enabled = is_enabled;
-                    changed = true;
-                }
-            }
-            if changed {
-                events.push(StateEvent::TokenPreferencesChanged { symbol: None });
-            }
-        }
         StateCommand::MergeBuiltInTokens => {
             let merged = crate::store::merge_built_in_token_preferences(
                 crate::store::built_in_token_preferences(),
@@ -1696,82 +1655,6 @@ mod tests {
             rejection(&rescaled),
             Some(TokenPreferenceRejection::BuiltInToken)
         );
-    }
-
-    /// Turning a token off is not deleting it: the row stays, so the catalog
-    /// merge keeps the choice and the list does not have to be rebuilt.
-    #[test]
-    fn tracking_is_a_flag_and_a_group_moves_together() {
-        let mut state = CoreAppState::default();
-        reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
-        let count = state.token_preferences.len();
-        let keys: Vec<CoreTokenPreferenceKey> = state
-            .token_preferences
-            .iter()
-            .filter(|entry| entry.is_enabled)
-            .take(3)
-            .map(|entry| CoreTokenPreferenceKey {
-                chain_id: entry.token.chain_id,
-                contract: entry.token.contract.clone(),
-            })
-            .collect();
-        assert_eq!(keys.len(), 3, "the catalog ships enabled tokens");
-
-        let selected_ids: std::collections::HashSet<_> = keys
-            .iter()
-            .map(|key| {
-                state.token_preferences
-                    [token_preference_index(&state, key.chain_id, &key.contract).unwrap()]
-                .token
-                .token_id
-                .clone()
-            })
-            .collect();
-        let expected_disabled = state
-            .token_preferences
-            .iter()
-            .filter(|entry| !entry.is_enabled || selected_ids.contains(&entry.token.token_id))
-            .count();
-
-        let off = reduce_state(
-            state,
-            StateCommand::SetTokenPreferencesEnabled {
-                tokens: keys.clone(),
-                is_enabled: false,
-            },
-        );
-        assert_eq!(
-            off.state.token_preferences.len(),
-            count,
-            "untracking is not deleting"
-        );
-        assert_eq!(
-            off.state
-                .token_preferences
-                .iter()
-                .filter(|entry| !entry.is_enabled)
-                .count(),
-            expected_disabled,
-            "the whole group moved"
-        );
-        assert_eq!(
-            off.events
-                .iter()
-                .filter(|event| matches!(event, StateEvent::TokenPreferencesChanged { .. }))
-                .count(),
-            1,
-            "one change, however many rows it touched"
-        );
-
-        // Applying the same value again changes nothing and says so.
-        let again = reduce_state(
-            off.state,
-            StateCommand::SetTokenPreferencesEnabled {
-                tokens: keys,
-                is_enabled: false,
-            },
-        );
-        assert!(again.events.is_empty());
     }
 
     /// A reset goes back to the catalog and takes the custom rows with it.

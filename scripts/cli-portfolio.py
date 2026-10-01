@@ -43,8 +43,6 @@ class PortfolioTests(unittest.TestCase):
             self.assertEqual(first['byDeploymentId']['ethereum:native'], 18)
             self.assertEqual(first['byDeploymentId']['bitcoin:native'], 8)
             self.assertEqual(first['unknownDecimals'], 18)
-            run('token', 'untrack', '--chain', 'ethereum', 'SAME')
-            self.assertEqual(precision()['byDeploymentId'][ethereum], 6)
             run('token', 'decimals', '--chain', 'ethereum', '--contract', contract, '--decimals', '4')
             self.assertEqual(precision()['byDeploymentId'][ethereum], 4)
             self.assertEqual(precision()['byDeploymentId'][base], 9)
@@ -256,6 +254,69 @@ class PortfolioTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 worker.join()
+
+    def test_aptos_fungible_asset_refresh(self):
+        """Aptos catalog tokens are fungible assets, read by metadata address through /view.
+
+        Neither APT nor a token is read from a CoinStore resource: an account
+        that holds them only as fungible assets has none, and every request
+        here other than POST /view is refused."""
+        usdc = '0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b'
+        owner = '0x' + '6a' * 32
+        views = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def reply(self, status, body):
+                data = json.dumps(body).encode()
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            def do_POST(self):
+                if self.path != '/view':
+                    return self.reply(404, {'message': 'not found'})
+                call = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                views.append(call)
+                function, types, arguments = call['function'], call['type_arguments'], call['arguments']
+                if function == '0x1::coin::balance' and types == ['0x1::aptos_coin::AptosCoin']:
+                    # APT held only as the migrated asset: no CoinStore exists.
+                    assert arguments == [owner], call
+                    self.reply(200, ['100000000'])
+                elif types != ['0x1::fungible_asset::Metadata']:
+                    self.reply(400, {'message': 'unexpected type arguments'})
+                elif function == '0x1::fungible_asset::decimals':
+                    self.reply(200, [6])
+                elif function == '0x1::primary_fungible_store::balance':
+                    assert arguments[0] == owner, call
+                    self.reply(200, ['2500000' if arguments[1] == usdc else '0'])
+                else:
+                    self.reply(400, {'message': 'unexpected view ' + function})
+
+        with tempfile.TemporaryDirectory(prefix='spectra-aptos-') as directory:
+            def run(*args):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
+                assert result.returncode == 0, (args, result.stdout, result.stderr)
+                return json.loads(result.stdout)
+            run('wallet', 'watch', '--chain', 'aptos', '--address', owner, '--name', 'Aptos')
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                endpoint = f'http://127.0.0.1:{server.server_port}'
+                assert run('refresh', '--wallet', 'Aptos', '--endpoint', endpoint)['refreshed'] == 1
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join()
+            with sqlite3.connect(str(pathlib.Path(directory) / 'spectra.sqlite')) as db:
+                wallet = json.loads(db.execute('SELECT payload FROM wallets').fetchone()[0])
+            amounts = {h['contractAddress']: h['amount'] for h in wallet['holdings']}
+            assert amounts[None] == '1', amounts
+            assert amounts[usdc] == '2.5', amounts
+            assert any(v['arguments'] == [usdc] for v in views), views
 
     def test_network_token_identity(self):
         """Keep network/deployment identities and testnet values distinct."""

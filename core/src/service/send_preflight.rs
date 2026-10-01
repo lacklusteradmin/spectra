@@ -189,7 +189,7 @@ fn supported_evm_token(
     }
     preferences
         .iter()
-        .find(|entry| entry.is_enabled && entry.token.matches_holding(holding))
+        .find(|entry| entry.token.matches_holding(holding))
         .map(|entry| (entry.token.symbol.clone(), entry.token.contract.clone()))
 }
 
@@ -340,7 +340,6 @@ mod preflight_tests {
         CoreTokenPreferenceEntry {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
-            is_enabled: true,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
@@ -359,7 +358,6 @@ mod preflight_tests {
                 tags: Vec::new(),
                 color: None,
                 artwork_name: String::new(),
-                enabled: true,
             },
         }
     }

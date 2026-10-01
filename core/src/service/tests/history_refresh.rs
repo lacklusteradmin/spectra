@@ -240,16 +240,12 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     );
 }
 
-/// The tokens a page decodes with are the user's enabled ones for that
-/// chain, contracts in their canonical form.
+/// The tokens a page decodes with are the known ones for that chain,
+/// contracts in their canonical form.
 #[test]
-fn descriptors_are_the_enabled_tokens_for_the_chain() {
+fn descriptors_are_the_known_tokens_for_the_chain() {
     use crate::store::wallet_domain::{CoreTokenPreferenceCategory, CoreTokenPreferenceEntry};
-    fn entry(
-        chain: crate::registry::Chain,
-        contract: &str,
-        enabled: bool,
-    ) -> CoreTokenPreferenceEntry {
+    fn entry(chain: crate::registry::Chain, contract: &str) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
@@ -269,11 +265,9 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
                 tags: Vec::new(),
                 color: None,
                 artwork_name: String::new(),
-                enabled: true,
             },
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
-            is_enabled: enabled,
         }
     }
     let state = CoreAppState {
@@ -281,17 +275,10 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
             entry(
                 crate::registry::Chain::Ethereum,
                 "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                true,
-            ),
-            entry(
-                crate::registry::Chain::Ethereum,
-                "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-                false,
             ),
             entry(
                 crate::registry::Chain::Solana,
                 "So11111111111111111111111111111111111111112",
-                true,
             ),
         ],
         ..Default::default()

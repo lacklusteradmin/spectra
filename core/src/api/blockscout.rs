@@ -1,6 +1,6 @@
 //! The Blockscout adapter: the Etherscan-compatible `module=account` API that
 //! Blockscout and Routescan serve. EVM nodes cannot index by address, so EVM
-//! history comes from here.
+//! history and the list of tokens an address holds come from here.
 
 use crate::api::error::ApiError;
 use serde::{Deserialize, Serialize};
@@ -42,13 +42,17 @@ pub struct EvmTokenTransferEntry {
     pub timestamp: u64,
 }
 
+/// Routescan serves the Etherscan wire contract under `/etherscan`.
+fn is_routescan(base: &str) -> bool {
+    base.trim_end_matches('/').ends_with("/etherscan")
+}
+
 /// Build a query for a configured keyless explorer, refusing unavailable history.
 pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<String, ApiError> {
     match source {
         EvmHistorySource::Open(base) => {
             let base = base.trim_end_matches('/');
-            // Routescan exposes the same wire contract at /etherscan.
-            let suffix = if base.ends_with("/etherscan") || base.ends_with("/api") {
+            let suffix = if is_routescan(base) || base.ends_with("/api") {
                 ""
             } else {
                 "/api"
@@ -175,6 +179,52 @@ impl BlockscoutClient {
             .collect()
     }
 
+    /// Every ERC-20 token `address` holds, with the explorer's balance and the
+    /// contract's decimals.
+    ///
+    /// The two explorers spell this differently. Blockscout answers
+    /// `tokenlist` with the whole list at once; Routescan does not serve that
+    /// action and pages `addresstokenbalance` instead. A list cut short would
+    /// read every token past the cut as a zero balance, so a holder with more
+    /// pages than this will read is refused rather than truncated.
+    pub async fn fetch_token_holdings(
+        &self,
+        address: &str,
+        base: &str,
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
+        const PAGE_SIZE: usize = 1000;
+        const MAX_PAGES: usize = 10;
+        let address = address.to_lowercase();
+        let source = EvmHistorySource::Open(base);
+        if !is_routescan(base) {
+            let url = explorer_query_url(
+                source,
+                &format!("module=account&action=tokenlist&address={address}"),
+            )?;
+            return parse_token_list(self.client.get_json(&url, RetryProfile::ChainRead).await?);
+        }
+        let mut held = Vec::new();
+        for page in 1..=MAX_PAGES {
+            let url = explorer_query_url(
+                source,
+                &format!(
+                    "module=account&action=addresstokenbalance&address={address}&page={page}&offset={PAGE_SIZE}"
+                ),
+            )?;
+            let rows =
+                parse_token_list(self.client.get_json(&url, RetryProfile::ChainRead).await?)?;
+            let last = rows.len() < PAGE_SIZE;
+            held.extend(rows);
+            if last {
+                return Ok(held);
+            }
+        }
+        Err(ApiError::Rejected(format!(
+            "holds more than {} tokens; the list cannot be read whole",
+            PAGE_SIZE * MAX_PAGES
+        )))
+    }
+
     /// Fetch ERC-20 token transfer history for `address` via Etherscan `tokentx`.
     pub async fn fetch_token_transfers(
         &self,
@@ -249,6 +299,97 @@ impl BlockscoutClient {
                 })
             })
             .collect()
+    }
+}
+
+/// The fungible holdings in a `tokenlist` (Blockscout) or
+/// `addresstokenbalance` (Routescan) answer. NFTs are not balances; a row
+/// whose balance does not parse is somebody's spam, not a reason to drop the
+/// whole list.
+fn parse_token_list(response: Value) -> Result<Vec<crate::api::HeldToken>, ApiError> {
+    let status = response
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let message = response
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let result = response.get("result").cloned().unwrap_or(Value::Null);
+    let field = |row: &Value, names: &[&str]| {
+        names
+            .iter()
+            .find_map(|name| row.get(*name).and_then(Value::as_str))
+            .map(str::to_owned)
+    };
+    Ok(etherscan_result_rows(&status, &message, result)?
+        .iter()
+        .filter(|row| field(row, &["type"]).is_none_or(|kind| kind == "ERC-20"))
+        .filter_map(|row| {
+            let contract = field(row, &["contractAddress", "TokenAddress"])?.to_lowercase();
+            let balance_raw = field(row, &["balance", "TokenQuantity"])?.parse().ok()?;
+            let decimals = field(row, &["decimals", "TokenDivisor"])
+                .and_then(|d| d.parse::<u128>().ok())
+                .and_then(|d| crate::api::checked_token_decimals(d).ok());
+            Some(crate::api::HeldToken {
+                contract,
+                balance_raw,
+                decimals,
+            })
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod a_token_list_reads_both_dialects {
+    use super::parse_token_list;
+    use serde_json::json;
+
+    /// Shapes captured from `eth.blockscout.com` and Routescan.
+    #[test]
+    fn fungible_rows_are_kept_and_the_rest_are_not() {
+        let blockscout = parse_token_list(json!({"message":"OK","status":"1","result":[
+            {"balance":"2000000","contractAddress":"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+             "decimals":"6","name":"USD Coin","symbol":"USDC","type":"ERC-20"},
+            {"balance":"1","contractAddress":"0x0000000000696760e15f265e828db644a0c242eb",
+             "decimals":"","name":"Wei Name Service","symbol":"WEI","type":"ERC-721"},
+            {"balance":"not a number","contractAddress":"0x1111111111111111111111111111111111111111",
+             "decimals":"18","name":"Spam","symbol":"SPAM","type":"ERC-20"}
+        ]}))
+        .expect("a list");
+        assert_eq!(blockscout.len(), 1);
+        assert_eq!(
+            blockscout[0].contract,
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+        );
+        assert_eq!(blockscout[0].balance_raw, 2_000_000);
+        assert_eq!(blockscout[0].decimals, Some(6));
+
+        let routescan = parse_token_list(json!({"status":"1","message":"OK","result":[
+            {"TokenAddress":"0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7","TokenName":"TetherToken",
+             "TokenSymbol":"USDt","TokenQuantity":"2002129","TokenDivisor":"6"}
+        ]}))
+        .expect("a list");
+        assert_eq!(routescan.len(), 1);
+        assert_eq!(routescan[0].balance_raw, 2_002_129);
+        assert_eq!(routescan[0].decimals, Some(6));
+    }
+
+    /// An address holding nothing is a list; an explorer refusing is not.
+    #[test]
+    fn an_empty_list_is_data_and_a_refusal_is_an_error() {
+        assert!(
+            parse_token_list(json!({"status":"0","message":"No tokens found","result":[]}))
+                .expect("empty is data")
+                .is_empty()
+        );
+        assert!(
+            parse_token_list(json!({"status":"0","message":"NOTOK",
+                "result":"Error! Missing Or invalid Action name"}))
+            .is_err()
+        );
     }
 }
 
