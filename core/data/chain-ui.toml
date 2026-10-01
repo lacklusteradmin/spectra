@@ -1,11 +1,18 @@
 # Network presentation only. Each chain_id references chains.toml chains.id.
-# Every concrete network has one row; display categories never decide protocol behavior.
+# Every concrete network has one row; display tags never decide protocol behavior.
+#
+# `popular_rank` and `tags` are written on mainnet rows only. A testnet takes
+# both from its mainnet, so it cannot drift from the chain it mirrors.
+#
+# `popular_rank` orders the chain picker: every mainnet has one, 1..=n without
+# gaps. `tags` lists the authored tags; `layer-1`, `evm` and `testnet` are
+# derived from the registry and refused here.
 
 [[chains]]
 chain_id = "bitcoin"
 search_keywords = ["Bitcoin", "BTC"]
-category = "bitcoin-family"
 popular_rank = 1
+tags = ["utxo", "pow"]
 color = "orange"
 artwork_name = "bitcoin"
 address_prefix_hint = "bc1q…"
@@ -13,7 +20,6 @@ address_prefix_hint = "bc1q…"
 [[chains]]
 chain_id = "ethereum"
 search_keywords = ["Ethereum", "ETH"]
-category = "evm-l1"
 popular_rank = 2
 color = "purple"
 artwork_name = "ethereum"
@@ -22,8 +28,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "solana"
 search_keywords = ["Solana", "SOL"]
-category = "other"
-popular_rank = 3
+popular_rank = 5
 color = "green"
 artwork_name = "solana"
 address_prefix_hint = "So111…"
@@ -31,7 +36,8 @@ address_prefix_hint = "So111…"
 [[chains]]
 chain_id = "dogecoin"
 search_keywords = ["Dogecoin", "DOGE"]
-category = "bitcoin-family"
+popular_rank = 7
+tags = ["utxo", "pow"]
 color = "yellow"
 artwork_name = "dogecoin"
 address_prefix_hint = "D…"
@@ -39,7 +45,8 @@ address_prefix_hint = "D…"
 [[chains]]
 chain_id = "xrp"
 search_keywords = ["XRP Ledger", "XRP"]
-category = "other"
+popular_rank = 3
+tags = ["payments"]
 color = "cyan"
 artwork_name = "xrp"
 address_prefix_hint = "r…"
@@ -47,8 +54,8 @@ address_prefix_hint = "r…"
 [[chains]]
 chain_id = "litecoin"
 search_keywords = ["Litecoin", "LTC"]
-category = "bitcoin-family"
-popular_rank = 8
+popular_rank = 12
+tags = ["utxo", "pow"]
 color = "blue"
 artwork_name = "litecoin"
 address_prefix_hint = "ltc1… / L… / M…"
@@ -56,15 +63,16 @@ address_prefix_hint = "ltc1… / L… / M…"
 [[chains]]
 chain_id = "bitcoin-cash"
 search_keywords = ["Bitcoin Cash", "BCH"]
-category = "bitcoin-family"
+popular_rank = 10
+tags = ["utxo", "pow"]
 color = "orange"
 artwork_name = "bitcoincash"
 
 [[chains]]
 chain_id = "tron"
 search_keywords = ["Tron", "TRX"]
-category = "other"
 popular_rank = 6
+tags = ["payments"]
 color = "red"
 artwork_name = "tron"
 address_prefix_hint = "T…"
@@ -72,7 +80,8 @@ address_prefix_hint = "T…"
 [[chains]]
 chain_id = "stellar"
 search_keywords = ["Stellar", "XLM"]
-category = "other"
+popular_rank = 11
+tags = ["payments"]
 color = "teal"
 artwork_name = "stellar"
 address_prefix_hint = "G…"
@@ -80,7 +89,8 @@ address_prefix_hint = "G…"
 [[chains]]
 chain_id = "cardano"
 search_keywords = ["Cardano", "ADA"]
-category = "other"
+popular_rank = 8
+tags = ["eutxo"]
 color = "indigo"
 artwork_name = "cardano"
 address_prefix_hint = "addr1…"
@@ -88,7 +98,8 @@ address_prefix_hint = "addr1…"
 [[chains]]
 chain_id = "polkadot"
 search_keywords = ["Polkadot", "DOT"]
-category = "other"
+popular_rank = 18
+tags = ["substrate"]
 color = "pink"
 artwork_name = "polkadot"
 address_prefix_hint = "1…"
@@ -96,8 +107,8 @@ address_prefix_hint = "1…"
 [[chains]]
 chain_id = "arbitrum"
 search_keywords = ["Arbitrum", "ARB"]
-category = "evm-l2"
-popular_rank = 5
+popular_rank = 29
+tags = ["layer-2"]
 color = "cyan"
 artwork_name = "arbitrum"
 address_prefix_hint = "0x…"
@@ -105,7 +116,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "optimism"
 search_keywords = ["Optimism", "OP"]
-category = "evm-l2"
+popular_rank = 31
+tags = ["layer-2"]
 color = "red"
 artwork_name = "optimism"
 address_prefix_hint = "0x…"
@@ -113,7 +125,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "avalanche"
 search_keywords = ["Avalanche", "AVAX"]
-category = "evm-l1"
+popular_rank = 14
 color = "red"
 artwork_name = "avalanche"
 address_prefix_hint = "0x…"
@@ -121,7 +133,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "sui"
 search_keywords = ["Sui", "SUI"]
-category = "other"
+popular_rank = 15
+tags = ["move"]
 color = "mint"
 artwork_name = "sui"
 address_prefix_hint = "0x…"
@@ -129,7 +142,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "aptos"
 search_keywords = ["Aptos", "APT"]
-category = "other"
+popular_rank = 24
+tags = ["move"]
 color = "cyan"
 artwork_name = "aptos"
 address_prefix_hint = "0x…"
@@ -137,7 +151,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "ton"
 search_keywords = ["TON"]
-category = "other"
+popular_rank = 17
 color = "blue"
 artwork_name = "ton"
 address_prefix_hint = "UQ… / EQ…"
@@ -145,7 +159,7 @@ address_prefix_hint = "UQ… / EQ…"
 [[chains]]
 chain_id = "near"
 search_keywords = ["NEAR"]
-category = "other"
+popular_rank = 21
 color = "indigo"
 artwork_name = "near"
 address_prefix_hint = "alice.near / 64-char hex"
@@ -153,7 +167,7 @@ address_prefix_hint = "alice.near / 64-char hex"
 [[chains]]
 chain_id = "internet-computer"
 search_keywords = ["Internet Computer", "ICP"]
-category = "other"
+popular_rank = 22
 color = "indigo"
 artwork_name = "internetcomputer"
 address_prefix_hint = "64-char account identifier"
@@ -161,8 +175,8 @@ address_prefix_hint = "64-char account identifier"
 [[chains]]
 chain_id = "monero"
 search_keywords = ["Monero", "XMR"]
-category = "other"
-popular_rank = 7
+popular_rank = 16
+tags = ["pow", "privacy"]
 color = "orange"
 artwork_name = "monero"
 address_prefix_hint = "4… / 8…"
@@ -170,8 +184,8 @@ address_prefix_hint = "4… / 8…"
 [[chains]]
 chain_id = "base"
 search_keywords = ["Base", "ETH"]
-category = "evm-l2"
-popular_rank = 4
+popular_rank = 28
+tags = ["layer-2"]
 color = "blue"
 artwork_name = "base"
 address_prefix_hint = "0x…"
@@ -179,7 +193,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "ethereum-classic"
 search_keywords = ["Ethereum Classic", "ETC"]
-category = "evm-l1"
+popular_rank = 23
+tags = ["pow"]
 color = "green"
 artwork_name = "ethereumclassic"
 address_prefix_hint = "0x…"
@@ -187,14 +202,15 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "bitcoin-sv"
 search_keywords = ["Bitcoin SV", "BSV"]
-category = "bitcoin-family"
+popular_rank = 39
+tags = ["utxo", "pow"]
 color = "orange"
 artwork_name = "bitcoinsv"
 
 [[chains]]
 chain_id = "bnb"
 search_keywords = ["BNB Chain", "BNB"]
-category = "evm-l1"
+popular_rank = 4
 color = "yellow"
 artwork_name = "bnb"
 address_prefix_hint = "0x…"
@@ -202,7 +218,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "hyperliquid"
 search_keywords = ["Hyperliquid", "HYPE"]
-category = "evm-l1"
+popular_rank = 9
 color = "mint"
 artwork_name = "hyperliquid"
 address_prefix_hint = "0x…"
@@ -210,7 +226,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "polygon"
 search_keywords = ["Polygon", "POL", "MATIC"]
-category = "evm-l1"
+popular_rank = 27
 color = "purple"
 artwork_name = "polygon"
 address_prefix_hint = "0x…"
@@ -218,7 +234,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "linea"
 search_keywords = ["Linea"]
-category = "evm-l2"
+popular_rank = 42
+tags = ["layer-2"]
 color = "blue"
 artwork_name = "linea"
 address_prefix_hint = "0x…"
@@ -226,7 +243,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "scroll"
 search_keywords = ["Scroll"]
-category = "evm-l2"
+popular_rank = 35
+tags = ["layer-2"]
 color = "orange"
 artwork_name = "scroll"
 address_prefix_hint = "0x…"
@@ -234,7 +252,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "blast"
 search_keywords = ["Blast"]
-category = "evm-l2"
+popular_rank = 36
+tags = ["layer-2"]
 color = "yellow"
 artwork_name = "blast"
 address_prefix_hint = "0x…"
@@ -242,7 +261,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "mantle"
 search_keywords = ["Mantle", "MNT"]
-category = "evm-l2"
+popular_rank = 26
+tags = ["layer-2"]
 color = "green"
 artwork_name = "mantle"
 address_prefix_hint = "0x…"
@@ -250,35 +270,39 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "zcash"
 search_keywords = ["Zcash", "ZEC"]
-category = "other"
+popular_rank = 13
+tags = ["utxo", "pow", "privacy"]
 color = "yellow"
 artwork_name = "zcash"
 
 [[chains]]
 chain_id = "bitcoin-gold"
 search_keywords = ["Bitcoin Gold", "BTG"]
-category = "bitcoin-family"
+popular_rank = 46
+tags = ["utxo", "pow"]
 color = "yellow"
 artwork_name = "bitcoingold"
 
 [[chains]]
 chain_id = "decred"
 search_keywords = ["Decred", "DCR"]
-category = "bitcoin-family"
+popular_rank = 44
+tags = ["utxo", "pow"]
 color = "indigo"
 artwork_name = "decred"
 
 [[chains]]
 chain_id = "kaspa"
 search_keywords = ["Kaspa", "KAS"]
-category = "other"
+popular_rank = 30
+tags = ["utxo", "pow"]
 color = "teal"
 artwork_name = "kaspa"
 
 [[chains]]
 chain_id = "sei"
 search_keywords = ["Sei", "SEI"]
-category = "evm-l1"
+popular_rank = 38
 color = "red"
 artwork_name = "sei"
 address_prefix_hint = "0x…"
@@ -286,7 +310,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "celo"
 search_keywords = ["Celo", "CELO"]
-category = "evm-l2"
+popular_rank = 45
+tags = ["layer-2"]
 color = "yellow"
 artwork_name = "celo"
 address_prefix_hint = "0x…"
@@ -294,7 +319,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "cronos"
 search_keywords = ["Cronos", "CRO"]
-category = "evm-l1"
+popular_rank = 19
 color = "blue"
 artwork_name = "cronos"
 address_prefix_hint = "0x…"
@@ -302,7 +327,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "opbnb"
 search_keywords = ["opBNB", "BNB L2"]
-category = "evm-l2"
+popular_rank = 33
+tags = ["layer-2"]
 color = "yellow"
 artwork_name = "bnb"
 address_prefix_hint = "0x…"
@@ -310,7 +336,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "zksync-era"
 search_keywords = ["zkSync Era", "zkSync"]
-category = "evm-l2"
+popular_rank = 41
+tags = ["layer-2"]
 color = "gray"
 artwork_name = "zksyncera"
 address_prefix_hint = "0x…"
@@ -318,7 +345,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "sonic"
 search_keywords = ["Sonic", "S"]
-category = "evm-l1"
+popular_rank = 40
 color = "gray"
 artwork_name = "sonic"
 address_prefix_hint = "0x…"
@@ -326,7 +353,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "berachain"
 search_keywords = ["Berachain", "BERA"]
-category = "evm-l1"
+popular_rank = 43
 color = "orange"
 artwork_name = "bera"
 address_prefix_hint = "0x…"
@@ -334,7 +361,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "unichain"
 search_keywords = ["Unichain"]
-category = "evm-l2"
+popular_rank = 32
+tags = ["layer-2"]
 color = "pink"
 artwork_name = "uniswap"
 address_prefix_hint = "0x…"
@@ -342,7 +370,8 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "ink"
 search_keywords = ["Ink"]
-category = "evm-l2"
+popular_rank = 34
+tags = ["layer-2"]
 color = "purple"
 artwork_name = "ink"
 address_prefix_hint = "0x…"
@@ -350,14 +379,16 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "dash"
 search_keywords = ["Dash", "DASH"]
-category = "bitcoin-family"
+popular_rank = 37
+tags = ["utxo", "pow", "privacy"]
 color = "blue"
 artwork_name = "dash"
 
 [[chains]]
 chain_id = "x-layer"
 search_keywords = ["X Layer", "OKB", "OKX"]
-category = "evm-l2"
+popular_rank = 25
+tags = ["layer-2"]
 color = "gray"
 artwork_name = "okb"
 address_prefix_hint = "0x…"
@@ -365,14 +396,14 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "bittensor"
 search_keywords = ["Bittensor", "TAO", "subtensor"]
-category = "other"
+popular_rank = 20
+tags = ["substrate"]
 color = "gray"
 artwork_name = "bittensor"
 
 [[chains]]
 chain_id = "bitcoin-testnet"
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
-category = "bitcoin-family"
 color = "orange"
 artwork_name = "bitcointestnet"
 address_prefix_hint = ""
@@ -380,7 +411,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "bitcoin-testnet-4"
 search_keywords = ["Bitcoin Testnet4", "testnet4", "tBTC"]
-category = "bitcoin-family"
 color = "orange"
 artwork_name = "bitcointestnet"
 address_prefix_hint = ""
@@ -388,7 +418,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "bitcoin-signet"
 search_keywords = ["Bitcoin Signet", "signet", "sBTC"]
-category = "bitcoin-family"
 color = "orange"
 artwork_name = "bitcoinsignet"
 address_prefix_hint = ""
@@ -396,7 +425,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "litecoin-testnet"
 search_keywords = ["Litecoin Testnet", "tLTC"]
-category = "bitcoin-family"
 color = "blue"
 artwork_name = "litecoin"
 address_prefix_hint = ""
@@ -404,7 +432,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "bitcoin-cash-testnet"
 search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
-category = "bitcoin-family"
 color = "orange"
 artwork_name = "bitcoincash"
 address_prefix_hint = ""
@@ -412,7 +439,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "bitcoin-sv-testnet"
 search_keywords = ["Bitcoin SV Testnet", "tBSV"]
-category = "bitcoin-family"
 color = "orange"
 artwork_name = "bitcoinsv"
 address_prefix_hint = ""
@@ -420,7 +446,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "dogecoin-testnet"
 search_keywords = ["Dogecoin Testnet", "tDOGE"]
-category = "bitcoin-family"
 color = "yellow"
 artwork_name = "dogecoin"
 address_prefix_hint = ""
@@ -428,7 +453,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "zcash-testnet"
 search_keywords = ["Zcash Testnet", "tZEC"]
-category = "other"
 color = "yellow"
 artwork_name = "zcash"
 address_prefix_hint = ""
@@ -436,7 +460,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "decred-testnet"
 search_keywords = ["Decred Testnet", "tDCR"]
-category = "bitcoin-family"
 color = "indigo"
 artwork_name = "decred"
 address_prefix_hint = ""
@@ -444,7 +467,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "kaspa-testnet"
 search_keywords = ["Kaspa Testnet", "tKAS"]
-category = "other"
 color = "teal"
 artwork_name = "kaspa"
 address_prefix_hint = ""
@@ -452,7 +474,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "dash-testnet"
 search_keywords = ["Dash Testnet", "tDASH"]
-category = "bitcoin-family"
 color = "blue"
 artwork_name = "dash"
 address_prefix_hint = ""
@@ -460,7 +481,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "ethereum-sepolia"
 search_keywords = ["Ethereum Sepolia", "Sepolia", "ETH", "tETH"]
-category = "evm-l1"
 color = "purple"
 artwork_name = "ethereum"
 address_prefix_hint = "0x…"
@@ -468,7 +488,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "ethereum-hoodi"
 search_keywords = ["Ethereum Hoodi", "Hoodi", "tETH"]
-category = "evm-l1"
 color = "purple"
 artwork_name = "ethereum"
 address_prefix_hint = "0x…"
@@ -476,7 +495,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "arbitrum-sepolia"
 search_keywords = ["Arbitrum Sepolia", "Sepolia", "tETH"]
-category = "evm-l2"
 color = "cyan"
 artwork_name = "arbitrum"
 address_prefix_hint = "0x…"
@@ -484,7 +502,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "optimism-sepolia"
 search_keywords = ["Optimism Sepolia", "Sepolia", "tETH"]
-category = "evm-l2"
 color = "red"
 artwork_name = "optimism"
 address_prefix_hint = "0x…"
@@ -492,7 +509,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "base-sepolia"
 search_keywords = ["Base Sepolia", "Sepolia", "tETH"]
-category = "evm-l2"
 color = "blue"
 artwork_name = "base"
 address_prefix_hint = "0x…"
@@ -500,7 +516,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "bnb-testnet"
 search_keywords = ["BNB Chain Testnet", "Chapel", "tBNB"]
-category = "evm-l1"
 color = "yellow"
 artwork_name = "bnb"
 address_prefix_hint = "0x…"
@@ -508,7 +523,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "avalanche-fuji"
 search_keywords = ["Avalanche Fuji", "Fuji", "tAVAX"]
-category = "evm-l1"
 color = "red"
 artwork_name = "avalanche"
 address_prefix_hint = "0x…"
@@ -516,7 +530,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "polygon-amoy"
 search_keywords = ["Polygon Amoy", "Amoy", "tPOL"]
-category = "evm-l1"
 color = "purple"
 artwork_name = "polygon"
 address_prefix_hint = "0x…"
@@ -524,7 +537,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "hyperliquid-testnet"
 search_keywords = ["Hyperliquid Testnet", "tHYPE"]
-category = "evm-l1"
 color = "mint"
 artwork_name = "hyperliquid"
 address_prefix_hint = "0x…"
@@ -532,7 +544,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "linea-sepolia"
 search_keywords = ["Linea Sepolia", "tETH"]
-category = "evm-l2"
 color = "blue"
 artwork_name = "linea"
 address_prefix_hint = "0x…"
@@ -540,7 +551,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "celo-sepolia"
 search_keywords = ["Celo Sepolia", "tCELO"]
-category = "evm-l2"
 color = "yellow"
 artwork_name = "celo"
 address_prefix_hint = "0x…"
@@ -548,7 +558,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "cronos-testnet"
 search_keywords = ["Cronos Testnet", "tCRO"]
-category = "evm-l1"
 color = "blue"
 artwork_name = "cronos"
 address_prefix_hint = "0x…"
@@ -556,7 +565,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "zksync-era-sepolia"
 search_keywords = ["zkSync Era Sepolia", "zkSync Sepolia", "tETH"]
-category = "evm-l2"
 color = "gray"
 artwork_name = "zksyncera"
 address_prefix_hint = "0x…"
@@ -564,7 +572,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "sonic-testnet"
 search_keywords = ["Sonic Testnet", "tS"]
-category = "evm-l1"
 color = "gray"
 artwork_name = "sonic"
 address_prefix_hint = "0x…"
@@ -572,7 +579,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "ink-sepolia"
 search_keywords = ["Ink Sepolia", "tETH"]
-category = "evm-l2"
 color = "purple"
 artwork_name = "ink"
 address_prefix_hint = "0x…"
@@ -580,7 +586,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "x-layer-testnet"
 search_keywords = ["X Layer Testnet", "tOKB"]
-category = "evm-l2"
 color = "gray"
 artwork_name = "okb"
 address_prefix_hint = "0x…"
@@ -588,7 +593,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "ethereum-classic-mordor"
 search_keywords = ["Ethereum Classic Mordor", "Mordor", "tETC"]
-category = "evm-l1"
 color = "green"
 artwork_name = "ethereumclassic"
 address_prefix_hint = "0x…"
@@ -596,7 +600,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 chain_id = "tron-nile"
 search_keywords = ["Tron Nile", "Nile", "tTRX"]
-category = "other"
 color = "red"
 artwork_name = "tron"
 address_prefix_hint = ""
@@ -604,7 +607,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "solana-devnet"
 search_keywords = ["Solana Devnet", "Devnet", "tSOL"]
-category = "other"
 color = "green"
 artwork_name = "solana"
 address_prefix_hint = ""
@@ -612,7 +614,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "xrp-testnet"
 search_keywords = ["XRP Ledger Testnet", "tXRP"]
-category = "other"
 color = "cyan"
 artwork_name = "xrp"
 address_prefix_hint = ""
@@ -620,7 +621,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "stellar-testnet"
 search_keywords = ["Stellar Testnet", "tXLM"]
-category = "other"
 color = "teal"
 artwork_name = "stellar"
 address_prefix_hint = ""
@@ -628,7 +628,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "cardano-preprod"
 search_keywords = ["Cardano Preprod", "Preprod", "tADA"]
-category = "other"
 color = "indigo"
 artwork_name = "cardano"
 address_prefix_hint = ""
@@ -636,7 +635,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "sui-testnet"
 search_keywords = ["Sui Testnet", "tSUI"]
-category = "other"
 color = "mint"
 artwork_name = "sui"
 address_prefix_hint = ""
@@ -644,7 +642,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "aptos-testnet"
 search_keywords = ["Aptos Testnet", "tAPT"]
-category = "other"
 color = "cyan"
 artwork_name = "aptos"
 address_prefix_hint = ""
@@ -652,7 +649,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "ton-testnet"
 search_keywords = ["TON Testnet", "tTON"]
-category = "other"
 color = "blue"
 artwork_name = "ton"
 address_prefix_hint = ""
@@ -660,7 +656,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "near-testnet"
 search_keywords = ["NEAR Testnet", "tNEAR"]
-category = "other"
 color = "indigo"
 artwork_name = "near"
 address_prefix_hint = ""
@@ -668,7 +663,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "polkadot-westend"
 search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
-category = "other"
 color = "pink"
 artwork_name = "polkadot"
 address_prefix_hint = ""
@@ -676,7 +670,6 @@ address_prefix_hint = ""
 [[chains]]
 chain_id = "monero-stagenet"
 search_keywords = ["Monero Stagenet", "Stagenet", "tXMR"]
-category = "other"
 color = "orange"
 artwork_name = "monero"
 address_prefix_hint = ""

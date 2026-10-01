@@ -27,6 +27,19 @@ pub enum WalletCommand {
         #[arg(long, default_value = "SPECTRA_PASSWORD_CONFIRMATION")]
         confirmation_env: String,
     },
+    /// Judge a seed phrase from an environment variable as the import page
+    /// does: its length and wordlist are inferred unless given. Prints the
+    /// verdict, never the phrase.
+    CheckSeed {
+        #[arg(long, default_value = "SPECTRA_SEED")]
+        seed_env: String,
+        /// Fix the length instead of inferring it.
+        #[arg(long)]
+        words: Option<u32>,
+        /// Fix the wordlist (`en`, `zh-hans`, `ja`, …) instead of detecting it.
+        #[arg(long)]
+        language: Option<String>,
+    },
     /// Core-derived portfolio and signing capabilities.
     Derived,
     /// Generate a new wallet and its seed phrase.
@@ -203,6 +216,55 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                 spectra_core::validation::validate_wallet_password(password, confirmation);
             out.emit(serde_json::json!({"valid": rejection.is_none(), "rejection": rejection}));
             out.text(|| println!("{}", serde_json::to_string(&rejection).unwrap()));
+            Ok(())
+        }
+        WalletCommand::CheckSeed {
+            seed_env,
+            words,
+            language,
+        } => {
+            let phrase = std::env::var(&seed_env)
+                .map_err(|_| CliError::usage("Seed environment variable is missing"))?;
+            if let Some(code) = &language
+                && !spectra_core::validation::seed_phrase_languages()
+                    .iter()
+                    .any(|offered| &offered.code == code)
+            {
+                return Err(CliError::usage(format!("unknown wordlist {code:?}")));
+            }
+            let verdict = spectra_core::validation::check_seed_phrase(
+                spectra_core::validation::SeedPhraseCheck {
+                    words: phrase.split_whitespace().map(str::to_string).collect(),
+                    language,
+                    word_count: words,
+                },
+            );
+            out.emit(serde_json::json!({
+                "wordCount": verdict.word_count,
+                "wordCountInferred": verdict.word_count_inferred,
+                "language": verdict.language.as_ref().map(|l| &l.code),
+                "languageDetected": verdict.language_detected,
+                "isComplete": verdict.is_complete,
+                "checksumValid": verdict.checksum_valid,
+                "invalidWordCount": verdict.invalid_words.len(),
+                "lengthWarning": verdict.length_warning,
+                "error": verdict.error,
+            }));
+            out.text(|| {
+                let language = verdict
+                    .language
+                    .as_ref()
+                    .map_or("unknown", |l| l.name.as_str());
+                let state = if verdict.checksum_valid {
+                    "valid"
+                } else {
+                    "not valid"
+                };
+                println!("{} words, {language}: {state}", verdict.word_count);
+                if let Some(error) = &verdict.error {
+                    println!("{error}");
+                }
+            });
             Ok(())
         }
         WalletCommand::New(args) => new(ctx, out, args),

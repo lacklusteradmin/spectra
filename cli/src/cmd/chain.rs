@@ -6,6 +6,7 @@
 
 use clap::Args;
 use colored::Colorize as _;
+use spectra_core::chains::ChainTag;
 use spectra_core::registry::Chain;
 use spectra_core::service::{ChainEndpoints, WalletService};
 use std::sync::Arc;
@@ -25,6 +26,16 @@ pub struct ChainsArgs {
     /// Include testnets.
     #[arg(long)]
     testnets: bool,
+    /// Only chains with this picker tag (layer-1, evm, utxo, move, …).
+    #[arg(long, value_parser = parse_tag)]
+    tag: Option<ChainTag>,
+}
+
+fn parse_tag(value: &str) -> Result<ChainTag, String> {
+    ChainTag::parse(value).ok_or_else(|| {
+        let known: Vec<&str> = ChainTag::ALL.iter().map(|tag| tag.as_str()).collect();
+        format!("unknown tag; expected one of {}", known.join(", "))
+    })
 }
 
 #[derive(Args)]
@@ -73,8 +84,11 @@ pub fn service_for_chain(
 
 pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
     let needle = args.filter.as_deref().map(str::to_lowercase);
-    let listed: Vec<Chain> = Chain::all()
+    // The picker's popular order; a testnet shares its mainnet's rank and
+    // follows it in catalog order.
+    let mut listed: Vec<Chain> = Chain::all()
         .filter(|chain| args.testnets || chain.mainnet_counterpart() == *chain)
+        .filter(|chain| args.tag.is_none_or(|tag| chain.entry().tags.contains(&tag)))
         .filter(|chain| match &needle {
             None => true,
             Some(needle) => {
@@ -83,6 +97,7 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
             }
         })
         .collect();
+    listed.sort_by_key(|chain| chain.entry().popular_rank);
 
     out.text(|| {
         println!();
@@ -126,9 +141,9 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 "staking": chain.supports_staking(),
                 "supportsSeparateSigning": chain.supports_sign_only(),
                 "sendUnavailableReason": chain.transparent_send_unavailable_reason(),
-                // The setup picker's short list, as a rank, so the order comes
-                // with it.
+                // The picker's popular order and filters.
                 "popularRank": chain.entry().popular_rank,
+                "tags": chain.entry().tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
                 // Explorer history source for EVM chains only. Other families use
                 // different history routes.
                 "historySource": chain.is_evm().then(|| match chain.evm_history_source() {

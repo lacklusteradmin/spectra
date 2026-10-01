@@ -39,21 +39,32 @@ pub fn resolve_chain(needle: &str) -> CliResult<Chain> {
 /// Refuse a seed phrase core would not accept, naming what is wrong with it.
 ///
 /// The CLI reads phrases from a file or the environment, so it has no
-/// language picker and no expected length: the phrase's own word count is
-/// what it claims to be, and core checks that claim against every BIP-39
-/// language.
+/// language picker and no expected length: core infers both from the words,
+/// as the import page does.
 pub fn reject_bad_seed_phrase(phrase: &str) -> CliResult<()> {
     use spectra_core::validation::{SeedPhraseCheck, check_seed_phrase};
-    let words: Vec<String> = phrase.split_whitespace().map(str::to_string).collect();
     let verdict = check_seed_phrase(SeedPhraseCheck {
-        expected_word_count: words.len() as u32,
-        words,
+        words: phrase.split_whitespace().map(str::to_string).collect(),
         language: None,
+        word_count: None,
     });
     if !verdict.invalid_words.is_empty() {
+        return Err(CliError::rejected(match verdict.language {
+            Some(language) => format!(
+                "not in the {} BIP-39 word list: {}",
+                language.name,
+                verdict.invalid_words.join(", ")
+            ),
+            None => format!(
+                "not in any BIP-39 word list: {}",
+                verdict.invalid_words.join(", ")
+            ),
+        }));
+    }
+    if !verdict.is_complete {
         return Err(CliError::rejected(format!(
-            "not in any BIP-39 word list: {}",
-            verdict.invalid_words.join(", ")
+            "{} words; a seed phrase has 12, 15, 18, 21 or 24",
+            verdict.words.len()
         )));
     }
     if !verdict.checksum_valid {

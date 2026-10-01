@@ -16,6 +16,141 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-01 — The import method is chosen before the chains
+
+- **Before:** Add Wallet offered one "Import Wallet". Its chain page listed
+  every chain, multi-select, and the secret page then offered Seed Phrase or
+  Private Key. Picking Private Key after chains a key cannot derive on showed
+  "Private key import is not available for: …" and kept the first chain only,
+  so the user went back to re-pick. Watch-only listed every chain too and
+  warned under the list when Monero was ticked. The chain rows drew
+  multi-select circles in every mode, though watch-only and private-key
+  imports keep one chain.
+- **After:** Add Wallet offers "Import Seed Phrase" and "Import Private Key".
+  The draft says which chains its mode `offers` — a private key lists only
+  `derivesFromPrivateKey` chains, watch-only only `supportsWatchOnlyImport`
+  ones — and `selectedChains` drops any it does not. Single-chain modes title
+  the page "Choose a Chain", say why the list is short, draw no empty circles,
+  have no "Selected" filter, and close the full list on a pick. The secret page
+  has no method picker; `WalletSecretImportMode`, the unsupported-chain
+  message, the Monero warning and an editing note no page reached are gone.
+- **Why:** the method decides which chains are possible, so asking it after
+  the chains made a contradiction the page then had to explain. Filtering the
+  list removes the contradiction instead of reporting it.
+- **CLI check:** none applies — the CLI takes the method as `--seed-env` or
+  `--private-key-env`/`--private-key-file` and the chain as `--chain`, and
+  already refuses a chain the key cannot derive on. The registry flags the
+  picker filters on are covered by `only_monero_is_excluded_from_watch_only_import`
+  and the private-key import checks in `scripts/cli-acceptance.sh`;
+  `ImportMethodTests` covers the filter.
+- **Verification:** `make lint`, `make test` (887 core tests), `make test-cli`
+  (473 passed) and `make test-ios` (103 tests in 23 suites, all passing).
+
+## 2026-10-01 — Cardano and Substrate read a phrase's entropy in its own wordlist
+
+- **Before:** with no wordlist named, Cardano's CIP-3 root parsed the phrase
+  as English, so a valid non-English phrase was refused ("Could not derive an
+  address from this secret for any selected chain.") although the same phrase
+  imported for Bitcoin. Substrate (Polkadot) did detect the language, but
+  `bip39`'s `Mnemonic::to_entropy` re-detects it from the words and panics on
+  a phrase valid in both Chinese lists, so `wallet import --chain Polkadot`
+  with such a phrase aborted with exit 101.
+- **After:** both read the phrase in its own wordlist (`parse_mnemonic`, the
+  path every other chain already took) and take the entropy from the parsed
+  word indices (`mnemonic_entropy`), never re-detecting. A named wordlist is
+  still strict: a Chinese phrase under `english` or an unknown name is
+  refused. `resolve_bip39_language` lost its `None` → English default, the
+  trap that produced the bug. Ambiguity rule: the first language in
+  `Language::ALL` that parses wins. Every word the Simplified and Traditional
+  Chinese lists share sits at the same index in both (1,275 words, checked by
+  a core test), so either reading gives the same entropy and the same
+  address. English and French share 100 words at different indices; a
+  phrase of only those that checksums in both stays English, its reading
+  before detection, and naming `french` picks French.
+- **Why:** CIP-3 and Substrate root on the entropy, so the wordlist decides
+  the key; assuming English was a second, wrong answer to a question core
+  already answers from the words. A phrase for the all-zero entropy now lands
+  on the same Cardano address in Chinese and English, as CIP-3 requires.
+- **CLI check:** `SPECTRA_SEED="的 的 的 的 的 的 的 的 的 的 的 在" spectra wallet
+  import --chain Cardano --name C` imports
+  `addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp`, the address
+  of `abandon … about`; the same phrase with `--chain Polkadot` imports.
+- **Verification:** `make lint`, `make test` (887 core tests) and `make test-cli`
+  (473 passed); `make test-ios` not run (no Swift or FFI change).
+
+## 2026-10-01 — A seed phrase's length and wordlist are read from its words
+
+- **Before:** the import page asked for a length (five tiles plus a custom
+  field) and a wordlist (a ten-entry menu written in Swift, defaulting to
+  English) before the first word. The grid had exactly that many slots, and a
+  paste of more words than slots silently dropped the rest: 24 words pasted
+  with 12 selected kept the first 12. With no language given, core counted a
+  word valid if *any* wordlist held it. The word fields used an ASCII
+  keyboard, so a Japanese, Korean or Chinese wordlist could not be typed, and
+  Paste read `UIPasteboard`, which raised iOS's paste prompt. Setup had two
+  backs: the navigation bar's left the whole flow, the bottom bar's went back
+  one step.
+- **After:** `SeedPhraseCheck` takes `word_count: Option<u32>` and
+  `language: Option<String>`; `None` asks core. Core judges the phrase at the
+  shortest BIP-39 length holding every filled slot (at least 12), detects the
+  wordlist holding the most words (a tie goes to the one the checksum
+  confirms, then to English first), and names words off *that* list. More than
+  24 words is named, not cut. The verdict carries `word_count`, `language` and
+  whether each was inferred; `seed_phrase_languages()` lists the wordlists.
+  The page shows the method, then a grid that grows to fit what is typed or
+  pasted (a space in the last slot or "More words" adds the next standard
+  length), a status line ("Valid phrase · English · 24 words"), and one
+  Advanced row. Length and wordlist overrides moved into the Advanced sheet,
+  where a fixed length makes core refuse a longer phrase. Fields use the
+  default keyboard, 44pt rows and `privacySensitive()`; Paste is
+  `PasteButton`. Setup has one back, in the navigation bar, stepping through
+  the flow and leaving it from the first page. `spectra wallet check-seed`
+  prints the verdict; `wallet import` names an unfinished length ("13 words")
+  and the detected list in its refusal.
+- **Why:** both questions had answers in the words, and asking them first
+  pushed the entry below the fold and made the silent truncation possible.
+  The wordlist was a caller-owned list of a core fact. Two backs that meant
+  different things was one too many.
+- **CLI check:** `SPECTRA_SEED="<23×abandon> art" spectra --json wallet
+  check-seed` shows `"wordCount":24` and `"language":"en"`; adding
+  `--words 12` gives `"error":"Seed phrase must be 12 words."`.
+- **Verification:** `make lint`, `make test` (884 core tests), `make test-cli`
+  (471 passed) and `make test-ios` (98 tests in 22 suites, all passing).
+
+## 2026-10-01 — The chain picker is one ranked list with tag filters
+
+- **Before:** `chain-ui.toml` gave each network a `category` (`bitcoin-family`,
+  `evm-l1`, `evm-l2`, `other`) and eight mainnets a `popular_rank`. The setup
+  page drew those eight as a two-column grid of cards; "Browse all" opened a
+  differently styled list grouped into Bitcoin Family, EVM Chains, EVM L2s,
+  Other Chains and Testnets, in catalog order inside each section, with
+  testnets mixed into the default view. `spectra chains` listed in catalog
+  order, and `popularRank` was `null` for every chain off the short list.
+- **After:** `ChainCategory` is gone. Every mainnet has a `popular_rank`,
+  1..=46 without gaps (market cap, with Base moved ahead of Arbitrum and the
+  tokenless L2s ahead of the tail), and `tags` from a closed `ChainTag` set.
+  `layer-2`, `utxo`, `eutxo`, `move`, `substrate`, `pow`, `privacy` and
+  `payments` are written in the catalog; `layer-1`, `evm` and `testnet` are
+  derived, and the catalog refuses a row that writes one. A testnet row writes
+  neither rank nor tags: it takes its mainnet's and adds `testnet`. Both pickers
+  draw one row style (`ChainSelectionRow`): the setup page lists the top six
+  mainnets, and the full list orders by popularity or name, filters by a
+  single-line scrolling row of tags (plus "Selected" in a multi-select), and
+  shows testnets only under their own filter, as a selection, or as a search
+  match. `spectra chains` lists in popular order, prints `tags`, and takes
+  `--tag`.
+- **Why:** the category was a second, coarser model of what tags now say, and
+  it could only group, not filter; ranking eight chains left the other
+  thirty-eight in an order nobody chose. The Utxo and Substrate tags are
+  written rather than derived only because the registry facts they mirror
+  read the catalog; `tags_agree_with_the_registry` holds them to those facts.
+- **CLI check:** `spectra --json chains --tag move` lists Sui and Aptos;
+  `spectra --json chains --testnets --filter "Ethereum Sepolia"` shows
+  `"popularRank":2` and `"tags":["layer-1","evm","testnet"]`;
+  `spectra chains --tag sidechain` exits 2.
+- **Verification:** `make lint`, `make test` (877 core tests), `make test-cli`
+  (463 passed) and `make test-ios` (94 tests in 21 suites, all passing).
+
 ## 2026-10-01 — Launch reads once; balance ticks no longer re-run unrelated work
 
 - **Before:** launch read the transaction projection twice, re-opened the

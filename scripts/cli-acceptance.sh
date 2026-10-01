@@ -175,11 +175,31 @@ check 'but wallet new still takes exactly one' $USAGE \
 # One verdict decides a seed phrase, and it says which of the two things is
 # wrong: words that are in no wordlist are named, and only a phrase built
 # entirely of real words is worth checksumming.
-contains_exit 3 "names the words that are in no wordlist" "not in any BIP-39 word list" \
+contains_exit 3 "names the words that are in no wordlist" "BIP-39 word list: not, a, at" \
     with_seed "not a real seed phrase at all here" \
     spectra wallet import --chain Solana --name Bad
 contains_exit 3 "and blames the checksum when the words are real" "checksum" \
     with_seed "legal winner thank year wave sausage worth useful legal winner thank legal" \
+    spectra wallet import --chain Solana --name Bad
+# The import page asks for neither a length nor a wordlist: core reads both
+# from the words, and refuses rather than cuts a phrase longer than one fixed.
+readonly ZERO_24="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+contains "a 24-word phrase is read as 24 words"          '"wordCount":24' \
+    with_seed "$ZERO_24" spectra --json wallet check-seed
+contains "and its wordlist is detected"                   '"language":"en"' \
+    with_seed "$ZERO_24" spectra --json wallet check-seed
+contains "a Chinese phrase is detected as Chinese"        '"language":"zh-hans"' \
+    with_seed "的 的 的 的 的 的 的 的 的 的 的 在" spectra --json wallet check-seed
+contains "a typo leaves the length unfinished, not wrong" '"invalidWordCount":1' \
+    with_seed "abandon abandn abandon" spectra --json wallet check-seed
+contains "a fixed length refuses a longer phrase"         '"error":"Seed phrase must be 12 words."' \
+    with_seed "$ZERO_24" spectra --json wallet check-seed --words 12
+contains "and more than 24 words is named"                'That is 25 words' \
+    with_seed "$ZERO_24 abandon" spectra --json wallet check-seed
+check "an unknown wordlist is a usage error"              $USAGE \
+    with_seed "$ZERO_24" spectra wallet check-seed --language klingon
+contains_exit 3 "an import names an unfinished length"   "13 words" \
+    with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon" \
     spectra wallet import --chain Solana --name Bad
 # Simplified and Traditional Chinese share most of their word list, so a
 # Chinese mnemonic cannot be pinned to one of them. Language detection used
@@ -195,6 +215,17 @@ contains "and derives a Bitcoin address for it" '"address":"bc1q' \
 lacks "not the address the English phrase for the same entropy gives" \
     "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" \
     spectra --json wallet show Chinese
+# Cardano (CIP-3) roots on the entropy instead, so the phrase must be read in
+# its own wordlist — it used to be assumed English and refused — and the same
+# entropy must land on the English phrase's address. Substrate roots on the
+# entropy too, and panicked on a phrase valid in both Chinese lists.
+contains "imports a Chinese mnemonic for Cardano" \
+    "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp" \
+    with_seed "的 的 的 的 的 的 的 的 的 的 的 在" \
+    spectra wallet import --chain Cardano --name "Chinese ADA"
+check "and for Polkadot" $OK \
+    with_seed "的 的 的 的 的 的 的 的 的 的 的 在" \
+    spectra wallet import --chain Polkadot --name "Chinese DOT"
 
 # Incompatible stored wallet records must refuse loading without changing the bytes.
 if command -v sqlite3 >/dev/null 2>&1; then
@@ -300,11 +331,23 @@ contains "Sepolia exposes core EVM membership" '"isEvm":true' \
     spectra --json chains --testnets --filter "Ethereum Sepolia"
 contains "Bitcoin remains non-EVM with separate UI metadata" '"isEvm":false' \
     spectra --json chains --filter Bitcoin
-# The setup picker's short list is a catalog rank, not eight ids in a view.
-contains "the catalog ranks the picker's short list"  '"popularRank":1' \
+# The picker's order and filters are catalog facts, not lists in a view.
+contains "the catalog ranks every chain for the picker" '"popularRank":1' \
     spectra --json chains --filter Bitcoin
-contains "and a chain off that list has no rank"      '"popularRank":null' \
+contains "including one off the old short list"         '"popularRank":27' \
     spectra --json chains --filter Polygon
+contains "a testnet shares its mainnet's rank"          '"popularRank":2' \
+    spectra --json chains --testnets --filter "Ethereum Sepolia"
+contains "tags carry the derived and authored filters"  '"tags":["layer-1","utxo","pow"]' \
+    spectra --json chains --filter Bitcoin
+contains "a testnet adds its own tag"                   '"tags":["layer-1","evm","testnet"]' \
+    spectra --json chains --testnets --filter "Ethereum Sepolia"
+contains "the tag filter lists the Move chains"          '"name":"Aptos"' \
+    spectra --json chains --tag move
+lacks "and nothing else"                                 '"name":"Bitcoin"' \
+    spectra --json chains --tag move
+check "an unknown tag is a usage error"                 $USAGE \
+    spectra chains --tag sidechain
 check "refuses to watch Monero"           $REJECTED \
     spectra wallet watch --chain Monero --name "Watch XMR" \
         --address 48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi

@@ -12,8 +12,7 @@
 
 use crate::derivation::error::DerivationError;
 
-use crate::derivation::primitives::resolve_bip39_language;
-use bip39::Mnemonic;
+use crate::derivation::primitives::{mnemonic_entropy, parse_mnemonic};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use zeroize::Zeroizing;
@@ -135,10 +134,9 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
     //                                 dklen = 96)
     //   Then clamp per Khovratovich-Law so kL is a valid ed25519 scalar
     //   multiple of 8 and < 2^254.
-    let language = resolve_bip39_language(wordlist)?;
-    let parsed =
-        Mnemonic::parse_in_normalized(language, mnemonic).map_err(DerivationError::invalid)?;
-    let entropy = Zeroizing::new(parsed.to_entropy());
+    // The entropy depends on the wordlist, so with none given the phrase is
+    // read in its own language rather than assumed to be English.
+    let entropy = mnemonic_entropy(&parse_mnemonic(mnemonic, wordlist)?);
     let iterations = if iteration_count == 0 {
         4096
     } else {

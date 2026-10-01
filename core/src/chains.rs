@@ -10,17 +10,73 @@ static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 static CHAIN_UI_TOML: &str = include_str!("../data/chain-ui.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
-/// The setup picker's section for a chain. A display grouping only: it never
-/// decides a protocol capability (`is_evm` is the registry's). Parsed from the
-/// catalog, so a misspelt section fails when the file loads rather than
-/// dropping the chain from the picker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+/// A filter the chain picker offers. A display classification only: it never
+/// decides a protocol capability.
+///
+/// Declaration order is the order the picker shows the filters in.
+/// `Layer1`, `Evm` and `Testnet` are derived from the registry; the rest are
+/// written in `chain-ui.toml`, and parsing them there means a misspelt tag
+/// fails when the file loads rather than dropping the chain from a filter.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, uniffi::Enum,
+)]
 #[serde(rename_all = "kebab-case")]
-pub enum ChainCategory {
-    BitcoinFamily,
-    EvmL1,
-    EvmL2,
-    Other,
+pub enum ChainTag {
+    #[serde(rename = "layer-1")]
+    Layer1,
+    #[serde(rename = "layer-2")]
+    Layer2,
+    Evm,
+    Utxo,
+    Eutxo,
+    Move,
+    Substrate,
+    Pow,
+    Privacy,
+    Payments,
+    Testnet,
+}
+
+impl ChainTag {
+    pub const ALL: [ChainTag; 11] = [
+        ChainTag::Layer1,
+        ChainTag::Layer2,
+        ChainTag::Evm,
+        ChainTag::Utxo,
+        ChainTag::Eutxo,
+        ChainTag::Move,
+        ChainTag::Substrate,
+        ChainTag::Pow,
+        ChainTag::Privacy,
+        ChainTag::Payments,
+        ChainTag::Testnet,
+    ];
+
+    /// Whether the catalog computes this tag rather than reading it.
+    fn is_derived(self) -> bool {
+        matches!(self, ChainTag::Layer1 | ChainTag::Evm | ChainTag::Testnet)
+    }
+
+    /// The spelling `chain-ui.toml` and the CLI use.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ChainTag::Layer1 => "layer-1",
+            ChainTag::Layer2 => "layer-2",
+            ChainTag::Evm => "evm",
+            ChainTag::Utxo => "utxo",
+            ChainTag::Eutxo => "eutxo",
+            ChainTag::Move => "move",
+            ChainTag::Substrate => "substrate",
+            ChainTag::Pow => "pow",
+            ChainTag::Privacy => "privacy",
+            ChainTag::Payments => "payments",
+            ChainTag::Testnet => "testnet",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tag| tag.as_str() == value)
+    }
 }
 
 /// A catalog entry's brand colour, from a closed palette. Checked when the
@@ -76,10 +132,12 @@ struct TomlUiFile {
 struct TomlChainUi {
     chain_id: String,
     search_keywords: Vec<String>,
-    category: ChainCategory,
-    /// Position in the setup picker's short list, or absent.
+    /// The chain's place in the picker. Written on mainnets only.
     #[serde(default)]
-    popular_rank: Option<u8>,
+    popular_rank: Option<u16>,
+    /// The authored tags. Written on mainnets only.
+    #[serde(default)]
+    tags: Vec<ChainTag>,
     color: CatalogColor,
     artwork_name: String,
     #[serde(default)]
@@ -150,14 +208,16 @@ pub struct ChainEntry {
     pub address_prefix_hint: String,
     pub gas_token_symbol: String,
     pub search_keywords: Vec<String>,
-    pub category: ChainCategory,
-    /// Where this chain sits in the setup picker's short list, or `None` for
-    /// the chains that reach it only through "browse all".
+    /// Where this chain sits in the picker's popular order, 1 first. Every
+    /// mainnet has its own; a testnet shares its mainnet's.
     ///
-    /// The picker held this as an eight-id array in Swift, which is a per-chain
-    /// fact in a caller-owned list: adding a chain to the catalog could not put
-    /// it there, and removing one left an id the filter silently dropped.
-    pub popular_rank: Option<u8>,
+    /// The picker held a short list as an eight-id array in Swift, which is a
+    /// per-chain fact in a caller-owned list; every chain is ranked so the
+    /// whole list has one order rather than eight ranked rows and the rest.
+    pub popular_rank: u16,
+    /// The picker filters this chain appears under, in [`ChainTag::ALL`]
+    /// order. A testnet carries its mainnet's tags and `Testnet`.
+    pub tags: Vec<ChainTag>,
     pub is_evm: bool,
     pub color: CatalogColor,
     pub artwork_name: String,
@@ -259,6 +319,29 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
         crate::registry::Chain::all().count(),
         "network catalog and registry must have the same number of chains"
     );
+    // A testnet's rank and tags are its mainnet's. Read before any row is
+    // consumed, so a testnet row can come before its mainnet's.
+    let placement: std::collections::HashMap<&str, (u16, Vec<ChainTag>)> = parsed
+        .chains
+        .iter()
+        .filter(|c| c.environment == "mainnet")
+        .filter_map(|c| ui_by_id.get(&c.id).map(|ui| (c.id.as_str(), ui)))
+        .map(|(id, ui)| {
+            let rank = ui
+                .popular_rank
+                .unwrap_or_else(|| panic!("mainnet {id} has no popular_rank"));
+            let mut tags = ui.tags.clone();
+            assert!(
+                tags.iter().all(|tag| !tag.is_derived()),
+                "{id} writes a derived tag"
+            );
+            tags.sort_unstable();
+            tags.dedup();
+            assert_eq!(tags.len(), ui.tags.len(), "{id} repeats a tag");
+            (id, (rank, tags))
+        })
+        .collect();
+
     let mut ids = std::collections::HashSet::new();
     let catalog = parsed
         .chains
@@ -291,6 +374,25 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
             let ui = ui_by_id
                 .remove(&c.id)
                 .unwrap_or_else(|| panic!("missing UI record for network {}", c.id));
+            assert!(
+                !is_testnet || (ui.popular_rank.is_none() && ui.tags.is_empty()),
+                "testnet {} restates its mainnet's rank or tags",
+                c.id
+            );
+            let (popular_rank, mut tags) = placement
+                .get(c.family.as_str())
+                .cloned()
+                .unwrap_or_else(|| panic!("missing UI record for network {}", c.family));
+            if !tags.contains(&ChainTag::Layer2) {
+                tags.push(ChainTag::Layer1);
+            }
+            if chain.is_evm() {
+                tags.push(ChainTag::Evm);
+            }
+            if is_testnet {
+                tags.push(ChainTag::Testnet);
+            }
+            tags.sort_unstable();
             ChainEntry {
                 id: c.id.clone(),
                 name: c.name.clone(),
@@ -300,8 +402,8 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
                 address_prefix_hint: ui.address_prefix_hint,
                 gas_token_symbol: native.symbol.clone(),
                 search_keywords: ui.search_keywords,
-                category: ui.category,
-                popular_rank: ui.popular_rank,
+                popular_rank,
+                tags,
                 is_evm: chain.is_evm(),
                 color: ui.color,
                 artwork_name: ui.artwork_name,
@@ -361,6 +463,12 @@ static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
 #[uniffi::export]
 pub fn list_all_chains() -> Vec<ChainEntry> {
     CATALOG.clone()
+}
+
+/// Every picker filter, in the order the picker shows them.
+#[uniffi::export]
+pub fn list_chain_tags() -> Vec<ChainTag> {
+    ChainTag::ALL.to_vec()
 }
 
 /// Return the chain wiki rows — one per chain, never one per network.
@@ -425,26 +533,85 @@ mod explicit_network_catalog {
         );
     }
 
+    /// `evm` is the registry's fact; the presentation file cannot claim it.
     #[test]
-    fn display_categories_cannot_change_evm_membership() {
-        let changed = CHAIN_UI_TOML
-            .replace("category = \"evm-l1\"", "category = \"other\"")
-            .replace("category = \"evm-l2\"", "category = \"other\"")
-            .replace("category = \"bitcoin-family\"", "category = \"evm-l1\"");
-        let catalog = load_catalog(&DECLARED, &changed);
-        for (actual, expected) in catalog.iter().zip(CATALOG.iter()) {
-            assert_eq!(actual.is_evm, expected.is_evm, "{}", actual.id);
+    #[should_panic(expected = "bitcoin writes a derived tag")]
+    fn derived_tags_cannot_be_written() {
+        let claimed = CHAIN_UI_TOML.replacen(
+            "tags = [\"utxo\", \"pow\"]",
+            "tags = [\"utxo\", \"pow\", \"evm\"]",
+            1,
+        );
+        load_catalog(&DECLARED, &claimed);
+    }
+
+    #[test]
+    #[should_panic(expected = "testnet bitcoin-testnet restates its mainnet's rank or tags")]
+    fn a_testnet_cannot_restate_its_mainnets_placement() {
+        let restated = CHAIN_UI_TOML.replacen(
+            "chain_id = \"bitcoin-testnet\"\n",
+            "chain_id = \"bitcoin-testnet\"\npopular_rank = 1\n",
+            1,
+        );
+        load_catalog(&DECLARED, &restated);
+    }
+
+    #[test]
+    #[should_panic(expected = "mainnet bitcoin has no popular_rank")]
+    fn every_mainnet_is_ranked() {
+        load_catalog(
+            &DECLARED,
+            &CHAIN_UI_TOML.replacen("popular_rank = 1\n", "", 1),
+        );
+    }
+
+    #[test]
+    fn tag_spellings_agree() {
+        for tag in ChainTag::ALL {
+            assert_eq!(
+                serde_json::to_value(tag).unwrap(),
+                serde_json::Value::from(tag.as_str())
+            );
+            assert_eq!(ChainTag::parse(tag.as_str()), Some(tag));
         }
-        assert!(
-            catalog
-                .iter()
-                .any(|c| c.is_evm && c.category == ChainCategory::Other)
-        );
-        assert!(
-            catalog
-                .iter()
-                .any(|c| !c.is_evm && c.category == ChainCategory::EvmL1)
-        );
+        let mut sorted = ChainTag::ALL;
+        sorted.sort_unstable();
+        assert_eq!(sorted, ChainTag::ALL, "ALL is not in declaration order");
+    }
+
+    /// The derived tags follow the registry, and the authored ones that the
+    /// registry also models agree with it.
+    #[test]
+    fn tags_agree_with_the_registry() {
+        use crate::fetch::transactions::TransactionMergeStrategy as Merge;
+        for chain in Chain::all() {
+            let e = entry(chain.str_id());
+            let has = |tag| e.tags.contains(&tag);
+            assert_eq!(has(ChainTag::Evm), chain.is_evm(), "{}", e.id);
+            assert_eq!(has(ChainTag::Testnet), chain.is_testnet(), "{}", e.id);
+            assert_ne!(has(ChainTag::Layer1), has(ChainTag::Layer2), "{}", e.id);
+            assert_eq!(
+                has(ChainTag::Utxo),
+                matches!(
+                    chain.transaction_merge_strategy(),
+                    Merge::StandardUtxo | Merge::Dogecoin
+                ),
+                "{} disagrees about being UTXO",
+                e.id
+            );
+            assert_eq!(
+                has(ChainTag::Substrate),
+                chain.substrate_balance_bytes().is_some(),
+                "{} disagrees about being Substrate",
+                e.id
+            );
+            assert!(
+                !has(ChainTag::Layer2) || chain.is_evm(),
+                "{} is a non-EVM layer 2",
+                e.id
+            );
+            assert!(e.tags.windows(2).all(|w| w[0] < w[1]), "{}", e.id);
+        }
     }
 
     #[test]
@@ -515,8 +682,13 @@ mod explicit_network_catalog {
             assert_eq!(a, b, "{field} did not carry through to the network");
         }
         assert_eq!(
-            main.category, net.category,
-            "category did not carry through to the network"
+            main.popular_rank, net.popular_rank,
+            "popular_rank did not carry through to the network"
+        );
+        assert_eq!(
+            [&main.tags[..], &[ChainTag::Testnet]].concat(),
+            net.tags,
+            "tags did not carry through to the network"
         );
         assert_eq!(
             main.color, net.color,
@@ -547,20 +719,15 @@ mod explicit_network_catalog {
         }
     }
 
-    /// The setup picker's short list is a rank per chain, so it cannot hold a
-    /// duplicate position, a gap, or a testnet.
+    /// The picker's popular order ranks every mainnet once, 1..=n without gaps.
     #[test]
-    fn the_popular_short_list_is_a_ranking() {
-        let mut ranks: Vec<u8> = Vec::new();
-        for chain in Chain::all() {
-            let e = entry(chain.str_id());
-            let Some(rank) = e.popular_rank else { continue };
-            assert!(!e.is_testnet, "{} is a testnet on the short list", e.id);
-            ranks.push(rank);
-        }
+    fn every_mainnet_has_its_own_rank() {
+        let mut ranks: Vec<u16> = Chain::mainnets()
+            .map(|chain| entry(chain.str_id()).popular_rank)
+            .collect();
         ranks.sort_unstable();
-        let expected: Vec<u8> = (1..=ranks.len() as u8).collect();
-        assert_eq!(ranks, expected, "the short list is not 1..=n without gaps");
+        let expected: Vec<u16> = (1..=ranks.len() as u16).collect();
+        assert_eq!(ranks, expected, "the ranks are not 1..=n without gaps");
     }
 
     /// An address hint describes a network's format, so it is never inherited:

@@ -16,13 +16,13 @@ type HmacSha512 = Hmac<Sha512>;
 
 pub(crate) type OptionalKeyMaterial = (Option<String>, Option<String>, Option<String>);
 
-/// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, DerivationError> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
+/// Map a wordlist name ("english", "zh-cn", etc.) to its BIP-39 language.
+///
+/// There is no default: a caller without a name reads the phrase in whichever
+/// language holds it (`parse_mnemonic`), because an entropy-based derivation
+/// under the wrong list refuses the phrase or reads different bytes from it.
+fn resolve_bip39_language(name: &str) -> Result<Language, DerivationError> {
+    match name.trim().to_ascii_lowercase().as_str() {
         "english" | "en" => Ok(Language::English),
         "czech" | "cs" => Ok(Language::Czech),
         "french" | "fr" => Ok(Language::French),
@@ -50,14 +50,48 @@ pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, Der
 /// A named wordlist that is not a BIP-39 language is still an error: it comes
 /// from the Advanced-mode override field, and silently deriving under English
 /// because of a typo there produces a different wallet.
-fn parse_mnemonic(phrase: &str, wordlist: Option<&str>) -> Result<Mnemonic, DerivationError> {
+///
+/// Without a name the first language in `Language::ALL` that parses wins.
+/// That is safe for derivations that read the entropy (Cardano, Substrate):
+/// every word the Simplified and Traditional Chinese lists share sits at the
+/// same index in both, so a phrase valid in both decodes to the same entropy.
+/// English and French share 100 words at different indices, so a phrase made
+/// only of those and checksum-valid in both is read as English — the reading
+/// it had before languages were detected; naming the wordlist picks French.
+pub(crate) fn parse_mnemonic(
+    phrase: &str,
+    wordlist: Option<&str>,
+) -> Result<Mnemonic, DerivationError> {
     match wordlist {
         Some(name) if !name.trim().is_empty() => {
-            Mnemonic::parse_in(resolve_bip39_language(Some(name))?, phrase.trim())
+            Mnemonic::parse_in(resolve_bip39_language(name)?, phrase.trim())
                 .map_err(DerivationError::invalid)
         }
         _ => crate::validation::parse_seed_phrase(phrase, None),
     }
+}
+
+/// The BIP-39 entropy a parsed phrase encodes, read from its word indices.
+///
+/// Not `Mnemonic::to_entropy`: bip39 2.2 re-detects the language from the
+/// words there instead of using the one the phrase was parsed in, and panics
+/// on a phrase valid in two lists — every all-shared-word Chinese phrase.
+pub(crate) fn mnemonic_entropy(mnemonic: &Mnemonic) -> Zeroizing<Vec<u8>> {
+    // 11 bits per word; the trailing word_count / 3 bits are the checksum.
+    let entropy_len = mnemonic.word_count() / 3 * 4;
+    let mut entropy = Zeroizing::new(Vec::with_capacity(entropy_len + 1));
+    let mut acc: u32 = 0;
+    let mut bits = 0;
+    for index in mnemonic.word_indices() {
+        acc = (acc << 11) | index as u32;
+        bits += 11;
+        while bits >= 8 {
+            bits -= 8;
+            entropy.push((acc >> bits) as u8);
+        }
+    }
+    entropy.truncate(entropy_len);
+    entropy
 }
 
 /// BIP-39 mnemonic -> 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
@@ -131,8 +165,7 @@ pub(crate) fn derive_substrate_mini_secret(
     salt_prefix: Option<&str>,
     iteration_count: u32,
 ) -> Result<Zeroizing<[u8; 32]>, DerivationError> {
-    let parsed = parse_mnemonic(mnemonic, wordlist)?;
-    let entropy = Zeroizing::new(parsed.to_entropy());
+    let entropy = mnemonic_entropy(&parse_mnemonic(mnemonic, wordlist)?);
     let prefix = salt_prefix.unwrap_or("mnemonic");
     let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
     let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());

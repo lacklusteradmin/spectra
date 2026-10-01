@@ -517,6 +517,68 @@ fn cardano_icarus_root_is_clamped() {
 }
 
 #[test]
+fn cardano_icarus_reads_a_phrase_in_its_own_wordlist() {
+    // CIP-3 roots on the BIP-39 entropy, so with no wordlist named a Chinese
+    // phrase must be read as Chinese, not refused as bad English. 的 and 在
+    // are words 0 and 3, the same entropy as `abandon … about`.
+    const CHINESE: &str = "的 的 的 的 的 的 的 的 的 的 的 在";
+    const ENGLISH: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    let root = |phrase, wordlist| {
+        *derive_cardano_icarus_xprv_root(phrase, "", wordlist, 0).expect("icarus root")
+    };
+    let detected = root(CHINESE, None);
+    assert_eq!(detected, root(ENGLISH, None));
+    // The phrase is valid in both Chinese lists, which agree on every shared
+    // word's index, so either explicit choice reads the same entropy.
+    assert_eq!(detected, root(CHINESE, Some("zh-hans")));
+    assert_eq!(detected, root(CHINESE, Some("zh-hant")));
+    // A named wordlist stays strict.
+    assert!(derive_cardano_icarus_xprv_root(CHINESE, "", Some("english"), 0).is_err());
+    assert!(derive_cardano_icarus_xprv_root(CHINESE, "", Some("klingon"), 0).is_err());
+}
+
+#[test]
+fn bip39_chinese_wordlists_agree_on_shared_words() {
+    // `parse_mnemonic` reads an unnamed Chinese phrase as Simplified first;
+    // that choice is only harmless for entropy-based roots if no shared word
+    // sits at a different index in the Traditional list.
+    use bip39::Language;
+    let simplified = Language::SimplifiedChinese.word_list();
+    let traditional = Language::TraditionalChinese.word_list();
+    let mut shared = 0;
+    for (index, word) in simplified.iter().enumerate() {
+        if let Some(other) = traditional.iter().position(|w| w == word) {
+            assert_eq!(index, other, "{word} differs between Chinese lists");
+            shared += 1;
+        }
+    }
+    assert!(shared > 1000, "the lists are expected to overlap heavily");
+}
+
+#[test]
+fn mnemonic_entropy_matches_bip39_and_survives_ambiguous_phrases() {
+    use crate::derivation::primitives::{mnemonic_entropy, parse_mnemonic};
+    for entropy in [[0u8; 16].to_vec(), [0x7f; 20].to_vec(), (0..32).collect()] {
+        let mnemonic = bip39::Mnemonic::from_entropy(&entropy).unwrap();
+        assert_eq!(*mnemonic_entropy(&mnemonic), mnemonic.to_entropy());
+    }
+    // `Mnemonic::to_entropy` panics here; Substrate roots on entropy too.
+    let chinese = parse_mnemonic("的 的 的 的 的 的 的 的 的 的 的 在", None).unwrap();
+    assert_eq!(*mnemonic_entropy(&chinese), [0u8; 16]);
+    let polkadot = |phrase: &str| {
+        derive_polkadot(phrase.into(), None, None, true, false, false)
+            .expect("polkadot")
+            .address
+    };
+    assert_eq!(
+        polkadot("的 的 的 的 的 的 的 的 的 的 的 在"),
+        polkadot(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        ),
+    );
+}
+
+#[test]
 fn polkadot_substrate_address_structure() {
     // SS58 Polkadot mainnet (network prefix 0): 1-byte prefix + 32-byte
     // pubkey + 2-byte Blake2b-512("SS58PRE"||…) checksum, base58-encoded.
