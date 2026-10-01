@@ -1,6 +1,7 @@
 //! The TronGrid v1 account API adapter (`…/v1/accounts`): an account's
 //! transfers and TRC-20 holdings, which the node HTTP API does not index.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -42,7 +43,7 @@ impl TrongridClient {
         &self,
         address: &str,
         limit: usize,
-    ) -> Result<Vec<TronTransfer>, String> {
+    ) -> Result<Vec<TronTransfer>, ApiError> {
         let limit = limit.min(50);
         let (native, tokens): (Value, Value) = race(&self.endpoints, |base| async move {
             let base = format!("{}/{address}", base.trim_end_matches('/'));
@@ -61,7 +62,7 @@ impl TrongridClient {
                     RetryProfile::ChainRead,
                 )
                 .await?;
-            Ok((native, tokens))
+            Ok::<_, ApiError>((native, tokens))
         })
         .await?;
         let mut entries = native_transfers(&native, address)?;
@@ -73,7 +74,10 @@ impl TrongridClient {
 
     /// Every TRC-20 the account holds, as contract and raw balance.
     /// `/v1/accounts` reports no decimals or symbols.
-    pub async fn fetch_trc20_holdings(&self, address: &str) -> Result<Vec<(String, u128)>, String> {
+    pub async fn fetch_trc20_holdings(
+        &self,
+        address: &str,
+    ) -> Result<Vec<(String, u128)>, ApiError> {
         let resp: Value = race(&self.endpoints, |endpoint| async move {
             self.client
                 .get_json(
@@ -107,17 +111,17 @@ impl TrongridClient {
     }
 }
 
-fn data(response: &Value) -> Result<&Vec<Value>, String> {
+fn data(response: &Value) -> Result<&Vec<Value>, ApiError> {
     response
         .get("data")
         .and_then(Value::as_array)
-        .ok_or_else(|| "TronGrid history: response has no data".to_string())
+        .or_decode("TronGrid history: response has no data")
 }
 
 /// Successful TRX transfers. Other contract types (smart-contract calls,
 /// staking, votes) move no TRX between accounts; TRC-20 movements come from
 /// the token endpoint.
-fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>, String> {
+fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>, ApiError> {
     let mut entries = Vec::new();
     for tx in data(response)? {
         let contract = tx.pointer("/raw_data/contract/0");
@@ -129,19 +133,24 @@ fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>
         let txid = tx.get("txID").and_then(Value::as_str).unwrap_or_default();
         let value = contract
             .and_then(|c| c.pointer("/parameter/value"))
-            .ok_or_else(|| format!("TronGrid history: transfer {txid} has no value"))?;
+            .ok_or_else(|| {
+                ApiError::Decode(format!("TronGrid history: transfer {txid} has no value"))
+            })?;
         let party = |field: &str| {
             value
                 .get(field)
                 .and_then(Value::as_str)
-                .ok_or_else(|| format!("TronGrid history: transfer {txid} has no {field}"))
-                .and_then(crate::derivation::tron::tron_hex_to_base58)
+                .ok_or_else(|| {
+                    ApiError::Decode(format!("TronGrid history: transfer {txid} has no {field}"))
+                })
+                .and_then(|hex| {
+                    crate::derivation::tron::tron_hex_to_base58(hex).map_err(ApiError::decode)
+                })
         };
         let (from, to) = (party("owner_address")?, party("to_address")?);
-        let sun = value
-            .get("amount")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| format!("TronGrid history: transfer {txid} has no amount"))?;
+        let sun = value.get("amount").and_then(Value::as_u64).ok_or_else(|| {
+            ApiError::Decode(format!("TronGrid history: transfer {txid} has no amount"))
+        })?;
         entries.push(TronTransfer {
             contract: None,
             txid: txid.to_string(),
@@ -160,7 +169,7 @@ fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>
 }
 
 /// TRC-20 `Transfer` events; approvals move nothing.
-fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>, String> {
+fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>, ApiError> {
     let mut entries = Vec::new();
     for tx in data(response)? {
         if tx.get("type").and_then(Value::as_str) != Some("Transfer") {
@@ -174,17 +183,27 @@ fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>,
             tx.pointer(pointer)
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
-                .ok_or_else(|| format!("TronGrid history: token transfer {txid} has no {pointer}"))
+                .ok_or_else(|| {
+                    ApiError::Decode(format!(
+                        "TronGrid history: token transfer {txid} has no {pointer}"
+                    ))
+                })
         };
         let raw: u128 = text("/value")?.parse().map_err(|_| {
-            format!("TronGrid history: token transfer {txid} has a malformed value")
+            ApiError::decode(format!(
+                "TronGrid history: token transfer {txid} has a malformed value"
+            ))
         })?;
         let decimals = tx
             .pointer("/token_info/decimals")
             .and_then(Value::as_u64)
             .and_then(|d| u32::try_from(d).ok())
             .filter(|d| *d <= 38)
-            .ok_or_else(|| format!("TronGrid history: token transfer {txid} has no decimals"))?;
+            .ok_or_else(|| {
+                ApiError::Decode(format!(
+                    "TronGrid history: token transfer {txid} has no decimals"
+                ))
+            })?;
         let to = text("/to")?.to_string();
         entries.push(TronTransfer {
             contract: Some(text("/token_info/address")?.to_string()),

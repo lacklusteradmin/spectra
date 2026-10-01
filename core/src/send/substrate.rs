@@ -9,6 +9,8 @@
 //! specific runtime version, and re-verify against the chain's metadata
 //! after every runtime upgrade.
 
+use crate::send::error::SendError;
+
 #[derive(Debug, Clone, Copy)]
 pub struct RuntimeCallIndex {
     pub pallet: u8,
@@ -54,12 +56,12 @@ pub(super) fn scale_compact_u128(n: u128) -> Vec<u8> {
     }
 }
 
-pub(super) fn decode_hash_hex(hex_str: &str) -> Result<[u8; 32], String> {
+pub(super) fn decode_hash_hex(hex_str: &str) -> Result<[u8; 32], SendError> {
     let s = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    let bytes = hex::decode(s).map_err(|e| format!("hash decode: {e}"))?;
+    let bytes = hex::decode(s).map_err(|e| SendError::Invalid(format!("hash decode: {e}")))?;
     bytes
         .try_into()
-        .map_err(|_| format!("hash wrong length: {}", hex_str))
+        .map_err(|_| SendError::Invalid(format!("hash wrong length: {}", hex_str)))
 }
 
 pub(super) fn blake2b_256(data: &[u8]) -> [u8; 32] {

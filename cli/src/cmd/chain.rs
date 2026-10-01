@@ -1,6 +1,6 @@
 //! Commands that talk to a chain: the supported list, balances and history.
 //!
-//! Endpoint selection is core's — `filtered_endpoint_records_for_chain` picks
+//! Endpoint selection is core's — `endpoints::records_for_chain` picks
 //! them from the catalog by API and capability. The CLI names the capabilities
 //! it is about to use and nothing else.
 
@@ -58,7 +58,7 @@ pub fn service_for_chain(
     any_of: &[EndpointCapability],
 ) -> CliResult<Arc<WalletService>> {
     let service = ctx.service()?;
-    let records = spectra_core::filtered_endpoint_records_for_chain(chain, any_of)?;
+    let records = spectra_core::endpoints::records_for_chain(chain, any_of);
     if !records
         .iter()
         .any(|row| chain.endpoint_apis().contains(&row.api))
@@ -179,7 +179,11 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                 capabilities: args
                     .capabilities
                     .iter()
-                    .map(|name| name.parse().map_err(CliError::usage))
+                    .map(|name| {
+                        name.parse().map_err(|e: spectra_core::SpectraBridgeError| {
+                            CliError::usage(e.to_string())
+                        })
+                    })
                     .collect::<CliResult<_>>()?,
             },
         })?;
@@ -235,9 +239,9 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         });
         out.emit(serde_json::json!({
             "catalog": true,
-            "settingsGroups": spectra_core::chain_endpoints()?.into_iter()
+            "settingsGroups": spectra_core::endpoints::endpoint_settings().into_iter()
                 .filter(|row| chains.contains(&row.chain_id))
-                .flat_map(|row| row.grouped_settings)
+                .flat_map(|row| row.groups)
                 .filter(|group| chains.contains(&group.chain_id))
                 .map(|group| serde_json::json!({
                     "chainId": group.chain_id, "title": group.title, "endpoints": group.endpoints,
@@ -455,7 +459,7 @@ fn save_history(
                 message: "No history wallet found".into(),
             })?;
         row.outcome
-            .ok_or_else(|| spectra_core::SpectraBridgeError::from(row.error.unwrap_or_default()))
+            .ok_or_else(|| spectra_core::SpectraBridgeError::failure(row.error.unwrap_or_default()))
     };
     let mut outcome = fetch(false).map_err(CliError::from)?;
     let mut fetched_pages = 1;

@@ -1,6 +1,7 @@
 //! The Sui JSON-RPC adapter: balances, coin objects, gas price, transaction
 //! history and execution of a signed transaction.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -51,7 +52,7 @@ impl SuiClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             crate::EndpointApi::SuiJsonRpc,
             &self.client,
@@ -66,7 +67,7 @@ impl SuiClient {
 // Sui fetch paths: native balance, per-coin balance, history.
 
 impl SuiClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<SuiBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<SuiBalance, ApiError> {
         let result = self
             .call("suix_getBalance", json!([address, "0x2::sui::SUI"]))
             .await?;
@@ -74,7 +75,7 @@ impl SuiClient {
             .get("totalBalance")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or("suix_getBalance: missing totalBalance")?;
+            .or_decode("suix_getBalance: missing totalBalance")?;
         Ok(SuiBalance { mist })
     }
 
@@ -82,7 +83,7 @@ impl SuiClient {
     ///
     /// Queried as sender and as recipient, since neither filter alone sees
     /// both directions, and read from each transaction's balance changes.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<SuiHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<SuiHistoryEntry>, ApiError> {
         let mut blocks = Vec::new();
         for filter in ["FromAddress", "ToAddress"] {
             let result = self
@@ -135,7 +136,7 @@ impl SuiClient {
     pub async fn fetch_all_coin_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<crate::api::HeldToken>, String> {
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
         let result = self.call("suix_getAllBalances", json!([address])).await?;
         let mut held: Vec<(String, u128)> = Vec::new();
         for entry in result.as_array().map(|v| v.as_slice()).unwrap_or_default() {
@@ -177,7 +178,11 @@ impl SuiClient {
 
     /// Fetch the balance for a specific coin type (e.g. `0x5d4b...::coin::COIN`).
     /// Returns the raw balance in the coin's smallest unit.
-    pub async fn fetch_coin_balance(&self, address: &str, coin_type: &str) -> Result<u64, String> {
+    pub async fn fetch_coin_balance(
+        &self,
+        address: &str,
+        coin_type: &str,
+    ) -> Result<u64, ApiError> {
         let result = self
             .call("suix_getBalance", json!([address, coin_type]))
             .await?;
@@ -185,7 +190,11 @@ impl SuiClient {
             .get("totalBalance")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or_else(|| format!("suix_getBalance: missing totalBalance for {coin_type}"))
+            .ok_or_else(|| {
+                ApiError::Decode(format!(
+                    "suix_getBalance: missing totalBalance for {coin_type}"
+                ))
+            })
     }
 }
 
@@ -201,7 +210,7 @@ const SUI_COIN_TYPE: &str = "0x2::sui::SUI";
 fn sui_history_from_blocks(
     blocks: &[Value],
     address: &str,
-) -> Result<Vec<SuiHistoryEntry>, String> {
+) -> Result<Vec<SuiHistoryEntry>, ApiError> {
     let address = address.to_lowercase();
     let owner_of = |change: &Value| {
         change
@@ -303,7 +312,7 @@ impl SuiClient {
         &self,
         tx_bytes_b64: &str,
         sig_b64: &str,
-    ) -> Result<SuiSendResult, String> {
+    ) -> Result<SuiSendResult, ApiError> {
         let result = self
             .call(
                 "sui_executeTransactionBlock",
@@ -315,12 +324,14 @@ impl SuiClient {
             .and_then(Value::as_str)
             != Some("success")
         {
-            return Err(format!("Sui execution did not succeed: {result}"));
+            return Err(ApiError::Rejected(format!(
+                "Sui execution did not succeed: {result}"
+            )));
         }
         let digest = result["digest"]
             .as_str()
             .filter(|s| !s.is_empty())
-            .ok_or("missing Sui transaction digest")?
+            .or_decode("missing Sui transaction digest")?
             .to_string();
         Ok(SuiSendResult {
             digest,
@@ -345,12 +356,12 @@ pub struct SuiCoinPage {
 }
 
 impl SuiClient {
-    pub async fn fetch_reference_gas_price(&self) -> Result<u64, String> {
+    pub async fn fetch_reference_gas_price(&self) -> Result<u64, ApiError> {
         self.call("suix_getReferenceGasPrice", json!([]))
             .await?
             .as_str()
             .and_then(|s| s.parse().ok())
-            .ok_or_else(|| "missing Sui reference gas price".to_string())
+            .or_decode("missing Sui reference gas price")
     }
 
     /// Up to 50 of `owner`'s SUI coins, from `cursor` on.
@@ -358,43 +369,47 @@ impl SuiClient {
         &self,
         owner: &str,
         cursor: Option<&str>,
-    ) -> Result<SuiCoinPage, String> {
+    ) -> Result<SuiCoinPage, ApiError> {
         let page = self
             .call("suix_getCoins", json!([owner, "0x2::sui::SUI", cursor, 50]))
             .await?;
         let coins = page["data"]
             .as_array()
-            .ok_or("missing Sui coins")?
+            .or_decode("missing Sui coins")?
             .iter()
             .map(|row| {
                 Ok(SuiCoin {
                     object_id: row["coinObjectId"]
                         .as_str()
-                        .ok_or("missing Sui coin id")?
+                        .or_decode("missing Sui coin id")?
                         .to_string(),
                     version: row["version"]
                         .as_str()
                         .and_then(|s| s.parse().ok())
-                        .ok_or("missing Sui coin version")?,
-                    digest: bs58::decode(row["digest"].as_str().ok_or("missing Sui coin digest")?)
-                        .into_vec()
-                        .map_err(|_| "invalid Sui coin digest")?
-                        .try_into()
-                        .map_err(|_| "Sui digest must be 32 bytes")?,
+                        .or_decode("missing Sui coin version")?,
+                    digest: bs58::decode(
+                        row["digest"]
+                            .as_str()
+                            .or_decode("missing Sui coin digest")?,
+                    )
+                    .into_vec()
+                    .map_err(|_| ApiError::Decode("invalid Sui coin digest".into()))?
+                    .try_into()
+                    .map_err(|_| ApiError::Decode("Sui digest must be 32 bytes".into()))?,
                     balance: row["balance"]
                         .as_str()
                         .and_then(|s| s.parse().ok())
-                        .ok_or("invalid Sui coin balance")?,
+                        .or_decode("invalid Sui coin balance")?,
                 })
             })
-            .collect::<Result<_, String>>()?;
+            .collect::<Result<_, ApiError>>()?;
         let next_cursor = if page["hasNextPage"].as_bool() == Some(false) {
             None
         } else {
             Some(
                 page.get("nextCursor")
                     .and_then(Value::as_str)
-                    .ok_or("missing Sui coin cursor")?
+                    .or_decode("missing Sui coin cursor")?
                     .to_string(),
             )
         };

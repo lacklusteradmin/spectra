@@ -9,7 +9,10 @@ fn spl_token_program_id() -> [u8; 32] {
     crate::derivation::solana::decode_b58_32("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap()
 }
 fn vectors() -> Value {
-    serde_json::from_str(include_str!("../../testdata/send-audit-vectors.json")).unwrap()
+    serde_json::from_str(include_str!(
+        "../../../tests/fixtures/send-audit-vectors.json"
+    ))
+    .unwrap()
 }
 fn derived(
     chain: crate::registry::Chain,

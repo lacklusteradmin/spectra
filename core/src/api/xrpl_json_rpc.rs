@@ -1,6 +1,7 @@
 //! The XRP Ledger JSON-RPC adapter (rippled / Clio): account info and
 //! sequence, fees, transaction history and blob submission.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -48,7 +49,7 @@ impl XrplClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             crate::EndpointApi::XrplJsonRpc,
             &self.client,
@@ -63,7 +64,7 @@ impl XrplClient {
 // XRP fetch paths: balance, sequence, fee, history.
 
 impl XrplClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<XrpBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<XrpBalance, ApiError> {
         let result = self
             .call(
                 "account_info",
@@ -74,11 +75,11 @@ impl XrplClient {
             .pointer("/account_data/Balance")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or("account_info: missing Balance")?;
+            .or_decode("account_info: missing Balance")?;
         Ok(XrpBalance { drops })
     }
 
-    pub async fn fetch_sequence(&self, address: &str) -> Result<u32, String> {
+    pub async fn fetch_sequence(&self, address: &str) -> Result<u32, ApiError> {
         let result = self
             .call(
                 "account_info",
@@ -89,19 +90,19 @@ impl XrplClient {
             .pointer("/account_data/Sequence")
             .and_then(|v| v.as_u64())
             .map(|n| n as u32)
-            .ok_or_else(|| "account_info: missing Sequence".to_string())
+            .or_decode("account_info: missing Sequence")
     }
 
-    pub async fn fetch_fee(&self) -> Result<u64, String> {
+    pub async fn fetch_fee(&self) -> Result<u64, ApiError> {
         let result = self.call("fee", json!({})).await?;
         result
             .pointer("/drops/open_ledger_fee")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or_else(|| "fee: missing open_ledger_fee".to_string())
+            .or_decode("fee: missing open_ledger_fee")
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<XrpHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<XrpHistoryEntry>, ApiError> {
         let result = self
             .call(
                 "account_tx",
@@ -129,7 +130,7 @@ impl XrplClient {
 fn xrp_history_from_transactions(
     txs: &[Value],
     address: &str,
-) -> Result<Vec<XrpHistoryEntry>, String> {
+) -> Result<Vec<XrpHistoryEntry>, ApiError> {
     let drops = |value: Option<&Value>| -> Option<i128> {
         value.and_then(Value::as_str).and_then(|s| s.parse().ok())
     };
@@ -224,7 +225,7 @@ fn xrp_history_from_transactions(
 
 impl XrplClient {
     /// Submit a pre-signed transaction blob (for rebroadcast).
-    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, String> {
+    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, ApiError> {
         let result = self.call("submit", json!({"tx_blob": tx_blob_hex})).await?;
         let txid = result
             .get("tx_json")

@@ -2,6 +2,7 @@
 //! NEP-141 views and broadcast. A node keeps no account history; that is
 //! `nearblocks`.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -45,7 +46,7 @@ impl NearClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             crate::EndpointApi::NearJsonRpc,
             &self.client,
@@ -61,7 +62,7 @@ impl NearClient {
 // history (indexer), NEP-141 FT balance + metadata, and the UniFFI-exported
 
 impl NearClient {
-    pub async fn fetch_balance(&self, account_id: &str) -> Result<NearBalance, String> {
+    pub async fn fetch_balance(&self, account_id: &str) -> Result<NearBalance, ApiError> {
         let result = self
             .call(
                 "query",
@@ -84,7 +85,7 @@ impl NearClient {
         &self,
         account_id: &str,
         public_key_b58: &str,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, ApiError> {
         let result = self
             .call(
                 "query",
@@ -99,16 +100,16 @@ impl NearClient {
         result
             .get("nonce")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| "view_access_key: missing nonce".to_string())
+            .or_decode("view_access_key: missing nonce")
     }
 
-    pub async fn fetch_latest_block_hash(&self) -> Result<String, String> {
+    pub async fn fetch_latest_block_hash(&self) -> Result<String, ApiError> {
         let result = self.call("block", json!({"finality": "final"})).await?;
         result
             .pointer("/header/hash")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| "block: missing hash".to_string())
+            .or_decode("block: missing hash")
     }
 
     // ── NEP-141 (fungible token) support
@@ -121,9 +122,10 @@ impl NearClient {
         contract: &str,
         method: &str,
         args: &Value,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<Vec<u8>, ApiError> {
         use base64::Engine;
-        let args_str = serde_json::to_string(args).map_err(|e| format!("args serialize: {e}"))?;
+        let args_str = serde_json::to_string(args)
+            .map_err(|e| ApiError::InvalidInput(format!("args serialize: {e}")))?;
         let args_b64 = base64::engine::general_purpose::STANDARD.encode(args_str.as_bytes());
         let result = self
             .call(
@@ -141,7 +143,7 @@ impl NearClient {
         let bytes = result
             .get("result")
             .and_then(|v| v.as_array())
-            .ok_or("view_function: missing result bytes")?
+            .or_decode("view_function: missing result bytes")?
             .iter()
             .filter_map(|n| n.as_u64().map(|n| n as u8))
             .collect::<Vec<u8>>();
@@ -152,7 +154,7 @@ impl NearClient {
         &self,
         contract: &str,
         account_id: &str,
-    ) -> Result<u128, String> {
+    ) -> Result<u128, ApiError> {
         let bytes = self
             .view_function(
                 contract,
@@ -161,13 +163,13 @@ impl NearClient {
             )
             .await?;
         // Response body is a JSON string like `"1000000"`.
-        let s: String =
-            serde_json::from_slice(&bytes).map_err(|e| format!("ft_balance_of decode: {e}"))?;
+        let s: String = serde_json::from_slice(&bytes)
+            .map_err(|e| ApiError::Decode(format!("ft_balance_of decode: {e}")))?;
         s.parse::<u128>()
-            .map_err(|e| format!("ft_balance_of parse: {e}"))
+            .map_err(|e| ApiError::Decode(format!("ft_balance_of parse: {e}")))
     }
 
-    pub async fn fetch_ft_metadata(&self, contract: &str) -> Result<NearFtMetadata, String> {
+    pub async fn fetch_ft_metadata(&self, contract: &str) -> Result<NearFtMetadata, ApiError> {
         let bytes = self
             .view_function(contract, "ft_metadata", &json!({}))
             .await?;
@@ -178,8 +180,8 @@ impl NearClient {
             symbol: String,
             decimals: u8,
         }
-        let meta: RawMeta =
-            serde_json::from_slice(&bytes).map_err(|e| format!("ft_metadata decode: {e}"))?;
+        let meta: RawMeta = serde_json::from_slice(&bytes)
+            .map_err(|e| ApiError::Decode(format!("ft_metadata decode: {e}")))?;
         Ok(NearFtMetadata {
             spec: meta.spec,
             name: meta.name,
@@ -191,7 +193,7 @@ impl NearClient {
 
 impl NearClient {
     /// Rebroadcast a pre-signed transaction (base64-encoded).
-    pub async fn broadcast_signed_tx_b64(&self, tx_b64: &str) -> Result<NearSendResult, String> {
+    pub async fn broadcast_signed_tx_b64(&self, tx_b64: &str) -> Result<NearSendResult, ApiError> {
         let result = self.call("broadcast_tx_commit", json!([tx_b64])).await?;
         let txid = result
             .get("transaction")

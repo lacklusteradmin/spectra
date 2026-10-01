@@ -1,6 +1,8 @@
 //! APT: construct the BCS signing message locally and sign it. Reads and
 //! submission are `api::aptos_rest`.
+
 use super::bcs;
+use crate::send::error::SendError;
 use crate::send::keys::Ed25519Seed;
 use serde_json::{Value, json};
 use sha3::{Digest, Sha3_256};
@@ -22,11 +24,13 @@ pub(crate) fn prepare_transfer(
     max_gas: u64,
     expiration: u64,
     chain_id: u8,
-) -> Result<PreparedAptosTransfer, String> {
+) -> Result<PreparedAptosTransfer, SendError> {
     let sender = bcs::address(from)?;
     let recipient = bcs::address(to)?;
     if amount == 0 || gas_price == 0 || max_gas == 0 || expiration == 0 {
-        return Err("invalid Aptos amount, gas or expiration".into());
+        return Err(SendError::Invalid(
+            "invalid Aptos amount, gas or expiration".into(),
+        ));
     }
     let mut message = Sha3_256::digest(b"APTOS::RawTransaction").to_vec();
     message.extend_from_slice(&sender);
@@ -57,7 +61,7 @@ pub(crate) fn prepare_transfer(
     })
 }
 impl PreparedAptosTransfer {
-    pub(crate) fn sign(mut self, key: &Ed25519Seed) -> Result<String, String> {
+    pub(crate) fn sign(mut self, key: &Ed25519Seed) -> Result<String, SendError> {
         let public = key.public_key();
         let address: [u8; 32] = Sha3_256::new()
             .chain_update(public)
@@ -65,7 +69,9 @@ impl PreparedAptosTransfer {
             .finalize()
             .into();
         if self.sender != address {
-            return Err("Aptos sender does not match signing seed".into());
+            return Err(SendError::Invalid(
+                "Aptos sender does not match signing seed".into(),
+            ));
         }
         self.body["signature"] = json!({"type":"ed25519_signature","public_key":format!("0x{}",hex::encode(public)),"signature":format!("0x{}",hex::encode(key.sign(&self.message)))});
         Ok(self.body.to_string())

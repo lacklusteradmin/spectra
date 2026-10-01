@@ -83,7 +83,7 @@ impl WalletService {
                         crate::wallet_db::AppStateChanges::between(Some(&before), &state)?;
                     tokio::task::spawn_blocking(move || changes.save(&database))
                         .await
-                        .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
+                        .map_err(SpectraBridgeError::failure)??;
                     service.publish_state(state).await;
                 }
                 Ok(result)

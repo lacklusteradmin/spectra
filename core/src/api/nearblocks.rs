@@ -1,6 +1,7 @@
 //! The Nearblocks adapter: a NEAR account's transfers, which a NEAR node
 //! does not index.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -32,7 +33,7 @@ impl NearblocksClient {
 
     /// The account's NEAR transfers, newest first, from Nearblocks' receipt
     /// list.
-    pub async fn fetch_history(&self, account_id: &str) -> Result<Vec<NearHistoryEntry>, String> {
+    pub async fn fetch_history(&self, account_id: &str) -> Result<Vec<NearHistoryEntry>, ApiError> {
         let page: Value = self
             .client
             .get_path(
@@ -43,7 +44,7 @@ impl NearblocksClient {
         let receipts = page
             .get("txns")
             .and_then(Value::as_array)
-            .ok_or("NEAR history: response has no txns")?;
+            .or_decode("NEAR history: response has no txns")?;
         near_history_from_receipts(receipts, account_id)
     }
 }
@@ -59,8 +60,8 @@ impl NearblocksClient {
 fn near_history_from_receipts(
     receipts: &[Value],
     account_id: &str,
-) -> Result<Vec<NearHistoryEntry>, String> {
-    let entries: Result<Vec<Option<NearHistoryEntry>>, String> = receipts
+) -> Result<Vec<NearHistoryEntry>, ApiError> {
+    let entries: Result<Vec<Option<NearHistoryEntry>>, ApiError> = receipts
         .iter()
         .map(|receipt| {
             let text = |field: &str| receipt.get(field).and_then(Value::as_str).unwrap_or("");

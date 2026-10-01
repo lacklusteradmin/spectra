@@ -231,12 +231,12 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == wallet_id)
-            .ok_or("wallet does not exist")?;
+            .ok_or_else(|| SpectraBridgeError::failure("wallet does not exist"))?;
         let holding = wallet
             .holdings
             .iter()
             .find(|h| h.deployment_id() == holding_key)
-            .ok_or("holding does not exist")?;
+            .ok_or_else(|| SpectraBridgeError::failure("holding does not exist"))?;
         let (network, token) =
             super::send_destination::destination_probe_asset(holding, &state.token_preferences)?;
         let chain = super::send_execution::send_chain_for(&state, &wallet_id, network)?;
@@ -271,18 +271,22 @@ impl WalletService {
                 .map(|preview| wrap(SendPreview::Ethereum { preview })));
         }
         if explicit_nonce.is_some() || custom_fees.is_some() {
-            return Err("EVM fee inputs require an EVM asset".into());
+            return Err(SpectraBridgeError::failure(
+                "EVM fee inputs require an EVM asset",
+            ));
         }
         let decimals = token
             .as_ref()
             .map(|t| u32::from(t.decimals))
             .unwrap_or(u32::from(chain.native_decimals()));
         if crate::send::amount_input::parse_raw_amount(&amount, decimals)? == 0 {
-            return Err("amount must be positive".into());
+            return Err(SpectraBridgeError::failure("amount must be positive"));
         }
         let address = wallet
             .address_on(chain)
-            .ok_or("wallet has no address on selected network")?
+            .ok_or_else(|| {
+                SpectraBridgeError::failure("wallet has no address on selected network")
+            })?
             .to_string();
         let destination = if destination.trim().is_empty() {
             String::new()
@@ -401,12 +405,12 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == wallet_id)
-            .ok_or("wallet does not exist")?;
+            .ok_or_else(|| SpectraBridgeError::failure("wallet does not exist"))?;
         let holding = wallet
             .holdings
             .iter()
             .find(|h| h.deployment_id() == holding_key)
-            .ok_or("holding does not exist")?;
+            .ok_or_else(|| SpectraBridgeError::failure("holding does not exist"))?;
         let chain = holding.chain_id;
         super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
         if let Some(input) = &overrides {
@@ -436,20 +440,21 @@ impl WalletService {
             .or_else(|| {
                 (shape.fee_field == crate::registry::SendFeeField::None).then(|| "0".into())
             })
-            .ok_or("Unable to estimate network fee")?;
-        let fee = crate::decimal::canonical(&fee).ok_or("invalid network fee")?;
+            .ok_or_else(|| SpectraBridgeError::failure("Unable to estimate network fee"))?;
+        let fee = crate::decimal::canonical(&fee)
+            .ok_or_else(|| SpectraBridgeError::failure("invalid network fee"))?;
         let latest = self.app_state().await;
         let wallet = latest
             .wallets
             .iter()
             .find(|w| w.id == wallet_id)
-            .ok_or("wallet was removed")?;
+            .ok_or_else(|| SpectraBridgeError::failure("wallet was removed"))?;
         super::send_execution::send_chain_for(&latest, &wallet_id, chain)?;
         let holding = wallet
             .holdings
             .iter()
             .find(|h| h.deployment_id() == holding_key)
-            .ok_or("holding was removed")?;
+            .ok_or_else(|| SpectraBridgeError::failure("holding was removed"))?;
         let verdict = crate::send::send_affordability(crate::send::SendAffordabilityInput {
             is_native: holding.is_native(),
             chain_id: chain,
@@ -466,14 +471,30 @@ impl WalletService {
         use crate::send::SendAffordability;
         match verdict {
             SendAffordability::Affordable => {}
-            SendAffordability::Unavailable => return Err("Unable to determine the available gas balance".into()),
-            SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } =>
-                return Err(format!("Insufficient {symbol} for amount plus network fee (requires {required} {symbol})").into()),
-            SendAffordability::AmountExceedsBalance { symbol } =>
-                return Err(format!("Insufficient {symbol} balance").into()),
-            SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_id } => {
+            SendAffordability::Unavailable => {
+                return Err(SpectraBridgeError::failure(
+                    "Unable to determine the available gas balance",
+                ));
+            }
+            SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
+                return Err(SpectraBridgeError::failure(format!(
+                    "Insufficient {symbol} for amount plus network fee (requires {required} {symbol})"
+                )));
+            }
+            SendAffordability::AmountExceedsBalance { symbol } => {
+                return Err(SpectraBridgeError::failure(format!(
+                    "Insufficient {symbol} balance"
+                )));
+            }
+            SendAffordability::FeeExceedsGasBalance {
+                gas_symbol,
+                fee,
+                chain_id,
+            } => {
                 let network = chain_id.chain_display_name();
-                return Err(format!("Insufficient {gas_symbol} for the {network} network fee ({fee} {gas_symbol})").into());
+                return Err(SpectraBridgeError::failure(format!(
+                    "Insufficient {gas_symbol} for the {network} network fee ({fee} {gas_symbol})"
+                )));
             }
         }
         let fee_rate_svb = match &preview {
@@ -544,11 +565,13 @@ impl WalletService {
                 .await?
                 .into_iter()
                 .find(|p| p.transaction_id.eq_ignore_ascii_case(&transaction_id))
-                .ok_or("transaction is no longer replaceable")?;
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure("transaction is no longer replaceable")
+                })?;
             if !cancel && !pending.can_speed_up {
-                return Err(
-                    "This token transfer cannot be reconstructed; cancel it instead".into(),
-                );
+                return Err(crate::SpectraBridgeError::failure(
+                    "This token transfer cannot be reconstructed; cancel it instead",
+                ));
             }
             let state = this.app_state().await;
             let chain = pending.chain_id;
@@ -556,17 +579,23 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|w| w.id.eq_ignore_ascii_case(&pending.wallet_id))
-                .ok_or("wallet does not exist")?;
+                .ok_or_else(|| SpectraBridgeError::failure("wallet does not exist"))?;
             super::send_execution::send_chain_for(&state, &wallet.id, chain)?;
             let holding = wallet
                 .holdings
                 .iter()
                 .find(|h| h.is_native() && h.chain_id == chain)
-                .ok_or("wallet has no native holding on transaction network")?;
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure(
+                        "wallet has no native holding on transaction network",
+                    )
+                })?;
             let destination = if cancel {
                 wallet
                     .address_on(chain)
-                    .ok_or("wallet has no address on transaction network")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("wallet has no address on transaction network")
+                    })?
                     .into()
             } else {
                 pending.to_address
@@ -581,7 +610,7 @@ impl WalletService {
                 this.fetch_evm_tx_nonce(pending.chain_id, pending.transaction_hash)
                     .await?,
             )
-            .map_err(|_| "nonce exceeds supported range")?;
+            .map_err(|_| SpectraBridgeError::failure("nonce exceeds supported range"))?;
             let preview = this
                 .preview_owned_evm_send(
                     wallet.id.clone(),
@@ -592,12 +621,14 @@ impl WalletService {
                     None,
                 )
                 .await?
-                .ok_or("Unable to estimate replacement fees")?;
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure("Unable to estimate replacement fees")
+                })?;
             let bump = crate::send::flow::evm_replacement_fee_bump(
                 &preview.maxFeePerGasGwei,
                 &preview.maxPriorityFeePerGasGwei,
             )
-            .ok_or("Unable to estimate replacement fees")?;
+            .ok_or_else(|| SpectraBridgeError::failure("Unable to estimate replacement fees"))?;
             Ok(OwnedReplacementDraft {
                 wallet_id: wallet.id.clone(),
                 holding_key: holding.deployment_id(),
@@ -627,11 +658,11 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == wallet_id)
-            .ok_or("wallet does not exist")?
+            .ok_or_else(|| SpectraBridgeError::failure("wallet does not exist"))?
             .holdings
             .iter()
             .find(|h| h.deployment_id() == holding_key)
-            .ok_or("holding does not exist")?;
+            .ok_or_else(|| SpectraBridgeError::failure("holding does not exist"))?;
         let chain = holding.chain_id;
         super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
         let destination = self

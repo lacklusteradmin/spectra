@@ -54,12 +54,12 @@ struct TomlFile {
 /// One concrete network. Mainnets and testnets have the same required fields.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TomlChain {
+pub(crate) struct TomlChain {
     id: String,
     name: String,
     family: String,
-    environment: String,
-    token_standard: String,
+    pub(crate) environment: String,
+    pub(crate) token_standard: String,
     #[serde(default)]
     enumerates_holdings: bool,
     derivation_path: Vec<TomlDerivationPathEntry>,
@@ -211,40 +211,36 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
 
 // ── Static catalog
 
-/// The catalog's ids, in the order `Chain` is declared in.
+/// `chains.toml` as written, parsed once.
 ///
-/// Read apart from the rest of the catalog: building it joins each chain's
-/// native token, and the token catalog names its chains by `Chain`, so a
-/// chain's id cannot wait for the whole catalog.
-static IDS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        chains: Vec<Row>,
-    }
-    #[derive(Deserialize)]
-    struct Row {
-        id: String,
-    }
-    toml::from_str::<File>(CHAINS_TOML)
+/// Read apart from the catalog: building the catalog joins each chain's native
+/// token, and the token catalog checks its deployments against these rows, so
+/// neither can wait for the other's catalog.
+static DECLARED: LazyLock<TomlFile> = LazyLock::new(|| {
+    toml::from_str(CHAINS_TOML)
         .expect("chains.toml is embedded at compile time and must be valid TOML")
-        .chains
-        .into_iter()
-        .map(|row| row.id)
-        .collect()
 });
 
-pub(crate) fn catalog_id(index: usize) -> &'static str {
-    IDS.get(index)
+/// A network's row as `chains.toml` declares it.
+pub(crate) fn declared(chain: crate::registry::Chain) -> &'static TomlChain {
+    DECLARED
+        .chains
+        .get(chain as usize)
         .expect("enum declaration order is the catalog's order")
 }
 
+pub(crate) fn catalog_id(index: usize) -> &'static str {
+    &DECLARED
+        .chains
+        .get(index)
+        .expect("enum declaration order is the catalog's order")
+        .id
+}
+
 static CATALOG: LazyLock<Vec<ChainEntry>> =
-    LazyLock::new(|| load_catalog(CHAINS_TOML, CHAIN_UI_TOML));
+    LazyLock::new(|| load_catalog(&DECLARED, CHAIN_UI_TOML));
 
-fn load_catalog(chains: &str, presentation: &str) -> Vec<ChainEntry> {
-    let parsed: TomlFile = toml::from_str(chains)
-        .expect("chains.toml is embedded at compile time and must be valid TOML");
-
+fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
     let ui: TomlUiFile = toml::from_str(presentation)
         .expect("chain-ui.toml must contain valid network presentation records");
     let mut ui_by_id = std::collections::HashMap::new();
@@ -422,7 +418,7 @@ mod explicit_network_catalog {
             .rev()
             .map(|row| format!("[[chains]]{row}"))
             .collect::<String>();
-        let actual = load_catalog(CHAINS_TOML, &reversed);
+        let actual = load_catalog(&DECLARED, &reversed);
         assert_eq!(
             serde_json::to_value(actual).unwrap(),
             serde_json::to_value(&*CATALOG).unwrap()
@@ -435,7 +431,7 @@ mod explicit_network_catalog {
             .replace("category = \"evm-l1\"", "category = \"other\"")
             .replace("category = \"evm-l2\"", "category = \"other\"")
             .replace("category = \"bitcoin-family\"", "category = \"evm-l1\"");
-        let catalog = load_catalog(CHAINS_TOML, &changed);
+        let catalog = load_catalog(&DECLARED, &changed);
         for (actual, expected) in catalog.iter().zip(CATALOG.iter()) {
             assert_eq!(actual.is_evm, expected.is_evm, "{}", actual.id);
         }
@@ -455,7 +451,7 @@ mod explicit_network_catalog {
     #[should_panic(expected = "duplicate UI chain_id bitcoin")]
     fn duplicate_presentation_references_are_rejected() {
         let first = CHAIN_UI_TOML.split("[[chains]]").nth(1).unwrap();
-        load_catalog(CHAINS_TOML, &format!("{CHAIN_UI_TOML}\n[[chains]]{first}"));
+        load_catalog(&DECLARED, &format!("{CHAIN_UI_TOML}\n[[chains]]{first}"));
     }
 
     #[test]
@@ -466,7 +462,7 @@ mod explicit_network_catalog {
             .skip(2)
             .map(|row| format!("[[chains]]{row}"))
             .collect::<String>();
-        load_catalog(CHAINS_TOML, &without_bitcoin);
+        load_catalog(&DECLARED, &without_bitcoin);
     }
 
     #[test]
@@ -477,10 +473,7 @@ mod explicit_network_catalog {
             .nth(1)
             .unwrap()
             .replace("chain_id = \"bitcoin\"", "chain_id = \"unknown-network\"");
-        load_catalog(
-            CHAINS_TOML,
-            &format!("{CHAIN_UI_TOML}\n[[chains]]{unknown}"),
-        );
+        load_catalog(&DECLARED, &format!("{CHAIN_UI_TOML}\n[[chains]]{unknown}"));
     }
 
     #[test]
@@ -495,7 +488,7 @@ mod explicit_network_catalog {
 
     #[test]
     fn mainnets_and_testnets_are_explicit_peers() {
-        let parsed: TomlFile = toml::from_str(CHAINS_TOML).unwrap();
+        let parsed = &*DECLARED;
         assert_eq!(CATALOG.len(), parsed.chains.len());
         for n in &parsed.chains {
             let chain = Chain::from_str_id(&n.id).unwrap();

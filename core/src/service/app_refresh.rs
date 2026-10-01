@@ -159,7 +159,9 @@ impl WalletService {
         };
         let deep_rescan = matches!(intent, AppRefreshIntent::DeepRescan { .. });
         if deep_rescan && !chain.is_some_and(|c| c.supports_deep_utxo_discovery()) {
-            return Err("Chain does not support deep UTXO discovery".into());
+            return Err(SpectraBridgeError::failure(
+                "Chain does not support deep UTXO discovery",
+            ));
         }
         let mut result = AppRefreshResult {
             state: self.app_state().await,

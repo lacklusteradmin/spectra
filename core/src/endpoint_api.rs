@@ -143,13 +143,15 @@ impl EndpointCapability {
 }
 
 impl std::str::FromStr for EndpointCapability {
-    type Err = String;
+    type Err = crate::SpectraBridgeError;
 
-    fn from_str(value: &str) -> Result<Self, String> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::ALL
             .into_iter()
             .find(|capability| capability.as_str() == value)
-            .ok_or_else(|| format!("unknown endpoint capability {value:?}"))
+            .ok_or_else(|| {
+                crate::SpectraBridgeError::invalid(format!("unknown endpoint capability {value:?}"))
+            })
     }
 }
 
@@ -164,14 +166,14 @@ pub fn endpoint_capability_id(capability: EndpointCapability) -> String {
 pub(crate) fn validate_configured_endpoint(
     chain: crate::registry::Chain,
     url: &str,
-) -> Result<(), String> {
+) -> Result<(), crate::SpectraBridgeError> {
     if url.is_empty() {
         return Ok(());
     }
     let expected = chain.endpoint_apis();
-    let catalog = crate::app_core::endpoint_catalog()?;
+    let catalog = crate::endpoints::catalog();
     let matching: Vec<_> = catalog
-        .endpoint_records
+        .records
         .iter()
         .filter(|record| record.endpoint.trim_end_matches('/') == url.trim_end_matches('/'))
         .collect();
@@ -182,7 +184,7 @@ pub(crate) fn validate_configured_endpoint(
         })
     {
         let names: Vec<_> = expected.iter().map(|api| api.as_str()).collect();
-        return Err(format!(
+        return Err(crate::SpectraBridgeError::invalid(format!(
             "{} requires {} endpoints; {url} uses a different API",
             chain.str_id(),
             if names.is_empty() {
@@ -190,7 +192,7 @@ pub(crate) fn validate_configured_endpoint(
             } else {
                 names.join(" or ")
             }
-        ));
+        )));
     }
     Ok(())
 }
@@ -217,7 +219,10 @@ mod tests {
     #[test]
     fn capability_names_round_trip() {
         for capability in EndpointCapability::ALL {
-            assert_eq!(capability.as_str().parse(), Ok(capability));
+            assert_eq!(
+                capability.as_str().parse::<EndpointCapability>().unwrap(),
+                capability
+            );
             assert_eq!(
                 serde_json::to_value(capability).unwrap(),
                 capability.as_str()

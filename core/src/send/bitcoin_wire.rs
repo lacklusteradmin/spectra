@@ -6,6 +6,8 @@
 //! into an empty prevout, which builds a structurally invalid transaction and
 //! reports success. Here it is one error.
 
+use crate::send::error::SendError;
+
 use sha2::{Digest, Sha256};
 
 /// Bitcoin `CompactSize`. Values above `u32::MAX` do not occur in any field
@@ -33,10 +35,13 @@ pub(crate) fn dsha256(data: &[u8]) -> [u8; 32] {
 
 /// Decode a display-order txid into the little-endian bytes an outpoint
 /// carries.
-pub(crate) fn decode_txid_le(txid: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = hex::decode(txid).map_err(|e| format!("txid decode: {e}"))?;
+pub(crate) fn decode_txid_le(txid: &str) -> Result<Vec<u8>, SendError> {
+    let mut bytes =
+        hex::decode(txid).map_err(|e| SendError::Invalid(format!("txid decode: {e}")))?;
     if bytes.len() != 32 {
-        return Err("txid must contain exactly 32 bytes".into());
+        return Err(SendError::Invalid(
+            "txid must contain exactly 32 bytes".into(),
+        ));
     }
     bytes.reverse();
     Ok(bytes)
@@ -68,7 +73,7 @@ pub(crate) fn build_input(
     vout: u32,
     script_sig: &[u8],
     sequence: u32,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let mut out = decode_txid_le(txid)?;
     out.extend_from_slice(&vout.to_le_bytes());
     out.extend_from_slice(&varint(script_sig.len()));

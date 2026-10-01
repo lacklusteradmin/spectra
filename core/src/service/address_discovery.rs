@@ -113,10 +113,10 @@ impl WalletService {
                         .unwrap_or(0)
                 };
                 let index = u32::try_from(index)
-                    .map_err(|_| SpectraBridgeError::from("receive index is out of range"))?;
+                    .map_err(|_| SpectraBridgeError::failure("receive index is out of range"))?;
                 let address = derive_children_on_network(&xpub, 0, index, 1, hd_network, None)?
                     .pop()
-                    .ok_or_else(|| SpectraBridgeError::from("missing derived address"))?
+                    .ok_or_else(|| SpectraBridgeError::failure("missing derived address"))?
                     .address;
                 if reserve {
                     this.register_owned_address(
@@ -342,7 +342,7 @@ impl WalletService {
         address: &str,
     ) -> Result<bool, SpectraBridgeError> {
         if !chain.uses_utxo_client() {
-            return Err(SpectraBridgeError::from(
+            return Err(SpectraBridgeError::failure(
                 "chain does not support UTXO discovery",
             ));
         }
@@ -372,7 +372,8 @@ impl WalletService {
         let seed_phrase =
             crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None).ok()?;
 
-        let defaults = crate::derivation_paths_for_preset(wallet.derivation_preset).ok()?;
+        let defaults =
+            crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset).ok()?;
         let imported = wallet.to_wallet_view(&defaults);
         let raw_path = wallet
             .addresses
@@ -388,7 +389,7 @@ impl WalletService {
             })
             .unwrap_or_default();
         let chain_id = chain;
-        let resolved = crate::resolve_derivation_path(chain_id, raw_path).ok()?;
+        let resolved = crate::derivation::path::resolve_derivation_path(chain_id, raw_path).ok()?;
 
         tokio::task::spawn_blocking(move || {
             UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
@@ -413,7 +414,7 @@ impl UtxoDerivation {
         chain: crate::registry::Chain,
         phrase: &str,
         base_path: String,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, SpectraBridgeError> {
         Self::with_overrides(chain, phrase, base_path, &Default::default())
     }
 
@@ -422,19 +423,19 @@ impl UtxoDerivation {
         phrase: &str,
         base_path: String,
         overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
-    ) -> Result<Self, String> {
-        overrides
-            .validate_for_chain(chain)
-            .map_err(|e| e.to_string())?;
+    ) -> Result<Self, SpectraBridgeError> {
+        overrides.validate_for_chain(chain)?;
         use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed, parse_bip32_path};
-        let path = crate::app_core::derivation_path_replacing_last_two(
+        let path = crate::derivation::path::derivation_path_replacing_last_two(
             base_path.clone(),
             0,
             0,
             base_path.clone(),
         );
         let mut indices = parse_bip32_path(&path)?;
-        indices.pop().ok_or("missing address index")?;
+        indices
+            .pop()
+            .ok_or_else(|| SpectraBridgeError::failure("missing address index"))?;
         let secp = secp256k1::Secp256k1::new();
         let seed = derive_bip39_seed(
             phrase,
@@ -461,7 +462,7 @@ impl UtxoDerivation {
     }
 
     pub(crate) fn derive(&self, index: u32) -> Option<(String, String)> {
-        let path = crate::app_core::derivation_path_replacing_last_two(
+        let path = crate::derivation::path::derivation_path_replacing_last_two(
             self.base_path.clone(),
             0,
             index,

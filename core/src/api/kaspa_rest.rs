@@ -1,6 +1,7 @@
 //! The Kaspa REST adapter (`api.kaspa.org`): balances, UTXOs, history,
 //! transaction status and submission, in sompi (1e-8 KAS).
 
+use crate::api::error::ApiError;
 use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};
@@ -133,18 +134,18 @@ impl KaspaClient {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<KasBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<KasBalance, ApiError> {
         let info: ApiBalance = self.get(&format!("/addresses/{address}/balance")).await?;
         Ok(KasBalance {
             balance_sompi: info.balance,
         })
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<KasUtxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<KasUtxo>, ApiError> {
         let utxos: Vec<ApiUtxo> = self.get(&format!("/addresses/{address}/utxos")).await?;
         Ok(utxos
             .into_iter()
@@ -170,7 +171,7 @@ impl KaspaClient {
             .collect())
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<KasHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<KasHistoryEntry>, ApiError> {
         let txs: Vec<ApiTxEntry> = self
             .get(&format!(
                 // Without resolving previous outpoints the inputs name no
@@ -179,7 +180,7 @@ impl KaspaClient {
             ))
             .await?;
         // Every listed transaction is in a block, so each has a time.
-        let entries: Result<Vec<Option<KasHistoryEntry>>, String> = txs
+        let entries: Result<Vec<Option<KasHistoryEntry>>, ApiError> = txs
             .into_iter()
             .map(|tx| {
                 let owned_in: i64 = tx
@@ -224,7 +225,7 @@ impl KaspaClient {
     pub async fn fetch_tx_status(
         &self,
         txid: &str,
-    ) -> Result<crate::api::utxo::UtxoTxStatus, String> {
+    ) -> Result<crate::api::utxo::UtxoTxStatus, ApiError> {
         let txid = txid.to_string();
         race(&self.endpoints, |base| {
             let txid = txid.clone();
@@ -250,7 +251,7 @@ impl KaspaClient {
     pub async fn broadcast_tx_body(
         &self,
         body: serde_json::Value,
-    ) -> Result<KasSendResult, String> {
+    ) -> Result<KasSendResult, ApiError> {
         race(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();
@@ -260,7 +261,9 @@ impl KaspaClient {
                     .post_json(&url, &body, RetryProfile::ChainWrite)
                     .await?;
                 if let Some(err) = resp.error {
-                    return Err(format!("kaspa broadcast rejected: {err}"));
+                    return Err(ApiError::Rejected(format!(
+                        "kaspa broadcast rejected: {err}"
+                    )));
                 }
                 Ok(KasSendResult {
                     txid: resp.transaction_id,

@@ -288,7 +288,10 @@ impl WalletService {
         required: &[EndpointCapability],
     ) -> Result<(crate::EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
         let [api] = chain.endpoint_apis() else {
-            return Err(format!("{} has no single fetch API", chain.str_id()).into());
+            return Err(SpectraBridgeError::failure(format!(
+                "{} has no single fetch API",
+                chain.str_id()
+            )));
         };
         Ok((*api, self.endpoints_for(chain, required).await))
     }
@@ -335,7 +338,7 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
         endpoints.push(ChainEndpoints {
             capabilities: vec![],
             chain_id: chain,
-            endpoints: crate::filtered_endpoint_records_for_chain(chain, &[])?
+            endpoints: crate::endpoints::records_for_chain(chain, &[])
                 .into_iter()
                 .filter(|record| {
                     apis.contains(&record.api)
@@ -360,8 +363,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
         for row in catalog_endpoints().expect("catalog endpoints") {
             for endpoint in &row.endpoints {
                 let chain = row.chain_id;
-                let record = crate::filtered_endpoint_records_for_chain(row.chain_id, &[])
-                    .unwrap()
+                let record = crate::endpoints::records_for_chain(row.chain_id, &[])
                     .into_iter()
                     .find(|record| &record.endpoint == endpoint)
                     .unwrap();
@@ -400,6 +402,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
 }
 
 #[cfg(test)]
+#[path = "tests/app_boundary.rs"]
 mod app_boundary_tests;
 
 pub use address_discovery::WalletAddressDiscovery;
@@ -433,7 +436,7 @@ impl WalletService {
             .read()
             .ok()
             .and_then(|guard| guard.clone())
-            .ok_or_else(|| SpectraBridgeError::from("secret store not registered".to_string()))
+            .ok_or_else(|| SpectraBridgeError::failure("secret store not registered"))
     }
 }
 

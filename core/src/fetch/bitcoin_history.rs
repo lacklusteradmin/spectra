@@ -4,6 +4,8 @@
 //! retains unconsumed rows and each address's provider cursor. Complete block
 //! cohorts are merged before being displayed, so an HD transfer split across
 //! addresses or provider pages is counted exactly once.
+
+use crate::api::error::ApiError;
 use crate::api::utxo::UtxoHistoryEntry;
 use crate::fetch::history::CoreBitcoinHistorySnapshot;
 use futures::{StreamExt, TryStreamExt, stream};
@@ -40,32 +42,38 @@ fn height(row: &UtxoHistoryEntry) -> u64 {
     }
 }
 
-async fn refill<F, Fut>(source: &mut AddressCursor, fetch: &F) -> Result<(), String>
+async fn refill<F, Fut>(source: &mut AddressCursor, fetch: &F) -> Result<(), ApiError>
 where
     F: Fn(String, Option<String>) -> Fut,
-    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, String>>,
+    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, ApiError>>,
 {
     let rows = fetch(source.address.clone(), source.after.clone()).await?;
     accept_page(source, rows)
 }
 
-fn accept_page(source: &mut AddressCursor, rows: Vec<UtxoHistoryEntry>) -> Result<(), String> {
+fn accept_page(source: &mut AddressCursor, rows: Vec<UtxoHistoryEntry>) -> Result<(), ApiError> {
     if rows
         .iter()
         .any(|r| r.txid.is_empty() || (r.confirmed && r.block_height.is_none()))
     {
-        return Err("bitcoin history: provider returned an incomplete transaction".into());
+        return Err(ApiError::Decode(
+            "bitcoin history: provider returned an incomplete transaction".into(),
+        ));
     }
     if rows
         .windows(2)
         .any(|pair| height(&pair[0]) < height(&pair[1]))
     {
-        return Err("bitcoin history: provider page is not in descending block order".into());
+        return Err(ApiError::Decode(
+            "bitcoin history: provider page is not in descending block order".into(),
+        ));
     }
     let confirmed = rows.iter().filter(|r| r.confirmed).count();
     if let Some(last) = rows.iter().rev().find(|r| r.confirmed) {
         if !source.visited.insert(last.txid.clone()) {
-            return Err("bitcoin history: provider repeated a pagination cursor".into());
+            return Err(ApiError::Decode(
+                "bitcoin history: provider repeated a pagination cursor".into(),
+            ));
         }
         source.after = Some(last.txid.clone());
     }
@@ -82,18 +90,20 @@ pub(crate) async fn page<F, Fut>(
     previous: Option<&str>,
     limit: usize,
     fetch: F,
-) -> Result<HistoryPage<CoreBitcoinHistorySnapshot>, String>
+) -> Result<HistoryPage<CoreBitcoinHistorySnapshot>, ApiError>
 where
     F: Fn(String, Option<String>) -> Fut,
-    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, String>>,
+    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, ApiError>>,
 {
     if addresses.is_empty() || limit == 0 {
-        return Err("bitcoin history: empty scope or page size".into());
+        return Err(ApiError::Decode(
+            "bitcoin history: empty scope or page size".into(),
+        ));
     }
     let mut cursor = match previous {
         Some(raw) => {
-            let saved: Cursor =
-                serde_json::from_str(raw).map_err(|e| format!("bitcoin history cursor: {e}"))?;
+            let saved: Cursor = serde_json::from_str(raw)
+                .map_err(|e| ApiError::Decode(format!("bitcoin history cursor: {e}")))?;
             if saved.network != network
                 || !saved
                     .sources
@@ -101,7 +111,9 @@ where
                     .map(|s| &s.address)
                     .eq(addresses.iter())
             {
-                return Err("bitcoin history scope changed; refresh before loading more".into());
+                return Err(ApiError::Decode(
+                    "bitcoin history scope changed; refresh before loading more".into(),
+                ));
             }
             saved
         }
@@ -200,10 +212,7 @@ where
             .sources
             .iter()
             .any(|s| !s.exhausted || !s.rows.is_empty());
-    let next_cursor = more
-        .then(|| serde_json::to_string(&cursor))
-        .transpose()
-        .map_err(|e| e.to_string())?;
+    let next_cursor = more.then(|| serde_json::to_string(&cursor)).transpose()?;
     Ok(HistoryPage { items, next_cursor })
 }
 
@@ -334,7 +343,7 @@ mod tests {
                 &["a".into()],
                 p.next_cursor.as_deref(),
                 100,
-                |_, _| std::future::ready(Err("offline".into()))
+                |_, _| std::future::ready(Err(ApiError::Decode("offline".into())))
             )
             .await
             .is_err()

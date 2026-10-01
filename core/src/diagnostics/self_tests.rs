@@ -1,3 +1,4 @@
+use crate::api::error::{ApiError, OrDecode};
 use crate::registry::Chain;
 use crate::validation::address::{AddressValidationRequest, validate_address};
 use serde::{Deserialize, Serialize};
@@ -102,7 +103,7 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
         return results;
     }
     // Derive for the exact network, using its own path and address format.
-    let Ok(path) = crate::app_core::default_path_from_catalog(chain) else {
+    let Ok(path) = crate::derivation::path::default_path_from_catalog(chain) else {
         return results;
     };
     let Some(address) = derive_one(chain, &path) else {
@@ -163,21 +164,10 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
     results
 }
 
-#[derive(Debug, Deserialize)]
-struct EthRpcResponse {
-    result: Option<String>,
-}
-
-async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, String> {
-    let body = format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":[]}}"#);
-    let resp =
-        crate::api::http::http_post_json(url.to_string(), body, std::collections::HashMap::new())
-            .await
-            .map_err(|e| format!("{e:?}"))?;
-    let parsed: EthRpcResponse = serde_json::from_str(&resp.body).map_err(|e| e.to_string())?;
-    let hex = parsed.result.unwrap_or_default();
-    let trimmed = hex.strip_prefix("0x").unwrap_or(&hex);
-    u64::from_str_radix(trimmed, 16).map_err(|e| e.to_string())
+async fn fetch_eth_rpc_hex(url: &str, method: &str) -> Result<u64, ApiError> {
+    let client = crate::api::evm_json_rpc::EvmClient::new(std::sync::Arc::new(vec![url.into()]), 0);
+    let result = client.call(method, serde_json::json!([])).await?;
+    crate::api::evm_json_rpc::parse_hex_u64(result.as_str().or_decode("expected a hex quantity")?)
 }
 
 /// Check that an endpoint serves the chain it was configured for, and that it
@@ -202,8 +192,8 @@ pub(crate) async fn self_tests_run_evm_rpc(
     };
     let label = chain.chain_display_name();
     let expected = chain.evm_chain_id().expect("EVM chain filtered above");
-    let reported = fetch_eth_rpc_hex(&rpc_url, "eth_chainId", 1).await;
-    let block = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber", 2).await;
+    let reported = fetch_eth_rpc_hex(&rpc_url, "eth_chainId").await;
+    let block = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber").await;
     match (reported, block) {
         (Ok(reported), Ok(latest_block)) => vec![
             ChainSelfTestResult {
@@ -234,7 +224,11 @@ pub(crate) async fn self_tests_run_evm_rpc(
             },
         ],
         (reported, block) => {
-            let detail = reported.err().or_else(|| block.err()).unwrap_or_default();
+            let detail = reported
+                .err()
+                .or_else(|| block.err())
+                .map(|e| e.to_string())
+                .unwrap_or_default();
             vec![ChainSelfTestResult {
                 name: "RPC Health".to_string(),
                 passed: false,
@@ -303,7 +297,7 @@ mod fixtures_are_real_tests {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
                 continue;
             }
-            if crate::app_core::default_path_from_catalog(chain).is_err() {
+            if crate::derivation::path::default_path_from_catalog(chain).is_err() {
                 continue;
             }
             let names: Vec<String> = run_for_chain(chain).into_iter().map(|r| r.name).collect();
@@ -343,7 +337,7 @@ mod fixtures_are_real_tests {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
                 continue;
             }
-            let Ok(path) = crate::app_core::default_path_from_catalog(chain) else {
+            let Ok(path) = crate::derivation::path::default_path_from_catalog(chain) else {
                 continue;
             };
             let Some(address) = derive_one(chain, &path) else {

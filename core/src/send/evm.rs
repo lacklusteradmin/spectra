@@ -2,6 +2,8 @@
 //! transfer paths, with optional override hooks for replacement-by-fee /
 //! speed-up / cancel flows).
 
+use crate::send::error::SendError;
+
 use serde_json::json;
 
 use crate::api::evm_json_rpc::{EvmClient, SEL_TRANSFER, decode_hex};
@@ -22,10 +24,10 @@ pub struct PreparedEvmTransaction {
 
 impl PreparedEvmTransaction {
     /// Inspect the exact bytes whose hash will be signed.
-    pub fn signing_payload(&self) -> Result<Vec<u8>, String> {
+    pub fn signing_payload(&self) -> Result<Vec<u8>, SendError> {
         let to: [u8; 20] = decode_hex(&self.to)?
             .try_into()
-            .map_err(|_| "invalid EVM destination")?;
+            .map_err(|_| SendError::Invalid("invalid EVM destination".into()))?;
         let mut payload = vec![2];
         encode_eip1559_fields(
             self.chain_id,
@@ -46,7 +48,7 @@ impl PreparedEvmTransaction {
     }
 
     /// Offline signing cannot refresh or replace any reviewed field.
-    pub fn sign(&self, key: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn sign(&self, key: &[u8]) -> Result<Vec<u8>, SendError> {
         build_eip1559_tx(
             self.chain_id,
             self.nonce,
@@ -70,14 +72,14 @@ pub async fn prepare_transfer(
     value_wei: u128,
     data: &[u8],
     overrides: &EvmSendOverrides,
-) -> Result<PreparedEvmTransaction, String> {
+) -> Result<PreparedEvmTransaction, SendError> {
     let nonce = match overrides.nonce {
         Some(nonce) => nonce,
         None => client.fetch_nonce(from).await?,
     };
     let (max_fee_per_gas, max_priority_fee_per_gas) = resolve_fees(client, overrides).await?;
     if max_fee_per_gas == 0 || max_priority_fee_per_gas > max_fee_per_gas {
-        return Err("invalid EIP-1559 fees".into());
+        return Err(SendError::Invalid("invalid EIP-1559 fees".into()));
     }
     let data = overrides.calldata.as_deref().unwrap_or(data);
     let gas_limit = resolve_gas(
@@ -150,12 +152,12 @@ async fn resolve_gas(
     max_fee: u128,
     priority: u128,
     overrides: &EvmSendOverrides,
-) -> Result<u64, String> {
+) -> Result<u64, SendError> {
     if let Some(gas) = overrides.gas_limit {
         return if gas > 0 {
             Ok(gas)
         } else {
-            Err("gas limit must be positive".into())
+            Err(SendError::Invalid("gas limit must be positive".into()))
         };
     }
     let access_list: Vec<_> = overrides.access_list.iter().map(|entry| json!({
@@ -174,13 +176,16 @@ async fn resolve_gas(
         )
         .await?;
     let gas = crate::api::evm_json_rpc::parse_hex_u64(
-        result.as_str().ok_or("eth_estimateGas: expected string")?,
+        result
+            .as_str()
+            .ok_or_else(|| SendError::Invalid("eth_estimateGas: expected string".into()))?,
     )?;
     if gas == 0 {
-        return Err("gas estimate must be positive".into());
+        return Err(SendError::Invalid("gas estimate must be positive".into()));
     }
     let buffered = u128::from(gas) * (100 + u128::from(overrides.gas_buffer_pct.unwrap_or(20)));
-    u64::try_from(buffered.div_ceil(100)).map_err(|_| "buffered gas limit out of range".into())
+    u64::try_from(buffered.div_ceil(100))
+        .map_err(|_| SendError::Invalid("buffered gas limit out of range".into()))
 }
 
 /// Resolve (max_fee_per_gas, max_priority_fee_per_gas) from overrides plus
@@ -189,7 +194,7 @@ async fn resolve_gas(
 async fn resolve_fees(
     client: &EvmClient,
     overrides: &EvmSendOverrides,
-) -> Result<(u128, u128), String> {
+) -> Result<(u128, u128), SendError> {
     match (
         overrides.max_fee_per_gas_wei,
         overrides.max_priority_fee_per_gas_wei,
@@ -232,10 +237,13 @@ pub fn build_eip1559_tx(
     data: &[u8],
     access_list: &[AccessListEntry],
     private_key_bytes: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
-        return Err(format!("invalid EVM address length: {}", to_bytes.len()));
+        return Err(SendError::Invalid(format!(
+            "invalid EVM address length: {}",
+            to_bytes.len()
+        )));
     }
     let to_arr: [u8; 20] = to_bytes.try_into().unwrap();
 
@@ -263,9 +271,10 @@ pub fn build_eip1559_tx(
 
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
-    let msg = Message::from_digest_slice(&msg_hash).map_err(|e| format!("msg: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+    let msg = Message::from_digest_slice(&msg_hash)
+        .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let (rec_id, sig_bytes) = secp
         .sign_ecdsa_recoverable(&msg, &secret_key)
         .serialize_compact();
@@ -385,10 +394,13 @@ fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
 // ── ERC-20 transfer ABI encoding (used by the send path)
 
 /// Encode a `transfer(address,uint256)` call.
-pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, String> {
+pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, SendError> {
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
-        return Err(format!("invalid EVM to length: {}", to_bytes.len()));
+        return Err(SendError::Invalid(format!(
+            "invalid EVM to length: {}",
+            to_bytes.len()
+        )));
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
     out.extend_from_slice(&SEL_TRANSFER);

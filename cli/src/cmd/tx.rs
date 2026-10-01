@@ -667,7 +667,7 @@ fn shortcut(out: Out, args: ShortcutArgs) -> CliResult<()> {
         args.percentage,
     )
     .ok_or_else(|| {
-        spectra_core::SpectraBridgeError::from("no positive amount within the quoted maximum")
+        spectra_core::SpectraBridgeError::failure("no positive amount within the quoted maximum")
     })?;
     out.text(|| println!("  {amount}"));
     out.emit(serde_json::json!({"amount": amount}));

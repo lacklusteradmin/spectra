@@ -1,16 +1,18 @@
 //! Dogecoin: address validation, BIP-32 derivation, P2PKH (D…) base58check
 //! encoding
 
+use crate::derivation::error::DerivationError;
+
 // ── Address validation (preserved from prior file) ───────────────────────
 
 // Base58check-decode a DOGE address and return the 20-byte pubkey hash.
-pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("invalid doge address: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid doge address: {e}")))?;
     if decoded.len() < 21 {
-        return Err("address too short".to_string());
+        return Err(DerivationError::Invalid("address too short".into()));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);
@@ -84,7 +86,7 @@ pub fn derive_dogecoin_from_private_key(
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(&bytes);
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
     let pk = PublicKey::from_secret_key(&secp, &secret_key);
     Ok(DerivationResult {
         address: want_address.then(|| encode_p2pkh(DOGE_MAINNET_VERSION, &pk.serialize())),

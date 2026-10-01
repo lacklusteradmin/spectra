@@ -2,6 +2,7 @@
 //! through constant calls, block references and broadcast. Account history
 //! and holdings come from `trongrid_v1`.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -74,7 +75,7 @@ impl TronHttpClient {
         }
     }
 
-    async fn read_metadata(&self, contract: &str) -> Result<Trc20Metadata, String> {
+    async fn read_metadata(&self, contract: &str) -> Result<Trc20Metadata, ApiError> {
         match &self.metadata_cache {
             Some((chain, cache)) => {
                 cache
@@ -92,7 +93,7 @@ impl TronHttpClient {
         }
     }
 
-    pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<Value, String> {
+    pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<Value, ApiError> {
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
         race(&self.endpoints, |base| {
@@ -116,7 +117,7 @@ use serde_json::json;
 use crate::derivation::tron::tron_base58_to_evm_hex;
 
 impl TronHttpClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<TronBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<TronBalance, ApiError> {
         let resp = self
             .post(
                 "/wallet/getaccount",
@@ -133,7 +134,7 @@ impl TronHttpClient {
         &self,
         contract_base58: &str,
         holder_base58: &str,
-    ) -> Result<Trc20Balance, String> {
+    ) -> Result<Trc20Balance, ApiError> {
         let raw = self
             .fetch_trc20_balance_of(contract_base58, holder_base58)
             .await?;
@@ -154,10 +155,10 @@ impl TronHttpClient {
         &self,
         contract_base58: &str,
         holder_base58: &str,
-    ) -> Result<u128, String> {
+    ) -> Result<u128, ApiError> {
         // TRC-20 uses the same 4-byte selector as ERC-20, but Tron addresses are
         // passed in their *hex* form (0x41... stripped to the last 20 bytes).
-        let holder_hex = tron_base58_to_evm_hex(holder_base58)?;
+        let holder_hex = tron_base58_to_evm_hex(holder_base58).map_err(ApiError::invalid)?;
         let parameter = format!("{:0>64}", holder_hex);
 
         let resp = self
@@ -178,7 +179,7 @@ impl TronHttpClient {
             .and_then(|v| v.as_array())
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
-            .ok_or("triggerconstantcontract balanceOf: missing result")?;
+            .or_decode("triggerconstantcontract balanceOf: missing result")?;
 
         // The result is a 32-byte big-endian integer hex string.
         parse_abi_u128(hex_str)
@@ -214,7 +215,7 @@ impl TronHttpClient {
     pub async fn fetch_trc20_metadata(
         &self,
         contract_base58: &str,
-    ) -> Result<Trc20Metadata, String> {
+    ) -> Result<Trc20Metadata, ApiError> {
         // decimals()
         let resp = self
             .post(
@@ -233,7 +234,7 @@ impl TronHttpClient {
             .and_then(|v| v.as_array())
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
-            .ok_or("triggerconstantcontract decimals: missing result")?;
+            .or_decode("triggerconstantcontract decimals: missing result")?;
         let decimals = crate::api::checked_token_decimals(parse_abi_u128(decimals_hex)?)?;
 
         // symbol()
@@ -254,9 +255,9 @@ impl TronHttpClient {
             .and_then(|v| v.as_array())
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
-            .ok_or("triggerconstantcontract symbol: missing result")?;
+            .or_decode("triggerconstantcontract symbol: missing result")?;
         let symbol = crate::api::evm_json_rpc::decode_abi_string_or_bytes32(symbol_hex)
-            .ok_or("TRC20 symbol: malformed ABI string")?;
+            .or_decode("TRC20 symbol: malformed ABI string")?;
 
         Ok(Trc20Metadata { symbol, decimals })
     }
@@ -265,15 +266,18 @@ impl TronHttpClient {
 // ── TRC-20 helpers
 
 /// A uint256 ABI word must be complete and fit the core's u128 amount type.
-pub(crate) fn parse_abi_u128(hex_str: &str) -> Result<u128, String> {
+pub(crate) fn parse_abi_u128(hex_str: &str) -> Result<u128, ApiError> {
     let word = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     if word.len() != 64 || !word.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err("TRC20 integer: expected one 32-byte hex ABI word".into());
+        return Err(ApiError::Decode(
+            "TRC20 integer: expected one 32-byte hex ABI word".into(),
+        ));
     }
     if !word[..32].bytes().all(|b| b == b'0') {
-        return Err("TRC20 integer exceeds u128 range".into());
+        return Err(ApiError::Decode("TRC20 integer exceeds u128 range".into()));
     }
-    u128::from_str_radix(&word[32..], 16).map_err(|e| format!("TRC20 integer: {e}"))
+    u128::from_str_radix(&word[32..], 16)
+        .map_err(|e| ApiError::Decode(format!("TRC20 integer: {e}")))
 }
 
 /// Only the block reference is supplied by the node, never a transaction/hash.
@@ -286,22 +290,26 @@ pub(crate) struct BlockReference {
 impl TronHttpClient {
     /// The latest block, which a transfer references; the node supplies
     /// nothing else of it.
-    pub(crate) async fn transfer_reference(&self) -> Result<BlockReference, String> {
+    pub(crate) async fn transfer_reference(&self) -> Result<BlockReference, ApiError> {
         let block = self.post("/wallet/getnowblock", &json!({})).await?;
         let number = block
             .pointer("/block_header/raw_data/number")
             .and_then(Value::as_u64)
-            .ok_or("missing Tron block number")?;
-        let id = hex::decode(block["blockID"].as_str().ok_or("missing Tron block id")?)
-            .map_err(|_| "invalid Tron block id")?
-            .try_into()
-            .map_err(|_| "Tron block id must be 32 bytes")?;
+            .or_decode("missing Tron block number")?;
+        let id = hex::decode(
+            block["blockID"]
+                .as_str()
+                .or_decode("missing Tron block id")?,
+        )
+        .map_err(|_| ApiError::Decode("invalid Tron block id".into()))?
+        .try_into()
+        .map_err(|_| ApiError::Decode("Tron block id must be 32 bytes".into()))?;
         let timestamp_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| "clock before epoch")?
+            .map_err(|_| ApiError::Decode("clock before epoch".into()))?
             .as_millis()
             .try_into()
-            .map_err(|_| "clock overflow")?;
+            .map_err(|_| ApiError::Decode("clock overflow".into()))?;
         Ok(BlockReference {
             number,
             id,
@@ -309,22 +317,26 @@ impl TronHttpClient {
         })
     }
 
-    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<TronSendResult, String> {
+    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<TronSendResult, ApiError> {
         let body: Value = serde_json::from_str(signed_tx_json)
-            .map_err(|e| format!("invalid signed Tron transaction: {e}"))?;
+            .map_err(|e| ApiError::InvalidInput(format!("invalid signed Tron transaction: {e}")))?;
         let raw = hex::decode(
             body["raw_data_hex"]
                 .as_str()
-                .ok_or("missing Tron raw bytes")?,
+                .or_decode("missing Tron raw bytes")?,
         )
-        .map_err(|_| "invalid Tron raw bytes")?;
+        .map_err(|_| ApiError::InvalidInput("invalid Tron raw bytes".into()))?;
         let txid = hex::encode(Sha256::digest(&raw));
         if body["txID"].as_str() != Some(txid.as_str()) {
-            return Err("Tron transaction hash mismatch".into());
+            return Err(ApiError::InvalidInput(
+                "Tron transaction hash mismatch".into(),
+            ));
         }
         let result = self.post("/wallet/broadcasttransaction", &body).await?;
         if result["result"].as_bool() != Some(true) {
-            return Err(format!("Tron broadcast refused: {result}"));
+            return Err(ApiError::Rejected(format!(
+                "Tron broadcast refused: {result}"
+            )));
         }
         Ok(TronSendResult {
             txid,

@@ -49,7 +49,7 @@ impl WalletService {
                     if records.iter().any(|r| &r.endpoint == endpoint) {
                         continue;
                     }
-                    records.push(crate::AppCoreEndpointRecord {
+                    records.push(crate::endpoints::EndpointRecord {
                         id: format!("configured:{endpoint}"),
                         api,
                         chain_id: chain,
@@ -143,7 +143,7 @@ impl WalletService {
             }
 
             c => {
-                return Err(SpectraBridgeError::from(format!(
+                return Err(SpectraBridgeError::failure(format!(
                     "fetch_utxo_tx_status: unsupported API: {c:?}"
                 )));
             }

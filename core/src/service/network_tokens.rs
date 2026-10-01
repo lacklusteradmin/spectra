@@ -1,5 +1,7 @@
 //! Token discovery and balances, including partial provider failures.
+
 use super::*;
+use crate::api::error::{ApiError, OrDecode};
 
 /// Keep the tokens that answered; leave out the ones that did not.
 ///
@@ -12,7 +14,9 @@ use super::*;
 /// A token missing from this list is not updated by the caller, which
 /// leaves its last known balance in place — the one answer that claims
 /// nothing.
-fn readable_tokens(results: Vec<Result<TokenBalanceResult, String>>) -> Vec<TokenBalanceResult> {
+fn readable_tokens<E: std::fmt::Display>(
+    results: Vec<Result<TokenBalanceResult, E>>,
+) -> Vec<TokenBalanceResult> {
     results
         .into_iter()
         .filter_map(|result| match result {
@@ -95,7 +99,7 @@ impl WalletService {
             // keeps the two from drifting apart, which is how a chain ends up
             // silently reporting an empty wallet.
             if !chain.entry().enumerates_holdings {
-                return Err(SpectraBridgeError::from(format!(
+                return Err(SpectraBridgeError::failure(format!(
                     "discover_token_balances: {} cannot enumerate holdings; \
                  a token contract only answers about a holder you name, so \
                  listing them needs an indexer",
@@ -169,7 +173,7 @@ impl WalletService {
                 // Unreachable: the registry gate above rejects every chain that
                 // has no client arm here, and the test below holds the two together.
                 c => {
-                    return Err(SpectraBridgeError::from(format!(
+                    return Err(SpectraBridgeError::failure(format!(
                         "discover_token_balances: {c:?} is marked enumerable but has no client"
                     )));
                 }
@@ -247,9 +251,9 @@ impl WalletService {
                             );
                             let raw = raw?;
                             let decimals = crate::api::checked_token_decimals(u128::from(
-                                own.ok_or("token decimals unavailable")?,
+                                own.or_decode("token decimals unavailable")?,
                             ))?;
-                            Ok::<_, String>(TokenBalanceResult {
+                            Ok::<_, ApiError>(TokenBalanceResult {
                                 contract_address: coin_type,
                                 symbol,
                                 decimals,
@@ -284,7 +288,7 @@ impl WalletService {
                         let symbol = t.symbol.clone();
                         async move {
                             let b = client.fetch_trc20_balance(&contract, &holder).await?;
-                            Ok::<_, String>(TokenBalanceResult {
+                            Ok::<_, ApiError>(TokenBalanceResult {
                                 contract_address: contract,
                                 symbol: if b.symbol.is_empty() {
                                     symbol
@@ -325,7 +329,7 @@ impl WalletService {
                             // when there is one; the catalog's only has to
                             // stand in for a balance that is zero either way.
                             let balance = found.into_iter().next();
-                            Ok::<_, String>(TokenBalanceResult {
+                            Ok::<_, ApiError>(TokenBalanceResult {
                                 contract_address: mint,
                                 symbol,
                                 decimals: balance
@@ -365,7 +369,7 @@ impl WalletService {
                             let decimals =
                                 crate::api::checked_token_decimals(u128::from(meta?.decimals))?;
                             let display = crate::decimal::from_units(raw, u32::from(decimals));
-                            Ok::<_, String>(TokenBalanceResult {
+                            Ok::<_, ApiError>(TokenBalanceResult {
                                 contract_address: contract,
                                 symbol,
                                 decimals,
@@ -400,7 +404,7 @@ impl WalletService {
                 )
                 .await;
 
-                let rows: Vec<Result<TokenBalanceResult, String>> = tokens
+                let rows: Vec<Result<TokenBalanceResult, ApiError>> = tokens
                     .iter()
                     .zip(own_decimals)
                     .map(|(t, own)| {
@@ -410,9 +414,9 @@ impl WalletService {
                             .map(|j| j.balance_raw)
                             .unwrap_or(0u128);
                         let decimals = crate::api::checked_token_decimals(u128::from(
-                            own.ok_or("token decimals unavailable")?,
+                            own.or_decode("token decimals unavailable")?,
                         ))?;
-                        Ok::<_, String>(TokenBalanceResult {
+                        Ok::<_, ApiError>(TokenBalanceResult {
                             contract_address: t.contract.clone(),
                             symbol: t.symbol.clone(),
                             decimals,
@@ -462,7 +466,7 @@ impl WalletService {
                 readable_tokens(results)
             }
             c => {
-                return Err(SpectraBridgeError::from(format!(
+                return Err(SpectraBridgeError::failure(format!(
                     "fetch_token_balances: unsupported chain: {c:?}"
                 )));
             }

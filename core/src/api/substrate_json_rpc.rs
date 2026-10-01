@@ -2,6 +2,7 @@
 //! `System.Account` balance, what signing needs, and extrinsic submission. A
 //! node keeps no account history, and no keyless indexer is configured.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -45,12 +46,12 @@ fn system_account_key(account: &[u8; 32]) -> String {
 /// `AccountInfo`: four `u32` counters (nonce, consumers, providers,
 /// sufficients), then `free`, `reserved` and `frozen` of `balance_bytes` each
 /// and a `u128` of flags, all little-endian. Any other length is refused.
-fn decode_account_info(bytes: &[u8], balance_bytes: usize) -> Result<SubstrateBalance, String> {
+fn decode_account_info(bytes: &[u8], balance_bytes: usize) -> Result<SubstrateBalance, ApiError> {
     if balance_bytes > 16 || bytes.len() != 16 + 3 * balance_bytes + 16 {
-        return Err(format!(
+        return Err(ApiError::Decode(format!(
             "Substrate account record is {} bytes, not the expected layout",
             bytes.len()
-        ));
+        )));
     }
     let read = |index: usize| {
         let start = 16 + index * balance_bytes;
@@ -85,7 +86,7 @@ impl SubstrateClient {
         }
     }
 
-    pub(crate) async fn rpc_call(&self, method: &str, params: Value) -> Result<Value, String> {
+    pub(crate) async fn rpc_call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             crate::EndpointApi::SubstrateJsonRpc,
             &self.client,
@@ -102,7 +103,7 @@ impl SubstrateClient {
         &self,
         account: &[u8; 32],
         balance_bytes: usize,
-    ) -> Result<SubstrateBalance, String> {
+    ) -> Result<SubstrateBalance, ApiError> {
         match self
             .rpc_call("state_getStorage", json!([system_account_key(account)]))
             .await?
@@ -114,24 +115,26 @@ impl SubstrateClient {
             }),
             Value::String(hex) => decode_account_info(
                 &hex::decode(hex.trim_start_matches("0x"))
-                    .map_err(|_| "Substrate account record is not hex")?,
+                    .map_err(|_| ApiError::Decode("Substrate account record is not hex".into()))?,
                 balance_bytes,
             ),
-            other => Err(format!("state_getStorage: unexpected {other}")),
+            other => Err(ApiError::Decode(format!(
+                "state_getStorage: unexpected {other}"
+            ))),
         }
     }
 
-    pub async fn fetch_nonce(&self, address: &str) -> Result<u32, String> {
+    pub async fn fetch_nonce(&self, address: &str) -> Result<u32, ApiError> {
         let result = self
             .rpc_call("system_accountNextIndex", json!([address]))
             .await?;
         result
             .as_u64()
             .map(|n| n as u32)
-            .ok_or_else(|| "system_accountNextIndex: expected number".to_string())
+            .or_decode("system_accountNextIndex: expected number")
     }
 
-    pub async fn fetch_runtime_version(&self) -> Result<(u32, u32), String> {
+    pub async fn fetch_runtime_version(&self) -> Result<(u32, u32), ApiError> {
         let result = self.rpc_call("state_getRuntimeVersion", json!([])).await?;
         let spec_version = result
             .get("specVersion")
@@ -144,24 +147,24 @@ impl SubstrateClient {
         Ok((spec_version, tx_version))
     }
 
-    pub async fn fetch_genesis_hash(&self) -> Result<String, String> {
+    pub async fn fetch_genesis_hash(&self) -> Result<String, ApiError> {
         let result = self.rpc_call("chain_getBlockHash", json!([0])).await?;
         result
             .as_str()
             .map(|s| s.to_string())
-            .ok_or_else(|| "chain_getBlockHash: expected string".to_string())
+            .or_decode("chain_getBlockHash: expected string")
     }
 
-    pub async fn fetch_block_hash_latest(&self) -> Result<String, String> {
+    pub async fn fetch_block_hash_latest(&self) -> Result<String, ApiError> {
         let result = self.rpc_call("chain_getBlockHash", json!([])).await?;
         result
             .as_str()
             .map(|s| s.to_string())
-            .ok_or_else(|| "chain_getBlockHash: expected string".to_string())
+            .or_decode("chain_getBlockHash: expected string")
     }
 
     /// Submit a signed extrinsic, fresh or saved for rebroadcast.
-    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<SubstrateSendResult, String> {
+    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<SubstrateSendResult, ApiError> {
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;

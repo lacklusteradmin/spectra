@@ -1,5 +1,7 @@
 //! TON send: WalletV4R2 message builder and signer.
 
+use crate::send::error::SendError;
+
 #[cfg(test)]
 use crate::derivation::ton::parse_ton_address;
 use crate::derivation::ton::v4r2_state_init;
@@ -16,7 +18,7 @@ pub(crate) fn build_transfer_at(
     wallet_id: u32,
     valid_until: u32,
     send_mode: u8,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     build_transfer_for_address(
         parse_ton_address(to_address)?.for_network(false)?,
         nanotons,
@@ -40,18 +42,22 @@ pub(crate) fn build_transfer_for_address(
     wallet_id: u32,
     valid_until: u32,
     send_mode: u8,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
     if nanotons == 0 {
-        return Err("TON: amount must be positive".into());
+        return Err(SendError::Invalid("TON: amount must be positive".into()));
     }
     // Fixed-value wallet transfers must not carry drain-balance or destroy modes.
     if send_mode != 3 {
-        return Err("TON: only fixed-value send mode 3 is supported".into());
+        return Err(SendError::Invalid(
+            "TON: only fixed-value send mode 3 is supported".into(),
+        ));
     }
     let key = SigningKey::from_bytes(private_key);
     if key.verifying_key().as_bytes() != public_key {
-        return Err("TON: public key does not match signer".into());
+        return Err(SendError::Invalid(
+            "TON: public key does not match signer".into(),
+        ));
     }
     let init = v4r2_state_init(public_key, wallet_id)?;
     let sender = init.hash_depth().0;
@@ -74,7 +80,9 @@ pub(crate) fn build_transfer_for_address(
         .uint(0, 1)?;
     if let Some(text) = comment.filter(|t| !t.is_empty()) {
         if text.len() > 4096 {
-            return Err("TON: comment exceeds 4096 UTF-8 bytes".into());
+            return Err(SendError::Invalid(
+                "TON: comment exceeds 4096 UTF-8 bytes".into(),
+            ));
         }
         let mut payload = vec![0u8; 4]; // text-comment opcode
         payload.extend_from_slice(text.as_bytes());
@@ -87,7 +95,7 @@ pub(crate) fn build_transfer_for_address(
             }
             tail = Some(cell);
         }
-        message.body(tail.ok_or("TON: empty comment cell")?)?;
+        message.body(tail.ok_or_else(|| SendError::Invalid("TON: empty comment cell".into()))?)?;
     } else {
         message.uint(0, 1)?;
     }
@@ -118,7 +126,7 @@ pub(crate) fn build_transfer_for_address(
         external.uint(0, 1)?;
     }
     external.uint(1, 1)?.reference(body)?;
-    external.to_boc()
+    Ok(external.to_boc()?)
 }
 
 #[cfg(test)]
@@ -127,9 +135,10 @@ mod protocol_tests {
     use serde_json::Value;
     #[test]
     fn ton_messages_match_official_sdk_vectors() {
-        let fixtures: Value =
-            serde_json::from_str(include_str!("../../testdata/protocol/transactions.json"))
-                .unwrap();
+        let fixtures: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/protocol-transactions.json"
+        ))
+        .unwrap();
         let public: [u8; 32] = hex::decode(fixtures["public_key"].as_str().unwrap())
             .unwrap()
             .try_into()

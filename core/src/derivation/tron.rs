@@ -6,35 +6,38 @@
 //!   prepend 0x41                                  → 21-byte payload
 //!   base58check (default alphabet)                → "T…" address
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::{derive_bip39_seed, parse_bip32_path};
 use secp256k1::{PublicKey, Secp256k1};
 
 // ── Address validation + helpers (preserved) ─────────────────────────────
 
 /// Decode a Tron base58check address and return the 20-byte EVM-style hex account hash (without 0x41 prefix).
-pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
+pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("base58 decode: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("base58 decode: {e}")))?;
     if decoded.len() != 21 || decoded[0] != 0x41 {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "invalid Tron address length/prefix: len={}",
             decoded.len()
-        ));
+        )));
     }
     Ok(hex::encode(&decoded[1..]))
 }
 
 /// Encode a node API's hex address (`41` followed by the 20-byte account
 /// hash) as the base58check "T…" form.
-pub fn tron_hex_to_base58(hex_address: &str) -> Result<String, String> {
-    let payload = hex::decode(hex_address).map_err(|e| format!("Tron hex address: {e}"))?;
+pub fn tron_hex_to_base58(hex_address: &str) -> Result<String, DerivationError> {
+    let payload = hex::decode(hex_address)
+        .map_err(|e| DerivationError::Invalid(format!("Tron hex address: {e}")))?;
     if payload.len() != 21 || payload[0] != 0x41 {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "invalid Tron hex address length/prefix: len={}",
             payload.len()
-        ));
+        )));
     }
     Ok(bs58::encode(&payload).with_check().into_string())
 }
@@ -53,7 +56,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;

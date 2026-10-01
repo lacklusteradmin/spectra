@@ -4,7 +4,7 @@ use crate::store::wallet_domain::AssetHolding;
 use crate::store::wallet_domain::CoreSeedDerivationPaths;
 
 fn defaults() -> CoreSeedDerivationPaths {
-    crate::derivation_paths_for_preset(Default::default()).expect("defaults")
+    crate::derivation::path::derivation_paths_for_preset(Default::default()).expect("defaults")
 }
 
 fn summary() -> WalletState {

@@ -1,6 +1,7 @@
 //! The Aptos REST adapter: account resources, coin and fungible-asset
 //! balances, gas price, history, simulation and submission of a signed body.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -50,11 +51,11 @@ impl AptosClient {
         }
     }
 
-    async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 
-    pub(crate) async fn post_val(&self, path: &str, body: &Value) -> Result<Value, String> {
+    pub(crate) async fn post_val(&self, path: &str, body: &Value) -> Result<Value, ApiError> {
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
         race(&self.endpoints, |base| {
@@ -74,7 +75,7 @@ impl AptosClient {
 // gas price, history.
 
 impl AptosClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<AptosBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<AptosBalance, ApiError> {
         // The APT coin is stored in 0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>
         let path = format!(
             "/accounts/{address}/resource/0x1::coin::CoinStore%3C0x1::aptos_coin::AptosCoin%3E"
@@ -84,7 +85,7 @@ impl AptosClient {
             .pointer("/data/coin/value")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or("balance: missing coin value")?;
+            .or_decode("balance: missing coin value")?;
         Ok(AptosBalance { octas })
     }
 
@@ -112,7 +113,7 @@ impl AptosClient {
     pub async fn fetch_all_coin_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<crate::api::HeldToken>, String> {
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
         let resources: Value = self.get(&format!("/accounts/{address}/resources")).await?;
         let mut held: Vec<(String, u128)> = Vec::new();
         for res in resources
@@ -165,7 +166,11 @@ impl AptosClient {
     /// Fetch the balance for a specific coin type stored in
     /// `0x1::coin::CoinStore<{coin_type}>` (the legacy Aptos coin standard).
     /// Returns the raw balance in octas (or smallest unit).
-    pub async fn fetch_coin_balance(&self, address: &str, coin_type: &str) -> Result<u64, String> {
+    pub async fn fetch_coin_balance(
+        &self,
+        address: &str,
+        coin_type: &str,
+    ) -> Result<u64, ApiError> {
         // Encode '<' and '>' so they survive as a URL path segment.
         let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
         let path = format!("/accounts/{address}/resource/0x1::coin::CoinStore%3C{encoded}%3E");
@@ -173,25 +178,25 @@ impl AptosClient {
         resp.pointer("/data/coin/value")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or_else(|| format!("aptos: missing coin value for {coin_type}"))
+            .ok_or_else(|| ApiError::Decode(format!("aptos: missing coin value for {coin_type}")))
     }
 
-    pub async fn fetch_account_info(&self, address: &str) -> Result<(u64, u64), String> {
+    pub async fn fetch_account_info(&self, address: &str) -> Result<(u64, u64), ApiError> {
         let resp: Value = self.get(&format!("/accounts/{address}")).await?;
         let sequence: u64 = resp
             .get("sequence_number")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .ok_or("account: missing sequence_number")?;
+            .or_decode("account: missing sequence_number")?;
         Ok((sequence, 0))
     }
 
-    pub async fn fetch_ledger_info(&self) -> Result<(u64, String), String> {
+    pub async fn fetch_ledger_info(&self) -> Result<(u64, String), ApiError> {
         let resp: Value = self.get("/").await?;
         let chain_id: u64 = resp
             .get("chain_id")
             .and_then(|v| v.as_u64())
-            .ok_or("ledger: missing chain_id")?;
+            .or_decode("ledger: missing chain_id")?;
         let ledger_version: String = resp
             .get("ledger_version")
             .and_then(|v| v.as_str())
@@ -200,14 +205,14 @@ impl AptosClient {
         Ok((chain_id, ledger_version))
     }
 
-    pub async fn fetch_gas_price(&self) -> Result<u64, String> {
+    pub async fn fetch_gas_price(&self) -> Result<u64, ApiError> {
         let resp: Value = self.get("/estimate_gas_price").await?;
         resp.get("gas_estimate")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| "estimate_gas_price: missing gas_estimate".to_string())
+            .or_decode("estimate_gas_price: missing gas_estimate")
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<AptosHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<AptosHistoryEntry>, ApiError> {
         let txs: Vec<Value> = self
             .get(&format!("/accounts/{address}/transactions?limit=50"))
             .await?;
@@ -263,7 +268,7 @@ fn aptos_native_transfer(tx: &Value) -> Option<(String, u64)> {
 fn aptos_history_from_transactions(
     txs: &[Value],
     address: &str,
-) -> Result<Vec<AptosHistoryEntry>, String> {
+) -> Result<Vec<AptosHistoryEntry>, ApiError> {
     let number = |tx: &Value, field: &str| -> u64 {
         tx.get(field)
             .and_then(Value::as_str)
@@ -303,14 +308,14 @@ fn aptos_history_from_transactions(
 }
 
 impl AptosClient {
-    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
+    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, ApiError> {
         let body: Value = serde_json::from_str(signed_json)
-            .map_err(|e| format!("invalid Aptos transaction: {e}"))?;
+            .map_err(|e| ApiError::InvalidInput(format!("invalid Aptos transaction: {e}")))?;
         let response = self.post_val("/transactions", &body).await?;
         let txid = response["hash"]
             .as_str()
             .filter(|s| !s.is_empty())
-            .ok_or("Aptos submit: missing hash")?
+            .or_decode("Aptos submit: missing hash")?
             .to_string();
         let version = response["version"].as_str().and_then(|s| s.parse().ok());
         Ok(AptosSendResult {

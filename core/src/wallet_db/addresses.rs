@@ -1,4 +1,5 @@
 use super::*;
+use crate::wallet_db::error::DbError;
 
 // ── Owned address types ───────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ pub struct OwnedAddressRecord {
 // ── Owned address CRUD ────────────────────────────────────────────────────────
 
 /// Upsert a single owned address record (identified by wallet + chain + address).
-pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> Result<(), String> {
+pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> Result<(), DbError> {
     with_conn(database, |conn| {
         conn.execute(
             "INSERT INTO wallet_owned_addresses
@@ -37,7 +38,7 @@ pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> R
                 now_secs(),
             ],
         )
-        .map_err(|e| format!("address_save: {e}"))?;
+        .map_err(DbError::from)?;
         Ok(())
     })
 }
@@ -45,14 +46,14 @@ pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> R
 /// Used at startup to bulk-restore the in-memory map.
 pub fn address_load_all_chains(
     database: &WalletDatabase,
-) -> Result<Vec<OwnedAddressRecord>, String> {
+) -> Result<Vec<OwnedAddressRecord>, DbError> {
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT wallet_id, chain_id, address, derivation_path, branch, branch_index
                  FROM wallet_owned_addresses",
             )
-            .map_err(|e| format!("address_load_all_chains prepare: {e}"))?;
+            .map_err(DbError::from)?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(OwnedAddressRecord {
@@ -64,10 +65,10 @@ pub fn address_load_all_chains(
                     branch_index: row.get(5)?,
                 })
             })
-            .map_err(|e| format!("address_load_all_chains query: {e}"))?;
+            .map_err(DbError::from)?;
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| format!("address_load_all_chains row: {e}"))?);
+            records.push(row.map_err(DbError::from)?);
         }
         Ok(records)
     })

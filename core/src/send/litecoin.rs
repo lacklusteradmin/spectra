@@ -1,5 +1,7 @@
 //! Litecoin send: P2PKH transactions and MWEB peg-in transactions.
 
+use crate::send::error::SendError;
+
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
 #[cfg(test)]
@@ -30,7 +32,7 @@ async fn sign_and_broadcast_mweb_peg_in(
     fee_sat: u64,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<BlockbookSendResult, String> {
+) -> Result<BlockbookSendResult, SendError> {
     let mweb_addr = parse_mweb_address(to_mweb_address)?;
 
     // Enforce a fee floor that covers both the on-chain tx and the MWEB
@@ -61,7 +63,7 @@ async fn sign_and_broadcast_mweb_peg_in(
     // Append MWEB extension block after the standard tx bytes
     raw.extend_from_slice(&mweb_ext);
 
-    client.broadcast_raw_tx(&hex::encode(&raw)).await
+    Ok(client.broadcast_raw_tx(&hex::encode(&raw)).await?)
 }
 
 /// Fetch UTXOs, sign a legacy P2PKH LTC transaction, and broadcast.
@@ -76,7 +78,7 @@ pub async fn sign_litecoin_and_broadcast(
     fee_sat: u64,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<BlockbookSendResult, String> {
+) -> Result<BlockbookSendResult, SendError> {
     client.require_chain(crate::registry::Chain::Litecoin)?;
     if is_mweb_address(to_address) {
         return sign_and_broadcast_mweb_peg_in(
@@ -105,7 +107,7 @@ pub async fn sign_litecoin_and_broadcast(
         private_key_bytes,
         dust_threshold,
     )?;
-    client.broadcast_raw_tx(&hex::encode(&raw)).await
+    Ok(client.broadcast_raw_tx(&hex::encode(&raw)).await?)
 }
 
 // ── Litecoin transaction signing
@@ -123,12 +125,12 @@ pub(crate) fn sign_ltc_with_output_script(
     change_address: &str,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     let change = super::accounting::checked_change(
@@ -169,7 +171,7 @@ pub(crate) fn sign_ltc_with_output_script(
         pre.extend_from_slice(&1u32.to_le_bytes()); // SIGHASH_ALL
 
         let hash = dsha256(&pre);
-        let msg = Message::from_digest_slice(&hash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&hash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(0x01); // SIGHASH_ALL

@@ -299,6 +299,7 @@ async fn one_blockbook_adapter_reads_each_network_and_keeps_bch_address_rules() 
         crate::send::litecoin::sign_litecoin_and_broadcast(&client, "from", "to", 1, 1, &[], None)
             .await
             .unwrap_err()
+            .to_string()
             .contains("network")
     );
 }

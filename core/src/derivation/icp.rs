@@ -1,5 +1,7 @@
 //! ICP Ed25519 self-authenticating principal and default ledger account.
 //! Account identifier: CRC32(SHA224(domain || principal || subaccount)) || hash.
+
+use crate::derivation::error::DerivationError;
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha224};
@@ -34,16 +36,18 @@ pub(crate) fn account_from_principal(principal: &[u8]) -> [u8; 32] {
     result
 }
 
-pub(crate) fn validate_account(address: &str) -> Result<[u8; 32], String> {
+pub(crate) fn validate_account(address: &str) -> Result<[u8; 32], DerivationError> {
     let bytes: [u8; 32] = hex::decode(address)
-        .map_err(|e| e.to_string())?
+        .map_err(DerivationError::invalid)?
         .try_into()
-        .map_err(|_| "ICP account must be 32 bytes")?;
+        .map_err(|_| DerivationError::Invalid("ICP account must be 32 bytes".into()))?;
     let checksum = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC)
         .checksum(&bytes[4..])
         .to_be_bytes();
     if bytes[..4] != checksum {
-        return Err("Invalid ICP account checksum".into());
+        return Err(DerivationError::Invalid(
+            "Invalid ICP account checksum".into(),
+        ));
     }
     Ok(bytes)
 }
@@ -55,7 +59,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, None)?;
     let signing_key = SigningKey::from_bytes(&private_key);

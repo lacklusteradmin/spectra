@@ -18,7 +18,7 @@ pub struct MoneroSyncStatus {
     pub unlocked_piconeros: u64,
     pub complete: bool,
 }
-fn status(wallet: &LocalWallet) -> Result<MoneroSyncStatus, String> {
+fn status(wallet: &LocalWallet) -> Result<MoneroSyncStatus, SpectraBridgeError> {
     Ok(MoneroSyncStatus {
         wallet_id: wallet.wallet_id.clone(),
         scanned_height: wallet.next_height,
@@ -42,7 +42,7 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|w| w.id == wallet_id)
-                .ok_or("Wallet removed")?;
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
             let chain = wallet.chain_id;
             if chain.mainnet_counterpart() != Chain::Monero {
                 return Ok(None);
@@ -80,34 +80,30 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|w| w.id == wallet_id)
-                .ok_or("Wallet removed")?;
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
             let chain = wallet.chain_id;
             chain.monero_network_name()?;
             let signer = this
                 .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
                 .await?;
             let _guard = this.lock_sender(chain, &signer.from_address).await?;
-            let secret = Zeroizing::new(
-                hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-            );
+            let secret = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
             if secret.len() != 64 {
-                return Err("Invalid Monero key material".into());
+                return Err(SpectraBridgeError::failure("Invalid Monero key material"));
             }
             let store = this.secrets()?;
-            store
-                .save_secret(
-                    SecretClass::Generic,
-                    format!("{wallet_id}.monero-view"),
-                    hex::encode(&secret[32..]),
-                )
-                .map_err(|e| e.to_string())?;
+            store.save_secret(
+                SecretClass::Generic,
+                format!("{wallet_id}.monero-view"),
+                hex::encode(&secret[32..]),
+            )?;
             let db = this.bound_database().await?;
             let (revision, mut cached, key) =
                 if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_some() {
                     if restore_height.is_some() {
-                        return Err(
-                            "Restore height can only be set before the first Monero sync".into(),
-                        );
+                        return Err(crate::SpectraBridgeError::failure(
+                            "Restore height can only be set before the first Monero sync",
+                        ));
                     }
                     let (r, w, k) = this.load_monero(&wallet_id).await?;
                     (Some(r), w, k)
@@ -135,7 +131,7 @@ impl WalletService {
             let rpc = crate::api::monero_daemon_rpc::daemon(&endpoint, chain).await?;
             monero_local::scan(&mut cached, &rpc, &signer.private_key_hex, 500).await?;
             this.save_monero(revision, &cached, &key).await?;
-            Ok(status(&cached)?)
+            status(&cached)
         })
         .await
     }
@@ -158,10 +154,14 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.chain_id == chain && w.address_on(chain) == Some(address))
-            .ok_or("Monero history requires an owned local wallet")?;
+            .ok_or_else(|| {
+                SpectraBridgeError::failure("Monero history requires an owned local wallet")
+            })?;
         let (_, wallet, _) = self.load_monero(&owner.id).await?;
         if wallet.next_height < wallet.target_height {
-            return Err("Finish Monero sync before reading history".into());
+            return Err(SpectraBridgeError::failure(
+                "Finish Monero sync before reading history",
+            ));
         }
         Ok(serde_json::to_string(&wallet.transfers)?)
     }
@@ -174,7 +174,11 @@ impl WalletService {
             .await
             .first()
             .cloned()
-            .ok_or("Configure a Monero daemon endpoint before syncing".into())
+            .ok_or_else(|| {
+                crate::SpectraBridgeError::failure(
+                    "Configure a Monero daemon endpoint before syncing",
+                )
+            })
     }
     async fn load_monero(
         &self,
@@ -182,12 +186,11 @@ impl WalletService {
     ) -> Result<(u64, LocalWallet, Zeroizing<Vec<u8>>), SpectraBridgeError> {
         let view = Zeroizing::new(
             self.secrets()?
-                .load_secret(SecretClass::Generic, format!("{wallet_id}.monero-view"))
-                .map_err(|e| e.to_string())?,
+                .load_secret(SecretClass::Generic, format!("{wallet_id}.monero-view"))?,
         );
-        let view = Zeroizing::new(hex::decode(view.as_str()).map_err(|e| e.to_string())?);
+        let view = Zeroizing::new(hex::decode(view.as_str())?);
         if view.len() != 32 {
-            return Err("Invalid Monero local view key".into());
+            return Err(SpectraBridgeError::failure("Invalid Monero local view key"));
         }
         let key = cache_key(wallet_id, &view);
         let state = self.app_state().await;
@@ -195,11 +198,15 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == wallet_id)
-            .ok_or("Wallet removed")?;
+            .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
         let chain = owner.chain_id;
         let (revision, payload) =
             crate::wallet_db::monero_load(self.bound_database().await?.as_ref(), wallet_id, chain)?
-                .ok_or("Sync the local Monero wallet before building a transaction")?;
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure(
+                        "Sync the local Monero wallet before building a transaction",
+                    )
+                })?;
         let plaintext = Zeroizing::new(crate::store::seed_envelope::decrypt(
             payload.as_bytes(),
             &key,
@@ -210,7 +217,9 @@ impl WalletService {
             || wallet.chain_id != owner.chain_id
             || owner.address_on(chain) != Some(wallet.sender.as_str())
         {
-            return Err("Monero scan cache identity mismatch".into());
+            return Err(SpectraBridgeError::failure(
+                "Monero scan cache identity mismatch",
+            ));
         }
         Ok((revision, wallet, key))
     }
@@ -222,7 +231,7 @@ impl WalletService {
     ) -> Result<(), SpectraBridgeError> {
         let plain = Zeroizing::new(serde_json::to_vec(wallet)?);
         let encrypted = String::from_utf8(crate::store::seed_envelope::encrypt(&plain, key)?)
-            .map_err(|e| e.to_string())?;
+            .map_err(SpectraBridgeError::failure)?;
         let _writer = self.state_writer.lock().await;
         let state = self.wallet_state.read().await;
         if !state
@@ -230,7 +239,9 @@ impl WalletService {
             .iter()
             .any(|w| w.id == wallet.wallet_id && w.chain_id == wallet.chain_id)
         {
-            return Err("Wallet removed during Monero sync".into());
+            return Err(SpectraBridgeError::failure(
+                "Wallet removed during Monero sync",
+            ));
         }
         crate::wallet_db::monero_save(
             self.bound_database().await?.as_ref(),
@@ -255,8 +266,7 @@ impl WalletService {
         let saved_sends = tokio::task::spawn_blocking(move || {
             crate::wallet_db::signed_sends_for_wallet(&db, chain, &wallet_id)
         })
-        .await
-        .map_err(|e| e.to_string())??;
+        .await??;
         let reserved: std::collections::HashSet<_> = saved_sends
             .into_iter()
             .filter_map(|saved| {
@@ -273,25 +283,21 @@ impl WalletService {
                 output.spent = true;
             }
         }
-        let view = Zeroizing::new(
-            self.secrets()?
-                .load_secret(
-                    SecretClass::Generic,
-                    format!("{}.monero-view", request.wallet_id),
-                )
-                .map_err(|e| e.to_string())?,
-        );
-        let view = Zeroizing::new(hex::decode(view.as_str()).map_err(|e| e.to_string())?);
-        let scalar = Scalar::read(&mut view.as_slice()).map_err(|e| e.to_string())?;
+        let view = Zeroizing::new(self.secrets()?.load_secret(
+            SecretClass::Generic,
+            format!("{}.monero-view", request.wallet_id),
+        )?);
+        let view = Zeroizing::new(hex::decode(view.as_str())?);
+        let scalar = Scalar::read(&mut view.as_slice()).map_err(SpectraBridgeError::failure)?;
         let network = if chain == Chain::Monero {
             Network::Mainnet
         } else {
             Network::Stagenet
         };
-        let address =
-            MoneroAddress::from_str(network, &wallet.sender).map_err(|e| e.to_string())?;
-        let pair =
-            ViewPair::new(address.spend(), Zeroizing::new(scalar)).map_err(|e| e.to_string())?;
+        let address = MoneroAddress::from_str(network, &wallet.sender)
+            .map_err(SpectraBridgeError::failure)?;
+        let pair = ViewPair::new(address.spend(), Zeroizing::new(scalar))
+            .map_err(SpectraBridgeError::failure)?;
         let rpc = crate::api::monero_daemon_rpc::daemon(
             &self
                 .monero_endpoint(
@@ -332,7 +338,9 @@ impl WalletService {
         monero_local::scan(&mut wallet, &rpc, private, 500).await?;
         self.save_monero(Some(revision), &wallet, &key).await?;
         if wallet.next_height < wallet.target_height {
-            return Err("Monero sync is behind; finish syncing before signing".into());
+            return Err(SpectraBridgeError::failure(
+                "Monero sync is behind; finish syncing before signing",
+            ));
         }
         Ok(prepared.sign(private, &key, &wallet)?)
     }

@@ -1,6 +1,7 @@
 //! The Stellar Horizon adapter: accounts, payments history, base fee and
 //! envelope submission.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};
@@ -111,7 +112,7 @@ impl HorizonClient {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 }
@@ -119,13 +120,13 @@ impl HorizonClient {
 // base fee, and payments history.
 
 impl HorizonClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<StellarBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<StellarBalance, ApiError> {
         let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
         let native = account
             .balances
             .iter()
             .find(|b| b.asset_type == "native")
-            .ok_or("no native balance")?;
+            .or_decode("no native balance")?;
         // Stellar balances are decimal strings (e.g. "100.0000000")
         let stroops = parse_stellar_amount(&native.balance)?;
         Ok(StellarBalance {
@@ -134,20 +135,20 @@ impl HorizonClient {
         })
     }
 
-    pub async fn fetch_sequence(&self, address: &str) -> Result<u64, String> {
+    pub async fn fetch_sequence(&self, address: &str) -> Result<u64, ApiError> {
         let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
         account
             .sequence
             .parse::<u64>()
-            .map_err(|e| format!("sequence parse: {e}"))
+            .map_err(|e| ApiError::Decode(format!("sequence parse: {e}")))
     }
 
-    pub async fn fetch_base_fee(&self) -> Result<u64, String> {
+    pub async fn fetch_base_fee(&self) -> Result<u64, ApiError> {
         let stats: HorizonFeeStats = self.get("/fee_stats").await?;
         Ok(stats.fee_charged.mode.parse::<u64>().unwrap_or(100))
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<StellarHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<StellarHistoryEntry>, ApiError> {
         let payments: HorizonPayments = self
             .get(&format!(
                 "/accounts/{address}/payments?limit=50&order=desc&include_failed=false"
@@ -165,8 +166,8 @@ impl HorizonClient {
 fn stellar_history_from_payments(
     records: Vec<HorizonPaymentRecord>,
     address: &str,
-) -> Result<Vec<StellarHistoryEntry>, String> {
-    let entries: Result<Vec<Option<StellarHistoryEntry>>, String> = records
+) -> Result<Vec<StellarHistoryEntry>, ApiError> {
+    let entries: Result<Vec<Option<StellarHistoryEntry>>, ApiError> = records
         .into_iter()
         .map(|r| {
             let (from, to, amount) = match r.op_type.as_str() {
@@ -197,10 +198,12 @@ fn stellar_history_from_payments(
     Ok(entries?.into_iter().flatten().collect())
 }
 
-pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, String> {
+pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, ApiError> {
     // "100.0000000" -> stroops
     let parts: Vec<&str> = s.splitn(2, '.').collect();
-    let whole: i64 = parts[0].parse().map_err(|e| format!("amount parse: {e}"))?;
+    let whole: i64 = parts[0]
+        .parse()
+        .map_err(|e| ApiError::Decode(format!("amount parse: {e}")))?;
     let frac_str = parts.get(1).copied().unwrap_or("0");
     let frac_padded = format!("{:0<7}", frac_str);
     let frac: i64 = frac_padded[..7].parse().unwrap_or(0);
@@ -209,7 +212,7 @@ pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, String> {
 
 impl HorizonClient {
     /// Submit a pre-signed XDR envelope (for rebroadcast).
-    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<StellarSendResult, String> {
+    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<StellarSendResult, ApiError> {
         let tx_b64 = tx_b64.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();

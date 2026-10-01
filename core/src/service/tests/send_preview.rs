@@ -839,7 +839,7 @@ mod fresh_destination_tests {
         assert!(verify_reviewed_destination(Chain::Ethereum, second, &old).is_err());
         assert!(
             resolve_destination(Chain::Ethereum, "alice.eth".into(), |_| async {
-                Err(SpectraBridgeError::from("offline"))
+                Err(SpectraBridgeError::failure("offline"))
             })
             .await
             .is_err()

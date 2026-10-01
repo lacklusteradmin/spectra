@@ -5,6 +5,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 mod addresses;
 mod connection;
+pub mod error;
 mod history;
 mod history_query;
 pub(crate) use history_query::*;

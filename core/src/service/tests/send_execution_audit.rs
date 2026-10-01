@@ -9,8 +9,10 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
 #[tokio::test]
 async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
-    let fixture: Value =
-        serde_json::from_str(include_str!("../../testdata/send-audit-vectors.json")).unwrap();
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/send-audit-vectors.json"
+    ))
+    .unwrap();
     for (chain, token, token2022) in [
         (Chain::Solana, false, false),
         (Chain::Solana, true, false),

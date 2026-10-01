@@ -17,6 +17,8 @@
 //! Address encoding uses Monero's chunked Base58 with the chain-specific
 //! network byte (0x12 = mainnet, 0x18 = stagenet).
 
+use crate::derivation::error::DerivationError;
+
 use zeroize::Zeroizing;
 
 // ── Monero Electrum 25-word seed ─────────────────────────────────────────
@@ -1656,16 +1658,18 @@ const MONERO_WORDS: &[&str; 1626] = &[
 // Decode a 25-word Monero Electrum mnemonic into the raw 32-byte spend secret.
 // The 25th word is a CRC-32 checksum over the 3-char prefixes of the first 24.
 // No PBKDF2: the decoded bytes go directly into sc_reduce32.
-pub(crate) fn decode_monero_electrum_seed(phrase: &str) -> Result<Zeroizing<[u8; 32]>, String> {
+pub(crate) fn decode_monero_electrum_seed(
+    phrase: &str,
+) -> Result<Zeroizing<[u8; 32]>, DerivationError> {
     const PREFIX: usize = 3;
     const N: u32 = 1626;
 
     let words: Vec<&str> = phrase.split_whitespace().collect();
     if words.len() != 25 {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "Monero Electrum seed must be 25 words, got {}",
             words.len()
-        ));
+        )));
     }
 
     // Look up each word by its 3-char prefix.
@@ -1680,7 +1684,13 @@ pub(crate) fn decode_monero_electrum_seed(phrase: &str) -> Result<Zeroizing<[u8;
         let idx = MONERO_WORDS
             .iter()
             .position(|&wl| wl.starts_with(pfx))
-            .ok_or_else(|| format!("Unknown Monero word at position {}: '{}'", i + 1, word))?;
+            .ok_or_else(|| {
+                DerivationError::Invalid(format!(
+                    "Unknown Monero word at position {}: '{}'",
+                    i + 1,
+                    word
+                ))
+            })?;
         indices[i] = idx as u32;
     }
 
@@ -1696,7 +1706,9 @@ pub(crate) fn decode_monero_electrum_seed(phrase: &str) -> Result<Zeroizing<[u8;
     let checksum = CRC.checksum(prefix_str.as_bytes());
     let expected_idx = (checksum % 24) as usize;
     if indices[24] != indices[expected_idx] {
-        return Err("Invalid Monero mnemonic: checksum word does not match".to_string());
+        return Err(DerivationError::Invalid(
+            "Invalid Monero mnemonic: checksum word does not match".into(),
+        ));
     }
 
     // Decode 8 groups of 3 words into 4 LE bytes each.
@@ -1717,7 +1729,7 @@ pub(crate) fn decode_monero_electrum_seed(phrase: &str) -> Result<Zeroizing<[u8;
 /// Expand a 32-byte spend seed into (private_spend, public_spend, private_view, public_view) via sc_reduce32 + Keccak256.
 pub(crate) fn derive_monero_keys_from_spend_seed(
     spend_seed: &[u8; 32],
-) -> Result<([u8; 32], [u8; 32], [u8; 32], [u8; 32]), String> {
+) -> Result<([u8; 32], [u8; 32], [u8; 32], [u8; 32]), DerivationError> {
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
     use curve25519_dalek::scalar::Scalar as DalekScalar;
 
@@ -1745,7 +1757,7 @@ pub(crate) fn encode_monero_main_address(
     public_spend: &[u8; 32],
     public_view: &[u8; 32],
     is_mainnet: bool,
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     let network_byte: u8 = if is_mainnet { 0x12 } else { 0x18 };
     let mut payload = Vec::with_capacity(69);
     payload.push(network_byte);
@@ -1809,7 +1821,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let word_count = seed_phrase.split_whitespace().count();
     let mut spend_seed = [0u8; 32];
     if word_count == 25 {

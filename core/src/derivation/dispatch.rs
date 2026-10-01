@@ -246,7 +246,7 @@ mod dispatch_export_tests {
             // Every chain, with no `continue`: a chain the catalog gives no
             // path for answers "", and the arms that ignore the path do not
             // mind receiving one.
-            let path = crate::app_core::default_path_for_chain(chain)
+            let path = crate::derivation::path::default_path_from_catalog(chain)
                 .expect("a registry chain always has an answer, even when it is none");
             let result =
                 derive_for_chain(chain, PHRASE, &path, None, None, None, true, false, false);

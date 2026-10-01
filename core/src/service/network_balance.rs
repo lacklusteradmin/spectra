@@ -52,13 +52,17 @@ async fn fetch_native_balance_summary(
             .wallets
             .iter()
             .find(|w| w.chain_id == chain && w.address_on(chain) == Some(address))
-            .ok_or("Monero balance requires an owned local wallet")?;
+            .ok_or_else(|| {
+                SpectraBridgeError::failure("Monero balance requires an owned local wallet")
+            })?;
         let status = service
             .monero_sync_status(owner.id.clone())
             .await?
-            .ok_or("Monero local wallet unavailable")?;
+            .ok_or_else(|| SpectraBridgeError::failure("Monero local wallet unavailable"))?;
         if !status.complete {
-            return Err("Sync the local Monero wallet before refreshing its balance".into());
+            return Err(SpectraBridgeError::failure(
+                "Sync the local Monero wallet before refreshing its balance",
+            ));
         }
         return Ok(NativeBalanceSummary {
             smallest_unit: status.unlocked_piconeros.to_string(),
@@ -78,7 +82,7 @@ async fn fetch_native_balance_summary(
     };
     let amount = units
         .parse::<u128>()
-        .map_err(|_| "native balance exceeds core precision")?;
+        .map_err(|_| SpectraBridgeError::failure("native balance exceeds core precision"))?;
     Ok(NativeBalanceSummary {
         amount_display: crate::decimal::from_units(amount, u32::from(chain.native_decimals())),
         smallest_unit: units,
@@ -132,9 +136,9 @@ async fn single_api_balance(
             } else {
                 crate::derivation::polkadot::decode_ss58(address)?
             };
-            let width = chain
-                .substrate_balance_bytes()
-                .ok_or("no Substrate balance layout for this chain")?;
+            let width = chain.substrate_balance_bytes().ok_or_else(|| {
+                SpectraBridgeError::failure("no Substrate balance layout for this chain")
+            })?;
             SubstrateClient::new(endpoints)
                 .fetch_balance(&account, width)
                 .await?
@@ -177,6 +181,11 @@ async fn single_api_balance(
             .await?
             .balance_sompi
             .to_string(),
-        api => return Err(format!("{} has no native balance adapter", api.as_str()).into()),
+        api => {
+            return Err(SpectraBridgeError::failure(format!(
+                "{} has no native balance adapter",
+                api.as_str()
+            )));
+        }
     })
 }

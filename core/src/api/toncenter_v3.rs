@@ -1,6 +1,7 @@
 //! The TON Center v3 adapter: the indexer that enumerates jetton wallets and
 //! reads jetton masters, which v2 cannot.
 
+use crate::api::error::ApiError;
 use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};
@@ -32,9 +33,9 @@ impl ToncenterV3Client {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         if self.endpoints.is_empty() {
-            return Err("ton: no v3 endpoints configured".to_string());
+            return Err(ApiError::NoEndpoint);
         }
         let path = path.to_string();
         race(&self.endpoints, |base| {
@@ -50,7 +51,7 @@ impl ToncenterV3Client {
     pub async fn fetch_jetton_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<TonJettonBalance>, String> {
+    ) -> Result<Vec<TonJettonBalance>, ApiError> {
         #[derive(Deserialize)]
         struct Envelope {
             jetton_wallets: Option<Vec<JettonEntry>>,
@@ -124,7 +125,7 @@ impl ToncenterV3Client {
     pub async fn fetch_all_jetton_balances(
         &self,
         address: &str,
-    ) -> Result<Vec<crate::api::HeldToken>, String> {
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
         let wallets: Vec<TonJettonBalance> = self
             .fetch_jetton_balances(address)
             .await?

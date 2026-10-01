@@ -65,6 +65,12 @@ pub enum SecretStoreError {
     Backend { message: String },
 }
 
+impl From<SecretStoreError> for crate::SpectraBridgeError {
+    fn from(error: SecretStoreError) -> Self {
+        Self::failure(error)
+    }
+}
+
 /// Platform-backed secret store. Implemented in Swift/Kotlin, called from Rust.
 #[uniffi::export(with_foreign)]
 pub trait SecretStore: Send + Sync {

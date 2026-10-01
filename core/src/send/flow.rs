@@ -908,7 +908,7 @@ pub fn rebroadcast_dispatch_for_format(
         _ => None,
     };
     entry.ok_or_else(|| {
-        SpectraBridgeError::from("Rebroadcast is not supported for this transaction format yet.")
+        SpectraBridgeError::failure("Rebroadcast is not supported for this transaction format yet.")
     })
 }
 

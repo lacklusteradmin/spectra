@@ -1,4 +1,5 @@
 //! Service-owned read cache. Sending deliberately bypasses this cache.
+use crate::api::error::ApiError;
 use crate::api::tron_http::Trc20Metadata;
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 use tokio::{
@@ -12,7 +13,7 @@ pub(super) struct Key {
     pub endpoints: Arc<Vec<String>>,
     pub contract: String,
 }
-type Entry = OnceCell<Result<(Instant, Trc20Metadata), String>>;
+type Entry = OnceCell<Result<(Instant, Trc20Metadata), ApiError>>;
 
 pub(crate) struct MetadataCache {
     entries: Mutex<HashMap<Key, Arc<Entry>>>,
@@ -34,8 +35,8 @@ impl MetadataCache {
     pub(super) async fn get_or_fetch(
         &self,
         key: Key,
-        fetch: impl Future<Output = Result<Trc20Metadata, String>>,
-    ) -> Result<Trc20Metadata, String> {
+        fetch: impl Future<Output = Result<Trc20Metadata, ApiError>>,
+    ) -> Result<Trc20Metadata, ApiError> {
         let entry = {
             let mut entries = self.entries.lock().await;
             if entries
@@ -118,7 +119,9 @@ mod tests {
             .unwrap();
         assert!(
             cache
-                .get_or_fetch(key("a"), async { Err("provider unavailable".into()) })
+                .get_or_fetch(key("a"), async {
+                    Err(ApiError::Decode("provider unavailable".into()))
+                })
                 .await
                 .is_err()
         );

@@ -7,6 +7,8 @@
 //! Consensus branch is read from the backend, checked against the registry,
 //! and frozen in the reviewed artifact. See https://zips.z.cash/zip-0244.
 
+use crate::send::error::SendError;
+
 pub(crate) use super::zcash_stages::PreparedZcashTransaction;
 
 use super::bitcoin_wire::{decode_txid_le, p2pkh_script, varint};
@@ -56,7 +58,7 @@ pub async fn sign_zcash_and_broadcast(
     private_key_bytes: &[u8],
     network_upgrade: ZcashNetworkUpgrade,
     dust_threshold_zats: u64,
-) -> Result<BlockbookSendResult, String> {
+) -> Result<BlockbookSendResult, SendError> {
     client.require_chain(crate::registry::Chain::Zcash)?;
     let utxos = client.fetch_utxos(from_address).await?;
     let tip = client.fetch_chain_tip_height().await?;
@@ -79,7 +81,7 @@ pub async fn sign_zcash_and_broadcast(
         network_upgrade,
         dust_threshold_zats,
     )?;
-    client.broadcast_raw_tx(&hex::encode(&raw)).await
+    Ok(client.broadcast_raw_tx(&hex::encode(&raw)).await?)
 }
 
 // ── Encoding helpers ──────────────────────────────────────────────────────
@@ -127,7 +129,7 @@ pub(crate) fn sign_zcash_v5_p2pkh(
     private_key_bytes: &[u8],
     network_upgrade: ZcashNetworkUpgrade,
     dust_threshold_zats: u64,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let change = super::accounting::checked_change(utxos.iter().map(|u| u.2), amount_sat, fee_sat)?;
     let mut outputs = vec![(p2pkh_script(&decode_zcash_address(to_address)?), amount_sat)];
     if change > dust_threshold_zats {
@@ -149,14 +151,16 @@ pub(crate) fn sign_transaction(
     expiry_height: u32,
     private_key_bytes: &[u8],
     network_upgrade: ZcashNetworkUpgrade,
-) -> Result<(Vec<u8>, String), String> {
+) -> Result<(Vec<u8>, String), SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
-    let key = SecretKey::from_slice(private_key_bytes).map_err(|e| e.to_string())?;
+    let key = SecretKey::from_slice(private_key_bytes).map_err(SendError::invalid)?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &key).serialize();
     let expected_script = p2pkh_script(&crate::derivation::bitcoin::hash160(&pubkey_bytes));
     if utxos.is_empty() || utxos.iter().any(|u| u.3 != expected_script) {
-        return Err("Zcash input does not belong to the signing key".into());
+        return Err(SendError::Invalid(
+            "Zcash input does not belong to the signing key".into(),
+        ));
     }
     let secret_key = key;
     // Per-tx digests that are constant across all inputs.
@@ -188,7 +192,7 @@ pub(crate) fn sign_transaction(
             network_upgrade,
         );
 
-        let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL as u8);
@@ -266,7 +270,7 @@ fn compute_header_digest(expiry_height: u32, nu: ZcashNetworkUpgrade) -> [u8; 32
     blake2b_personalized(PERSONAL_TX_HEADERS, &buf)
 }
 
-fn compute_prevouts_digest(utxos: &[(String, u32, u64, Vec<u8>)]) -> Result<[u8; 32], String> {
+fn compute_prevouts_digest(utxos: &[(String, u32, u64, Vec<u8>)]) -> Result<[u8; 32], SendError> {
     let mut buf = Vec::with_capacity(36 * utxos.len());
     for (txid, vout, _, _) in utxos {
         buf.extend_from_slice(&decode_txid_le(txid)?);
@@ -315,7 +319,7 @@ fn compute_txin_sig_digest(
     vout: u32,
     value: u64,
     script_pubkey: &[u8],
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], SendError> {
     // ZIP-244 txin_sig_digest preimage:
     //   prevout (36) || value (8) || script_pubkey (with varint length) ||
     //   nSequence (4). Hash type belongs only in transparent_sig_digest.
@@ -378,9 +382,11 @@ fn compute_zip244_txid_digest(
     blake2b_personalized(&personal, &buf)
 }
 
-pub(crate) fn expiry_height(tip: u64) -> Result<u32, String> {
-    let height = tip.checked_add(40).ok_or("expiry height overflow")?;
-    u32::try_from(height).map_err(|_| "expiry height out of range".into())
+pub(crate) fn expiry_height(tip: u64) -> Result<u32, SendError> {
+    let height = tip
+        .checked_add(40)
+        .ok_or_else(|| SendError::Invalid("expiry height overflow".into()))?;
+    u32::try_from(height).map_err(|_| SendError::Invalid("expiry height out of range".into()))
 }
 
 #[cfg(test)]
@@ -421,7 +427,8 @@ mod expiry_tests {
             546,
         )
         .await
-        .unwrap_err();
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("json decode"), "{err}");
         assert!(
             server

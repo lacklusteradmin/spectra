@@ -7,6 +7,7 @@
 //! balance is the confirmed balance, a UTXO list includes the mempool's
 //! outputs, and history is newest first.
 
+use crate::api::error::ApiError;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -95,7 +96,7 @@ impl UtxoClient {
         Self { chain, endpoints }
     }
 
-    fn adapter(&self, endpoint: &Endpoint) -> Result<Adapter, String> {
+    fn adapter(&self, endpoint: &Endpoint) -> Result<Adapter, ApiError> {
         let url = Arc::new(vec![endpoint.url.clone()]);
         Ok(match endpoint.api {
             EndpointApi::Esplora => Adapter::Esplora(EsploraClient::new(HttpClient::shared(), url)),
@@ -103,15 +104,20 @@ impl UtxoClient {
             EndpointApi::Blockcypher => Adapter::Blockcypher(BlockcypherClient::new(url)),
             EndpointApi::Whatsonchain => Adapter::Whatsonchain(WhatsonchainClient::new(url)),
             EndpointApi::BchRestV2 => Adapter::BchRest(BchRestClient::new(url)),
-            api => return Err(format!("{} is not a UTXO indexer", api.as_str())),
+            api => {
+                return Err(ApiError::InvalidInput(format!(
+                    "{} is not a UTXO indexer",
+                    api.as_str()
+                )));
+            }
         })
     }
 
     /// Ask every endpoint at once; the first success answers.
-    async fn race<T, F, Fut>(&self, request: F) -> Result<T, String>
+    async fn race<T, F, Fut>(&self, request: F) -> Result<T, ApiError>
     where
         F: Fn(Adapter) -> Fut,
-        Fut: std::future::Future<Output = Result<T, String>>,
+        Fut: std::future::Future<Output = Result<T, ApiError>>,
     {
         let request = &request;
         first_success(self.endpoints.iter().map(|endpoint| {
@@ -122,7 +128,7 @@ impl UtxoClient {
     }
 
     /// Has this address ever been used on chain?
-    pub async fn has_activity(&self, address: &str) -> Result<bool, String> {
+    pub async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         self.race(|adapter| async move {
             match adapter {
                 Adapter::Esplora(c) => c.has_activity(address).await,
@@ -135,7 +141,7 @@ impl UtxoClient {
         .await
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         self.race(|adapter| async move {
             match adapter {
                 Adapter::Esplora(c) => c.fetch_balance(address).await,
@@ -148,7 +154,7 @@ impl UtxoClient {
         .await
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         self.race(|adapter| async move {
             match adapter {
                 Adapter::Esplora(c) => c.fetch_utxos(address).await,
@@ -168,12 +174,14 @@ impl UtxoClient {
         &self,
         address: &str,
         after_txid: Option<&str>,
-    ) -> Result<Vec<UtxoHistoryEntry>, String> {
+    ) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
         let mut entries = self
             .race(|adapter| async move {
                 match (adapter, after_txid) {
                     (Adapter::Esplora(c), after) => c.fetch_history(address, after).await,
-                    (_, Some(_)) => Err("this indexer cannot continue history".into()),
+                    (_, Some(_)) => Err(ApiError::InvalidInput(
+                        "this indexer cannot continue history".into(),
+                    )),
                     (Adapter::Blockbook(c), None) => c.fetch_history(address).await,
                     (Adapter::Blockcypher(c), None) => c.fetch_history(address).await,
                     (Adapter::Whatsonchain(c), None) => c.fetch_history(address).await,
@@ -194,20 +202,24 @@ impl UtxoClient {
 
     /// The fee rate for a `confirmation_target` in blocks. WhatsOnChain and
     /// BCH REST report none.
-    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, String> {
+    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, ApiError> {
         self.race(|adapter| async move {
             match adapter {
                 Adapter::Esplora(c) => c.fetch_fee_rate(confirmation_target).await,
                 Adapter::Blockbook(c) => c.fetch_fee_rate(confirmation_target).await,
                 Adapter::Blockcypher(c) => c.fetch_fee_rate(confirmation_target).await,
-                Adapter::Whatsonchain(_) => Err("WhatsOnChain reports no fee rate".into()),
-                Adapter::BchRest(_) => Err("BCH REST reports no fee rate".into()),
+                Adapter::Whatsonchain(_) => Err(ApiError::InvalidInput(
+                    "WhatsOnChain reports no fee rate".into(),
+                )),
+                Adapter::BchRest(_) => Err(ApiError::InvalidInput(
+                    "BCH REST reports no fee rate".into(),
+                )),
             }
         })
         .await
     }
 
-    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, ApiError> {
         self.race(|adapter| async move {
             match adapter {
                 Adapter::Esplora(c) => c.fetch_tx_status(txid).await,
@@ -223,7 +235,7 @@ impl UtxoClient {
     /// Submit a signed transaction to every endpoint and answer with the
     /// txid the first one accepted. Every submission runs to its end: one
     /// endpoint's acceptance does not cut another's short.
-    pub async fn broadcast(&self, raw_tx_hex: &str) -> Result<String, String> {
+    pub async fn broadcast(&self, raw_tx_hex: &str) -> Result<String, ApiError> {
         let submissions = self.endpoints.iter().map(|endpoint| {
             let adapter = self.adapter(endpoint);
             async move {
@@ -237,7 +249,7 @@ impl UtxoClient {
             }
         });
         let results = futures::future::join_all(submissions).await;
-        let mut last_err = "no endpoints configured".to_string();
+        let mut last_err = ApiError::NoEndpoint;
         for result in results {
             match result {
                 Ok(txid) => return Ok(txid),

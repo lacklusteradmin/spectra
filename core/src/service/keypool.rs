@@ -193,7 +193,7 @@ impl WalletService {
                         crate::wallet_db::address_save(&database, &to_save)
                     })
                     .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                    .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
                 }
                 tables.remember_owned(record);
                 Ok(())
@@ -352,7 +352,7 @@ impl WalletService {
                 crate::wallet_db::history_keypool_indices(&database, &wallet, chain)
             })
             .await
-            .map_err(|e| SpectraBridgeError::from(format!("keypool history task: {e}")))??;
+            .map_err(|e| SpectraBridgeError::failure(format!("keypool history task: {e}")))??;
             input.max_transaction_external_index = external;
             input.max_transaction_change_index = change;
         }
@@ -379,11 +379,11 @@ impl WalletService {
             input.max_owned_external_index = external
                 .map(i32::try_from)
                 .transpose()
-                .map_err(|_| SpectraBridgeError::from("owned external index out of range"))?;
+                .map_err(|_| SpectraBridgeError::failure("owned external index out of range"))?;
             input.max_owned_change_index = change
                 .map(i32::try_from)
                 .transpose()
-                .map_err(|_| SpectraBridgeError::from("owned change index out of range"))?;
+                .map_err(|_| SpectraBridgeError::failure("owned change index out of range"))?;
         }
 
         for index in [
@@ -396,7 +396,7 @@ impl WalletService {
         .flatten()
         {
             if index < 0 || index == i32::MAX {
-                return Err(SpectraBridgeError::from(
+                return Err(SpectraBridgeError::failure(
                     "keypool index has no valid successor",
                 ));
             }
@@ -539,7 +539,7 @@ const MAX_KEYPOOL_INDEX: i64 = (crate::derivation::primitives::HARDENED_OFFSET -
 fn next_keypool_index(index: i64) -> Result<i64, SpectraBridgeError> {
     match index.checked_add(1) {
         Some(next) if next <= MAX_KEYPOOL_INDEX => Ok(next),
-        _ => Err(SpectraBridgeError::from(
+        _ => Err(SpectraBridgeError::failure(
             "keypool exhausted: no non-hardened child index left on this chain",
         )),
     }
@@ -591,7 +591,7 @@ async fn persist_keypool(
         crate::wallet_db::keypool_save(&database, &wallet_id, chain_id, &to_save)
     })
     .await
-    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+    .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
     .map_err(SpectraBridgeError::from)?;
     tables.set_state(key, state);
     Ok(())

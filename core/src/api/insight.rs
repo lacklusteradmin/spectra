@@ -2,6 +2,7 @@
 //! amounts as decimal coin strings (`"1.23456789"`); they are converted to
 //! atoms (1e-8).
 
+use crate::api::error::ApiError;
 use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};
@@ -122,11 +123,11 @@ impl InsightClient {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<DcrBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<DcrBalance, ApiError> {
         let info: InsightAddress = self.get(&format!("/addr/{address}?noTxList=1")).await?;
         let atoms = info
             .balance_sat
@@ -136,7 +137,7 @@ impl InsightClient {
         })
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<DcrUtxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<DcrUtxo>, ApiError> {
         let utxos: Vec<InsightUtxo> = self.get(&format!("/addr/{address}/utxo")).await?;
         Ok(utxos
             .into_iter()
@@ -156,9 +157,9 @@ impl InsightClient {
             .collect())
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<DcrHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<DcrHistoryEntry>, ApiError> {
         let list: InsightTxList = self.get(&format!("/txs?address={address}")).await?;
-        let entries: Result<Vec<Option<DcrHistoryEntry>>, String> = list
+        let entries: Result<Vec<Option<DcrHistoryEntry>>, ApiError> = list
             .txs
             .into_iter()
             .map(|tx| {
@@ -211,7 +212,7 @@ impl InsightClient {
     pub async fn fetch_tx_status(
         &self,
         txid: &str,
-    ) -> Result<crate::api::utxo::UtxoTxStatus, String> {
+    ) -> Result<crate::api::utxo::UtxoTxStatus, ApiError> {
         let txid = txid.to_string();
         race(&self.endpoints, |base| {
             let txid = txid.clone();
@@ -236,7 +237,7 @@ impl InsightClient {
         .await
     }
 
-    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<DcrSendResult, String> {
+    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<DcrSendResult, ApiError> {
         let raw_hex = raw_tx_hex.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();

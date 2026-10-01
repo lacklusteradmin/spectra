@@ -1,6 +1,8 @@
 //! Provider timestamps: reading an ISO-8601 stamp, and refusing a confirmed
 //! transaction that arrives without a time.
 
+use crate::api::error::ApiError;
+
 /// A history entry's time, in the provider's own unit: `None` only while the
 /// chain has not given the transaction one — it is not yet in a block.
 ///
@@ -10,7 +12,7 @@ pub(crate) fn history_time(
     confirmed: bool,
     time: Option<u64>,
     txid: &str,
-) -> Result<Option<u64>, String> {
+) -> Result<Option<u64>, ApiError> {
     match time.filter(|t| *t > 0) {
         None if !confirmed => Ok(None),
         time => confirmed_history_time(time, txid).map(Some),
@@ -18,9 +20,10 @@ pub(crate) fn history_time(
 }
 
 /// The time of a transaction from a source that lists only confirmed ones.
-pub(crate) fn confirmed_history_time(time: Option<u64>, txid: &str) -> Result<u64, String> {
-    time.filter(|t| *t > 0)
-        .ok_or_else(|| format!("history: confirmed transaction {txid} has no time"))
+pub(crate) fn confirmed_history_time(time: Option<u64>, txid: &str) -> Result<u64, ApiError> {
+    time.filter(|t| *t > 0).ok_or_else(|| {
+        ApiError::Decode(format!("history: confirmed transaction {txid} has no time"))
+    })
 }
 
 /// Parse an RFC 3339 / ISO-8601 timestamp to Unix seconds, or `None` when the

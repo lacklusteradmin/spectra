@@ -1,8 +1,9 @@
 use super::*;
 use crate::send::stages::StoredSend;
+use crate::wallet_db::error::DbError;
 use rusqlite::OptionalExtension;
 
-pub(crate) fn send_load(database: &WalletDatabase, id: &str) -> Result<StoredSend, String> {
+pub(crate) fn send_load(database: &WalletDatabase, id: &str) -> Result<StoredSend, DbError> {
     with_conn(database, |conn| {
         let payload: String = conn
             .query_row(
@@ -10,9 +11,11 @@ pub(crate) fn send_load(database: &WalletDatabase, id: &str) -> Result<StoredSen
                 [id],
                 |r| r.get(0),
             )
-            .map_err(|e| format!("Transaction artifact not found: {e}"))?;
-        let stored: StoredSend = serde_json::from_str(&payload).map_err(|e| e.to_string())?;
-        stored.validate()?;
+            .map_err(|e| DbError::Invalid(format!("Transaction artifact not found: {e}")))?;
+        let stored: StoredSend = serde_json::from_str(&payload).map_err(DbError::from)?;
+        stored
+            .validate()
+            .map_err(|e| DbError::Corrupt(e.to_string()))?;
         Ok(stored)
     })
 }
@@ -23,11 +26,13 @@ pub(crate) fn send_save(
     database: &WalletDatabase,
     stored: &StoredSend,
     resources: &[String],
-) -> Result<(), String> {
-    stored.validate()?;
-    let payload = serde_json::to_string(stored).map_err(|e| e.to_string())?;
+) -> Result<(), DbError> {
+    stored
+        .validate()
+        .map_err(|e| DbError::Invalid(e.to_string()))?;
+    let payload = serde_json::to_string(stored).map_err(DbError::from)?;
     with_conn(database, |conn| {
-        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
         let changed = if stored.view.revision == 0 {
             tx.execute(
                 "INSERT INTO send_artifacts(id,revision,payload) VALUES(?1,0,?2)",
@@ -44,50 +49,55 @@ pub(crate) fn send_save(
                 ],
             )
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(DbError::from)?;
         if changed != 1 {
-            return Err("Transaction changed concurrently; reload it before continuing".into());
+            return Err(DbError::Invalid(
+                "Transaction changed concurrently; reload it before continuing".into(),
+            ));
         }
         for resource in resources {
             let prior: Option<String> = tx.query_row(
                 "SELECT a.payload FROM send_reservations r JOIN send_artifacts a ON a.id=r.artifact_id WHERE r.resource=?1",
-                [resource], |row| row.get(0)).optional().map_err(|e| e.to_string())?;
+                [resource], |row| row.get(0)).optional().map_err(DbError::from)?;
             if let Some(prior) = prior {
-                let previous: StoredSend =
-                    serde_json::from_str(&prior).map_err(|e| e.to_string())?;
-                previous.validate()?;
+                let previous: StoredSend = serde_json::from_str(&prior).map_err(DbError::from)?;
+                previous
+                    .validate()
+                    .map_err(|e| DbError::Corrupt(e.to_string()))?;
                 if !permits_evm_replacement(stored, &previous) {
-                    return Err("Transaction input is already reserved by another signed transaction; an EVM replacement requires an explicit nonce and higher fees".into());
+                    return Err(DbError::Invalid("Transaction input is already reserved by another signed transaction; an EVM replacement requires an explicit nonce and higher fees".into()));
                 }
                 tx.execute(
                     "UPDATE send_reservations SET artifact_id=?2 WHERE resource=?1",
                     params![resource, stored.view.id],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(DbError::from)?;
             } else {
                 tx.execute(
                     "INSERT INTO send_reservations(resource,artifact_id) VALUES(?1,?2)",
                     params![resource, stored.view.id],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(DbError::from)?;
             }
         }
-        tx.commit().map_err(|e| e.to_string())
+        tx.commit().map_err(DbError::from)
     })
 }
 
-pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, String> {
+pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, DbError> {
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT payload FROM send_artifacts ORDER BY rowid DESC")
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         let rows = stmt
             .query_map([], |r| r.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         rows.map(|row| {
-            let stored: StoredSend = serde_json::from_str(&row.map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-            stored.validate()?;
+            let stored: StoredSend =
+                serde_json::from_str(&row.map_err(DbError::from)?).map_err(DbError::from)?;
+            stored
+                .validate()
+                .map_err(|e| DbError::Corrupt(e.to_string()))?;
             Ok(stored)
         })
         .collect()
@@ -99,7 +109,7 @@ pub(crate) fn signed_sends_for_sender(
     database: &WalletDatabase,
     chain: crate::registry::Chain,
     sender: &str,
-) -> Result<Vec<StoredSend>, String> {
+) -> Result<Vec<StoredSend>, DbError> {
     signed_sends_where(
         database,
         "json_extract(payload, '$.view.chain_id') = ?1 AND lower(json_extract(payload, '$.view.sender')) = lower(?2)",
@@ -112,7 +122,7 @@ pub(crate) fn signed_sends_for_wallet(
     database: &WalletDatabase,
     chain: crate::registry::Chain,
     wallet: &str,
-) -> Result<Vec<StoredSend>, String> {
+) -> Result<Vec<StoredSend>, DbError> {
     signed_sends_where(
         database,
         "json_extract(payload, '$.view.chain_id') = ?1 AND json_extract(payload, '$.view.wallet_id') = ?2",
@@ -126,31 +136,33 @@ fn signed_sends_where(
     predicate: &str,
     chain: crate::registry::Chain,
     owner: &str,
-) -> Result<Vec<StoredSend>, String> {
+) -> Result<Vec<StoredSend>, DbError> {
     with_conn(database, |conn| {
         let mut stmt = conn.prepare(&format!("SELECT payload FROM send_artifacts WHERE {predicate} AND json_extract(payload, '$.view.stage') = 'Signed'"))
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         let rows = stmt
             .query_map(params![chain, owner], |r| r.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         rows.map(|row| {
-            let stored: StoredSend = serde_json::from_str(&row.map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-            stored.validate()?;
+            let stored: StoredSend =
+                serde_json::from_str(&row.map_err(DbError::from)?).map_err(DbError::from)?;
+            stored
+                .validate()
+                .map_err(|e| DbError::Corrupt(e.to_string()))?;
             Ok(stored)
         })
         .collect()
     })
 }
 
-pub(crate) fn send_exists(database: &WalletDatabase, id: &str) -> Result<bool, String> {
+pub(crate) fn send_exists(database: &WalletDatabase, id: &str) -> Result<bool, DbError> {
     with_conn(database, |conn| {
         conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM send_artifacts WHERE id=?1)",
             [id],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())
+        .map_err(DbError::from)
     })
 }
 
@@ -211,7 +223,7 @@ mod query_tests {
                     .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
                 assert!(plan.iter().any(|line| line.contains(index)), "{plan:?}");
             }
-            Ok(())
+            Ok::<_, DbError>(())
         }).unwrap();
         assert!(
             signed_sends_for_sender(&db, crate::registry::Chain::Ethereum, "0xABC")
@@ -225,7 +237,7 @@ mod query_tests {
         );
         with_conn(&db, |conn| {
             conn.execute("UPDATE send_artifacts SET payload = json_set(payload, '$.view.stage', 'Signed') WHERE id = 'unsigned'", []).unwrap();
-            Ok(())
+            Ok::<_, DbError>(())
         }).unwrap();
         assert!(signed_sends_for_sender(&db, crate::registry::Chain::Ethereum, "0xABC").is_err());
         assert!(signed_sends_for_wallet(&db, crate::registry::Chain::Ethereum, "w").is_err());

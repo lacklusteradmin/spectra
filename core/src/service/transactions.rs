@@ -9,7 +9,7 @@ impl WalletService {
         let database = self.bound_database().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
             .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
     }
 }
@@ -27,7 +27,7 @@ impl WalletService {
             let this = &this;
             let database = this.bound_database().await?;
 
-            tokio::task::spawn_blocking(move || -> Result<TransactionChange, String> {
+            tokio::task::spawn_blocking(move || -> Result<TransactionChange, SpectraBridgeError> {
                 match command {
                     TransactionCommand::Upsert { records } => {
                         if records.is_empty() {
@@ -104,8 +104,7 @@ impl WalletService {
                 }
             })
             .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
+            .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
         })
         .await
     }
@@ -123,7 +122,7 @@ impl WalletService {
             let database = this.bound_database().await?;
             tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
                 .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+                .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
                 .map(|rows| rows.into_iter().map(|row| row.payload).collect())
                 .map_err(Into::into)
         })
@@ -288,7 +287,7 @@ impl WalletService {
         // Keep tracker changes and the database commit ordered, including when
         // the caller cancels while the blocking transaction is running.
         let mut tracker_guard = self.status_trackers.clone().write_owned().await;
-        let changes = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let changes = tokio::task::spawn_blocking(move || -> Result<_, SpectraBridgeError> {
             let mut next_trackers = tracker_guard.clone();
             let changes = crate::wallet_db::history_update_chain(&database, chain_id, |rows| {
                 let stored: Vec<_> = rows
@@ -405,13 +404,13 @@ impl WalletService {
                     });
                     writes.push(crate::wallet_db::history_record_from_payload(updated));
                 }
-                Ok((writes, changes))
+                Ok::<_, SpectraBridgeError>((writes, changes))
             })?;
             *tracker_guard = next_trackers;
             Ok(changes)
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+        .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
         self.record_status_changes(&changes).await;
         Ok(changes)
     }
@@ -429,7 +428,7 @@ impl WalletService {
             crate::wallet_db::history_fetch_for_wallet(&database, &wallet_id)
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
         .map(|rows| rows.into_iter().map(|row| row.payload).collect())
         .map_err(Into::into)
     }
@@ -712,7 +711,7 @@ mod status_commit_regressions {
                                     crate::wallet_db::history_record_from_payload(payload)
                                 })
                                 .collect();
-                            Ok((writes, ()))
+                            Ok::<_, crate::wallet_db::error::DbError>((writes, ()))
                         },
                     )
                     .unwrap();
@@ -742,7 +741,7 @@ fn merge_history_rows(
     incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
     chain: Chain,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> Result<(Vec<crate::wallet_db::HistoryRecord>, TransactionChange), String> {
+) -> Result<(Vec<crate::wallet_db::HistoryRecord>, TransactionChange), SpectraBridgeError> {
     let existing: Vec<crate::fetch::transactions::CoreTransactionRecord> =
         existing.into_iter().map(|row| row.payload.into()).collect();
     let before: std::collections::HashMap<String, String> = existing
@@ -792,7 +791,7 @@ impl WalletService {
         incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
     ) -> Result<TransactionChange, SpectraBridgeError> {
         let database = self.bound_database().await?;
-        tokio::task::spawn_blocking(move || -> Result<TransactionChange, String> {
+        tokio::task::spawn_blocking(move || -> Result<TransactionChange, SpectraBridgeError> {
             let mut groups = std::collections::BTreeMap::<Chain, Vec<_>>::new();
             for row in incoming {
                 groups.entry(row.chain_id).or_default().push(row);
@@ -809,7 +808,7 @@ impl WalletService {
                             .prepare_cached(
                                 "SELECT name, json_extract(payload, '$.chainId') FROM wallets WHERE id = ?1",
                             )
-                            .map_err(|e| e.to_string())?;
+                            .map_err(crate::wallet_db::error::DbError::from)?;
                         for mut record in incoming {
                             let Some(id) = record.wallet_id.as_deref() else {
                                 continue;
@@ -817,7 +816,7 @@ impl WalletService {
                             let owner: Option<(String, String)> = query
                                 .query_row([id], |r| Ok((r.get(0)?, r.get(1)?)))
                                 .optional()
-                                .map_err(|e| e.to_string())?;
+                                .map_err(crate::wallet_db::error::DbError::from)?;
                             let Some((wallet_name, chain_id)) = owner else { continue; };
                             if chain_id != chain.str_id() { continue; }
                             record.wallet_name = wallet_name;
@@ -837,8 +836,7 @@ impl WalletService {
             Ok(combined)
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))?
-        .map_err(Into::into)
+        .map_err(SpectraBridgeError::failure)?
     }
 }
 
@@ -853,7 +851,7 @@ impl WalletService {
             crate::wallet_db::history_upsert_batch(&database, &records)
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
         .map_err(Into::into)
     }
 }

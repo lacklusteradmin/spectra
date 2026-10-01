@@ -29,12 +29,14 @@ impl WalletService {
         let (family, token) =
             super::send_destination::destination_probe_asset(holding, &state.token_preferences)?;
         if !family.is_evm() {
-            return Err("EVM preview requires an EVM asset".into());
+            return Err(SpectraBridgeError::failure(
+                "EVM preview requires an EVM asset",
+            ));
         }
         let chain = super::send_execution::send_chain_for(&state, &wallet_id, family)?;
         let from = wallet
             .address_on(chain)
-            .ok_or("wallet has no address on this network")?
+            .ok_or_else(|| SpectraBridgeError::failure("wallet has no address on this network"))?
             .to_owned();
         let destination = if destination.trim().is_empty() {
             from.clone()
@@ -47,7 +49,11 @@ impl WalletService {
         // network, or the network's own coin.
         let deployment_id =
             crate::tokens::deployment_id_for(chain, token.as_ref().map(|t| t.contract.as_str()))
-                .ok_or("the held token's contract is not valid on this network")?;
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure(
+                        "the held token's contract is not valid on this network",
+                    )
+                })?;
         let assembly = crate::send::ethereum::prepare_evm_send_assembly(
             crate::send::ethereum::EvmSendAssemblyInput {
                 chain_id: chain,
@@ -133,7 +139,7 @@ impl WalletService {
             // `Chain::static_fee_units`. One arm replaces 18 near-identical ones.
             other => match other.static_fee_units() {
                 Some(units) => Ok(native(units, "static")),
-                None => Err(SpectraBridgeError::from(format!(
+                None => Err(SpectraBridgeError::failure(format!(
                     "fee estimation not supported for {}",
                     other.chain_display_name()
                 ))),
@@ -156,7 +162,7 @@ impl WalletService {
                 | Chain::BitcoinCash
                 | Chain::BitcoinSV
         ) {
-            return Err(SpectraBridgeError::from(format!(
+            return Err(SpectraBridgeError::failure(format!(
                 "fetch_utxo_fee_preview_json: unsupported chain: {family:?}"
             )));
         }
@@ -216,13 +222,13 @@ impl WalletService {
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
         if value_wei.is_empty() || !value_wei.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(SpectraBridgeError::from(
+            return Err(SpectraBridgeError::failure(
                 "value_wei must be an unsigned integer",
             ));
         }
         let value_u128: u128 = value_wei
             .parse()
-            .map_err(|_| SpectraBridgeError::from("value_wei exceeds u128 range"))?;
+            .map_err(|_| SpectraBridgeError::failure("value_wei exceeds u128 range"))?;
         let data_opt: Option<&str> = if data_hex == "0x" || data_hex.is_empty() {
             None
         } else {
@@ -268,7 +274,7 @@ impl WalletService {
         let balance_wei_val: u128 = bal_res?
             .balance_wei
             .parse()
-            .map_err(|_| SpectraBridgeError::from("invalid EVM balance"))?;
+            .map_err(|_| SpectraBridgeError::failure("invalid EVM balance"))?;
 
         let estimated_fee_wei: u128 = (gas_limit as u128).saturating_mul(fee.max_fee_per_gas_wei);
         let gwei = |wei: u128| crate::decimal::from_units(wei, 9);
@@ -282,7 +288,7 @@ impl WalletService {
                 let raw: u128 = token
                     .balance_raw
                     .parse()
-                    .map_err(|_| SpectraBridgeError::from("invalid ERC-20 balance"))?;
+                    .map_err(|_| SpectraBridgeError::failure("invalid ERC-20 balance"))?;
                 crate::decimal::from_units(raw, u32::from(token.decimals))
             }
             None => {
@@ -327,7 +333,7 @@ impl WalletService {
         // "TRX" — the same fact the rest of the send path routes on.
         if contract_address.is_empty() {
             if symbol != Chain::Tron.coin_symbol() {
-                return Err("token identifier required".into());
+                return Err(SpectraBridgeError::failure("token identifier required"));
             }
             // TRX is the fee asset as well as the amount, so the fee comes out
             // of what is spendable. Only this branch needs the TRX balance.
@@ -361,7 +367,7 @@ impl WalletService {
         let raw: u128 = token
             .balance_raw
             .parse()
-            .map_err(|_| SpectraBridgeError::from("invalid TRC-20 balance"))?;
+            .map_err(|_| SpectraBridgeError::failure("invalid TRC-20 balance"))?;
         let token_balance = crate::decimal::from_units(raw, u32::from(token.decimals));
 
         let fee_limit_sun: i64 = 15_000_000;
@@ -389,7 +395,7 @@ impl WalletService {
         // one is a wrong maximum offered to the user: an unread fee makes the
         // whole balance look sendable, an unread balance makes none of it.
         let unreadable = |what: &str, value: &str| {
-            SpectraBridgeError::from(format!("{chain} {what}: not a number: {value:?}"))
+            SpectraBridgeError::failure(format!("{chain} {what}: not a number: {value:?}"))
         };
         let fee_display = crate::decimal::canonical(&fee.display)
             .ok_or_else(|| unreadable("fee", &fee.display))?;
@@ -413,7 +419,7 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "send_preview_tests.rs"]
+#[path = "tests/send_preview.rs"]
 mod tests;
 
 impl WalletService {

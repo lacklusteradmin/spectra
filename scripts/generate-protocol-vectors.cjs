@@ -27,7 +27,7 @@ for (const [name, action] of [['transfer', near.actionCreators.transfer(12345678
   const signed = new near.SignedTransaction({transaction:tx, signature:new near.Signature({keyType:0, data:sig})});
   fixtures.near.push({name, signed_hex:Buffer.from(signed.encode()).toString('hex')});
 }
-fs.writeFileSync('core/testdata/protocol/transactions.json', JSON.stringify(fixtures, null, 2) + '\n');
+fs.writeFileSync('core/tests/fixtures/protocol-transactions.json', JSON.stringify(fixtures, null, 2) + '\n');
 
 // Optional: verify exported Rust BoCs, including wire decoding and signatures.
 // SPECTRA_PROTOCOL_OUTPUT=/tmp/output cargo test -p spectra_core ton_messages_match_official_sdk_vectors

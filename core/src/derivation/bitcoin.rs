@@ -5,6 +5,8 @@
 //! Bitcoin-family chains share the address encoders here and the derivation
 //! primitives in `primitives`; this module also owns extended-key serialization.
 
+use crate::derivation::error::DerivationError;
+
 pub(crate) use crate::derivation::primitives::{
     HARDENED_OFFSET, derive_bip39_seed, parse_bip32_path,
 };
@@ -45,11 +47,11 @@ pub(crate) fn base58check_encode(payload: &[u8]) -> String {
 }
 
 // Decode a Base58Check string, verify the 4-byte SHA-256² checksum, and return the payload.
-pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, DerivationError> {
     bs58::decode(s)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("base58check decode: {e}"))
+        .map_err(|e| DerivationError::Invalid(format!("base58check decode: {e}")))
 }
 
 // ── BIP-32 extended keys ─────────────────────────────────────────────────
@@ -78,13 +80,14 @@ pub(crate) struct ExtendedPublicKey {
 impl ExtendedPrivateKey {
     /// Master key from BIP-39 seed. `hmac_key` is usually `b"Bitcoin seed"` but
     /// is caller-tunable so we can reuse this for SLIP-0010 if ever needed.
-    pub fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
+    pub fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, DerivationError> {
+        let mut mac = HmacSha512::new_from_slice(hmac_key)
+            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
         mac.update(seed);
         let tag = mac.finalize().into_bytes();
-        let private_key = SecretKey::from_slice(&tag[..32])
-            .map_err(|e| format!("Derived BIP-32 master key is invalid: {e}"))?;
+        let private_key = SecretKey::from_slice(&tag[..32]).map_err(|e| {
+            DerivationError::Internal(format!("Derived BIP-32 master key is invalid: {e}"))
+        })?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
         Ok(Self {
@@ -106,9 +109,9 @@ impl ExtendedPrivateKey {
     }
 
     // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
-    pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
+    pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, DerivationError> {
+        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
+            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
         if index >= HARDENED_OFFSET {
             mac.update(&[0x00]);
             mac.update(&self.private_key.secret_bytes());
@@ -122,13 +125,15 @@ impl ExtendedPrivateKey {
         let tweak = Scalar::from_be_bytes(
             tag[..32]
                 .try_into()
-                .map_err(|_| "BIP-32 tag slice".to_string())?,
+                .map_err(|_| DerivationError::Internal("BIP-32 tag slice".into()))?,
         )
-        .map_err(|_| "BIP-32 IL out of range — retry the derivation".to_string())?;
+        .map_err(|_| {
+            DerivationError::Internal("BIP-32 IL out of range — retry the derivation".into())
+        })?;
         let private_key = self
             .private_key
             .add_tweak(&tweak)
-            .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
+            .map_err(|e| DerivationError::Internal(format!("BIP-32 tweak failed: {e}")))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
 
@@ -143,7 +148,11 @@ impl ExtendedPrivateKey {
     }
 
     // Walk the full BIP-32 derivation path by applying derive_child for each index.
-    pub fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
+    pub fn derive_path(
+        &self,
+        secp: &Secp256k1<All>,
+        path: &[u32],
+    ) -> Result<Self, DerivationError> {
         let mut key = self.clone();
         for &index in path {
             key = key.derive_child(secp, index)?;
@@ -174,12 +183,14 @@ impl ExtendedPublicKey {
 
     /// CKDpub for unhardened children. Hardened indices return an error — you
     /// can't walk a hardened level from just a public key, by design.
-    pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
+    pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, DerivationError> {
         if index >= HARDENED_OFFSET {
-            return Err("cannot derive a hardened child from an xpub".to_string());
+            return Err(DerivationError::Invalid(
+                "cannot derive a hardened child from an xpub".into(),
+            ));
         }
-        let mut mac =
-            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
+        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
+            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
         mac.update(&self.public_key.serialize());
         mac.update(&index.to_be_bytes());
         let tag = mac.finalize().into_bytes();
@@ -187,13 +198,15 @@ impl ExtendedPublicKey {
         let tweak = Scalar::from_be_bytes(
             tag[..32]
                 .try_into()
-                .map_err(|_| "BIP-32 tag slice".to_string())?,
+                .map_err(|_| DerivationError::Internal("BIP-32 tag slice".into()))?,
         )
-        .map_err(|_| "BIP-32 IL out of range — retry the derivation".to_string())?;
+        .map_err(|_| {
+            DerivationError::Internal("BIP-32 IL out of range — retry the derivation".into())
+        })?;
         let public_key = self
             .public_key
             .add_exp_tweak(secp, &tweak)
-            .map_err(|e| format!("BIP-32 pubkey tweak failed: {e}"))?;
+            .map_err(|e| DerivationError::Internal(format!("BIP-32 pubkey tweak failed: {e}")))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
 
@@ -221,11 +234,11 @@ impl ExtendedPublicKey {
     /// Parse an xpub string and return the (key, observed version bytes). We
     /// don't auto-resolve version bytes to a network here — the caller knows
     /// which prefixes they accept.
-    pub fn from_xpub_string(s: &str) -> Result<(Self, [u8; 4]), String> {
+    pub fn from_xpub_string(s: &str) -> Result<(Self, [u8; 4]), DerivationError> {
         let (version, depth, parent_fingerprint, child_number, chain_code, key_bytes) =
             decode_extended_key(s)?;
-        let public_key =
-            PublicKey::from_slice(&key_bytes).map_err(|e| format!("xpub: invalid pubkey: {e}"))?;
+        let public_key = PublicKey::from_slice(&key_bytes)
+            .map_err(|e| DerivationError::Invalid(format!("xpub: invalid pubkey: {e}")))?;
         Ok((
             Self {
                 depth,
@@ -259,13 +272,15 @@ fn encode_extended_key(
 }
 
 // Decode an xpub/xprv base58check string into its component fields (version, depth, fingerprint, child number, chain code, key).
-fn decode_extended_key(s: &str) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), String> {
+fn decode_extended_key(
+    s: &str,
+) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), DerivationError> {
     let payload = base58check_decode(s)?;
     if payload.len() != 78 {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "xpub/xprv payload must be 78 bytes, got {}",
             payload.len()
-        ));
+        )));
     }
     let mut version = [0u8; 4];
     version.copy_from_slice(&payload[0..4]);
@@ -336,10 +351,12 @@ pub(crate) fn encode_p2sh_p2wpkh(
 pub(crate) fn encode_p2wpkh(
     params: &BitcoinNetworkParams,
     compressed_pubkey: &[u8],
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     let program = hash160(compressed_pubkey);
-    let hrp = Hrp::parse(params.bech32_hrp).map_err(|e| format!("bech32 hrp: {e}"))?;
-    bech32::segwit::encode_v0(hrp, &program).map_err(|e| format!("bech32 encode v0: {e}"))
+    let hrp = Hrp::parse(params.bech32_hrp)
+        .map_err(|e| DerivationError::Invalid(format!("bech32 hrp: {e}")))?;
+    bech32::segwit::encode_v0(hrp, &program)
+        .map_err(|e| DerivationError::Internal(format!("bech32 encode v0: {e}")))
 }
 
 /// BIP-86 key-path-only Taproot.
@@ -347,7 +364,7 @@ pub(crate) fn encode_p2tr(
     params: &BitcoinNetworkParams,
     secp: &Secp256k1<All>,
     public_key: &PublicKey,
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     let (x_only, _parity) = public_key.x_only_public_key();
     let tag_hash = sha256(b"TapTweak");
     let mut hasher = Sha256::new();
@@ -355,14 +372,15 @@ pub(crate) fn encode_p2tr(
     hasher.update(tag_hash);
     hasher.update(x_only.serialize());
     let tweak_bytes: [u8; 32] = hasher.finalize().into();
-    let tweak =
-        Scalar::from_be_bytes(tweak_bytes).map_err(|_| "Taproot tweak out of range".to_string())?;
+    let tweak = Scalar::from_be_bytes(tweak_bytes)
+        .map_err(|_| DerivationError::Internal("Taproot tweak out of range".into()))?;
     let (tweaked, _parity) = x_only
         .add_tweak(secp, &tweak)
-        .map_err(|e| format!("taproot tweak: {e}"))?;
-    let hrp = Hrp::parse(params.bech32_hrp).map_err(|e| format!("bech32 hrp: {e}"))?;
+        .map_err(|e| DerivationError::Internal(format!("taproot tweak: {e}")))?;
+    let hrp = Hrp::parse(params.bech32_hrp)
+        .map_err(|e| DerivationError::Invalid(format!("bech32 hrp: {e}")))?;
     bech32::segwit::encode_v1(hrp, &tweaked.serialize())
-        .map_err(|e| format!("bech32 encode v1: {e}"))
+        .map_err(|e| DerivationError::Internal(format!("bech32 encode v1: {e}")))
 }
 
 // ── Derivation pipeline (shared by Bitcoin-family chains) ────────────────
@@ -376,7 +394,7 @@ pub(crate) fn derive_secp_keypair(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
-) -> Result<(PublicKey, [u8; 32]), String> {
+) -> Result<(PublicKey, [u8; 32]), DerivationError> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
@@ -391,7 +409,7 @@ pub(crate) fn encode_address_inner(
     params: BitcoinNetworkParams,
     script_type: BitcoinScriptType,
     public_key: &PublicKey,
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     let compressed = public_key.serialize();
     match script_type {
         BitcoinScriptType::P2pkh => Ok(encode_p2pkh(params.p2pkh_version, &compressed)),
@@ -414,7 +432,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let (public_key, private_bytes) =
         derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
     let address = if want_address {
@@ -574,7 +592,7 @@ pub fn derive_bitcoin_from_private_key(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let key_bytes = decode_privkey_hex(&private_key_hex)?;
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
     let public_key = PublicKey::from_secret_key(&secp, &secret_key);
     let address = if want_address {
         Some(encode_address_inner(BTC_MAINNET, script_type, &public_key)?)
@@ -606,29 +624,37 @@ pub(crate) enum ParsedBitcoinAddress {
 }
 
 // Parse a Bitcoin address as SegWit (bech32/bech32m) or legacy (base58check) and return its network kind.
-pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, String> {
+pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, DerivationError> {
     // SegWit (bech32 / bech32m) — HRP is lowercase "bc" or "tb".
     if let Ok((hrp, _witver, _program)) = bech32::segwit::decode(s) {
         let hrp_str = hrp.to_string().to_lowercase();
         let network = match hrp_str.as_str() {
             "bc" => BitcoinNetworkKind::Mainnet,
             "tb" | "bcrt" => BitcoinNetworkKind::Testnet,
-            other => return Err(format!("unknown bech32 HRP: {other}")),
+            other => {
+                return Err(DerivationError::Invalid(format!(
+                    "unknown bech32 HRP: {other}"
+                )));
+            }
         };
         return Ok(ParsedBitcoinAddress::SegWit { network });
     }
     // Legacy base58check: 0x00/0x05 mainnet, 0x6f/0xc4 testnet.
     let payload = base58check_decode(s)?;
     if payload.len() != 21 {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "legacy payload must be 21 bytes, got {}",
             payload.len()
-        ));
+        )));
     }
     let network = match payload[0] {
         0x00 | 0x05 => BitcoinNetworkKind::Mainnet,
         0x6f | 0xc4 => BitcoinNetworkKind::Testnet,
-        other => return Err(format!("unknown legacy version byte: 0x{other:02x}")),
+        other => {
+            return Err(DerivationError::Invalid(format!(
+                "unknown legacy version byte: 0x{other:02x}"
+            )));
+        }
     };
     Ok(ParsedBitcoinAddress::Legacy { network })
 }

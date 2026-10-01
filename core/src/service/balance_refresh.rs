@@ -10,7 +10,7 @@ use futures::{
     future::{BoxFuture, WeakShared},
 };
 
-type BalanceRead = BoxFuture<'static, Result<WalletState, String>>;
+type BalanceRead = BoxFuture<'static, Result<WalletState, SpectraBridgeError>>;
 
 pub(super) struct BalanceRefreshes {
     active: parking_lot::Mutex<HashMap<RefreshEntry, WeakShared<BalanceRead>>>,
@@ -39,7 +39,7 @@ impl WalletService {
                 .iter()
                 .find(|w| w.id == wallet_id)
                 .and_then(refresh_entry_for)
-                .ok_or("wallet has no refreshable address")?;
+                .ok_or_else(|| SpectraBridgeError::failure("wallet has no refreshable address"))?;
             let chain = entry.chain_id;
             let known = state
                 .token_preferences
@@ -65,12 +65,9 @@ impl WalletService {
                         .permits
                         .acquire()
                         .await
-                        .map_err(|e| e.to_string())?;
+                        .map_err(SpectraBridgeError::failure)?;
                     let completed_key = entry.clone();
-                    let result = service
-                        .fetch_wallet_balances(entry, known)
-                        .await
-                        .map_err(|e| e.to_string());
+                    let result = service.fetch_wallet_balances(entry, known).await;
                     service
                         .balance_refreshes
                         .active
@@ -84,7 +81,7 @@ impl WalletService {
                 work
             }
         };
-        work.await.map_err(Into::into)
+        work.await
     }
 
     async fn fetch_wallet_balances(
@@ -99,7 +96,8 @@ impl WalletService {
         let mut holdings = vec![
             AssetHolding {
                 amount: balance_amount(&native.amount_display)?,
-                ..native_coin_template(entry.chain_id).ok_or("missing native asset")?
+                ..native_coin_template(entry.chain_id)
+                    .ok_or_else(|| SpectraBridgeError::failure("missing native asset"))?
             }
             .identified(),
         ];
@@ -111,7 +109,7 @@ impl WalletService {
                         contract: p.token.contract.clone(),
                         symbol: p.token.symbol.clone(),
                         decimals: u8::try_from(p.token.decimals)
-                            .map_err(|_| "invalid token precision")?,
+                            .map_err(|_| SpectraBridgeError::failure("invalid token precision"))?,
                         name: Some(p.token.name.clone()),
                     })
                 })
@@ -146,7 +144,7 @@ impl WalletService {
     ) -> Result<WalletState, SpectraBridgeError> {
         for h in &holdings {
             if crate::decimal::canonical(&h.amount).as_ref() != Some(&h.amount) {
-                return Err("invalid balance".into());
+                return Err(SpectraBridgeError::failure("invalid balance"));
             }
         }
         self.write_persisted(move |service| async move {
@@ -159,7 +157,7 @@ impl WalletService {
                     .iter()
                     .enumerate()
                     .find(|(_, w)| w.id == entry.wallet_id)
-                    .ok_or("wallet removed during refresh")?;
+                    .ok_or_else(|| SpectraBridgeError::failure("wallet removed during refresh"))?;
                 if refresh_entry_for(wallet).as_ref() != Some(&entry) {
                     return Ok(wallet.clone());
                 }
@@ -173,8 +171,7 @@ impl WalletService {
                     tokio::task::spawn_blocking(move || {
                         crate::wallet_db::wallet_upsert(&database, &updated)
                     })
-                    .await
-                    .map_err(|e| e.to_string())??;
+                    .await??;
                 }
                 let mut state = service.wallet_state.write().await;
                 state.wallets[index] = wallet.clone();
@@ -188,7 +185,8 @@ impl WalletService {
 /// A provider's balance text as an exact decimal. Refused rather than
 /// rounded: a balance is what the wallet shows and what a send spends.
 fn balance_amount(raw: &str) -> Result<String, SpectraBridgeError> {
-    crate::decimal::canonical(raw).ok_or_else(|| "invalid balance amount".into())
+    crate::decimal::canonical(raw)
+        .ok_or_else(|| SpectraBridgeError::failure("invalid balance amount"))
 }
 fn contract_key(chain: Chain, contract: &str) -> String {
     crate::tokens::normalize_token_identifier(Some(contract.into()), chain)

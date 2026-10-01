@@ -2,6 +2,7 @@
 //! `https://api.blockcypher.com/v1/doge/main`; the paths below it are the
 //! same for every coin. `api::utxo` decides which adapter serves a request.
 
+use crate::api::error::ApiError;
 use serde::Deserialize;
 
 use crate::api::http::{HttpClient, RetryProfile, race};
@@ -69,13 +70,13 @@ impl BlockcypherClient {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 }
 
 impl BlockcypherClient {
-    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         #[derive(Deserialize)]
         struct Activity {
             n_tx: u64,
@@ -86,7 +87,7 @@ impl BlockcypherClient {
     }
 
     /// The confirmed balance and the mempool's net change to it.
-    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         let info: BlockcypherBalance = self.get(&format!("/addrs/{address}/balance")).await?;
         Ok(UtxoBalance {
             confirmed_sats: info.balance,
@@ -95,7 +96,7 @@ impl BlockcypherClient {
     }
 
     /// Unspent outputs, the mempool's included.
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         let info: BlockcypherAddress = self
             .get(&format!("/addrs/{address}?unspentOnly=true"))
             .await?;
@@ -120,14 +121,14 @@ impl BlockcypherClient {
     }
 
     /// The most recent 50 transactions touching `address`, newest first.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
         let info: BlockcypherAddress = self.get(&format!("/addrs/{address}?limit=50")).await?;
         history_from_txrefs(info.unconfirmed_txrefs.into_iter().chain(info.txrefs))
     }
 
     /// The fee rate for a `confirmation_target`, in sat/vB: BlockCypher's
     /// high level within two blocks, medium within six, low beyond.
-    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, String> {
+    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, ApiError> {
         let chain: BlockcypherChain = self.get("").await?;
         let per_kb = match confirmation_target {
             0..=2 => chain.high_fee_per_kb,
@@ -135,14 +136,14 @@ impl BlockcypherClient {
             _ => chain.low_fee_per_kb,
         };
         if !per_kb.is_finite() || per_kb <= 0.0 {
-            return Err("BlockCypher has no fee estimate".into());
+            return Err(ApiError::Decode("BlockCypher has no fee estimate".into()));
         }
         Ok(FeeRate {
             sats_per_vbyte: per_kb / 1000.0,
         })
     }
 
-    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, ApiError> {
         #[derive(Deserialize)]
         struct BlockcypherTx {
             hash: String,
@@ -162,7 +163,7 @@ impl BlockcypherClient {
     }
 
     /// Submit a signed transaction; BlockCypher answers with its hash.
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, String> {
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, ApiError> {
         #[derive(Deserialize)]
         struct Pushed {
             tx: PushedTx,
@@ -194,7 +195,7 @@ impl BlockcypherClient {
 /// per leg.
 fn history_from_txrefs(
     refs: impl IntoIterator<Item = BlockcypherTxref>,
-) -> Result<Vec<UtxoHistoryEntry>, String> {
+) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
     let mut order: Vec<String> = Vec::new();
     let mut legs: std::collections::HashMap<String, Vec<BlockcypherTxref>> =
         std::collections::HashMap::new();

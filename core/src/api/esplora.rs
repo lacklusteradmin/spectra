@@ -1,6 +1,7 @@
 //! The Esplora REST adapter. `api::utxo` decides which adapter serves a
 //! request.
 
+use crate::api::error::ApiError;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -74,7 +75,7 @@ use crate::api::http::{RetryProfile, race};
 
 impl EsploraClient {
     /// Address counters include spent history and pending transactions, without tx bodies.
-    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         race(&self.endpoints, |base| {
             let url = format!("{base}/address/{address}");
             async move {
@@ -86,7 +87,7 @@ impl EsploraClient {
         .await
     }
 
-    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         let addr = address.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
@@ -113,7 +114,7 @@ impl EsploraClient {
         .await
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         let addr = address.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
@@ -133,7 +134,7 @@ impl EsploraClient {
         &self,
         address: &str,
         after_txid: Option<&str>,
-    ) -> Result<Vec<UtxoHistoryEntry>, String> {
+    ) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
         let addr = address.to_string();
         let cursor = after_txid.map(str::to_string);
         let http = self.http.clone();
@@ -185,7 +186,7 @@ impl EsploraClient {
     /// Returns the fee rate for `confirmation_target` blocks (typically
     /// 1, 6, or 144). Falls back to a conservative 10 sat/vB if the
     /// estimate is unavailable.
-    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, String> {
+    pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, ApiError> {
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
 
@@ -219,7 +220,7 @@ impl EsploraClient {
 
     /// Fetch the confirmation status for a single txid.
     /// Esplora `GET /tx/{txid}/status` returns `EsploraTxStatus` directly.
-    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, ApiError> {
         let txid = txid.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();
@@ -243,7 +244,7 @@ impl EsploraClient {
 }
 
 impl EsploraClient {
-    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
+    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, ApiError> {
         let raw = raw_tx_hex.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();

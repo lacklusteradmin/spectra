@@ -83,9 +83,10 @@ pub struct CreationArgs {
 }
 
 impl CreationArgs {
-    /// `None` means store unsealed — the state the iOS app has always had for
-    /// a wallet the user gave no password, and which core could not represent
-    /// until it grew one.
+    /// `None` means store unsealed, and only `--no-password` says so. A
+    /// password read from a file, the environment or the prompt is passed as
+    /// `Some` even when blank, so core refuses it rather than storing the
+    /// wallet in the clear.
     fn optional_password(&self) -> CliResult<Option<String>> {
         if self.no_password {
             return Ok(None);
@@ -324,7 +325,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     // Core does the deriving — this call is the same rule the commit below
     // applies, asked early enough to keep the key out of the store.
     spectra_core::derivation::import::derive_private_key_import_address(&private_key, &[chain])
-        .map_err(CliError::rejected)?;
+        .map_err(|e| CliError::rejected(e.to_string()))?;
 
     let password = args.creation.password()?;
 
@@ -714,9 +715,11 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 /// The derivation path a wallet is created with: the caller's, or the chain's
 /// catalog default resolved by core.
 fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
-    let resolution =
-        spectra_core::resolve_derivation_path(chain, requested.unwrap_or_default().to_string())
-            .map_err(CliError::from)?;
+    let resolution = spectra_core::derivation::path::resolve_derivation_path(
+        chain,
+        requested.unwrap_or_default().to_string(),
+    )
+    .map_err(CliError::from)?;
     Ok(resolution)
 }
 

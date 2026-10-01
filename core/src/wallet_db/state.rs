@@ -1,4 +1,5 @@
 use super::*;
+use crate::wallet_db::error::DbError;
 
 // ── App state (wallets + settings) ────────────────────────────────────────────
 //
@@ -40,12 +41,12 @@ impl AppStateChanges {
     pub(crate) fn between(
         before: Option<&CoreAppState>,
         after: &CoreAppState,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, DbError> {
         if after.schema_version != crate::store::state::APP_STATE_SCHEMA_VERSION {
-            return Err(format!(
+            return Err(DbError::Invalid(format!(
                 "unsupported app state schema version: {}",
                 after.schema_version
-            ));
+            )));
         }
         let old_wallets: std::collections::HashMap<_, _> = before
             .into_iter()
@@ -74,7 +75,7 @@ impl AppStateChanges {
                 changes.wallets.push((
                     index,
                     wallet.clone(),
-                    serde_json::to_string(wallet).map_err(|e| e.to_string())?,
+                    serde_json::to_string(wallet).map_err(DbError::from)?,
                 ));
             }
         }
@@ -87,7 +88,7 @@ impl AppStateChanges {
                 changes.addresses.push((
                     index,
                     entry.clone(),
-                    serde_json::to_string(entry).map_err(|e| e.to_string())?,
+                    serde_json::to_string(entry).map_err(DbError::from)?,
                 ));
             }
         }
@@ -99,7 +100,7 @@ impl AppStateChanges {
                 if before.map(|state| &state.$field) != Some(&after.$field) {
                     changes.meta.push((
                         $key,
-                        Some(serde_json::to_string(&after.$field).map_err(|e| e.to_string())?),
+                        Some(serde_json::to_string(&after.$field).map_err(DbError::from)?),
                     ));
                 }
             };
@@ -120,21 +121,21 @@ impl AppStateChanges {
         Ok(changes)
     }
 
-    pub(crate) fn save(self, database: &WalletDatabase) -> Result<(), String> {
+    pub(crate) fn save(self, database: &WalletDatabase) -> Result<(), DbError> {
         with_conn(database, |conn| {
-            let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+            let tx = conn.unchecked_transaction().map_err(DbError::from)?;
             let updated_at = now_secs();
             if self.replace {
                 tx.execute("DELETE FROM monero_wallets", [])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
                 tx.execute("DELETE FROM send_reservations", [])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
                 tx.execute("DELETE FROM send_artifacts", [])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
                 tx.execute("DELETE FROM wallets", [])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
                 tx.execute("DELETE FROM address_book", [])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
             }
             for chain in self.reset_chains {
                 for table in ["wallet_keypool", "wallet_owned_addresses"] {
@@ -142,37 +143,37 @@ impl AppStateChanges {
                         &format!("DELETE FROM {table} WHERE chain_id = ?1"),
                         params![chain],
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
                 }
             }
             for id in self.removed_wallets {
                 tx.execute("DELETE FROM monero_wallets WHERE wallet_id=?1", params![id])
-                    .map_err(|e| e.to_string())?;
-                tx.execute("DELETE FROM send_reservations WHERE artifact_id IN (SELECT id FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1)", params![id]).map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
+                tx.execute("DELETE FROM send_reservations WHERE artifact_id IN (SELECT id FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1)", params![id]).map_err(DbError::from)?;
                 tx.execute(
                     "DELETE FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1",
                     params![id],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(DbError::from)?;
 
                 for table in ["wallet_keypool", "wallet_owned_addresses"] {
                     tx.execute(
                         &format!("DELETE FROM {table} WHERE wallet_id = ?1"),
                         params![id],
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
                 }
                 tx.execute(
                     "DELETE FROM history_records WHERE lower(wallet_id) = lower(?1)",
                     params![id],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(DbError::from)?;
                 tx.execute("DELETE FROM wallets WHERE id = ?1", params![id])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
             }
             for id in self.removed_addresses {
                 tx.execute("DELETE FROM address_book WHERE id = ?1", params![id])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(DbError::from)?;
             }
             for (index, wallet, payload) in self.wallets {
                 tx.execute("INSERT INTO wallets
@@ -183,7 +184,7 @@ impl AppStateChanges {
                     sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
                     params![wallet.id, wallet.name, wallet.chain_id, wallet.is_watch_only(),
                         wallet.include_in_portfolio_total, index as i64, payload, updated_at])
-                    .map_err(|e| format!("app_state_save wallet: {e}"))?;
+                    .map_err(DbError::from)?;
             }
             for (index, entry, payload) in self.addresses {
                 tx.execute("INSERT INTO address_book (id, chain_id, address, sort_index, payload, updated_at)
@@ -191,7 +192,7 @@ impl AppStateChanges {
                     ON CONFLICT(id) DO UPDATE SET chain_id=excluded.chain_id, address=excluded.address,
                     sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
                     params![entry.id, entry.chain_id, entry.address, index as i64, payload, updated_at])
-                    .map_err(|e| format!("app_state_save address: {e}"))?;
+                    .map_err(DbError::from)?;
             }
             for (key, value) in self.meta {
                 if let Some(value) = value {
@@ -200,42 +201,40 @@ impl AppStateChanges {
                         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                         params![key, value],
                     )
-                    .map_err(|e| format!("app_state_save {key}: {e}"))?;
+                    .map_err(DbError::from)?;
                 } else {
                     tx.execute("DELETE FROM app_state_meta WHERE key = ?1", params![key])
-                        .map_err(|e| format!("app_state_save clear {key}: {e}"))?;
+                        .map_err(DbError::from)?;
                 }
             }
-            tx.commit()
-                .map_err(|e| format!("app_state_save commit: {e}"))
+            tx.commit().map_err(DbError::from)
         })
     }
 }
 
 /// Explicit snapshot replacement (imports and standalone store callers).
 /// Service commands use a delta against their serialized committed state.
-pub fn app_state_save(database: &WalletDatabase, state: &CoreAppState) -> Result<(), String> {
+pub fn app_state_save(database: &WalletDatabase, state: &CoreAppState) -> Result<(), DbError> {
     AppStateChanges::between(None, state)?.save(database)
 }
 
 /// Load every saved recipient, in the stored display order.
-pub fn address_book_load_all(database: &WalletDatabase) -> Result<Vec<AddressBookEntry>, String> {
+pub fn address_book_load_all(database: &WalletDatabase) -> Result<Vec<AddressBookEntry>, DbError> {
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT id, payload FROM address_book ORDER BY sort_index ASC")
-            .map_err(|e| format!("address_book_load_all prepare: {e}"))?;
+            .map_err(DbError::from)?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(|e| format!("address_book_load_all query: {e}"))?;
+            .map_err(DbError::from)?;
         let mut entries = Vec::new();
         for row in rows {
-            let (id, payload) = row.map_err(|e| format!("address_book_load_all row: {e}"))?;
-            entries.push(
-                serde_json::from_str(&payload)
-                    .map_err(|e| format!("address_book_load_all decode {id}: {e}"))?,
-            );
+            let (id, payload) = row.map_err(DbError::from)?;
+            entries.push(serde_json::from_str(&payload).map_err(|e| {
+                DbError::Corrupt(format!("address_book_load_all decode {id}: {e}"))
+            })?);
         }
         Ok(entries)
     })
@@ -245,18 +244,18 @@ pub fn address_book_load_all(database: &WalletDatabase) -> Result<Vec<AddressBoo
 ///
 /// An untouched database loads as `CoreAppState::default()`, so first run needs
 /// no special-casing at the call site.
-pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, String> {
+pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, DbError> {
     let wallets = wallet_load_all(database)?;
     let address_book = address_book_load_all(database)?;
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT key, value FROM app_state_meta")
-            .map_err(|e| format!("app_state_load prepare: {e}"))?;
+            .map_err(DbError::from)?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(|e| format!("app_state_load query: {e}"))?;
+            .map_err(DbError::from)?;
 
         let mut state = CoreAppState {
             wallets,
@@ -265,50 +264,55 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, String>
         };
         let mut seen = std::collections::HashSet::new();
         for row in rows {
-            let (key, value) = row.map_err(|e| format!("app_state_load row: {e}"))?;
+            let (key, value) = row.map_err(DbError::from)?;
             seen.insert(key.clone());
             match key.as_str() {
                 "diagnostics" => {
                     state.diagnostics = serde_json::from_str(&value)
-                        .map_err(|e| format!("invalid diagnostics: {e}"))?
+                        .map_err(|e| DbError::Corrupt(format!("invalid diagnostics: {e}")))?
                 }
                 META_SCHEMA_VERSION => {
-                    state.schema_version = value
-                        .parse()
-                        .map_err(|e| format!("app_state_load schema_version {value:?}: {e}"))?;
+                    state.schema_version = value.parse().map_err(|e| {
+                        DbError::Corrupt(format!("app_state_load schema_version {value:?}: {e}"))
+                    })?;
                     if state.schema_version != crate::store::state::APP_STATE_SCHEMA_VERSION {
-                        return Err(format!(
+                        return Err(DbError::Corrupt(format!(
                             "unsupported app state schema version: {}",
                             state.schema_version
-                        ));
+                        )));
                     }
                 }
                 META_SELECTED_WALLET_ID => state.selected_wallet_id = Some(value),
                 META_SETTINGS => {
                     state.settings = serde_json::from_str(&value)
-                        .map_err(|e| format!("app_state_load settings: {e}"))?;
+                        .map_err(|e| DbError::Corrupt(format!("app_state_load settings: {e}")))?;
                 }
                 META_TOKEN_PREFERENCES => {
                     state.token_preferences = serde_json::from_str(&value)
-                        .map_err(|e| format!("invalid token_preferences: {e}"))?;
+                        .map_err(|e| DbError::Corrupt(format!("invalid token_preferences: {e}")))?;
                 }
                 META_PRICE_ALERTS => {
                     state.price_alerts = serde_json::from_str(&value)
-                        .map_err(|e| format!("invalid price_alerts: {e}"))?;
+                        .map_err(|e| DbError::Corrupt(format!("invalid price_alerts: {e}")))?;
                 }
                 "movement_baseline" => {
                     state.movement_baseline = serde_json::from_str(&value)
-                        .map_err(|e| format!("invalid movement baseline: {e}"))?
+                        .map_err(|e| DbError::Corrupt(format!("invalid movement baseline: {e}")))?
                 }
                 "quotes" => {
-                    state.quotes =
-                        serde_json::from_str(&value).map_err(|e| format!("invalid quotes: {e}"))?
+                    state.quotes = serde_json::from_str(&value)
+                        .map_err(|e| DbError::Corrupt(format!("invalid quotes: {e}")))?
                 }
                 META_FIAT_RATES => {
-                    state.fiat_rates_from_usd = serde_json::from_str(&value)
-                        .map_err(|e| format!("invalid fiat_rates_from_usd: {e}"))?;
+                    state.fiat_rates_from_usd = serde_json::from_str(&value).map_err(|e| {
+                        DbError::Corrupt(format!("invalid fiat_rates_from_usd: {e}"))
+                    })?;
                 }
-                _ => return Err(format!("unknown app state metadata key: {key}")),
+                _ => {
+                    return Err(DbError::Corrupt(format!(
+                        "unknown app state metadata key: {key}"
+                    )));
+                }
             }
         }
         if !seen.is_empty() {
@@ -323,7 +327,9 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, String>
                 "diagnostics",
             ] {
                 if !seen.contains(key) {
-                    return Err(format!("missing app state metadata key: {key}"));
+                    return Err(DbError::Corrupt(format!(
+                        "missing app state metadata key: {key}"
+                    )));
                 }
             }
         }

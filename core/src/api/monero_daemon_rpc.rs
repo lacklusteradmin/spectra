@@ -3,6 +3,7 @@
 //! and on a supported hard fork. Scanning and signing stay on the device, in
 //! `send::monero_local`.
 
+use crate::api::error::ApiError;
 use crate::{api::http::HttpClient, registry::Chain};
 use monero_daemon_rpc::{HttpTransport, MoneroDaemon};
 use monero_wallet::interface::InterfaceError;
@@ -41,7 +42,7 @@ impl HttpTransport for DaemonTransport {
     }
 }
 pub(crate) type Daemon = MoneroDaemon<DaemonTransport>;
-pub(crate) async fn daemon(endpoint: &str, chain: Chain) -> Result<Daemon, String> {
+pub(crate) async fn daemon(endpoint: &str, chain: Chain) -> Result<Daemon, ApiError> {
     let transport = DaemonTransport {
         endpoint: endpoint.into(),
     };
@@ -49,13 +50,14 @@ pub(crate) async fn daemon(endpoint: &str, chain: Chain) -> Result<Daemon, Strin
         &transport
             .post("get_info", b"{}".to_vec(), Some(1024 * 1024))
             .await
-            .map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+            .map_err(ApiError::decode)?,
+    )?;
     if info["nettype"].as_str() != Some(chain.monero_network_name()?)
         || info["synchronized"].as_bool() != Some(true)
     {
-        return Err("Monero daemon is on the wrong network or is not synchronized".into());
+        return Err(ApiError::Decode(
+            "Monero daemon is on the wrong network or is not synchronized".into(),
+        ));
     }
     let fork: serde_json::Value = serde_json::from_slice(
         &transport
@@ -65,13 +67,12 @@ pub(crate) async fn daemon(endpoint: &str, chain: Chain) -> Result<Daemon, Strin
                 Some(1024 * 1024),
             )
             .await
-            .map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+            .map_err(ApiError::decode)?,
+    )?;
     if fork["result"]["version"].as_u64() != Some(16) {
-        return Err("Unsupported Monero hard fork; update before sending".into());
+        return Err(ApiError::Decode(
+            "Unsupported Monero hard fork; update before sending".into(),
+        ));
     }
-    MoneroDaemon::new(transport)
-        .await
-        .map_err(|e| e.to_string())
+    MoneroDaemon::new(transport).await.map_err(ApiError::decode)
 }

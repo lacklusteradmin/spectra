@@ -1,8 +1,10 @@
 //! TRX/TRC-20: construct and sign locally against a block reference that
 //! `api::tron_http` reads.
 //! Wire schema: tronprotocol/protocol core/Tron.proto and contract/*.proto.
+
 use crate::api::tron_http::BlockReference;
 use crate::derivation::tron::tron_base58_to_evm_hex;
+use crate::send::error::SendError;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -26,12 +28,12 @@ pub(crate) struct PreparedTronTransfer {
     pub(crate) body: Value,
 }
 
-fn address(value: &str) -> Result<[u8; 21], String> {
+fn address(value: &str) -> Result<[u8; 21], SendError> {
     let hex = tron_base58_to_evm_hex(value)?;
     let mut out = [0x41; 21];
-    let bytes = hex::decode(hex).map_err(|_| "invalid Tron address")?;
+    let bytes = hex::decode(hex).map_err(|_| SendError::Invalid("invalid Tron address".into()))?;
     if bytes.len() != 20 {
-        return Err("invalid Tron address length".into());
+        return Err(SendError::Invalid("invalid Tron address length".into()));
     }
     out[1..].copy_from_slice(&bytes);
     Ok(out)
@@ -57,9 +59,11 @@ fn integer(field: u64, value: u64, out: &mut Vec<u8>) {
         varint(value, out);
     }
 }
-fn positive_i64(value: u64) -> Result<(), String> {
+fn positive_i64(value: u64) -> Result<(), SendError> {
     if value == 0 || value > i64::MAX as u64 {
-        return Err("Tron value must be positive and fit int64".into());
+        return Err(SendError::Invalid(
+            "Tron value must be positive and fit int64".into(),
+        ));
     }
     Ok(())
 }
@@ -68,17 +72,19 @@ pub(crate) fn prepare_transfer(
     from: &str,
     transfer: Transfer<'_>,
     block: BlockReference,
-) -> Result<PreparedTronTransfer, String> {
+) -> Result<PreparedTronTransfer, SendError> {
     let owner = address(from)?;
     positive_i64(block.timestamp_ms)?;
     if block.id[..8] != block.number.to_be_bytes() {
-        return Err("Tron block id disagrees with block number".into());
+        return Err(SendError::Invalid(
+            "Tron block id disagrees with block number".into(),
+        ));
     }
     let expiration = block
         .timestamp_ms
         .checked_add(60_000)
         .filter(|n| *n <= i64::MAX as u64)
-        .ok_or("Tron expiration overflow")?;
+        .ok_or_else(|| SendError::Invalid("Tron expiration overflow".into()))?;
     let mut value = Vec::new();
     bytes(1, &owner, &mut value);
     let (kind, name, parameter, fee) = match transfer {
@@ -101,7 +107,9 @@ pub(crate) fn prepare_transfer(
             fee_limit,
         } => {
             if amount == 0 {
-                return Err("Tron token amount must be positive".into());
+                return Err(SendError::Invalid(
+                    "Tron token amount must be positive".into(),
+                ));
             }
             positive_i64(fee_limit)?;
             let contract = address(contract)?;
@@ -146,14 +154,17 @@ pub(crate) fn prepare_transfer(
 }
 
 impl PreparedTronTransfer {
-    pub(crate) fn sign(mut self, key: &[u8]) -> Result<String, String> {
+    pub(crate) fn sign(mut self, key: &[u8]) -> Result<String, SendError> {
         use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
         use sha3::Keccak256;
         let secp = Secp256k1::new();
-        let secret = SecretKey::from_slice(key).map_err(|_| "invalid Tron signing key")?;
+        let secret = SecretKey::from_slice(key)
+            .map_err(|_| SendError::Invalid("invalid Tron signing key".into()))?;
         let public = PublicKey::from_secret_key(&secp, &secret).serialize_uncompressed();
         if self.owner[1..] != Keccak256::digest(&public[1..])[12..] {
-            return Err("Tron sender does not match signing key".into());
+            return Err(SendError::Invalid(
+                "Tron sender does not match signing key".into(),
+            ));
         }
         let hash: [u8; 32] = Sha256::digest(&self.raw).into();
         let (recovery, signature) = secp

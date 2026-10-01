@@ -10,6 +10,7 @@
 //! `staking` and `service` call it, never the other way round. Building and
 //! signing transactions is per chain and lives in `send`.
 
+pub mod error;
 pub mod http;
 pub(crate) mod json_rpc;
 pub mod time;
@@ -59,9 +60,11 @@ pub struct HeldToken {
 }
 
 /// Core amounts use u128 and decimal scaling up to 10^38.
-pub(crate) fn checked_token_decimals(value: u128) -> Result<u8, String> {
+pub(crate) fn checked_token_decimals(value: u128) -> Result<u8, error::ApiError> {
     if value > 38 {
-        return Err("token decimals exceed core precision limit (38)".into());
+        return Err(error::ApiError::decode(
+            "token decimals exceed core precision limit (38)",
+        ));
     }
     Ok(value as u8)
 }

@@ -3,6 +3,7 @@
 //! transaction broadcast. Address history is not a node method; that is
 //! `blockscout`.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -17,21 +18,21 @@ pub(crate) const SEL_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(a
 // ── Internal helpers shared by derive/fetch/send
 
 /// Strip the `0x` prefix from a hex string and decode to bytes.
-pub(crate) fn decode_hex(s: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_hex(s: &str) -> Result<Vec<u8>, ApiError> {
     let stripped = s.strip_prefix("0x").unwrap_or(s);
-    hex::decode(stripped).map_err(|e| format!("hex decode: {e}"))
+    hex::decode(stripped).map_err(|e| ApiError::Decode(format!("hex decode: {e}")))
 }
 
 /// Parse a `0x`-prefixed hex integer (as returned by JSON-RPC) into u128.
-pub(crate) fn parse_hex_u128(s: &str) -> Result<u128, String> {
+pub(crate) fn parse_hex_u128(s: &str) -> Result<u128, ApiError> {
     let stripped = s.strip_prefix("0x").unwrap_or(s);
-    u128::from_str_radix(stripped, 16).map_err(|e| format!("hex u128 parse: {e}"))
+    u128::from_str_radix(stripped, 16).map_err(|e| ApiError::Decode(format!("hex u128 parse: {e}")))
 }
 
 /// Parse a `0x`-prefixed hex integer into u64.
-pub(crate) fn parse_hex_u64(s: &str) -> Result<u64, String> {
+pub(crate) fn parse_hex_u64(s: &str) -> Result<u64, ApiError> {
     let stripped = s.strip_prefix("0x").unwrap_or(s);
-    u64::from_str_radix(stripped, 16).map_err(|e| format!("hex u64 parse: {e}"))
+    u64::from_str_radix(stripped, 16).map_err(|e| ApiError::Decode(format!("hex u64 parse: {e}")))
 }
 
 // ── Public result types
@@ -136,7 +137,7 @@ impl EvmClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             crate::EndpointApi::EvmJsonRpc,
             &self.client,
@@ -153,7 +154,7 @@ impl EvmClient {
     pub(crate) async fn call_batch(
         &self,
         requests: Vec<(&str, Value)>,
-    ) -> Result<Vec<Value>, String> {
+    ) -> Result<Vec<Value>, ApiError> {
         let n = requests.len();
         if n == 0 {
             return Ok(vec![]);
@@ -182,7 +183,7 @@ impl EvmClient {
                     .await?;
                 let arr = resp
                     .as_array()
-                    .ok_or_else(|| "batch: expected array response".to_string())?;
+                    .or_decode("batch: expected array response")?;
                 // JSON-RPC 2.0 allows out-of-order batch responses; re-order by id.
                 let mut indexed: Vec<(usize, Value)> = arr
                     .iter()
@@ -193,20 +194,20 @@ impl EvmClient {
                     .collect();
                 indexed.sort_unstable_by_key(|(id, _)| *id);
                 if indexed.len() != n {
-                    return Err(format!(
+                    return Err(ApiError::Decode(format!(
                         "batch: expected {n} responses, got {}",
                         indexed.len()
-                    ));
+                    )));
                 }
                 indexed
                     .into_iter()
                     .map(|(_, v)| {
                         if let Some(err) = v.get("error") {
-                            return Err(format!("rpc error: {err}"));
+                            return Err(ApiError::Rejected(format!("rpc error: {err}")));
                         }
                         v.get("result")
                             .cloned()
-                            .ok_or_else(|| "batch: missing result field".to_string())
+                            .or_decode("batch: missing result field")
                     })
                     .collect()
             }
@@ -219,16 +220,16 @@ impl EvmClient {
 // receipts, tx nonce by hash, ENS resolution, ERC-20 balance + metadata,
 // Keyless explorer history + token transfers.
 
-fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, String> {
+fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, ApiError> {
     // Base fee of the *next* block is the last entry in baseFeePerGas.
     let base_fees = result
         .get("baseFeePerGas")
         .and_then(|v| v.as_array())
-        .ok_or("feeHistory: missing baseFeePerGas")?;
+        .or_decode("feeHistory: missing baseFeePerGas")?;
     let base_fee_hex = base_fees
         .last()
         .and_then(|v| v.as_str())
-        .ok_or("feeHistory: empty baseFeePerGas")?;
+        .or_decode("feeHistory: empty baseFeePerGas")?;
     let base_fee_wei = parse_hex_u128(base_fee_hex)?;
 
     // 25th-percentile reward from the most recent block as priority fee.
@@ -248,12 +249,12 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, String> {
         .and_then(|r| r.as_array())
         .and_then(|blocks| blocks.last())
         .and_then(|block| block.as_array())
-        .ok_or("feeHistory: missing reward")?;
+        .or_decode("feeHistory: missing reward")?;
     let priority_fee_wei: u128 = match samples.first() {
         Some(sample) => parse_hex_u128(
             sample
                 .as_str()
-                .ok_or("feeHistory: reward sample is not a hex string")?,
+                .or_decode("feeHistory: reward sample is not a hex string")?,
         )?,
         None => 0,
     };
@@ -273,28 +274,30 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, String> {
 }
 
 impl EvmClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<EvmBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<EvmBalance, ApiError> {
         let result = self
             .call("eth_getBalance", json!([address, "latest"]))
             .await?;
-        let hex = result.as_str().ok_or("eth_getBalance: expected string")?;
+        let hex = result
+            .as_str()
+            .or_decode("eth_getBalance: expected string")?;
         let wei = parse_hex_u128(hex)?;
         Ok(EvmBalance {
             balance_wei: wei.to_string(),
         })
     }
 
-    pub async fn fetch_nonce(&self, address: &str) -> Result<u64, String> {
+    pub async fn fetch_nonce(&self, address: &str) -> Result<u64, ApiError> {
         let result = self
             .call("eth_getTransactionCount", json!([address, "pending"]))
             .await?;
         let hex = result
             .as_str()
-            .ok_or("eth_getTransactionCount: expected string")?;
+            .or_decode("eth_getTransactionCount: expected string")?;
         parse_hex_u64(hex)
     }
 
-    pub async fn fetch_fee_estimate(&self) -> Result<EvmFeeEstimate, String> {
+    pub async fn fetch_fee_estimate(&self) -> Result<EvmFeeEstimate, ApiError> {
         let result = self
             .call("eth_feeHistory", json!([4, "latest", [25, 75]]))
             .await?;
@@ -307,7 +310,7 @@ impl EvmClient {
         to: &str,
         value_wei: u128,
         data: Option<&str>,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, ApiError> {
         let mut obj = json!({
             "from": from,
             "to": to,
@@ -317,7 +320,9 @@ impl EvmClient {
             obj["data"] = json!(d);
         }
         let result = self.call("eth_estimateGas", json!([obj])).await?;
-        let hex = result.as_str().ok_or("eth_estimateGas: expected string")?;
+        let hex = result
+            .as_str()
+            .or_decode("eth_estimateGas: expected string")?;
         parse_hex_u64(hex)
     }
 
@@ -326,7 +331,7 @@ impl EvmClient {
         &self,
         contract: &str,
         holder: &str,
-    ) -> Result<Erc20Balance, String> {
+    ) -> Result<Erc20Balance, ApiError> {
         let raw = self.fetch_erc20_balance_of(contract, holder).await?;
         let metadata = self.fetch_erc20_metadata(contract).await?;
         let balance_display = crate::decimal::from_units(raw, u32::from(metadata.decimals));
@@ -345,7 +350,7 @@ impl EvmClient {
         &self,
         contract: &str,
         holder: &str,
-    ) -> Result<u128, String> {
+    ) -> Result<u128, ApiError> {
         let data = encode_erc20_balance_of(holder)?;
         let result = self
             .call(
@@ -361,12 +366,12 @@ impl EvmClient {
             .await?;
         let hex_str = result
             .as_str()
-            .ok_or("eth_call balanceOf: expected string")?;
+            .or_decode("eth_call balanceOf: expected string")?;
         parse_hex_u128(hex_str)
     }
 
     /// Resolve an ENS name to a checksummed Ethereum address via the ENS Ideas API.
-    pub async fn resolve_ens(&self, name: &str) -> Result<Option<String>, String> {
+    pub async fn resolve_ens(&self, name: &str) -> Result<Option<String>, ApiError> {
         let normalized = name.trim().to_lowercase();
         if normalized.is_empty() || !normalized.ends_with(".eth") || normalized.contains(' ') {
             return Ok(None);
@@ -377,7 +382,7 @@ impl EvmClient {
             .client
             .get_json(&url, RetryProfile::ChainRead)
             .await
-            .map_err(|e| format!("ENS resolve: {e}"))?;
+            .map_err(|e| ApiError::Decode(format!("ENS resolve: {e}")))?;
         let address = match resp.get("address").and_then(|v| v.as_str()) {
             Some(a) if !a.is_empty() => a.to_string(),
             _ => return Ok(None),
@@ -397,7 +402,7 @@ impl EvmClient {
     /// Fetch a transaction receipt by hash. Returns `None` when the
     /// transaction is not yet mined (pending). Returns an error only on
     /// RPC failure.
-    pub async fn fetch_receipt(&self, tx_hash: &str) -> Result<Option<EvmReceipt>, String> {
+    pub async fn fetch_receipt(&self, tx_hash: &str) -> Result<Option<EvmReceipt>, ApiError> {
         let result = self
             .call("eth_getTransactionReceipt", json!([tx_hash]))
             .await?;
@@ -440,28 +445,28 @@ impl EvmClient {
     }
 
     /// Fetch the bytecode deployed at `address` (eth_getCode).
-    pub async fn fetch_code(&self, address: &str) -> Result<String, String> {
+    pub async fn fetch_code(&self, address: &str) -> Result<String, ApiError> {
         let result = self.call("eth_getCode", json!([address, "latest"])).await?;
         result
             .as_str()
             .map(|s| s.to_string())
-            .ok_or_else(|| "eth_getCode: expected string".to_string())
+            .or_decode("eth_getCode: expected string")
     }
 
     /// Fetch the nonce of an already-submitted transaction by hash.
-    pub async fn fetch_tx_nonce(&self, tx_hash: &str) -> Result<u64, String> {
+    pub async fn fetch_tx_nonce(&self, tx_hash: &str) -> Result<u64, ApiError> {
         let result = self
             .call("eth_getTransactionByHash", json!([tx_hash]))
             .await?;
         let nonce_hex = result
             .get("nonce")
             .and_then(|v| v.as_str())
-            .ok_or("eth_getTransactionByHash: missing nonce")?;
+            .or_decode("eth_getTransactionByHash: missing nonce")?;
         parse_hex_u64(nonce_hex)
     }
 
     /// Fetch token metadata (symbol + decimals) in a single batch request.
-    pub async fn fetch_erc20_metadata(&self, contract: &str) -> Result<Erc20Metadata, String> {
+    pub async fn fetch_erc20_metadata(&self, contract: &str) -> Result<Erc20Metadata, ApiError> {
         let results = self
             .call_batch(vec![
                 (
@@ -477,7 +482,7 @@ impl EvmClient {
         let decimals = crate::api::checked_token_decimals(parse_hex_u128(
             results[0]
                 .as_str()
-                .ok_or("eth_call decimals: expected string")?,
+                .or_decode("eth_call decimals: expected string")?,
         )?)?;
         let symbol = results[1]
             .as_str()
@@ -507,10 +512,13 @@ pub(crate) fn is_erc20_transfer(data_hex: &str) -> bool {
 }
 
 /// Encode a `balanceOf(address)` call.
-pub fn encode_erc20_balance_of(holder: &str) -> Result<Vec<u8>, String> {
+pub fn encode_erc20_balance_of(holder: &str) -> Result<Vec<u8>, ApiError> {
     let holder_bytes = decode_hex(holder)?;
     if holder_bytes.len() != 20 {
-        return Err(format!("invalid EVM holder length: {}", holder_bytes.len()));
+        return Err(ApiError::InvalidInput(format!(
+            "invalid EVM holder length: {}",
+            holder_bytes.len()
+        )));
     }
     let mut out = Vec::with_capacity(4 + 32);
     out.extend_from_slice(&SEL_BALANCE_OF);
@@ -577,11 +585,11 @@ fn percent_encode(s: &str) -> String {
 
 impl EvmClient {
     /// Broadcast a pre-signed raw transaction hex (0x-prefixed).
-    pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<EvmSendResult, String> {
+    pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<EvmSendResult, ApiError> {
         let result = self.call("eth_sendRawTransaction", json!([hex_tx])).await?;
         let txid = result
             .as_str()
-            .ok_or("eth_sendRawTransaction: expected string")?
+            .or_decode("eth_sendRawTransaction: expected string")?
             .to_string();
         Ok(EvmSendResult {
             txid,

@@ -28,6 +28,9 @@ pub enum WalletSecretError {
     /// The password did not match the stored verifier.
     #[error("incorrect password")]
     IncorrectPassword,
+    /// A wallet cannot be sealed with an empty password.
+    #[error("password cannot be empty")]
+    EmptyPassword,
     /// The wallet is sealed and no password was supplied.
     #[error("this wallet is sealed and needs its password")]
     PasswordRequired,
@@ -41,6 +44,29 @@ pub enum WalletSecretError {
     /// The platform store itself failed.
     #[error("secret store failure: {message}")]
     Backend { message: String },
+}
+
+impl From<WalletSecretError> for crate::SpectraBridgeError {
+    fn from(error: WalletSecretError) -> Self {
+        let message = error.to_string();
+        match error {
+            WalletSecretError::NotSealed
+            | WalletSecretError::IncorrectPassword
+            | WalletSecretError::EmptyPassword
+            | WalletSecretError::PasswordRequired
+            | WalletSecretError::PasswordNotRequired => Self::InvalidInput { message },
+            WalletSecretError::Corrupt { .. } => Self::Decode { message },
+            WalletSecretError::Backend { .. } => Self::Failure { message },
+        }
+    }
+}
+
+impl From<super::seed_envelope::EnvelopeError> for WalletSecretError {
+    fn from(error: super::seed_envelope::EnvelopeError) -> Self {
+        Self::Corrupt {
+            message: error.to_string(),
+        }
+    }
 }
 
 impl From<SecretStoreError> for WalletSecretError {
@@ -146,9 +172,7 @@ pub fn seal(
     password: &str,
 ) -> Result<(), WalletSecretError> {
     if password.trim().is_empty() {
-        return Err(WalletSecretError::Corrupt {
-            message: "password cannot be empty".to_string(),
-        });
+        return Err(WalletSecretError::EmptyPassword);
     }
 
     let mut salt = [0u8; SALT_LEN];
@@ -156,9 +180,8 @@ pub fn seal(
     let master_key = derive_master_key(password, &salt);
 
     let envelope = super::seed_envelope::encrypt(seed_phrase.as_bytes(), &*master_key)
-        .map_err(|message| WalletSecretError::Corrupt { message })?;
-    let verifier = super::password_verifier::create_verifier(password)
-        .map_err(|message| WalletSecretError::Corrupt { message })?;
+        .map_err(WalletSecretError::from)?;
+    let verifier = super::password_verifier::create_verifier(password)?;
 
     // Envelope last: a failure part-way through leaves no seed blob paired
     // with a salt it was not derived from.
@@ -180,17 +203,14 @@ pub fn seal_private_key(
     password: &str,
 ) -> Result<(), WalletSecretError> {
     if password.trim().is_empty() {
-        return Err(WalletSecretError::Corrupt {
-            message: "password cannot be empty".to_string(),
-        });
+        return Err(WalletSecretError::EmptyPassword);
     }
     let mut salt = [0u8; SALT_LEN];
     rand::thread_rng().fill_bytes(&mut salt);
     let master_key = derive_master_key(password, &salt);
     let envelope = super::seed_envelope::encrypt(private_key_hex.as_bytes(), &*master_key)
-        .map_err(|message| WalletSecretError::Corrupt { message })?;
-    let verifier = super::password_verifier::create_verifier(password)
-        .map_err(|message| WalletSecretError::Corrupt { message })?;
+        .map_err(WalletSecretError::from)?;
+    let verifier = super::password_verifier::create_verifier(password)?;
 
     write_blob(store, wallet_id, Blob::Salt, &salt)?;
     write_blob(store, wallet_id, Blob::Verifier, &verifier)?;
@@ -214,7 +234,7 @@ pub fn unlock(
     let master_key = derive_master_key(password, &salt);
     super::seed_envelope::decrypt(&envelope, &*master_key)
         .map(Zeroizing::new)
-        .map_err(|message| WalletSecretError::Corrupt { message })
+        .map_err(WalletSecretError::from)
 }
 
 /// Unseal a private-key wallet's key.
@@ -232,7 +252,7 @@ pub fn unlock_private_key(
     let master_key = derive_master_key(password, &salt);
     super::seed_envelope::decrypt(&envelope, &*master_key)
         .map(Zeroizing::new)
-        .map_err(|message| WalletSecretError::Corrupt { message })
+        .map_err(WalletSecretError::from)
 }
 
 /// Idempotent, like the underlying store.
@@ -289,27 +309,40 @@ fn store_unsealed(
     write_blob(store, wallet_id, blob, value.trim().as_bytes())
 }
 
-/// Store a seed phrase, sealed under `password` when one is given.
+/// The caller's password choice, refused when it is blank.
+///
+/// `None` is the explicit choice of no password. `Some` is a request for one,
+/// and a blank one is refused rather than read as `None`: that reading stored
+/// a wallet in the clear for a caller that asked for it to be sealed.
+fn supplied_password(password: Option<&str>) -> Result<Option<&str>, WalletSecretError> {
+    match password.map(str::trim) {
+        Some("") => Err(WalletSecretError::EmptyPassword),
+        password => Ok(password),
+    }
+}
+
+/// Store a seed phrase: sealed under `password` when one is given, unsealed
+/// only for `None`. A blank password is refused.
 pub fn store_seed_phrase(
     store: &dyn SecretStore,
     wallet_id: &str,
     seed_phrase: &str,
     password: Option<&str>,
 ) -> Result<(), WalletSecretError> {
-    match password.map(str::trim).filter(|p| !p.is_empty()) {
+    match supplied_password(password)? {
         Some(password) => seal(store, wallet_id, seed_phrase, password),
         None => store_unsealed(store, wallet_id, Blob::Seed, seed_phrase),
     }
 }
 
-/// Store a raw private key, sealed under `password` when one is given.
+/// Store a raw private key. Same password rule as [`store_seed_phrase`].
 pub fn store_private_key(
     store: &dyn SecretStore,
     wallet_id: &str,
     private_key: &str,
     password: Option<&str>,
 ) -> Result<(), WalletSecretError> {
-    match password.map(str::trim).filter(|p| !p.is_empty()) {
+    match supplied_password(password)? {
         Some(password) => seal_private_key(store, wallet_id, private_key, password),
         None => store_unsealed(store, wallet_id, Blob::PrivateKey, private_key),
     }
@@ -320,7 +353,7 @@ pub fn store_private_key(
 /// `password` is required exactly when the wallet is sealed. Supplying one for
 /// an unsealed wallet is an error rather than something to ignore: a caller
 /// that thinks it is unlocking something is a caller with a wrong idea of what
-/// it is holding.
+/// it is holding. A blank password is refused, as it is when storing.
 pub fn load_seed_phrase(
     store: &dyn SecretStore,
     wallet_id: &str,
@@ -374,7 +407,7 @@ fn load_material(
     blob: Blob,
     password: Option<&str>,
 ) -> Result<Zeroizing<String>, WalletSecretError> {
-    let password = password.map(str::trim).filter(|p| !p.is_empty());
+    let password = supplied_password(password)?;
     if !is_sealed(store, wallet_id)? {
         if password.is_some() {
             return Err(WalletSecretError::PasswordNotRequired);
@@ -581,6 +614,42 @@ mod tests {
         let store = InMemorySecretStore::new();
         assert!(seal(&store, "W1", PHRASE, "   ").is_err());
         assert!(!is_sealed(&store, "W1").unwrap());
+    }
+
+    /// A blank password is a request for a password that has none, not the
+    /// choice of no password: it must not store the material in the clear.
+    #[test]
+    fn a_blank_password_stores_nothing_rather_than_storing_unsealed() {
+        let store = InMemorySecretStore::new();
+        for blank in ["", "   ", "\t\n"] {
+            assert_eq!(
+                store_seed_phrase(&store, "w", PHRASE, Some(blank)).unwrap_err(),
+                WalletSecretError::EmptyPassword
+            );
+            assert_eq!(
+                store_private_key(&store, "k", "0xabc", Some(blank)).unwrap_err(),
+                WalletSecretError::EmptyPassword
+            );
+        }
+        for id in ["w", "k"] {
+            assert!(!is_sealed(&store, id).unwrap());
+            assert!(!has_signing_material(&store, id).unwrap());
+        }
+    }
+
+    /// Reading takes the same rule: a blank password is neither "no password"
+    /// for an unsealed wallet nor a missing one for a sealed wallet.
+    #[test]
+    fn a_blank_password_is_refused_when_reading() {
+        let store = InMemorySecretStore::new();
+        store_seed_phrase(&store, "sealed", PHRASE, Some("hunter2")).expect("seal");
+        store_seed_phrase(&store, "open", PHRASE, None).expect("store");
+        for id in ["sealed", "open"] {
+            assert_eq!(
+                load_seed_phrase(&store, id, Some("  ")).unwrap_err(),
+                WalletSecretError::EmptyPassword
+            );
+        }
     }
 
     #[test]

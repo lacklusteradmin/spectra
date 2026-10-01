@@ -1,6 +1,8 @@
 //! NEAR send: BORSH-encoded Transfer + FunctionCall transaction builders and
 //! Ed25519 signer.
 
+use crate::send::error::SendError;
+
 // ── NEAR transaction builder (BORSH)
 
 /// Build a signed NEAR Transfer transaction.
@@ -12,7 +14,7 @@ pub fn build_near_transfer_tx(
     yocto_amount: u128,
     block_hash: &[u8; 32],
     private_key: &[u8; 32],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
 
@@ -30,7 +32,9 @@ pub fn build_near_transfer_tx(
 
     let signing_key = SigningKey::from_bytes(private_key);
     if signing_key.verifying_key().as_bytes() != public_key {
-        return Err("NEAR: public key does not match signer".into());
+        return Err(SendError::Invalid(
+            "NEAR: public key does not match signer".into(),
+        ));
     }
     let signature = signing_key.sign(&tx_hash);
 
@@ -88,7 +92,7 @@ pub fn build_near_function_call_tx(
     deposit: u128,
     block_hash: &[u8; 32],
     private_key: &[u8; 32],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
 
@@ -107,7 +111,9 @@ pub fn build_near_function_call_tx(
     let tx_hash: [u8; 32] = Sha256::digest(&tx).into();
     let signing_key = SigningKey::from_bytes(private_key);
     if signing_key.verifying_key().as_bytes() != public_key {
-        return Err("NEAR: public key does not match signer".into());
+        return Err(SendError::Invalid(
+            "NEAR: public key does not match signer".into(),
+        ));
     }
     let signature = signing_key.sign(&tx_hash);
 
@@ -171,9 +177,10 @@ mod protocol_tests {
     use super::*;
     #[test]
     fn near_transactions_match_official_sdk_vectors() {
-        let fixtures: serde_json::Value =
-            serde_json::from_str(include_str!("../../testdata/protocol/transactions.json"))
-                .unwrap();
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/protocol-transactions.json"
+        ))
+        .unwrap();
         let public: [u8; 32] = hex::decode(fixtures["public_key"].as_str().unwrap())
             .unwrap()
             .try_into()

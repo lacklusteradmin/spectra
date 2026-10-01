@@ -1,5 +1,7 @@
 //! Cardano send: minimal CBOR encoder for an ADA-only Shelley transfer.
 
+use crate::send::error::SendError;
+
 // ── Cardano transaction building (minimal CBOR for ADA-only transfer)
 
 /// Build a signed Shelley-era ADA transfer transaction.
@@ -15,7 +17,7 @@ pub fn build_signed_ada_tx(
     verification_key_bytes: &[u8; 32],
     ttl: u64,
     min_change_lovelace: Option<u64>,
-) -> Result<String, String> {
+) -> Result<String, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
 
     let change = super::accounting::checked_change(
@@ -27,7 +29,9 @@ pub fn build_signed_ada_tx(
     // Encode transaction body (map with fields 0-3).
     let mut outputs: Vec<(&[u8], u64)> = vec![(to_address_bytes, amount_lovelace)];
     if change > 0 && change < min_change_lovelace.unwrap_or(1_000_000) {
-        return Err("change below minimum output; choose an exact amount or fee".into());
+        return Err(SendError::Invalid(
+            "change below minimum output; choose an exact amount or fee".into(),
+        ));
     }
     if change > 0 {
         outputs.push((change_address_bytes, change));
@@ -40,7 +44,7 @@ pub fn build_signed_ada_tx(
     let signing_key = SigningKey::from_bytes(
         &signing_key_bytes[..32]
             .try_into()
-            .map_err(|_| "key too short")?,
+            .map_err(|_| SendError::Invalid("key too short".into()))?,
     );
     let signature = signing_key.sign(&body_hash);
 
@@ -58,7 +62,7 @@ fn encode_tx_body(
     outputs: &[(&[u8], u64)],
     fee: u64,
     ttl: u64,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     // CBOR map {0: inputs, 1: outputs, 2: fee, 3: ttl}
     let mut map_entries = Vec::new();
 
@@ -66,16 +70,19 @@ fn encode_tx_body(
     let encoded_inputs: Vec<Vec<u8>> = inputs
         .iter()
         .map(|(hash, idx, _)| {
-            let hash_bytes = hex::decode(hash).map_err(|e| format!("input txid: {e}"))?;
+            let hash_bytes =
+                hex::decode(hash).map_err(|e| SendError::Invalid(format!("input txid: {e}")))?;
             if hash_bytes.len() != 32 {
-                return Err("input txid must contain exactly 32 bytes".into());
+                return Err(SendError::Invalid(
+                    "input txid must contain exactly 32 bytes".into(),
+                ));
             }
             Ok(cbor_array(&[
                 cbor_bytes(&hash_bytes),
                 cbor_uint(*idx as u64),
             ]))
         })
-        .collect::<Result<_, String>>()?;
+        .collect::<Result<_, SendError>>()?;
     map_entries.push((cbor_uint(0), cbor_tagged_set(&encoded_inputs)));
 
     // Outputs (field 1): array of [address, lovelace]
@@ -192,7 +199,7 @@ fn blake2b_256(data: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
-    fn build(values: &[u64], amount: u64, fee: u64) -> Result<String, String> {
+    fn build(values: &[u64], amount: u64, fee: u64) -> Result<String, SendError> {
         let inputs: Vec<_> = values
             .iter()
             .enumerate()
@@ -229,7 +236,7 @@ mod accounting_tests {
                 100,
                 None,
             );
-            assert!(result.unwrap_err().contains("txid"));
+            assert!(result.unwrap_err().to_string().contains("txid"));
         }
     }
     #[test]

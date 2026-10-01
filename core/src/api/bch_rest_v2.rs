@@ -6,6 +6,7 @@
 //! Amounts in transaction bodies are in BCH, not satoshis — an input's
 //! `valueSat` included, whatever its name says.
 
+use crate::api::error::ApiError;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -85,10 +86,10 @@ struct RestScript {
 
 /// A BCH amount as satoshis. Every BCH amount fits an `f64` exactly to the
 /// satoshi, so rounding is exact; a negative or non-finite one is refused.
-fn satoshis(bch: f64) -> Result<i64, String> {
+fn satoshis(bch: f64) -> Result<i64, ApiError> {
     let sats = (bch * 100_000_000.0).round();
     if !sats.is_finite() || sats < 0.0 || sats > 21e14 {
-        return Err(format!("BCH REST: invalid amount {bch}"));
+        return Err(ApiError::Decode(format!("BCH REST: invalid amount {bch}")));
     }
     Ok(sats as i64)
 }
@@ -106,17 +107,17 @@ impl BchRestClient {
         }
     }
 
-    async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 
-    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         let details: AddressDetails = self.get(&format!("/address/details/{address}")).await?;
         Ok(details.tx_appearances > 0 || details.unconfirmed_tx_appearances > 0)
     }
 
     /// The confirmed balance and the mempool's net change to it.
-    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         let details: AddressDetails = self.get(&format!("/address/details/{address}")).await?;
         Ok(UtxoBalance {
             confirmed_sats: details.balance_sat,
@@ -125,7 +126,7 @@ impl BchRestClient {
     }
 
     /// Unspent outputs, the mempool's included.
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         let list: AddressUtxos = self.get(&format!("/address/utxo/{address}")).await?;
         Ok(list
             .utxos
@@ -148,7 +149,7 @@ impl BchRestClient {
     /// The first page of the address's transactions. `net_sats` is what the
     /// address received less what its own inputs spent; the fee is the whole
     /// transaction's.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
         let page: AddressTransactions = self
             .get(&format!("/address/transactions/{address}"))
             .await?;
@@ -171,10 +172,9 @@ impl BchRestClient {
             }
             for input in &tx.vin {
                 if input.cash_address.as_deref().is_some_and(ours) {
-                    net -=
-                        satoshis(input.value_sat.ok_or_else(|| {
-                            format!("BCH REST: input of {} has no value", tx.txid)
-                        })?)?;
+                    net -= satoshis(input.value_sat.ok_or_else(|| {
+                        ApiError::decode(format!("BCH REST: input of {} has no value", tx.txid))
+                    })?)?;
                 }
             }
             if net == 0 {
@@ -200,7 +200,7 @@ impl BchRestClient {
         Ok(entries)
     }
 
-    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, ApiError> {
         let tx: RestTx = self.get(&format!("/transaction/details/{txid}")).await?;
         let block_height = tx
             .blockheight
@@ -216,7 +216,7 @@ impl BchRestClient {
     }
 
     /// Submit a signed transaction; the node answers with its txid.
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, String> {
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, ApiError> {
         let body = json!({ "hexes": [hex_tx] });
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -234,9 +234,13 @@ impl BchRestClient {
                     Value::String(id) => Some(id.as_str()),
                     _ => None,
                 }
-                .ok_or_else(|| format!("BCH REST broadcast refused: {response}"))?;
+                .ok_or_else(|| {
+                    ApiError::Rejected(format!("BCH REST broadcast refused: {response}"))
+                })?;
                 if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    return Err("BCH REST returned an invalid transaction hash".into());
+                    return Err(ApiError::Decode(
+                        "BCH REST returned an invalid transaction hash".into(),
+                    ));
                 }
                 Ok(txid.to_lowercase())
             }

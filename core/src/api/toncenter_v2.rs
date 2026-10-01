@@ -1,6 +1,7 @@
 //! The TON Center v2 adapter: balances, wallet seqno, transaction history
 //! and BOC submission. Jettons are `toncenter_v3`.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -51,7 +52,7 @@ impl ToncenterV2Client {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         let path = path.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -63,7 +64,7 @@ impl ToncenterV2Client {
 }
 
 impl ToncenterV2Client {
-    pub async fn fetch_balance(&self, address: &str) -> Result<TonBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<TonBalance, ApiError> {
         #[derive(Deserialize)]
         struct Resp {
             result: String,
@@ -75,7 +76,7 @@ impl ToncenterV2Client {
         Ok(TonBalance { nanotons })
     }
 
-    pub async fn fetch_seqno(&self, address: &str) -> Result<u32, String> {
+    pub async fn fetch_seqno(&self, address: &str) -> Result<u32, ApiError> {
         use serde_json::{Value, json};
         // A failed read is not an undeployed wallet. Only a positive state
         // response may select seqno zero and the deployment path.
@@ -83,12 +84,16 @@ impl ToncenterV2Client {
             .get(&format!("/getAddressInformation?address={address}"))
             .await?;
         if info["ok"].as_bool() != Some(true) {
-            return Err("TON: cannot read account state".into());
+            return Err(ApiError::Decode("TON: cannot read account state".into()));
         }
         match info["result"]["state"].as_str() {
             Some("uninitialized") => return Ok(0),
             Some("active") => {}
-            _ => return Err("TON: account is frozen or state is unreadable".into()),
+            _ => {
+                return Err(ApiError::Decode(
+                    "TON: account is frozen or state is unreadable".into(),
+                ));
+            }
         }
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -101,28 +106,28 @@ impl ToncenterV2Client {
                 if response["ok"].as_bool() != Some(true)
                     || response["result"]["exit_code"].as_i64() != Some(0)
                 {
-                    return Err("TON: seqno get method failed".into());
+                    return Err(ApiError::Decode("TON: seqno get method failed".into()));
                 }
                 let stack = response["result"]["stack"]
                     .as_array()
-                    .ok_or("TON: missing seqno stack")?;
+                    .or_decode("TON: missing seqno stack")?;
                 if stack.len() != 1 || stack[0][0].as_str() != Some("num") {
-                    return Err("TON: invalid seqno stack".into());
+                    return Err(ApiError::Decode("TON: invalid seqno stack".into()));
                 }
-                let value = stack[0][1].as_str().ok_or("TON: missing seqno value")?;
+                let value = stack[0][1].as_str().or_decode("TON: missing seqno value")?;
                 u32::from_str_radix(
                     value
                         .strip_prefix("0x")
-                        .ok_or("TON: invalid seqno encoding")?,
+                        .or_decode("TON: invalid seqno encoding")?,
                     16,
                 )
-                .map_err(|_| "TON: invalid seqno range".into())
+                .map_err(|_| ApiError::Decode("TON: invalid seqno range".into()))
             }
         })
         .await
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<TonHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<TonHistoryEntry>, ApiError> {
         #[derive(Deserialize)]
         struct Resp {
             result: Vec<TonTx>,
@@ -201,7 +206,7 @@ fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
 
 impl ToncenterV2Client {
     /// Send a pre-built BOC (for rebroadcast).
-    pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, String> {
+    pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, ApiError> {
         let body = json!({"boc": boc_b64});
         let boc_b64 = boc_b64.to_string();
         race(&self.endpoints, |base| {
@@ -214,25 +219,27 @@ impl ToncenterV2Client {
                     .post_json(&url, &body, RetryProfile::ChainWrite)
                     .await?;
                 if resp.get("ok").and_then(Value::as_bool) != Some(true) {
-                    return Err(format!(
+                    return Err(ApiError::Rejected(format!(
                         "TON broadcast rejected: {}",
                         resp.get("error").unwrap_or(&Value::Null)
-                    ));
+                    )));
                 }
                 let hash = resp
                     .get("result")
                     .and_then(|r| r.get("hash"))
                     .and_then(Value::as_str)
-                    .ok_or("TON broadcast: missing message hash")?
+                    .or_decode("TON broadcast: missing message hash")?
                     .to_string();
                 use base64::Engine;
                 if base64::engine::general_purpose::STANDARD
                     .decode(&hash)
-                    .map_err(|_| "TON broadcast: invalid hash")?
+                    .map_err(|_| ApiError::Decode("TON broadcast: invalid hash".into()))?
                     .len()
                     != 32
                 {
-                    return Err("TON broadcast: invalid hash length".into());
+                    return Err(ApiError::Decode(
+                        "TON broadcast: invalid hash length".into(),
+                    ));
                 }
                 Ok(TonSendResult {
                     message_hash: hash,

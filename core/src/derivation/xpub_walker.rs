@@ -23,6 +23,8 @@
 //! chain leg and returns `(index, address)` tuples. Aggregation helpers then
 //! query the network's indexers per address and sum the results.
 
+use crate::derivation::error::DerivationError;
+
 use bip39::Mnemonic;
 use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
@@ -88,10 +90,10 @@ impl HdNetwork {
 /// swapping the 4-byte serialization version prefix. The payload bytes
 /// (depth, parent fingerprint, child number, chain code, pubkey) remain
 /// untouched. Base58Check is re-encoded after the swap.
-pub fn normalize_xpub(input: &str) -> Result<(String, HdScriptType, HdNetwork), String> {
+pub fn normalize_xpub(input: &str) -> Result<(String, HdScriptType, HdNetwork), DerivationError> {
     let prefix = input.get(..4).unwrap_or("");
     let script_type = HdScriptType::from_prefix(prefix)
-        .ok_or_else(|| format!("unsupported xpub prefix: {prefix}"))?;
+        .ok_or_else(|| DerivationError::Invalid(format!("unsupported xpub prefix: {prefix}")))?;
     let is_testnet = matches!(prefix, "tpub" | "upub" | "vpub");
     let network = if is_testnet {
         HdNetwork::Testnet
@@ -108,9 +110,9 @@ pub fn normalize_xpub(input: &str) -> Result<(String, HdScriptType, HdNetwork), 
     let raw = bs58::decode(input)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("bad xpub base58: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("bad xpub base58: {e}")))?;
     if raw.len() < 4 {
-        return Err("xpub too short".to_string());
+        return Err(DerivationError::Invalid("xpub too short".into()));
     }
     let mut swapped = Vec::with_capacity(raw.len());
     swapped.extend_from_slice(&network.xpub_version());
@@ -140,7 +142,7 @@ pub fn derive_children(
     change: u32,
     start_index: u32,
     count: u32,
-) -> Result<Vec<HdChildAddress>, String> {
+) -> Result<Vec<HdChildAddress>, DerivationError> {
     let (_, _, network) = normalize_xpub(xpub_input)?;
     derive_children_on_network(xpub_input, change, start_index, count, network, None)
 }
@@ -154,26 +156,26 @@ pub(crate) fn derive_children_on_network(
     count: u32,
     network: HdNetwork,
     script: Option<HdScriptType>,
-) -> Result<Vec<HdChildAddress>, String> {
+) -> Result<Vec<HdChildAddress>, DerivationError> {
     if count == 0 {
         return Ok(Vec::new());
     }
     let (canon, inferred_script, _) = normalize_xpub(xpub_input)?;
     let script_type = script.unwrap_or(inferred_script);
-    let (xpub, _version) =
-        ExtendedPublicKey::from_xpub_string(&canon).map_err(|e| format!("bad xpub: {e}"))?;
+    let (xpub, _version) = ExtendedPublicKey::from_xpub_string(&canon)
+        .map_err(|e| DerivationError::Invalid(format!("bad xpub: {e}")))?;
     let secp = Secp256k1::<All>::new();
 
     let leg_xpub = xpub
         .derive_child(&secp, change)
-        .map_err(|e| format!("derive change leg: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("derive change leg: {e}")))?;
 
     let mut out = Vec::with_capacity(count as usize);
     for i in 0..count {
         let idx = start_index.saturating_add(i);
         let child = leg_xpub
             .derive_child(&secp, idx)
-            .map_err(|e| format!("derive index {idx}: {e}"))?;
+            .map_err(|e| DerivationError::Invalid(format!("derive index {idx}: {e}")))?;
         let address = address_from_pubkey(&child, script_type, network)?;
         out.push(HdChildAddress {
             index: idx,
@@ -188,7 +190,7 @@ fn address_from_pubkey(
     child: &ExtendedPublicKey,
     script_type: HdScriptType,
     network: HdNetwork,
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     let compressed = child.public_key.serialize();
     let params = network.params();
     match script_type {
@@ -234,7 +236,7 @@ pub async fn fetch_xpub_balance(
     xpub_input: &str,
     receive_count: u32,
     change_count: u32,
-) -> Result<HdXpubBalance, String> {
+) -> Result<HdXpubBalance, crate::api::error::ApiError> {
     let receive = derive_children(xpub_input, 0, 0, receive_count)?;
     let change = derive_children(xpub_input, 1, 0, change_count)?;
     let mut all = Vec::with_capacity(receive.len() + change.len());
@@ -264,7 +266,7 @@ pub async fn fetch_xpub_balance(
                 } else {
                     Vec::new()
                 };
-                Ok::<_, String>((i, bal, utxos))
+                Ok::<_, crate::api::error::ApiError>((i, bal, utxos))
             }
         })
         .collect();
@@ -318,21 +320,21 @@ pub fn derive_account_xpub(
     mnemonic_phrase: &str,
     passphrase: &str,
     account_path: &str,
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     let mnemonic: Mnemonic = mnemonic_phrase
         .trim()
         .parse()
-        .map_err(|e| format!("invalid mnemonic: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid mnemonic: {e}")))?;
     let seed = mnemonic.to_seed(passphrase);
 
     let secp = Secp256k1::<All>::new();
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", &seed)
-        .map_err(|e| format!("master key: {e}"))?;
-    let path =
-        parse_bip32_path(account_path).map_err(|e| format!("invalid derivation path: {e}"))?;
+        .map_err(|e| DerivationError::Internal(format!("master key: {e}")))?;
+    let path = parse_bip32_path(account_path)
+        .map_err(|e| DerivationError::Invalid(format!("invalid derivation path: {e}")))?;
     let account_xpriv = master
         .derive_path(&secp, &path)
-        .map_err(|e| format!("derive priv: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("derive priv: {e}")))?;
     let account_xpub = account_xpriv.to_neutered(&secp);
     Ok(account_xpub.to_xpub_string(XPUB_VERSION_MAINNET))
 }

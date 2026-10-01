@@ -15,7 +15,8 @@ fn commit(chains: &[crate::registry::Chain]) -> WalletImportCommit {
             watch_only_entries: Default::default(),
         },
         seed_derivation_preset: CoreSeedDerivationPreset::Standard,
-        seed_derivation_paths: crate::app_core::seed_derivation_paths_for_account(0).unwrap(),
+        seed_derivation_paths: crate::derivation::path::seed_derivation_paths_for_account(0)
+            .unwrap(),
         derivation_overrides: CoreWalletDerivationOverrides::default(),
         seed_phrase: Some(MNEMONIC.into()),
         private_key: None,
@@ -54,7 +55,7 @@ async fn imported_wallets_land_in_core_state() {
             crate::derivation::import::derive_import_addresses(
                 MNEMONIC,
                 &[crate::registry::Chain::Solana],
-                &crate::app_core::seed_derivation_paths_for_account(0).unwrap(),
+                &crate::derivation::path::seed_derivation_paths_for_account(0).unwrap(),
                 &CoreWalletDerivationOverrides::default()
             )[&crate::registry::Chain::Solana]
                 .as_str()
@@ -81,7 +82,7 @@ async fn a_seed_import_stores_one_address_per_network_of_its_family() {
     let mut commit = commit(&[crate::registry::Chain::Bitcoin]);
     commit.seed_phrase = Some(MNEMONIC.to_string());
     commit.seed_derivation_paths =
-        crate::app_core::seed_derivation_paths_for_account(0).expect("default paths");
+        crate::derivation::path::seed_derivation_paths_for_account(0).expect("default paths");
     service.import_wallets(commit).await.expect("import");
 
     let stored = service
@@ -264,6 +265,40 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
         .len(),
         2
     );
+}
+
+/// A blank password is refused as bad input, for a seed and for a private
+/// key, and nothing is stored: only `None` means "no password".
+#[tokio::test]
+async fn a_blank_password_is_refused_rather_than_stored_unsealed() {
+    let path = std::env::temp_dir().join(format!(
+        "spectra-import-{}.db",
+        crate::store::new_transaction_id()
+    ));
+    let service = WalletService::new(vec![]).unwrap();
+    let store = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    service.set_secret_store(store.clone());
+    service
+        .open_state(path.to_string_lossy().into())
+        .await
+        .unwrap();
+    for blank in ["", "   "] {
+        let mut seed = commit(&[crate::registry::Chain::Solana]);
+        seed.password = Some(blank.into());
+        let mut key = commit(&[crate::registry::Chain::Ethereum]);
+        key.request.is_private_key_import = true;
+        key.seed_phrase = None;
+        key.private_key = Some(format!("{:064x}", 1));
+        key.password = Some(blank.into());
+        for commit in [seed, key] {
+            assert!(matches!(
+                service.import_wallets(commit).await,
+                Err(crate::SpectraBridgeError::InvalidInput { .. })
+            ));
+        }
+    }
+    assert_eq!(store.len(), 0);
+    assert!(service.app_state().await.wallets.is_empty());
 }
 
 #[tokio::test]

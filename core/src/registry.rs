@@ -131,6 +131,32 @@ impl rusqlite::types::FromSql for Chain {
     }
 }
 
+/// A registry question with no answer for this chain.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RegistryError {
+    #[error("Unknown network: {0}")]
+    UnknownChain(String),
+    /// A fact asked of a chain outside the family that has it.
+    #[error("{chain} is not a {family} network")]
+    NotIn { chain: Chain, family: &'static str },
+    #[error("Zcash V5 is not active at height {0}")]
+    ZcashV5Inactive(u32),
+}
+
+impl From<RegistryError> for crate::SpectraBridgeError {
+    fn from(error: RegistryError) -> Self {
+        Self::InvalidInput {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<RegistryError> for crate::api::error::ApiError {
+    fn from(error: RegistryError) -> Self {
+        Self::InvalidInput(error.to_string())
+    }
+}
+
 impl std::fmt::Display for Chain {
     /// The catalog id, as a log line or an error message names the chain.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -281,8 +307,8 @@ impl Chain {
     }
 
     /// [`Chain::from_str_id`], with the refusal a caller reports.
-    pub fn parse(id: &str) -> Result<Self, String> {
-        Self::from_str_id(id).ok_or_else(|| format!("Unknown network: {id}"))
+    pub fn parse(id: &str) -> Result<Self, RegistryError> {
+        Self::from_str_id(id).ok_or_else(|| RegistryError::UnknownChain(id.to_string()))
     }
 
     /// Key under which this chain's address is stored during wallet import.
@@ -562,12 +588,19 @@ impl Chain {
     }
 
     /// Why the current protocol adapter cannot safely expose separate stages.
+    fn not_in(self, family: &'static str) -> RegistryError {
+        RegistryError::NotIn {
+            chain: self,
+            family,
+        }
+    }
+
     pub fn transparent_send_unavailable_reason(self) -> Option<&'static str> {
         None
     }
 
     /// Minimum retained change for the fixed-fee P2PKH send adapters.
-    pub(crate) fn legacy_change_dust(self) -> Result<u64, String> {
+    pub(crate) fn legacy_change_dust(self) -> Result<u64, RegistryError> {
         match self.mainnet_counterpart() {
             Self::BitcoinCash
             | Self::BitcoinSV
@@ -575,31 +608,31 @@ impl Chain {
             | Self::Dogecoin
             | Self::Litecoin
             | Self::Dash => Ok(546),
-            _ => Err("Not a fixed-fee P2PKH send protocol".into()),
+            _ => Err(self.not_in("fixed-fee P2PKH")),
         }
     }
 
-    pub(crate) fn monero_network_name(self) -> Result<&'static str, String> {
+    pub(crate) fn monero_network_name(self) -> Result<&'static str, RegistryError> {
         match self {
             Self::Monero => Ok("mainnet"),
             Self::MoneroStagenet => Ok("stagenet"),
-            _ => Err("Not a Monero network".into()),
+            _ => Err(self.not_in("Monero")),
         }
     }
 
-    pub(crate) fn icp_ledger_id(self) -> Result<&'static str, String> {
+    pub(crate) fn icp_ledger_id(self) -> Result<&'static str, RegistryError> {
         match self {
             Self::Icp => Ok("00000000000000020101"),
-            _ => Err("Not the ICP ledger network".into()),
+            _ => Err(self.not_in("ICP ledger")),
         }
     }
 
     /// Source: zcash/zcash src/chainparams.cpp and consensus/upgrades.cpp.
-    pub(crate) fn zcash_consensus_branch(self, height: u32) -> Result<u32, String> {
+    pub(crate) fn zcash_consensus_branch(self, height: u32) -> Result<u32, RegistryError> {
         let activations = match self {
             Self::Zcash => [1_687_104, 2_726_400, 3_146_400, 3_364_600],
             Self::ZcashTestnet => [1_842_420, 2_976_000, 3_536_500, 4_052_000],
-            _ => return Err("Not a Zcash network".into()),
+            _ => return Err(self.not_in("Zcash")),
         };
         let branches = [0xc2d6_d0b4, 0xc8e7_1055, 0x4dec_4df0, 0x5437_f330];
         activations
@@ -608,24 +641,24 @@ impl Chain {
             .rev()
             .find(|(activation, _)| height >= *activation)
             .map(|(_, branch)| branch)
-            .ok_or("Zcash V5 is not active".into())
+            .ok_or(RegistryError::ZcashV5Inactive(height))
     }
 
-    pub(crate) fn zcash_genesis(self) -> Result<&'static str, String> {
+    pub(crate) fn zcash_genesis(self) -> Result<&'static str, RegistryError> {
         match self {
             Self::Zcash => Ok("00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08"),
             Self::ZcashTestnet => {
                 Ok("05a60a92d99d85997cce3b87616c089f6124d7342af37106edc76126334a2c38")
             }
-            _ => Err("Not a Zcash network".into()),
+            _ => Err(self.not_in("Zcash")),
         }
     }
 
-    pub fn stellar_network_passphrase(self) -> Result<&'static str, String> {
+    pub fn stellar_network_passphrase(self) -> Result<&'static str, RegistryError> {
         match self {
             Self::Stellar => Ok("Public Global Stellar Network ; September 2015"),
             Self::StellarTestnet => Ok("Test SDF Network ; September 2015"),
-            _ => Err("Not a Stellar network".into()),
+            _ => Err(self.not_in("Stellar")),
         }
     }
 
@@ -639,7 +672,7 @@ impl Chain {
     }
 
     /// EIP-155 chain id. Refuses chains outside the EVM family.
-    pub fn evm_chain_id(self) -> Result<u64, String> {
+    pub fn evm_chain_id(self) -> Result<u64, RegistryError> {
         Ok(match self {
             Chain::Ethereum => 1,
             Chain::Arbitrum => 42161,
@@ -681,22 +714,21 @@ impl Chain {
             Chain::InkSepolia => 763373,
             Chain::XLayerTestnet => 1952,
             Chain::EthereumClassicMordor => 63,
-            _ => return Err(format!("{} is not an EVM chain", self.str_id())),
+            _ => return Err(self.not_in("EVM")),
         })
     }
 
     /// The keyless explorer source for this EVM chain, if configured.
     pub fn evm_history_source(self) -> EvmHistorySource<'static> {
-        crate::app_core::endpoint_catalog()
-            .ok()
-            .and_then(|catalog| {
-                catalog.endpoint_records.iter().find(|record| {
-                    record.chain_id == self
-                        && record.api == crate::EndpointApi::Blockscout
-                        && record
-                            .capabilities
-                            .contains(&crate::EndpointCapability::History)
-                })
+        crate::endpoints::catalog()
+            .records
+            .iter()
+            .find(|record| {
+                record.chain_id == self
+                    && record.api == crate::EndpointApi::Blockscout
+                    && record
+                        .capabilities
+                        .contains(&crate::EndpointCapability::History)
             })
             .map(|record| EvmHistorySource::Open(record.endpoint.as_str()))
             .unwrap_or(EvmHistorySource::Unavailable)
@@ -933,7 +965,8 @@ impl Chain {
         self,
         key: &secp256k1::PublicKey,
         script: crate::derivation::types::BitcoinScriptType,
-    ) -> Result<String, String> {
+    ) -> Result<String, crate::derivation::error::DerivationError> {
+        use crate::derivation::error::DerivationError;
         use crate::derivation::types::BitcoinScriptType;
         use crate::derivation::{
             bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, dogecoin as doge,
@@ -956,7 +989,9 @@ impl Chain {
             }
             Self::Litecoin | Self::LitecoinTestnet => {
                 if !matches!(script, BitcoinScriptType::P2pkh) {
-                    return Err("Litecoin discovery only supports P2PKH paths".into());
+                    return Err(DerivationError::invalid(
+                        "Litecoin discovery only supports P2PKH paths",
+                    ));
                 }
                 btc::encode_p2pkh(
                     if self == Self::Litecoin {
@@ -967,7 +1002,11 @@ impl Chain {
                     &key.serialize(),
                 )
             }
-            _ => return Err("chain does not support UTXO discovery".into()),
+            _ => {
+                return Err(DerivationError::invalid(
+                    "chain does not support UTXO discovery",
+                ));
+            }
         })
     }
 

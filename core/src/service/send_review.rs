@@ -29,10 +29,14 @@ pub(crate) struct ReviewedSend {
 impl ReviewedSend {
     fn validate_input(&self, input: &SendReviewInput) -> Result<(), SpectraBridgeError> {
         if self.created.elapsed().as_secs() >= 120 {
-            return Err("Send review expired; review the transaction again".into());
+            return Err(SpectraBridgeError::failure(
+                "Send review expired; review the transaction again",
+            ));
         }
-        if self.input != serde_json::to_string(input).map_err(|e| e.to_string())? {
-            return Err("Send inputs changed; review the transaction again".into());
+        if self.input != serde_json::to_string(input)? {
+            return Err(SpectraBridgeError::failure(
+                "Send inputs changed; review the transaction again",
+            ));
         }
         Ok(())
     }
@@ -52,7 +56,9 @@ impl WalletService {
                     || o.access_list_json.is_some()
                     || o.sign_only.is_some()
             }) {
-                return Err("Owned send review supports fee and nonce edits only".into());
+                return Err(SpectraBridgeError::failure(
+                    "Owned send review supports fee and nonce edits only",
+                ));
             }
             let mut quote = this
                 .quote_owned_send(
@@ -71,12 +77,14 @@ impl WalletService {
                         .wallets
                         .iter()
                         .find(|w| w.id == input.wallet_id)
-                        .ok_or("Wallet removed")?;
-                    let sender = wallet
-                        .address_on(chain)
-                        .ok_or("Wallet has no sending address")?;
+                        .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
+                    let sender = wallet.address_on(chain).ok_or_else(|| {
+                        SpectraBridgeError::failure("Wallet has no sending address")
+                    })?;
                     preview.nonce = i64::try_from(this.next_send_nonce(chain, sender).await?)
-                        .map_err(|_| "Nonce exceeds supported range")?;
+                        .map_err(|_| {
+                            SpectraBridgeError::failure("Nonce exceeds supported range")
+                        })?;
                 }
                 let fees = quote
                     .request
@@ -97,7 +105,8 @@ impl WalletService {
                     quote.request.to_address.clone(),
                 )
                 .await?;
-            let amount = crate::decimal::canonical(&input.amount).ok_or("Invalid amount")?;
+            let amount = crate::decimal::canonical(&input.amount)
+                .ok_or_else(|| SpectraBridgeError::failure("Invalid amount"))?;
             let warnings = this
                 .high_risk_send_reasons(
                     input.wallet_id.clone(),
@@ -126,23 +135,23 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|w| w.id == input.wallet_id)
-                .ok_or("Wallet removed")?;
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
             super::send_execution::send_chain_for(&state, &input.wallet_id, chain)?;
             let sender = wallet
                 .address_on(chain)
-                .ok_or("Wallet has no sending address")?
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet has no sending address"))?
                 .to_owned();
             let requires_wallet_password = wallet.signing.requires_password();
             let id = hex::encode(rand::random::<[u8; 32]>());
             let mut reviews = this.send_reviews.lock().await;
             reviews.retain(|_, r| r.created.elapsed().as_secs() < 120);
             if reviews.len() >= 32 {
-                return Err("Too many pending send reviews".into());
+                return Err(SpectraBridgeError::failure("Too many pending send reviews"));
             }
             reviews.insert(
                 id.clone(),
                 ReviewedSend {
-                    input: serde_json::to_string(&input).map_err(|e| e.to_string())?,
+                    input: serde_json::to_string(&input)?,
                     request: quote.request.clone(),
                     sender,
                     created: std::time::Instant::now(),
@@ -177,7 +186,11 @@ impl WalletService {
                 .lock()
                 .await
                 .remove(&review_id)
-                .ok_or("Send review missing or already consumed; review again")?;
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure(
+                        "Send review missing or already consumed; review again",
+                    )
+                })?;
             reviewed.validate_input(&input)?;
             let state = this.app_state().await;
             let chain = reviewed.request.chain_id;
@@ -186,14 +199,16 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|w| w.id == input.wallet_id)
-                .ok_or("Wallet removed")?;
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
             if wallet.address_on(chain) != Some(reviewed.sender.as_str())
                 || !wallet
                     .holdings
                     .iter()
                     .any(|h| h.deployment_id() == input.holding_key && h.chain_id == chain)
             {
-                return Err("Sending identity changed; review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "Sending identity changed; review again",
+                ));
             }
             let automatic_nonce = input.overrides.as_ref().and_then(|o| o.nonce).is_none();
             let preflight = this
@@ -207,7 +222,9 @@ impl WalletService {
             if preflight.token_contract_address != reviewed.request.contract_address
                 || preflight.token_decimals != reviewed.request.token_decimals
             {
-                return Err("Token identity changed; review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "Token identity changed; review again",
+                ));
             }
             this.verify_send_destination(
                 reviewed.request.chain_id,

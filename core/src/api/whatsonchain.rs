@@ -7,6 +7,7 @@
 //!
 //! `api::utxo` decides which adapter serves a request.
 
+use crate::api::error::ApiError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -113,7 +114,7 @@ impl WhatsonchainClient {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 }
@@ -121,7 +122,7 @@ impl WhatsonchainClient {
 // enrichment), and tx status.
 
 impl WhatsonchainClient {
-    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         let balance = self.fetch_balance(address).await?;
         if balance.confirmed_sats > 0 || balance.unconfirmed_sats != 0 {
             return Ok(true);
@@ -132,7 +133,7 @@ impl WhatsonchainClient {
     }
 
     /// The confirmed balance and the mempool's net change to it.
-    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         let bal: WocBalance = self.get(&format!("/address/{address}/balance")).await?;
         Ok(UtxoBalance {
             confirmed_sats: bal.confirmed.max(0) as u64,
@@ -141,7 +142,7 @@ impl WhatsonchainClient {
     }
 
     /// Unspent outputs, the mempool's included.
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         let utxos: Vec<WocUtxo> = self.get(&format!("/address/{address}/unspent")).await?;
         Ok(utxos
             .into_iter()
@@ -162,7 +163,7 @@ impl WhatsonchainClient {
     /// WoC exposes `/address/{addr}/history` as a flat list of
     /// `{tx_hash, height}` entries. To populate amounts and timestamps we
     /// issue a sequential `/tx/hash/{hash}` fetch per entry.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
         let list: Vec<WocHistoryItem> = self.get(&format!("/address/{address}/history")).await?;
 
         let mut details = Vec::with_capacity(list.len());
@@ -177,7 +178,7 @@ impl WhatsonchainClient {
     }
 
     /// Fetch confirmation status for a single txid via WoC `/tx/hash/{txid}`.
-    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, ApiError> {
         let txid = txid.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -211,7 +212,7 @@ impl WhatsonchainClient {
 fn bsv_history_from_details(
     details: Vec<(WocHistoryItem, WocTxDetail)>,
     address: &str,
-) -> Result<Vec<UtxoHistoryEntry>, String> {
+) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
     // WoC answers in floating-point BTC. Its shortest spelling is what it
     // said; more than eight places is not a satoshi amount and reads as 0.
     let sats = |value: f64| {
@@ -240,7 +241,7 @@ fn bsv_history_from_details(
                 .map(move |vout| ((txid.clone(), vout.n), sats(vout.value)))
         })
         .collect();
-    let entries: Result<Vec<Option<UtxoHistoryEntry>>, String> = details
+    let entries: Result<Vec<Option<UtxoHistoryEntry>>, ApiError> = details
         .into_iter()
         .map(|(item, tx)| {
             let received: i64 = tx
@@ -277,7 +278,7 @@ fn bsv_history_from_details(
 }
 
 impl WhatsonchainClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<WhatsonchainSendResult, String> {
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<WhatsonchainSendResult, ApiError> {
         let hex = hex_tx.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();

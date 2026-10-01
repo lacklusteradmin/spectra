@@ -1,6 +1,8 @@
 //! Bitcoin Cash: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
 //! base58check encoding.
 
+use crate::derivation::error::DerivationError;
+
 // ── Address validation (preserved) ───────────────────────────────────────
 
 // Strip the "bitcoincash:" prefix if present, returning just the payload string.
@@ -11,7 +13,7 @@ pub(crate) fn normalize_bch_address(addr: &str) -> String {
 }
 
 // Base58check-decode a BCH address (with or without "bitcoincash:" prefix) into the 20-byte hash.
-pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], DerivationError> {
     let norm = normalize_bch_address(address);
     if let Ok(decoded) = bs58::decode(&norm).with_check(None).into_vec()
         && decoded.len() == 21
@@ -20,7 +22,9 @@ pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], String> {
         hash.copy_from_slice(&decoded[1..21]);
         return Ok(hash);
     }
-    Err(format!("cannot decode BCH address: {address}"))
+    Err(DerivationError::Invalid(format!(
+        "cannot decode BCH address: {address}"
+    )))
 }
 
 use crate::SpectraBridgeError;
@@ -91,7 +95,7 @@ pub fn derive_bitcoin_cash_from_private_key(
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(&bytes);
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
     let pk = PublicKey::from_secret_key(&secp, &secret_key);
     Ok(DerivationResult {
         address: want_address.then(|| encode_p2pkh(BCH_MAINNET_VERSION, &pk.serialize())),

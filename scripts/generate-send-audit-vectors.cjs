@@ -45,6 +45,6 @@ async function main() {
    tronUtils.crypto.signTransaction(Buffer.from(key,'hex'),transaction);
    fixtures.tron.transactions.push(transaction);
  }
- fs.writeFileSync('core/testdata/send-audit-vectors.json', JSON.stringify(fixtures,null,2)+'\n');
+ fs.writeFileSync('core/tests/fixtures/send-audit-vectors.json', JSON.stringify(fixtures,null,2)+'\n');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

@@ -45,9 +45,8 @@ impl WalletService {
         crate::worker::run(async move {
             let this = &this;
             let db = this.bound_database().await?;
-            let stored = tokio::task::spawn_blocking(move || crate::wallet_db::send_list(&db))
-                .await
-                .map_err(|e| e.to_string())??;
+            let stored =
+                tokio::task::spawn_blocking(move || crate::wallet_db::send_list(&db)).await??;
             Ok(stored.into_iter().map(|s| s.view).collect())
         })
         .await
@@ -77,9 +76,9 @@ impl WalletService {
             if stored.view.stage != SendStage::Prepared
                 || stored.view.review_digest != review_digest
             {
-                return Err(
-                    "Transaction already signed or review does not match; inspect it again".into(),
-                );
+                return Err(crate::SpectraBridgeError::failure(
+                    "Transaction already signed or review does not match; inspect it again",
+                ));
             }
             let chain = stored.view.chain_id;
             super::send_execution::send_chain_for(
@@ -97,7 +96,9 @@ impl WalletService {
             if crate::send::flow::normalize_address(chain, &stored.view.sender)
                 != signer.from_address
             {
-                return Err("Signer changed; build and review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "Signer changed; build and review again",
+                ));
             }
             let _guard = this.lock_sender(chain, &signer.from_address).await?;
             let (submission, resources) = match &stored.prepared {
@@ -120,20 +121,18 @@ impl WalletService {
                                 json!([signer.from_address, "latest"]),
                             )
                             .await?;
-                        crate::api::evm_json_rpc::parse_hex_u64(
-                            response.as_str().ok_or("Missing confirmed nonce")?,
-                        )?
+                        crate::api::evm_json_rpc::parse_hex_u64(response.as_str().ok_or_else(
+                            || SpectraBridgeError::failure("Missing confirmed nonce"),
+                        )?)?
                     } else {
                         client.fetch_nonce(&signer.from_address).await?
                     };
                     if p.chain_id != chain.evm_chain_id()? || nonce > p.nonce {
-                        return Err(
-                            "Prepared nonce or network is stale; build and review again".into()
-                        );
+                        return Err(crate::SpectraBridgeError::failure(
+                            "Prepared nonce or network is stale; build and review again",
+                        ));
                     }
-                    let key = Zeroizing::new(
-                        hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-                    );
+                    let key = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                     let raw = p.sign(&key)?;
                     use sha3::Digest;
                     (
@@ -194,9 +193,7 @@ impl WalletService {
         crate::worker::run(async move {
             let this = &this;
             let service = this.clone();
-            tokio::spawn(async move { service.broadcast_send_owned(id, endpoints).await })
-                .await
-                .map_err(|e| e.to_string())?
+            tokio::spawn(async move { service.broadcast_send_owned(id, endpoints).await }).await?
         })
         .await
     }
@@ -208,11 +205,7 @@ impl WalletService {
         id: String,
     ) -> Result<StoredSend, SpectraBridgeError> {
         let db = self.bound_database().await?;
-        Ok(
-            tokio::task::spawn_blocking(move || crate::wallet_db::send_load(&db, &id))
-                .await
-                .map_err(|e| e.to_string())??,
-        )
+        Ok(tokio::task::spawn_blocking(move || crate::wallet_db::send_load(&db, &id)).await??)
     }
     async fn save_send_artifact(
         &self,
@@ -229,8 +222,7 @@ impl WalletService {
         let db = self.bound_database().await?;
         let stored = stored.clone();
         tokio::task::spawn_blocking(move || crate::wallet_db::send_save(&db, &stored, &resources))
-            .await
-            .map_err(|e| e.to_string())??;
+            .await??;
         Ok(())
     }
     async fn broadcast_send_owned(
@@ -242,12 +234,13 @@ impl WalletService {
         let chain = initial.view.chain_id;
         let _guard = self.lock_sender(chain, &initial.view.sender).await?;
         let mut stored = self.load_send_artifact(id).await?;
-        let submission = stored
-            .submission
-            .clone()
-            .ok_or("Transaction must be signed before broadcasting")?;
+        let submission = stored.submission.clone().ok_or_else(|| {
+            SpectraBridgeError::failure("Transaction must be signed before broadcasting")
+        })?;
         if endpoints.is_empty() {
-            return Err("Select at least one broadcast endpoint".into());
+            return Err(SpectraBridgeError::failure(
+                "Select at least one broadcast endpoint",
+            ));
         }
         let chain = stored.view.chain_id;
         let configured = self.send_endpoints(chain).await?;
@@ -255,7 +248,9 @@ impl WalletService {
         // Validate every destination before submitting to any of them.
         for endpoint in &endpoints {
             if !configured.contains(endpoint) || !unique.insert(endpoint) {
-                return Err("Select distinct configured broadcast endpoints".into());
+                return Err(SpectraBridgeError::failure(
+                    "Select distinct configured broadcast endpoints",
+                ));
             }
             self.validate_broadcast_endpoint(chain, endpoint).await?;
         }
@@ -272,7 +267,9 @@ impl WalletService {
         let mut history = match existing {
             Some(record) => {
                 if record.status == CoreTransactionStatus::Confirmed {
-                    return Err("Transaction is already confirmed".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Transaction is already confirmed",
+                    ));
                 }
                 record
             }
@@ -290,7 +287,7 @@ impl WalletService {
             .nonce
             .map(i64::try_from)
             .transpose()
-            .map_err(|_| "Nonce exceeds history range")?;
+            .map_err(|_| SpectraBridgeError::failure("Nonce exceeds history range"))?;
         history.signed_transaction_payload = Some(serde_json::to_string(&submission)?);
         history.signed_transaction_payload_format = Some("core.submission_json".into());
         self.save_send_record(history.clone()).await?;
@@ -300,10 +297,11 @@ impl WalletService {
         let first = stored.view.attempts.len();
         let mut submissions = Vec::with_capacity(endpoints.len());
         for endpoint in endpoints {
-            let api = self
-                .endpoint_api(chain, &endpoint)
-                .await
-                .ok_or("Endpoint does not support broadcasts on the selected network")?;
+            let api = self.endpoint_api(chain, &endpoint).await.ok_or_else(|| {
+                SpectraBridgeError::failure(
+                    "Endpoint does not support broadcasts on the selected network",
+                )
+            })?;
             stored.view.attempts.push(BroadcastAttempt {
                 endpoint: endpoint.clone(),
                 attempted_at: crate::store::now_unix(),
@@ -327,7 +325,11 @@ impl WalletService {
                             .as_str()
                             .filter(|s| !s.is_empty())
                             .map(str::to_owned)
-                            .ok_or_else(|| "Node returned no transaction identifier".into())
+                            .ok_or_else(|| {
+                                SpectraBridgeError::failure(
+                                    "Node returned no transaction identifier",
+                                )
+                            })
                     })
             }
         }))
@@ -408,7 +410,7 @@ impl WalletService {
         request.sign_only = false;
         let chain = request.chain_id;
         if let Some(reason) = chain.transparent_send_unavailable_reason() {
-            return Err(reason.into());
+            return Err(SpectraBridgeError::invalid(reason));
         }
         super::send_execution::validate_execution_amount(chain, &request)?;
         let state = self.app_state().await;
@@ -417,13 +419,15 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == request.wallet_id)
-            .ok_or("Wallet removed")?;
+            .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
         let sender = wallet
             .address_on(chain)
-            .ok_or("Wallet has no address on this network")?
+            .ok_or_else(|| SpectraBridgeError::failure("Wallet has no address on this network"))?
             .to_string();
         if !crate::send::flow::is_valid_send_address(chain, request.to_address.clone()) {
-            return Err("Invalid destination for selected network".into());
+            return Err(SpectraBridgeError::failure(
+                "Invalid destination for selected network",
+            ));
         }
         let prepared = if chain.is_evm() {
             let endpoints = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
@@ -447,7 +451,9 @@ impl WalletService {
                     .token_decimals
                     .is_some_and(|d| d != u32::from(metadata.decimals))
                 {
-                    return Err("Token decimals do not match the selected network".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Token decimals do not match the selected network",
+                    ));
                 }
                 request.token_decimals = Some(u32::from(metadata.decimals));
                 let amount = crate::send::amount_input::parse_raw_amount(
@@ -473,9 +479,7 @@ impl WalletService {
                     let data = &data;
                     let overrides = &overrides;
                     async move {
-                        self.validate_endpoint_network(chain, &endpoint)
-                            .await
-                            .map_err(|e| e.to_string())?;
+                        self.validate_endpoint_network(chain, &endpoint).await?;
                         crate::send::evm::prepare_transfer(
                             &EvmClient::new(Arc::new(vec![endpoint]), chain.evm_chain_id()?),
                             sender,
@@ -495,10 +499,8 @@ impl WalletService {
         };
         let signing_payload_hex = hex::encode(match &prepared {
             PreparedPayload::Evm(p) => p.signing_payload()?,
-            PreparedPayload::Bitcoin(p) => {
-                hex::decode(&p.unsigned_hex).map_err(|e| e.to_string())?
-            }
-            PreparedPayload::Icp(p) => hex::decode(&p.argument_hex).map_err(|e| e.to_string())?,
+            PreparedPayload::Bitcoin(p) => hex::decode(&p.unsigned_hex)?,
+            PreparedPayload::Icp(p) => hex::decode(&p.argument_hex)?,
             PreparedPayload::Solana(p) => p.message.clone(),
             PreparedPayload::Tron(p) => p.raw.clone(),
             PreparedPayload::Aptos(p) => p.message.clone(),

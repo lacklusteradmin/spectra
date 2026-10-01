@@ -1,19 +1,25 @@
 //! Checked input/output accounting shared by fixed-fee UTXO signers.
+
+use crate::send::error::SendError;
 pub(crate) fn checked_change(
     values: impl IntoIterator<Item = u64>,
     amount: u64,
     fee: u64,
-) -> Result<u64, String> {
+) -> Result<u64, SendError> {
     if amount == 0 {
-        return Err("send amount must be positive".into());
+        return Err(SendError::Invalid("send amount must be positive".into()));
     }
     let total = values.into_iter().try_fold(0u64, |total, value| {
-        total.checked_add(value).ok_or("input total overflow")
+        total
+            .checked_add(value)
+            .ok_or_else(|| SendError::Invalid("input total overflow".into()))
     })?;
-    let needed = amount.checked_add(fee).ok_or("amount plus fee overflow")?;
+    let needed = amount
+        .checked_add(fee)
+        .ok_or_else(|| SendError::Invalid("amount plus fee overflow".into()))?;
     total
         .checked_sub(needed)
-        .ok_or_else(|| "insufficient inputs for amount plus fee".into())
+        .ok_or_else(SendError::insufficient_funds)
 }
 
 #[cfg(test)]

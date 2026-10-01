@@ -1,4 +1,6 @@
 //! Ordinary level-zero TON cells used by V4R2 state initialization and sends.
+
+use crate::derivation::error::DerivationError;
 use sha2::{Digest, Sha256};
 
 #[derive(Clone, Default)]
@@ -9,9 +11,11 @@ pub(crate) struct Cell {
 }
 
 impl Cell {
-    pub fn uint(&mut self, value: u64, width: usize) -> Result<&mut Self, String> {
+    pub fn uint(&mut self, value: u64, width: usize) -> Result<&mut Self, DerivationError> {
         if width > 64 || (width < 64 && value >> width != 0) || self.bits + width > 1023 {
-            return Err("TON: integer or cell bit capacity exceeded".into());
+            return Err(DerivationError::Invalid(
+                "TON: integer or cell bit capacity exceeded".into(),
+            ));
         }
         for shift in (0..width).rev() {
             if self.bits.is_multiple_of(8) {
@@ -23,20 +27,22 @@ impl Cell {
         }
         Ok(self)
     }
-    pub fn bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, String> {
+    pub fn bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, DerivationError> {
         for &byte in bytes {
             self.uint(u64::from(byte), 8)?;
         }
         Ok(self)
     }
-    pub fn reference(&mut self, cell: Cell) -> Result<&mut Self, String> {
+    pub fn reference(&mut self, cell: Cell) -> Result<&mut Self, DerivationError> {
         if self.refs.len() == 4 {
-            return Err("TON: too many cell references".into());
+            return Err(DerivationError::Invalid(
+                "TON: too many cell references".into(),
+            ));
         }
         self.refs.push(cell);
         Ok(self)
     }
-    pub fn append(&mut self, cell: Cell) -> Result<&mut Self, String> {
+    pub fn append(&mut self, cell: Cell) -> Result<&mut Self, DerivationError> {
         for bit in 0..cell.bits {
             self.uint(u64::from((cell.data[bit / 8] >> (7 - bit % 8)) & 1), 1)?;
         }
@@ -45,17 +51,21 @@ impl Cell {
         }
         Ok(self)
     }
-    pub fn address(&mut self, workchain: i8, account: &[u8; 32]) -> Result<&mut Self, String> {
+    pub fn address(
+        &mut self,
+        workchain: i8,
+        account: &[u8; 32],
+    ) -> Result<&mut Self, DerivationError> {
         self.uint(4, 3)?
             .uint(u64::from(workchain as u8), 8)?
             .bytes(account)
     }
-    pub fn coins(&mut self, amount: u64) -> Result<&mut Self, String> {
+    pub fn coins(&mut self, amount: u64) -> Result<&mut Self, DerivationError> {
         let size = (64 - amount.leading_zeros() as usize).div_ceil(8);
         self.uint(size as u64, 4)?;
         self.bytes(&amount.to_be_bytes()[8 - size..])
     }
-    pub fn body(&mut self, body: Cell) -> Result<&mut Self, String> {
+    pub fn body(&mut self, body: Cell) -> Result<&mut Self, DerivationError> {
         if self.bits + 1 + body.bits <= 1023 && self.refs.len() + body.refs.len() <= 4 {
             self.uint(0, 1)?.append(body)
         } else {
@@ -87,9 +97,10 @@ impl Cell {
     }
     /// Single-root, no index/CRC. Two-byte references and four-byte offsets;
     /// ordering is parent before child, so every reference points forward.
-    pub fn to_boc(&self) -> Result<Vec<u8>, String> {
-        fn flatten(cell: &Cell, rows: &mut Vec<Vec<u8>>) -> Result<u16, String> {
-            let index = u16::try_from(rows.len()).map_err(|_| "TON: too many cells")?;
+    pub fn to_boc(&self) -> Result<Vec<u8>, DerivationError> {
+        fn flatten(cell: &Cell, rows: &mut Vec<Vec<u8>>) -> Result<u16, DerivationError> {
+            let index = u16::try_from(rows.len())
+                .map_err(|_| DerivationError::Internal("TON: too many cells".into()))?;
             rows.push(Vec::new());
             let mut row = cell.encoded();
             for child in &cell.refs {
@@ -100,9 +111,10 @@ impl Cell {
         }
         let mut rows = Vec::new();
         flatten(self, &mut rows)?;
-        let count = u16::try_from(rows.len()).map_err(|_| "TON: too many cells")?;
+        let count = u16::try_from(rows.len())
+            .map_err(|_| DerivationError::Internal("TON: too many cells".into()))?;
         let size = u32::try_from(rows.iter().map(Vec::len).sum::<usize>())
-            .map_err(|_| "TON: BOC too large")?;
+            .map_err(|_| DerivationError::Invalid("TON: BOC too large".into()))?;
         let mut out = vec![0xb5, 0xee, 0x9c, 0x72, 2, 4];
         out.extend_from_slice(&count.to_be_bytes());
         out.extend_from_slice(&1u16.to_be_bytes());
@@ -119,18 +131,20 @@ impl Cell {
         data: Vec<u8>,
         descriptor: u8,
         refs: Vec<Cell>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, DerivationError> {
         let bits = if descriptor & 1 != 0 {
-            let last = *data.last().ok_or("TON: missing padding")?;
+            let last = *data
+                .last()
+                .ok_or_else(|| DerivationError::Invalid("TON: missing padding".into()))?;
             if last == 0 {
-                return Err("TON: invalid padding".into());
+                return Err(DerivationError::Invalid("TON: invalid padding".into()));
             }
             data.len() * 8 - last.trailing_zeros() as usize - 1
         } else {
             data.len() * 8
         };
         if bits > 1023 || refs.len() > 4 {
-            return Err("TON: invalid cell".into());
+            return Err(DerivationError::Invalid("TON: invalid cell".into()));
         }
         let mut cell = Cell::default();
         for bit in 0..bits {

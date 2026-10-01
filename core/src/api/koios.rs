@@ -1,11 +1,10 @@
 //! The Koios REST adapter for Cardano: balances, UTXOs, history, the tip
 //! slot and raw CBOR submission.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 
-use crate::api::http::{
-    HttpClient, HttpHeader, HttpRetryProfile, RetryProfile, http_request, race,
-};
+use crate::api::http::{HttpClient, RetryProfile, race};
 
 // ── Public result types
 
@@ -92,7 +91,7 @@ pub(crate) struct KoiosPaymentAddr {
 fn cardano_history_from_transactions(
     txs: Vec<KoiosTxInfo>,
     address: &str,
-) -> Result<Vec<CardanoHistoryEntry>, String> {
+) -> Result<Vec<CardanoHistoryEntry>, ApiError> {
     let paid = |ios: &[KoiosTxIo]| -> i128 {
         ios.iter()
             .filter(|io| io.payment_addr.bech32 == address)
@@ -140,7 +139,7 @@ impl KoiosClient {
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         self.client.get_path(&self.endpoints, path).await
     }
 
@@ -148,9 +147,9 @@ impl KoiosClient {
         &self,
         path: &str,
         body: &B,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         let path = path.to_string();
-        let body_val = serde_json::to_value(body).map_err(|e| e.to_string())?;
+        let body_val = serde_json::to_value(body)?;
         race(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
@@ -166,7 +165,7 @@ impl KoiosClient {
 }
 
 impl KoiosClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<CardanoBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<CardanoBalance, ApiError> {
         #[derive(Serialize)]
         struct Req<'a> {
             #[serde(rename = "_addresses")]
@@ -188,7 +187,7 @@ impl KoiosClient {
         Ok(CardanoBalance { lovelace })
     }
 
-    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<CardanoUtxo>, String> {
+    pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<CardanoUtxo>, ApiError> {
         #[derive(Serialize)]
         struct Req<'a> {
             #[serde(rename = "_addresses")]
@@ -213,7 +212,7 @@ impl KoiosClient {
             .collect())
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<CardanoHistoryEntry>, String> {
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<CardanoHistoryEntry>, ApiError> {
         #[derive(Serialize)]
         struct AddrReq<'a> {
             #[serde(rename = "_addresses")]
@@ -254,7 +253,7 @@ impl KoiosClient {
     }
 
     /// Fetch current slot from the latest block.
-    pub async fn fetch_latest_slot(&self) -> Result<u64, String> {
+    pub async fn fetch_latest_slot(&self) -> Result<u64, ApiError> {
         #[derive(Deserialize)]
         struct Tip {
             abs_slot: u64,
@@ -263,43 +262,41 @@ impl KoiosClient {
         tips.into_iter()
             .next()
             .map(|t| t.abs_slot)
-            .ok_or_else(|| "tip: empty response".to_string())
+            .or_decode("tip: empty response")
     }
 }
 
 impl KoiosClient {
     /// Submit a CBOR-encoded signed transaction.
-    pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, String> {
+    pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, ApiError> {
         let cbor_hex_owned = cbor_hex.to_string();
-        let cbor_bytes = hex::decode(cbor_hex).map_err(|e| format!("hex decode: {e}"))?;
+        let cbor_bytes = hex::decode(cbor_hex)
+            .map_err(|e| ApiError::InvalidInput(format!("hex decode: {e}")))?;
         race(&self.endpoints, |base| {
             let cbor_bytes = cbor_bytes.clone();
             let cbor_hex = cbor_hex_owned.clone();
             let url = format!("{}/submittx", base.trim_end_matches('/'));
             async move {
                 // Koios submit-api accepts raw CBOR and returns a JSON transaction hash.
-                let response = http_request(
-                    "POST".into(),
-                    url,
-                    vec![HttpHeader {
-                        name: "Content-Type".into(),
-                        value: "application/cbor".into(),
-                    }],
-                    Some(cbor_bytes),
-                    HttpRetryProfile::ChainWrite,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-                if response.status_code != 202 {
-                    return Err(format!(
-                        "Koios submission: expected HTTP 202, received {}",
-                        response.status_code
-                    ));
+                let (status, body) = HttpClient::shared()
+                    .post_bytes(
+                        &url,
+                        "application/cbor",
+                        cbor_bytes,
+                        RetryProfile::ChainWrite,
+                    )
+                    .await?;
+                if status != 202 {
+                    return Err(ApiError::decode(format!(
+                        "Koios submission: expected HTTP 202, received {status}"
+                    )));
                 }
-                let txid: String = serde_json::from_slice(&response.body)
-                    .map_err(|e| format!("Koios transaction id: {e}"))?;
+                let txid: String = serde_json::from_slice(&body)
+                    .map_err(|e| ApiError::Decode(format!("Koios transaction id: {e}")))?;
                 if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    return Err("Koios submission returned an invalid transaction id".into());
+                    return Err(ApiError::Decode(
+                        "Koios submission returned an invalid transaction id".into(),
+                    ));
                 }
                 Ok(CardanoSendResult { txid, cbor_hex })
             }
@@ -382,6 +379,7 @@ mod keyless_submission_tests {
                 .submit_tx("8100")
                 .await
                 .unwrap_err()
+                .to_string()
                 .contains("invalid transaction id")
         );
         server.reset().await;

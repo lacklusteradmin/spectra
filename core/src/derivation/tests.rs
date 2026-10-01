@@ -332,7 +332,10 @@ fn default_hmac_key_matches_standard_seed() {
 fn unknown_wordlist_is_rejected() {
     let err = derive_bip39_seed(MNEMONIC, "", 0, Some("klingon"), None)
         .expect_err("klingon wordlist should not resolve");
-    assert!(err.to_lowercase().contains("wordlist"), "got: {err}");
+    assert!(
+        err.to_string().to_lowercase().contains("wordlist"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -573,7 +576,7 @@ fn polkadot_path_with_junction_is_rejected() {
         derive_substrate_sr25519_material(MNEMONIC, "", None, None, 0, Some("//Alice"), false)
             .expect_err("junction path must be rejected");
     assert!(
-        err.to_lowercase().contains("junction"),
+        err.to_string().to_lowercase().contains("junction"),
         "error should mention junctions, got: {err}"
     );
 }
@@ -715,7 +718,7 @@ fn monero_electrum_seed_bad_checksum_rejected() {
                   mostly lukewarm macro vocal hounded biplane abbey";
     let err = decode_monero_electrum_seed(phrase).expect_err("should fail checksum");
     assert!(
-        err.contains("checksum"),
+        err.to_string().contains("checksum"),
         "expected checksum error, got: {err}"
     );
 }

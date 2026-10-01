@@ -6,6 +6,8 @@
 //! the field value is `0x00004F41`. The signature itself appends only the
 //! low byte (`0x41`) to the DER per standard P2PKH script.
 
+use crate::send::error::SendError;
+
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{dsha256, varint};
 use crate::derivation::bitcoin_gold::decode_btg_address;
@@ -22,12 +24,12 @@ pub(crate) fn sign_btg_tx(
     change_address: &str,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     let change = super::accounting::checked_change(
@@ -82,7 +84,7 @@ pub(crate) fn sign_btg_tx(
         preimage.extend_from_slice(&SIGHASH_PREIMAGE_HASH_TYPE.to_le_bytes());
 
         let sighash = dsha256(&preimage);
-        let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL_FORKID_BYTE);

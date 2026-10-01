@@ -1,6 +1,8 @@
 //! Bitcoin send path: P2WPKH / P2PKH / P2TR signers, coin selection and fee
 //! calculation.
 
+use crate::send::error::SendError;
+
 use std::str::FromStr;
 
 use bitcoin::absolute::LockTime;
@@ -99,7 +101,7 @@ fn select_coins(
     fee_rate: FeeRate,
     sizing: SpendSizing,
     output_count: usize,
-) -> Result<(Vec<&Utxo>, u64), String> {
+) -> Result<(Vec<&Utxo>, u64), SendError> {
     let mut sorted: Vec<&Utxo> = utxos.iter().collect();
     sorted.sort_by_key(|utxo| std::cmp::Reverse(utxo.value));
 
@@ -111,7 +113,9 @@ fn select_coins(
         // Values come from an endpoint, so they are checked rather than
         // trusted to stay inside a sum: release builds wrap on overflow, and a
         // wrapped total is a wallet that thinks it can afford the spend.
-        total = total.checked_add(utxo.value).ok_or("utxo.amountOverflow")?;
+        total = total
+            .checked_add(utxo.value)
+            .ok_or_else(|| SendError::invalid("amount overflow"))?;
 
         let fee = sizing.fee(selected.len(), output_count, fee_rate);
         if total >= target_sats.saturating_add(fee) {
@@ -119,7 +123,7 @@ fn select_coins(
         }
     }
 
-    Err("utxo.insufficientFunds".to_string())
+    Err(SendError::insufficient_funds())
 }
 
 /// Sum UTXO values, refusing an overflow rather than wrapping past it.
@@ -127,17 +131,19 @@ fn select_coins(
 /// The fixed-fee signers get this and their change subtraction together from
 /// [`super::accounting::checked_change`]. Bitcoin's does not fit that shape:
 /// its fee is derived from the input count coin selection settles on, the dust
-/// rule changes what is actually paid out, and its shortfall is the localized `utxo.insufficientFunds` rather than prose. What is shared
-/// is the refusal to let an endpoint's numbers wrap a sum.
-fn total_value<'a>(utxos: impl IntoIterator<Item = &'a Utxo>) -> Result<u64, String> {
+/// rule changes what is actually paid out, and its shortfall is decided by
+/// coin selection. What is shared is the refusal to let an endpoint's numbers
+/// wrap a sum.
+fn total_value<'a>(utxos: impl IntoIterator<Item = &'a Utxo>) -> Result<u64, SendError> {
     utxos
         .into_iter()
         .try_fold(0u64, |total, utxo| total.checked_add(utxo.value))
-        .ok_or_else(|| "utxo.amountOverflow".to_string())
+        .ok_or_else(|| SendError::invalid("amount overflow"))
 }
 
-fn tx_input_for_utxo(utxo: &Utxo, sequence: Sequence) -> Result<TxIn, String> {
-    let txid = Txid::from_str(&utxo.txid).map_err(|e| format!("bad txid {}: {e}", utxo.txid))?;
+fn tx_input_for_utxo(utxo: &Utxo, sequence: Sequence) -> Result<TxIn, SendError> {
+    let txid = Txid::from_str(&utxo.txid)
+        .map_err(|e| SendError::Invalid(format!("bad txid {}: {e}", utxo.txid)))?;
     Ok(TxIn {
         previous_output: OutPoint {
             txid,
@@ -169,31 +175,31 @@ impl SpendIdentity {
 fn parse_spend_identity(
     secp: &Secp256k1<bitcoin::secp256k1::All>,
     params: &BitcoinSendParams,
-) -> Result<SpendIdentity, String> {
+) -> Result<SpendIdentity, SendError> {
     let network = params.chain_id.bitcoin_network();
 
     let mut key_bytes = zeroize::Zeroizing::new(
         hex::decode(params.private_key_hex.as_bytes())
-            .map_err(|e| format!("bad private key hex: {e}"))?,
+            .map_err(|e| SendError::Invalid(format!("bad private key hex: {e}")))?,
     );
-    let secret_key =
-        SecretKey::from_slice(&key_bytes).map_err(|e| format!("bad private key: {e}"))?;
+    let secret_key = SecretKey::from_slice(&key_bytes)
+        .map_err(|e| SendError::Invalid(format!("bad private key: {e}")))?;
     key_bytes.zeroize();
 
     let public_key = CompressedPublicKey::from_slice(
         &secp256k1::PublicKey::from_secret_key(secp, &secret_key).serialize(),
     )
-    .map_err(|e| format!("pk: {e}"))?;
+    .map_err(|e| SendError::Invalid(format!("pk: {e}")))?;
 
     let to = Address::from_str(&params.to_address)
-        .map_err(|e| format!("bad recipient address: {e}"))?
+        .map_err(|e| SendError::Invalid(format!("bad recipient address: {e}")))?
         .require_network(network)
-        .map_err(|e| format!("recipient on wrong network: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("recipient on wrong network: {e}")))?;
 
     let from = Address::from_str(&params.from_address)
-        .map_err(|e| format!("bad from address: {e}"))?
+        .map_err(|e| SendError::Invalid(format!("bad from address: {e}")))?
         .require_network(network)
-        .map_err(|e| format!("from address on wrong network: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("from address on wrong network: {e}")))?;
 
     Ok(SpendIdentity {
         secret_key,
@@ -217,7 +223,7 @@ fn build_unsigned_spend(
     params: &BitcoinSendParams,
     identity: &SpendIdentity,
     sizing: SpendSizing,
-) -> Result<UnsignedSpend, String> {
+) -> Result<UnsignedSpend, SendError> {
     build_unsigned_layout(params, &identity.from, &identity.to, sizing)
 }
 
@@ -226,7 +232,7 @@ fn build_unsigned_layout(
     from: &Address,
     to: &Address,
     sizing: SpendSizing,
-) -> Result<UnsignedSpend, String> {
+) -> Result<UnsignedSpend, SendError> {
     let spend_sats = params.amount_sats;
 
     // The fee is sized for recipient + change whether or not the change
@@ -237,7 +243,7 @@ fn build_unsigned_layout(
         Some(pinned) => {
             let fee = sizing.fee(pinned.len(), output_count, params.fee_rate);
             if total_value(pinned)? < spend_sats.saturating_add(fee) {
-                return Err("utxo.insufficientFunds".to_string());
+                return Err(SendError::insufficient_funds());
             }
             (pinned.iter().collect::<Vec<_>>(), fee)
         }
@@ -257,7 +263,7 @@ fn build_unsigned_layout(
     let change_sats = total_in
         .checked_sub(spend_sats)
         .and_then(|rest| rest.checked_sub(fee))
-        .ok_or("utxo.insufficientFunds")?;
+        .ok_or_else(SendError::insufficient_funds)?;
 
     let sequence = if params.enable_rbf {
         Sequence::ENABLE_RBF_NO_LOCKTIME
@@ -287,9 +293,9 @@ fn build_unsigned_layout(
     let total_out: u64 = output
         .iter()
         .try_fold(0u64, |total, out| total.checked_add(out.value.to_sat()))
-        .ok_or("utxo.amountOverflow")?;
+        .ok_or_else(|| SendError::invalid("amount overflow"))?;
     if total_out > total_in {
-        return Err("utxo.insufficientFunds".to_string());
+        return Err(SendError::insufficient_funds());
     }
 
     Ok(UnsignedSpend {
@@ -318,7 +324,7 @@ fn sign_segwit_v0(
     identity: &SpendIdentity,
     spend: UnsignedSpend,
     nested_in_p2sh: bool,
-) -> Result<(Transaction, String), String> {
+) -> Result<(Transaction, String), SendError> {
     let UnsignedSpend {
         mut tx,
         input_values,
@@ -336,7 +342,7 @@ fn sign_segwit_v0(
                 Amount::from_sat(*value),
                 EcdsaSighashType::All,
             )
-            .map_err(|e| format!("sighash: {e}"))?;
+            .map_err(|e| SendError::Internal(format!("sighash: {e}")))?;
         let msg = Message::from_digest(sighash.to_raw_hash().to_byte_array());
         let mut sig_der = secp
             .sign_ecdsa(&msg, &identity.secret_key)
@@ -349,7 +355,7 @@ fn sign_segwit_v0(
     let redeem_push = if nested_in_p2sh {
         Some(
             PushBytesBuf::try_from(script_code.as_bytes().to_vec())
-                .map_err(|_| "redeem script exceeds PushBytes limit".to_string())?,
+                .map_err(|_| SendError::Invalid("redeem script exceeds PushBytes limit".into()))?,
         )
     } else {
         None
@@ -370,7 +376,7 @@ fn sign_segwit_v0(
 }
 
 /// Build, sign, and serialize a P2WPKH transaction.
-pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
+pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), SendError> {
     let secp = Secp256k1::new();
     let identity = parse_spend_identity(&secp, params)?;
     let spend = build_unsigned_spend(params, &identity, SpendSizing::P2WPKH)?;
@@ -378,13 +384,17 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
 }
 
 /// Build, sign, and serialize a nested SegWit P2SH-P2WPKH transaction.
-pub fn sign_p2sh_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
+pub fn sign_p2sh_p2wpkh(
+    params: &mut BitcoinSendParams,
+) -> Result<(Transaction, String), SendError> {
     let secp = Secp256k1::new();
     let identity = parse_spend_identity(&secp, params)?;
 
     let redeem_script = ScriptBuf::new_p2wpkh(&identity.public_key.wpubkey_hash());
     if identity.spent_script() != redeem_script.to_p2sh() {
-        return Err("from P2SH address does not match the supplied private key".to_string());
+        return Err(SendError::Invalid(
+            "from P2SH address does not match the supplied private key".into(),
+        ));
     }
 
     let spend = build_unsigned_spend(params, &identity, SpendSizing::P2SH_P2WPKH)?;
@@ -392,7 +402,7 @@ pub fn sign_p2sh_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, 
 }
 
 /// Build, sign, and serialize a P2PKH (legacy) transaction.
-pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
+pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), SendError> {
     let secp = Secp256k1::new();
     let identity = parse_spend_identity(&secp, params)?;
     let UnsignedSpend {
@@ -408,7 +418,7 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
     for i in 0..input_values.len() {
         let sighash = sighash_cache
             .legacy_signature_hash(i, &from_script, EcdsaSighashType::All as u32)
-            .map_err(|e| format!("sighash: {e}"))?;
+            .map_err(|e| SendError::Internal(format!("sighash: {e}")))?;
         let msg = Message::from_digest(sighash.to_raw_hash().to_byte_array());
         let mut sig_der = secp
             .sign_ecdsa(&msg, &identity.secret_key)
@@ -433,7 +443,7 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
 }
 
 /// Build, sign, and serialize a P2TR (Taproot key-path) transaction.
-pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
+pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String), SendError> {
     let secp = Secp256k1::new();
     let identity = parse_spend_identity(&secp, params)?;
     let UnsignedSpend {
@@ -458,7 +468,7 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
         use bitcoin::sighash::Prevouts;
         let sighash = sighash_cache
             .taproot_key_spend_signature_hash(i, &Prevouts::All(&prevouts), TapSighashType::Default)
-            .map_err(|e| format!("taproot sighash: {e}"))?;
+            .map_err(|e| SendError::Internal(format!("taproot sighash: {e}")))?;
         let msg = Message::from_digest(sighash.to_raw_hash().to_byte_array());
         signatures.push(
             bitcoin::taproot::Signature {
@@ -498,7 +508,7 @@ mod tests {
     }
 
     impl Kind {
-        fn sign(self, params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
+        fn sign(self, params: &mut BitcoinSendParams) -> Result<(Transaction, String), SendError> {
             match self {
                 Kind::P2wpkh => sign_p2wpkh(params),
                 Kind::P2sh => sign_p2sh_p2wpkh(params),
@@ -685,17 +695,17 @@ mod tests {
     #[test]
     fn insufficient_funds_is_reported_the_same_way_pinned_or_selected() {
         let mut selected = params(Kind::P2wpkh, vec![utxo(0, 60_100)], 60_000);
-        assert_eq!(
+        assert!(matches!(
             sign_p2wpkh(&mut selected).unwrap_err(),
-            "utxo.insufficientFunds"
-        );
+            SendError::InsufficientFunds(_)
+        ));
 
         let mut pinned = params(Kind::P2wpkh, vec![], 60_000);
         pinned.pinned_utxos = Some(vec![utxo(0, 60_100)]);
-        assert_eq!(
+        assert!(matches!(
             sign_p2wpkh(&mut pinned).unwrap_err(),
-            "utxo.insufficientFunds"
-        );
+            SendError::InsufficientFunds(_)
+        ));
     }
 
     /// A nested spend is only valid if the P2SH address wraps *this* key.
@@ -706,6 +716,7 @@ mod tests {
         assert!(
             sign_p2sh_p2wpkh(&mut p)
                 .unwrap_err()
+                .to_string()
                 .contains("does not match the supplied private key")
         );
     }
@@ -758,9 +769,9 @@ impl PreparedBitcoinTransaction {
         amount: u64,
         fee_rate: f64,
         inputs: Vec<Utxo>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, SendError> {
         if !fee_rate.is_finite() || fee_rate <= 0.0 {
-            return Err("Invalid Bitcoin fee rate".into());
+            return Err(SendError::Invalid("Invalid Bitcoin fee rate".into()));
         }
         let mut result = Self {
             chain_id: chain,
@@ -776,13 +787,13 @@ impl PreparedBitcoinTransaction {
         params.available_utxos = result.inputs.clone();
         params.pinned_utxos = None;
         let from = Address::from_str(from)
-            .map_err(|e| e.to_string())?
+            .map_err(SendError::invalid)?
             .require_network(chain.bitcoin_network())
-            .map_err(|e| e.to_string())?;
+            .map_err(SendError::invalid)?;
         let to = Address::from_str(to)
-            .map_err(|e| e.to_string())?
+            .map_err(SendError::invalid)?
             .require_network(chain.bitcoin_network())
-            .map_err(|e| e.to_string())?;
+            .map_err(SendError::invalid)?;
         let script = from.script_pubkey();
         let sizing = if script.is_p2tr() {
             SpendSizing::P2TR
@@ -793,7 +804,9 @@ impl PreparedBitcoinTransaction {
         } else if script.is_p2pkh() {
             SpendSizing::P2PKH
         } else {
-            return Err("Unsupported Bitcoin sender script".into());
+            return Err(SendError::Invalid(
+                "Unsupported Bitcoin sender script".into(),
+            ));
         };
         let spend = build_unsigned_layout(&params, &from, &to, sizing)?;
         result.inputs = spend
@@ -809,19 +822,19 @@ impl PreparedBitcoinTransaction {
                             && u.vout == i.previous_output.vout
                     })
                     .cloned()
-                    .ok_or("Missing selected input")
+                    .ok_or_else(|| SendError::Invalid("Missing selected input".into()))
             })
             .collect::<Result<_, _>>()?;
         result.fee_sats = total_value(&result.inputs)?
             .checked_sub(spend.tx.output.iter().map(|o| o.value.to_sat()).sum())
-            .ok_or("Invalid Bitcoin fee")?;
+            .ok_or_else(|| SendError::Invalid("Invalid Bitcoin fee".into()))?;
         result.unsigned_hex = bitcoin::consensus::encode::serialize_hex(&spend.tx);
         Ok(result)
     }
-    pub fn sign(&self, key: String) -> Result<String, String> {
+    pub fn sign(&self, key: String) -> Result<String, SendError> {
         let mut params = self.params(key);
         let script = Address::from_str(&self.from)
-            .map_err(|e| e.to_string())?
+            .map_err(SendError::invalid)?
             .assume_checked()
             .script_pubkey();
         let (mut tx, hex) = if script.is_p2tr() {
@@ -838,7 +851,9 @@ impl PreparedBitcoinTransaction {
             input.witness = Witness::new();
         }
         if bitcoin::consensus::encode::serialize_hex(&tx) != self.unsigned_hex {
-            return Err("Signed transaction differs from reviewed Bitcoin transaction".into());
+            return Err(SendError::Invalid(
+                "Signed transaction differs from reviewed Bitcoin transaction".into(),
+            ));
         }
         Ok(hex)
     }

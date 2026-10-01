@@ -2,6 +2,8 @@
 //! TransferCheckedWithFee on a Token-2022 fee mint (with idempotent ATA
 //! create), and Ed25519 signing.
 
+use crate::send::error::SendError;
+
 use crate::send::keys::Ed25519Seed;
 
 use crate::api::solana_json_rpc::SolanaClient;
@@ -24,7 +26,7 @@ pub fn build_sol_transfer(
     lamports: u64,
     recent_blockhash_b58: &str,
     private_key: &Ed25519Seed,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let mut data = 2u32.to_le_bytes().to_vec();
     data.extend_from_slice(&lamports.to_le_bytes());
     compile_and_sign(
@@ -51,7 +53,7 @@ pub fn derive_associated_token_account(
     wallet: &[u8; 32],
     mint: &[u8; 32],
     token_program: &[u8; 32],
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], SendError> {
     use sha2::{Digest, Sha256};
     let seeds: [&[u8]; 3] = [wallet, token_program, mint];
     // Brute-force the bump seed from 255 down until we find an off-curve point.
@@ -68,7 +70,7 @@ pub fn derive_associated_token_account(
             return Ok(digest);
         }
     }
-    Err("failed to find PDA bump".to_string())
+    Err(SendError::Internal("failed to find PDA bump".into()))
 }
 
 /// An ed25519 point is "off-curve" if CompressedEdwardsY::decompress returns None.
@@ -99,7 +101,7 @@ pub fn build_spl_transfer_checked(
     decimals: u8,
     recent_blockhash_b58: &str,
     private_key: &Ed25519Seed,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let mut data = vec![12];
     data.extend_from_slice(&amount_raw.to_le_bytes());
     data.push(decimals);
@@ -134,7 +136,7 @@ fn compile_and_sign(
     instructions: &[(usize, Vec<usize>, Vec<u8>)],
     blockhash: &str,
     key: &Ed25519Seed,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     PreparedSolanaTransaction {
         payer: *payer,
         blockhash: blockhash.into(),
@@ -150,7 +152,7 @@ pub(crate) struct PreparedSolanaTransaction {
     pub message: Vec<u8>,
 }
 impl PreparedSolanaTransaction {
-    pub fn sign(&self, key: &Ed25519Seed) -> Result<Vec<u8>, String> {
+    pub fn sign(&self, key: &Ed25519Seed) -> Result<Vec<u8>, SendError> {
         key.require_public_key(&self.payer)?;
         let mut tx = vec![1];
         tx.extend(key.sign(&self.message));
@@ -165,14 +167,16 @@ pub(crate) async fn prepare_transfer(
     to: &str,
     amount: u64,
     token: Option<(&str, u8)>,
-) -> Result<PreparedSolanaTransaction, String> {
+) -> Result<PreparedSolanaTransaction, SendError> {
     let payer = decode_b58_32(from)?;
     let recipient = decode_b58_32(to)?;
     let blockhash = client.fetch_recent_blockhash().await?;
     let message = if let Some((mint, decimals)) = token {
         let transfer_mint = client.fetch_transfer_mint(mint).await?;
         if decimals != transfer_mint.decimals {
-            return Err("SPL decimals changed; review again".into());
+            return Err(SendError::Invalid(
+                "SPL decimals changed; review again".into(),
+            ));
         }
         let program = transfer_mint.program;
         let mint = decode_b58_32(mint)?;
@@ -243,7 +247,7 @@ fn compile_message(
     account_metas: &[([u8; 32], bool)],
     instructions: &[(usize, Vec<usize>, Vec<u8>)],
     blockhash: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let blockhash = decode_b58_32(blockhash)?;
     let mut accounts = vec![(*payer, true)];
     for (pubkey, writable) in account_metas {

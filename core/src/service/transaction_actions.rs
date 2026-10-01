@@ -19,7 +19,9 @@ impl Default for TransactionActions {
 impl CorePersistedTransactionRecord {
     pub(crate) fn with_actions(mut self) -> Self {
         self.actions = TransactionActions {
-            recheck_unavailable_reason: super::transaction_recheck::recheck_chain(&self).err(),
+            recheck_unavailable_reason: super::transaction_recheck::recheck_chain(&self)
+                .err()
+                .map(|e| e.to_string()),
             rebroadcast_unavailable_reason: super::send_records::rebroadcast_input(&self)
                 .err()
                 .map(|e| e.to_string()),

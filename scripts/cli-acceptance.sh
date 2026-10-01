@@ -514,6 +514,23 @@ check "the sealed wallet still wants its password" $REJECTED \
     with_password wrong spectra wallet export "Acceptance SOL" --yes
 check "and --no-password refuses to also take a password file" $USAGE \
     spectra wallet import --chain Solana --name Nope --no-password --password-file /dev/null
+# Nor is a blank password the choice of none: it asks for a seal it cannot
+# make. Refused before anything is stored, rather than stored in the clear.
+SECRETS_BEFORE="$(find "$DATA_DIR/secrets" -type f 2>/dev/null | wc -l | tr -d ' ')"
+check "a whitespace-only password is refused" $REJECTED \
+    with_password "   " with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+    spectra wallet import --chain Solana --name "Blank SOL"
+check "and so is an empty password file"    $REJECTED \
+    spectra wallet new --chain Solana --name "Blank SOL" --password-file /dev/null
+lacks "and neither stored a wallet"         '"Blank SOL"' \
+    spectra --json wallet list
+if [[ "$(find "$DATA_DIR/secrets" -type f 2>/dev/null | wc -l | tr -d ' ')" == "$SECRETS_BEFORE" ]]; then
+    PASSED=$((PASSED + 1))
+    printf '  \033[32m✓\033[0m and stored no secret\n'
+else
+    FAILED=$((FAILED + 1))
+    printf '  \033[31m✗\033[0m and stored no secret\n'
+fi
 check "deletes the unsealed wallet"         $OK \
     spectra wallet delete "Open SOL" --yes
 
@@ -1151,6 +1168,11 @@ check "imports a wallet from a private key"  $OK \
         --name "PK Wallet" --private-key-file "$DATA_DIR/pk.hex"
 contains "and derives the right address"     '0x2c7536e3605d9c16a7a3d7b1898e529396a65c23' \
     spectra --json wallet show "PK Wallet"
+check "refuses a key sealed under a blank password" $REJECTED \
+    with_password "   " spectra wallet import --chain Polygon \
+        --name "Blank PK" --private-key-file "$DATA_DIR/pk.hex"
+lacks "and stores no wallet for it"          '"Blank PK"' \
+    spectra --json wallet list
 contains "and reports how it signs"          'private key' \
     spectra wallet show "PK Wallet"
 # Core derives the address from the key on the commit now, the way it already

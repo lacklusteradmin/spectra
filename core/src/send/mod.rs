@@ -1,4 +1,6 @@
+use crate::send::error::SendError;
 pub mod amount_input;
+pub mod error;
 pub mod ethereum;
 mod evm_overrides;
 pub mod flow;
@@ -15,6 +17,7 @@ pub mod verification;
 pub(crate) mod accounting;
 pub mod aptos;
 #[cfg(test)]
+#[path = "tests/audit.rs"]
 mod audit_tests;
 mod bcs;
 pub mod bitcoin;
@@ -270,30 +273,35 @@ pub fn validate_send_preflight(
     available_balance: &str,
     destination_address: &str,
     amount_input: &str,
-) -> Result<SendPreflight, String> {
+) -> Result<SendPreflight, SendError> {
     if !wallet_found {
-        return Err("Select a wallet".to_string());
+        return Err(SendError::Invalid("Select a wallet".into()));
     }
-    let asset = asset.ok_or_else(|| "Select an asset".to_string())?;
+    let asset = asset.ok_or_else(|| SendError::Invalid("Select an asset".into()))?;
     if !asset.is_sendable() {
-        return Err(format!("{} transfers are not enabled yet.", asset.symbol));
+        return Err(SendError::Invalid(format!(
+            "{} transfers are not enabled yet.",
+            asset.symbol
+        )));
     }
 
     let normalized_destination_address = destination_address.trim().to_string();
     if normalized_destination_address.is_empty() {
-        return Err("Enter a destination address".to_string());
+        return Err(SendError::Invalid("Enter a destination address".into()));
     }
 
     let amount_input = amount_input.trim();
     let exact = crate::decimal::canonical(amount_input)
-        .ok_or_else(|| "Enter a valid amount".to_string())?;
+        .ok_or_else(|| SendError::Invalid("Enter a valid amount".into()))?;
     if !asset.allows_zero_amount() && crate::decimal::is_zero(&exact) {
-        return Err("Enter a valid amount".to_string());
+        return Err(SendError::Invalid("Enter a valid amount".into()));
     }
     if crate::decimal::compare(&exact, available_balance)
         .is_none_or(|o| o == std::cmp::Ordering::Greater)
     {
-        return Err("Amount exceeds the available balance".to_string());
+        return Err(SendError::Invalid(
+            "Amount exceeds the available balance".into(),
+        ));
     }
 
     let token = asset.token();
@@ -495,7 +503,7 @@ mod tests {
         let btc = asset(Chain::Bitcoin, "BTC", SendAssetKind::Native);
         let error = validate_send_preflight(true, Some(&btc), "1", "bc1qdestination", "0")
             .expect_err("bitcoin zero-value sends should be rejected in preflight");
-        assert_eq!(error, "Enter a valid amount");
+        assert_eq!(error.to_string(), "Enter a valid amount");
     }
 
     #[test]
@@ -513,7 +521,7 @@ mod tests {
         let usdt = asset(Chain::Ethereum, "USDT", SendAssetKind::UntrackedToken);
         let error = validate_send_preflight(true, Some(&usdt), "10", "0xabc", "1")
             .expect_err("an untracked token has no contract to send");
-        assert_eq!(error, "USDT transfers are not enabled yet.");
+        assert_eq!(error.to_string(), "USDT transfers are not enabled yet.");
     }
 
     /// The gas floor a NEP-141 send has to clear is a fact about NEAR, so core

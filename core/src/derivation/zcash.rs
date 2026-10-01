@@ -1,23 +1,29 @@
 //! Zcash transparent: address validation, BIP-32 derivation, t1… P2PKH
 //! base58check encoding (2-byte version prefix)
 
+use crate::derivation::error::DerivationError;
+
 // ── Address validation (preserved) ───────────────────────────────────────
 
 pub(crate) const ZCASH_T1_VERSION: [u8; 2] = [0x1C, 0xB8];
 pub(crate) const ZCASH_T3_VERSION: [u8; 2] = [0x1C, 0xBD];
 
 // Base58check-decode a Zcash transparent address; accepts t1 (P2PKH) and t3 (P2SH) forms.
-pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("invalid zcash address: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid zcash address: {e}")))?;
     if decoded.len() != 22 {
-        return Err("zcash address payload must be 22 bytes (2 version + 20 hash)".to_string());
+        return Err(DerivationError::Invalid(
+            "zcash address payload must be 22 bytes (2 version + 20 hash)".into(),
+        ));
     }
     let version = [decoded[0], decoded[1]];
     if version != ZCASH_T1_VERSION && version != ZCASH_T3_VERSION {
-        return Err(format!("unrecognised zcash version bytes: {version:02x?}"));
+        return Err(DerivationError::Invalid(format!(
+            "unrecognised zcash version bytes: {version:02x?}"
+        )));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[2..22]);
@@ -31,15 +37,17 @@ pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], String> {
 /// decoder: a derived testnet address failed the app's own validator, which
 /// means the receive screen showed an address the send screen would refuse.
 /// Testnet transparent addresses carry their own version bytes.
-pub(crate) fn decode_zcash_testnet_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_zcash_testnet_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("invalid zcash testnet address: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid zcash testnet address: {e}")))?;
     if decoded.len() != 22
         || ![ZCASH_TESTNET_VERSION, [0x1c, 0xba]].contains(&[decoded[0], decoded[1]])
     {
-        return Err("not a zcash testnet transparent address".to_string());
+        return Err(DerivationError::Invalid(
+            "not a zcash testnet transparent address".into(),
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[2..22]);

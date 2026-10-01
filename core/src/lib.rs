@@ -11,9 +11,9 @@ uniffi::setup_scaffolding!();
 /// Bridge error returned to Swift across UniFFI. Variants describe the broad
 /// failure category so Swift can branch on it (e.g. surface a "no internet"
 /// banner for `Network`, vs. an inline validation error for `InvalidInput`).
-/// `Failure` represents uncategorized errors from string-based providers.
-/// `From<String>` and `From<&str>` map to that variant.
-#[derive(Debug, thiserror::Error, uniffi::Error)]
+/// Each layer's typed error converts into the variant that fits it; a bare
+/// string does not, so a new error picks its category where it is raised.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
 pub enum SpectraBridgeError {
     /// Network / RPC failure — connectivity, timeout, TLS, HTTP non-2xx, etc.
     #[error("{message}")]
@@ -27,23 +27,32 @@ pub enum SpectraBridgeError {
     /// chain ID, etc. UI surfaces these inline against the offending field.
     #[error("{message}")]
     InvalidInput { message: String },
-    /// Catch-all for errors without a more specific category. New code
-    /// should prefer the specific variants above.
+    /// Core could not do what was asked: storage, signing, or a state that
+    /// changed underneath the request.
     #[error("{message}")]
     Failure { message: String },
 }
 
-impl From<String> for SpectraBridgeError {
-    fn from(message: String) -> Self {
-        Self::Failure { message }
+impl SpectraBridgeError {
+    /// Core refusing a request: the caller asked for something it cannot have.
+    pub fn invalid(message: impl std::fmt::Display) -> Self {
+        Self::InvalidInput {
+            message: message.to_string(),
+        }
     }
-}
 
-impl From<&str> for SpectraBridgeError {
-    fn from(message: &str) -> Self {
+    /// Core unable to do what was asked of it.
+    pub fn failure(message: impl std::fmt::Display) -> Self {
         Self::Failure {
             message: message.to_string(),
         }
+    }
+}
+
+/// A background task that panicked or was cancelled before it answered.
+impl From<tokio::task::JoinError> for SpectraBridgeError {
+    fn from(error: tokio::task::JoinError) -> Self {
+        Self::failure(error)
     }
 }
 
@@ -82,8 +91,7 @@ pub use endpoint_api::{
     Endpoint, EndpointApi, EndpointCapability, endpoint_capability_id, endpoint_capability_options,
 };
 
-mod app_core;
-pub use app_core::*;
+pub mod endpoints;
 
 mod donations;
 pub use donations::{DonationDestination, donation_destinations};
@@ -113,4 +121,5 @@ pub mod wiki;
 mod worker;
 
 #[cfg(test)]
+#[path = "tests/app_boundary.rs"]
 mod app_boundary_tests;

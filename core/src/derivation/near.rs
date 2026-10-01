@@ -4,6 +4,8 @@
 //! NEAR uses *direct-seed* ed25519: the BIP-39 seed's first 32 bytes are the
 //! ed25519 private key — no SLIP-10 path walk. Address = hex(public_key).
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 use zeroize::Zeroizing;
@@ -15,7 +17,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let mut private_key = Zeroizing::new([0u8; 32]);
     private_key.copy_from_slice(&seed[..32]);

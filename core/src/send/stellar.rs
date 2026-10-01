@@ -1,5 +1,7 @@
 //! Stellar send: XDR Payment builder (native XLM) and Ed25519 signer.
 
+use crate::send::error::SendError;
+
 use crate::derivation::stellar::decode_stellar_address;
 
 // ── XDR transaction builder
@@ -15,7 +17,7 @@ pub fn build_signed_payment_xdr(
     network_passphrase: &[u8],
     private_key: &[u8; 64],
     public_key: &[u8; 32],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
 
@@ -38,7 +40,7 @@ pub fn build_signed_payment_xdr(
     let signing_key = SigningKey::from_bytes(
         &private_key[..32]
             .try_into()
-            .map_err(|_| "privkey too short")?,
+            .map_err(|_| SendError::Invalid("privkey too short".into()))?,
     );
     let signature = signing_key.sign(&sig_payload);
 

@@ -16,6 +16,8 @@ use serde::de::DeserializeOwned;
 use std::sync::LazyLock;
 use tokio::time::sleep;
 
+use crate::api::error::ApiError;
+
 // ── Shared client
 
 /// Process-wide shared `reqwest` client. Interior `RwLock` lets `tor.rs`
@@ -157,7 +159,7 @@ impl HttpClient {
         &self,
         endpoints: &[String],
         path: &str,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         race(endpoints, |base| async move {
             self.get_json(
                 &format!("{}{}", base.trim_end_matches('/'), path),
@@ -208,113 +210,16 @@ impl HttpClient {
 
     // ── Core request method
 
-    async fn request_with_retry<T: DeserializeOwned>(
+    /// Send one request, retrying transport failures, 429 and 5xx as `profile`
+    /// allows, and return the first success. Any other status is the
+    /// service's answer and is not retried.
+    async fn send_with_retry(
         &self,
-        method: Method,
-        url: &str,
-        json_body: Option<&serde_json::Value>,
-        headers: &HashMap<&str, &str>,
+        build: impl Fn(&Client) -> reqwest::RequestBuilder,
         profile: RetryProfile,
-    ) -> Result<T, String> {
+    ) -> Result<reqwest::Response, ApiError> {
         if crate::tor::kill_switch_engaged() {
-            return Err(KILL_SWITCH_MESSAGE.to_string());
-        }
-        let max_attempts = profile.max_attempts();
-        let mut last_err = String::new();
-
-        for attempt in 0..max_attempts {
-            if attempt > 0 {
-                let delay = profile.delay_for_attempt(attempt);
-                sleep(delay).await;
-            }
-
-            let client = self.get_client();
-            let mut req = client.request(method.clone(), url);
-            for (key, value) in headers {
-                req = req.header(*key, *value);
-            }
-            if let Some(body) = json_body {
-                req = req.json(body);
-            }
-
-            let result = req.send().await;
-            match result {
-                Err(e) => {
-                    last_err = format_reqwest_error(&e);
-                    if !profile.is_retryable_error(&e) {
-                        break;
-                    }
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-                        last_err = format!("HTTP {status}");
-                        continue; // retry on 429 / 5xx
-                    }
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {status}: {body}"));
-                    }
-                    return resp
-                        .json::<T>()
-                        .await
-                        .map_err(|e| format!("json decode: {e}"));
-                }
-            }
-        }
-        Err(format!("all {max_attempts} attempts failed: {last_err}"))
-    }
-
-    // ── Convenience wrappers
-
-    /// GET a JSON response.
-    pub async fn get_json<T: DeserializeOwned>(
-        &self,
-        url: &str,
-        profile: RetryProfile,
-    ) -> Result<T, String> {
-        self.request_with_retry(Method::GET, url, None, &HashMap::new(), profile)
-            .await
-    }
-
-    /// GET a JSON response with custom headers.
-    pub async fn get_json_with_headers<T: DeserializeOwned>(
-        &self,
-        url: &str,
-        headers: &HashMap<&str, &str>,
-        profile: RetryProfile,
-    ) -> Result<T, String> {
-        self.request_with_retry(Method::GET, url, None, headers, profile)
-            .await
-    }
-
-    /// POST a JSON body and decode the JSON response.
-    pub async fn post_json<B: Serialize, T: DeserializeOwned>(
-        &self,
-        url: &str,
-        body: &B,
-        profile: RetryProfile,
-    ) -> Result<T, String> {
-        let json_body = serde_json::to_value(body).map_err(|e| e.to_string())?;
-        self.request_with_retry(
-            Method::POST,
-            url,
-            Some(&json_body),
-            &HashMap::new(),
-            profile,
-        )
-        .await
-    }
-
-    /// POST raw bytes (for broadcast endpoints that want a hex string body).
-    pub async fn post_text(
-        &self,
-        url: &str,
-        body: String,
-        profile: RetryProfile,
-    ) -> Result<String, String> {
-        if crate::tor::kill_switch_engaged() {
-            return Err(KILL_SWITCH_MESSAGE.to_string());
+            return Err(ApiError::Transport(KILL_SWITCH_MESSAGE.to_string()));
         }
         let max_attempts = profile.max_attempts();
         let mut last_err = String::new();
@@ -323,15 +228,7 @@ impl HttpClient {
             if attempt > 0 {
                 sleep(profile.delay_for_attempt(attempt)).await;
             }
-
-            let result = self
-                .get_client()
-                .post(url)
-                .header("Content-Type", "text/plain")
-                .body(body.clone())
-                .send()
-                .await;
-            match result {
+            match build(&self.get_client()).send().await {
                 Err(e) => {
                     last_err = format_reqwest_error(&e);
                     if !profile.is_retryable_error(&e) {
@@ -345,14 +242,127 @@ impl HttpClient {
                         continue;
                     }
                     if !status.is_success() {
-                        let t = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {status}: {t}"));
+                        return Err(ApiError::Status {
+                            status: status.as_u16(),
+                            body: resp.text().await.unwrap_or_default(),
+                        });
                     }
-                    return resp.text().await.map_err(|e| e.to_string());
+                    return Ok(resp);
                 }
             }
         }
-        Err(format!("all {max_attempts} attempts failed: {last_err}"))
+        Err(ApiError::Transport(format!(
+            "all {max_attempts} attempts failed: {last_err}"
+        )))
+    }
+
+    async fn request_with_retry<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        url: &str,
+        json_body: Option<&serde_json::Value>,
+        headers: &HashMap<&str, &str>,
+        profile: RetryProfile,
+    ) -> Result<T, ApiError> {
+        let resp = self
+            .send_with_retry(
+                |client| {
+                    let mut req = client.request(method.clone(), url);
+                    for (key, value) in headers {
+                        req = req.header(*key, *value);
+                    }
+                    if let Some(body) = json_body {
+                        req = req.json(body);
+                    }
+                    req
+                },
+                profile,
+            )
+            .await?;
+        resp.json::<T>()
+            .await
+            .map_err(|e| ApiError::Decode(format!("json decode: {e}")))
+    }
+
+    // ── Convenience wrappers
+
+    /// GET a JSON response.
+    pub async fn get_json<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        profile: RetryProfile,
+    ) -> Result<T, ApiError> {
+        self.request_with_retry(Method::GET, url, None, &HashMap::new(), profile)
+            .await
+    }
+
+    /// GET a JSON response with custom headers.
+    pub async fn get_json_with_headers<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        headers: &HashMap<&str, &str>,
+        profile: RetryProfile,
+    ) -> Result<T, ApiError> {
+        self.request_with_retry(Method::GET, url, None, headers, profile)
+            .await
+    }
+
+    /// POST a JSON body and decode the JSON response.
+    pub async fn post_json<B: Serialize, T: DeserializeOwned>(
+        &self,
+        url: &str,
+        body: &B,
+        profile: RetryProfile,
+    ) -> Result<T, ApiError> {
+        let json_body = serde_json::to_value(body).map_err(ApiError::invalid)?;
+        self.request_with_retry(
+            Method::POST,
+            url,
+            Some(&json_body),
+            &HashMap::new(),
+            profile,
+        )
+        .await
+    }
+
+    /// POST a raw body and return the successful answer's status and bytes.
+    pub(crate) async fn post_bytes(
+        &self,
+        url: &str,
+        content_type: &str,
+        body: Vec<u8>,
+        profile: RetryProfile,
+    ) -> Result<(u16, Vec<u8>), ApiError> {
+        let resp = self
+            .send_with_retry(
+                |client| {
+                    client
+                        .post(url)
+                        .header("Content-Type", content_type)
+                        .body(body.clone())
+                },
+                profile,
+            )
+            .await?;
+        let status = resp.status().as_u16();
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ApiError::Transport(format_reqwest_error(&e)))?;
+        Ok((status, bytes.to_vec()))
+    }
+
+    /// POST a text body (for broadcast endpoints that want a hex string).
+    pub async fn post_text(
+        &self,
+        url: &str,
+        body: String,
+        profile: RetryProfile,
+    ) -> Result<String, ApiError> {
+        let (_, bytes) = self
+            .post_bytes(url, "text/plain", body.into_bytes(), profile)
+            .await?;
+        String::from_utf8(bytes).map_err(ApiError::decode)
     }
 }
 
@@ -449,238 +459,33 @@ fn format_reqwest_error(e: &reqwest::Error) -> String {
 /// No endpoint is preferred and none waits for another to fail: a dead one
 /// costs nothing while any other answers. The result is an error only when
 /// every endpoint failed, and then it is the last failure.
-pub async fn race<F, Fut, T>(endpoints: &[String], f: F) -> Result<T, String>
+pub async fn race<F, Fut, T, E>(endpoints: &[String], f: F) -> Result<T, E>
 where
     F: Fn(String) -> Fut,
-    Fut: std::future::Future<Output = Result<T, String>>,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: From<ApiError>,
 {
     first_success(endpoints.iter().cloned().map(f)).await
 }
 
 /// Run every request at once; the first `Ok` wins and the rest are dropped.
-pub(crate) async fn first_success<Fut, T>(
+pub(crate) async fn first_success<Fut, T, E>(
     requests: impl IntoIterator<Item = Fut>,
-) -> Result<T, String>
+) -> Result<T, E>
 where
-    Fut: std::future::Future<Output = Result<T, String>>,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: From<ApiError>,
 {
     use futures::StreamExt;
     let mut pending: futures::stream::FuturesUnordered<Fut> = requests.into_iter().collect();
-    if pending.is_empty() {
-        return Err("no endpoints configured".to_string());
-    }
-    let mut last_err = String::new();
+    let mut last_err = None;
     while let Some(result) = pending.next().await {
         match result {
             Ok(value) => return Ok(value),
-            Err(e) => last_err = e,
+            Err(e) => last_err = Some(e),
         }
     }
-    Err(last_err)
-}
-
-// ── FFI surface (merged from http_ffi.rs) ─────────────────────────
-
-#[derive(Debug, Clone, uniffi::Enum)]
-pub enum HttpRetryProfile {
-    ChainRead,
-    ChainWrite,
-    Diagnostics,
-}
-
-impl From<HttpRetryProfile> for RetryProfile {
-    fn from(value: HttpRetryProfile) -> Self {
-        match value {
-            HttpRetryProfile::ChainRead => RetryProfile::ChainRead,
-            HttpRetryProfile::ChainWrite => RetryProfile::ChainWrite,
-            HttpRetryProfile::Diagnostics => RetryProfile::Diagnostics,
-        }
-    }
-}
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct HttpHeader {
-    pub name: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct HttpResponse {
-    pub status_code: u16,
-    pub headers: Vec<HttpHeader>,
-    pub body: Vec<u8>,
-}
-
-#[derive(Debug, thiserror::Error, uniffi::Error)]
-pub enum HttpError {
-    #[error("invalid method: {method}")]
-    InvalidMethod { method: String },
-    #[error("request failed: {message}")]
-    Transport { message: String },
-    #[error("all {attempts} attempts failed: {message}")]
-    RetriesExhausted { attempts: u32, message: String },
-    #[error("timeout after {elapsed_ms}ms")]
-    Timeout { elapsed_ms: u64 },
-    #[error("network error: {message}")]
-    Network { message: String },
-    #[error("decode error: {message}")]
-    Decode { message: String },
-    #[error("HTTP status {status}: {body}")]
-    Status { status: u16, body: String },
-}
-
-/// Text-oriented HTTP response used by the ergonomic wrappers below.
-/// Headers are exposed as a simple string→string map for Swift use.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct HttpTextResponse {
-    pub status: u16,
-    pub body: String,
-    pub headers: std::collections::HashMap<String, String>,
-}
-
-fn collect_headers(resp: &reqwest::Response) -> std::collections::HashMap<String, String> {
-    resp.headers()
-        .iter()
-        .filter_map(|(k, v)| {
-            v.to_str()
-                .ok()
-                .map(|s| (k.as_str().to_string(), s.to_string()))
-        })
-        .collect()
-}
-
-fn classify_reqwest_error(err: reqwest::Error) -> HttpError {
-    if err.is_timeout() {
-        HttpError::Timeout { elapsed_ms: 0 }
-    } else if err.is_decode() {
-        HttpError::Decode {
-            message: err.to_string(),
-        }
-    } else {
-        HttpError::Network {
-            message: err.to_string(),
-        }
-    }
-}
-
-fn parse_method(method: &str) -> Result<Method, HttpError> {
-    Method::from_bytes(method.to_uppercase().as_bytes()).map_err(|_| HttpError::InvalidMethod {
-        method: method.to_string(),
-    })
-}
-
-pub async fn http_request(
-    method: String,
-    url: String,
-    headers: Vec<HttpHeader>,
-    body: Option<Vec<u8>>,
-    profile: HttpRetryProfile,
-) -> Result<HttpResponse, HttpError> {
-    let method = parse_method(&method)?;
-    if crate::tor::kill_switch_engaged() {
-        return Err(HttpError::Transport {
-            message: KILL_SWITCH_MESSAGE.to_string(),
-        });
-    }
-    let retry: RetryProfile = profile.into();
-    let client = HttpClient::shared();
-    let inner = client.reqwest_client();
-
-    let max_attempts = retry.max_attempts();
-    let mut last_err = String::new();
-
-    for attempt in 0..max_attempts {
-        if attempt > 0 {
-            sleep(retry.delay_for_attempt(attempt)).await;
-        }
-        let mut req = inner.request(method.clone(), &url);
-        for h in &headers {
-            req = req.header(h.name.as_str(), h.value.as_str());
-        }
-        if let Some(ref bytes) = body {
-            req = req.body(bytes.clone());
-        }
-        match req.send().await {
-            Err(e) => {
-                last_err = e.to_string();
-                if !retry.is_retryable_error(&e) {
-                    break;
-                }
-            }
-            Ok(resp) => {
-                let status = resp.status();
-                if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-                    last_err = format!("HTTP {status}");
-                    if attempt + 1 < max_attempts {
-                        continue;
-                    }
-                }
-                let status_code = status.as_u16();
-                let response_headers: Vec<HttpHeader> = resp
-                    .headers()
-                    .iter()
-                    .filter_map(|(k, v)| {
-                        v.to_str().ok().map(|s| HttpHeader {
-                            name: k.as_str().to_string(),
-                            value: s.to_string(),
-                        })
-                    })
-                    .collect();
-                let body_bytes = resp
-                    .bytes()
-                    .await
-                    .map_err(|e| HttpError::Transport {
-                        message: e.to_string(),
-                    })?
-                    .to_vec();
-                return Ok(HttpResponse {
-                    status_code,
-                    headers: response_headers,
-                    body: body_bytes,
-                });
-            }
-        }
-    }
-    Err(HttpError::RetriesExhausted {
-        attempts: max_attempts as u32,
-        message: last_err,
-    })
-}
-
-// Ergonomic text-oriented wrappers // ----------------------------------------------------------------
-
-/// POST a JSON body (already serialised) and return the response as text.
-/// Sets `Content-Type: application/json` automatically unless overridden
-/// by `headers`. Single-shot (no retry).
-pub async fn http_post_json(
-    url: String,
-    body_json: String,
-    headers: std::collections::HashMap<String, String>,
-) -> Result<HttpTextResponse, HttpError> {
-    let client = HttpClient::shared();
-    let inner = client.reqwest_client();
-    let has_ct = headers
-        .keys()
-        .any(|k| k.eq_ignore_ascii_case("content-type"));
-    let mut req = inner.post(&url);
-    if !has_ct {
-        req = req.header("Content-Type", "application/json");
-    }
-    for (k, v) in &headers {
-        req = req.header(k.as_str(), v.as_str());
-    }
-    req = req.body(body_json);
-    let resp = req.send().await.map_err(classify_reqwest_error)?;
-    let status = resp.status().as_u16();
-    let response_headers = collect_headers(&resp);
-    let body = resp.text().await.map_err(|e| HttpError::Decode {
-        message: e.to_string(),
-    })?;
-    Ok(HttpTextResponse {
-        status,
-        body,
-        headers: response_headers,
-    })
+    Err(last_err.unwrap_or_else(|| ApiError::NoEndpoint.into()))
 }
 
 #[cfg(test)]
@@ -713,19 +518,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn http_post_json_sends_body_and_content_type() {
+    async fn post_bytes_sends_body_and_content_type() {
+        use wiremock::matchers::header;
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/rpc"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"result":"ok"}"#))
+            .and(header("Content-Type", "application/cbor"))
+            .respond_with(ResponseTemplate::new(202).set_body_string("ok"))
             .mount(&server)
             .await;
-        let url = format!("{}/rpc", server.uri());
-        let resp = http_post_json(url, r#"{"a":1}"#.into(), Default::default())
+        let (status, body) = HttpClient::shared()
+            .post_bytes(
+                &format!("{}/rpc", server.uri()),
+                "application/cbor",
+                vec![1, 2],
+                RetryProfile::Diagnostics,
+            )
             .await
             .expect("ok");
-        assert_eq!(resp.status, 200);
-        assert!(resp.body.contains("result"));
+        assert_eq!((status, body.as_slice()), (202, b"ok".as_slice()));
+    }
+
+    /// A refusal is the service's answer and keeps its status; only transport
+    /// failures and 429/5xx are worth another attempt.
+    #[tokio::test]
+    async fn a_client_error_status_is_returned_not_retried() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("gone"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = HttpClient::shared()
+            .get_json::<serde_json::Value>(&server.uri(), RetryProfile::ChainRead)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            ApiError::Status {
+                status: 404,
+                body: "gone".into()
+            }
+        );
+        assert!(!err.is_transient());
     }
 
     /// Every endpoint is asked at once: a slow or dead one listed first does
@@ -752,18 +587,18 @@ mod tests {
                 .get(url)
                 .send()
                 .await
-                .map_err(|e| e.to_string())?
+                .map_err(|e| ApiError::Transport(e.to_string()))?
                 .text()
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(|e| ApiError::Transport(e.to_string()))
         };
         let started = std::time::Instant::now();
         let answer = race(&[slow.uri(), fast.uri()], get).await.unwrap();
         assert_eq!(answer, "fast");
         assert!(started.elapsed() < Duration::from_secs(2));
 
-        let failing = |url: String| async move { Err::<(), _>(url) };
+        let failing = |url: String| async move { Err::<(), _>(ApiError::Transport(url)) };
         assert!(race(&["a".into(), "b".into()], failing).await.is_err());
-        assert!(race(&[], failing).await.is_err());
+        assert_eq!(race(&[], failing).await, Err(ApiError::NoEndpoint));
     }
 }

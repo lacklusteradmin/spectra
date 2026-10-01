@@ -1,6 +1,8 @@
 //! Device-local Monero scanning and CLSAG/Bulletproof+ signing.
 //! Only public daemon requests cross the transport; keys and scan results stay local.
+
 use crate::api::monero_daemon_rpc::Daemon;
+use crate::send::error::SendError;
 use monero_wallet::{
     OutputWithDecoys, Scanner, ViewPair, WalletOutput,
     address::{MoneroAddress, Network},
@@ -44,7 +46,7 @@ pub(crate) struct LocalWallet {
     pub transfers: Vec<LocalTransfer>,
 }
 impl LocalWallet {
-    pub fn unlocked(&self) -> Result<Vec<WalletOutput>, String> {
+    pub fn unlocked(&self) -> Result<Vec<WalletOutput>, SendError> {
         let mut timestamps = self.timestamps.clone();
         timestamps.sort_unstable();
         let chain_time = timestamps.get(timestamps.len() / 2).copied().unwrap_or(0);
@@ -54,10 +56,10 @@ impl LocalWallet {
             .map(|o| {
                 WalletOutput::read(
                     &mut hex::decode(&o.encoded)
-                        .map_err(|e| e.to_string())?
+                        .map_err(SendError::invalid)?
                         .as_slice(),
                 )
-                .map_err(|e| e.to_string())
+                .map_err(SendError::invalid)
             })
             .collect::<Result<Vec<_>, _>>()
             .map(|outputs| {
@@ -70,27 +72,31 @@ impl LocalWallet {
                     })
                     .collect()
             })
+            .map_err(SendError::invalid)
     }
 
-    pub fn balance(&self) -> Result<u64, String> {
+    pub fn balance(&self) -> Result<u64, SendError> {
         self.unlocked()?.iter().try_fold(0u64, |sum, o| {
             sum.checked_add(o.commitment().amount)
-                .ok_or("Monero balance overflow".into())
+                .ok_or_else(|| SendError::invalid("Monero balance overflow"))
         })
     }
 }
 
-pub(crate) fn keys(private: &str) -> Result<(Zeroizing<Scalar>, ViewPair), String> {
-    let raw = Zeroizing::new(hex::decode(private).map_err(|e| e.to_string())?);
+pub(crate) fn keys(private: &str) -> Result<(Zeroizing<Scalar>, ViewPair), SendError> {
+    let raw = Zeroizing::new(hex::decode(private)?);
     if raw.len() != 64 {
-        return Err("Monero signing identity must contain spend and view keys".into());
+        return Err(SendError::Invalid(
+            "Monero signing identity must contain spend and view keys".into(),
+        ));
     }
-    let spend = Scalar::read(&mut &raw[..32]).map_err(|e| e.to_string())?;
-    let view = Scalar::read(&mut &raw[32..]).map_err(|e| e.to_string())?;
+    let spend = Scalar::read(&mut &raw[..32]).map_err(SendError::invalid)?;
+    let view = Scalar::read(&mut &raw[32..]).map_err(SendError::invalid)?;
     let spend_point = curve25519_dalek::constants::ED25519_BASEPOINT_TABLE * &spend.into();
     Ok((
         Zeroizing::new(spend),
-        ViewPair::new(Point::from(spend_point), Zeroizing::new(view)).map_err(|e| e.to_string())?,
+        ViewPair::new(Point::from(spend_point), Zeroizing::new(view))
+            .map_err(SendError::invalid)?,
     ))
 }
 
@@ -100,10 +106,15 @@ pub(crate) async fn scan(
     rpc: &Daemon,
     private: &str,
     batch: u32,
-) -> Result<(), String> {
+) -> Result<(), SendError> {
     let (spend, pair) = keys(private)?;
-    let target = rpc.latest_block_number().await.map_err(|e| e.to_string())? as u64;
-    wallet.target_height = target.checked_add(1).ok_or("Monero height overflow")?;
+    let target = rpc
+        .latest_block_number()
+        .await
+        .map_err(SendError::invalid)? as u64;
+    wallet.target_height = target
+        .checked_add(1)
+        .ok_or_else(|| SendError::Invalid("Monero height overflow".into()))?;
     if wallet.last_hash.is_some() && wallet.next_height > wallet.target_height {
         wallet.outputs.clear();
         wallet.transfers.clear();
@@ -115,7 +126,7 @@ pub(crate) async fn scan(
         let previous = rpc
             .scannable_block_by_number((wallet.next_height - 1) as usize)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(SendError::invalid)?;
         if Some(previous.block.hash()) != wallet.last_hash {
             wallet.outputs.clear();
             wallet.transfers.clear();
@@ -125,7 +136,9 @@ pub(crate) async fn scan(
         }
     }
     if wallet.next_height > wallet.target_height {
-        return Err("Monero restore height is ahead of the chain".into());
+        return Err(SendError::Invalid(
+            "Monero restore height is ahead of the chain".into(),
+        ));
     }
     let end = wallet
         .next_height
@@ -137,7 +150,7 @@ pub(crate) async fn scan(
     let blocks = rpc
         .contiguous_scannable_blocks(wallet.next_height as usize..=(end - 1) as usize)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(SendError::invalid)?;
     let mut scanner = Scanner::new(pair);
     for block in blocks {
         let height = block.block.number() as u64;
@@ -146,7 +159,9 @@ pub(crate) async fn scan(
                 .last_hash
                 .is_some_and(|hash| hash != block.block.header.previous)
         {
-            return Err("Monero scan chain is discontinuous".into());
+            return Err(SendError::Invalid(
+                "Monero scan chain is discontinuous".into(),
+            ));
         }
         let hash = block.block.hash();
         wallet.timestamps.push(block.block.header.timestamp);
@@ -165,15 +180,12 @@ pub(crate) async fn scan(
                         .iter()
                         .find(|o| o.key_image == image && !o.spent)
                     {
-                        let output = WalletOutput::read(
-                            &mut hex::decode(&output.encoded)
-                                .map_err(|e| e.to_string())?
-                                .as_slice(),
-                        )
-                        .map_err(|e| e.to_string())?;
+                        let output =
+                            WalletOutput::read(&mut hex::decode(&output.encoded)?.as_slice())
+                                .map_err(SendError::invalid)?;
                         debit = debit
                             .checked_add(output.commitment().amount)
-                            .ok_or("Monero debit overflow")?;
+                            .ok_or_else(|| SendError::Invalid("Monero debit overflow".into()))?;
                     }
                 }
             }
@@ -199,7 +211,7 @@ pub(crate) async fn scan(
             .collect();
         for output in scanner
             .scan(block)
-            .map_err(|e| e.to_string())?
+            .map_err(SendError::invalid)?
             .ignore_additional_timelock()
         {
             let offset: curve25519_dalek::scalar::Scalar = output.key_offset().into();
@@ -209,7 +221,7 @@ pub(crate) async fn scan(
                 Point::biased_hash(output.key().compress().to_bytes()).into();
             let image = hex::encode((point * *scalar).compress().to_bytes());
             if wallet.outputs.iter().any(|o| o.key_image == image) {
-                return Err("Duplicate Monero output".into());
+                return Err(SendError::Invalid("Duplicate Monero output".into()));
             }
             let entry = transfers
                 .entry(hex::encode(output.transaction()))
@@ -217,7 +229,7 @@ pub(crate) async fn scan(
             entry.0 = entry
                 .0
                 .checked_add(output.commitment().amount)
-                .ok_or("Monero credit overflow")?;
+                .ok_or_else(|| SendError::Invalid("Monero credit overflow".into()))?;
             wallet.outputs.push(LocalOutput {
                 encoded: hex::encode(output.serialize()),
                 key_image: image,
@@ -242,7 +254,7 @@ pub(crate) async fn scan(
                     debit
                         .checked_sub(credit)
                         .and_then(|n| n.checked_sub(fee))
-                        .ok_or("Invalid Monero net amount")?
+                        .ok_or_else(|| SendError::Invalid("Invalid Monero net amount".into()))?
                 },
                 fee_piconeros: if debit > 0 { fee } else { 0 },
             });
@@ -281,29 +293,31 @@ pub(crate) async fn prepare(
     amount: u64,
     encryption_key: &[u8],
     priority: u32,
-) -> Result<PreparedMoneroTransaction, String> {
+) -> Result<PreparedMoneroTransaction, SendError> {
     let chain = wallet.chain_id;
     let network = match chain.monero_network_name()? {
         "mainnet" => Network::Mainnet,
         "stagenet" => Network::Stagenet,
-        _ => return Err("Unsupported Monero network".into()),
+        _ => return Err(SendError::Invalid("Unsupported Monero network".into())),
     };
     let recipient_address =
-        MoneroAddress::from_str(network, recipient).map_err(|e| e.to_string())?;
+        MoneroAddress::from_str(network, recipient).map_err(SendError::invalid)?;
     if wallet.next_height < wallet.target_height {
-        return Err("Monero local wallet must finish syncing before building".into());
+        return Err(SendError::Invalid(
+            "Monero local wallet must finish syncing before building".into(),
+        ));
     }
     let fee_priority = match priority {
         1 => FeePriority::Unimportant,
         2 => FeePriority::Normal,
         3 => FeePriority::Elevated,
         4 => FeePriority::Priority,
-        _ => return Err("Invalid Monero priority".into()),
+        _ => return Err(SendError::Invalid("Invalid Monero priority".into())),
     };
     let fee_rate = rpc
         .fee_rate(fee_priority, 1_000_000_000)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(SendError::invalid)?;
     let mut candidates = wallet.unlocked()?;
     candidates.sort_by_key(|o| o.commitment().amount);
     let mut inputs = Vec::new();
@@ -315,13 +329,13 @@ pub(crate) async fn prepare(
             .outputs
             .iter()
             .find(|o| o.encoded == hex::encode(output.serialize()))
-            .ok_or("Missing Monero output")?
+            .ok_or_else(|| SendError::Invalid("Missing Monero output".into()))?
             .key_image
             .clone();
         inputs.push(
             OutputWithDecoys::new(&mut rng, rpc, 16, (wallet.next_height - 1) as usize, output)
                 .await
-                .map_err(|e| e.to_string())?,
+                .map_err(SendError::invalid)?,
         );
         images.push(image);
         match SignableTransaction::new(
@@ -343,7 +357,7 @@ pub(crate) async fn prepare(
                     inputs: images.clone(),
                     encoded: hex::encode(plan.serialize()),
                 };
-                let json = Zeroizing::new(serde_json::to_vec(&private).map_err(|e| e.to_string())?);
+                let json = Zeroizing::new(serde_json::to_vec(&private)?);
                 let encrypted = crate::store::seed_envelope::encrypt(&json, encryption_key)?;
                 return Ok(PreparedMoneroTransaction {
                     sender: wallet.sender.clone(),
@@ -351,14 +365,16 @@ pub(crate) async fn prepare(
                     amount,
                     fee,
                     input_key_images: images,
-                    encrypted_plan: String::from_utf8(encrypted).map_err(|e| e.to_string())?,
+                    encrypted_plan: String::from_utf8(encrypted).map_err(SendError::invalid)?,
                 });
             }
             Err(monero_wallet::send::SendError::NotEnoughFunds { .. }) => continue,
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err(SendError::Internal(e.to_string())),
         }
     }
-    Err("Insufficient unlocked Monero funds".into())
+    Err(SendError::InsufficientFunds(
+        "Insufficient unlocked Monero funds".into(),
+    ))
 }
 
 impl PreparedMoneroTransaction {
@@ -367,22 +383,22 @@ impl PreparedMoneroTransaction {
         private: &str,
         encryption_key: &[u8],
         wallet: &LocalWallet,
-    ) -> Result<(String, String), String> {
+    ) -> Result<(String, String), SendError> {
         let json = Zeroizing::new(crate::store::seed_envelope::decrypt(
             self.encrypted_plan.as_bytes(),
             encryption_key,
         )?);
-        let plan: PrivatePlan = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        let plan: PrivatePlan = serde_json::from_str(&json)?;
         if plan.sender != self.sender
             || plan.recipient != self.recipient
             || plan.amount != self.amount
             || plan.fee != self.fee
             || plan.inputs != self.input_key_images
         {
-            return Err("Monero reviewed content changed".into());
+            return Err(SendError::Invalid("Monero reviewed content changed".into()));
         }
         if wallet.sender != self.sender {
-            return Err("Monero sender mismatch".into());
+            return Err(SendError::Invalid("Monero sender mismatch".into()));
         }
         let unlocked = wallet.unlocked()?;
         for image in &self.input_key_images {
@@ -393,19 +409,21 @@ impl PreparedMoneroTransaction {
                         .iter()
                         .any(|u| hex::encode(u.serialize()) == o.encoded)
             }) {
-                return Err("Monero input spent or unavailable; sync and rebuild".into());
+                return Err(SendError::Invalid(
+                    "Monero input spent or unavailable; sync and rebuild".into(),
+                ));
             }
         }
-        let raw = Zeroizing::new(hex::decode(&plan.encoded).map_err(|e| e.to_string())?);
+        let raw = Zeroizing::new(hex::decode(&plan.encoded)?);
         let mut reader = raw.as_slice();
-        let plan = SignableTransaction::read(&mut reader).map_err(|e| e.to_string())?;
+        let plan = SignableTransaction::read(&mut reader).map_err(SendError::invalid)?;
         if !reader.is_empty() {
-            return Err("Trailing data in Monero plan".into());
+            return Err(SendError::Invalid("Trailing data in Monero plan".into()));
         }
         let (spend, _) = keys(private)?;
         let transaction = plan
             .sign(&mut rand::rngs::OsRng, &spend)
-            .map_err(|e| e.to_string())?;
+            .map_err(SendError::invalid)?;
         Ok((
             hex::encode(transaction.serialize()),
             hex::encode(transaction.hash()),

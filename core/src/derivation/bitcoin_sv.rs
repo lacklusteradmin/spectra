@@ -1,6 +1,8 @@
 //! Bitcoin SV: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
 //! base58check encoding.
 
+use crate::derivation::error::DerivationError;
+
 // ── Address validation ───────────────────────────────────────────────────
 
 /// BSV network encoded in the address version byte. Validation and output
@@ -40,16 +42,17 @@ impl BsvNetwork {
 /// The network comes back with the hash because the caller always needs it:
 /// two addresses in one transaction have to agree about which chain they are
 /// on, and the hash alone cannot say.
-pub(crate) fn decode_bsv_address(address: &str) -> Result<([u8; 20], BsvNetwork), String> {
+pub(crate) fn decode_bsv_address(address: &str) -> Result<([u8; 20], BsvNetwork), DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("invalid bsv address: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid bsv address: {e}")))?;
     if decoded.len() != 21 {
-        return Err("bsv address wrong length".to_string());
+        return Err(DerivationError::Invalid("bsv address wrong length".into()));
     }
-    let network = BsvNetwork::of_version(decoded[0])
-        .ok_or_else(|| format!("unexpected bsv version byte: 0x{:02x}", decoded[0]))?;
+    let network = BsvNetwork::of_version(decoded[0]).ok_or_else(|| {
+        DerivationError::Invalid(format!("unexpected bsv version byte: 0x{:02x}", decoded[0]))
+    })?;
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);
     Ok((hash, network))

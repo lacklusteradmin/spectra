@@ -140,7 +140,7 @@ impl WalletService {
                 _ => None,
             };
             if chain_id.is_some_and(|s| Some(s).is_none()) {
-                return Err("unknown diagnostic chain".into());
+                return Err(SpectraBridgeError::failure("unknown diagnostic chain"));
             }
             let result = this
                 .mutate_persisted_state(move |state| {
@@ -266,8 +266,9 @@ impl WalletService {
                     })
                     .collect(),
             };
-            crate::diagnostics::diagnostics_bundle_to_json(payload)
-                .ok_or_else(|| "The diagnostics bundle could not be serialized".into())
+            crate::diagnostics::diagnostics_bundle_to_json(payload).ok_or_else(|| {
+                SpectraBridgeError::failure("The diagnostics bundle could not be serialized")
+            })
         })
         .await
     }
@@ -523,7 +524,9 @@ impl WalletService {
                 let endpoints = this.configured_endpoint_urls(chain).await;
                 let rpc = endpoints
                     .first()
-                    .ok_or("No RPC configured for this network")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("No RPC configured for this network")
+                    })?
                     .clone();
                 results.extend(
                     self_tests_run_evm_rpc(chain.str_id().into(), rpc.clone(), rpc.clone()).await,

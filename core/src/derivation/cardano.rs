@@ -10,6 +10,8 @@
 //!   payment key hash) bech32-encoded under HRP `addr` (mainnet) or
 //!   `addr_test` (Cardano Preprod testnet).
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::resolve_bip39_language;
 use bip39::Mnemonic;
 use pbkdf2::pbkdf2_hmac;
@@ -19,16 +21,16 @@ use zeroize::Zeroizing;
 // ── Address validation + decoding (preserved) ────────────────────────────
 
 // Decode a Cardano address: bech32 for Shelley (addr1/addr_test1), base58check for Byron.
-pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, DerivationError> {
     if address.starts_with("addr1") || address.starts_with("addr_test1") {
         bech32::decode(address)
             .map(|(_, data)| data)
-            .map_err(|e| format!("cardano bech32 decode: {e}"))
+            .map_err(|e| DerivationError::Invalid(format!("cardano bech32 decode: {e}")))
     } else {
         let decoded = bs58::decode(address)
             .with_check(None)
             .into_vec()
-            .map_err(|e| format!("cardano base58 decode: {e}"))?;
+            .map_err(|e| DerivationError::Invalid(format!("cardano base58 decode: {e}")))?;
         Ok(decoded)
     }
 }
@@ -36,7 +38,7 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String
 // ── BIP-32 path parsing ──────────────────────────────────────────────────
 
 // Parse a BIP-32 derivation path string into a list of child index integers (hardened or soft).
-fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
+fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, DerivationError> {
     let trimmed = path.trim();
     let body = trimmed
         .strip_prefix("m/")
@@ -61,11 +63,13 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
         } else {
             (seg, false)
         };
-        let raw: u32 = digits
-            .parse()
-            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
+        let raw: u32 = digits.parse().map_err(|_| {
+            DerivationError::Invalid(format!("Invalid derivation path segment: {segment}"))
+        })?;
         if raw & 0x8000_0000 != 0 {
-            return Err(format!("Derivation path segment out of range: {segment}"));
+            return Err(DerivationError::Invalid(format!(
+                "Derivation path segment out of range: {segment}"
+            )));
         }
         out.push(if hardened { raw | 0x8000_0000 } else { raw });
     }
@@ -81,7 +85,7 @@ pub(crate) fn derive_cardano_icarus_material(
     mnemonic_wordlist: Option<&str>,
     iteration_count: u32,
     derivation_path: Option<&str>,
-) -> Result<([u8; 32], [u8; 32]), String> {
+) -> Result<([u8; 32], [u8; 32]), DerivationError> {
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
     use curve25519_dalek::scalar::Scalar as DalekScalar;
 
@@ -121,7 +125,7 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
     passphrase: &str,
     wordlist: Option<&str>,
     iteration_count: u32,
-) -> Result<Zeroizing<[u8; 96]>, String> {
+) -> Result<Zeroizing<[u8; 96]>, DerivationError> {
     // CIP-3 Icarus / CIP-1852 root:
     //   entropy = BIP-39 entropy decoded from the mnemonic (not the PBKDF2
     //             seed; Daedalus uses a different legacy scheme)
@@ -132,7 +136,8 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
     //   Then clamp per Khovratovich-Law so kL is a valid ed25519 scalar
     //   multiple of 8 and < 2^254.
     let language = resolve_bip39_language(wordlist)?;
-    let parsed = Mnemonic::parse_in_normalized(language, mnemonic).map_err(|e| e.to_string())?;
+    let parsed =
+        Mnemonic::parse_in_normalized(language, mnemonic).map_err(DerivationError::invalid)?;
     let entropy = Zeroizing::new(parsed.to_entropy());
     let iterations = if iteration_count == 0 {
         4096
@@ -148,7 +153,10 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
 }
 
 // BIP-32-Ed25519 (Khovratovich-Law) one-step child key derivation from a 96-byte xprv.
-fn cardano_icarus_derive_child(xprv: &[u8; 96], index: u32) -> Result<Zeroizing<[u8; 96]>, String> {
+fn cardano_icarus_derive_child(
+    xprv: &[u8; 96],
+    index: u32,
+) -> Result<Zeroizing<[u8; 96]>, DerivationError> {
     // BIP-32-Ed25519 (Khovratovich-Law) child key derivation.
     //   xprv = kL (32) || kR (32) || chain_code (32)
     //   hardened (i >= 2^31):
@@ -227,7 +235,7 @@ fn cardano_icarus_derive_child(xprv: &[u8; 96], index: u32) -> Result<Zeroizing<
 pub(crate) fn derive_cardano_shelley_enterprise_address(
     public_key: &[u8; 32],
     is_mainnet: bool,
-) -> Result<String, String> {
+) -> Result<String, DerivationError> {
     use blake2::Blake2b;
     use blake2::digest::Digest;
     use blake2::digest::consts::U28;
@@ -245,8 +253,8 @@ pub(crate) fn derive_cardano_shelley_enterprise_address(
     payload.extend_from_slice(&payment_hash);
 
     let hrp_str = if is_mainnet { "addr" } else { "addr_test" };
-    let hrp = bech32::Hrp::parse(hrp_str).map_err(|e| e.to_string())?;
-    bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(|e| e.to_string())
+    let hrp = bech32::Hrp::parse(hrp_str).map_err(DerivationError::invalid)?;
+    bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(DerivationError::invalid)
 }
 
 // Derive Cardano address, public key, and private key from a mnemonic via CIP-3 Icarus + BIP-32-Ed25519.
@@ -258,7 +266,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let (private_key, public_key) = derive_cardano_icarus_material(
         seed_phrase,
         passphrase.unwrap_or(""),

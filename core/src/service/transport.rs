@@ -41,13 +41,15 @@ impl WalletService {
                         crate::tor::TorStatus::Bootstrapping { .. } => {
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await
                         }
-                        crate::tor::TorStatus::Error { message } => return Err(message.into()),
+                        crate::tor::TorStatus::Error { message } => {
+                            return Err(SpectraBridgeError::Network { message });
+                        }
                         _ => return Ok(()),
                     }
                 }
             })
             .await
-            .map_err(|_| SpectraBridgeError::from("Tor bootstrap timed out"))?
+            .map_err(|_| SpectraBridgeError::failure("Tor bootstrap timed out"))?
         })
         .await
     }

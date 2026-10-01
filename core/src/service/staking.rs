@@ -15,7 +15,7 @@ impl WalletService {
             StakingService::new(vec![endpoints])
                 .fetch_validators(chain_id)
                 .await
-                .map_err(|e| SpectraBridgeError::from(e.to_string()))
+                .map_err(SpectraBridgeError::failure)
         })
         .await
     }
@@ -47,7 +47,9 @@ impl WalletService {
             .as_ref()
             .clone();
         if endpoints.is_empty() {
-            return Err("No staking endpoints configured".into());
+            return Err(SpectraBridgeError::failure(
+                "No staking endpoints configured",
+            ));
         }
         Ok(ChainEndpoints {
             capabilities: vec![EndpointCapability::Staking],
@@ -65,22 +67,24 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|w| w.id == wallet_id)
-                .ok_or_else(|| SpectraBridgeError::from("Wallet not found"))?;
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet not found"))?;
             let chain = wallet.chain_id;
             let address = wallet
                 .address_on(chain)
-                .ok_or_else(|| SpectraBridgeError::from("Wallet has no staking address"))?
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet has no staking address"))?
                 .to_string();
             (chain, address)
         };
         let endpoints = self.staking_endpoints(chain).await?;
         if !crate::send::flow::is_valid_send_address(chain, address.clone()) {
-            return Err("Invalid staking wallet address".into());
+            return Err(SpectraBridgeError::failure(
+                "Invalid staking wallet address",
+            ));
         }
         StakingService::new(vec![endpoints])
             .fetch_positions(chain, address)
             .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))
+            .map_err(SpectraBridgeError::failure)
     }
 }
 

@@ -1,4 +1,6 @@
 //! Durable, secret-free transaction artifacts. Protocol fields stay typed.
+
+use crate::send::error::SendError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +125,7 @@ pub(crate) struct StoredSend {
 }
 
 impl StoredSend {
-    pub fn digest(&self) -> Result<String, String> {
+    pub fn digest(&self) -> Result<String, SendError> {
         use sha2::Digest;
         let bytes = serde_json::to_vec(&(
             &self.request,
@@ -134,37 +136,38 @@ impl StoredSend {
             &self.view.signing_payload_hex,
             &self.view.asset,
             &self.view.review,
-        ))
-        .map_err(|e| e.to_string())?;
+        ))?;
         Ok(hex::encode(sha2::Sha256::digest(bytes)))
     }
-    pub fn submission_digest(&self) -> Result<Option<String>, String> {
+    pub fn submission_digest(&self) -> Result<Option<String>, SendError> {
         use sha2::Digest;
         self.submission
             .as_ref()
-            .map(|s| {
-                serde_json::to_vec(s)
-                    .map(|bytes| hex::encode(sha2::Sha256::digest(bytes)))
-                    .map_err(|e| e.to_string())
-            })
+            .map(|s| serde_json::to_vec(s).map(|bytes| hex::encode(sha2::Sha256::digest(bytes))))
             .transpose()
+            .map_err(SendError::invalid)
     }
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), SendError> {
         if self.request.password.is_some() || self.digest()? != self.view.review_digest {
-            return Err("Prepared transaction was altered; build and review again".into());
+            return Err(SendError::Invalid(
+                "Prepared transaction was altered; build and review again".into(),
+            ));
         }
         if self.request.wallet_id != self.view.wallet_id
             || self.request.chain_id != self.view.chain_id
             || self.request.to_address != self.view.recipient
             || self.request.amount_str != self.view.amount
         {
-            return Err("Transaction identity was altered".into());
+            return Err(SendError::Invalid(
+                "Transaction identity was altered".into(),
+            ));
         }
-        if self.view.prepared_details
-            != serde_json::to_string_pretty(&self.prepared).map_err(|e| e.to_string())?
+        if self.view.prepared_details != serde_json::to_string_pretty(&self.prepared)?
             || self.submission_digest()? != self.signed_digest
         {
-            return Err("Transaction artifact content was altered".into());
+            return Err(SendError::Invalid(
+                "Transaction artifact content was altered".into(),
+            ));
         }
         match (&self.submission, &self.view.stage) {
             (None, SendStage::Prepared)
@@ -172,7 +175,11 @@ impl StoredSend {
             (Some(signed), SendStage::Signed)
                 if self.view.signed_payload.as_ref() == Some(&signed.payload)
                     && self.view.transaction_hash == signed.transaction_hash => {}
-            _ => return Err("Transaction stage does not match its signed content".into()),
+            _ => {
+                return Err(SendError::Invalid(
+                    "Transaction stage does not match its signed content".into(),
+                ));
+            }
         }
         Ok(())
     }

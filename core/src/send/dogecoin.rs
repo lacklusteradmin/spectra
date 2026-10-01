@@ -1,5 +1,7 @@
 //! Dogecoin send: the P2PKH signer. Broadcast goes through `api::utxo`.
 
+use crate::send::error::SendError;
+
 use super::bitcoin_wire::p2pkh_script;
 
 use super::bitcoin_wire::{
@@ -22,12 +24,12 @@ pub fn sign_doge_p2pkh(
     change_address: &str,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
     let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let pubkey_bytes = pubkey.serialize(); // compressed
 
@@ -48,7 +50,7 @@ pub fn sign_doge_p2pkh(
     for (txid, vout, _, script_pubkey) in utxos {
         let preimage = build_sighash_preimage(utxos, *vout, txid, script_pubkey, &outputs, 1)?;
         let hash = dsha256(&preimage);
-        let msg = Message::from_digest_slice(&hash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&hash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(0x01); // SIGHASH_ALL
@@ -67,7 +69,7 @@ fn build_sighash_preimage(
     _script_pubkey: &[u8],
     outputs: &[(Vec<u8>, u64)],
     sighash_type: u32,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let mut raw = Vec::new();
     // version
     raw.extend_from_slice(&1u32.to_le_bytes());

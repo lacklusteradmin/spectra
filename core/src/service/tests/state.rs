@@ -751,7 +751,7 @@ async fn failed_open_does_not_publish_and_can_retry_seeding() {
         let path = database();
         let db = crate::wallet_db::WalletDatabase::new(&path);
         db.with_connection(|conn| {
-            conn.execute_batch("CREATE TRIGGER reject_seed BEFORE INSERT ON app_state_meta WHEN NEW.key = 'token_preferences' BEGIN SELECT RAISE(FAIL, 'seed blocked'); END;").map_err(|e| e.to_string())
+            conn.execute_batch("CREATE TRIGGER reject_seed BEFORE INSERT ON app_state_meta WHEN NEW.key = 'token_preferences' BEGIN SELECT RAISE(FAIL, 'seed blocked'); END;").map_err(crate::wallet_db::error::DbError::from)
         }).unwrap();
         assert!(
             s.open_state(path.clone())

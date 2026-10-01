@@ -16,6 +16,229 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-30 — A blank wallet password is refused, not read as "no password"
+
+- **Before:** `store_seed_phrase`, `store_private_key` and `load_material`
+  in `core/src/store/wallet_secrets.rs` read a password with
+  `password.map(str::trim).filter(|p| !p.is_empty())`. `Some("   ")`, a
+  caller asking for a password, became `None`, which is the explicit choice of
+  none. `SPECTRA_PASSWORD="   " spectra wallet import` or an empty
+  `--password-file` stored the phrase unsealed, exited 0, and
+  `wallet export --yes` then printed it without a password.
+  `WalletImportCommit::signing` recorded such a wallet as not
+  password-protected. `validate_wallet_password` accepted a whitespace-only
+  password and confirmation as "no password", and the iOS import form then
+  sent that `Some("   ")` to core.
+- **After:**
+  - Only `None` stores material unsealed. A `Some` password that is blank
+    after trimming fails with `WalletSecretError::EmptyPassword` when storing
+    and when reading.
+  - `import_wallets` refuses a blank password as `InvalidInput`, before
+    planning, deriving or storing. The CLI exits 3 and stores no wallet and
+    no secret.
+  - `signing()` reports password protection as `password.is_some()`.
+  - `validate_wallet_password` treats only two empty fields as "no password".
+    A whitespace-only one is `TooShort`, so the iOS form blocks it and sends
+    `nil` only for an empty field.
+  - `--no-password` is the only way the CLI asks for an unsealed wallet.
+- **Why:** funds and keys take the stricter side. Collapsing "a password
+  that is blank" into "no password" turned a malformed request for a seal
+  into plaintext key storage. `seal` already refused an empty password, and
+  the store functions bypassed that refusal.
+- **CLI check:**
+  `SPECTRA_SEED="abandon … about" SPECTRA_PASSWORD="   " spectra --data-dir "$(mktemp -d)" --json wallet import --chain bitcoin`
+  exits 3 with `"password cannot be empty"`, and `wallet list` in that data
+  directory is empty. `scripts/cli-acceptance.sh` asserts this for a seed
+  import, `wallet new --password-file /dev/null` and a private-key import,
+  and checks that no secret file is written. `scripts/cli-wallets.py` asserts
+  `check-password` rejects a whitespace-only password as `tooShort`. Unit
+  tests:
+  - `store::wallet_secrets::tests::a_blank_password_stores_nothing_rather_than_storing_unsealed`
+  - `store::wallet_secrets::tests::a_blank_password_is_refused_when_reading`
+  - `store::tests::wallet_import::a_blank_password_is_refused_rather_than_stored_unsealed`
+  - `validation::password_verdict_tests`
+- **Verification:** `make verify`. `cargo fmt --check` and clippy at
+  `-D warnings` are clean. `cargo test --workspace` passes (873 core tests).
+  `scripts/cli-acceptance.sh` reports 457 passed, including
+  `cli-wallets.py`. `xcodebuild test` ran 95 tests with 1 failure:
+  `PresentationCatalogTests.testTestnetSymbolsKeepTheirLowercasePrefix`
+  expects `tBTC` for Bitcoin Signet, but `core/data/chain-ui.toml` gives
+  `sBTC`. That failure comes from existing data and is unrelated to this
+  change.
+
+## 2026-09-30 — Core errors are typed per layer; a bare string no longer becomes a bridge error
+
+- **Before:** about 500 core functions returned `Result<_, String>`.
+  `SpectraBridgeError` had `From<String>` and `From<&str>`, both mapping to
+  `Failure`, so a timeout, a malformed provider answer, a node refusing a
+  broadcast and a bad derivation path all reached Swift and the CLI as the
+  same variant. Examples:
+  - A UTXO shortfall surfaced as the literal key `utxo.insufficientFunds`,
+    which nothing localized.
+  - Sealing a wallet with an empty password reported "stored secret is
+    corrupt".
+  - `api/http.rs` carried two request paths: `HttpClient` returned `String`,
+    and `http_request`/`http_post_json` returned an `HttpError`. The second
+    was left over from an FFI export that no longer existed.
+  - The endpoint catalog's load error was cached and returned to every
+    caller, including a settings screen that displayed it.
+- **After:**
+  - Each layer has its own error: `ApiError`, `DerivationError`, `SendError`,
+    `DbError`, `RegistryError`, `EnvelopeError` and `WalletSecretError`.
+  - Each converts into the `SpectraBridgeError` variant that fits it. For
+    example, a transport failure becomes `Network`, a shape mismatch becomes
+    `Decode`, and a refused path, amount or address becomes `InvalidInput`.
+  - `From<String>` and `From<&str>` are gone.
+  - A UTXO shortfall is `SendError::InsufficientFunds` ("Insufficient funds
+    for the amount plus the network fee."). An empty password is
+    `WalletSecretError::EmptyPassword`.
+  - HTTP has one retry loop:
+    - A non-2xx answer other than 429/5xx is `ApiError::Status`, displayed as
+      "HTTP 404: body" instead of "HTTP 404 Not Found: body".
+    - The Koios submit and the diagnostics EVM probe use `HttpClient`. The
+      probe now goes through `EvmClient`, so an RPC error object fails it.
+  - Registry lookups name the chain ("ethereum is not a Monero network").
+  - The endpoint catalog panics on first use when the embedded file is
+    broken, like the chain and token catalogs.
+  - FFI renames: `chain_endpoints` → `endpoint_settings` (no longer throws);
+    `AppCoreChainEndpoints` → `ChainEndpointSettings` (its field
+    `grouped_settings` → `groups`); `AppCoreGroupedSettingsEntry` →
+    `EndpointSettingsGroup`; `AppCoreEndpointRecord` → `EndpointRecord`.
+  - `HttpError`, `HttpHeader`, `HttpResponse`, `HttpTextResponse` and
+    `HttpRetryProfile` are no longer generated.
+  - CLI errors from these layers take their exit code from the same
+    classification: `InvalidInput` exits 3, the rest exit 1.
+- **Why:** callers could not tell "retry later" from "the user typed
+  something wrong" without matching message text, and one of those texts was
+  an untranslated key. Two HTTP stacks answered the same question
+  differently.
+- **CLI check:** none shows every category offline. `scripts/cli-acceptance.sh`
+  runs the retyped paths. The classification is pinned by unit tests:
+  - `api::http::tests::a_client_error_status_is_returned_not_retried`
+  - `send::bitcoin::tests::insufficient_funds_is_reported_the_same_way_pinned_or_selected`
+  - `store::seed_envelope` tamper and nonce tests
+  - `send::icp_stages::tests::signed_envelope_bytes_are_pinned`, which also
+    covers the CBOR library change (`serde_cbor`, unmaintained per
+    RUSTSEC-2021-0127, replaced by `ciborium` with keys in canonical order,
+    byte-identical output)
+- **Verification:** `cargo fmt --check` and
+  `cargo clippy --workspace --all-targets -D warnings` clean;
+  `cargo test --workspace` 871 passed; `scripts/cli-acceptance.sh` 451 passed;
+  `make test-ios` 94 of 95 passed. The one failure,
+  `testTestnetSymbolsKeepTheirLowercasePrefix`, was already failing: Bitcoin
+  Signet's catalog symbol is `sBTC`, and neither the catalog nor the test is
+  touched here.
+
+## 2026-09-30 — One display locale for words and figures; counted strings agree in number
+
+- **Before:** words came from the shipped table for the reader's language, but
+  `AppLocalization.locale` was that bare language (`en`, `zh-Hans`) with no
+  region, while decimal separators and currency formatters used
+  `Locale.current`. The two could disagree in one sentence. Currency names in
+  the picker were twelve hand-kept strings per language. Counted strings always
+  read as plural in English ("1 confirmations", "1 assets"), one built the
+  plural by appending "es" only when the locale identifier started with `en`,
+  and "%lld confirmations" had no Chinese translation at all.
+- **After:** `AppLocalization.locale` is the shipped language with the reader's
+  region, calendar and numbering; `AmountPresentation`, fiat and gas formatters,
+  relative times and percentages all use it. Currency names come from that
+  locale (`localizedString(forCurrencyCode:)`) with the ISO code beside them.
+  `AppLocalization.format(_:count:_:)` reads `<key>#one` for a count of 1,
+  from the same table as `<key>`, so Chinese never borrows the English
+  singular; the counted strings carry both forms and "%lld confirmations" is
+  translated. `scripts/unused-strings.sh` accepts `#one` keys and fails on one
+  whose key is gone.
+- **Why:** a figure and the sentence around it followed different settings, a
+  language table repeated what the system already names, and English grammar
+  was decided by string surgery in one view.
+- **CLI check:** none applies — display formatting is the platform's. The
+  string gate (`scripts/unused-strings.sh`) covers the tables.
+- **Verification:** `scripts/unused-strings.sh` passes; app and test sources
+  type-check with `swiftc` under Swift 6. `make test-ios` could not run: the
+  working tree's `core/src/api/` does not compile (`ApiError` unresolved),
+  independent of this change.
+
+## 2026-09-30 — Refresh events are adopted in the order core sends them
+
+- **Before:** `WalletRefreshObserver` turned every callback into its own
+  unstructured `Task { @MainActor }`. Swift does not order those, so a Tor
+  status could be overwritten by an older one, and a refresh result could land
+  after a later one. The observer held `weak var store` and was
+  `@unchecked Sendable`.
+- **After:** the observer yields each callback onto an `AsyncStream`; one
+  `AppState` task drains it on the main actor, one event at a time. The
+  observer is plainly `Sendable`, and the draining task holds only the stream,
+  so neither it nor core's engine keeps `AppState` alive.
+- **Why:** the last status core reported must be the one shown.
+- **CLI check:** none applies — the observer is the platform's end of the
+  engine. `testCoreRefreshEngineDoesNotKeepAppStateAlive` covers the lifetime.
+- **Verification:** as the entry above.
+
+## 2026-09-30 — A notification the system refuses is logged
+
+- **Before:** price-alert and transaction-status notifications were added with
+  no completion handler, so a refusal vanished; the portfolio-movement one,
+  written separately, logged it.
+- **After:** all three go through one `postNotification` that awaits the add
+  and logs a failure under "Notifications".
+- **Why:** two copies of one platform call had drifted.
+- **CLI check:** none applies — notifications are the platform's.
+- **Verification:** as the first entry above.
+
+## 2026-09-30 — App lock covers sheets and alerts, survives relaunch, and ignores `.inactive`
+
+- **Before:** locking swapped `MainTabView` between two branches of an
+  `if`/`else`, so every lock and unlock destroyed and rebuilt the whole app
+  tree — navigation, scroll positions and an open send were lost. The lock
+  card and the app-switcher cover were overlays inside that tree, so a sheet,
+  alert or confirmation dialog open at the time sat above them (in the
+  snapshot, and after the tree was rebuilt behind a still-presented alert).
+  `.inactive` counted as leaving the app: with Face ID and Auto Lock on, the
+  system's own Face ID sheet for signing, deleting or revealing a seed locked
+  the app behind it, and so did Control Center. A launch never locked, so
+  closing the app from the switcher and reopening it got past Auto Lock.
+- **After:** both covers are shown in a window of their own above the app's
+  (`sceneCover`), so they hide every presentation and the app's tree is never
+  rebuilt; the lock card sits on the Spectra backdrop rather than a blur of the
+  app. Only `.background` locks and reports the app inactive to core's engine;
+  the snapshot cover still appears whenever the scene is not active. A launch
+  starts locked when Face ID and Auto Lock are both on.
+- **Why:** the lock must cover what the app is showing, whatever presented it,
+  and hiding it must not cost the user their place. `.inactive` is not leaving
+  the app, and a relaunch is.
+- **CLI check:** none applies — scene phases, windows and the lock are
+  platform presentation with no core state. Checked by type-checking the app
+  target; the behaviour needs a device or simulator run.
+- **Verification:** `scripts/unused-strings.sh` passes; the app sources
+  type-check with `swiftc` under Swift 6. `make test-ios` could not run: the
+  working tree's `core/src/api/` does not compile (`ApiError` unresolved),
+  independent of this change.
+
+## 2026-09-30 — Pasted seed phrases split on any whitespace
+
+- **Before:** a phrase pasted into one word field of the import grid was split
+  on spaces only, and the funds finder on spaces and tabs, so a phrase copied
+  one word per line landed in a single field.
+- **After:** both split on any whitespace, newlines and the ideographic space
+  included.
+- **Why:** the separator a phrase was copied with is not part of the phrase.
+- **CLI check:** none applies — the grid is platform input; core's
+  `check_seed_phrase` and the CLI take the phrase already split.
+- **Verification:** as the entry above.
+
+## 2026-09-30 — The history diagnostic has no 20-second UI deadline
+
+- **Before:** the chain history diagnostic raced the refresh against a
+  20-second timer in a task group, swallowing the timeout error.
+- **After:** it awaits the refresh; core's HTTP timeouts (10 s connect, 30 s
+  request) bound it.
+- **Why:** the deadline never held. A task group waits for every child, and a
+  UniFFI call does not stop when its Swift task is cancelled, so the action
+  returned when the refresh did either way. Its two strings are gone.
+- **CLI check:** `spectra` runs history refresh without a UI deadline already;
+  nothing changes there.
+- **Verification:** as the first entry above.
+
 ## 2026-09-30 — Token-2022 mints send when their extensions leave the transfer intact
 
 - **Before:** the Solana send refused any Token-2022 mint that had a single

@@ -16,6 +16,8 @@
 //!   3. Base32 alphabet: `qpzry9x8gf2tvdw0s3jn54khce6mua7l`.
 //!   4. Final form: `kaspa:` + base32(payload + checksum).
 
+use crate::derivation::error::DerivationError;
+
 pub(crate) const KASPA_HRP: &str = "kaspa";
 pub(crate) const KASPA_TESTNET_HRP: &str = "kaspatest";
 
@@ -70,7 +72,7 @@ fn checksum(hrp: &str, data: &[u8]) -> [u8; 8] {
 
 /// Convert a byte slice (8-bit groups) to 5-bit groups, big-endian-first.
 /// CashAddr-variant requires this with `pad = true` for encoding.
-fn convert_bits(data: &[u8], from: u32, to: u32, pad: bool) -> Result<Vec<u8>, String> {
+fn convert_bits(data: &[u8], from: u32, to: u32, pad: bool) -> Result<Vec<u8>, DerivationError> {
     let mut acc: u32 = 0;
     let mut bits: u32 = 0;
     let max_v: u32 = (1 << to) - 1;
@@ -79,7 +81,9 @@ fn convert_bits(data: &[u8], from: u32, to: u32, pad: bool) -> Result<Vec<u8>, S
     for &v in data {
         let v = v as u32;
         if v >> from != 0 {
-            return Err(format!("convert_bits: input value out of range: {v}"));
+            return Err(DerivationError::Invalid(format!(
+                "convert_bits: input value out of range: {v}"
+            )));
         }
         acc = ((acc << from) | v) & max_acc;
         bits += from;
@@ -91,12 +95,14 @@ fn convert_bits(data: &[u8], from: u32, to: u32, pad: bool) -> Result<Vec<u8>, S
     if pad && bits > 0 {
         out.push(((acc << (to - bits)) & max_v) as u8);
     } else if !pad && (bits >= from || (acc << (to - bits)) & max_v != 0) {
-        return Err("convert_bits: invalid padding".to_string());
+        return Err(DerivationError::Invalid(
+            "convert_bits: invalid padding".into(),
+        ));
     }
     Ok(out)
 }
 
-fn encode_kaspa_address(version: u8, payload: &[u8], hrp: &str) -> Result<String, String> {
+fn encode_kaspa_address(version: u8, payload: &[u8], hrp: &str) -> Result<String, DerivationError> {
     let mut data = Vec::with_capacity(1 + payload.len());
     data.push(version);
     data.extend_from_slice(payload);
@@ -122,26 +128,31 @@ pub(crate) fn encode_kaspa_schnorr(pubkey_x_only: &[u8; 32]) -> String {
 }
 
 /// Decode a Kaspa address into `(version, payload, is_testnet)`.
-pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool), String> {
+pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool), DerivationError> {
     let lower = address.trim().to_ascii_lowercase();
     let (hrp, body) = lower
         .split_once(':')
-        .ok_or_else(|| "kaspa address missing HRP separator".to_string())?;
+        .ok_or_else(|| DerivationError::Invalid("kaspa address missing HRP separator".into()))?;
     let is_testnet = match hrp {
         KASPA_HRP => false,
         KASPA_TESTNET_HRP => true,
-        other => return Err(format!("unknown kaspa hrp: {other}")),
+        other => {
+            return Err(DerivationError::Invalid(format!(
+                "unknown kaspa hrp: {other}"
+            )));
+        }
     };
     let mut data = Vec::with_capacity(body.len());
     for ch in body.bytes() {
-        let pos = CHARSET
-            .iter()
-            .position(|&c| c == ch)
-            .ok_or_else(|| format!("invalid kaspa base32 char: {}", ch as char))?;
+        let pos = CHARSET.iter().position(|&c| c == ch).ok_or_else(|| {
+            DerivationError::Invalid(format!("invalid kaspa base32 char: {}", ch as char))
+        })?;
         data.push(pos as u8);
     }
     if data.len() < 8 {
-        return Err("kaspa address too short for checksum".to_string());
+        return Err(DerivationError::Invalid(
+            "kaspa address too short for checksum".into(),
+        ));
     }
     let payload5 = &data[..data.len() - 8];
     let checksum_bytes = &data[data.len() - 8..];
@@ -150,25 +161,29 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
     buf.extend_from_slice(payload5);
     buf.extend_from_slice(checksum_bytes);
     if polymod(&buf) != 0 {
-        return Err("kaspa checksum mismatch".to_string());
+        return Err(DerivationError::Invalid("kaspa checksum mismatch".into()));
     }
-    let bytes =
-        convert_bits(payload5, 5, 8, false).map_err(|e| format!("kaspa decode 5→8: {e}"))?;
+    let bytes = convert_bits(payload5, 5, 8, false)
+        .map_err(|e| DerivationError::Invalid(format!("kaspa decode 5→8: {e}")))?;
     if bytes.is_empty() {
-        return Err("kaspa empty payload".to_string());
+        return Err(DerivationError::Invalid("kaspa empty payload".into()));
     }
     let version = bytes[0];
     let payload = bytes[1..].to_vec();
     let expected_len = match version {
         KASPA_VERSION_SCHNORR | KASPA_VERSION_P2SH => 32,
         KASPA_VERSION_ECDSA => 33,
-        v => return Err(format!("unsupported kaspa address version: 0x{v:02x}")),
+        v => {
+            return Err(DerivationError::Invalid(format!(
+                "unsupported kaspa address version: 0x{v:02x}"
+            )));
+        }
     };
     if payload.len() != expected_len {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "kaspa address payload length mismatch: version {version}, got {}, expected {expected_len}",
             payload.len()
-        ));
+        )));
     }
     Ok((version, payload, is_testnet))
 }
@@ -193,7 +208,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;

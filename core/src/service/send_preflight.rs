@@ -206,7 +206,7 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == request.wallet_id)
-            .ok_or("Wallet removed")?;
+            .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
         let normalize_contract =
             |value: Option<String>| crate::tokens::normalize_token_identifier(value, chain);
         let holding = wallet.holdings.iter().find(|h| {
@@ -223,7 +223,8 @@ impl WalletService {
         let warnings = crate::send::flow::evaluate_high_risk_send_reasons(HighRiskSendRequest {
             chain_id: chain,
             symbol: symbol.clone(),
-            amount: crate::decimal::canonical(&request.amount_str).ok_or("Invalid amount")?,
+            amount: crate::decimal::canonical(&request.amount_str)
+                .ok_or_else(|| SpectraBridgeError::failure("Invalid amount"))?,
             holding_amount: holding.map_or_else(|| "0".into(), |h| h.amount.clone()),
             destination_address: request.to_address.clone(),
             destination_input: request.to_address.clone(),

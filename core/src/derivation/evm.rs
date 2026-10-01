@@ -1,6 +1,8 @@
 //! EVM address derivation (keccak256 over uncompressed pubkey) + EIP-55
 //! checksum formatting + address validation.
 
+use crate::derivation::error::DerivationError;
+
 /// EIP-55 mixed-case checksum address.
 pub fn eip55_checksum(addr_bytes: &[u8]) -> String {
     let hex = hex::encode(addr_bytes);
@@ -46,7 +48,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
@@ -75,10 +77,10 @@ pub(crate) fn derive_from_private_key_bytes(
     key_bytes: &[u8; 32],
     want_address: bool,
     want_public_key: bool,
-) -> Result<(Option<String>, Option<String>), String> {
+) -> Result<(Option<String>, Option<String>), DerivationError> {
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(key_bytes).map_err(|e| format!("invalid private key: {e}"))?;
+    let secret_key = SecretKey::from_slice(key_bytes)
+        .map_err(|e| DerivationError::Invalid(format!("invalid private key: {e}")))?;
     let public_key = PublicKey::from_secret_key(&secp, &secret_key);
 
     let address = if want_address {

@@ -1,6 +1,8 @@
 //! Aptos: address validation, BIP-39 + SLIP-10 ed25519 derivation, hex
 //! address encoding
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
@@ -14,7 +16,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, None)?;
     let signing_key = SigningKey::from_bytes(&private_key);

@@ -5,30 +5,40 @@
 //! then RFC 4648 base32 (no padding). Version byte 0x30 = `6 << 3` selects
 //! the G-account address family.
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
 // Decode a Stellar G-account strkey and return the inner 32-byte ed25519 public key.
-pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], String> {
-    let decoded = base32_decode_rfc4648(address.trim())
-        .ok_or_else(|| format!("stellar base32 decode failed: {address}"))?;
+pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], DerivationError> {
+    let decoded = base32_decode_rfc4648(address.trim()).ok_or_else(|| {
+        DerivationError::Invalid(format!("stellar base32 decode failed: {address}"))
+    })?;
     if decoded.len() != 35 {
-        return Err(format!("stellar address wrong length: {}", decoded.len()));
+        return Err(DerivationError::Invalid(format!(
+            "stellar address wrong length: {}",
+            decoded.len()
+        )));
     }
     let version = decoded[0];
     if version != 0x30 {
-        return Err(format!("stellar address wrong version: {version:#x}"));
+        return Err(DerivationError::Invalid(format!(
+            "stellar address wrong version: {version:#x}"
+        )));
     }
     let expected_checksum = crc16_xmodem(&decoded[..33]);
     let observed_checksum = u16::from_le_bytes(
         decoded[33..35]
             .try_into()
-            .map_err(|_| "stellar checksum slice error".to_string())?,
+            .map_err(|_| DerivationError::Invalid("stellar checksum slice error".into()))?,
     );
     if observed_checksum != expected_checksum {
-        return Err("stellar address checksum mismatch".to_string());
+        return Err(DerivationError::Invalid(
+            "stellar address checksum mismatch".into(),
+        ));
     }
     let mut key = [0u8; 32];
     key.copy_from_slice(&decoded[1..33]);
@@ -75,7 +85,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, hmac_key)?;
     let signing_key = SigningKey::from_bytes(&private_key);

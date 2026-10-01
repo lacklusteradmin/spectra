@@ -8,18 +8,19 @@ pub(super) fn validate_execution_amount(
     request: &crate::send::SendExecutionRequest,
 ) -> Result<(), SpectraBridgeError> {
     if !chain.is_evm() && request.evm_overrides.is_some() {
-        return Err("EVM overrides require an EVM network".into());
+        return Err(SpectraBridgeError::failure(
+            "EVM overrides require an EVM network",
+        ));
     }
     if let Some(overrides) = &request.evm_overrides {
         overrides.resolve(chain)?;
     }
     if request.fee_sat == Some(0) {
-        return Err("Fee must be positive".into());
+        return Err(SpectraBridgeError::failure("Fee must be positive"));
     }
     if chain.mainnet_counterpart() == Chain::Ton {
         crate::derivation::ton::parse_ton_address(&request.to_address)
-            .and_then(|a| a.for_network(chain.is_testnet()))
-            .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
+            .and_then(|a| a.for_network(chain.is_testnet()))?;
     }
     if let Some(fee) = &request.fee_amount {
         crate::send::payload::fee_units(fee, u32::from(chain.native_decimals()))?;
@@ -66,7 +67,7 @@ impl WalletService {
             // The submission and its record finish even if the UI task is cancelled.
             tokio::spawn(async move { service.execute_send_owned(request, None).await })
                 .await
-                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+                .map_err(SpectraBridgeError::failure)?
         })
         .await
     }
@@ -85,7 +86,7 @@ impl WalletService {
                 .await
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+        .map_err(SpectraBridgeError::failure)?
     }
 
     async fn execute_send_owned(
@@ -109,11 +110,13 @@ impl WalletService {
                 .iter()
                 .find(|w| w.id == request.wallet_id)
                 .and_then(|w| w.address_on(chain))
-                .ok_or("Sending wallet removed")?;
+                .ok_or_else(|| SpectraBridgeError::failure("Sending wallet removed"))?;
             if crate::send::flow::normalize_address(chain, current)
                 != crate::send::flow::normalize_address(chain, &sender)
             {
-                return Err("Sending identity changed; review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "Sending identity changed; review again",
+                ));
             }
             if chain.is_evm()
                 && automatic_nonce
@@ -124,7 +127,9 @@ impl WalletService {
                     .and_then(|n| u64::try_from(n).ok())
                     != Some(self.next_send_nonce(chain, &sender).await?)
             {
-                return Err("Send nonce changed; review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "Send nonce changed; review again",
+                ));
             }
         }
         let prepared = self.build_send(request).await?;
@@ -136,7 +141,9 @@ impl WalletService {
             )
             .await?;
         let stored = self.load_send_artifact(signed.id.clone()).await?;
-        let submission = stored.submission.ok_or("Signed content missing")?;
+        let submission = stored
+            .submission
+            .ok_or_else(|| SpectraBridgeError::failure("Signed content missing"))?;
         let completed = if sign_only {
             signed
         } else {
@@ -147,11 +154,10 @@ impl WalletService {
                 .iter()
                 .any(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
             {
-                return Err(format!(
+                return Err(SpectraBridgeError::failure(format!(
                     "Submission not accepted or uncertain; inspect transaction {} before retrying",
                     completed.id
-                )
-                .into());
+                )));
             }
             completed
         };
@@ -166,9 +172,12 @@ impl WalletService {
                 Some(crate::send::ethereum::EvmSendDetails {
                     txid: hash.clone(),
                     raw_tx_hex: submission.payload.clone(),
-                    nonce: i64::try_from(p.nonce).map_err(|_| "Nonce exceeds supported range")?,
-                    gas_limit: i64::try_from(p.gas_limit)
-                        .map_err(|_| "Gas limit exceeds supported range")?,
+                    nonce: i64::try_from(p.nonce).map_err(|_| {
+                        SpectraBridgeError::failure("Nonce exceeds supported range")
+                    })?,
+                    gas_limit: i64::try_from(p.gas_limit).map_err(|_| {
+                        SpectraBridgeError::failure("Gas limit exceeds supported range")
+                    })?,
                 })
             }
             _ => None,
@@ -213,10 +222,9 @@ pub(crate) fn send_chain_for(
         })?;
     let selected = wallet.chain_id;
     if selected.mainnet_counterpart() == requested.mainnet_counterpart() && selected != requested {
-        return Err(
-            "selected asset network differs from wallet network; select an asset on that network"
-                .into(),
-        );
+        return Err(crate::SpectraBridgeError::failure(
+            "selected asset network differs from wallet network; select an asset on that network",
+        ));
     }
     Ok(requested)
 }
@@ -260,8 +268,8 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "send_execution_audit_tests.rs"]
+#[path = "tests/send_execution_audit.rs"]
 mod audit_execution_tests;
 #[cfg(test)]
-#[path = "send_execution_tests.rs"]
+#[path = "tests/send_execution.rs"]
 mod tests;

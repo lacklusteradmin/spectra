@@ -154,11 +154,29 @@ Use the domain-qualified Rust path (`crate::api::http`, `crate::store::state`,
 re-exports for moved modules. `wallet_db` is a root module owning relational
 storage; `store` owns resident state and wallet-domain rules.
 
-External service unit-test files sit beside their implementation with a topic
-prefix, such as `send_execution_tests.rs`. Declare them as child modules with
-`#[cfg(test)]` and `#[path = "send_execution_tests.rs"]` so tests keep private
-access without widening production visibility. `store/tests/` is the deliberate
-exception to the depth rule: it groups the store's many domain regressions.
+Out-of-line unit tests live in their domain's `tests/` directory, the one
+exception to the depth rule, named after the module they test:
+`service/tests/send_execution.rs`. Declare each as a child of that module with
+`#[cfg(test)]` and `#[path = "tests/send_execution.rs"]` so tests keep private
+access without widening production visibility. Where a domain's tests need only
+crate-visible items, `tests/mod.rs` owns them as one module instead, as in
+`store/tests/` and `wallet_db/tests/`. Crate-root tests use `src/tests/`.
+Integration tests that need their own process sit in `core/tests/`, with shared
+test data in `core/tests/fixtures/`.
+
+Each layer reports failures in its own `thiserror` enum, named in its
+`error.rs`: `api::error::ApiError` (transport, status, decode, rejected, no
+endpoint, invalid input; `fetch` shares it), `derivation::error::DerivationError`,
+`send::error::SendError` (which wraps the first two and adds
+`InsufficientFunds`), `wallet_db::error::DbError` and `registry::RegistryError`.
+Each converts into `SpectraBridgeError` at the FFI, choosing `Network`,
+`Decode`, `InvalidInput` or `Failure` where the error is raised, so the front
+end branches on a variant rather than a message. There is no conversion from a
+bare string: a new error names its category. Functions that take a caller's
+closure, such as `WalletDatabase::with_connection`, are generic over the
+caller's error type (`E: From<DbError>`). Embedded catalogs (`chains`,
+`tokens`, `endpoints`, `explorers`, `donations`) are validated on first use and
+panic when broken, since a broken embedded file is a build defect.
 
 - `api/` owns every request to a chain service and the parsing of its answer:
   one module per `EndpointApi` (`api/esplora.rs`, `api/substrate_json_rpc.rs`,

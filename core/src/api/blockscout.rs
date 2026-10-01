@@ -2,6 +2,7 @@
 //! Blockscout and Routescan serve. EVM nodes cannot index by address, so EVM
 //! history comes from here.
 
+use crate::api::error::ApiError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -42,7 +43,7 @@ pub struct EvmTokenTransferEntry {
 }
 
 /// Build a query for a configured keyless explorer, refusing unavailable history.
-pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<String, String> {
+pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<String, ApiError> {
     match source {
         EvmHistorySource::Open(base) => {
             let base = base.trim_end_matches('/');
@@ -54,20 +55,26 @@ pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<
             };
             Ok(format!("{base}{suffix}?{params}"))
         }
-        EvmHistorySource::Unavailable => {
-            Err("no explorer serves this chain's transaction history".to_string())
-        }
+        EvmHistorySource::Unavailable => Err(ApiError::InvalidInput(
+            "no explorer serves this chain's transaction history".into(),
+        )),
     }
 }
 
 /// Distinguish empty history from explorer refusal by the shape of `result`.
 /// Both can have status "0": an empty array is empty history, while a
 /// non-array result is an error. Do not rely on explorer message wording.
-fn etherscan_result_rows(status: &str, message: &str, result: Value) -> Result<Vec<Value>, String> {
+fn etherscan_result_rows(
+    status: &str,
+    message: &str,
+    result: Value,
+) -> Result<Vec<Value>, ApiError> {
     match result {
         Value::Array(rows) => Ok(rows),
-        _ if status == "1" => Err(format!("explorer returned a non-list result: {message}")),
-        _ => Err(format!("explorer refused: {message}")),
+        _ if status == "1" => Err(ApiError::Decode(format!(
+            "explorer returned a non-list result: {message}"
+        ))),
+        _ => Err(ApiError::Rejected(format!("explorer refused: {message}"))),
     }
 }
 
@@ -94,7 +101,7 @@ impl BlockscoutClient {
         source: EvmHistorySource<'_>,
         page: u32,
         page_size: u32,
-    ) -> Result<Vec<EvmHistoryEntry>, String> {
+    ) -> Result<Vec<EvmHistoryEntry>, ApiError> {
         let addr_lower = address.to_lowercase();
         let page = page.max(1);
         let page_size = page_size.clamp(1, 500);
@@ -132,7 +139,7 @@ impl BlockscoutClient {
         let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
         let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
         let items: Vec<TxItem> = serde_json::from_value(Value::Array(rows))
-            .map_err(|e| format!("history parse: {e}"))?;
+            .map_err(|e| ApiError::Decode(format!("history parse: {e}")))?;
 
         let addr_norm = address.to_lowercase();
 
@@ -142,7 +149,7 @@ impl BlockscoutClient {
                 let status = match (tx.is_error.as_deref(), tx.receipt_status.as_deref()) {
                     (Some("1"), _) | (_, Some("0")) => "failed",
                     (Some("0"), _) | (_, Some("1")) => "confirmed",
-                    _ => return Err("history missing execution status".to_string()),
+                    _ => return Err(ApiError::Decode("history missing execution status".into())),
                 };
                 let fee_wei = tx
                     .gas_price
@@ -175,7 +182,7 @@ impl BlockscoutClient {
         source: EvmHistorySource<'_>,
         page: u32,
         page_size: u32,
-    ) -> Result<Vec<EvmTokenTransferEntry>, String> {
+    ) -> Result<Vec<EvmTokenTransferEntry>, ApiError> {
         let addr_lower = address.to_lowercase();
         let safe_page = page.max(1);
         let safe_size = page_size.clamp(1, 500);
@@ -214,15 +221,16 @@ impl BlockscoutClient {
         let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
 
         let items: Vec<TxItem> = serde_json::from_value(serde_json::Value::Array(rows))
-            .map_err(|e| format!("token transfer parse: {e}"))?;
+            .map_err(|e| ApiError::Decode(format!("token transfer parse: {e}")))?;
 
         items
             .into_iter()
             .map(|tx| {
                 let decimals: u8 = tx.token_decimal.parse().unwrap_or(18);
                 let amount_display =
-                    crate::decimal::from_unit_digits(&tx.value, u32::from(decimals))
-                        .ok_or_else(|| format!("token transfer {}: malformed value", tx.hash))?;
+                    crate::decimal::from_unit_digits(&tx.value, u32::from(decimals)).ok_or_else(
+                        || ApiError::Decode(format!("token transfer {}: malformed value", tx.hash)),
+                    )?;
                 let timestamp =
                     crate::api::time::confirmed_history_time(tx.time_stamp.parse().ok(), &tx.hash)?;
                 Ok(EvmTokenTransferEntry {
@@ -325,10 +333,10 @@ mod every_evm_chain_says_where_its_history_comes_from {
 
     #[test]
     fn history_sources_match_the_concrete_network_directory() {
-        let catalog = crate::app_core::endpoint_catalog().unwrap();
+        let catalog = crate::endpoints::catalog();
         for chain in Chain::all().filter(|chain| chain.is_evm()) {
             if let EvmHistorySource::Open(url) = chain.evm_history_source() {
-                assert!(catalog.endpoint_records.iter().any(|record| {
+                assert!(catalog.records.iter().any(|record| {
                     record.chain_id == chain
                         && record.endpoint == url
                         && record

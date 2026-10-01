@@ -39,7 +39,7 @@ impl WalletService {
             }
         }))
         .await;
-        let mut last_err = SpectraBridgeError::from("no endpoints configured");
+        let mut last_err = SpectraBridgeError::failure("no endpoints configured");
         for result in results {
             match result {
                 Ok(response) => return Ok(response),
@@ -90,7 +90,9 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let blob = val["tx_blob_hex"]
                     .as_str()
-                    .ok_or("broadcast_raw xrp: missing tx_blob_hex")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw xrp: missing tx_blob_hex")
+                    })?
                     .to_string();
                 let client = XrplClient::new(eps);
                 let res = client.submit_signed_blob(&blob).await?;
@@ -100,7 +102,9 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let xdr = val["signed_xdr_b64"]
                     .as_str()
-                    .ok_or("broadcast_raw stellar: missing signed_xdr_b64")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw stellar: missing signed_xdr_b64")
+                    })?
                     .to_string();
                 let client = HorizonClient::new(eps);
                 let res = client.submit_envelope_b64(&xdr).await?;
@@ -110,7 +114,9 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let cbor = val["cbor_hex"]
                     .as_str()
-                    .ok_or("broadcast_raw cardano: missing cbor_hex")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw cardano: missing cbor_hex")
+                    })?
                     .to_string();
                 let client = KoiosClient::new(eps);
                 let res = client.submit_tx(&cbor).await?;
@@ -118,9 +124,9 @@ impl WalletService {
             }
             Api::SubstrateJsonRpc => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let hex = val["extrinsic_hex"]
-                    .as_str()
-                    .ok_or("broadcast_raw substrate: missing extrinsic_hex")?;
+                let hex = val["extrinsic_hex"].as_str().ok_or_else(|| {
+                    SpectraBridgeError::failure("broadcast_raw substrate: missing extrinsic_hex")
+                })?;
                 let client = SubstrateClient::new(eps);
                 Ok(serde_json::to_string(
                     &client.submit_extrinsic_hex(hex).await?,
@@ -130,11 +136,15 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let tx_bytes = val["tx_bytes_b64"]
                     .as_str()
-                    .ok_or("broadcast_raw sui: missing tx_bytes_b64")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw sui: missing tx_bytes_b64")
+                    })?
                     .to_string();
                 let sig = val["sig_b64"]
                     .as_str()
-                    .ok_or("broadcast_raw sui: missing sig_b64")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw sui: missing sig_b64")
+                    })?
                     .to_string();
                 let client = SuiClient::new(eps);
                 let res = client.execute_signed_tx(&tx_bytes, &sig).await?;
@@ -144,7 +154,9 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let body_json = val["signed_body_json"]
                     .as_str()
-                    .ok_or("broadcast_raw aptos: missing signed_body_json")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw aptos: missing signed_body_json")
+                    })?
                     .to_string();
                 let client = AptosClient::new(eps);
                 let res = client.submit_signed_body(&body_json).await?;
@@ -154,7 +166,9 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let boc = val["boc_b64"]
                     .as_str()
-                    .ok_or("broadcast_raw ton: missing boc_b64")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw ton: missing boc_b64")
+                    })?
                     .to_string();
                 let client = ToncenterV2Client::new(eps);
                 let res = client.send_boc(&boc).await?;
@@ -164,7 +178,9 @@ impl WalletService {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
                 let tx_b64 = val["signed_tx_b64"]
                     .as_str()
-                    .ok_or("broadcast_raw near: missing signed_tx_b64")?
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("broadcast_raw near: missing signed_tx_b64")
+                    })?
                     .to_string();
                 let client = NearClient::new(eps);
                 let res = client.broadcast_signed_tx_b64(&tx_b64).await?;
@@ -178,19 +194,23 @@ impl WalletService {
             }
             Api::MoneroDaemonRpc => {
                 use ::monero_wallet::interface::PublishTransaction;
-                let bytes = hex::decode(&payload).map_err(|e| e.to_string())?;
+                let bytes = hex::decode(&payload)?;
                 let mut reader = bytes.as_slice();
                 let tx = ::monero_wallet::transaction::Transaction::read(&mut reader)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(SpectraBridgeError::failure)?;
                 if !reader.is_empty() {
-                    return Err("Trailing data in Monero transaction".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Trailing data in Monero transaction",
+                    ));
                 }
-                let endpoint = eps.first().ok_or("Missing Monero broadcast endpoint")?;
+                let endpoint = eps.first().ok_or_else(|| {
+                    SpectraBridgeError::failure("Missing Monero broadcast endpoint")
+                })?;
                 let daemon = crate::api::monero_daemon_rpc::daemon(endpoint, chain).await?;
                 daemon
                     .publish_transaction(&tx)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(SpectraBridgeError::failure)?;
                 Ok(json!({"txid":hex::encode(tx.hash())}).to_string())
             }
 
@@ -209,7 +229,7 @@ impl WalletService {
                 )?)
             }
 
-            c => Err(SpectraBridgeError::from(format!(
+            c => Err(SpectraBridgeError::failure(format!(
                 "broadcast_raw: chain {c:?} not supported"
             ))),
         }

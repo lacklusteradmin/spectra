@@ -69,6 +69,16 @@ including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
   iOS and cause HTTPS `UnknownIssuer` failures.
 - [docs/IOS-UI.md](docs/IOS-UI.md) is the authority for Liquid Glass,
   typography, color, layout and corner radii.
+- The app targets **iOS 26** (the deployment target in the Xcode project) in
+  the **Swift 6** language mode. Write for that floor with the current idiom:
+  no `#available` checks or fallbacks for older releases, `@Observable` rather
+  than `ObservableObject`/`@Published`, `NavigationStack` rather than
+  `NavigationView`, and async/await rather than completion handlers or GCD
+  unless an API requires a queue. If an iOS 26 API is unfamiliar, check
+  Apple's current documentation rather than falling back to an older pattern.
+- Resolve Swift 6 concurrency diagnostics with correct isolation. Do not add
+  `@unchecked Sendable`, `nonisolated(unsafe)` or `@preconcurrency` to silence
+  one unless the preceding line explains why it is sound.
 
 ## Swift conventions
 

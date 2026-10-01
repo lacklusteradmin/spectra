@@ -15,6 +15,8 @@
 //! wallet_owned_addresses (wallet_id, chain_id, address) → (derivation_path, branch, branch_index)
 //! ```
 
+use crate::wallet_db::error::DbError;
+
 use parking_lot::Mutex;
 use rusqlite::Connection;
 
@@ -37,10 +39,12 @@ impl WalletDatabase {
         &self.path
     }
 
-    pub(crate) fn with_connection<T>(
+    /// Run `f` on the connection, opening it on first use. `f` reports in
+    /// its caller's error type; a failure to open becomes one.
+    pub(crate) fn with_connection<T, E: From<DbError>>(
         &self,
-        f: impl FnOnce(&Connection) -> Result<T, String>,
-    ) -> Result<T, String> {
+        f: impl FnOnce(&Connection) -> Result<T, E>,
+    ) -> Result<T, E> {
         let mut guard = self.connection.lock();
         if guard.is_none() {
             *guard = Some(open_new(&self.path)?);
@@ -49,16 +53,18 @@ impl WalletDatabase {
     }
 }
 
-pub(super) fn with_conn<T>(
+pub(super) fn with_conn<T, E: From<DbError>>(
     database: &WalletDatabase,
-    f: impl FnOnce(&Connection) -> Result<T, String>,
-) -> Result<T, String> {
+    f: impl FnOnce(&Connection) -> Result<T, E>,
+) -> Result<T, E> {
     database.with_connection(f)
 }
 
-fn open_new(database_path: &str) -> Result<Connection, String> {
-    let conn = Connection::open(database_path)
-        .map_err(|e| format!("wallet_db open {database_path}: {e}"))?;
+fn open_new(database_path: &str) -> Result<Connection, DbError> {
+    let conn = Connection::open(database_path).map_err(|source| DbError::Open {
+        path: database_path.to_string(),
+        source,
+    })?;
     conn.create_scalar_function(
         "spectra_lower",
         1,
@@ -66,9 +72,9 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
             | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
         |context| Ok(context.get::<String>(0)?.to_lowercase()),
     )
-    .map_err(|e| format!("wallet_db search function: {e}"))?;
+    .map_err(DbError::from)?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|e| format!("wallet_db busy timeout: {e}"))?;
+        .map_err(DbError::from)?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -169,7 +175,7 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
          CREATE INDEX IF NOT EXISTS idx_ab_chain ON address_book(chain_id);
          CREATE INDEX IF NOT EXISTS idx_ab_order ON address_book(sort_index);",
     )
-    .map_err(|e| format!("wallet_db create tables: {e}"))?;
+    .map_err(DbError::from)?;
     Ok(conn)
 }
 
@@ -179,7 +185,3 @@ pub(crate) fn now_secs() -> i64 {
         .unwrap_or_default()
         .as_secs() as i64
 }
-
-#[cfg(test)]
-#[path = "connection_tests.rs"]
-mod tests;

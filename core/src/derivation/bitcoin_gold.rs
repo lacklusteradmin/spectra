@@ -1,25 +1,29 @@
 //! Bitcoin Gold: address validation, BIP-32 derivation, P2PKH (G…)
 //! base58check encoding
 
+use crate::derivation::error::DerivationError;
+
 // ── Address validation (preserved) ───────────────────────────────────────
 
 pub(crate) const BTG_P2PKH_VERSION: u8 = 0x26;
 pub(crate) const BTG_P2SH_VERSION: u8 = 0x17;
 
 // Base58check-decode a BTG address and return the 20-byte pubkey hash; rejects non-BTG version bytes.
-pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("invalid btg address: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid btg address: {e}")))?;
     if decoded.len() != 21 {
-        return Err("btg legacy payload must be 21 bytes".to_string());
+        return Err(DerivationError::Invalid(
+            "btg legacy payload must be 21 bytes".into(),
+        ));
     }
     if decoded[0] != BTG_P2PKH_VERSION && decoded[0] != BTG_P2SH_VERSION {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "unrecognised btg version byte: 0x{:02x}",
             decoded[0]
-        ));
+        )));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);

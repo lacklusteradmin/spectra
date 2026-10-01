@@ -9,6 +9,8 @@
 //! Mainnet P2PKH addresses use the 2-byte version prefix `0x073F` (the
 //! `Ds…` family). Testnet (`Ts…`) and simnet are out of scope.
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::derive_bip39_seed;
 use ripemd::{Digest as RipemdDigest, Ripemd160};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
@@ -214,19 +216,23 @@ pub(crate) fn dcr_base58check_encode(payload: &[u8]) -> String {
 }
 
 // Decode a Decred base58check string: strip the 4-byte BLAKE-256² checksum and return the payload.
-pub(crate) fn dcr_base58check_decode(input: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn dcr_base58check_decode(input: &str) -> Result<Vec<u8>, DerivationError> {
     let raw = bs58::decode(input)
         .into_vec()
-        .map_err(|e| format!("dcr base58 decode: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("dcr base58 decode: {e}")))?;
     if raw.len() < 5 {
-        return Err("dcr base58check payload too short".to_string());
+        return Err(DerivationError::Invalid(
+            "dcr base58check payload too short".into(),
+        ));
     }
     let split = raw.len() - 4;
     let payload = &raw[..split];
     let checksum = &raw[split..];
     let expected = blake256(&blake256(payload));
     if &expected[..4] != checksum {
-        return Err("dcr base58check checksum mismatch".to_string());
+        return Err(DerivationError::Invalid(
+            "dcr base58check checksum mismatch".into(),
+        ));
     }
     Ok(payload.to_vec())
 }
@@ -241,14 +247,18 @@ pub(crate) fn encode_dcr_p2pkh(pubkey_hash: &[u8; 20]) -> String {
 
 /// Decode a Decred address into its 20-byte pubkey hash. Accepts both `Ds…`
 /// (P2PKH) and `Dc…` (P2SH) forms; the payload is identical.
-pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let payload = dcr_base58check_decode(address)?;
     if payload.len() != 22 {
-        return Err("dcr payload must be 22 bytes (2 version + 20 hash)".to_string());
+        return Err(DerivationError::Invalid(
+            "dcr payload must be 22 bytes (2 version + 20 hash)".into(),
+        ));
     }
     let version = [payload[0], payload[1]];
     if version != DCR_P2PKH_VERSION && version != DCR_P2SH_VERSION {
-        return Err(format!("unrecognised dcr version bytes: {version:02x?}"));
+        return Err(DerivationError::Invalid(format!(
+            "unrecognised dcr version bytes: {version:02x?}"
+        )));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&payload[2..22]);
@@ -262,10 +272,12 @@ pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], String> {
 /// decoder: a derived testnet address failed the app's own validator, which
 /// means the receive screen showed an address the send screen would refuse.
 /// Testnet addresses carry their own version bytes.
-pub(crate) fn decode_decred_testnet_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_decred_testnet_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let decoded = dcr_base58check_decode(address)?;
     if decoded.len() != 22 || [decoded[0], decoded[1]] != DCR_TESTNET_P2PKH_VERSION {
-        return Err("not a decred testnet address".to_string());
+        return Err(DerivationError::Invalid(
+            "not a decred testnet address".into(),
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[2..22]);
@@ -288,7 +300,7 @@ fn derive_secp_keypair(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
-) -> Result<(PublicKey, [u8; 32]), String> {
+) -> Result<(PublicKey, [u8; 32]), DerivationError> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
@@ -306,7 +318,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let (public_key, private_bytes) =
         derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
     let pubkey_hash = dcr_hash160(&public_key.serialize());
@@ -327,7 +339,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let (public_key, private_bytes) =
         derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
     let pubkey_hash = dcr_hash160(&public_key.serialize());
@@ -420,11 +432,11 @@ pub fn derive_decred_from_private_key(
             message: "Private key hex must be exactly 64 characters.".into(),
         });
     }
-    let bytes = hex::decode(trimmed).map_err(|e| e.to_string())?;
+    let bytes = hex::decode(trimmed)?;
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(&bytes);
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
     let public_key = PublicKey::from_secret_key(&secp, &secret_key);
     let hash = dcr_hash160(&public_key.serialize());
     Ok(DerivationResult {

@@ -1,5 +1,7 @@
 //! BCH send: SIGHASH_FORKID P2PKH signer (BIP143-variant).
 
+use crate::send::error::SendError;
+
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::bitcoin_cash::decode_bch_to_hash20;
 
@@ -19,12 +21,12 @@ pub fn sign_bch_tx(
     change_address: &str,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
     let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let pubkey_bytes = pubkey.serialize();
 
@@ -81,7 +83,7 @@ pub fn sign_bch_tx(
         preimage.extend_from_slice(&SIGHASH_ALL_FORKID.to_le_bytes());
 
         let sighash = dsha256(&preimage);
-        let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL_FORKID as u8);

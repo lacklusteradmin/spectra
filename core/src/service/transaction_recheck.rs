@@ -5,20 +5,28 @@ use crate::service::WalletService;
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 
-pub(super) fn recheck_chain(record: &CorePersistedTransactionRecord) -> Result<Chain, String> {
+pub(super) fn recheck_chain(
+    record: &CorePersistedTransactionRecord,
+) -> Result<Chain, SpectraBridgeError> {
     let chain = record.chain_id;
     let PendingStatusPoll::Utxo { require_send_kind } = chain.pending_status_poll() else {
-        return Err("Status recheck is not available for this transaction.".into());
+        return Err(SpectraBridgeError::invalid(
+            "Status recheck is not available for this transaction.",
+        ));
     };
     if require_send_kind && record.kind != crate::store::wallet_domain::CoreTransactionKind::Send {
-        return Err("Status recheck is not available for this transaction.".into());
+        return Err(SpectraBridgeError::invalid(
+            "Status recheck is not available for this transaction.",
+        ));
     }
     let hash = record
         .transaction_hash
         .as_deref()
-        .ok_or("This transaction has no hash to recheck.")?;
+        .ok_or_else(|| SpectraBridgeError::invalid("This transaction has no hash to recheck."))?;
     if hash.len() != 64 || !hash.bytes().all(|c| c.is_ascii_hexdigit()) {
-        return Err("This transaction has no valid hash to recheck.".into());
+        return Err(SpectraBridgeError::invalid(
+            "This transaction has no valid hash to recheck.",
+        ));
     }
     Ok(chain)
 }
@@ -66,8 +74,7 @@ impl WalletService {
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
                 message: "Transaction not found.".into(),
             })?;
-        let chain = recheck_chain(&expected)
-            .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
+        let chain = recheck_chain(&expected)?;
         let status = self
             .fetch_utxo_tx_status(chain, expected.transaction_hash.clone().unwrap())
             .await?;
@@ -75,7 +82,7 @@ impl WalletService {
             .txid
             .eq_ignore_ascii_case(expected.transaction_hash.as_deref().unwrap())
         {
-            return Err(SpectraBridgeError::from(
+            return Err(SpectraBridgeError::failure(
                 "Provider returned a different transaction hash.",
             ));
         }
@@ -84,7 +91,7 @@ impl WalletService {
                 .confirmations
                 .map(u32::try_from)
                 .transpose()
-                .map_err(|_| SpectraBridgeError::from("Confirmation count is out of range."))?
+                .map_err(|_| SpectraBridgeError::failure("Confirmation count is out of range."))?
         } else {
             Some(0)
         };
@@ -93,7 +100,7 @@ impl WalletService {
                 .block_height
                 .map(i64::try_from)
                 .transpose()
-                .map_err(|_| SpectraBridgeError::from("Block height is out of range."))?
+                .map_err(|_| SpectraBridgeError::failure("Block height is out of range."))?
         } else {
             None
         };
@@ -103,14 +110,20 @@ impl WalletService {
                 let mut row = rows
                     .into_iter()
                     .find(|row| row.payload.id.eq_ignore_ascii_case(&expected.id))
-                    .ok_or("Transaction was deleted during status recheck.")?;
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure(
+                            "Transaction was deleted during status recheck.",
+                        )
+                    })?;
                 let current = &mut row.payload;
                 if current.transaction_hash != expected.transaction_hash
                     || current.wallet_id != expected.wallet_id
                     || current.kind != expected.kind
                     || current.chain_id != expected.chain_id
                 {
-                    return Err("Transaction changed during status recheck; check it again.".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Transaction changed during status recheck; check it again.",
+                    ));
                 }
                 recheck_chain(current)?;
                 let now = crate::wallet_db::now_secs() as f64;
@@ -164,7 +177,7 @@ impl WalletService {
             })
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("status recheck task: {e}")))??;
+        .map_err(|e| SpectraBridgeError::failure(format!("status recheck task: {e}")))??;
         self.status_trackers
             .write()
             .await
@@ -176,5 +189,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "transaction_recheck_tests.rs"]
+#[path = "tests/transaction_recheck.rs"]
 mod tests;

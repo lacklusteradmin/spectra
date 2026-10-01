@@ -168,21 +168,27 @@ pub fn seed_phrase_parses(phrase: &str, language: Option<&str>) -> bool {
 /// that ordinary Chinese mnemonics are exactly that. A phrase that reads in
 /// *some* language is a mnemonic, which is the question a caller without a
 /// language picker is asking.
-pub fn parse_seed_phrase(phrase: &str, language: Option<&str>) -> Result<bip39::Mnemonic, String> {
+pub fn parse_seed_phrase(
+    phrase: &str,
+    language: Option<&str>,
+) -> Result<bip39::Mnemonic, crate::derivation::error::DerivationError> {
+    use crate::derivation::error::DerivationError;
     use bip39::{Language, Mnemonic};
     let phrase = phrase.trim();
     match language {
         Some(code) => {
-            Mnemonic::parse_in(bip39_language(Some(code)), phrase).map_err(|e| e.to_string())
+            Mnemonic::parse_in(bip39_language(Some(code)), phrase).map_err(DerivationError::invalid)
         }
         None => Language::ALL
             .iter()
             .find_map(|lang| Mnemonic::parse_in(*lang, phrase).ok())
             .ok_or_else(|| {
-                Mnemonic::parse_in(Language::English, phrase)
-                    .err()
-                    .map(|e| e.to_string())
-                    .unwrap_or_else(|| "Not a BIP-39 mnemonic.".to_string())
+                DerivationError::invalid(
+                    Mnemonic::parse_in(Language::English, phrase)
+                        .err()
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "Not a BIP-39 mnemonic.".to_string()),
+                )
             }),
     }
 }
@@ -231,7 +237,9 @@ fn seed_phrase_length_warning(word_count: u32) -> Option<String> {
 ///
 /// Rules:
 ///  * Both empty → valid (no password is allowed).
-///  * Non-empty password shorter than 4 characters → error.
+///  * Otherwise a password shorter than 4 characters, surrounding whitespace
+///    excluded → error. A whitespace-only field is a blank password, which
+///    core refuses to store, not the choice of none.
 ///  * Password and confirmation mismatch → error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
@@ -245,11 +253,11 @@ pub fn validate_wallet_password(
     password: String,
     confirmation: String,
 ) -> Option<WalletPasswordRejection> {
-    let p = password.trim();
-    let c = confirmation.trim();
-    if p.is_empty() && c.is_empty() {
+    if password.is_empty() && confirmation.is_empty() {
         return None;
     }
+    let p = password.trim();
+    let c = confirmation.trim();
     if p.chars().count() < 4 {
         return Some(WalletPasswordRejection::TooShort);
     }
@@ -404,7 +412,8 @@ mod password_verdict_tests {
     fn password_rejections_are_typed_and_count_unicode_characters() {
         for (password, confirmation, expected) in [
             ("", "", None),
-            ("   ", " ", None),
+            ("   ", " ", Some(WalletPasswordRejection::TooShort)),
+            ("", "    ", Some(WalletPasswordRejection::TooShort)),
             ("abc", "abc", Some(WalletPasswordRejection::TooShort)),
             ("密碼", "密碼", Some(WalletPasswordRejection::TooShort)),
             ("密碼測試", "密碼測試", None),

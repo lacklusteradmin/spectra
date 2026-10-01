@@ -1,4 +1,7 @@
 use super::*;
+use crate::wallet_db::error::DbError;
+
+mod connection;
 
 /// A database no other test can be holding. Tests run in parallel, so the name
 /// is keyed on process, thread and a counter, which cannot collide.
@@ -63,7 +66,7 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
                 assert!(plan.iter().any(|p| p.contains(index)), "{plan:?}");
                 assert!(!plan.iter().any(|p| p.contains("TEMP B-TREE")), "{plan:?}");
             }
-            Ok(())
+            Ok::<_, DbError>(())
         }).unwrap();
     assert_eq!(
         history_keypool_indices(&db, "W", crate::registry::Chain::Bitcoin).unwrap(),
@@ -80,7 +83,7 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
             params![serde_json::json!({"id":"a","kind":"receive","status":"confirmed","sourceDerivationPath":"m/84'/0'/0'/0/12"}).to_string()],
         )
         .unwrap();
-        Ok(())
+        Ok::<_, DbError>(())
     })
     .unwrap();
     assert_eq!(
@@ -113,7 +116,7 @@ fn unreadable_metadata_refuses_loading() {
                     params![raw, key],
                 )
                 .unwrap();
-                Ok(())
+                Ok::<_, DbError>(())
             })
             .unwrap();
 
@@ -125,7 +128,7 @@ fn unreadable_metadata_refuses_loading() {
                     params![key],
                     |row| row.get(0),
                 )
-                .map_err(|e| e.to_string())
+                .map_err(DbError::from)
             })
             .unwrap();
             assert_eq!(stored, raw);
@@ -145,10 +148,15 @@ fn unreadable_settings_still_fail_the_load() {
             params!["{broken", META_SETTINGS],
         )
         .unwrap();
-        Ok(())
+        Ok::<_, DbError>(())
     })
     .unwrap();
-    assert!(app_state_load(&db).unwrap_err().contains("settings"));
+    assert!(
+        app_state_load(&db)
+            .unwrap_err()
+            .to_string()
+            .contains("settings")
+    );
 }
 
 #[test]
@@ -466,7 +474,7 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     after.selected_wallet_id = None;
     after.address_book.clear();
     after.settings.fiat_currency = crate::store::state::FiatCurrency::Eur;
-    with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())).unwrap();
+    with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(DbError::from)).unwrap();
     assert!(
         AppStateChanges::between(Some(&before), &after)
             .unwrap()
@@ -476,7 +484,7 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     assert_eq!(app_state_load(&db).unwrap(), before);
     with_conn(&db, |conn| {
         conn.execute_batch("DROP TRIGGER reject_meta;")
-            .map_err(|e| e.to_string())
+            .map_err(DbError::from)
     })
     .unwrap();
     AppStateChanges::between(Some(&before), &after)
@@ -628,7 +636,7 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
             )
             .unwrap();
         assert!(plan.contains("SEARCH") && !plan.contains("SCAN"), "{plan}");
-        Ok(())
+        Ok::<_, DbError>(())
     })
     .unwrap();
     history_delete_for_wallet(&db, "W").unwrap();
@@ -650,7 +658,7 @@ fn unknown_metadata_and_schema_versions_are_refused() {
                 params![key, value],
             )
             .unwrap();
-            Ok(())
+            Ok::<_, DbError>(())
         })
         .unwrap();
         assert!(app_state_load(&db).is_err());
@@ -717,7 +725,7 @@ fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
     let original = history_record_on("original", "w1", crate::registry::Chain::Bitcoin);
     history_upsert_batch(&db, std::slice::from_ref(&original)).unwrap();
     with_conn(&db, |conn| {
-        conn.execute_batch("CREATE TRIGGER reject_history BEFORE INSERT ON history_records WHEN NEW.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())
+        conn.execute_batch("CREATE TRIGGER reject_history BEFORE INSERT ON history_records WHEN NEW.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(DbError::from)
     }).unwrap();
     let batch = [
         history_record_on("new", "w1", crate::registry::Chain::Bitcoin),
@@ -729,17 +737,17 @@ fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
     assert_eq!(rows[0].id, "original");
     with_conn(&db, |conn| {
         conn.execute_batch("DROP TRIGGER reject_history")
-            .map_err(|e| e.to_string())
+            .map_err(DbError::from)
     })
     .unwrap();
     history_upsert_batch(&db, &batch).unwrap();
     assert_eq!(history_fetch_all(&db).unwrap().len(), 3);
-    with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_delete BEFORE DELETE ON history_records WHEN OLD.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())).unwrap();
+    with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_delete BEFORE DELETE ON history_records WHEN OLD.id = 'reject' BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(DbError::from)).unwrap();
     assert!(history_delete(&db, &["new".into(), "reject".into()]).is_err());
     assert_eq!(history_fetch_all(&db).unwrap().len(), 3);
     with_conn(&db, |conn| {
         conn.execute_batch("DROP TRIGGER reject_delete")
-            .map_err(|e| e.to_string())
+            .map_err(DbError::from)
     })
     .unwrap();
     history_delete(&db, &["new".into(), "reject".into()]).unwrap();
@@ -775,7 +783,7 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
         let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'")
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
         assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
-        Ok(())
+        Ok::<_, DbError>(())
     }).unwrap();
 }
 
@@ -788,7 +796,7 @@ fn failed_history_commit_rolls_back_and_allows_retry() {
             CREATE TABLE commit_parent (id INTEGER PRIMARY KEY);
             CREATE TABLE commit_child (parent INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);
             CREATE TRIGGER fail_history_commit AFTER INSERT ON history_records BEGIN INSERT INTO commit_child VALUES (1); END;")
-            .map_err(|e| e.to_string())
+            .map_err(DbError::from)
     }).unwrap();
     assert!(history_upsert_batch(&db, std::slice::from_ref(&row)).is_err());
     assert!(history_fetch_all(&db).unwrap().is_empty());
@@ -801,12 +809,12 @@ fn failed_history_commit_rolls_back_and_allows_retry() {
             .query_row("SELECT count(*) FROM commit_child", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
-        Ok(())
+        Ok::<_, DbError>(())
     })
     .unwrap();
     with_conn(&db, |conn| {
         conn.execute_batch("INSERT INTO commit_parent VALUES (1)")
-            .map_err(|e| e.to_string())
+            .map_err(DbError::from)
     })
     .unwrap();
     history_upsert_batch(&db, &[row]).unwrap();

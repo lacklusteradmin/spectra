@@ -1,3 +1,4 @@
+use crate::derivation::error::DerivationError;
 use bip39::{Language, Mnemonic};
 use blake2::Blake2b;
 use blake2::digest::Digest;
@@ -16,7 +17,7 @@ type HmacSha512 = Hmac<Sha512>;
 pub(crate) type OptionalKeyMaterial = (Option<String>, Option<String>, Option<String>);
 
 /// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
+pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, DerivationError> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
         _ => return Ok(Language::English),
@@ -37,7 +38,9 @@ pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, Str
         | "traditional_chinese"
         | "zh-hant"
         | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
+        other => Err(DerivationError::Invalid(format!(
+            "Unsupported mnemonic wordlist: {other}"
+        ))),
     }
 }
 
@@ -47,11 +50,11 @@ pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, Str
 /// A named wordlist that is not a BIP-39 language is still an error: it comes
 /// from the Advanced-mode override field, and silently deriving under English
 /// because of a typo there produces a different wallet.
-fn parse_mnemonic(phrase: &str, wordlist: Option<&str>) -> Result<Mnemonic, String> {
+fn parse_mnemonic(phrase: &str, wordlist: Option<&str>) -> Result<Mnemonic, DerivationError> {
     match wordlist {
         Some(name) if !name.trim().is_empty() => {
             Mnemonic::parse_in(resolve_bip39_language(Some(name))?, phrase.trim())
-                .map_err(|e| e.to_string())
+                .map_err(DerivationError::invalid)
         }
         _ => crate::validation::parse_seed_phrase(phrase, None),
     }
@@ -64,7 +67,7 @@ pub(crate) fn derive_bip39_seed(
     iteration_count: u32,
     mnemonic_wordlist: Option<&str>,
     salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
+) -> Result<Zeroizing<[u8; 64]>, DerivationError> {
     let mnemonic = parse_mnemonic(seed_phrase, mnemonic_wordlist)?;
     let iterations = if iteration_count == 0 {
         2048
@@ -91,7 +94,7 @@ pub(crate) fn derive_bip39_seed(
 }
 
 /// Parse a BIP-32 derivation path string ("m/44'/0'/0'/0/0") into child indices.
-pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
+pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, DerivationError> {
     let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
     let trimmed = trimmed.trim_start_matches('/');
     if trimmed.is_empty() {
@@ -110,9 +113,11 @@ pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
         };
         let raw: u32 = value
             .parse()
-            .map_err(|_| format!("invalid path segment: {segment}"))?;
+            .map_err(|_| DerivationError::Invalid(format!("invalid path segment: {segment}")))?;
         if raw >= HARDENED_OFFSET {
-            return Err(format!("path segment out of range: {segment}"));
+            return Err(DerivationError::Invalid(format!(
+                "path segment out of range: {segment}"
+            )));
         }
         out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
     }
@@ -125,7 +130,7 @@ pub(crate) fn derive_substrate_mini_secret(
     wordlist: Option<&str>,
     salt_prefix: Option<&str>,
     iteration_count: u32,
-) -> Result<Zeroizing<[u8; 32]>, String> {
+) -> Result<Zeroizing<[u8; 32]>, DerivationError> {
     let parsed = parse_mnemonic(mnemonic, wordlist)?;
     let entropy = Zeroizing::new(parsed.to_entropy());
     let prefix = salt_prefix.unwrap_or("mnemonic");
@@ -156,14 +161,13 @@ pub(crate) fn derive_substrate_sr25519_material(
     iteration_count: u32,
     derivation_path: Option<&str>,
     uniform_expansion: bool,
-) -> Result<([u8; 32], [u8; 32]), String> {
+) -> Result<([u8; 32], [u8; 32]), DerivationError> {
     let path = derivation_path.unwrap_or("").trim();
     if !path.is_empty() && path != "m" && path != "M" {
-        return Err(
+        return Err(DerivationError::invalid(
             "Substrate junction derivation (//hard, /soft) is not yet supported; \
-             omit the derivation path to derive the root sr25519 keypair."
-                .to_string(),
-        );
+             omit the derivation path to derive the root sr25519 keypair.",
+        ));
     }
 
     let mini_secret = derive_substrate_mini_secret(
@@ -175,7 +179,7 @@ pub(crate) fn derive_substrate_sr25519_material(
     )?;
 
     let mini = schnorrkel::MiniSecretKey::from_bytes(&*mini_secret)
-        .map_err(|e| format!("Invalid sr25519 mini-secret: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("Invalid sr25519 mini-secret: {e}")))?;
     let mode = if uniform_expansion {
         schnorrkel::ExpansionMode::Uniform
     } else {
@@ -201,16 +205,16 @@ fn ss58_prefix_bytes(network_prefix: u16) -> Vec<u8> {
     }
 }
 
-fn ss58_prefix_from_bytes(decoded: &[u8]) -> Result<(u16, usize), String> {
+fn ss58_prefix_from_bytes(decoded: &[u8]) -> Result<(u16, usize), DerivationError> {
     let Some(first) = decoded.first().copied() else {
-        return Err("ss58 empty payload".to_string());
+        return Err(DerivationError::Invalid("ss58 empty payload".into()));
     };
     if first < 64 {
         return Ok((first as u16, 1));
     }
     let second = *decoded
         .get(1)
-        .ok_or_else(|| "ss58 missing second prefix byte".to_string())?;
+        .ok_or_else(|| DerivationError::Invalid("ss58 missing second prefix byte".into()))?;
     let lower = ((first & 0b0011_1111) << 2) | (second & 0b0000_0011);
     let upper = (second & 0b0011_1100) >> 2;
     Ok((((upper as u16) << 8) | lower as u16, 2))
@@ -239,27 +243,30 @@ pub(crate) fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String 
 pub(crate) fn decode_ss58(
     address: &str,
     expected_prefix: Option<u16>,
-) -> Result<(u16, [u8; 32]), String> {
+) -> Result<(u16, [u8; 32]), DerivationError> {
     let decoded = bs58::decode(address)
         .into_vec()
-        .map_err(|e| format!("ss58 decode: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("ss58 decode: {e}")))?;
     let (prefix, key_start) = ss58_prefix_from_bytes(&decoded)?;
     if let Some(expected) = expected_prefix
         && prefix != expected
     {
-        return Err(format!("ss58 prefix: {prefix}"));
+        return Err(DerivationError::Invalid(format!("ss58 prefix: {prefix}")));
     }
     let checksum_start = key_start + 32;
     if decoded.len() != checksum_start + 2 {
-        return Err(format!("ss58 payload length: {}", decoded.len()));
+        return Err(DerivationError::Invalid(format!(
+            "ss58 payload length: {}",
+            decoded.len()
+        )));
     }
     let checksum = ss58_checksum(&decoded[..checksum_start]);
     if decoded[checksum_start] != checksum[0] || decoded[checksum_start + 1] != checksum[1] {
-        return Err("ss58 checksum mismatch".to_string());
+        return Err(DerivationError::Invalid("ss58 checksum mismatch".into()));
     }
     let key_bytes: [u8; 32] = decoded[key_start..key_start + 32]
         .try_into()
-        .map_err(|_| "ss58 key slice error".to_string())?;
+        .map_err(|_| DerivationError::Invalid("ss58 key slice error".into()))?;
     Ok((prefix, key_bytes))
 }
 
@@ -277,13 +284,13 @@ pub(crate) struct ExtendedPrivateKey {
 
 impl ExtendedPrivateKey {
     /// BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
-    pub(crate) fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
+    pub(crate) fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, DerivationError> {
+        let mut mac = HmacSha512::new_from_slice(hmac_key)
+            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
         mac.update(seed);
         let tag = mac.finalize().into_bytes();
-        let private_key =
-            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
+        let private_key = SecretKey::from_slice(&tag[..32])
+            .map_err(|e| DerivationError::Internal(format!("Master key invalid: {e}")))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
         Ok(Self {
@@ -293,9 +300,13 @@ impl ExtendedPrivateKey {
     }
 
     /// Hardened indices feed the private key into the HMAC, non-hardened the public key.
-    pub(crate) fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
+    pub(crate) fn derive_child(
+        &self,
+        secp: &Secp256k1<All>,
+        index: u32,
+    ) -> Result<Self, DerivationError> {
+        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
+            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
         if index >= HARDENED_OFFSET {
             mac.update(&[0x00]);
             mac.update(&self.private_key.secret_bytes());
@@ -305,13 +316,16 @@ impl ExtendedPrivateKey {
         }
         mac.update(&index.to_be_bytes());
         let tag = mac.finalize().into_bytes();
-        let tweak =
-            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
-                .map_err(|_| "BIP-32 IL out of range".to_string())?;
+        let tweak = Scalar::from_be_bytes(
+            tag[..32]
+                .try_into()
+                .map_err(|_| DerivationError::Internal("tag slice".into()))?,
+        )
+        .map_err(|_| DerivationError::Internal("BIP-32 IL out of range".into()))?;
         let private_key = self
             .private_key
             .add_tweak(&tweak)
-            .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
+            .map_err(|e| DerivationError::Internal(format!("BIP-32 tweak failed: {e}")))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
         Ok(Self {
@@ -320,7 +334,11 @@ impl ExtendedPrivateKey {
         })
     }
 
-    pub(crate) fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
+    pub(crate) fn derive_path(
+        &self,
+        secp: &Secp256k1<All>,
+        path: &[u32],
+    ) -> Result<Self, DerivationError> {
         let mut key = self.clone();
         for &index in path {
             key = key.derive_child(secp, index)?;
@@ -333,9 +351,12 @@ impl ExtendedPrivateKey {
 ///
 /// Aptos, Cardano, Internet Computer, Solana, Stellar, Sui and TON each had a
 /// byte-identical copy of this and the two functions below.
-pub(crate) fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
+pub(crate) fn hmac_sha512(
+    key: &[u8],
+    chunks: &[&[u8]],
+) -> Result<Zeroizing<[u8; 64]>, DerivationError> {
     let mut mac = HmacSha512::new_from_slice(key)
-        .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
+        .map_err(|error| DerivationError::Internal(format!("Invalid HMAC-SHA512 key: {error}")))?;
     for chunk in chunks {
         mac.update(chunk);
     }
@@ -349,7 +370,7 @@ pub(crate) fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8;
 ///
 /// Separate from [`parse_bip32_path`] on purpose: SLIP-10 over ed25519 has no
 /// non-hardened derivation, so a path that omits the `'` still means hardened.
-pub(crate) fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
+pub(crate) fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, DerivationError> {
     let trimmed = path.trim();
     let body = trimmed
         .strip_prefix("m/")
@@ -367,11 +388,13 @@ pub(crate) fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> 
     let mut indices = Vec::new();
     for segment in body.split('/') {
         let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
-        let raw: u32 = cleaned
-            .parse()
-            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
+        let raw: u32 = cleaned.parse().map_err(|_| {
+            DerivationError::Invalid(format!("Invalid derivation path segment: {segment}"))
+        })?;
         if raw & 0x8000_0000 != 0 {
-            return Err(format!("Derivation path segment out of range: {segment}"));
+            return Err(DerivationError::Invalid(format!(
+                "Derivation path segment out of range: {segment}"
+            )));
         }
         indices.push(raw | 0x8000_0000);
     }
@@ -383,7 +406,7 @@ pub(crate) fn derive_slip10_ed25519_key(
     seed: &[u8],
     derivation_path: &str,
     hmac_key: Option<&str>,
-) -> Result<Zeroizing<[u8; 32]>, String> {
+) -> Result<Zeroizing<[u8; 32]>, DerivationError> {
     let key_bytes = hmac_key
         .filter(|value| !value.is_empty())
         .map(|value| value.as_bytes())
@@ -415,7 +438,7 @@ mod mnemonic_language_tests {
                            abandon abandon abandon abandon abandon about";
     const CHINESE: &str = "的 的 的 的 的 的 的 的 的 的 的 在";
 
-    fn seed(phrase: &str, wordlist: Option<&str>) -> Result<[u8; 64], String> {
+    fn seed(phrase: &str, wordlist: Option<&str>) -> Result<[u8; 64], DerivationError> {
         derive_bip39_seed(phrase, "", 0, wordlist, None).map(|s| *s)
     }
 
@@ -442,6 +465,9 @@ mod mnemonic_language_tests {
         // It comes from the Advanced-mode override field; deriving under
         // English because of a typo there produces a different wallet.
         let error = seed(ENGLISH, Some("klingon")).unwrap_err();
-        assert!(error.contains("Unsupported mnemonic wordlist"), "{error}");
+        assert!(
+            error.to_string().contains("Unsupported mnemonic wordlist"),
+            "{error}"
+        );
     }
 }

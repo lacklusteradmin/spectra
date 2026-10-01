@@ -12,6 +12,7 @@
 //! Fiat rates follow the same shape: provider → `HashMap<currency, rate>`
 //! where every rate is USD-relative (`USD == 1.0`).
 
+use crate::api::error::ApiError;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -81,7 +82,7 @@ const FAWAZ_AHMED_USD_RATES_URL: &str =
 /// Returns a map keyed by `holding_key` so the caller can diff against its
 /// existing price cache. Missing coins are simply absent from the map —
 /// callers should fall back to their last known price instead of erroring.
-pub async fn fetch_prices(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
+pub async fn fetch_prices(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, ApiError> {
     let answers = futures::future::join_all(PRICE_PROVIDERS.iter().map(|provider| async move {
         let result = match provider {
             PriceProvider::CoinGecko => fetch_coingecko_quotes(coins).await,
@@ -101,9 +102,9 @@ pub async fn fetch_prices(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, S
 /// the case where every provider failed, which is a different thing from every
 /// provider answering "I do not list that".
 fn merge_in_preference_order<P: Copy + std::fmt::Debug, V>(
-    answers: Vec<(P, Result<HashMap<String, V>, String>)>,
+    answers: Vec<(P, Result<HashMap<String, V>, ApiError>)>,
     nobody_answered: &str,
-) -> Result<HashMap<String, V>, String> {
+) -> Result<HashMap<String, V>, ApiError> {
     let mut merged: HashMap<String, V> = HashMap::new();
     let mut failures: Vec<String> = Vec::new();
     for (provider, result) in answers {
@@ -117,14 +118,17 @@ fn merge_in_preference_order<P: Copy + std::fmt::Debug, V>(
         }
     }
     if merged.is_empty() && !failures.is_empty() {
-        return Err(format!("{nobody_answered} ({})", failures.join("; ")));
+        return Err(ApiError::Decode(format!(
+            "{nobody_answered} ({})",
+            failures.join("; ")
+        )));
     }
     Ok(merged)
 }
 
 /// Fetch USD-relative fiat rates for the requested non-USD currencies.
 /// USD itself is always returned as `1.0`.
-pub async fn fetch_fiat_rates(currencies: &[String]) -> Result<HashMap<String, f64>, String> {
+pub async fn fetch_fiat_rates(currencies: &[String]) -> Result<HashMap<String, f64>, ApiError> {
     // Strip USD from the query list but always include it in the output.
     let targets: Vec<String> = currencies
         .iter()
@@ -158,7 +162,7 @@ struct CoinGeckoQuoteEntry {
 /// CoinGecko response shape: `{"bitcoin": {"usd": 1234.5}, ...}`.
 type CoinGeckoResponse = HashMap<String, CoinGeckoQuoteEntry>;
 
-async fn fetch_coingecko_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
+async fn fetch_coingecko_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, ApiError> {
     // Group by normalized gecko id; skip coins without one.
     let mut grouped: HashMap<String, Vec<&PriceRequestCoin>> = HashMap::new();
     for coin in coins {
@@ -186,7 +190,7 @@ async fn fetch_coingecko_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuote
     let resp = HttpClient::shared()
         .get_json_with_headers::<CoinGeckoResponse>(&url, &headers, RetryProfile::ChainRead)
         .await
-        .map_err(|e| format!("coingecko: {e}"))?;
+        .map_err(|e| ApiError::Decode(format!("coingecko: {e}")))?;
 
     let mut resolved = PriceQuoteMap::new();
     for (id, entry) in resp {
@@ -230,7 +234,7 @@ struct PaprikaTicker {
     quotes: Option<PaprikaQuotes>,
 }
 
-async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
+async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, ApiError> {
     let resolved = PriceQuoteMap::new();
 
     if coins
@@ -280,14 +284,14 @@ struct FawazAhmedResponse {
     usd: HashMap<String, f64>,
 }
 
-async fn fetch_open_er_rates(currencies: &[String]) -> Result<HashMap<String, f64>, String> {
+async fn fetch_open_er_rates(currencies: &[String]) -> Result<HashMap<String, f64>, ApiError> {
     let resp: OpenERResponse = HttpClient::shared()
         .get_json(OPEN_ER_LATEST_USD_URL, RetryProfile::ChainRead)
         .await?;
     Ok(filter_rates(resp.rates, currencies))
 }
 
-async fn fetch_fawaz_ahmed_rates(currencies: &[String]) -> Result<HashMap<String, f64>, String> {
+async fn fetch_fawaz_ahmed_rates(currencies: &[String]) -> Result<HashMap<String, f64>, ApiError> {
     let resp: FawazAhmedResponse = HttpClient::shared()
         .get_json(FAWAZ_AHMED_USD_RATES_URL, RetryProfile::ChainRead)
         .await?;
@@ -380,9 +384,10 @@ mod merge_tests {
 #[cfg(test)]
 mod merging_beats_choosing {
     use super::merge_in_preference_order;
+    use crate::api::error::ApiError;
     use std::collections::HashMap;
 
-    fn ok(pairs: &[(&str, f64)]) -> Result<HashMap<String, f64>, String> {
+    fn ok(pairs: &[(&str, f64)]) -> Result<HashMap<String, f64>, ApiError> {
         Ok(pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect())
     }
 
@@ -425,7 +430,7 @@ mod merging_beats_choosing {
     fn one_failure_does_not_lose_the_others_answers() {
         let merged = merge_in_preference_order(
             vec![
-                ("first", Err("429 rate limited".to_string())),
+                ("first", Err(ApiError::Decode("429 rate limited".into()))),
                 ("second", ok(&[("btc", 100.0)])),
             ],
             "nobody",
@@ -440,13 +445,14 @@ mod merging_beats_choosing {
     fn all_failing_is_an_error_but_all_answering_empty_is_not() {
         let err = merge_in_preference_order::<&str, f64>(
             vec![
-                ("first", Err("down".to_string())),
-                ("second", Err("timeout".to_string())),
+                ("first", Err(ApiError::Decode("down".into()))),
+                ("second", Err(ApiError::Decode("timeout".into()))),
             ],
             "no price provider answered",
         )
         .expect_err("nobody answered");
-        assert!(err.contains("no price provider answered"));
+        assert!(err.to_string().contains("no price provider answered"));
+        let err = err.to_string();
         assert!(err.contains("down") && err.contains("timeout"));
 
         let empty = merge_in_preference_order(vec![("first", ok(&[]))], "nobody")

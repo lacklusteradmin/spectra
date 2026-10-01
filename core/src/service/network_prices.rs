@@ -36,7 +36,7 @@ fn due(
 fn apply_price_result(
     quotes: &mut QuoteRefreshState,
     time: f64,
-    result: Result<HashMap<String, f64>, String>,
+    result: Result<HashMap<String, f64>, crate::api::error::ApiError>,
 ) {
     quotes.prices_attempt_at = Some(time);
     match result {
@@ -117,8 +117,8 @@ impl WalletService {
         &self,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
         let state = self.refresh_owned_fiat_rates(true).await?;
-        if let Some(error) = state.quotes.fiat_error {
-            return Err(error.into());
+        if let Some(message) = state.quotes.fiat_error {
+            return Err(SpectraBridgeError::Network { message });
         }
         Ok(state.fiat_rates_from_usd)
     }
@@ -291,7 +291,11 @@ mod tests {
             100.0,
             Ok(HashMap::from([("ETH".into(), 12.0)])),
         );
-        apply_price_result(&mut quotes, 120.0, Err("offline".into()));
+        apply_price_result(
+            &mut quotes,
+            120.0,
+            Err(crate::api::error::ApiError::Transport("offline".into())),
+        );
         assert_eq!(quotes.prices["ETH"], 12.0);
         assert!(quotes.prices_error.is_some());
         apply_price_result(

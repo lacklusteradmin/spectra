@@ -1,4 +1,5 @@
 //! App-facing pure rules: semantic assertions at the exported boundary.
+use crate::derivation::path::{format_derivation_path, parse_derivation_path};
 use crate::*;
 
 #[test]

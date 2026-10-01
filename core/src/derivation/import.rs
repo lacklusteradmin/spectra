@@ -1,3 +1,4 @@
+use crate::derivation::error::DerivationError;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -158,14 +159,12 @@ pub struct WalletImportCommit {
 }
 
 impl WalletImportCommit {
-    /// What the imported wallets sign with. A blank password stores the
-    /// material unsealed, which is the rule `store_seed_phrase` applies.
+    /// What the imported wallets sign with. Only `None` stores the material
+    /// unsealed; a blank password is refused before this is asked, which is
+    /// the rule `store_seed_phrase` applies.
     pub fn signing(&self) -> crate::store::state::WalletSigning {
         use crate::store::state::WalletSigning;
-        let password_protected = self
-            .password
-            .as_deref()
-            .is_some_and(|p| !p.trim().is_empty());
+        let password_protected = self.password.is_some();
         if self.request.is_watch_only_import {
             WalletSigning::WatchOnly
         } else if self.request.is_private_key_import {
@@ -184,9 +183,9 @@ impl WalletImportCommit {
 pub fn derive_private_key_import_address(
     private_key: &str,
     selected_chain_ids: &[Chain],
-) -> Result<std::collections::HashMap<Chain, String>, String> {
+) -> Result<std::collections::HashMap<Chain, String>, DerivationError> {
     let Some(&chain) = selected_chain_ids.first() else {
-        return Err("Select a chain first.".to_string());
+        return Err(DerivationError::Invalid("Select a chain first.".into()));
     };
     let address = crate::derivation::dispatch::derive_from_private_key(
         chain,
@@ -194,9 +193,13 @@ pub fn derive_private_key_import_address(
         true,
         false,
     )
-    .map_err(|error| error.to_string())?
+    .map_err(DerivationError::invalid)?
     .and_then(|result| result.address)
-    .ok_or_else(|| format!("{chain} cannot derive an address from a private key."))?;
+    .ok_or_else(|| {
+        DerivationError::Invalid(format!(
+            "{chain} cannot derive an address from a private key."
+        ))
+    })?;
     Ok(std::iter::once((chain, address)).collect())
 }
 
@@ -504,7 +507,9 @@ pub(crate) fn wallets_for_import(
         .collect()
 }
 
-pub fn plan_wallet_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
+pub fn plan_wallet_import(
+    request: WalletImportPlanRequest,
+) -> Result<WalletImportPlan, DerivationError> {
     if request.is_watch_only_import {
         plan_watch_only_import(request)
     } else {
@@ -512,9 +517,11 @@ pub fn plan_wallet_import(request: WalletImportPlanRequest) -> Result<WalletImpo
     }
 }
 
-fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
+fn plan_signing_import(
+    request: WalletImportPlanRequest,
+) -> Result<WalletImportPlan, DerivationError> {
     if request.selected_chain_ids.is_empty() {
-        return Err("Select a chain first.".to_string());
+        return Err(DerivationError::Invalid("Select a chain first.".into()));
     }
     let mut request = request;
     if request.planned_wallet_ids.is_empty() {
@@ -524,7 +531,9 @@ fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportP
             .map(|_| crate::store::new_transaction_id())
             .collect();
     } else if request.selected_chain_ids.len() != request.planned_wallet_ids.len() {
-        return Err("Wallet ID plan did not match selected chains.".to_string());
+        return Err(DerivationError::Invalid(
+            "Wallet ID plan did not match selected chains.".into(),
+        ));
     }
 
     let selected_chain_count = request.selected_chain_ids.len();
@@ -570,14 +579,18 @@ fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportP
     })
 }
 
-fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
+fn plan_watch_only_import(
+    request: WalletImportPlanRequest,
+) -> Result<WalletImportPlan, DerivationError> {
     let primary = *request
         .selected_chain_ids
         .first()
-        .ok_or("Select a chain first.")?;
+        .ok_or_else(|| DerivationError::Invalid("Select a chain first.".into()))?;
     let watch_entries = watch_only_addresses_for_chain(primary, &request.watch_only_entries)?;
     if watch_entries.is_empty() {
-        return Err("Enter at least one valid address to import.".to_string());
+        return Err(DerivationError::Invalid(
+            "Enter at least one valid address to import.".into(),
+        ));
     }
     let mut request = request;
     if request.planned_wallet_ids.is_empty() {
@@ -586,7 +599,9 @@ fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImpo
             .map(|_| crate::store::new_transaction_id())
             .collect();
     } else if request.planned_wallet_ids.len() != watch_entries.len() {
-        return Err("Watch-only wallet ID plan did not match expanded requests.".to_string());
+        return Err(DerivationError::Internal(
+            "Watch-only wallet ID plan did not match expanded requests.".into(),
+        ));
     }
 
     let selected_chain_count = watch_entries.len();
@@ -630,11 +645,11 @@ fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImpo
 fn watch_only_addresses_for_chain(
     chain: Chain,
     entries: &WalletImportWatchOnlyEntries,
-) -> Result<Vec<(Chain, WalletImportAddresses)>, String> {
+) -> Result<Vec<(Chain, WalletImportAddresses)>, DerivationError> {
     if !chain.supports_watch_only_import() {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "Watch-only planning is not available for chain: {chain}"
-        ));
+        )));
     }
 
     // Bitcoin has a second form: one xpub stands in for the whole account, so
@@ -985,7 +1000,7 @@ mod tests {
 
         // Monero watch-only needs a view key, so an address alone is refused.
         assert!(plan.is_err());
-        assert!(plan.unwrap_err().contains("not available"));
+        assert!(plan.unwrap_err().to_string().contains("not available"));
     }
 
     #[test]

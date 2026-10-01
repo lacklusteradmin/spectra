@@ -16,7 +16,7 @@ impl WalletService {
             .wallets
             .iter()
             .find(|w| w.id == request.wallet_id)
-            .ok_or("wallet removed before submission")?;
+            .ok_or_else(|| SpectraBridgeError::failure("wallet removed before submission"))?;
         let token = request.contract_address.as_ref().and_then(|contract| {
             state.token_preferences.iter().find(|p| {
                 p.hosting_chain() == Some(chain.mainnet_counterpart())
@@ -34,12 +34,12 @@ impl WalletService {
         });
         let deployment_id =
             crate::tokens::deployment_id_for(chain, request.contract_address.as_deref())
-                .ok_or("token identifier missing")?;
+                .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
             "walletName": wallet.name, "assetDisplayName": token.map(|p| p.token.name.as_str()).unwrap_or(symbol), "symbol": symbol,
-            "chainId": chain.str_id(), "amount": crate::decimal::canonical(&request.amount_str).ok_or("invalid amount")?,
+            "chainId": chain.str_id(), "amount": crate::decimal::canonical(&request.amount_str).ok_or_else(|| SpectraBridgeError::failure("invalid amount"))?,
             "address": request.to_address, "sourceAddress": source,
             "failureReason": {"kind": "submissionOutcomeUnknown"},
             "createdAtUnix": crate::store::now_unix()
@@ -66,14 +66,16 @@ impl WalletService {
                 .iter()
                 .any(|w| Some(&w.id) == record.wallet_id.as_ref())
             {
-                return Err("wallet removed during submission".into());
+                return Err(SpectraBridgeError::failure(
+                    "wallet removed during submission",
+                ));
             }
             let database = service.bound_database().await?;
             tokio::task::spawn_blocking(move || {
                 crate::wallet_db::history_save_send_progress(&database, &record, reserve_nonce)
             })
             .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
+            .map_err(SpectraBridgeError::failure)??;
             Ok(())
         })
         .await
@@ -93,7 +95,7 @@ impl WalletService {
             let service = this.clone();
             tokio::spawn(async move { service.rebroadcast_stored(transaction_id).await })
                 .await
-                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+                .map_err(SpectraBridgeError::failure)?
         })
         .await
     }
@@ -105,15 +107,12 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let db = self.bound_database().await?;
         let id = transaction_id.clone();
-        if tokio::task::spawn_blocking(move || crate::wallet_db::send_exists(&db, &id))
-            .await
-            .map_err(|e| e.to_string())??
-        {
+        if tokio::task::spawn_blocking(move || crate::wallet_db::send_exists(&db, &id)).await?? {
             let stored = self.load_send_artifact(transaction_id.clone()).await?;
             if stored.view.selected_endpoints.is_empty() {
-                return Err(
-                    "Select broadcast endpoints before submitting a signed transaction".into(),
-                );
+                return Err(crate::SpectraBridgeError::failure(
+                    "Select broadcast endpoints before submitting a signed transaction",
+                ));
             }
             let previous = stored.view.attempts.len();
             let artifact = self
@@ -124,8 +123,9 @@ impl WalletService {
                 .find(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
                 .and_then(|a| a.transaction_hash.clone())
                 .ok_or_else(|| {
-                    "Submission was not accepted; inspect per-endpoint results before retrying"
-                        .into()
+                    SpectraBridgeError::failure(
+                        "Submission was not accepted; inspect per-endpoint results before retrying",
+                    )
                 });
         }
         let mut record = self
@@ -133,7 +133,7 @@ impl WalletService {
             .await?
             .into_iter()
             .find(|r| r.id.eq_ignore_ascii_case(&transaction_id))
-            .ok_or("transaction not found")?
+            .ok_or_else(|| SpectraBridgeError::failure("transaction not found"))?
             .payload;
         let (chain, payload, field) = rebroadcast_input(&record)?;
         // Store an uncertain outcome before network I/O; errors never pretend a send happened.
@@ -142,7 +142,9 @@ impl WalletService {
         self.save_send_record(record.clone()).await?;
         let hash = self.broadcast_raw_extract(chain, payload, field).await?;
         if hash.trim().is_empty() {
-            return Err("node returned no transaction identifier".into());
+            return Err(SpectraBridgeError::failure(
+                "node returned no transaction identifier",
+            ));
         }
         record.transaction_hash = Some(hash.clone());
         record.status = CoreTransactionStatus::Pending;
@@ -156,26 +158,28 @@ pub(super) fn rebroadcast_input(
     record: &CorePersistedTransactionRecord,
 ) -> Result<(Chain, String, String), SpectraBridgeError> {
     if record.kind != CoreTransactionKind::Send {
-        return Err("only sends can be rebroadcast".into());
+        return Err(SpectraBridgeError::failure("only sends can be rebroadcast"));
     }
     if record.status == CoreTransactionStatus::Confirmed {
-        return Err("transaction already confirmed".into());
+        return Err(SpectraBridgeError::failure("transaction already confirmed"));
     }
     let chain = record.chain_id;
     let payload = record
         .signed_transaction_payload
         .as_ref()
-        .ok_or("signed payload was not saved")?;
+        .ok_or_else(|| SpectraBridgeError::failure("signed payload was not saved"))?;
     let format = record
         .signed_transaction_payload_format
         .as_deref()
-        .ok_or("signed payload format missing")?;
+        .ok_or_else(|| SpectraBridgeError::failure("signed payload format missing"))?;
     let (payload, field) = if format == "core.submission_json" {
         let prepared: crate::send::payload::PreparedSubmission = serde_json::from_str(payload)?;
         (prepared.payload, prepared.result_field)
     } else if chain.is_evm() {
         if !["evm.raw_hex", "evm.rust_json", "ethereum.rust_json"].contains(&format) {
-            return Err("payload does not match transaction chain".into());
+            return Err(SpectraBridgeError::failure(
+                "payload does not match transaction chain",
+            ));
         }
         let raw = if format != "evm.raw_hex" {
             crate::send::preview_decode::extract_json_string_field(
@@ -186,19 +190,23 @@ pub(super) fn rebroadcast_input(
             payload.clone()
         };
         if raw.is_empty() {
-            return Err("empty signed payload".into());
+            return Err(SpectraBridgeError::failure("empty signed payload"));
         }
         (raw, "txid".to_string())
     } else {
         let prepared =
             crate::send::flow::rebroadcast_prepare_payload(format.into(), payload.clone())?;
         if prepared.chain_id != chain.mainnet_counterpart() {
-            return Err("payload does not match transaction chain".into());
+            return Err(SpectraBridgeError::failure(
+                "payload does not match transaction chain",
+            ));
         }
         (prepared.broadcast_payload, prepared.result_field)
     };
     if payload.trim().is_empty() || field.trim().is_empty() {
-        return Err("empty signed payload or result field".into());
+        return Err(SpectraBridgeError::failure(
+            "empty signed payload or result field",
+        ));
     }
     Ok((chain, payload, field))
 }
@@ -227,7 +235,9 @@ impl WalletService {
             }
         );
         let lock = {
-            let mut locks = SEND_LOCKS.lock().map_err(|_| "send lock poisoned")?;
+            let mut locks = SEND_LOCKS
+                .lock()
+                .map_err(|_| SpectraBridgeError::failure("send lock poisoned"))?;
             locks.retain(|_, lock| lock.strong_count() > 0);
             if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
                 lock
@@ -256,8 +266,7 @@ impl WalletService {
         let rows = tokio::task::spawn_blocking(move || {
             crate::wallet_db::history_pending_for_sender(&db, chain, &sender)
         })
-        .await
-        .map_err(|e| e.to_string())??;
+        .await??;
         for row in rows {
             let r = row.payload;
             if r.chain_id == chain
@@ -268,8 +277,13 @@ impl WalletService {
                 && r.status == CoreTransactionStatus::Pending
                 && let Some(nonce) = r.nonce
             {
-                let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
-                next = next.max(nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
+                let nonce = u64::try_from(nonce)
+                    .map_err(|_| SpectraBridgeError::failure("invalid stored EVM nonce"))?;
+                next = next.max(
+                    nonce
+                        .checked_add(1)
+                        .ok_or_else(|| SpectraBridgeError::failure("EVM nonce exhausted"))?,
+                );
             }
         }
         let db = self.bound_database().await?;
@@ -277,15 +291,18 @@ impl WalletService {
         let artifacts = tokio::task::spawn_blocking(move || {
             crate::wallet_db::signed_sends_for_sender(&db, chain, &sender)
         })
-        .await
-        .map_err(|e| e.to_string())??;
+        .await??;
         for artifact in artifacts {
             if artifact.view.chain_id == chain
                 && artifact.view.sender.eq_ignore_ascii_case(source)
                 && artifact.view.stage == crate::send::stages::SendStage::Signed
                 && let crate::send::stages::PreparedPayload::Evm(p) = artifact.prepared
             {
-                next = next.max(p.nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
+                next = next.max(
+                    p.nonce
+                        .checked_add(1)
+                        .ok_or_else(|| SpectraBridgeError::failure("EVM nonce exhausted"))?,
+                );
             }
         }
         Ok(next)

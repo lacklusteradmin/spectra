@@ -1,5 +1,7 @@
 //! XRP send: build + sign Payment transactions (binary codec).
 
+use crate::send::error::SendError;
+
 use crate::derivation::xrp::decode_xrp_address;
 
 // ── XRP binary codec (minimal — Payment only)
@@ -14,7 +16,7 @@ pub fn build_signed_payment(
     sequence: u32,
     private_key_bytes: &[u8],
     public_key_hex: &str,
-) -> Result<String, String> {
+) -> Result<String, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     // Build signing payload (canonical field order per XRPL spec).
@@ -28,9 +30,10 @@ pub fn build_signed_payment(
 
     let msg_hash = sha512_half(&signing_payload);
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
-    let msg = Message::from_digest_slice(&msg_hash).map_err(|e| format!("msg: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+    let msg = Message::from_digest_slice(&msg_hash)
+        .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let sig = secp.sign_ecdsa(&msg, &secret_key);
     let der_sig = sig.serialize_der();
     let sig_hex = hex::encode_upper(der_sig.as_ref());
@@ -57,7 +60,7 @@ fn encode_payment_fields(
     fee_drops: u64,
     sequence: u32,
     public_key_hex: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let mut out = Vec::new();
     // TransactionType = 0 (Payment), field 2, type 1 (UInt16)
     out.extend_from_slice(&[0x12, 0x00, 0x00]);
@@ -77,7 +80,8 @@ fn encode_payment_fields(
     out.extend_from_slice(&fee_encoded.to_be_bytes());
     // SigningPubKey, field 3, type 7 (VL)
     out.push(0x73);
-    let pk_bytes = hex::decode(public_key_hex).map_err(|e| format!("pubkey hex: {e}"))?;
+    let pk_bytes =
+        hex::decode(public_key_hex).map_err(|e| SendError::Invalid(format!("pubkey hex: {e}")))?;
     push_vl(&mut out, &pk_bytes);
     // Account (from), field 1, type 8 (AccountID)
     out.push(0x81);
@@ -98,12 +102,13 @@ fn encode_payment_fields_signed(
     sequence: u32,
     public_key_hex: &str,
     sig_hex: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let mut out =
         encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
     // TxnSignature, field 4, type 7
     out.push(0x74);
-    let sig_bytes = hex::decode(sig_hex).map_err(|e| format!("sig hex: {e}"))?;
+    let sig_bytes =
+        hex::decode(sig_hex).map_err(|e| SendError::Invalid(format!("sig hex: {e}")))?;
     push_vl(&mut out, &sig_bytes);
     Ok(out)
 }

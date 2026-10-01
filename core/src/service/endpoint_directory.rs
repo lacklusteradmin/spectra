@@ -1,6 +1,7 @@
 //! One directory for built-in and user-supplied API endpoints.
 use super::*;
-use crate::{AppCoreEndpointRecord, Endpoint, EndpointApi, EndpointCapability};
+use crate::endpoints::EndpointRecord;
+use crate::{Endpoint, EndpointApi, EndpointCapability};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
@@ -15,7 +16,7 @@ pub struct CustomEndpoint {
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EndpointDirectoryEntry {
-    pub record: AppCoreEndpointRecord,
+    pub record: EndpointRecord,
     pub api_name: String,
     pub is_built_in: bool,
 }
@@ -26,19 +27,23 @@ impl CustomEndpoint {
         api: String,
         endpoint: String,
         mut capabilities: Vec<EndpointCapability>,
-    ) -> Result<Self, String> {
-        let catalog = crate::app_core::endpoint_catalog()?;
+    ) -> Result<Self, SpectraBridgeError> {
+        let catalog = crate::endpoints::catalog();
         let api = catalog
-            .endpoint_records
+            .records
             .iter()
             .filter(|r| r.chain_id == chain)
             .map(|r| r.api)
             .chain(chain.endpoint_apis().iter().copied())
             .find(|value| value.as_str() == api)
-            .ok_or("API type is not supported by this network")?;
+            .ok_or_else(|| {
+                SpectraBridgeError::failure("API type is not supported by this network")
+            })?;
         let supported = crate::endpoint_api::endpoint_capability_options(chain, api);
         if capabilities.is_empty() || capabilities.iter().any(|c| !supported.contains(c)) {
-            return Err("Select at least one capability supported by this adapter".into());
+            return Err(SpectraBridgeError::failure(
+                "Select at least one capability supported by this adapter",
+            ));
         }
         capabilities.sort();
         capabilities.dedup();
@@ -47,25 +52,29 @@ impl CustomEndpoint {
             .chars()
             .any(|c| c.is_whitespace() || c == ',')
         {
-            return Err("Enter one endpoint URL".into());
+            return Err(SpectraBridgeError::failure("Enter one endpoint URL"));
         }
-        let parsed =
-            reqwest::Url::parse(endpoint.trim()).map_err(|_| "Enter a valid HTTP or HTTPS URL")?;
+        let parsed = reqwest::Url::parse(endpoint.trim())
+            .map_err(|_| SpectraBridgeError::failure("Enter a valid HTTP or HTTPS URL"))?;
         if !matches!(parsed.scheme(), "http" | "https")
             || parsed.host_str().is_none()
             || !parsed.username().is_empty()
             || parsed.password().is_some()
             || parsed.fragment().is_some()
         {
-            return Err("Enter an HTTP or HTTPS URL without credentials or a fragment".into());
+            return Err(SpectraBridgeError::failure(
+                "Enter an HTTP or HTTPS URL without credentials or a fragment",
+            ));
         }
         let endpoint = parsed.to_string().trim_end_matches('/').to_string();
         if catalog
-            .endpoint_records
+            .records
             .iter()
             .any(|r| r.endpoint.trim_end_matches('/') == endpoint)
         {
-            return Err("This URL is already in the built-in directory".into());
+            return Err(SpectraBridgeError::failure(
+                "This URL is already in the built-in directory",
+            ));
         }
         Ok(Self {
             chain_id: chain,
@@ -75,8 +84,8 @@ impl CustomEndpoint {
         })
     }
 
-    fn record(&self) -> Result<AppCoreEndpointRecord, String> {
-        Ok(AppCoreEndpointRecord {
+    fn record(&self) -> Result<EndpointRecord, SpectraBridgeError> {
+        Ok(EndpointRecord {
             id: format!(
                 "custom:{}:{}:{}",
                 self.chain_id,
@@ -99,7 +108,7 @@ impl WalletService {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let catalog = crate::app_core::endpoint_catalog()?;
+            let catalog = crate::endpoints::catalog();
             let custom = this
                 .wallet_state
                 .read()
@@ -108,7 +117,7 @@ impl WalletService {
                 .custom_endpoints
                 .clone();
             let mut entries: Vec<_> = catalog
-                .endpoint_records
+                .records
                 .iter()
                 .cloned()
                 .map(|record| EndpointDirectoryEntry {
@@ -228,7 +237,7 @@ impl WalletService {
         required: &[EndpointCapability],
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let mut urls = self.custom_api_endpoints(chain, &[api], required).await;
-        for record in &crate::app_core::endpoint_catalog()?.endpoint_records {
+        for record in &crate::endpoints::catalog().records {
             if record.chain_id == chain
                 && record.api == api
                 && required.iter().all(|c| record.capabilities.contains(c))

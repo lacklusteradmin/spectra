@@ -37,7 +37,9 @@ impl WalletService {
             candidates.retain(|c| c.chain_id == id);
         }
         if candidates.is_empty() {
-            return Err("no scan candidates for this chain".into());
+            return Err(SpectraBridgeError::failure(
+                "no scan candidates for this chain",
+            ));
         }
         Ok(Arc::new(FundsScan {
             service: self.clone(),
@@ -98,7 +100,7 @@ impl FundsScan {
 }
 fn funded(raw: &str) -> Result<bool, SpectraBridgeError> {
     if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
-        return Err("invalid smallest-unit balance".into());
+        return Err(SpectraBridgeError::failure("invalid smallest-unit balance"));
     }
     Ok(raw.bytes().any(|b| b != b'0'))
 }

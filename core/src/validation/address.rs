@@ -847,7 +847,7 @@ mod every_chain_accepts_what_it_derives {
             let Some(path) = crate::store::wallet_domain::CoreSeedDerivationPaths::default()
                 .path_for(chain)
                 .map(str::to_string)
-                .or_else(|| crate::app_core::default_path_from_catalog(chain).ok())
+                .or_else(|| crate::derivation::path::default_path_from_catalog(chain).ok())
             else {
                 continue;
             };

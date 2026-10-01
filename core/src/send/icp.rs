@@ -5,6 +5,8 @@ pub(crate) use super::icp_stages::PreparedIcpTransaction;
 #[cfg(test)]
 use crate::api::icp_rosetta::{IcpClient, IcpSendResult};
 #[cfg(test)]
+use crate::send::error::SendError;
+#[cfg(test)]
 use serde_json::{Value, json};
 
 /// Submit an ICP transfer via the Rosetta construction API.
@@ -16,14 +18,16 @@ pub async fn sign_and_submit(
     e8s: u64,
     private_key_bytes: &[u8],
     public_key_bytes: &[u8],
-) -> Result<IcpSendResult, String> {
+) -> Result<IcpSendResult, SendError> {
     let key = secp256k1::SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| format!("invalid key: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
     let derived = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &key);
     let supplied = secp256k1::PublicKey::from_slice(public_key_bytes)
-        .map_err(|e| format!("invalid public key: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("invalid public key: {e}")))?;
     if supplied != derived {
-        return Err("public key does not match signing key".into());
+        return Err(SendError::Invalid(
+            "public key does not match signing key".into(),
+        ));
     }
     let public_key_bytes = derived.serialize();
     let network = json!({
@@ -70,13 +74,13 @@ pub async fn sign_and_submit(
     let unsigned_tx = payloads
         .get("unsigned_transaction")
         .and_then(|v| v.as_str())
-        .ok_or("payloads: missing unsigned_transaction")?;
+        .ok_or_else(|| SendError::Invalid("payloads: missing unsigned_transaction".into()))?;
     let to_sign_payloads = payloads
         .get("payloads")
         .and_then(|v| v.as_array())
-        .ok_or("payloads: missing payload array")?;
+        .ok_or_else(|| SendError::Invalid("payloads: missing payload array".into()))?;
     if to_sign_payloads.is_empty() {
-        return Err("payloads: empty payload array".into());
+        return Err(SendError::Invalid("payloads: empty payload array".into()));
     }
 
     // Step 4: Sign each payload.
@@ -85,12 +89,14 @@ pub async fn sign_and_submit(
         let hex_bytes = payload_item
             .get("hex_bytes")
             .and_then(|v| v.as_str())
-            .ok_or("payloads: missing hex_bytes")?;
+            .ok_or_else(|| SendError::Invalid("payloads: missing hex_bytes".into()))?;
         if payload_item.get("signature_type").and_then(Value::as_str) != Some("ecdsa") {
-            return Err("payloads: expected ecdsa signature type".into());
+            return Err(SendError::Invalid(
+                "payloads: expected ecdsa signature type".into(),
+            ));
         }
-        let hash_bytes =
-            hex::decode(hex_bytes).map_err(|e| format!("payloads: invalid hex: {e}"))?;
+        let hash_bytes = hex::decode(hex_bytes)
+            .map_err(|e| SendError::Invalid(format!("payloads: invalid hex: {e}")))?;
         let sig_hex = sign_icp_payload(&hash_bytes, private_key_bytes)?;
         signatures.push(json!({
             "signing_payload": payload_item,
@@ -117,10 +123,12 @@ pub async fn sign_and_submit(
     let signed_tx = combined
         .get("signed_transaction")
         .and_then(|v| v.as_str())
-        .ok_or("combine: missing signed_transaction")?;
+        .ok_or_else(|| SendError::Invalid("combine: missing signed_transaction".into()))?;
 
     let payload = json!({"network_identifier": network, "signed_transaction": signed_tx});
-    client.submit_signed_transaction(&payload.to_string()).await
+    Ok(client
+        .submit_signed_transaction(&payload.to_string())
+        .await?)
 }
 
 #[cfg(test)]
@@ -148,19 +156,22 @@ fn build_transfer_ops(from: &str, to: &str, e8s: u64) -> Value {
 }
 
 #[cfg(test)]
-fn sign_icp_payload(hash_bytes: &[u8], private_key_bytes: &[u8]) -> Result<String, String> {
+fn sign_icp_payload(hash_bytes: &[u8], private_key_bytes: &[u8]) -> Result<String, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
     // ICP signs the domain-separated request id (11-byte prefix + 32-byte id).
     // https://docs.internetcomputer.org/references/ic-interface-spec/https-interface/
     if hash_bytes.len() != 43 || !hash_bytes.starts_with(b"\x0aic-request") {
-        return Err("payloads: expected an IC request signing preimage".into());
+        return Err(SendError::Invalid(
+            "payloads: expected an IC request signing preimage".into(),
+        ));
     }
     use sha2::{Digest, Sha256};
     let msg_hash: [u8; 32] = Sha256::digest(hash_bytes).into();
-    let msg = Message::from_digest_slice(&msg_hash).map_err(|e| format!("msg: {e}"))?;
+    let msg = Message::from_digest_slice(&msg_hash)
+        .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let sig = secp.sign_ecdsa(&msg, &secret_key);
     Ok(hex::encode(sig.serialize_compact()))
 }

@@ -83,7 +83,9 @@ impl WalletService {
             )
             .await?;
         if sources.is_empty() {
-            return Err("no explorer configured for this chain".into());
+            return Err(SpectraBridgeError::failure(
+                "no explorer configured for this chain",
+            ));
         }
         let native_entries = crate::api::http::race(&sources, |base| {
             let client = &client;
@@ -179,7 +181,9 @@ impl WalletService {
             .map(|e| {
                 // A value that is not an integer is not a transfer of nothing.
                 let amount_decimal = crate::decimal::from_unit_digits(&e.value_wei, 18)
-                    .ok_or_else(|| format!("transfer {}: malformed value", e.txid))?;
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure(format!("transfer {}: malformed value", e.txid))
+                    })?;
                 Ok(EvmNativeTransferItem {
                     status: e.status,
                     // Compared against the lowercased wallet address, as token
@@ -274,11 +278,10 @@ async fn fetch_history(
             json_response(&XrplClient::new(endpoints).fetch_history(address).await?)
         }
         Api::Koios => json_response(&KoiosClient::new(endpoints).fetch_history(address).await?),
-        Api::SubstrateJsonRpc => Err(format!(
+        Api::SubstrateJsonRpc => Err(SpectraBridgeError::failure(format!(
             "{}: no keyless history source configured",
             chain.chain_display_name()
-        )
-        .into()),
+        ))),
         Api::SuiJsonRpc => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
         Api::AptosRest => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
         Api::ToncenterV2 => json_response(
@@ -291,7 +294,9 @@ async fn fetch_history(
                 .api_endpoints(chain, Api::Nearblocks, &[EndpointCapability::History])
                 .await?;
             if indexers.is_empty() {
-                return Err("No NEAR history indexer configured".into());
+                return Err(SpectraBridgeError::failure(
+                    "No NEAR history indexer configured",
+                ));
             }
             json_response(
                 &crate::api::nearblocks::NearblocksClient::new(Arc::new(indexers))
@@ -304,7 +309,9 @@ async fn fetch_history(
         Api::Insight => json_response(&InsightClient::new(endpoints).fetch_history(address).await?),
         Api::KaspaRest => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),
 
-        c => Err(SpectraBridgeError::from(format!("unsupported API: {c:?}"))),
+        c => Err(SpectraBridgeError::failure(format!(
+            "unsupported API: {c:?}"
+        ))),
     }
 }
 

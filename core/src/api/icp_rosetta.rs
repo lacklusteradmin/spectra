@@ -1,6 +1,7 @@
 //! The ICP Rosetta adapter: ledger balances and history, the construction
 //! calls that return what to sign, and submission of a signed envelope.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -50,7 +51,7 @@ impl IcpClient {
         &self,
         path: &str,
         body: &Value,
-    ) -> Result<T, String> {
+    ) -> Result<T, ApiError> {
         let is_submit = path == "/construction/submit";
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
@@ -85,7 +86,7 @@ pub(crate) fn network_identifier() -> Value {
 }
 
 impl IcpClient {
-    pub async fn fetch_balance(&self, account_address: &str) -> Result<IcpBalance, String> {
+    pub async fn fetch_balance(&self, account_address: &str) -> Result<IcpBalance, ApiError> {
         let resp: Value = self
             .rosetta_post(
                 "/account/balance",
@@ -106,7 +107,7 @@ impl IcpClient {
     pub async fn fetch_history(
         &self,
         account_address: &str,
-    ) -> Result<Vec<IcpHistoryEntry>, String> {
+    ) -> Result<Vec<IcpHistoryEntry>, ApiError> {
         let resp: Value = self
             .rosetta_post(
                 "/search/transactions",
@@ -138,7 +139,7 @@ impl IcpClient {
 fn icp_history_from_transactions(
     txs: &[Value],
     account_address: &str,
-) -> Result<Vec<IcpHistoryEntry>, String> {
+) -> Result<Vec<IcpHistoryEntry>, ApiError> {
     let mut entries = Vec::new();
     for item in txs {
         let block_index: u64 = item
@@ -204,15 +205,15 @@ impl IcpClient {
     pub(crate) async fn submit_signed_transaction(
         &self,
         payload: &str,
-    ) -> Result<IcpSendResult, String> {
-        let body: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+    ) -> Result<IcpSendResult, ApiError> {
+        let body: Value = serde_json::from_str(payload).map_err(ApiError::invalid)?;
         let submit: Value = self.rosetta_post("/construction/submit", &body).await?;
         let txid = submit
             .pointer("/transaction_identifier/hash")
             .and_then(Value::as_str)
-            .ok_or("submit: missing transaction hash")?;
+            .or_decode("submit: missing transaction hash")?;
         if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("submit: invalid transaction hash".into());
+            return Err(ApiError::Decode("submit: invalid transaction hash".into()));
         }
         Ok(IcpSendResult {
             txid: txid.to_lowercase(),
@@ -221,7 +222,7 @@ impl IcpClient {
 }
 
 impl IcpClient {
-    pub(crate) async fn verify_network(&self) -> Result<(), String> {
+    pub(crate) async fn verify_network(&self) -> Result<(), ApiError> {
         let response: Value = self
             .rosetta_post("/network/list", &json!({"metadata":{}}))
             .await?;
@@ -229,7 +230,9 @@ impl IcpClient {
             .as_array()
             .is_some_and(|rows| rows.iter().any(|row| row == &network_identifier()))
         {
-            return Err("ICP endpoint does not serve the configured ledger".into());
+            return Err(ApiError::Decode(
+                "ICP endpoint does not serve the configured ledger".into(),
+            ));
         }
         Ok(())
     }

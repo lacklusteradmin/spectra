@@ -11,6 +11,8 @@
 //! Spectra ships SIGHASH_ALL only — the dominant case for normal transfers.
 //! Tree-stake (PoS) inputs and split-tx flows are out of scope.
 
+use crate::send::error::SendError;
+
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, varint};
 use crate::api::insight::InsightClient;
@@ -36,7 +38,7 @@ pub(crate) async fn prepare_transfer(
     amount_atoms: u64,
     fee_atoms: u64,
     dust_threshold: Option<u64>,
-) -> Result<PreparedDecredTransaction, String> {
+) -> Result<PreparedDecredTransaction, SendError> {
     let utxos = client.fetch_utxos(from_address).await?;
     let from_hash = decode_dcr_address(from_address)?;
     let from_script = p2pkh_script(&from_hash);
@@ -71,7 +73,7 @@ pub(crate) async fn prepare_transfer(
                 script_pubkey: from_script.clone(),
             })
         })
-        .collect::<Result<_, String>>()?;
+        .collect::<Result<_, SendError>>()?;
 
     Ok(PreparedDecredTransaction { inputs, outputs })
 }
@@ -82,7 +84,7 @@ pub(crate) struct PreparedDecredTransaction {
     outputs: Vec<(Vec<u8>, u64)>,
 }
 impl PreparedDecredTransaction {
-    pub fn sign(&self, key: &[u8]) -> Result<String, String> {
+    pub fn sign(&self, key: &[u8]) -> Result<String, SendError> {
         Ok(hex::encode(sign_dcr_tx(&self.inputs, &self.outputs, key)?))
     }
     pub fn resources(&self) -> Vec<String> {
@@ -108,12 +110,12 @@ fn sign_dcr_tx(
     inputs: &[DcrInputBuild],
     outputs: &[(Vec<u8>, u64)],
     private_key_bytes: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| format!("dcr invalid privkey: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("dcr invalid privkey: {e}")))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     // Decred sighash optimization: prefix hash is constant across all inputs
@@ -134,7 +136,7 @@ fn sign_dcr_tx(
         preimage.extend_from_slice(&witness_hash);
         let sighash = blake256(&preimage);
 
-        let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL as u8);

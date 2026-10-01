@@ -18,7 +18,9 @@ pub(super) fn evm_network(chain: Chain) -> Result<Chain, SpectraBridgeError> {
     if chain.is_evm() {
         Ok(chain)
     } else {
-        Err(format!("unsupported EVM chain_id: {chain}").into())
+        Err(SpectraBridgeError::failure(format!(
+            "unsupported EVM chain_id: {chain}"
+        )))
     }
 }
 
@@ -40,9 +42,9 @@ pub(super) fn decode_hex_array<const N: usize>(
     field_name: &str,
 ) -> Result<[u8; N], SpectraBridgeError> {
     let bytes = hex::decode(hex_str)
-        .map_err(|e| SpectraBridgeError::from(format!("{field_name} hex decode: {e}")))?;
+        .map_err(|e| SpectraBridgeError::failure(format!("{field_name} hex decode: {e}")))?;
     bytes.try_into().map_err(|v: Vec<u8>| {
-        SpectraBridgeError::from(format!(
+        SpectraBridgeError::failure(format!(
             "{field_name} wrong length: expected {N} bytes, got {}",
             v.len()
         ))
@@ -57,7 +59,7 @@ pub(super) fn decode_private_key(
 ) -> Result<zeroize::Zeroizing<Vec<u8>>, SpectraBridgeError> {
     hex::decode(hex_str)
         .map(zeroize::Zeroizing::new)
-        .map_err(|_| SpectraBridgeError::from("invalid private key hex"))
+        .map_err(|_| SpectraBridgeError::failure("invalid private key hex"))
 }
 
 /// The fee to sign with: whatever the preview settled on, and otherwise the
@@ -72,12 +74,12 @@ pub(super) fn fee_or_static(
         None => u64::try_from(
             chain
                 .static_fee_units()
-                .ok_or("No fee available for this chain")?,
+                .ok_or_else(|| SpectraBridgeError::failure("No fee available for this chain"))?,
         )
-        .map_err(|_| "Fee exceeds protocol range")?,
+        .map_err(|_| SpectraBridgeError::failure("Fee exceeds protocol range"))?,
     };
     if fee == 0 {
-        return Err("Fee must be positive".into());
+        return Err(SpectraBridgeError::failure("Fee must be positive"));
     }
     Ok(fee)
 }
@@ -162,6 +164,6 @@ pub(super) fn decode_secret_array<const N: usize>(
     let array: &[u8; N] = bytes
         .as_slice()
         .try_into()
-        .map_err(|_| SpectraBridgeError::from(format!("private key must be {N} bytes")))?;
+        .map_err(|_| SpectraBridgeError::failure(format!("private key must be {N} bytes")))?;
     Ok(zeroize::Zeroizing::new(*array))
 }

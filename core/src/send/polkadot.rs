@@ -10,6 +10,8 @@
 //! a schnorrkel `Keypair`, signs with `signing_context(b"substrate")`, and
 //! emits the result under `MultiSignature::Sr25519` (variant `0x01`).
 
+use crate::send::error::SendError;
+
 use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u32, scale_compact_u128};
 
 use crate::derivation::polkadot::decode_ss58;
@@ -35,7 +37,7 @@ pub fn build_signed_transfer(
     public_key: &[u8; 32],
     era: Option<Vec<u8>>,
     tip: Option<u128>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     let dest_pubkey = decode_ss58(to_address)?;
 
     let call = {
@@ -76,7 +78,7 @@ pub fn build_signed_transfer(
 
     // ExpansionMode::Ed25519 — matches the public key encoded in the SS58 address.
     let mini = schnorrkel::MiniSecretKey::from_bytes(private_key)
-        .map_err(|e| format!("invalid sr25519 mini-secret: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("invalid sr25519 mini-secret: {e}")))?;
     let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
     let signature = keypair.sign_simple(SR25519_SIGNING_CONTEXT, &signing_input);
 

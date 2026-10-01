@@ -235,12 +235,14 @@ impl WalletService {
         crate::worker::run(async move {
             let this = &this;
             if query.limit == 0 || query.limit > 200 {
-                return Err("history query limit must be 1...200".into());
+                return Err(SpectraBridgeError::failure(
+                    "history query limit must be 1...200",
+                ));
             }
             let database = this.bound_database().await?;
             tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))
                 .await
-                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+                .map_err(SpectraBridgeError::failure)?
                 .map(|mut page| {
                     page.records = page
                         .records
@@ -264,7 +266,7 @@ impl WalletService {
                 crate::wallet_db::history_snapshot(&database, &sequence)
             })
             .await
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+            .map_err(SpectraBridgeError::failure)?
             .map(|mut snapshot| {
                 snapshot.recent_and_pending = snapshot
                     .recent_and_pending
@@ -291,7 +293,7 @@ impl WalletService {
             let database = this.bound_database().await?;
             tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
                 .await
-                .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+                .map_err(SpectraBridgeError::failure)?
                 .map(|record| record.map(CorePersistedTransactionRecord::with_actions))
                 .map_err(Into::into)
         })

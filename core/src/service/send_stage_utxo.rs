@@ -15,7 +15,11 @@ impl WalletService {
             Chain::BitcoinGold => bitcoin_gold::decode_btg_address(sender)?,
             Chain::Litecoin => litecoin::decode_ltc_address(sender)?,
             Chain::Dash => dash::decode_dash_address(sender)?,
-            _ => return Err("Unsupported fixed-fee UTXO protocol".into()),
+            _ => {
+                return Err(SpectraBridgeError::failure(
+                    "Unsupported fixed-fee UTXO protocol",
+                ));
+            }
         };
         let script = crate::send::bitcoin_wire::p2pkh_script(&hash);
         Ok(self
@@ -58,12 +62,14 @@ impl WalletService {
             }
         }
         if inputs.is_empty() {
-            return Err("No spendable inputs".into());
+            return Err(SpectraBridgeError::failure("No spendable inputs"));
         }
         let change =
             crate::send::accounting::checked_change(inputs.iter().map(|u| u.2), amount, fee)?;
         if change <= chain.legacy_change_dust()? {
-            fee = fee.checked_add(change).ok_or("Fee overflow")?;
+            fee = fee
+                .checked_add(change)
+                .ok_or_else(|| SpectraBridgeError::failure("Fee overflow"))?;
         }
         if chain.mainnet_counterpart() == Chain::Litecoin
             && crate::derivation::litecoin::is_mweb_address(&request.to_address)
@@ -96,19 +102,19 @@ impl WalletService {
             extension,
         } = &stored.prepared
         else {
-            return Err("Expected UTXO transaction".into());
+            return Err(SpectraBridgeError::failure("Expected UTXO transaction"));
         };
         let current = self.fixed_inputs(chain, &stored.view.sender).await?;
         let mut resources = Vec::new();
         for input in inputs {
             if !current.contains(input) {
-                return Err("UTXO changed or was spent; build and review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "UTXO changed or was spent; build and review again",
+                ));
             }
             resources.push(format!("{}:utxo:{}:{}", chain.str_id(), input.0, input.1));
         }
-        let key = zeroize::Zeroizing::new(
-            hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-        );
+        let key = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
         let dust = Some(chain.legacy_change_dust()?);
         let from = stored.view.sender.as_str();
         let to = stored.view.recipient.as_str();
@@ -136,7 +142,7 @@ impl WalletService {
                 dust,
             )?,
             Chain::Dash => dash::sign_dash_p2pkh(inputs, to, *amount, *fee, from, &key, dust)?,
-            _ => return Err("Unsupported UTXO signer".into()),
+            _ => return Err(SpectraBridgeError::failure("Unsupported UTXO signer")),
         };
         raw.extend(extension);
         let payload = hex::encode(raw);

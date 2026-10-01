@@ -73,11 +73,33 @@ impl From<spectra_core::SpectraBridgeError> for CliError {
     }
 }
 
+/// Core's layer errors classify themselves on the way to the bridge; the CLI
+/// reads the same classification.
+macro_rules! via_bridge {
+    ($($error:ty),* $(,)?) => {$(
+        impl From<$error> for CliError {
+            fn from(error: $error) -> Self {
+                spectra_core::SpectraBridgeError::from(error).into()
+            }
+        }
+    )*};
+}
+
+via_bridge!(
+    spectra_core::api::error::ApiError,
+    spectra_core::derivation::error::DerivationError,
+    spectra_core::send::error::SendError,
+    spectra_core::wallet_db::error::DbError,
+    spectra_core::registry::RegistryError,
+);
+
 impl From<spectra_core::store::wallet_secrets::WalletSecretError> for CliError {
     fn from(error: spectra_core::store::wallet_secrets::WalletSecretError) -> Self {
         use spectra_core::store::wallet_secrets::WalletSecretError as Secret;
         match error {
-            Secret::IncorrectPassword | Secret::NotSealed => Self::rejected(error.to_string()),
+            Secret::IncorrectPassword | Secret::NotSealed | Secret::EmptyPassword => {
+                Self::rejected(error.to_string())
+            }
             other => Self::failure(other.to_string()),
         }
     }

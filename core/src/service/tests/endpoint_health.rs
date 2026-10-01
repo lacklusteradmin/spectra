@@ -2,8 +2,8 @@ use super::*;
 use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn record(chain: Chain, api: EndpointApi, endpoint: String) -> AppCoreEndpointRecord {
-    AppCoreEndpointRecord {
+fn record(chain: Chain, api: EndpointApi, endpoint: String) -> EndpointRecord {
+    EndpointRecord {
         id: "test".into(),
         chain_id: chain,
         api,
@@ -14,10 +14,7 @@ fn record(chain: Chain, api: EndpointApi, endpoint: String) -> AppCoreEndpointRe
 
 #[test]
 fn every_builtin_api_has_a_probe_on_its_own_origin() {
-    for record in &crate::app_core::endpoint_catalog()
-        .unwrap()
-        .endpoint_records
-    {
+    for record in &crate::endpoints::catalog().records {
         let chain = record.chain_id;
         let checks = checks(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
         assert!(!checks.is_empty());

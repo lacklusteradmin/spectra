@@ -1,17 +1,19 @@
 //! Solana: address validation, BIP-39 + SLIP-10 ed25519 derivation,
 //! base58 pubkey encoding
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
 // Decode a base58 string and assert it is exactly 32 bytes (used for Solana pubkeys).
-pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
+pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], DerivationError> {
     let bytes = bs58::decode(b58)
         .into_vec()
-        .map_err(|e| format!("b58 decode {b58}: {e}"))?;
-    bytes
-        .try_into()
-        .map_err(|v: Vec<u8>| format!("b58 {b58} not 32 bytes: {}", v.len()))
+        .map_err(|e| DerivationError::Invalid(format!("b58 decode {b58}: {e}")))?;
+    bytes.try_into().map_err(|v: Vec<u8>| {
+        DerivationError::Invalid(format!("b58 {b58} not 32 bytes: {}", v.len()))
+    })
 }
 
 // ── HMAC-SHA512 + SLIP-10 ed25519 ────────────────────────────────────────
@@ -25,7 +27,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, hmac_key)?;
     let signing_key = SigningKey::from_bytes(&private_key);

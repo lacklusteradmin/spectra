@@ -31,10 +31,12 @@ struct PasswordVerifierEnvelope {
 
 /// Create a PBKDF2-HMAC-SHA256 verifier for `password`.
 /// Returns the current JSON envelope.
-pub fn create_verifier(password: &str) -> Result<Vec<u8>, String> {
+pub fn create_verifier(
+    password: &str,
+) -> Result<Vec<u8>, super::wallet_secrets::WalletSecretError> {
     let normalized = password.trim();
     if normalized.is_empty() {
-        return Err("empty password".into());
+        return Err(super::wallet_secrets::WalletSecretError::EmptyPassword);
     }
 
     let mut salt = vec![0u8; SALT_LENGTH];
@@ -51,7 +53,7 @@ pub fn create_verifier(password: &str) -> Result<Vec<u8>, String> {
     };
 
     // digest is moved into envelope, no separate zeroize needed
-    serde_json::to_vec(&envelope).map_err(|e| format!("JSON encode failed: {e}"))
+    Ok(serde_json::to_vec(&envelope).expect("a verifier of bytes and counters serializes"))
 }
 
 /// Verify `password` against a verifier envelope produced by

@@ -1,6 +1,8 @@
 //! SUI transfer: resolve gas objects, build a local PTB, sign, execute.
+
 use super::bcs;
 use crate::api::sui_json_rpc::SuiClient;
+use crate::send::error::SendError;
 use crate::send::keys::Ed25519Seed;
 use base64::{Engine, engine::general_purpose::STANDARD};
 
@@ -25,25 +27,30 @@ pub(crate) fn prepare_transfer(
     gas_budget: u64,
     gas_price: u64,
     coins: &[GasCoin],
-) -> Result<PreparedSuiTransfer, String> {
+) -> Result<PreparedSuiTransfer, SendError> {
     let sender = bcs::address(from)?;
     let to = bcs::address(to)?;
     if amount == 0 || gas_budget == 0 || gas_price == 0 || coins.is_empty() || coins.len() > 256 {
-        return Err("invalid Sui amount or gas payment".into());
+        return Err(SendError::Invalid(
+            "invalid Sui amount or gas payment".into(),
+        ));
     }
     let mut seen = std::collections::HashSet::new();
     let total = coins.iter().try_fold(0u64, |sum, c| {
         if !seen.insert(c.id) {
-            return Err("duplicate Sui gas object");
+            return Err(SendError::invalid("duplicate Sui gas object"));
         }
-        sum.checked_add(c.balance).ok_or("Sui gas balance overflow")
+        sum.checked_add(c.balance)
+            .ok_or_else(|| SendError::Invalid("Sui gas balance overflow".into()))
     })?;
     if total
         < amount
             .checked_add(gas_budget)
-            .ok_or("Sui amount plus gas overflow")?
+            .ok_or_else(|| SendError::Invalid("Sui amount plus gas overflow".into()))?
     {
-        return Err("insufficient SUI for amount plus gas budget".into());
+        return Err(SendError::InsufficientFunds(
+            "insufficient SUI for amount plus gas budget".into(),
+        ));
     }
     let mut bytes = vec![0, 0]; // TransactionData::V1, TransactionKind::ProgrammableTransaction
     bcs::uleb(2, &mut bytes); // inputs: Pure(amount), Pure(recipient)
@@ -72,7 +79,7 @@ pub(crate) fn prepare_transfer(
     })
 }
 impl PreparedSuiTransfer {
-    pub(crate) fn sign(self, key: &Ed25519Seed) -> Result<(String, String), String> {
+    pub(crate) fn sign(self, key: &Ed25519Seed) -> Result<(String, String), SendError> {
         let public = key.public_key();
         let expected = blake2b_simd::Params::new()
             .hash_length(32)
@@ -81,7 +88,9 @@ impl PreparedSuiTransfer {
             .update(&public)
             .finalize();
         if self.sender != expected.as_bytes() {
-            return Err("Sui sender does not match signing seed".into());
+            return Err(SendError::Invalid(
+                "Sui sender does not match signing seed".into(),
+            ));
         }
         let digest = blake2b_simd::Params::new()
             .hash_length(32)
@@ -102,15 +111,17 @@ pub(crate) async fn prepare_native_transfer(
     to: &str,
     mist: u64,
     gas_budget: u64,
-) -> Result<PreparedSuiTransfer, String> {
+) -> Result<PreparedSuiTransfer, SendError> {
     bcs::address(from)?;
     bcs::address(to)?;
     if mist == 0 || gas_budget == 0 {
-        return Err("Sui amount and gas budget must be positive".into());
+        return Err(SendError::Invalid(
+            "Sui amount and gas budget must be positive".into(),
+        ));
     }
     let required = mist
         .checked_add(gas_budget)
-        .ok_or("Sui amount plus gas overflow")?;
+        .ok_or_else(|| SendError::Invalid("Sui amount plus gas overflow".into()))?;
     let gas_price = client.fetch_reference_gas_price().await?;
     let mut coins = Vec::new();
     let mut cursor: Option<String> = None;
@@ -121,7 +132,7 @@ pub(crate) async fn prepare_native_transfer(
         for coin in page.coins {
             total = total
                 .checked_add(coin.balance)
-                .ok_or("Sui coin balance overflow")?;
+                .ok_or_else(|| SendError::Invalid("Sui coin balance overflow".into()))?;
             coins.push(GasCoin {
                 id: bcs::address(&coin.object_id)?,
                 version: coin.version,
@@ -139,7 +150,7 @@ pub(crate) async fn prepare_native_transfer(
             break;
         };
         if !cursors.insert(next.clone()) {
-            return Err("repeated Sui coin cursor".into());
+            return Err(SendError::Invalid("repeated Sui coin cursor".into()));
         }
         cursor = Some(next);
     }

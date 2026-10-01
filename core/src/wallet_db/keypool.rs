@@ -1,4 +1,5 @@
 use super::*;
+use crate::wallet_db::error::DbError;
 
 // ── Keypool types ─────────────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ pub fn keypool_save(
     wallet_id: &str,
     chain_id: crate::registry::Chain,
     state: &KeypoolState,
-) -> Result<(), String> {
+) -> Result<(), DbError> {
     with_conn(database, |conn| {
         conn.execute(
             "INSERT INTO wallet_keypool
@@ -39,7 +40,7 @@ pub fn keypool_save(
                 now_secs(),
             ],
         )
-        .map_err(|e| format!("keypool_save: {e}"))?;
+        .map_err(DbError::from)?;
         Ok(())
     })
 }
@@ -53,7 +54,7 @@ pub fn keypool_load_all(
         crate::registry::Chain,
         std::collections::HashMap<String, KeypoolState>,
     >,
-    String,
+    DbError,
 > {
     with_conn(database, |conn| {
         let mut stmt = conn
@@ -61,7 +62,7 @@ pub fn keypool_load_all(
                 "SELECT chain_id, wallet_id, next_external_index, next_change_index, reserved_receive_index
                  FROM wallet_keypool",
             )
-            .map_err(|e| format!("keypool_load_all prepare: {e}"))?;
+            .map_err(DbError::from)?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((
@@ -74,13 +75,13 @@ pub fn keypool_load_all(
                     },
                 ))
             })
-            .map_err(|e| format!("keypool_load_all query: {e}"))?;
+            .map_err(DbError::from)?;
         let mut outer: std::collections::HashMap<
             crate::registry::Chain,
             std::collections::HashMap<String, KeypoolState>,
         > = std::collections::HashMap::new();
         for row in rows {
-            let (chain, wallet, state) = row.map_err(|e| format!("keypool_load_all row: {e}"))?;
+            let (chain, wallet, state) = row.map_err(DbError::from)?;
             outer.entry(chain).or_default().insert(wallet, state);
         }
         Ok(outer)

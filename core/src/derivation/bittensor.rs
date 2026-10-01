@@ -14,12 +14,14 @@
 //! Substrate junction derivation (`//hard`, `/soft`) is not yet supported —
 //! omit the derivation path to derive the root sr25519 keypair.
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::{
     OptionalKeyMaterial, decode_ss58, derive_substrate_sr25519_material, encode_ss58,
 };
 
 // Decode a Bittensor SS58 address and return the inner 32-byte sr25519 public key.
-pub(crate) fn decode_bittensor_ss58(address: &str) -> Result<[u8; 32], String> {
+pub(crate) fn decode_bittensor_ss58(address: &str) -> Result<[u8; 32], DerivationError> {
     decode_ss58(address, Some(42)).map(|(_, key)| key)
 }
 
@@ -36,7 +38,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<OptionalKeyMaterial, String> {
+) -> Result<OptionalKeyMaterial, DerivationError> {
     let (mini_secret, public_key) = derive_substrate_sr25519_material(
         seed_phrase,
         passphrase.unwrap_or(""),

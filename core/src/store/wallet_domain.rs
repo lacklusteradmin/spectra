@@ -132,25 +132,27 @@ impl AssetHolding {
     }
 
     /// Validate identity before persistence and derive catalog-owned display facts.
-    pub fn canonicalize(&mut self) -> Result<(), String> {
+    pub fn canonicalize(&mut self) -> Result<(), crate::SpectraBridgeError> {
+        use crate::SpectraBridgeError as E;
         let network = self.chain_id;
-        self.amount = crate::decimal::canonical(&self.amount).ok_or("invalid holding amount")?;
+        self.amount = crate::decimal::canonical(&self.amount)
+            .ok_or_else(|| E::invalid("invalid holding amount"))?;
         self.contract_address =
             crate::tokens::normalize_token_identifier(self.contract_address.clone(), self.chain_id);
         if self.token_standard == "Native" {
             if self.contract_address.is_some() {
-                return Err("native token cannot carry a contract".into());
+                return Err(E::invalid("native token cannot carry a contract"));
             }
         } else {
             let contract = self
                 .contract_address
                 .as_ref()
-                .ok_or("protocol token requires an identifier")?;
+                .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
             if !network.hosts_tokens() {
-                return Err("network does not support tracked tokens".into());
+                return Err(E::invalid("network does not support tracked tokens"));
             }
             if self.token_standard != network.token_standard() {
-                return Err("token protocol does not match network".into());
+                return Err(E::invalid("token protocol does not match network"));
             }
             if !crate::validation::address::validate_address(
                 crate::validation::address::AddressValidationRequest {
@@ -160,7 +162,7 @@ impl AssetHolding {
             )
             .is_valid
             {
-                return Err("invalid token identifier".into());
+                return Err(E::invalid("invalid token identifier"));
             }
         }
         if let Some(token) = self.catalog_token() {
@@ -202,20 +204,18 @@ impl CoreWalletDerivationOverrides {
         if self.passphrase.as_ref().is_some_and(|s| !s.is_empty())
             && !chain.supports_derivation_passphrase()
         {
-            return Err(format!(
+            return Err(crate::SpectraBridgeError::invalid(format!(
                 "{} does not support a derivation passphrase",
                 chain.chain_display_name()
-            )
-            .into());
+            )));
         }
         if self.hmac_key.as_ref().is_some_and(|s| !s.is_empty())
             && !chain.supports_derivation_hmac_override()
         {
-            return Err(format!(
+            return Err(crate::SpectraBridgeError::invalid(format!(
                 "{} does not support a custom HMAC key",
                 chain.chain_display_name()
-            )
-            .into());
+            )));
         }
         Ok(())
     }

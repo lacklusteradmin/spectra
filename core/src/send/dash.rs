@@ -2,6 +2,8 @@
 //! double-SHA-256 sighash. The wire format is identical to Bitcoin/Litecoin
 //! legacy — Dash never adopted SegWit on mainnet.
 
+use crate::send::error::SendError;
+
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
 use crate::derivation::dash::decode_dash_address;
@@ -16,12 +18,12 @@ pub(crate) fn sign_dash_p2pkh(
     change_address: &str,
     private_key_bytes: &[u8],
     dust_threshold: Option<u64>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| format!("dash invalid privkey: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("dash invalid privkey: {e}")))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     let change = super::accounting::checked_change(
@@ -63,7 +65,7 @@ pub(crate) fn sign_dash_p2pkh(
         pre.extend_from_slice(&SIGHASH_ALL.to_le_bytes());
 
         let hash = dsha256(&pre);
-        let msg = Message::from_digest_slice(&hash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&hash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL as u8);

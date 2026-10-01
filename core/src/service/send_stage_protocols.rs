@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::error::{ApiError, OrDecode};
 use crate::send::payload::PreparedSubmission;
 use crate::send::stages::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -28,7 +29,9 @@ impl WalletService {
                     .token_contract_decimals(chain, contract)
                     .await?
                     .or(request.token_decimals)
-                    .ok_or("NEAR token precision unavailable")?,
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("NEAR token precision unavailable")
+                    })?,
                 Chain::Tron => u32::from(
                     TronHttpClient::new(
                         self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
@@ -38,10 +41,16 @@ impl WalletService {
                     .await?
                     .decimals,
                 ),
-                _ => return Err("Token transfer unavailable on this protocol".into()),
+                _ => {
+                    return Err(SpectraBridgeError::failure(
+                        "Token transfer unavailable on this protocol",
+                    ));
+                }
             };
             if request.token_decimals.is_some_and(|d| d != decimals) {
-                return Err("Token decimals changed; review again".into());
+                return Err(SpectraBridgeError::failure(
+                    "Token decimals changed; review again",
+                ));
             }
             request.token_decimals = Some(decimals);
             decimals
@@ -52,7 +61,8 @@ impl WalletService {
         let amount_u64 = if chain.mainnet_counterpart() == Chain::Near {
             0
         } else {
-            u64::try_from(amount).map_err(|_| "Amount exceeds protocol range")?
+            u64::try_from(amount)
+                .map_err(|_| SpectraBridgeError::failure("Amount exceeds protocol range"))?
         };
         let to = request.to_address.as_str();
         Ok(match chain.mainnet_counterpart() {
@@ -105,35 +115,33 @@ impl WalletService {
                 let public_key: [u8; 32] = if sender.len() == 64
                     && sender.bytes().all(|b| b.is_ascii_hexdigit())
                 {
-                    hex::decode(sender)
-                        .map_err(|e| e.to_string())?
+                    hex::decode(sender)?
                         .try_into()
-                        .map_err(|_| "Invalid NEAR public key")?
+                        .map_err(|_| SpectraBridgeError::failure("Invalid NEAR public key"))?
                 } else {
                     let response = client.call("query", json!({"request_type":"view_access_key_list","finality":"final","account_id":sender})).await?;
                     let keys: Vec<_> = response["keys"]
                         .as_array()
-                        .ok_or("Missing NEAR keys")?
+                        .ok_or_else(|| SpectraBridgeError::failure("Missing NEAR keys"))?
                         .iter()
                         .filter(|k| k["access_key"]["permission"] == "FullAccess")
                         .collect();
                     if keys.len() != 1 {
-                        return Err(
-                            "Named NEAR sender requires one unambiguous full-access signing key"
-                                .into(),
-                        );
+                        return Err(crate::SpectraBridgeError::failure(
+                            "Named NEAR sender requires one unambiguous full-access signing key",
+                        ));
                     }
                     let key = keys[0]["public_key"]
                         .as_str()
                         .and_then(|k| k.strip_prefix("ed25519:"))
-                        .ok_or("Unsupported NEAR key")?;
+                        .ok_or_else(|| SpectraBridgeError::failure("Unsupported NEAR key"))?;
                     crate::derivation::solana::decode_b58_32(key)?
                 };
                 let nonce = client
                     .fetch_access_key_nonce(sender, &bs58::encode(public_key).into_string())
                     .await?
                     .checked_add(1)
-                    .ok_or("Nonce exhausted")?;
+                    .ok_or_else(|| SpectraBridgeError::failure("Nonce exhausted"))?;
                 let block_hash = crate::derivation::solana::decode_b58_32(
                     &client.fetch_latest_block_hash().await?,
                 )?;
@@ -154,8 +162,12 @@ impl WalletService {
                     to,
                     amount_u64,
                     request.fee_sat.unwrap_or(
-                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                            .map_err(|_| "Invalid chain fee")?,
+                        u64::try_from(
+                            chain
+                                .static_fee_units()
+                                .ok_or_else(|| SpectraBridgeError::failure("Missing chain fee"))?,
+                        )
+                        .map_err(|_| SpectraBridgeError::failure("Invalid chain fee"))?,
                     ),
                     None,
                 )
@@ -168,8 +180,12 @@ impl WalletService {
                     to,
                     amount_u64,
                     request.fee_sat.unwrap_or(
-                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                            .map_err(|_| "Invalid chain fee")?,
+                        u64::try_from(
+                            chain
+                                .static_fee_units()
+                                .ok_or_else(|| SpectraBridgeError::failure("Missing chain fee"))?,
+                        )
+                        .map_err(|_| SpectraBridgeError::failure("Invalid chain fee"))?,
                     ),
                     None,
                     None,
@@ -180,7 +196,7 @@ impl WalletService {
                 seqno: ToncenterV2Client::new(eps).fetch_seqno(sender).await?,
                 amount: amount_u64,
                 valid_until: u32::try_from(crate::store::now_unix() as u64 + 60)
-                    .map_err(|_| "TON expiry overflow")?,
+                    .map_err(|_| SpectraBridgeError::failure("TON expiry overflow"))?,
             },
             Chain::Xrp => {
                 let client = XrplClient::new(eps);
@@ -201,13 +217,14 @@ impl WalletService {
                         .fetch_sequence(sender)
                         .await?
                         .checked_add(1)
-                        .ok_or("Sequence exhausted")?,
+                        .ok_or_else(|| SpectraBridgeError::failure("Sequence exhausted"))?,
                     fee_stroops: HorizonClient::new(
                         self.endpoints_for(chain, &[EndpointCapability::Fee]).await,
                     )
                     .fetch_base_fee()
                     .await?,
-                    amount_stroops: i64::try_from(amount).map_err(|_| "Amount too large")?,
+                    amount_stroops: i64::try_from(amount)
+                        .map_err(|_| SpectraBridgeError::failure("Amount too large"))?,
                 }
             }
             Chain::Polkadot | Chain::Bittensor => {
@@ -235,8 +252,12 @@ impl WalletService {
                     .map(|v| crate::send::payload::fee_units(v, 6))
                     .transpose()?
                     .unwrap_or(
-                        u64::try_from(chain.static_fee_units().ok_or("No Cardano fee")?)
-                            .map_err(|_| "Invalid fee")?,
+                        u64::try_from(
+                            chain
+                                .static_fee_units()
+                                .ok_or_else(|| SpectraBridgeError::failure("No Cardano fee"))?,
+                        )
+                        .map_err(|_| SpectraBridgeError::failure("Invalid fee"))?,
                     );
                 let inputs: Vec<_> =
                     KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
@@ -258,7 +279,7 @@ impl WalletService {
                         .fetch_latest_slot()
                         .await?
                         .checked_add(7200)
-                        .ok_or("Slot overflow")?,
+                        .ok_or_else(|| SpectraBridgeError::failure("Slot overflow"))?,
                 }
             }
             Chain::Bitcoin => {
@@ -269,7 +290,7 @@ impl WalletService {
                     Some(rate) => crate::decimal::canonical(rate)
                         .map(|rate| crate::decimal::to_f64(&rate))
                         .filter(|rate| *rate > 0.0)
-                        .ok_or("Invalid fee rate")?,
+                        .ok_or_else(|| SpectraBridgeError::failure("Invalid fee rate"))?,
                     None => self.bitcoin_fee_rate(chain).await?.sats_per_vbyte,
                 };
                 PreparedPayload::Bitcoin(crate::send::bitcoin::PreparedBitcoinTransaction::prepare(
@@ -332,9 +353,11 @@ impl WalletService {
                 let sequence = client.fetch_account_info(sender).await?.0;
                 let network = chain
                     .aptos_chain_id()
-                    .ok_or("Missing Aptos network identity")?;
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
                 if client.fetch_ledger_info().await?.0 != u64::from(network) {
-                    return Err("Aptos endpoint is on the wrong network".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Aptos endpoint is on the wrong network",
+                    ));
                 }
                 PreparedPayload::Aptos(crate::send::aptos::prepare_transfer(
                     sender,
@@ -377,7 +400,11 @@ impl WalletService {
                     .await?,
                 )
             }
-            _ => return Err("Transparent preparation unavailable for this protocol".into()),
+            _ => {
+                return Err(SpectraBridgeError::failure(
+                    "Transparent preparation unavailable for this protocol",
+                ));
+            }
         })
     }
 
@@ -412,18 +439,15 @@ impl WalletService {
                         != Some(*nonce)
                     || crate::store::now_unix() - stored.view.created_at > 120.0
                 {
-                    return Err(
-                        "NEAR signer, nonce or block reference is stale; build and review again"
-                            .into(),
-                    );
+                    return Err(crate::SpectraBridgeError::failure(
+                        "NEAR signer, nonce or block reference is stale; build and review again",
+                    ));
                 }
-                let bytes = zeroize::Zeroizing::new(
-                    hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-                );
+                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                 let key: &[u8; 32] = bytes
                     .as_slice()
                     .try_into()
-                    .map_err(|_| "Invalid NEAR seed")?;
+                    .map_err(|_| SpectraBridgeError::failure("Invalid NEAR seed"))?;
                 let raw = if let Some(contract) = token_contract {
                     let args = serde_json::to_vec(
                         &json!({"receiver_id":stored.view.recipient,"amount":amount.to_string()}),
@@ -475,16 +499,22 @@ impl WalletService {
                         &request.amount_str,
                         8,
                     )?)
-                    .map_err(|_| "Amount too large")?,
+                    .map_err(|_| SpectraBridgeError::failure("Amount too large"))?,
                     request.fee_sat.unwrap_or(
-                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                            .map_err(|_| "Invalid chain fee")?,
+                        u64::try_from(
+                            chain
+                                .static_fee_units()
+                                .ok_or_else(|| SpectraBridgeError::failure("Missing chain fee"))?,
+                        )
+                        .map_err(|_| SpectraBridgeError::failure("Invalid chain fee"))?,
                     ),
                     None,
                 )
                 .await?;
                 if serde_json::to_vec(p)? != serde_json::to_vec(&refreshed)? {
-                    return Err("Decred inputs changed; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Decred inputs changed; build and review again",
+                    ));
                 }
                 resources = p.resources();
                 let key = decode_private_key(&signer.private_key_hex)?;
@@ -500,17 +530,23 @@ impl WalletService {
                         &request.amount_str,
                         8,
                     )?)
-                    .map_err(|_| "Amount too large")?,
+                    .map_err(|_| SpectraBridgeError::failure("Amount too large"))?,
                     request.fee_sat.unwrap_or(
-                        u64::try_from(chain.static_fee_units().ok_or("Missing chain fee")?)
-                            .map_err(|_| "Invalid chain fee")?,
+                        u64::try_from(
+                            chain
+                                .static_fee_units()
+                                .ok_or_else(|| SpectraBridgeError::failure("Missing chain fee"))?,
+                        )
+                        .map_err(|_| SpectraBridgeError::failure("Invalid chain fee"))?,
                     ),
                     None,
                     None,
                 )
                 .await?;
                 if serde_json::to_vec(p)? != serde_json::to_vec(&refreshed)? {
-                    return Err("Kaspa inputs changed; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Kaspa inputs changed; build and review again",
+                    ));
                 }
                 resources = p.resources();
                 let key = decode_private_key(&signer.private_key_hex)?;
@@ -527,7 +563,9 @@ impl WalletService {
                         .await?
                         != *seqno
                 {
-                    return Err("TON sequence or expiration changed; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "TON sequence or expiration changed; build and review again",
+                    ));
                 }
                 let key = decode_secret_array::<32>(&signer.private_key_hex)?;
                 let public = seed()?.public_key();
@@ -567,7 +605,9 @@ impl WalletService {
             }
             PreparedPayload::Icp(p) => {
                 if (crate::store::now_unix() * 1_000_000_000.0) as u64 >= p.ingress_expiry_ns {
-                    return Err("ICP transaction expired; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "ICP transaction expired; build and review again",
+                    ));
                 }
                 resources.push(format!(
                     "{}:{}:transfer:{}:{}",
@@ -610,13 +650,15 @@ impl WalletService {
                     .await?
                     != *sequence
                 {
-                    return Err("XRP sequence changed; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "XRP sequence changed; build and review again",
+                    ));
                 }
                 let key = decode_private_key(&signer.private_key_hex)?;
                 let public = signer
                     .public_key_hex
                     .as_deref()
-                    .ok_or("Missing XRP public key")?;
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing XRP public key"))?;
                 let blob = crate::send::xrp::build_signed_payment(
                     &stored.view.sender,
                     &stored.view.recipient,
@@ -644,15 +686,17 @@ impl WalletService {
                     .checked_add(1)
                     != Some(*sequence)
                 {
-                    return Err("Stellar sequence changed; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Stellar sequence changed; build and review again",
+                    ));
                 }
-                let bytes = zeroize::Zeroizing::new(
-                    hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-                );
+                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                 if !matches!(bytes.len(), 32 | 64) {
-                    return Err("Invalid Stellar signing key".into());
+                    return Err(SpectraBridgeError::failure("Invalid Stellar signing key"));
                 }
-                let seed: &[u8; 32] = bytes[..32].try_into().map_err(|_| "Invalid Stellar seed")?;
+                let seed: &[u8; 32] = bytes[..32]
+                    .try_into()
+                    .map_err(|_| SpectraBridgeError::failure("Invalid Stellar seed"))?;
                 let public = ed25519_dalek::SigningKey::from_bytes(seed)
                     .verifying_key()
                     .to_bytes();
@@ -698,29 +742,23 @@ impl WalletService {
                     || version != (*spec_version, *transaction_version)
                     || genesis != *genesis_hash
                 {
-                    return Err(
-                        "Substrate runtime, network or nonce changed; build and review again"
-                            .into(),
-                    );
+                    return Err(crate::SpectraBridgeError::failure(
+                        "Substrate runtime, network or nonce changed; build and review again",
+                    ));
                 }
-                let bytes = zeroize::Zeroizing::new(
-                    hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-                );
+                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                 let key: &[u8; 32] = bytes
                     .as_slice()
                     .try_into()
-                    .map_err(|_| "Invalid Substrate seed")?;
-                let public = hex::decode(
-                    signer
-                        .public_key_hex
-                        .as_deref()
-                        .ok_or("Missing Substrate public key")?,
-                )
-                .map_err(|e| e.to_string())?;
+                    .map_err(|_| SpectraBridgeError::failure("Invalid Substrate seed"))?;
+                let public =
+                    hex::decode(signer.public_key_hex.as_deref().ok_or_else(|| {
+                        SpectraBridgeError::failure("Missing Substrate public key")
+                    })?)?;
                 let public: &[u8; 32] = public
                     .as_slice()
                     .try_into()
-                    .map_err(|_| "Invalid Substrate public key")?;
+                    .map_err(|_| SpectraBridgeError::failure("Invalid Substrate public key"))?;
                 let raw = if chain.mainnet_counterpart() == Chain::Polkadot {
                     crate::send::polkadot::build_signed_transfer(
                         &stored.view.recipient,
@@ -767,7 +805,9 @@ impl WalletService {
             } => {
                 let client = KoiosClient::new(eps);
                 if client.fetch_latest_slot().await? >= *ttl {
-                    return Err("Cardano transaction expired; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Cardano transaction expired; build and review again",
+                    ));
                 }
                 let current =
                     KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
@@ -778,24 +818,21 @@ impl WalletService {
                         .iter()
                         .any(|u| &u.tx_hash == hash && u.tx_index == *index && u.lovelace == *value)
                     {
-                        return Err("Cardano input changed; build and review again".into());
+                        return Err(SpectraBridgeError::failure(
+                            "Cardano input changed; build and review again",
+                        ));
                     }
                     resources.push(format!("{}:utxo:{hash}:{index}", chain.str_id()));
                 }
-                let bytes = zeroize::Zeroizing::new(
-                    hex::decode(signer.private_key_hex.as_str()).map_err(|e| e.to_string())?,
-                );
+                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                 let key: &[u8; 64] = bytes
                     .as_slice()
                     .try_into()
-                    .map_err(|_| "Invalid Cardano key")?;
-                let public = hex::decode(
-                    signer
-                        .public_key_hex
-                        .as_deref()
-                        .ok_or("Missing Cardano public key")?,
-                )
-                .map_err(|e| e.to_string())?;
+                    .map_err(|_| SpectraBridgeError::failure("Invalid Cardano key"))?;
+                let public =
+                    hex::decode(signer.public_key_hex.as_deref().ok_or_else(|| {
+                        SpectraBridgeError::failure("Missing Cardano public key")
+                    })?)?;
                 let public = decode_hex_array::<32>(&hex::encode(public), "Cardano public key")?;
                 let raw = crate::send::cardano::build_signed_ada_tx(
                     inputs,
@@ -820,9 +857,9 @@ impl WalletService {
                     if !current.iter().any(|u| {
                         u.txid == input.txid && u.vout == input.vout && u.value == input.value
                     }) {
-                        return Err(
-                            "Bitcoin input changed or was spent; build and review again".into()
-                        );
+                        return Err(crate::SpectraBridgeError::failure(
+                            "Bitcoin input changed or was spent; build and review again",
+                        ));
                     }
                     resources.push(format!(
                         "{}:utxo:{}:{}",
@@ -844,7 +881,9 @@ impl WalletService {
                     )
                     .await?;
                 if valid["value"].as_bool() != Some(true) {
-                    return Err("Solana blockhash expired; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Solana blockhash expired; build and review again",
+                    ));
                 }
                 let raw = p.sign(&seed()?)?;
                 (
@@ -856,9 +895,11 @@ impl WalletService {
             PreparedPayload::Tron(p) => {
                 let expiry = p.body["raw_data"]["expiration"]
                     .as_u64()
-                    .ok_or("Invalid Tron expiration")?;
+                    .ok_or_else(|| SpectraBridgeError::failure("Invalid Tron expiration"))?;
                 if expiry <= (crate::store::now_unix() * 1000.0) as u64 {
-                    return Err("Tron transaction expired; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Tron transaction expired; build and review again",
+                    ));
                 }
                 let key = decode_private_key(&signer.private_key_hex)?;
                 (
@@ -870,14 +911,14 @@ impl WalletService {
             PreparedPayload::Aptos(p) => {
                 let seq: u64 = p.body["sequence_number"]
                     .as_str()
-                    .ok_or("Missing sequence")?
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing sequence"))?
                     .parse()
-                    .map_err(|_| "Invalid sequence")?;
+                    .map_err(|_| SpectraBridgeError::failure("Invalid sequence"))?;
                 let expiry: u64 = p.body["expiration_timestamp_secs"]
                     .as_str()
-                    .ok_or("Missing expiration")?
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing expiration"))?
                     .parse()
-                    .map_err(|_| "Invalid expiration")?;
+                    .map_err(|_| SpectraBridgeError::failure("Invalid expiration"))?;
                 if AptosClient::new(eps)
                     .fetch_account_info(&stored.view.sender)
                     .await?
@@ -885,9 +926,9 @@ impl WalletService {
                     != seq
                     || expiry <= crate::store::now_unix() as u64
                 {
-                    return Err(
-                        "Aptos sequence or expiration is stale; build and review again".into(),
-                    );
+                    return Err(crate::SpectraBridgeError::failure(
+                        "Aptos sequence or expiration is stale; build and review again",
+                    ));
                 }
                 resources.push(format!(
                     "{}:{}:sequence:{seq}",
@@ -907,7 +948,9 @@ impl WalletService {
                     .prepare_staged_protocol(chain, &mut request, &stored.view.sender)
                     .await?;
                 if serde_json::to_vec(&refreshed)? != serde_json::to_vec(&stored.prepared)? {
-                    return Err("Sui objects or gas changed; build and review again".into());
+                    return Err(SpectraBridgeError::failure(
+                        "Sui objects or gas changed; build and review again",
+                    ));
                 }
                 resources = p
                     .objects
@@ -928,7 +971,11 @@ impl WalletService {
                     None,
                 )
             }
-            PreparedPayload::Evm(_) => return Err("EVM signing uses its typed signer".into()),
+            PreparedPayload::Evm(_) => {
+                return Err(SpectraBridgeError::failure(
+                    "EVM signing uses its typed signer",
+                ));
+            }
         };
         Ok((
             PreparedSubmission {
@@ -955,18 +1002,22 @@ impl WalletService {
             .iter()
             .any(|url| url.trim_end_matches('/') == endpoint.trim_end_matches('/'))
         {
-            return Err("Endpoint does not support broadcasts on the selected network".into());
+            return Err(SpectraBridgeError::failure(
+                "Endpoint does not support broadcasts on the selected network",
+            ));
         }
-        self.validate_endpoint_network(chain, endpoint).await
+        Ok(self.validate_endpoint_network(chain, endpoint).await?)
     }
 
+    /// Refuse an endpoint that is not on `chain`'s network, asking the node
+    /// itself where the protocol lets it say.
     pub(super) async fn validate_endpoint_network(
         &self,
         chain: Chain,
         endpoint: &str,
-    ) -> Result<(), SpectraBridgeError> {
-        let catalog = crate::app_core::endpoint_catalog()?;
-        let known = catalog.endpoint_records.iter().any(|r| {
+    ) -> Result<(), ApiError> {
+        let wrong_network = || ApiError::invalid("Endpoint is on the wrong network");
+        let known = crate::endpoints::catalog().records.iter().any(|r| {
             r.chain_id == chain
                 && chain.endpoint_apis().contains(&r.api)
                 && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
@@ -977,20 +1028,19 @@ impl WalletService {
                 .call("eth_chainId", json!([]))
                 .await?;
             if crate::api::evm_json_rpc::parse_hex_u64(
-                actual.as_str().ok_or("Missing endpoint network identity")?,
+                actual
+                    .as_str()
+                    .or_decode("Missing endpoint network identity")?,
             )? != chain.evm_chain_id()?
             {
-                return Err("Endpoint is on the wrong network".into());
+                return Err(wrong_network());
             }
         } else if chain.mainnet_counterpart() == Chain::Aptos {
-            if AptosClient::new(eps).fetch_ledger_info().await?.0
-                != u64::from(
-                    chain
-                        .aptos_chain_id()
-                        .ok_or("Missing Aptos network identity")?,
-                )
-            {
-                return Err("Endpoint is on the wrong network".into());
+            let expected = chain
+                .aptos_chain_id()
+                .or_decode("Missing Aptos network identity")?;
+            if AptosClient::new(eps).fetch_ledger_info().await?.0 != u64::from(expected) {
+                return Err(wrong_network());
             }
         } else if chain.mainnet_counterpart() == Chain::Zcash {
             BlockbookClient::new(eps, chain).zcash_context().await?;
@@ -999,7 +1049,9 @@ impl WalletService {
         } else if chain.mainnet_counterpart() == Chain::Monero {
             crate::api::monero_daemon_rpc::daemon(endpoint, chain).await?;
         } else if !known {
-            return Err("Endpoint network and broadcast capability cannot be verified".into());
+            return Err(ApiError::invalid(
+                "Endpoint network and broadcast capability cannot be verified",
+            ));
         }
         Ok(())
     }
@@ -1050,7 +1102,9 @@ impl WalletService {
             _ => false,
         };
         if expired {
-            return Err("Signed transaction expired; inspect its on-chain status before building a new transaction".into());
+            return Err(SpectraBridgeError::failure(
+                "Signed transaction expired; inspect its on-chain status before building a new transaction",
+            ));
         }
         Ok(())
     }

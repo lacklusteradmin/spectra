@@ -1,4 +1,6 @@
 //! Secret material stays redacted and zeroizing across the internal send boundary.
+
+use crate::send::error::SendError;
 use std::{fmt, ops::Deref};
 use zeroize::Zeroizing;
 
@@ -24,20 +26,25 @@ impl fmt::Debug for SecretHex {
 /// dalek owns and zeroizes its signing material; callers cannot print it.
 pub struct Ed25519Seed(ed25519_dalek::SigningKey);
 impl Ed25519Seed {
-    pub fn from_hex(value: &str) -> Result<Self, String> {
-        let bytes = Zeroizing::new(hex::decode(value).map_err(|_| "invalid Ed25519 seed hex")?);
+    pub fn from_hex(value: &str) -> Result<Self, SendError> {
+        let bytes = Zeroizing::new(
+            hex::decode(value)
+                .map_err(|_| SendError::Invalid("invalid Ed25519 seed hex".into()))?,
+        );
         let seed: &[u8; 32] = bytes
             .as_slice()
             .try_into()
-            .map_err(|_| "Ed25519 seed must be 32 bytes")?;
+            .map_err(|_| SendError::Invalid("Ed25519 seed must be 32 bytes".into()))?;
         Ok(Self(ed25519_dalek::SigningKey::from_bytes(seed)))
     }
     pub fn public_key(&self) -> [u8; 32] {
         self.0.verifying_key().to_bytes()
     }
-    pub fn require_public_key(&self, expected: &[u8; 32]) -> Result<(), String> {
+    pub fn require_public_key(&self, expected: &[u8; 32]) -> Result<(), SendError> {
         if &self.public_key() != expected {
-            return Err("sender public key does not match signing seed".into());
+            return Err(SendError::Invalid(
+                "sender public key does not match signing seed".into(),
+            ));
         }
         Ok(())
     }

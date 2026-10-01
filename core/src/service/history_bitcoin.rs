@@ -204,7 +204,11 @@ impl WalletService {
             let address = wallet
                 .address_on(network)
                 .filter(|a| !a.trim().is_empty())
-                .ok_or("this wallet has no Bitcoin address on the selected network".to_string())?
+                .ok_or_else(|| {
+                    crate::SpectraBridgeError::failure(
+                        "this wallet has no Bitcoin address on the selected network",
+                    )
+                })?
                 .to_string();
             (vec![address.clone()], address, "rust")
         };
@@ -263,7 +267,8 @@ impl WalletService {
             .and_then(|a| a.derivation_path.clone())
             .or_else(|| wallet.derivation_path.clone())
             .unwrap_or_else(|| {
-                crate::app_core::default_path_from_catalog(Chain::Bitcoin).unwrap_or_default()
+                crate::derivation::path::default_path_from_catalog(Chain::Bitcoin)
+                    .unwrap_or_default()
             });
         let account_path = path.split('/').take(4).collect::<Vec<_>>().join("/");
         // The wallet's own passphrase, not the empty string. Derived without
@@ -335,5 +340,5 @@ fn bitcoin_record(
 }
 
 #[cfg(test)]
-#[path = "history_bitcoin_tests.rs"]
+#[path = "tests/history_bitcoin.rs"]
 mod tests;

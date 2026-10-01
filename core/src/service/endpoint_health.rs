@@ -1,7 +1,9 @@
 //! Read-only protocol checks against the endpoint actually configured.
+use crate::api::error::ApiError;
 use crate::api::http::{HttpClient, RetryProfile};
+use crate::endpoints::EndpointRecord;
 use crate::registry::{Chain, EvmHistorySource};
-use crate::{AppCoreEndpointRecord, EndpointApi, EndpointCapability};
+use crate::{EndpointApi, EndpointCapability};
 use serde_json::{Value, json};
 
 const ZERO_EVM: &str = "0x0000000000000000000000000000000000000000";
@@ -48,7 +50,7 @@ impl Check {
             .unwrap_or(&self.url)
     }
 
-    async fn run(&self, chain: Chain) -> Result<(), String> {
+    async fn run(&self, chain: Chain) -> Result<(), ApiError> {
         let client = HttpClient::shared();
         let value: Value = match &self.body {
             Some(body) => {
@@ -63,7 +65,7 @@ impl Check {
             }
         };
         self.validate(chain, &value)
-            .map_err(|reason| format!("{reason}: {value}"))
+            .map_err(|reason| ApiError::decode(format!("{reason}: {value}")))
     }
 
     fn validate(&self, chain: Chain, value: &Value) -> Result<(), &'static str> {
@@ -122,7 +124,7 @@ impl Check {
     }
 }
 
-fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, String> {
+fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError> {
     use EndpointApi::*;
     let api = record.api;
     let base = record.endpoint.trim_end_matches('/');
@@ -169,15 +171,17 @@ fn checks(chain: Chain, record: &AppCoreEndpointRecord) -> Result<Vec<Check>, St
         BchRestV2 => vec![get("/blockchain/getBlockchainInfo", "/blocks")],
     };
     if checks.is_empty() {
-        return Err("no health check for the declared capabilities".into());
+        return Err(ApiError::invalid(
+            "no health check for the declared capabilities",
+        ));
     }
     Ok(checks)
 }
 
-pub(super) async fn probe(chain: Chain, record: &AppCoreEndpointRecord) -> (bool, bool, String) {
+pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool, String) {
     let checks = match checks(chain, record) {
         Ok(checks) => checks,
-        Err(error) => return (false, false, error),
+        Err(error) => return (false, false, error.to_string()),
     };
     for check in &checks {
         let mut result = check.run(chain).await;
@@ -204,5 +208,5 @@ pub(super) async fn probe(chain: Chain, record: &AppCoreEndpointRecord) -> (bool
 }
 
 #[cfg(test)]
-#[path = "endpoint_health_tests.rs"]
+#[path = "tests/endpoint_health.rs"]
 mod tests;

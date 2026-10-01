@@ -49,7 +49,7 @@ impl WalletService {
                         .fetch_token_balances(chain_id, address.clone(), vec![descriptor])
                         .await?
                         .first()
-                        .ok_or_else(|| SpectraBridgeError::from("token balance unavailable"))?
+                        .ok_or_else(|| SpectraBridgeError::failure("token balance unavailable"))?
                         .balance_raw
                         .clone(),
                     None => {
@@ -59,7 +59,7 @@ impl WalletService {
                     }
                 };
                 if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
-                    return Err(SpectraBridgeError::from("invalid destination balance"));
+                    return Err(SpectraBridgeError::failure("invalid destination balance"));
                 }
                 Ok::<_, SpectraBridgeError>(raw.bytes().all(|b| b == b'0'))
             };

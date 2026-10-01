@@ -12,6 +12,8 @@
 //!   - Pedersen commitments + Bulletproof range proofs via grin_secp256k1zkp
 //!   - Schnorr signatures via secp256k1 0.29
 
+use crate::send::error::SendError;
+
 use rand::RngCore;
 
 use crate::derivation::litecoin::MwebAddress;
@@ -82,14 +84,14 @@ fn derive_output_keys(
     addr: &MwebAddress,
     value: u64,
     secp: &secp256k1zkp::Secp256k1,
-) -> Result<MwebOutputKeys, String> {
+) -> Result<MwebOutputKeys, SendError> {
     // Step 1: random sender keypair (k_s, K_s = k_s·G)
     let mut k_s = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut k_s);
     let ks_sk = secp256k1zkp::key::SecretKey::from_slice(secp, &k_s)
-        .map_err(|e| format!("mweb k_s: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb k_s: {e}")))?;
     let ks_pk = secp256k1zkp::key::PublicKey::from_secret_key(secp, &ks_sk)
-        .map_err(|e| format!("mweb K_s: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb K_s: {e}")))?;
     let sender_pubkey = pk33(secp, &ks_pk)?;
 
     // Step 2: nonce n = BLAKE3('N' | k_s)[:16]
@@ -104,31 +106,31 @@ fn derive_output_keys(
         &n,
     ]);
     let s_sk = secp256k1zkp::key::SecretKey::from_slice(secp, &s_bytes)
-        .map_err(|e| format!("mweb sending key s: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb sending key s: {e}")))?;
 
     // Step 4: shared point sA = s · A_scan;  shared secret t = BLAKE3('D' | sA)
     let mut sa = secp256k1zkp::key::PublicKey::from_slice(secp, &addr.scan_pubkey)
-        .map_err(|e| format!("mweb scan pubkey: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb scan pubkey: {e}")))?;
     sa.mul_assign(secp, &s_sk)
-        .map_err(|e| format!("mweb sA: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb sA: {e}")))?;
     let sa_compressed = pk33(secp, &sa)?;
     let t = b3(HTAG_DERIVE, &sa_compressed);
 
     // Step 5: K_o = BLAKE3('O' | t) · B_spend
     let ok_scalar = b3(HTAG_OUT_KEY, &t);
     let ok_sk = secp256k1zkp::key::SecretKey::from_slice(secp, &ok_scalar)
-        .map_err(|e| format!("mweb out_key scalar: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb out_key scalar: {e}")))?;
     let mut ko = secp256k1zkp::key::PublicKey::from_slice(secp, &addr.spend_pubkey)
-        .map_err(|e| format!("mweb spend pubkey Ko: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb spend pubkey Ko: {e}")))?;
     ko.mul_assign(secp, &ok_sk)
-        .map_err(|e| format!("mweb Ko: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb Ko: {e}")))?;
     let receiver_pubkey = pk33(secp, &ko)?;
 
     // Step 6: K_e = s · B_spend  (key exchange pubkey, goes in OutputMessage)
     let mut ke = secp256k1zkp::key::PublicKey::from_slice(secp, &addr.spend_pubkey)
-        .map_err(|e| format!("mweb spend pubkey Ke: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb spend pubkey Ke: {e}")))?;
     ke.mul_assign(secp, &s_sk)
-        .map_err(|e| format!("mweb Ke: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb Ke: {e}")))?;
     let key_exchange_pubkey = pk33(secp, &ke)?;
 
     // Step 7: view_tag = BLAKE3('T' | sA)[0]
@@ -173,15 +175,15 @@ fn build_output(
     addr: &MwebAddress,
     value: u64,
     secp: &secp256k1zkp::Secp256k1,
-) -> Result<(Vec<u8>, [u8; 33], [u8; 32]), String> {
+) -> Result<(Vec<u8>, [u8; 33], [u8; 32]), SendError> {
     let keys = derive_output_keys(addr, value, secp)?;
 
     // Pedersen commitment C = value·H + blinding·G
     let blind_sk = secp256k1zkp::key::SecretKey::from_slice(secp, &keys.blinding)
-        .map_err(|e| format!("mweb blind sk: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb blind sk: {e}")))?;
     let commit = secp
         .commit(value, blind_sk.clone())
-        .map_err(|e| format!("mweb commit: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb commit: {e}")))?;
     let commitment: [u8; 33] = commit.0;
 
     // Bulletproof range proof.
@@ -192,9 +194,9 @@ fn build_output(
     rand::thread_rng().fill_bytes(&mut rn);
     rand::thread_rng().fill_bytes(&mut pn);
     let rewind_nonce = secp256k1zkp::key::SecretKey::from_slice(secp, &rn)
-        .map_err(|e| format!("mweb rewind nonce: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb rewind nonce: {e}")))?;
     let private_nonce = secp256k1zkp::key::SecretKey::from_slice(secp, &pn)
-        .map_err(|e| format!("mweb private nonce: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb private nonce: {e}")))?;
     let proof = secp.bullet_proof(
         value,
         blind_sk,
@@ -238,11 +240,15 @@ fn build_output(
 ///
 /// For a peg-in there are no MWEB inputs, so excess = blinding·G, satisfying
 /// the MW balance:  C_out − v_pegin·H = blinding·G.
-fn build_kernel(fee_sat: u64, pegin_amount: u64, blinding: &[u8; 32]) -> Result<Vec<u8>, String> {
+fn build_kernel(
+    fee_sat: u64,
+    pegin_amount: u64,
+    blinding: &[u8; 32],
+) -> Result<Vec<u8>, SendError> {
     // excess = blinding·G  (secp256k1 compressed public key)
     let btc_secp = secp256k1::Secp256k1::signing_only();
     let bf_sk = secp256k1::SecretKey::from_slice(blinding)
-        .map_err(|e| format!("mweb kernel excess sk: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("mweb kernel excess sk: {e}")))?;
     let excess: [u8; 33] = secp256k1::PublicKey::from_secret_key(&btc_secp, &bf_sk).serialize();
 
     let features = KERNEL_FEAT_HAS_FEE | KERNEL_FEAT_PEGIN;
@@ -281,7 +287,7 @@ pub fn build_peg_in_extension(
     addr: &MwebAddress,
     pegin_amount: u64,
     fee_sat: u64,
-) -> Result<(Vec<u8>, Vec<u8>), String> {
+) -> Result<(Vec<u8>, Vec<u8>), SendError> {
     let secp = secp256k1zkp::Secp256k1::with_caps(secp256k1zkp::ContextFlag::Commit);
 
     let (output_bytes, commitment, blinding) = build_output(addr, pegin_amount, &secp)?;
@@ -306,11 +312,13 @@ pub fn build_peg_in_extension(
 
 // ── Schnorr signing (secp256k1 0.29) ─────────────────────────────────────────
 
-fn schnorr_sign(msg_hash: &[u8; 32], sk_bytes: &[u8; 32]) -> Result<[u8; 64], String> {
+fn schnorr_sign(msg_hash: &[u8; 32], sk_bytes: &[u8; 32]) -> Result<[u8; 64], SendError> {
     use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
     let secp = Secp256k1::signing_only();
-    let sk = SecretKey::from_slice(sk_bytes).map_err(|e| format!("schnorr_sign sk: {e}"))?;
-    let msg = Message::from_digest_slice(msg_hash).map_err(|e| format!("schnorr_sign msg: {e}"))?;
+    let sk = SecretKey::from_slice(sk_bytes)
+        .map_err(|e| SendError::Invalid(format!("schnorr_sign sk: {e}")))?;
+    let msg = Message::from_digest_slice(msg_hash)
+        .map_err(|e| SendError::Internal(format!("schnorr_sign msg: {e}")))?;
     let kp = Keypair::from_secret_key(&secp, &sk);
     Ok(secp.sign_schnorr(&msg, &kp).serialize())
 }
@@ -320,10 +328,10 @@ fn schnorr_sign(msg_hash: &[u8; 32], sk_bytes: &[u8; 32]) -> Result<[u8; 64], St
 fn pk33(
     secp: &secp256k1zkp::Secp256k1,
     pk: &secp256k1zkp::key::PublicKey,
-) -> Result<[u8; 33], String> {
+) -> Result<[u8; 33], SendError> {
     pk.serialize_vec(secp, true).as_slice()[..33]
         .try_into()
-        .map_err(|_| "pk33: unexpected length".to_string())
+        .map_err(|_| SendError::Invalid("pk33: unexpected length".into()))
 }
 
 fn mweb_write_varint(buf: &mut Vec<u8>, n: usize) {

@@ -4,6 +4,7 @@ use crate::service::{
     TransactionSnapshot,
 };
 use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::wallet_db::error::DbError;
 
 // All user-facing projections select the same canonical transaction and owner.
 const VISIBLE: &str = "EXISTS (SELECT 1 FROM wallets w WHERE lower(w.id) = h.wallet_id)
@@ -24,13 +25,13 @@ struct Cursor {
     hide_small_amounts: bool,
 }
 
-fn decode_cursor(query: &HistoryQuery) -> Result<Option<Cursor>, String> {
+fn decode_cursor(query: &HistoryQuery) -> Result<Option<Cursor>, DbError> {
     query
         .cursor
         .as_ref()
         .map(|encoded| {
-            let cursor: Cursor =
-                serde_json::from_str(encoded).map_err(|_| "Invalid history cursor")?;
+            let cursor: Cursor = serde_json::from_str(encoded)
+                .map_err(|_| DbError::Invalid("Invalid history cursor".into()))?;
             if !cursor.created_at.is_finite()
                 || cursor.id.is_empty()
                 || cursor.wallet_id != query.wallet_id
@@ -39,7 +40,9 @@ fn decode_cursor(query: &HistoryQuery) -> Result<Option<Cursor>, String> {
                 || cursor.oldest_first != query.oldest_first
                 || cursor.hide_small_amounts != query.hide_small_amounts
             {
-                return Err("History cursor does not match this query; restart pagination".into());
+                return Err(DbError::Invalid(
+                    "History cursor does not match this query; restart pagination".into(),
+                ));
             }
             Ok(cursor)
         })
@@ -83,7 +86,7 @@ fn page_sql(query: &HistoryQuery) -> String {
         ORDER BY h.created_at {order}, h.id ASC LIMIT ?4")
 }
 
-fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<HistoryPage, String> {
+fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<HistoryPage, DbError> {
     let cursor = decode_cursor(query)?;
     let sql = page_sql(query);
     let filter = match query.filter {
@@ -92,7 +95,7 @@ fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<His
         HistoryQueryFilter::Receive => "receive",
         HistoryQueryFilter::Pending => "pending",
     };
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&sql).map_err(DbError::from)?;
     let rows = stmt
         .query_map(
             params![
@@ -111,11 +114,12 @@ fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<His
                 ))
             },
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(DbError::from)?;
     let mut entries = Vec::new();
     for row in rows {
-        let (json, created_at, id) = row.map_err(|e| e.to_string())?;
-        let record = serde_json::from_str(&json).map_err(|e| format!("history decode: {e}"))?;
+        let (json, created_at, id) = row.map_err(DbError::from)?;
+        let record = serde_json::from_str(&json)
+            .map_err(|e| DbError::Corrupt(format!("history decode: {e}")))?;
         entries.push((record, created_at, id));
     }
     let has_more = entries.len() > query.limit as usize;
@@ -133,7 +137,7 @@ fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<His
                     oldest_first: query.oldest_first,
                     hide_small_amounts: query.hide_small_amounts,
                 })
-                .map_err(|e| e.to_string())
+                .map_err(DbError::from)
             })
             .transpose()?
     } else {
@@ -149,9 +153,9 @@ fn page_on_conn(conn: &rusqlite::Connection, query: &HistoryQuery) -> Result<His
 pub(crate) fn history_page(
     database: &WalletDatabase,
     query: &HistoryQuery,
-) -> Result<HistoryPage, String> {
+) -> Result<HistoryPage, DbError> {
     with_conn(database, |conn| {
-        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
         page_on_conn(&tx, query)
     })
 }
@@ -159,7 +163,7 @@ pub(crate) fn history_page(
 pub(crate) fn history_find(
     database: &WalletDatabase,
     id: &str,
-) -> Result<Option<CorePersistedTransactionRecord>, String> {
+) -> Result<Option<CorePersistedTransactionRecord>, DbError> {
     use rusqlite::OptionalExtension;
     with_conn(database, |conn| {
         let json: Option<String> = conn
@@ -169,25 +173,28 @@ pub(crate) fn history_find(
                 |r| r.get(0),
             )
             .optional()
-            .map_err(|e| e.to_string())?;
-        json.map(|json| serde_json::from_str(&json).map_err(|e| format!("history decode: {e}")))
-            .transpose()
+            .map_err(DbError::from)?;
+        json.map(|json| {
+            serde_json::from_str(&json)
+                .map_err(|e| DbError::Corrupt(format!("history decode: {e}")))
+        })
+        .transpose()
     })
 }
 
 pub(crate) fn history_snapshot(
     database: &WalletDatabase,
     sequence: &std::sync::atomic::AtomicU64,
-) -> Result<TransactionSnapshot, String> {
+) -> Result<TransactionSnapshot, DbError> {
     with_conn(database, |conn| {
-        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
         let total_count = tx
             .query_row(
                 &format!("SELECT count(*) FROM history_records h WHERE {VISIBLE}"),
                 [],
                 |r| r.get::<_, u64>(0),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         let mut records = page_on_conn(
             &tx,
             &HistoryQuery {
@@ -196,17 +203,16 @@ pub(crate) fn history_snapshot(
             },
         )?
         .records;
-        let mut pending = tx.prepare(&format!("SELECT h.payload FROM history_records h WHERE {VISIBLE} AND json_extract(h.payload, '$.status') = 'pending' ORDER BY h.created_at DESC, h.id ASC")).map_err(|e| e.to_string())?;
+        let mut pending = tx.prepare(&format!("SELECT h.payload FROM history_records h WHERE {VISIBLE} AND json_extract(h.payload, '$.status') = 'pending' ORDER BY h.created_at DESC, h.id ASC")).map_err(DbError::from)?;
         let mut seen: std::collections::HashSet<String> =
             records.iter().map(|r| r.id.clone()).collect();
         let mut replaceable = Vec::new();
         let rows = pending
             .query_map([], |r| r.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         for row in rows {
             let record: CorePersistedTransactionRecord =
-                serde_json::from_str(&row.map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
+                serde_json::from_str(&row.map_err(DbError::from)?).map_err(DbError::from)?;
             if let Some(send) = crate::service::history_derived::replaceable_send(&record) {
                 replaceable.push(send);
             }
@@ -214,7 +220,7 @@ pub(crate) fn history_snapshot(
                 records.push(record);
             }
         }
-        let mut first = tx.prepare(&format!("SELECT h.wallet_id, min(h.created_at) FROM history_records h WHERE {VISIBLE} AND json_extract(h.payload, '$.createdAtUnix') > 0 GROUP BY h.wallet_id")).map_err(|e| e.to_string())?;
+        let mut first = tx.prepare(&format!("SELECT h.wallet_id, min(h.created_at) FROM history_records h WHERE {VISIBLE} AND json_extract(h.payload, '$.createdAtUnix') > 0 GROUP BY h.wallet_id")).map_err(DbError::from)?;
         let earliest = first
             .query_map([], |r| {
                 Ok(crate::store::WalletEarliestTransactionDate {
@@ -222,9 +228,9 @@ pub(crate) fn history_snapshot(
                     earliest_created_at_unix: r.get(1)?,
                 })
             })
-            .map_err(|e| e.to_string())?
+            .map_err(DbError::from)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
+            .map_err(DbError::from)?;
         let revision = sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         Ok(TransactionSnapshot {
             revision,
@@ -289,7 +295,7 @@ mod tests {
                     }
                 }
             }
-            Ok(())
+            Ok::<_, DbError>(())
         })
         .unwrap();
     }

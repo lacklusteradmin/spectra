@@ -6,8 +6,9 @@ impl WalletService {
     /// Reveal a wallet's seed phrase.
     ///
     /// The password is passed as typed: core applies its one rule for
-    /// passwords (surrounding whitespace is not part of one, and blank is
-    /// none). The answer says why a phrase was not revealed, so a front end
+    /// passwords (surrounding whitespace is not part of one, and a blank one
+    /// is refused; no password is `None`). The answer says why a phrase was
+    /// not revealed, so a front end
     /// words the reason rather than guessing it from an error string.
     ///
     /// This is the reveal path. Derivation does not need it — core derives
@@ -31,7 +32,7 @@ impl WalletService {
             Err(E::PasswordRequired) => Ok(SeedPhraseReveal::PasswordRequired),
             Err(E::IncorrectPassword) => Ok(SeedPhraseReveal::IncorrectPassword),
             Err(E::PasswordNotRequired) => Ok(SeedPhraseReveal::PasswordNotRequired),
-            Err(error) => Err(SpectraBridgeError::from(error.to_string())),
+            Err(error) => Err(error.into()),
         }
     }
 
@@ -60,25 +61,40 @@ impl WalletService {
                     .collect::<Vec<_>>()
                     .join(" ")
             });
+            // `None` is the choice of no password; a blank `Some` is a request
+            // for one that has none. Refused before anything is planned or
+            // stored, rather than left to the secret store after the wallets
+            // were built.
+            if commit
+                .password
+                .as_deref()
+                .is_some_and(|p| p.trim().is_empty())
+            {
+                return Err(crate::store::wallet_secrets::WalletSecretError::EmptyPassword.into());
+            }
             if commit.request.is_private_key_import {
                 commit.private_key = Some(
                     super::standalone::private_key_hex(
                         commit.private_key.take().unwrap_or_default(),
                     )
-                    .ok_or("Enter a valid 32-byte hex key.")?,
+                    .ok_or_else(|| SpectraBridgeError::failure("Enter a valid 32-byte hex key."))?,
                 );
             }
             if (commit.request.is_watch_only_import || commit.request.is_private_key_import)
                 && !commit.derivation_overrides.is_empty()
             {
-                return Err("Derivation overrides require a mnemonic wallet".into());
+                return Err(SpectraBridgeError::failure(
+                    "Derivation overrides require a mnemonic wallet",
+                ));
             }
             for &chain in &commit.request.selected_chain_ids {
                 commit.derivation_overrides.validate_for_chain(chain)?;
             }
             // Complete explicit overrides with network-local defaults before
             // deriving, so those same paths are persisted with the addresses.
-            let mut paths = crate::derivation_paths_for_preset(commit.seed_derivation_preset)?;
+            let mut paths = crate::derivation::path::derivation_paths_for_preset(
+                commit.seed_derivation_preset,
+            )?;
             paths
                 .by_chain
                 .extend(std::mem::take(&mut commit.seed_derivation_paths.by_chain));
@@ -105,8 +121,7 @@ impl WalletService {
                         crate::derivation::import::derive_private_key_import_address(
                             key,
                             &commit.request.selected_chain_ids,
-                        )
-                        .map_err(|message| SpectraBridgeError::InvalidInput { message })?,
+                        )?,
                     ),
                     (None, Some(seed)) => Some(crate::derivation::import::derive_import_addresses(
                         seed,
@@ -115,7 +130,9 @@ impl WalletService {
                         &commit.derivation_overrides,
                     )),
                     (None, None) => {
-                        return Err("Signing import requires a seed phrase or private key".into());
+                        return Err(SpectraBridgeError::failure(
+                            "Signing import requires a seed phrase or private key",
+                        ));
                     }
                 };
                 if let Some(derived) = derived {
@@ -198,7 +215,7 @@ impl WalletService {
                     .iter()
                     .any(|w| snapshot.wallets.iter().any(|old| old.id == w.id))
                 {
-                    return Err("Import ID already exists".into());
+                    return Err(SpectraBridgeError::failure("Import ID already exists"));
                 }
                 if commit.request.wallet_name.trim().is_empty() {
                     let mut used: std::collections::HashSet<String> = snapshot
@@ -210,7 +227,7 @@ impl WalletService {
                     for wallet in &mut wallets {
                         while used.contains(&format!("Wallet {index}")) {
                             index = index.checked_add(1).ok_or_else(|| {
-                                SpectraBridgeError::from("Wallet names exhausted")
+                                SpectraBridgeError::failure("Wallet names exhausted")
                             })?;
                         }
                         wallet.name = format!("Wallet {index}");
@@ -251,12 +268,12 @@ impl WalletService {
                                     password.as_ref().map(|s| s.as_str()),
                                 )
                             };
-                            result.map_err(|e| SpectraBridgeError::from(e.to_string()))?;
+                            result.map_err(SpectraBridgeError::failure)?;
                         }
                     }
                     tokio::task::spawn_blocking(move || changes.save(&database))
                         .await
-                        .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
+                        .map_err(SpectraBridgeError::failure)??;
                     Ok(())
                 }
                 .await;
@@ -271,11 +288,10 @@ impl WalletService {
                             }
                         }
                     }
-                    return Err(format!(
+                    return Err(SpectraBridgeError::failure(format!(
                         "{error}; import not committed; secret cleanup failures: {}",
                         cleanup_errors.join(", ")
-                    )
-                    .into());
+                    )));
                 }
                 service.publish_state(snapshot).await;
                 Ok(crate::derivation::import::WalletImportOutcome {

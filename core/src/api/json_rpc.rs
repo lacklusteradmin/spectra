@@ -1,6 +1,7 @@
 //! Shared wire handling; chain clients still own methods and domain decoding.
 use std::sync::Arc;
 
+use crate::api::error::ApiError;
 use serde_json::{Value, json};
 
 use crate::EndpointApi;
@@ -12,7 +13,7 @@ pub(crate) async fn call(
     endpoints: &[String],
     method: &str,
     params: Value,
-) -> Result<Value, String> {
+) -> Result<Value, ApiError> {
     let body = match api {
         EndpointApi::XrplJsonRpc => json!({"method": method, "params": [params]}),
         EndpointApi::NearJsonRpc => {
@@ -24,7 +25,12 @@ pub(crate) async fn call(
         | EndpointApi::SubstrateJsonRpc => {
             json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
         }
-        _ => return Err(format!("{} is not a JSON-RPC API", api.as_str())),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "{} is not a JSON-RPC API",
+                api.as_str()
+            )));
+        }
     };
     let body = Arc::new(body);
     race(endpoints, |url| {
@@ -40,23 +46,26 @@ pub(crate) async fn call(
     .await
 }
 
-fn decode(api: EndpointApi, response: Value) -> Result<Value, String> {
+fn decode(api: EndpointApi, response: Value) -> Result<Value, ApiError> {
     if let Some(error) = response.get("error").filter(|error| !error.is_null()) {
-        return Err(format!("{} rpc error: {error}", api.as_str()));
+        return Err(ApiError::Rejected(format!(
+            "{} rpc error: {error}",
+            api.as_str()
+        )));
     }
     let result = response
         .get("result")
-        .ok_or_else(|| format!("{}: missing result", api.as_str()))?;
+        .ok_or_else(|| ApiError::Decode(format!("{}: missing result", api.as_str())))?;
     if api == EndpointApi::XrplJsonRpc
         && result.get("status").and_then(Value::as_str) == Some("error")
     {
-        return Err(format!(
+        return Err(ApiError::Rejected(format!(
             "xrp rpc error: {}",
             result
                 .get("error_message")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown error")
-        ));
+        )));
     }
     Ok(result.clone())
 }
@@ -128,6 +137,7 @@ mod tests {
                 json!({"result":{"status":"error","error_message":"refused"}})
             )
             .unwrap_err()
+            .to_string()
             .contains("refused")
         );
     }

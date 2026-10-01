@@ -1,6 +1,7 @@
 //! The Solana JSON-RPC adapter: balances, SPL token accounts, signatures
 //! history, blockhashes, fees and raw transaction broadcast.
 
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -66,7 +67,7 @@ impl SolanaClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             crate::EndpointApi::SolanaJsonRpc,
             &self.client,
@@ -82,14 +83,14 @@ impl SolanaClient {
 // unified history, account existence.
 
 impl SolanaClient {
-    pub async fn fetch_balance(&self, address: &str) -> Result<SolanaBalance, String> {
+    pub async fn fetch_balance(&self, address: &str) -> Result<SolanaBalance, ApiError> {
         let result = self
             .call("getBalance", json!([address, {"commitment": "confirmed"}]))
             .await?;
         let lamports = result
             .get("value")
             .and_then(|v| v.as_u64())
-            .ok_or("getBalance: missing value")?;
+            .or_decode("getBalance: missing value")?;
         Ok(SolanaBalance { lamports })
     }
 
@@ -101,8 +102,8 @@ impl SolanaClient {
     /// `decimals` — so discovery answers "what does this address hold" and
     /// "how is it denominated" together, without a catalog and without an
     /// indexer.
-    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<TransferMint, String> {
-        crate::derivation::solana::decode_b58_32(mint)?;
+    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<TransferMint, ApiError> {
+        crate::derivation::solana::decode_b58_32(mint).map_err(ApiError::invalid)?;
         let result = self
             .call(
                 "getAccountInfo",
@@ -112,7 +113,7 @@ impl SolanaClient {
         validate_transfer_mint(&result["value"])
     }
 
-    pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, String> {
+    pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, ApiError> {
         const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
         const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
         let mut out: Vec<SplBalance> = Vec::new();
@@ -146,9 +147,11 @@ impl SolanaClient {
                 let raw: u128 = token_amount
                     .get("amount")
                     .and_then(|v| v.as_str())
-                    .ok_or("SPL token account has no amount")?
+                    .or_decode("SPL token account has no amount")?
                     .parse()
-                    .map_err(|_| "SPL token account amount is not an integer")?;
+                    .map_err(|_| {
+                        ApiError::Decode("SPL token account amount is not an integer".into())
+                    })?;
                 // A closed or emptied account is not a holding.
                 if raw == 0 {
                     continue;
@@ -157,7 +160,7 @@ impl SolanaClient {
                     .get("decimals")
                     .and_then(|v| v.as_u64())
                     .and_then(|d| u8::try_from(d).ok())
-                    .ok_or("SPL token account has no decimals")?;
+                    .or_decode("SPL token account has no decimals")?;
                 // One mint can have several accounts; sum them.
                 let balance = |raw: u128| SplBalance {
                     mint: mint.to_string(),
@@ -174,7 +177,7 @@ impl SolanaClient {
                             .parse::<u128>()
                             .ok()
                             .and_then(|a| a.checked_add(raw))
-                            .ok_or("SPL balance overflow")?;
+                            .or_decode("SPL balance overflow")?;
                         *existing = balance(sum);
                     }
                     None => out.push(balance(raw)),
@@ -188,7 +191,7 @@ impl SolanaClient {
         &self,
         owner: &str,
         mints: &[String],
-    ) -> Result<Vec<SplBalance>, String> {
+    ) -> Result<Vec<SplBalance>, ApiError> {
         use futures::future::join_all;
         let futs: Vec<_> = mints
             .iter()
@@ -213,37 +216,39 @@ impl SolanaClient {
                     let accounts = result
                         .get("value")
                         .and_then(|v| v.as_array())
-                        .ok_or("getTokenAccountsByOwner: missing account list")?;
+                        .or_decode("getTokenAccountsByOwner: missing account list")?;
                     if accounts.is_empty() {
-                        return Ok::<_, String>(None);
+                        return Ok::<_, ApiError>(None);
                     }
                     let mut raw = 0u128;
                     let mut own_decimals = None;
                     for account in accounts {
                         let amount = account
                             .pointer("/account/data/parsed/info/tokenAmount")
-                            .ok_or("SPL account: missing tokenAmount")?;
+                            .or_decode("SPL account: missing tokenAmount")?;
                         let value: u64 = amount
                             .get("amount")
                             .and_then(|v| v.as_str())
-                            .ok_or("SPL account: missing amount")?
+                            .or_decode("SPL account: missing amount")?
                             .parse()
-                            .map_err(|_| "SPL account: invalid amount")?;
+                            .map_err(|_| ApiError::Decode("SPL account: invalid amount".into()))?;
                         let decimals = crate::api::checked_token_decimals(u128::from(
                             amount
                                 .get("decimals")
                                 .and_then(|v| v.as_u64())
-                                .ok_or("SPL account: missing decimals")?,
+                                .or_decode("SPL account: missing decimals")?,
                         ))?;
                         if own_decimals.is_some_and(|previous| previous != decimals) {
-                            return Err("SPL accounts disagree on mint decimals".into());
+                            return Err(ApiError::Decode(
+                                "SPL accounts disagree on mint decimals".into(),
+                            ));
                         }
                         own_decimals = Some(decimals);
                         raw = raw
                             .checked_add(u128::from(value))
-                            .ok_or("SPL balance overflow")?;
+                            .or_decode("SPL balance overflow")?;
                     }
-                    let decimals = own_decimals.ok_or("SPL mint decimals unavailable")?;
+                    let decimals = own_decimals.or_decode("SPL mint decimals unavailable")?;
                     Ok(Some(SplBalance {
                         mint,
                         owner,
@@ -259,13 +264,13 @@ impl SolanaClient {
         let results = join_all(futs).await;
         Ok(results
             .into_iter()
-            .collect::<Result<Vec<_>, String>>()?
+            .collect::<Result<Vec<_>, ApiError>>()?
             .into_iter()
             .flatten()
             .collect())
     }
 
-    pub async fn fetch_recent_blockhash(&self) -> Result<String, String> {
+    pub async fn fetch_recent_blockhash(&self) -> Result<String, ApiError> {
         let result = self
             .call("getLatestBlockhash", json!([{"commitment": "confirmed"}]))
             .await?;
@@ -274,7 +279,7 @@ impl SolanaClient {
             .and_then(|v| v.get("blockhash"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| "getLatestBlockhash: missing blockhash".to_string())
+            .or_decode("getLatestBlockhash: missing blockhash")
     }
 
     /// Fetch up to `limit` recent transfers as unified entries covering both
@@ -283,7 +288,7 @@ impl SolanaClient {
         &self,
         address: &str,
         limit: usize,
-    ) -> Result<Vec<SolanaTransfer>, String> {
+    ) -> Result<Vec<SolanaTransfer>, ApiError> {
         // 1. Get signatures.
         let sigs_result = self
             .call(
@@ -293,7 +298,7 @@ impl SolanaClient {
             .await?;
         let sig_array = sigs_result
             .as_array()
-            .ok_or("getSignaturesForAddress: expected array")?;
+            .or_decode("getSignaturesForAddress: expected array")?;
 
         let signatures: Vec<String> = sig_array
             .iter()
@@ -465,7 +470,10 @@ fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<
 
 impl SolanaClient {
     /// Broadcast an already-signed transaction given as a base64 string.
-    pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
+    pub async fn broadcast_raw(
+        &self,
+        signed_tx_base64: &str,
+    ) -> Result<SolanaSendResult, ApiError> {
         let result = self
             .call(
                 "sendTransaction",
@@ -474,7 +482,7 @@ impl SolanaClient {
             .await?;
         let signature = result
             .as_str()
-            .ok_or("sendTransaction: expected string")?
+            .or_decode("sendTransaction: expected string")?
             .to_string();
         Ok(SolanaSendResult {
             signature,
@@ -555,27 +563,33 @@ pub(crate) struct TransferMint {
 /// default accounts, interest or scaled amounts, pausing, or an extension
 /// this list has never heard of — changes what arrives or needs accounts the
 /// transfer does not supply, so it is refused.
-fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, String> {
-    let owner = account["owner"].as_str().ok_or("SPL mint: missing owner")?;
+fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, ApiError> {
+    let owner = account["owner"]
+        .as_str()
+        .or_decode("SPL mint: missing owner")?;
     if ![
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
     ]
     .contains(&owner)
     {
-        return Err("SPL mint: unsupported owner program".into());
+        return Err(ApiError::InvalidInput(
+            "SPL mint: unsupported owner program".into(),
+        ));
     }
     let parsed = &account["data"]["parsed"];
     let info = &parsed["info"];
     if parsed["type"] != "mint" || info["isInitialized"] != true {
-        return Err("SPL mint: expected initialized mint".into());
+        return Err(ApiError::Decode(
+            "SPL mint: expected initialized mint".into(),
+        ));
     }
     let mut transfer_fee_extension = false;
     let extensions = match info.get("extensions") {
         None => &Vec::new(),
         Some(extensions) => extensions
             .as_array()
-            .ok_or("SPL mint: invalid extensions")?,
+            .or_decode("SPL mint: invalid extensions")?,
     };
     for extension in extensions {
         let state = &extension["state"];
@@ -594,7 +608,9 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, S
             ) => {}
             Some("transferHook") => {
                 if !state["programId"].is_null() {
-                    return Err("SPL mint: transfer hook programs are not supported".into());
+                    return Err(ApiError::InvalidInput(
+                        "SPL mint: transfer hook programs are not supported".into(),
+                    ));
                 }
             }
             Some("transferFeeConfig") => {
@@ -607,24 +623,24 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, S
                 if !charges_nothing(&state["olderTransferFee"])
                     || !charges_nothing(&state["newerTransferFee"])
                 {
-                    return Err(
-                        "SPL mint: tokens that charge a transfer fee are not supported".into(),
-                    );
+                    return Err(ApiError::rejected(
+                        "SPL mint: tokens that charge a transfer fee are not supported",
+                    ));
                 }
                 transfer_fee_extension = true;
             }
             Some(other) => {
-                return Err(format!(
+                return Err(ApiError::Decode(format!(
                     "SPL mint: Token-2022 extension {other} is not supported for sending"
-                ));
+                )));
             }
-            None => return Err("SPL mint: unnamed extension".into()),
+            None => return Err(ApiError::InvalidInput("SPL mint: unnamed extension".into())),
         }
     }
     let decimals = info["decimals"]
         .as_u64()
         .and_then(|d| u8::try_from(d).ok())
-        .ok_or("SPL mint: invalid decimals")?;
+        .or_decode("SPL mint: invalid decimals")?;
     Ok(TransferMint {
         program: crate::derivation::solana::decode_b58_32(owner)?,
         decimals,
@@ -659,6 +675,7 @@ mod audit_fix5_mint_tests {
         assert!(
             validate_transfer_mint(&token2022)
                 .unwrap_err()
+                .to_string()
                 .contains("nonTransferable")
         );
         assert!(validate_transfer_mint(&account("11111111111111111111111111111111")).is_err());
@@ -728,7 +745,7 @@ mod audit_fix5_mint_tests {
             let result = validate_transfer_mint(&config(older, newer));
             assert_eq!(result.is_ok(), sendable, "{result:?}");
             if !sendable {
-                assert!(result.unwrap_err().contains("transfer fee"));
+                assert!(result.unwrap_err().to_string().contains("transfer fee"));
             }
         }
     }
@@ -742,7 +759,12 @@ mod audit_fix5_mint_tests {
             "transferHook",
             json!({"programId": "HooK111111111111111111111111111111111111111"}),
         );
-        assert!(validate_transfer_mint(&mint).unwrap_err().contains("hook"));
+        assert!(
+            validate_transfer_mint(&mint)
+                .unwrap_err()
+                .to_string()
+                .contains("hook")
+        );
     }
 
     /// Extensions that change what arrives, and ones nobody listed, are refused.
@@ -758,7 +780,10 @@ mod audit_fix5_mint_tests {
         ] {
             let mint = with_extension(pyusd_mint(), name, json!({}));
             assert!(
-                validate_transfer_mint(&mint).unwrap_err().contains(name),
+                validate_transfer_mint(&mint)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(name),
                 "{name}"
             );
         }

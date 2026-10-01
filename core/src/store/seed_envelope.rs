@@ -21,15 +21,41 @@ struct Envelope {
     nonce: Vec<u8>,
 }
 
+/// An envelope that could not be sealed or opened.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EnvelopeError {
+    #[error("master key must be 32 bytes")]
+    KeyLength,
+    /// The bytes are not an envelope this module writes.
+    #[error("{0}")]
+    Malformed(String),
+    /// AES-GCM refused the ciphertext: the key is wrong or the data changed.
+    #[error("AES-GCM decrypt failed (bad key or corrupted data)")]
+    Decrypt,
+    #[error("AES-GCM encrypt failed: {0}")]
+    Encrypt(String),
+}
+
+impl From<EnvelopeError> for crate::SpectraBridgeError {
+    fn from(error: EnvelopeError) -> Self {
+        let message = error.to_string();
+        match error {
+            EnvelopeError::KeyLength => Self::InvalidInput { message },
+            EnvelopeError::Malformed(_) => Self::Decode { message },
+            EnvelopeError::Decrypt | EnvelopeError::Encrypt(_) => Self::Failure { message },
+        }
+    }
+}
+
 /// Length of the envelope's master key. AES-256, so 32 bytes; the number is
 /// the cipher's, not a caller's choice, and both halves check it.
 pub const MASTER_KEY_LEN: usize = 32;
 
 /// Encrypt `plaintext` with AES-256-GCM using `master_key` (must be
 /// [`MASTER_KEY_LEN`] bytes). Returns JSON bytes matching the envelope format.
-pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, String> {
+pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, EnvelopeError> {
     if master_key.len() != MASTER_KEY_LEN {
-        return Err("master key must be 32 bytes".into());
+        return Err(EnvelopeError::KeyLength);
     }
     let key = Key::<Aes256Gcm>::from_slice(master_key);
     let cipher = Aes256Gcm::new(key);
@@ -41,7 +67,7 @@ pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, String> {
     // aes-gcm encrypt() returns ciphertext‖tag, same layout as CryptoKit.
     let ciphertext = cipher
         .encrypt(nonce, plaintext)
-        .map_err(|e| format!("AES-GCM encrypt failed: {e}"))?;
+        .map_err(|e| EnvelopeError::Encrypt(e.to_string()))?;
 
     let envelope = Envelope {
         version: 1,
@@ -49,27 +75,30 @@ pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, String> {
         nonce: nonce_bytes.to_vec(),
     };
 
-    serde_json::to_vec(&envelope).map_err(|e| format!("JSON encode failed: {e}"))
+    Ok(serde_json::to_vec(&envelope).expect("an envelope of bytes and a version serializes"))
 }
 
 /// Decrypt an envelope produced by [`encrypt`]. Returns the plaintext seed phrase.
-pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
+pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, EnvelopeError> {
+    let malformed = |message: String| EnvelopeError::Malformed(message);
     if master_key.len() != MASTER_KEY_LEN {
-        return Err("master key must be 32 bytes".into());
+        return Err(EnvelopeError::KeyLength);
     }
     let envelope: Envelope =
-        serde_json::from_slice(data).map_err(|e| format!("JSON decode failed: {e}"))?;
+        serde_json::from_slice(data).map_err(|e| malformed(format!("JSON decode failed: {e}")))?;
     if envelope.version != 1 {
-        return Err(format!(
+        return Err(malformed(format!(
             "unsupported envelope version: {}",
             envelope.version
-        ));
+        )));
     }
     if envelope.nonce.len() != 12 {
-        return Err("invalid nonce length".into());
+        return Err(malformed("invalid nonce length".into()));
     }
     if envelope.ciphertext.len() < 16 {
-        return Err("ciphertext too short (must include 16-byte tag)".into());
+        return Err(malformed(
+            "ciphertext too short (must include 16-byte tag)".into(),
+        ));
     }
 
     let key = Key::<Aes256Gcm>::from_slice(master_key);
@@ -78,14 +107,14 @@ pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
 
     let plaintext = cipher
         .decrypt(nonce, envelope.ciphertext.as_ref())
-        .map_err(|_| "AES-GCM decrypt failed (bad key or corrupted data)".to_string())?;
+        .map_err(|_| EnvelopeError::Decrypt)?;
 
     // Consume `plaintext` directly (no clone). On the error path the raw bytes
     // are still recovered from the error and wiped before returning.
     String::from_utf8(plaintext).map_err(|e| {
         let mut bytes = e.into_bytes();
         bytes.zeroize();
-        "decrypted data is not valid UTF-8".to_string()
+        malformed("decrypted data is not valid UTF-8".into())
     })
 }
 
@@ -147,7 +176,7 @@ mod tests {
             let tampered = serde_json::to_vec(&envelope).unwrap();
             assert_eq!(
                 decrypt(&tampered, &key).unwrap_err(),
-                "AES-GCM decrypt failed (bad key or corrupted data)"
+                EnvelopeError::Decrypt
             );
         }
     }
@@ -159,7 +188,7 @@ mod tests {
         envelope.nonce = vec![0];
         assert_eq!(
             decrypt(&serde_json::to_vec(&envelope).unwrap(), &[7; 32]).unwrap_err(),
-            "invalid nonce length"
+            EnvelopeError::Malformed("invalid nonce length".into())
         );
     }
 
@@ -194,7 +223,7 @@ pub fn new_seed_envelope_master_key() -> Result<Vec<u8>, crate::SpectraBridgeErr
     let mut key = vec![0u8; MASTER_KEY_LEN];
     rand::rngs::OsRng
         .try_fill_bytes(&mut key)
-        .map_err(|error| crate::SpectraBridgeError::from(format!("master key: {error}")))?;
+        .map_err(|error| crate::SpectraBridgeError::failure(format!("master key: {error}")))?;
     Ok(key)
 }
 

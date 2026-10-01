@@ -1,16 +1,18 @@
 //! Litecoin: address validation, P2PKH (L…) base58check encoding,
 //! and MWEB stealth address parsing
 
+use crate::derivation::error::DerivationError;
+
 // ── Address validation ───────────────────────────────────────────────────
 
 // Base58check-decode an LTC address and return the 20-byte pubkey hash.
-pub(crate) fn decode_ltc_address(address: &str) -> Result<[u8; 20], String> {
+pub(crate) fn decode_ltc_address(address: &str) -> Result<[u8; 20], DerivationError> {
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| format!("invalid ltc address: {e}"))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid ltc address: {e}")))?;
     if decoded.len() < 21 {
-        return Err("address too short".to_string());
+        return Err(DerivationError::Invalid("address too short".into()));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);
@@ -28,19 +30,20 @@ pub struct MwebAddress {
 /// Decode a bech32m MWEB address into its constituent scan and spend public keys.
 /// Returns an error for non-MWEB addresses or malformed payloads.
 /// Decode a bech32m MWEB stealth address into its constituent scan and spend public keys.
-pub fn parse_mweb_address(address: &str) -> Result<MwebAddress, String> {
-    let (hrp, data) = bech32::decode(address).map_err(|e| format!("invalid mweb address: {e}"))?;
+pub fn parse_mweb_address(address: &str) -> Result<MwebAddress, DerivationError> {
+    let (hrp, data) = bech32::decode(address)
+        .map_err(|e| DerivationError::Invalid(format!("invalid mweb address: {e}")))?;
     if hrp.as_str() != "ltcmweb" && hrp.as_str() != "tmweb" {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "expected ltcmweb or tmweb HRP, got \"{}\"",
             hrp.as_str()
-        ));
+        )));
     }
     if data.len() != 66 {
-        return Err(format!(
+        return Err(DerivationError::Invalid(format!(
             "mweb address payload must be 66 bytes (scan+spend pubkeys), got {}",
             data.len()
-        ));
+        )));
     }
     let mut scan_pubkey = [0u8; 33];
     let mut spend_pubkey = [0u8; 33];
@@ -125,7 +128,7 @@ pub fn derive_litecoin_from_private_key(
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(&bytes);
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
     let pk = PublicKey::from_secret_key(&secp, &secret_key);
     Ok(DerivationResult {
         address: want_address.then(|| encode_p2pkh(LTC_MAINNET_VERSION, &pk.serialize())),

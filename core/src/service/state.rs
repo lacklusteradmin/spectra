@@ -25,9 +25,9 @@ impl StateBinding {
     pub(crate) async fn required_connection(
         &self,
     ) -> Result<Arc<crate::wallet_db::WalletDatabase>, SpectraBridgeError> {
-        self.connection()
-            .await
-            .ok_or_else(|| "transaction store not opened: call open_state first".into())
+        self.connection().await.ok_or_else(|| {
+            SpectraBridgeError::failure("transaction store not opened: call open_state first")
+        })
     }
 }
 
@@ -76,15 +76,15 @@ impl WalletService {
                             [],
                             |row| row.get::<_, bool>(0),
                         )
-                        .map_err(|e| e.to_string())
+                        .map_err(crate::wallet_db::error::DbError::from)
                     })?;
                     if is_new {
                         crate::wallet_db::app_state_save(&source, &loaded)?;
                     }
-                    Ok::<_, String>((loaded, keypool, owned))
+                    Ok::<_, SpectraBridgeError>((loaded, keypool, owned))
                 })
                 .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
                 let keypool = keypool
                     .into_iter()
                     .flat_map(|(chain, per_wallet)| {
@@ -110,7 +110,9 @@ impl WalletService {
                     let target = database.clone();
                     tokio::task::spawn_blocking(move || changes.save(&target))
                         .await
-                        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                        .map_err(|e| {
+                            SpectraBridgeError::failure(format!("spawn_blocking: {e}"))
+                        })??;
                 }
                 // Publish only after every fallible initialization step succeeds.
                 service.keypool.write().await.load(keypool, by_chain);
@@ -397,7 +399,7 @@ impl WalletService {
                 let store = service
                     .secret_store
                     .read()
-                    .map_err(|_| "secret store lock poisoned")?
+                    .map_err(|_| SpectraBridgeError::failure("secret store lock poisoned"))?
                     .clone();
                 if store.is_none()
                     && database.is_some()
@@ -409,21 +411,21 @@ impl WalletService {
                         .iter()
                         .any(|w| removed.contains(&w.id) && !w.is_watch_only())
                 {
-                    return Err(
-                        "secret store must be registered before deleting a signing wallet".into(),
-                    );
+                    return Err(crate::SpectraBridgeError::failure(
+                        "secret store must be registered before deleting a signing wallet",
+                    ));
                 }
                 if let Some(store) = store {
                     for id in &removed {
                         crate::store::wallet_secrets::delete(&*store, id)
-                            .map_err(|e| SpectraBridgeError::from(e.to_string()))?;
+                            .map_err(SpectraBridgeError::failure)?;
                     }
                 }
             }
             if let (Some(database), Some(changes)) = (database, changes) {
                 tokio::task::spawn_blocking(move || changes.save(&database))
                     .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                    .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
             }
             if events.is_empty() {
                 return Ok(StateTransition {
@@ -497,7 +499,7 @@ impl WalletService {
             operation(service).await
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("state writer: {e}")))?
+        .map_err(|e| SpectraBridgeError::failure(format!("state writer: {e}")))?
     }
 
     // ── Not exported ──────────────────────────────────────────────────────
@@ -593,11 +595,11 @@ mod utxo_discovery_is_the_registrys_chain_set {
 }
 
 #[cfg(test)]
-#[path = "state_tests.rs"]
+#[path = "tests/state.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "address_discovery_tests.rs"]
+#[path = "tests/address_discovery.rs"]
 mod address_discovery_tests;
 
 fn wallets_for_display(
@@ -606,7 +608,8 @@ fn wallets_for_display(
     let wallets = &state.wallets;
     let mut rendered = Vec::with_capacity(wallets.len());
     for wallet in wallets {
-        let defaults = crate::derivation_paths_for_preset(wallet.derivation_preset)?;
+        let defaults =
+            crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
         rendered.push(wallet.to_wallet_view(&defaults));
     }
     Ok(rendered)
@@ -670,7 +673,7 @@ fn derive_wallet_state(
                     .entry(identity_key)
                     .or_insert_with(|| "0".to_string());
                 *total = crate::decimal::add(total, &holding.amount)
-                    .ok_or("portfolio total out of range")?;
+                    .ok_or_else(|| SpectraBridgeError::failure("portfolio total out of range"))?;
             }
 
             // A holding on another network of the wallet's family is not the
@@ -830,7 +833,7 @@ fn dashboard_groups_from(
             match by_place.get_mut(&place) {
                 Some(existing) => {
                     existing.amount = crate::decimal::add(&existing.amount, &coin.amount)
-                        .ok_or("asset total out of range")?;
+                        .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
                 }
                 None => {
                     place_order.push(place.clone());
@@ -872,7 +875,7 @@ fn dashboard_groups_from(
             .try_fold("0".to_string(), |sum, h| {
                 crate::decimal::add(&sum, &h.coin.amount)
             })
-            .ok_or("asset total out of range")?;
+            .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
         groups.push(CoreDashboardAssetGroup {
             total_amount,
             total_value: display_of(total_usd),

@@ -23,6 +23,8 @@
 //! Each *_hash is a BLAKE2b-256 of the corresponding section serialized in
 //! the canonical Kaspa form, also keyed with `"TransactionSigningHash"`.
 
+use crate::send::error::SendError;
+
 use serde::Serialize;
 
 use crate::api::kaspa_rest::KaspaClient;
@@ -41,38 +43,42 @@ pub(crate) async fn prepare_transfer(
     fee_sompi: u64,
     min_fee_sompi: Option<u64>,
     dust_threshold_sompi: Option<u64>,
-) -> Result<PreparedKaspaTransaction, String> {
+) -> Result<PreparedKaspaTransaction, SendError> {
     if amount_sompi == 0 {
-        return Err("kaspa amount must be positive".into());
+        return Err(SendError::Invalid("kaspa amount must be positive".into()));
     }
     let utxos = client.fetch_utxos(from_address).await?;
     if utxos.is_empty() {
-        return Err("kaspa: no spendable UTXOs at source address".to_string());
+        return Err(SendError::Invalid(
+            "kaspa: no spendable UTXOs at source address".into(),
+        ));
     }
     let from_decoded = decode_kaspa_address(from_address)?;
     let to_decoded = decode_kaspa_address(to_address)?;
     if from_decoded.0 != 0 {
-        return Err("kaspa: only Schnorr (version 0) sender addresses supported".to_string());
+        return Err(SendError::Invalid(
+            "kaspa: only Schnorr (version 0) sender addresses supported".into(),
+        ));
     }
     if to_decoded.0 != 0 && to_decoded.0 != 1 && to_decoded.0 != 8 {
-        return Err(format!(
+        return Err(SendError::Invalid(format!(
             "kaspa: unsupported destination version 0x{:02x}",
             to_decoded.0
-        ));
+        )));
     }
 
     let total_in = utxos.iter().try_fold(0u64, |sum, u| {
         sum.checked_add(u.value_sompi)
-            .ok_or("kaspa input sum overflow")
+            .ok_or_else(|| SendError::Invalid("kaspa input sum overflow".into()))
     })?;
     let actual_fee = fee_sompi.max(min_fee_sompi.unwrap_or(1_000));
     let needed = amount_sompi
         .checked_add(actual_fee)
-        .ok_or("kaspa amount plus fee overflow")?;
+        .ok_or_else(|| SendError::Invalid("kaspa amount plus fee overflow".into()))?;
     if total_in < needed {
-        return Err(format!(
+        return Err(SendError::Invalid(format!(
             "kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi"
-        ));
+        )));
     }
     let change = total_in - needed;
 
@@ -97,8 +103,8 @@ pub(crate) async fn prepare_transfer(
         .iter()
         .map(|u| {
             let script_pubkey = hex::decode(&u.script_pubkey_hex)
-                .map_err(|e| format!("kaspa utxo script hex: {e}"))?;
-            Ok::<KaspaInputBuild, String>(KaspaInputBuild {
+                .map_err(|e| SendError::Invalid(format!("kaspa utxo script hex: {e}")))?;
+            Ok::<KaspaInputBuild, SendError>(KaspaInputBuild {
                 txid: u.txid.clone(),
                 vout: u.vout,
                 sequence: 0,
@@ -119,7 +125,7 @@ pub(crate) struct PreparedKaspaTransaction {
     outputs: Vec<KaspaOutputBuild>,
 }
 impl PreparedKaspaTransaction {
-    pub fn sign(&self, key: &[u8]) -> Result<serde_json::Value, String> {
+    pub fn sign(&self, key: &[u8]) -> Result<serde_json::Value, SendError> {
         let signatures = sign_kaspa_inputs(&self.inputs, &self.outputs, key)?;
         Ok(build_broadcast_body(
             &self.inputs,
@@ -157,11 +163,13 @@ struct KaspaOutputBuild {
 ///   `<32 bytes pubkey> OP_CHECKSIG (0xAC)`
 /// For ECDSA (33-byte compressed pubkey, version 1): `<33 bytes> OP_CODESEPARATOR? OP_CHECKSIGECDSA (0xAB)`
 /// For P2SH (32-byte script hash, version 8): `OP_BLAKE2B (0xAA) <32-byte hash> OP_EQUAL (0x87)`
-fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, String> {
+fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, SendError> {
     match version {
         0x00 => {
             if payload.len() != 32 {
-                return Err("kaspa: schnorr payload must be 32 bytes".to_string());
+                return Err(SendError::Invalid(
+                    "kaspa: schnorr payload must be 32 bytes".into(),
+                ));
             }
             let mut s = Vec::with_capacity(34);
             s.push(0x20); // push 32 bytes
@@ -171,7 +179,9 @@ fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, String> 
         }
         0x01 => {
             if payload.len() != 33 {
-                return Err("kaspa: ecdsa payload must be 33 bytes".to_string());
+                return Err(SendError::Invalid(
+                    "kaspa: ecdsa payload must be 33 bytes".into(),
+                ));
             }
             let mut s = Vec::with_capacity(35);
             s.push(0x21); // push 33 bytes
@@ -181,7 +191,9 @@ fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, String> 
         }
         0x08 => {
             if payload.len() != 32 {
-                return Err("kaspa: p2sh payload must be 32 bytes".to_string());
+                return Err(SendError::Invalid(
+                    "kaspa: p2sh payload must be 32 bytes".into(),
+                ));
             }
             let mut s = Vec::with_capacity(35);
             s.push(0xAA); // OP_BLAKE2B
@@ -190,15 +202,17 @@ fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, String> 
             s.push(0x87); // OP_EQUAL
             Ok(s)
         }
-        v => Err(format!("kaspa: unsupported address version: 0x{v:02x}")),
+        v => Err(SendError::Invalid(format!(
+            "kaspa: unsupported address version: 0x{v:02x}"
+        ))),
     }
 }
 
-fn decode_transaction_id(txid: &str) -> Result<[u8; 32], String> {
+fn decode_transaction_id(txid: &str) -> Result<[u8; 32], SendError> {
     hex::decode(txid)
-        .map_err(|e| format!("kaspa txid: {e}"))?
+        .map_err(|e| SendError::Invalid(format!("kaspa txid: {e}")))?
         .try_into()
-        .map_err(|_| "kaspa txid must contain 32 bytes".into())
+        .map_err(|_| SendError::Invalid("kaspa txid must contain 32 bytes".into()))
 }
 
 // ── Sighash construction ──────────────────────────────────────────────────
@@ -213,7 +227,7 @@ fn blake2b256_keyed(key: &[u8], data: &[u8]) -> [u8; 32] {
     out
 }
 
-fn prev_outputs_hash(inputs: &[KaspaInputBuild]) -> Result<[u8; 32], String> {
+fn prev_outputs_hash(inputs: &[KaspaInputBuild]) -> Result<[u8; 32], SendError> {
     let mut buf = Vec::with_capacity(36 * inputs.len());
     for input in inputs {
         buf.extend_from_slice(&decode_transaction_id(&input.txid)?);
@@ -259,7 +273,7 @@ fn sighash_for_input_with_lock_time(
     outputs_h: &[u8; 32],
     payload_h: &[u8; 32],
     lock_time: u64,
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], SendError> {
     let input = &inputs[signing_index];
     let mut buf = Vec::new();
     buf.extend_from_slice(&TX_VERSION.to_le_bytes());
@@ -288,12 +302,12 @@ fn sign_kaspa_inputs(
     inputs: &[KaspaInputBuild],
     outputs: &[KaspaOutputBuild],
     private_key_bytes: &[u8],
-) -> Result<Vec<Vec<u8>>, String> {
+) -> Result<Vec<Vec<u8>>, SendError> {
     use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| format!("kaspa invalid privkey: {e}"))?;
+        .map_err(|e| SendError::Invalid(format!("kaspa invalid privkey: {e}")))?;
     let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
     let prevouts = prev_outputs_hash(inputs)?;
@@ -314,7 +328,7 @@ fn sign_kaspa_inputs(
             &payload_h,
             0,
         )?;
-        let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
+        let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_schnorr(&msg, &keypair);
         let mut sig_with_type = sig.as_ref().to_vec();
         sig_with_type.push(SIGHASH_ALL);

@@ -632,5 +632,5 @@ fn aggregated_record(
 }
 
 #[cfg(test)]
-#[path = "history_refresh_tests.rs"]
+#[path = "tests/history_refresh.rs"]
 mod tests;

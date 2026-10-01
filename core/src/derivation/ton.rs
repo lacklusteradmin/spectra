@@ -8,6 +8,8 @@
 //!   by `v4r2_code_hash_and_depth`'s self-test against the published
 //!   v4R2 code hash.
 
+use crate::derivation::error::DerivationError;
+
 use super::ton_cell::Cell;
 use ed25519_dalek::SigningKey;
 use pbkdf2::pbkdf2_hmac;
@@ -23,18 +25,19 @@ pub(crate) struct TonAddress {
     pub test_only: bool,
 }
 
-pub(crate) fn parse_ton_address(address: &str) -> Result<TonAddress, String> {
+pub(crate) fn parse_ton_address(address: &str) -> Result<TonAddress, DerivationError> {
     let (workchain, account_id, bounceable, test_only) =
         if let Some((wc, hash)) = address.split_once(':') {
             if !matches!(wc, "0" | "-1") || hash.len() != 64 {
-                return Err("TON: invalid raw address".into());
+                return Err(DerivationError::Invalid("TON: invalid raw address".into()));
             }
             let account_id: [u8; 32] = hex::decode(hash)
-                .map_err(|_| "TON: invalid account id")?
+                .map_err(|_| DerivationError::Invalid("TON: invalid account id".into()))?
                 .try_into()
-                .map_err(|_| "TON: invalid account id length")?;
+                .map_err(|_| DerivationError::Invalid("TON: invalid account id length".into()))?;
             (
-                wc.parse::<i8>().map_err(|_| "TON: invalid workchain")?,
+                wc.parse::<i8>()
+                    .map_err(|_| DerivationError::Invalid("TON: invalid workchain".into()))?,
                 account_id,
                 false,
                 false,
@@ -42,23 +45,29 @@ pub(crate) fn parse_ton_address(address: &str) -> Result<TonAddress, String> {
         } else {
             use base64::Engine;
             if address.len() != 48 {
-                return Err("TON: friendly address must be 48 characters".into());
+                return Err(DerivationError::Invalid(
+                    "TON: friendly address must be 48 characters".into(),
+                ));
             }
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(address.replace('-', "+").replace('_', "/"))
-                .map_err(|_| "TON: invalid base64 address")?;
+                .map_err(|_| DerivationError::Invalid("TON: invalid base64 address".into()))?;
             if bytes.len() != 36 || crc16_xmodem(&bytes[..34]).to_be_bytes() != bytes[34..] {
-                return Err("TON: invalid address checksum".into());
+                return Err(DerivationError::Invalid(
+                    "TON: invalid address checksum".into(),
+                ));
             }
             let tag = bytes[0] & 0x7f;
             if !matches!(tag, 0x11 | 0x51) || !matches!(bytes[1], 0 | 255) {
-                return Err("TON: invalid address flags or workchain".into());
+                return Err(DerivationError::Invalid(
+                    "TON: invalid address flags or workchain".into(),
+                ));
             }
             (
                 bytes[1] as i8,
                 bytes[2..34]
                     .try_into()
-                    .map_err(|_| "TON: invalid address")?,
+                    .map_err(|_| DerivationError::Invalid("TON: invalid address".into()))?,
                 tag == 0x11,
                 bytes[0] & 0x80 != 0,
             )
@@ -72,9 +81,11 @@ pub(crate) fn parse_ton_address(address: &str) -> Result<TonAddress, String> {
 }
 
 impl TonAddress {
-    pub(crate) fn for_network(self, testnet: bool) -> Result<Self, String> {
+    pub(crate) fn for_network(self, testnet: bool) -> Result<Self, DerivationError> {
         if self.test_only && !testnet {
-            return Err("TON: testnet-only address refused on mainnet".into());
+            return Err(DerivationError::Invalid(
+                "TON: testnet-only address refused on mainnet".into(),
+            ));
         }
         Ok(self)
     }
@@ -88,7 +99,7 @@ pub(crate) fn derive_ton_seed(
     passphrase: &str,
     salt_prefix: Option<&str>,
     iteration_count: u32,
-) -> Result<Zeroizing<[u8; 64]>, String> {
+) -> Result<Zeroizing<[u8; 64]>, DerivationError> {
     // TON mnemonic scheme (ton-crypto / TonKeeper / Tonhub):
     //   entropy = HMAC-SHA512(key = mnemonic_string, data = passphrase_bytes)
     //   seed    = PBKDF2-HMAC-SHA512(entropy, salt = "TON default seed",
@@ -160,25 +171,29 @@ struct ParsedCell {
 /// level-0) cells. Supports the index and crc32c flags but validates
 /// neither; the parser's correctness is instead locked by a cell-hash
 /// self-test.
-fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
+fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), DerivationError> {
     if bytes.len() < 6 || bytes[0..4] != [0xb5, 0xee, 0x9c, 0x72] {
-        return Err("TON BOC: missing magic".to_string());
+        return Err(DerivationError::Invalid("TON BOC: missing magic".into()));
     }
     let flags = bytes[4];
     let has_idx = (flags & 0x80) != 0;
     let _has_crc32c = (flags & 0x40) != 0;
     let ref_size = (flags & 0x07) as usize;
     if ref_size == 0 || ref_size > 4 {
-        return Err(format!("TON BOC: invalid ref size {ref_size}"));
+        return Err(DerivationError::Invalid(format!(
+            "TON BOC: invalid ref size {ref_size}"
+        )));
     }
     let off_size = bytes[5] as usize;
     if off_size == 0 || off_size > 8 {
-        return Err(format!("TON BOC: invalid offset size {off_size}"));
+        return Err(DerivationError::Invalid(format!(
+            "TON BOC: invalid offset size {off_size}"
+        )));
     }
     let mut cursor = 6usize;
-    let read_uint = |buf: &[u8], off: usize, n: usize| -> Result<u64, String> {
+    let read_uint = |buf: &[u8], off: usize, n: usize| -> Result<u64, DerivationError> {
         if off + n > buf.len() {
-            return Err("TON BOC: unexpected EOF".to_string());
+            return Err(DerivationError::Invalid("TON BOC: unexpected EOF".into()));
         }
         let mut v = 0u64;
         for &b in &buf[off..off + n] {
@@ -195,7 +210,7 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
     let _tot_cell_size = read_uint(bytes, cursor, off_size)? as usize;
     cursor += off_size;
     if root_count == 0 {
-        return Err("TON BOC: no roots".to_string());
+        return Err(DerivationError::Invalid("TON BOC: no roots".into()));
     }
     let root_idx = read_uint(bytes, cursor, ref_size)? as usize;
     cursor += ref_size * root_count;
@@ -205,7 +220,7 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
     let mut cells = Vec::with_capacity(cell_count);
     for _ in 0..cell_count {
         if cursor + 2 > bytes.len() {
-            return Err("TON BOC: cell header EOF".to_string());
+            return Err(DerivationError::Invalid("TON BOC: cell header EOF".into()));
         }
         let d1 = bytes[cursor];
         let d2 = bytes[cursor + 1];
@@ -214,11 +229,13 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
         let exotic = (d1 & 0x08) != 0;
         let level = (d1 >> 5) & 0x03;
         if exotic || level != 0 {
-            return Err("TON BOC: exotic or leveled cells not supported".to_string());
+            return Err(DerivationError::Invalid(
+                "TON BOC: exotic or leveled cells not supported".into(),
+            ));
         }
         let data_len = (d2 as usize).div_ceil(2);
         if cursor + data_len > bytes.len() {
-            return Err("TON BOC: cell data EOF".to_string());
+            return Err(DerivationError::Invalid("TON BOC: cell data EOF".into()));
         }
         let data = bytes[cursor..cursor + data_len].to_vec();
         cursor += data_len;
@@ -232,10 +249,14 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
     Ok((cells, root_idx))
 }
 
-fn cell_from_rows(cells: &[ParsedCell], i: usize) -> Result<Cell, String> {
-    let row = cells.get(i).ok_or("TON: invalid embedded reference")?;
+fn cell_from_rows(cells: &[ParsedCell], i: usize) -> Result<Cell, DerivationError> {
+    let row = cells
+        .get(i)
+        .ok_or_else(|| DerivationError::Invalid("TON: invalid embedded reference".into()))?;
     if row.refs.iter().any(|r| *r <= i) {
-        return Err("TON: invalid embedded cell order".into());
+        return Err(DerivationError::Invalid(
+            "TON: invalid embedded cell order".into(),
+        ));
     }
     Cell::from_padded(
         row.data.clone(),
@@ -248,14 +269,17 @@ fn cell_from_rows(cells: &[ParsedCell], i: usize) -> Result<Cell, String> {
 }
 
 /// Decode only the embedded code and verify its independently published hash.
-fn v4r2_code() -> Result<Cell, String> {
+fn v4r2_code() -> Result<Cell, DerivationError> {
     use std::sync::OnceLock;
-    static CODE: OnceLock<Result<Cell, String>> = OnceLock::new();
+    static CODE: OnceLock<Result<Cell, DerivationError>> = OnceLock::new();
     CODE.get_or_init(|| {
-        let (cells, root) = parse_boc(&hex::decode(V4R2_CODE_BOC_HEX).map_err(|e| e.to_string())?)?;
+        let (cells, root) =
+            parse_boc(&hex::decode(V4R2_CODE_BOC_HEX).map_err(DerivationError::invalid)?)?;
         let code = cell_from_rows(&cells, root)?;
         if code.hash_depth().0 != V4R2_KNOWN_CODE_HASH {
-            return Err("TON: invalid V4R2 code hash".into());
+            return Err(DerivationError::Internal(
+                "TON: invalid V4R2 code hash".into(),
+            ));
         }
         Ok(code)
     })
@@ -263,11 +287,14 @@ fn v4r2_code() -> Result<Cell, String> {
 }
 
 #[cfg(test)]
-pub(crate) fn v4r2_code_hash_and_depth() -> Result<([u8; 32], u16), String> {
+pub(crate) fn v4r2_code_hash_and_depth() -> Result<([u8; 32], u16), DerivationError> {
     Ok(v4r2_code()?.hash_depth())
 }
 
-pub(crate) fn v4r2_state_init(public_key: &[u8; 32], wallet_id: u32) -> Result<Cell, String> {
+pub(crate) fn v4r2_state_init(
+    public_key: &[u8; 32],
+    wallet_id: u32,
+) -> Result<Cell, DerivationError> {
     let mut data = Cell::default();
     data.uint(0, 32)?
         .uint(u64::from(wallet_id), 32)?
@@ -280,7 +307,7 @@ pub(crate) fn v4r2_state_init(public_key: &[u8; 32], wallet_id: u32) -> Result<C
     Ok(init)
 }
 
-fn v4r2_state_init_account_id(public_key: &[u8; 32]) -> Result<[u8; 32], String> {
+fn v4r2_state_init_account_id(public_key: &[u8; 32]) -> Result<[u8; 32], DerivationError> {
     Ok(v4r2_state_init(public_key, V4R2_DEFAULT_WALLET_ID)?
         .hash_depth()
         .0)
@@ -294,7 +321,7 @@ pub(crate) fn crc16_xmodem(bytes: &[u8]) -> u16 {
 }
 
 // Build the TON v4R2 bounceable user-friendly address from a public key via state_init cell hash.
-fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, String> {
+fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, DerivationError> {
     let account_id = v4r2_state_init_account_id(public_key)?;
     // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
     let mut buf = [0u8; 36];
@@ -314,7 +341,7 @@ pub(crate) fn derive_ton_standard(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""), None, 0)?;
     let mut private_key = [0u8; 32];
     private_key.copy_from_slice(&seed[..32]);
@@ -400,7 +427,7 @@ pub fn derive_ton_testnet(
 }
 
 #[cfg(test)]
-pub(crate) fn boc_root_hash(bytes: &[u8]) -> Result<[u8; 32], String> {
+pub(crate) fn boc_root_hash(bytes: &[u8]) -> Result<[u8; 32], DerivationError> {
     let (cells, root) = parse_boc(bytes)?;
     Ok(cell_from_rows(&cells, root)?.hash_depth().0)
 }

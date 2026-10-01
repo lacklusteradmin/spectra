@@ -7,12 +7,14 @@
 //! - Substrate junction derivation (`//hard`, `/soft`) is not yet supported —
 //!   omit the derivation path to derive the root sr25519 keypair.
 
+use crate::derivation::error::DerivationError;
+
 use crate::derivation::primitives::{
     decode_ss58 as decode_ss58_with_prefix, derive_substrate_sr25519_material, encode_ss58,
 };
 
 // Decode a Polkadot/Substrate SS58 address and return the inner 32-byte public key.
-pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], String> {
+pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], DerivationError> {
     decode_ss58_with_prefix(address, None).map(|(_, key)| key)
 }
 

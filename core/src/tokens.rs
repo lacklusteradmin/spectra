@@ -156,17 +156,6 @@ static CATALOG: LazyLock<Vec<TokenDeploymentEntry>> = LazyLock::new(|| {
 });
 
 fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntry> {
-    #[derive(Deserialize)]
-    struct Chains {
-        chains: Vec<ChainRecord>,
-    }
-    #[derive(Deserialize)]
-    struct ChainRecord {
-        id: String,
-        environment: String,
-        token_standard: String,
-    }
-    let chains: Chains = toml::from_str(include_str!("../data/chains.toml")).expect("valid chains");
     let mut identities = std::collections::HashSet::new();
     let files = [(mainnet, "mainnet"), (testnet, "testnet")];
     let mut tokens_by_id = std::collections::HashMap::new();
@@ -184,11 +173,7 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
         .flat_map(|(file, environment)| file.deployments.iter().map(move |d| (*environment, d)))
         .map(|(environment, d)| {
             let t = tokens_by_id[d.token_id.as_str()];
-            let network = chains
-                .chains
-                .iter()
-                .find(|n| n.id == d.chain_id.str_id())
-                .expect("a chain id parses only from the catalog");
+            let network = crate::chains::declared(d.chain_id);
             // Derived, not declared: an id written beside the facts it
             // restates can disagree with them, and the file spelled 268 of
             // them for the build to check character by character.

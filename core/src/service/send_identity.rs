@@ -67,7 +67,8 @@ impl WalletService {
             .map_err(|error| invalid(&error.to_string()))?;
         let (derived, private_key_hex) = match material {
             SigningMaterial::Mnemonic(seed) => {
-                let defaults = crate::derivation_paths_for_preset(wallet.derivation_preset)?;
+                let defaults =
+                    crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
                 let path = wallet
                     .addresses
                     .iter()
@@ -80,7 +81,7 @@ impl WalletService {
                     })
                     .or_else(|| defaults.path_for(chain))
                     .unwrap_or_default();
-                let path = crate::resolve_derivation_path(id, path.into())?;
+                let path = crate::derivation::path::resolve_derivation_path(id, path.into())?;
                 let overrides = &sensitive_overrides.0;
                 overrides.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);
@@ -147,5 +148,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "send_identity_tests.rs"]
+#[path = "tests/send_identity.rs"]
 mod tests;

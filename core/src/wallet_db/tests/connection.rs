@@ -1,4 +1,5 @@
-use super::*;
+use crate::wallet_db::WalletDatabase;
+use crate::wallet_db::error::DbError;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -22,7 +23,7 @@ fn one_blocked_database_does_not_block_another_database() {
         a.with_connection(|_| {
             started_tx.send(()).unwrap();
             release_rx.recv().unwrap();
-            Ok(())
+            Ok::<_, DbError>(())
         })
     });
     started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -30,7 +31,7 @@ fn one_blocked_database_does_not_block_another_database() {
     let second = std::thread::spawn(move || {
         let result = b.with_connection(|conn| {
             conn.query_row("SELECT 1", [], |row| row.get::<_, i32>(0))
-                .map_err(|e| e.to_string())
+                .map_err(DbError::from)
         });
         done_tx.send(result).unwrap();
     });
@@ -50,7 +51,7 @@ fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
     first
         .with_connection(|conn| {
             conn.execute_batch("CREATE TEMP TABLE lifetime_marker (id INTEGER)")
-                .map_err(|e| e.to_string())
+                .map_err(DbError::from)
         })
         .unwrap();
     let weak = Arc::downgrade(&first);
@@ -69,7 +70,7 @@ fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
                 )
                 .unwrap();
             assert_eq!(count, 0);
-            Ok(())
+            Ok::<_, DbError>(())
         })
         .unwrap();
 }
