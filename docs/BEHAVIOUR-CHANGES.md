@@ -16,6 +16,36 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-01 — Launch reads once; balance ticks no longer re-run unrelated work
+
+- **Before:** launch read the transaction projection twice, re-opened the
+  state database after `ready()` had opened it, and ran a foreground refresh
+  alongside the launch sweep the engine's first tick already performs. Every
+  mid-sweep portfolio snapshot reassigned every wallet, cache, quote and
+  dashboard field, so all of their views re-rendered each 300 ms; every
+  balance change bumped `walletsRevision`, which re-ran the history page query
+  and the transaction-detail reads. `AppLocalization` rebuilt its cache key
+  from the preferred languages on every string it returned. Several views found
+  a wallet by scanning `store.wallets`.
+- **After:** launch opens the database once, reads core's state with
+  `appState()`, reads the transaction projection once, and only settles
+  leftover Live Activities on its first activation; later activations refresh
+  as before. Snapshot fields are assigned only when they differ
+  (`WalletDerivedCache` is `Equatable`). `walletIdentityRevision` changes only
+  when a wallet is added, removed or changes in anything but its balances, and
+  the price-alert picker watches the alertable holdings instead. The string
+  tables are cached until `NSLocale.currentLocaleDidChangeNotification`. Views
+  look wallets up with `wallet(for:)`.
+- **Why:** the same reads ran twice at launch, and a balance landing every few
+  hundred milliseconds re-ran work that does not depend on balances.
+- **CLI check:** none applies — launch order, observation and view refresh are
+  the platform's.
+- **Verification:** `make test-ios` runs 95 tests in 21 suites with this and
+  every 2026-09-30 Swift entry above applied: 94 pass. The one failure,
+  `testnetSymbolsKeepTheirLowercasePrefix`, predates these changes — Beta
+  Commit 193 gave Bitcoin Signet the symbol `sBTC`. `scripts/unused-strings.sh`
+  passes.
+
 ## 2026-09-30 — A blank wallet password is refused, not read as "no password"
 
 - **Before:** `store_seed_phrase`, `store_private_key` and `load_material`

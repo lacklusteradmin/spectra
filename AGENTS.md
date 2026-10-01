@@ -57,7 +57,7 @@ than accumulating.
 
 CLI acceptance uses a throwaway directory without network. Prove a moved rule
 there before deleting its Swift implementation. No iOS test is expected to fail,
-including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+including `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
 
 ## Platform constraints
 
@@ -93,6 +93,11 @@ including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
   long-lived observation loop: cancellation does not resume the continuation
   and can retain `self`. Use `didSet` with a debounced, cancellable `Task` and
   `Task.sleep` instead.
+- Tests use Swift Testing (`@Test`, `#expect`, `#require`), not XCTest. Tests
+  run in parallel, so a test that touches process-wide state (the Keychain,
+  the network runtime, windows) must stay correct alongside the others or sit
+  in a `.serialized` suite. A test that needs an `AppState` uses
+  `@Suite(.isolatedAppState)` and conforms to `IsolatedAppStateSuite`.
 
 ## Resources
 

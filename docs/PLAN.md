@@ -123,7 +123,7 @@ make verify
 
 This runs formatting, clippy, workspace Rust tests, offline CLI acceptance and
 an iPhone simulator test suite. There are no expected-red iOS tests, including
-`testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+`ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
 CLI acceptance uses a throwaway directory without network. Tests must assert
 rules rather than the ordering of concurrent failures. Exercise changed FFI/UI
 paths in the app too: CLI tests cannot detect a missing Tokio runtime on a
@@ -208,6 +208,44 @@ Swift async export, and offline assembly cannot verify a broadcast.
   read (a static NNS neuron directory; no keyless Sidecar), so drop those fields
   rather than route them. Record any change in what a validator query returns
   in [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md) and pass `make verify`.
+- [ ] **Name FFI types once, in Rust, so Swift needs no typealiases.** Swift
+  renames nine UniFFI types with `typealias`, so each has two names and both
+  appear in code: `Coin = AssetHolding`, `TransactionRecord =
+  CorePersistedTransactionRecord`, `TransactionStatus = CoreTransactionStatus`,
+  `PriceAlertRule = PriceAlertEvaluationAlert`, `PriceAlertCondition =
+  CorePriceAlertCondition`, `TokenPreferenceEntry = CoreTokenPreferenceEntry`,
+  `SeedDerivationPaths = CoreSeedDerivationPaths`, `DashboardAssetGroup =
+  CoreDashboardAssetGroup` and `DashboardPinOption = CoreDashboardPinOption`
+  (the last two in `swift/views/DashboardViews.swift`, the rest in
+  `CoreModels.swift`, `ChainTypes.swift` and `RegistryModels.swift`). Pick the
+  one name each type should have — drop the `Core` prefix, which says where a
+  type lives rather than what it is, and settle `Coin` versus `AssetHolding` —
+  and rename the Rust type (or set its UniFFI name) so the binding carries it.
+  Apply the same rule to the remaining `Core*` exports Swift uses unaliased
+  (`CoreSeedDerivationPreset`, `CoreWalletDerivationOverrides`,
+  `CoreTokenPreferenceKey`, `CoreAppState`). Rename in CLI and Kotlin call
+  sites in the same change, regenerate the bindings, delete every alias, and
+  pass `make verify`. No behaviour changes; nothing to record beyond the
+  commit.
+- [ ] **Give `AppState`'s domains their own observable state.** `AppState` is
+  one `@Observable` class whose methods are spread over 31
+  `AppState+<Domain>.swift` extensions, a third of them under 40 lines. The
+  extensions share every stored property, so the split hides line count but
+  not coupling, and any view that reads one property is in the same
+  invalidation scope as the rest. `sendFlow`, `receiveFlow`, `walletImport`,
+  `preferences` and `diagnostics` already show the target shape: a small
+  `@MainActor @Observable` type that `AppState` owns, holding that domain's
+  view state and exposing its actions. Move the remaining domains the same way
+  — address book, token preferences, price alerts, Tor, networks/endpoints,
+  history paging, send execution and preview, notifications and Live
+  Activities — one domain per change, each taking its properties out of
+  `AppState` and its views reading the new object rather than the store.
+  Merge the tiny extensions that are only adapters (`Diagnostics`,
+  `Persistence`, `Networks`, `TorLifecycle`) into the domain that owns them
+  rather than giving each a type. Keep core as the owner of domain state: the
+  new types hold projections and view state only, per AGENTS.md. Each step
+  needs the iOS suite green and no user-visible change; record nothing unless
+  behaviour moves.
 - **Endpoint availability and redundancy:** the 2026-09-23 live audit removed
   failed built-in providers instead of retaining broken fallbacks. Zcash,
   Bitcoin Gold, Dash, Dogecoin testnet and Monero stagenet now have no built-in
