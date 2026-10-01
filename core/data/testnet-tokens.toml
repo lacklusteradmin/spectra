@@ -1,5 +1,6 @@
 # Testnet token identities and deployments, using the same schema as tokens.toml.
 # Faucet coins and testnet tokens have no market identity or price.
+# Every name starts with "Test ", so a test coin never reads as the real one.
 # Deployments reference tokens.id via token_id and chains.toml chains.id via chain_id.
 # Symbols are display labels. Precision belongs to the deployment.
 # Core derives deployment IDs from network, standard and contract; no stored deployment ID.
@@ -8,7 +9,7 @@
 [[tokens]]
 id = "bitcoin-testnet"
 symbol = "tBTC"
-name = "Bitcoin"
+name = "Test Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
@@ -24,7 +25,7 @@ decimals = 8
 [[tokens]]
 id = "bitcoin-testnet-4"
 symbol = "tBTC"
-name = "Bitcoin"
+name = "Test Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
@@ -40,7 +41,7 @@ decimals = 8
 [[tokens]]
 id = "bitcoin-signet"
 symbol = "sBTC"
-name = "Bitcoin"
+name = "Test Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
@@ -56,7 +57,7 @@ decimals = 8
 [[tokens]]
 id = "litecoin-testnet"
 symbol = "tLTC"
-name = "Litecoin"
+name = "Test Litecoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -72,7 +73,7 @@ decimals = 8
 [[tokens]]
 id = "bitcoin-cash-testnet"
 symbol = "tBCH"
-name = "Bitcoin Cash"
+name = "Test Bitcoin Cash"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
@@ -88,7 +89,7 @@ decimals = 8
 [[tokens]]
 id = "bitcoin-sv-testnet"
 symbol = "tBSV"
-name = "Bitcoin SV"
+name = "Test Bitcoin SV"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
@@ -104,7 +105,7 @@ decimals = 8
 [[tokens]]
 id = "dogecoin-testnet"
 symbol = "tDOGE"
-name = "Dogecoin"
+name = "Test Dogecoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "yellow"
@@ -120,7 +121,7 @@ decimals = 8
 [[tokens]]
 id = "zcash-testnet"
 symbol = "tZEC"
-name = "Zcash"
+name = "Test Zcash"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "yellow"
@@ -136,7 +137,7 @@ decimals = 8
 [[tokens]]
 id = "decred-testnet"
 symbol = "tDCR"
-name = "Decred"
+name = "Test Decred"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "indigo"
@@ -152,7 +153,7 @@ decimals = 8
 [[tokens]]
 id = "kaspa-testnet"
 symbol = "tKAS"
-name = "Kaspa"
+name = "Test Kaspa"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "teal"
@@ -168,7 +169,7 @@ decimals = 8
 [[tokens]]
 id = "dash-testnet"
 symbol = "tDASH"
-name = "Dash"
+name = "Test Dash"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -184,7 +185,7 @@ decimals = 8
 [[tokens]]
 id = "ethereum-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "purple"
@@ -200,7 +201,7 @@ decimals = 18
 [[tokens]]
 id = "ethereum-hoodi"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "purple"
@@ -216,7 +217,7 @@ decimals = 18
 [[tokens]]
 id = "arbitrum-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "cyan"
@@ -232,7 +233,7 @@ decimals = 18
 [[tokens]]
 id = "optimism-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "red"
@@ -248,7 +249,7 @@ decimals = 18
 [[tokens]]
 id = "base-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -264,7 +265,7 @@ decimals = 18
 [[tokens]]
 id = "bnb-testnet"
 symbol = "tBNB"
-name = "BNB"
+name = "Test BNB"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "yellow"
@@ -280,7 +281,7 @@ decimals = 18
 [[tokens]]
 id = "avalanche-fuji"
 symbol = "tAVAX"
-name = "Avalanche"
+name = "Test Avalanche"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "red"
@@ -296,7 +297,7 @@ decimals = 18
 [[tokens]]
 id = "polygon-amoy"
 symbol = "tPOL"
-name = "Polygon"
+name = "Test Polygon"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "purple"
@@ -312,7 +313,7 @@ decimals = 18
 [[tokens]]
 id = "hyperliquid-testnet"
 symbol = "tHYPE"
-name = "Hyperliquid"
+name = "Test Hyperliquid"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "mint"
@@ -328,7 +329,7 @@ decimals = 18
 [[tokens]]
 id = "linea-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -344,7 +345,7 @@ decimals = 18
 [[tokens]]
 id = "celo-sepolia"
 symbol = "tCELO"
-name = "Celo"
+name = "Test Celo"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "yellow"
@@ -360,7 +361,7 @@ decimals = 18
 [[tokens]]
 id = "cronos-testnet"
 symbol = "tCRO"
-name = "Cronos"
+name = "Test Cronos"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -376,7 +377,7 @@ decimals = 18
 [[tokens]]
 id = "zksync-era-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "gray"
@@ -392,7 +393,7 @@ decimals = 18
 [[tokens]]
 id = "sonic-testnet"
 symbol = "tS"
-name = "Sonic"
+name = "Test Sonic"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "gray"
@@ -408,7 +409,7 @@ decimals = 18
 [[tokens]]
 id = "ink-sepolia"
 symbol = "tETH"
-name = "Ethereum"
+name = "Test Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "purple"
@@ -424,7 +425,7 @@ decimals = 18
 [[tokens]]
 id = "x-layer-testnet"
 symbol = "tOKB"
-name = "OKB"
+name = "Test OKB"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "gray"
@@ -440,7 +441,7 @@ decimals = 18
 [[tokens]]
 id = "ethereum-classic-mordor"
 symbol = "tETC"
-name = "Ethereum Classic"
+name = "Test Ethereum Classic"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "green"
@@ -456,7 +457,7 @@ decimals = 18
 [[tokens]]
 id = "tron-nile"
 symbol = "tTRX"
-name = "Tron"
+name = "Test Tron"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "red"
@@ -472,7 +473,7 @@ decimals = 6
 [[tokens]]
 id = "solana-devnet"
 symbol = "tSOL"
-name = "Solana"
+name = "Test Solana"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "green"
@@ -488,7 +489,7 @@ decimals = 9
 [[tokens]]
 id = "xrp-testnet"
 symbol = "tXRP"
-name = "XRP"
+name = "Test XRP"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "cyan"
@@ -504,7 +505,7 @@ decimals = 6
 [[tokens]]
 id = "stellar-testnet"
 symbol = "tXLM"
-name = "Stellar"
+name = "Test Stellar"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "teal"
@@ -520,7 +521,7 @@ decimals = 7
 [[tokens]]
 id = "cardano-preprod"
 symbol = "tADA"
-name = "Cardano"
+name = "Test Cardano"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "indigo"
@@ -536,7 +537,7 @@ decimals = 6
 [[tokens]]
 id = "sui-testnet"
 symbol = "tSUI"
-name = "Sui"
+name = "Test Sui"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "mint"
@@ -552,7 +553,7 @@ decimals = 9
 [[tokens]]
 id = "aptos-testnet"
 symbol = "tAPT"
-name = "Aptos"
+name = "Test Aptos"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "cyan"
@@ -568,7 +569,7 @@ decimals = 8
 [[tokens]]
 id = "ton-testnet"
 symbol = "tTON"
-name = "Toncoin"
+name = "Test Toncoin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -584,7 +585,7 @@ decimals = 9
 [[tokens]]
 id = "near-testnet"
 symbol = "tNEAR"
-name = "NEAR"
+name = "Test NEAR"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "indigo"
@@ -600,7 +601,7 @@ decimals = 24
 [[tokens]]
 id = "polkadot-westend"
 symbol = "tDOT"
-name = "Polkadot"
+name = "Test Polkadot"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "pink"
@@ -616,7 +617,7 @@ decimals = 10
 [[tokens]]
 id = "monero-stagenet"
 symbol = "tXMR"
-name = "Monero"
+name = "Test Monero"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "orange"
@@ -632,7 +633,7 @@ decimals = 12
 [[tokens]]
 id = "usd-coin-testnet"
 symbol = "tUSDC"
-name = "USD Coin"
+name = "Test USD Coin"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
@@ -778,7 +779,7 @@ decimals = 6
 [[tokens]]
 id = "paypal-usd-testnet"
 symbol = "tPYUSD"
-name = "PayPal USD"
+name = "Test PayPal USD"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"

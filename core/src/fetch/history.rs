@@ -576,12 +576,12 @@ mod normalize_chain_history_tests {
         (
             crate::registry::Chain::BitcoinTestnet,
             r#"[{"txid":"q1","confirmed":true,"block_height":2500000,"block_time":1700000023,"net_sats":4242}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin","symbol":"tBTC","chain_id":"bitcoin-testnet","amount":"0.00004242","counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Test Bitcoin","symbol":"tBTC","chain_id":"bitcoin-testnet","amount":"0.00004242","counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
         ),
         (
             crate::registry::Chain::LitecoinTestnet,
             r#"[{"txid":"q2","confirmed":true,"block_height":9,"block_time":1700000024,"net_sats":31337}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Litecoin","symbol":"tLTC","chain_id":"litecoin-testnet","amount":"0.00031337","counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Test Litecoin","symbol":"tLTC","chain_id":"litecoin-testnet","amount":"0.00031337","counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
         ),
     ];
 

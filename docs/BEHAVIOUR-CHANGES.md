@@ -16,6 +16,26 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-01 — Testnet tokens are named as test coins
+
+- **Before:** a testnet token carried its mainnet token's name — Bitcoin
+  Testnet4's coin was "Bitcoin", Sepolia's USDC was "USD Coin" — and only the
+  `t`-prefixed symbol and the network name told them apart.
+- **After:** every entry in `core/data/testnet-tokens.toml` is named
+  "Test …" ("Test Bitcoin", "Test Ethereum", "Test USD Coin"), and the catalog
+  loader refuses a testnet token whose name does not start with "Test ". The
+  name reaches holdings, history rows and the wiki through the catalog as
+  before.
+- **Why:** a name is what a list row leads with, and a faucet coin that reads
+  "Bitcoin" can be mistaken for the real one. Enforcing it at load keeps a new
+  testnet token from slipping back.
+- **CLI check:** `spectra --json token catalog --chain bitcoin-testnet-4` shows
+  `"name":"Test Bitcoin"`; `--chain ethereum-sepolia` shows
+  `"name":"Test USD Coin"`.
+- **Verification:** `make lint` and `make test` pass; `make test-cli` fails one
+  unrelated check (`RuntimeStrings` 'Token Standard' is unread); `make test-ios`
+  not run (core data only).
+
 ## 2026-10-01 — The backdrop's colour clouds drift
 
 - **Before:** `SpectraBackdrop` drew four blurred circles at fixed offsets, so

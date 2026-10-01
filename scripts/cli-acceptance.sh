@@ -760,6 +760,10 @@ contains "testnet token has no market identity" '"coingecko_id":""' \
     spectra --json token catalog --chain ethereum-sepolia
 contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"deployment_id":"bitcoin-testnet-4:native"' \
     spectra --json token catalog --chain bitcoin-testnet-4
+contains "a testnet coin is named as a test coin" '"name":"Test Bitcoin"' \
+    spectra --json token catalog --chain bitcoin-testnet-4
+contains "and so is a testnet token"              '"name":"Test USD Coin"' \
+    spectra --json token catalog --chain ethereum-sepolia
 
 section "known tokens"
 check "editable price sources survive reopening" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"

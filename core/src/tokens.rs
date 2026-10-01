@@ -201,6 +201,11 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
                     || (t.coingecko_id.is_empty() && t.coinpaprika_id.is_empty()),
                 "testnet token has market identity"
             );
+            assert!(
+                environment != "testnet" || t.name.starts_with("Test "),
+                "testnet token {} is not named as a test coin",
+                t.id
+            );
             if d.kind != "native" {
                 assert_eq!(
                     network.token_standard, d.standard,

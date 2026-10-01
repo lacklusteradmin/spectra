@@ -663,16 +663,12 @@ mod explicit_network_catalog {
     #[test]
     fn networks_share_protocol_facts_but_have_distinct_identity() {
         let (main, net) = (entry("ethereum"), entry("ethereum-sepolia"));
-        for (field, a, b) in [
-            ("artwork_name", &main.artwork_name, &net.artwork_name),
-            (
-                "native_asset_display_name",
-                &main.native_asset_display_name,
-                &net.native_asset_display_name,
-            ),
-        ] {
-            assert_eq!(a, b, "{field} did not carry through to the network");
-        }
+        assert_eq!(
+            main.artwork_name, net.artwork_name,
+            "artwork_name did not carry through to the network"
+        );
+        assert_eq!(main.native_asset_display_name, "Ethereum");
+        assert_eq!(net.native_asset_display_name, "Test Ethereum");
         assert_eq!(
             main.popular_rank, net.popular_rank,
             "popular_rank did not carry through to the network"
