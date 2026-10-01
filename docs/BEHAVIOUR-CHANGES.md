@@ -16,6 +16,26 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-01 — The backdrop's colour clouds drift
+
+- **Before:** `SpectraBackdrop` drew four blurred circles at fixed offsets, so
+  every screen's wallpaper was a still image.
+- **After:** each cloud wanders slowly around its old position on its own
+  closed path (50–70 pt reach, 37–61 s per cycle, a slight swell in size).
+  Position is a function of wall-clock time, so the backdrop of every tab and
+  pushed screen agrees and a navigation transition does not jump. It holds
+  still at its old layout under Reduce Motion, and freezes in Low Power Mode
+  and in the background. The clouds are radial gradients shaped like the old
+  blurred discs, so moving one moves a layer instead of re-running a large blur
+  every frame; the timeline ticks at 30 fps.
+- **Why:** the glass cards refract the backdrop, and a still one gives them
+  nothing to show. The blur is gone so the motion stays cheap.
+- **CLI check:** none applies; this is iOS rendering only. Compared against the
+  previous build in the simulator.
+- **Verification:** iOS build, `make check-ui`; `make lint`, `make test`,
+  `make test-cli` and `make test-ios` not run (no core or test-covered code
+  changed).
+
 ## 2026-10-01 — Aptos balances are read through view functions
 
 - **Before:** every Aptos balance was read as a resource: APT as
