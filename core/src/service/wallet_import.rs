@@ -191,6 +191,17 @@ impl WalletService {
             let password = commit.password.take().map(zeroize::Zeroizing::new);
             this.write_persisted(move |service| async move {
                 let database = service.bound_database().await?;
+                let source = database.clone();
+                let pending = tokio::task::spawn_blocking(move || {
+                    crate::wallet_db::pending_secret_deletions(&source)
+                })
+                .await
+                .map_err(SpectraBridgeError::failure)??;
+                if wallets.iter().any(|wallet| pending.contains(&wallet.id)) {
+                    return Err(SpectraBridgeError::failure(
+                        "Import ID still has pending secret cleanup",
+                    ));
+                }
                 let mut snapshot = service.wallet_state.read().await.clone();
                 if wallets
                     .iter()

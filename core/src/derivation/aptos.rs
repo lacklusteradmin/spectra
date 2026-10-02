@@ -41,7 +41,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::derive_slip10_ed25519_key;
@@ -75,7 +75,7 @@ fn aptos_internal(
     })
 }
 
-/// UniFFI export: derive Aptos mainnet keys from a BIP-39 seed phrase.
+/// Derive Aptos mainnet keys from a BIP-39 seed phrase.
 pub fn derive_aptos(
     seed_phrase: String,
     derivation_path: String,
@@ -94,7 +94,7 @@ pub fn derive_aptos(
     )
 }
 
-/// UniFFI export: derive Aptos testnet keys (identical derivation to mainnet; network differs at RPC layer).
+/// Derive Aptos testnet keys (identical derivation to mainnet; network differs at RPC layer).
 pub fn derive_aptos_testnet(
     seed_phrase: String,
     derivation_path: String,

@@ -109,7 +109,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::derive_slip10_ed25519_key;
@@ -145,7 +145,7 @@ fn stellar_internal(
     })
 }
 
-/// UniFFI export: derive Stellar mainnet wallet (G-account strkey address) from a seed phrase.
+/// Derive Stellar mainnet wallet (G-account strkey address) from a seed phrase.
 pub fn derive_stellar(
     seed_phrase: String,
     derivation_path: String,
@@ -166,7 +166,7 @@ pub fn derive_stellar(
     )
 }
 
-/// UniFFI export: derive Stellar testnet wallet from a seed phrase.
+/// Derive Stellar testnet wallet from a seed phrase.
 pub fn derive_stellar_testnet(
     seed_phrase: String,
     derivation_path: String,

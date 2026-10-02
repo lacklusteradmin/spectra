@@ -65,6 +65,10 @@ impl WalletService {
                 }
 
                 let database = crate::wallet_db::WalletDatabase::new(&database_path);
+                let cleanup_error = service
+                    .finish_secret_deletions(database.clone())
+                    .await
+                    .err();
                 let source = database.clone();
                 let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
                     let loaded = crate::wallet_db::app_state_load(&source)?;
@@ -103,8 +107,11 @@ impl WalletService {
                 }
 
                 let mut state = loaded.clone();
-                let merged = reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
-                if !merged.is_empty() {
+                if let Some(error) = cleanup_error {
+                    append_secret_cleanup_warning(&mut state.diagnostics, &error);
+                }
+                reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+                if state != loaded {
                     let changes =
                         crate::wallet_db::AppStateChanges::between(Some(&loaded), &state)?;
                     let target = database.clone();
@@ -357,7 +364,7 @@ impl WalletService {
     {
         self.write_persisted(move |service| async move {
             let database = service.state_binding.connection().await;
-            let (snapshot, events, changes, removed, esplora_changed) = {
+            let (mut snapshot, mut events, mut changes, removed, esplora_changed) = {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
                 let events = mutate(&mut state);
@@ -385,14 +392,20 @@ impl WalletService {
                 (state, events, changes, removed, esplora_changed)
             };
 
-            // Secret deletion is idempotent. A backend failure leaves the wallet
-            // present so the same intent can be retried. SQLite changes commit together.
+            // Require the backend before accepting a signing-wallet deletion,
+            // then queue its cleanup atomically with the SQLite removal. Deleting
+            // secrets before that commit would destroy a wallet on database failure.
             if !removed.is_empty() {
                 let store = service
                     .secret_store
                     .read()
                     .map_err(|_| SpectraBridgeError::failure("secret store lock poisoned"))?
                     .clone();
+                if database.is_none() && store.is_some() {
+                    return Err(SpectraBridgeError::failure(
+                        "state database must be opened before deleting wallet secrets",
+                    ));
+                }
                 if store.is_none()
                     && database.is_some()
                     && service
@@ -407,17 +420,35 @@ impl WalletService {
                         "secret store must be registered before deleting a signing wallet",
                     ));
                 }
-                if let Some(store) = store {
-                    for id in &removed {
-                        crate::store::wallet_secrets::delete(&*store, id)
-                            .map_err(SpectraBridgeError::failure)?;
-                    }
+                if database.is_some()
+                    && store.is_some()
+                    && let Some(changes) = &mut changes
+                {
+                    changes.queue_secret_deletions(removed.clone());
                 }
             }
-            if let (Some(database), Some(changes)) = (database, changes) {
+            if let (Some(database), Some(changes)) = (database.clone(), changes) {
                 tokio::task::spawn_blocking(move || changes.save(&database))
                     .await
                     .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
+            }
+            if !removed.is_empty()
+                && let Some(database) = database
+                && let Err(error) = service.finish_secret_deletions(database.clone()).await
+            {
+                // Removal has committed. Cleanup failure is durable retry work,
+                // not a failed state command: return the state Swift must adopt.
+                let mut warned = snapshot.clone();
+                append_secret_cleanup_warning(&mut warned.diagnostics, &error);
+                let changes = crate::wallet_db::AppStateChanges::between(Some(&snapshot), &warned);
+                if let Ok(changes) = changes
+                    && tokio::task::spawn_blocking(move || changes.save(&database))
+                        .await
+                        .is_ok_and(|result| result.is_ok())
+                {
+                    snapshot = warned;
+                    events.push(crate::store::state::StateEvent::DiagnosticsChanged);
+                }
             }
             if events.is_empty() {
                 return Ok(StateTransition {
@@ -484,10 +515,48 @@ impl WalletService {
         tokio::spawn(async move {
             let writer = service.state_writer.clone();
             let _guard = writer.lock().await;
+            if let Some(database) = service.state_binding.connection().await {
+                // Best effort: pending cleanup must not block unrelated work.
+                // The database refuses writes that reuse an uncleared wallet ID.
+                let _ = service.finish_secret_deletions(database).await;
+            }
             operation(service).await
         })
         .await
         .map_err(|e| SpectraBridgeError::failure(format!("state writer: {e}")))?
+    }
+
+    /// Retry committed cleanup before new mutations can reuse an old wallet ID.
+    /// Each acknowledged deletion is idempotent; a crash or partial backend
+    /// failure leaves a durable queue entry and no wallet claiming usable keys.
+    async fn finish_secret_deletions(
+        &self,
+        database: Arc<crate::wallet_db::WalletDatabase>,
+    ) -> Result<(), SpectraBridgeError> {
+        let source = database.clone();
+        let pending = tokio::task::spawn_blocking(move || {
+            crate::wallet_db::pending_secret_deletions(&source)
+        })
+        .await
+        .map_err(SpectraBridgeError::failure)??;
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let store = self.secrets()?;
+        for id in pending {
+            crate::store::wallet_secrets::delete(&*store, &id).map_err(|error| {
+                SpectraBridgeError::failure(format!(
+                    "wallet {id} was removed; secret cleanup is pending and will be retried: {error}"
+                ))
+            })?;
+            let target = database.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::complete_secret_deletion(&target, &id)
+            })
+            .await
+            .map_err(SpectraBridgeError::failure)??;
+        }
+        Ok(())
     }
 
     // ── Not exported ──────────────────────────────────────────────────────
@@ -507,6 +576,28 @@ impl WalletService {
     ) -> Result<Arc<crate::wallet_db::WalletDatabase>, SpectraBridgeError> {
         self.state_binding.required_connection().await
     }
+}
+
+fn append_secret_cleanup_warning(diagnostics: &mut DiagnosticState, error: &SpectraBridgeError) {
+    let message = format!("Wallet removal committed; secret cleanup will be retried: {error}");
+    tracing::warn!("{message}");
+    if diagnostics
+        .logs
+        .iter()
+        .any(|log| log.input.category == "Secret Cleanup" && log.input.message == message)
+    {
+        return;
+    }
+    diagnostics.append(DiagnosticLogInput {
+        level: DiagnosticLogLevel::Warning,
+        category: "Secret Cleanup".into(),
+        message,
+        chain_id: None,
+        wallet_id: None,
+        transaction_hash: None,
+        source: Some("core".into()),
+        metadata: None,
+    });
 }
 
 #[cfg(test)]
@@ -585,6 +676,10 @@ mod utxo_discovery_is_the_registrys_chain_set {
 #[cfg(test)]
 #[path = "tests/state.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/state_secret_deletion.rs"]
+mod secret_deletion_tests;
 
 #[cfg(test)]
 #[path = "tests/address_discovery.rs"]

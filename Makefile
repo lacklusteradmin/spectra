@@ -12,8 +12,8 @@ IOS_TEST_DERIVED_DATA ?=
 	bindgen-android clean
 
 # ── Verification ────────────────────────────────────────────────────
-# `verify` is the gate AGENTS.md describes: all three suites must pass
-# before a change is done. CI runs `lint test test-cli`; `test-ios`
+# `verify` runs the full gate for major changes described in AGENTS.md.
+# CI runs `lint test test-cli`; `test-ios`
 # needs Xcode and a simulator, so it stays local.
 verify: lint test test-cli test-ios
 

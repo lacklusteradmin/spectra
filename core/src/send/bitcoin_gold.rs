@@ -10,13 +10,16 @@ use crate::send::error::SendError;
 
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{dsha256, varint};
-use crate::derivation::bitcoin_gold::decode_btg_address;
+use crate::derivation::utxo_address::parse_utxo_address;
+use crate::registry::Chain;
 
 const SIGHASH_ALL_FORKID_BYTE: u8 = 0x41;
 /// Preimage hash-type field: `(BTG fork id 79 << 8) | SIGHASH_ALL_FORKID`.
 const SIGHASH_PREIMAGE_HASH_TYPE: u32 = 0x0000_4F41;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sign_btg_tx(
+    chain: Chain,
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
     amount_sat: u64,
@@ -38,10 +41,9 @@ pub(crate) fn sign_btg_tx(
         fee_sat,
     )?;
 
-    let to_hash = decode_btg_address(to_address)?;
-    let change_hash = decode_btg_address(change_address)?;
-
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_sat)];
+    let to_script = parse_utxo_address(chain, to_address)?.script_pubkey();
+    let change_hash = parse_utxo_address(chain, change_address)?.require_p2pkh()?;
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
         outputs.push((p2pkh_script(&change_hash), change));
     }

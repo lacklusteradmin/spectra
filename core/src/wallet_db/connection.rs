@@ -1,19 +1,5 @@
-//! SQLite-backed relational store for per-wallet UTXO state.
-//!
-//! Replaces four UserDefaults JSON blobs that Swift's WalletStore currently owns:
-//!   - `dogecoin.keypool.snapshot`          → `wallet_keypool` table
-//!   - `chain.keypool.snapshot.v1`          → `wallet_keypool` table
-//!   - `dogecoin.ownedAddressMap.snapshot`  → `wallet_owned_addresses` table
-//!   - `chain.ownedAddressMap.snapshot.v1`  → `wallet_owned_addresses` table
-//!
-//! All functions are synchronous (call from `spawn_blocking` in `service::state`).
-//!
-//! ## Schema
-//!
-//! ```sql
-//! wallet_keypool (wallet_id, chain_id) → (next_external_index, next_change_index, reserved_receive_index)
-//! wallet_owned_addresses (wallet_id, chain_id, address) → (derivation_path, branch, branch_index)
-//! ```
+//! SQLite schema initialization and the shared, lazily opened connection for
+//! wallet state, addresses, transaction history and send artifacts.
 
 use crate::wallet_db::error::DbError;
 
@@ -160,6 +146,9 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
          CREATE INDEX IF NOT EXISTS idx_wallets_lower_id ON wallets(lower(id));
          CREATE INDEX IF NOT EXISTS idx_wallets_chain ON wallets(chain_id);
          CREATE INDEX IF NOT EXISTS idx_wallets_order ON wallets(sort_index);
+         CREATE TABLE IF NOT EXISTS wallet_secret_deletions (
+             wallet_id TEXT PRIMARY KEY NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS app_state_meta (
              key   TEXT NOT NULL PRIMARY KEY,
              value TEXT NOT NULL

@@ -168,3 +168,7 @@ pub(crate) async fn prepare_zcash(
         },
     })
 }
+
+#[cfg(test)]
+#[path = "tests/zcash_stages.rs"]
+mod tests;

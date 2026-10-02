@@ -3,22 +3,6 @@
 
 use crate::derivation::error::DerivationError;
 
-// ── Address validation ───────────────────────────────────────────────────
-
-// Base58check-decode an LTC address and return the 20-byte pubkey hash.
-pub(crate) fn decode_ltc_address(address: &str) -> Result<[u8; 20], DerivationError> {
-    let decoded = bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid ltc address: {e}").into()))?;
-    if decoded.len() < 21 {
-        return Err(DerivationError::Invalid("address too short".into()));
-    }
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&decoded[1..21]);
-    Ok(hash)
-}
-
 /// Parsed form of an `ltcmweb1…` or `tmweb1…` stealth address.
 /// `scan_pubkey` (A) and `spend_pubkey` (B) are 33-byte compressed secp256k1 points.
 #[derive(Debug, Clone)]

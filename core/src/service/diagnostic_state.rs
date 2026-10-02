@@ -91,7 +91,7 @@ impl DiagnosticState {
     /// it is kept, so every reader — the logs screen, a copy, the CLI — gets
     /// what the bundle export already got. Identifiers are kept as given: a
     /// transaction hash is 64 hex digits and would read as a private key.
-    fn append(&mut self, mut input: DiagnosticLogInput) {
+    pub(super) fn append(&mut self, mut input: DiagnosticLogInput) {
         use crate::diagnostics::sanitizer::sanitize_diagnostics_string as sanitize;
         input.category = sanitize(input.category.trim());
         input.message = sanitize(input.message.trim());

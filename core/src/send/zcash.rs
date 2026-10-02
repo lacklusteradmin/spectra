@@ -9,13 +9,7 @@
 
 use crate::send::error::SendError;
 
-pub(crate) use super::zcash_stages::PreparedZcashTransaction;
-
 use super::bitcoin_wire::{decode_txid_le, p2pkh_script, varint};
-#[cfg(test)]
-use crate::api::blockbook::{BlockbookClient, BlockbookSendResult};
-#[cfg(test)]
-use crate::derivation::zcash::decode_zcash_address;
 
 // ── Network upgrade descriptor ────────────────────────────────────────────
 
@@ -44,45 +38,6 @@ const TX_VERSION_OVERWINTERED: u32 = 1 << 31;
 const SIGHASH_ALL: u32 = 1;
 
 const BLAKE2B_PERSONALIZED_LEN: usize = 32;
-
-// ── Public broadcast + signing entrypoint ─────────────────────────────────
-
-/// Fetch UTXOs + chain tip, sign a V5 transparent transaction, broadcast.
-#[cfg(test)]
-pub async fn sign_zcash_and_broadcast(
-    client: &BlockbookClient,
-    from_address: &str,
-    to_address: &str,
-    amount_sat: u64,
-    fee_sat: u64,
-    private_key_bytes: &[u8],
-    network_upgrade: ZcashNetworkUpgrade,
-    dust_threshold_zats: u64,
-) -> Result<BlockbookSendResult, SendError> {
-    client.require_chain(crate::registry::Chain::Zcash)?;
-    let utxos = client.fetch_utxos(from_address).await?;
-    let tip = client.fetch_chain_tip_height().await?;
-    // Match zcashd default: 40-block expiry window.
-    let expiry_height = expiry_height(tip)?;
-    let from_hash = decode_zcash_address(from_address)?;
-    let from_script = p2pkh_script(&from_hash);
-    let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
-        .iter()
-        .map(|u| (u.txid.clone(), u.vout, u.value, from_script.clone()))
-        .collect();
-    let raw = sign_zcash_v5_p2pkh(
-        &utxo_tuples,
-        to_address,
-        amount_sat,
-        fee_sat,
-        from_address,
-        expiry_height,
-        private_key_bytes,
-        network_upgrade,
-        dust_threshold_zats,
-    )?;
-    Ok(client.broadcast_raw_tx(&hex::encode(&raw)).await?)
-}
 
 // ── Encoding helpers ──────────────────────────────────────────────────────
 
@@ -114,36 +69,6 @@ const PERSONAL_TX_PER_INPUT_SCRIPTS: &[u8] = b"ZTxTrScriptsHash";
 const PERSONAL_TX_PREVOUTS: &[u8] = b"ZTxIdPrevoutHash";
 const PERSONAL_TX_SEQUENCE: &[u8] = b"ZTxIdSequencHash";
 const PERSONAL_TX_SIG_DIGEST: &[u8] = b"Zcash___TxInHash";
-
-// ── ZIP-244 / ZIP-244-revised sighash construction (NU5 transparent-only).
-
-#[allow(clippy::too_many_arguments)]
-#[cfg(test)]
-pub(crate) fn sign_zcash_v5_p2pkh(
-    utxos: &[(String, u32, u64, Vec<u8>)],
-    to_address: &str,
-    amount_sat: u64,
-    fee_sat: u64,
-    change_address: &str,
-    expiry_height: u32,
-    private_key_bytes: &[u8],
-    network_upgrade: ZcashNetworkUpgrade,
-    dust_threshold_zats: u64,
-) -> Result<Vec<u8>, SendError> {
-    let change = super::accounting::checked_change(utxos.iter().map(|u| u.2), amount_sat, fee_sat)?;
-    let mut outputs = vec![(p2pkh_script(&decode_zcash_address(to_address)?), amount_sat)];
-    if change > dust_threshold_zats {
-        outputs.push((p2pkh_script(&decode_zcash_address(change_address)?), change));
-    }
-    sign_transaction(
-        utxos,
-        &outputs,
-        expiry_height,
-        private_key_bytes,
-        network_upgrade,
-    )
-    .map(|r| r.0)
-}
 
 pub(crate) fn sign_transaction(
     utxos: &[(String, u32, u64, Vec<u8>)],
@@ -392,60 +317,12 @@ pub(crate) fn expiry_height(tip: u64) -> Result<u32, SendError> {
 #[cfg(test)]
 mod expiry_tests {
     use super::*;
-    use std::sync::Arc;
-    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
     #[test]
     fn expiry_is_checked() {
         assert_eq!(expiry_height(2000000).unwrap(), 2000040);
         assert_eq!(expiry_height(u64::from(u32::MAX) - 40).unwrap(), u32::MAX);
         assert!(expiry_height(u64::from(u32::MAX) - 39).is_err());
         assert!(expiry_height(u64::MAX).is_err());
-    }
-    #[tokio::test]
-    async fn unavailable_tip_never_broadcasts() {
-        let server = MockServer::start().await;
-        Mock::given(path("/api/v2/utxo/from"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
-            .mount(&server)
-            .await;
-        Mock::given(path("/api/v2"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(serde_json::json!({"backend":{}})),
-            )
-            .mount(&server)
-            .await;
-        let client =
-            BlockbookClient::new(Arc::new(vec![server.uri()]), crate::registry::Chain::Zcash);
-        let err = sign_zcash_and_broadcast(
-            &client,
-            "from",
-            "to",
-            1,
-            1,
-            &[1; 32],
-            ZcashNetworkUpgrade::NU5,
-            546,
-        )
-        .await
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("json decode"), "{err}");
-        assert!(
-            server
-                .received_requests()
-                .await
-                .unwrap()
-                .iter()
-                .any(|r| r.url.path() == "/api/v2")
-        );
-        assert!(
-            server
-                .received_requests()
-                .await
-                .unwrap()
-                .iter()
-                .all(|r| !r.url.path().contains("sendtx"))
-        );
     }
 }
 

@@ -31,7 +31,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::types::DerivationResult;
@@ -61,7 +61,7 @@ fn near_internal(
     })
 }
 
-/// UniFFI export: derive NEAR mainnet keys (direct-seed ed25519; address = hex pubkey).
+/// Derive NEAR mainnet keys (direct-seed ed25519; address = hex pubkey).
 pub fn derive_near(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -78,7 +78,7 @@ pub fn derive_near(
     )
 }
 
-/// UniFFI export: derive NEAR testnet keys (identical derivation to mainnet).
+/// Derive NEAR testnet keys (identical derivation to mainnet).
 pub fn derive_near_testnet(
     seed_phrase: String,
     passphrase: Option<String>,

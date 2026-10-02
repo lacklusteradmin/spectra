@@ -31,14 +31,31 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "bitcoinTestnet" | "bitcoinTestnet4" | "bitcoinSignet" => {
             validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Testnet)
         }
-        "bitcoinCash" => validate_bitcoin_cash_address(&normalized_input, false),
-        "bitcoinCashTestnet" => validate_bitcoin_cash_address(&normalized_input, true),
-        "bitcoinSV" => validate_bitcoin_sv_address(&normalized_input, false),
-        "bitcoinSVTestnet" => validate_bitcoin_sv_address(&normalized_input, true),
-        "litecoin" => validate_litecoin_address(&normalized_input, false),
-        "litecoinTestnet" => validate_litecoin_address(&normalized_input, true),
-        "dogecoin" => validate_dogecoin_address(&normalized_input, false),
-        "dogecoinTestnet" => validate_dogecoin_address(&normalized_input, true),
+        "bitcoinCash" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinCash)
+        }
+        "bitcoinCashTestnet" => validate_fixed_utxo_address(
+            &normalized_input,
+            crate::registry::Chain::BitcoinCashTestnet,
+        ),
+        "bitcoinSV" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinSV)
+        }
+        "bitcoinSVTestnet" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinSVTestnet)
+        }
+        "litecoin" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Litecoin)
+        }
+        "litecoinTestnet" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::LitecoinTestnet)
+        }
+        "dogecoin" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Dogecoin)
+        }
+        "dogecoinTestnet" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::DogecoinTestnet)
+        }
         // EVM addresses are network-agnostic on the wire — same validator
         // for mainnet + every EVM testnet.
         "evm" | "evmTestnet" => validate_evm_address(&normalized_input),
@@ -58,12 +75,16 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "cardano" | "cardanoTestnet" => validate_cardano_address(&normalized_input),
         "zcash" => validate_zcash_address(&normalized_input, false),
         "zcashTestnet" => validate_zcash_address(&normalized_input, true),
-        "bitcoinGold" => validate_bitcoin_gold_address(&normalized_input),
+        "bitcoinGold" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinGold)
+        }
         "decred" => validate_decred_address(&normalized_input, false),
         "decredTestnet" => validate_decred_address(&normalized_input, true),
         "kaspa" | "kaspaTestnet" => validate_kaspa_address(&normalized_input),
-        "dash" => validate_dash_address(&normalized_input, false),
-        "dashTestnet" => validate_dash_address(&normalized_input, true),
+        "dash" => validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Dash),
+        "dashTestnet" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::DashTestnet)
+        }
         "bittensor" => validate_bittensor_address(&normalized_input),
         // Not an address, but the same question in the same shape: a typed
         // string, is it well formed, and what is its canonical spelling. It had
@@ -112,88 +133,6 @@ fn is_lower_hex(value: &str) -> bool {
     value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
-fn validate_legacy_base58_payload(value: &str, allowed_versions: &[u8]) -> Option<Vec<u8>> {
-    let decoded = bs58::decode(value).with_check(None).into_vec().ok()?;
-    if decoded.len() != 21 || !allowed_versions.contains(&decoded[0]) {
-        return None;
-    }
-    Some(decoded)
-}
-
-fn validate_segwit_hrp(value: &str, allowed_hrps: &[&str]) -> bool {
-    bech32::segwit::decode(value)
-        .map(|(hrp, _version, _program)| {
-            let hrp = hrp.to_string().to_ascii_lowercase();
-            allowed_hrps.iter().any(|candidate| *candidate == hrp)
-        })
-        .unwrap_or(false)
-}
-
-fn validate_bch_cashaddr(value: &str, testnet: bool) -> Option<String> {
-    const CHARSET: &str = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    const GENERATORS: [u64; 5] = [
-        0x98f2bc8e61,
-        0x79b76d99e2,
-        0xf33e5fb3c4,
-        0xae2eabe2a8,
-        0x1e4f43e470,
-    ];
-
-    fn polymod(values: &[u8]) -> u64 {
-        let mut chk = 1u64;
-        for value in values {
-            let top = chk >> 35;
-            chk = ((chk & 0x07_ffff_ffff) << 5) ^ (*value as u64);
-            for (i, generator) in GENERATORS.iter().enumerate() {
-                if ((top >> i) & 1) != 0 {
-                    chk ^= generator;
-                }
-            }
-        }
-        chk
-    }
-
-    let lower = value.to_ascii_lowercase();
-    if lower != value && value.chars().any(|c| c.is_ascii_lowercase()) {
-        return None;
-    }
-    let expected_prefix = if testnet { "bchtest" } else { "bitcoincash" };
-    let (prefix, payload) = match lower.split_once(':') {
-        Some((prefix, payload)) if prefix == expected_prefix => (prefix.to_string(), payload),
-        Some(_) => return None,
-        None => (expected_prefix.to_string(), lower.as_str()),
-    };
-    if payload.len() < 9 {
-        return None;
-    }
-    let mut payload_values = Vec::with_capacity(payload.len());
-    for ch in payload.chars() {
-        payload_values.push(CHARSET.find(ch)? as u8);
-    }
-    let data_len = payload_values.len().checked_sub(8)?;
-    let version = *payload_values.first()?;
-    let address_type = version >> 3;
-    let hash_size = version & 0x07;
-    if address_type > 1 || hash_size != 0 {
-        return None;
-    }
-    let mut values = Vec::with_capacity(prefix.len() + 1 + payload_values.len());
-    values.extend(prefix.bytes().map(|b| b & 0x1f));
-    values.push(0);
-    values.extend_from_slice(&payload_values);
-    if polymod(&values) != 1 {
-        return None;
-    }
-    if data_len == 0 {
-        return None;
-    }
-    Some(if lower.contains(':') {
-        lower
-    } else {
-        payload.to_string()
-    })
-}
-
 fn validate_bitcoin_address(
     value: &str,
     expected_network: BitcoinNetworkKind,
@@ -216,63 +155,39 @@ fn validate_bitcoin_address(
     make_result(value.to_string())
 }
 
-fn validate_bitcoin_cash_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if let Some(normalized) = validate_bch_cashaddr(value, testnet) {
-        return make_result(normalized);
+fn validate_fixed_utxo_address(
+    value: &str,
+    chain: crate::registry::Chain,
+) -> AddressValidationResult {
+    if let Ok(parsed) = crate::derivation::utxo_address::parse_utxo_address(chain, value) {
+        let canonical_lowercase = matches!(
+            parsed,
+            crate::derivation::utxo_address::ParsedUtxoAddress::Witness { .. }
+        ) || (chain.cashaddr_prefix().is_some()
+            && bs58::decode(value).with_check(None).into_vec().is_err());
+        return make_result(if canonical_lowercase {
+            value.to_ascii_lowercase()
+        } else {
+            value.to_string()
+        });
     }
-    let versions = if testnet {
-        &[0x6f, 0xc4][..]
-    } else {
-        &[0x00, 0x05][..]
-    };
-    if validate_legacy_base58_payload(value, versions).is_some() {
-        return make_result(value.to_string());
-    }
-    invalid_result()
-}
-
-fn validate_bitcoin_sv_address(value: &str, testnet: bool) -> AddressValidationResult {
-    // BSV is legacy-only: base58check P2PKH / P2SH, whose version bytes are
-    // 0x00 / 0x05 on mainnet and 0x6f / 0xc4 on testnet. SegWit and Taproot
-    // are not valid on either.
-    if crate::derivation::bitcoin_sv::validate_bsv_address(value, testnet) {
-        return make_result(value.to_string());
-    }
-    invalid_result()
-}
-
-fn validate_litecoin_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if testnet {
-        if validate_segwit_hrp(value, &["tltc"])
-            || crate::derivation::litecoin::parse_mweb_address(value)
-                .map(|_| value.to_ascii_lowercase().starts_with("tmweb1"))
-                .unwrap_or(false)
-            || validate_legacy_base58_payload(value, &[0x6f, 0x3a, 0xc4]).is_some()
-        {
-            return make_result(value.to_string());
-        }
-        return invalid_result();
-    }
-    if validate_segwit_hrp(value, &["ltc"])
-        || crate::derivation::litecoin::parse_mweb_address(value)
-            .map(|_| value.to_ascii_lowercase().starts_with("ltcmweb1"))
-            .unwrap_or(false)
-        || validate_legacy_base58_payload(value, &[0x30, 0x32, 0x05]).is_some()
+    if chain.mainnet_counterpart() == crate::registry::Chain::Litecoin
+        && crate::derivation::litecoin::parse_mweb_address(value).is_ok()
+        && value
+            .to_ascii_lowercase()
+            .starts_with(if chain.is_testnet() {
+                "tmweb1"
+            } else {
+                "ltcmweb1"
+            })
     {
-        return make_result(value.to_string());
+        return make_result(value.to_ascii_lowercase());
     }
     invalid_result()
 }
 
 fn validate_zcash_address(value: &str, testnet: bool) -> AddressValidationResult {
     if crate::derivation::zcash::validate_zcash_address(value, testnet) {
-        return make_result(value.to_string());
-    }
-    invalid_result()
-}
-
-fn validate_bitcoin_gold_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::bitcoin_gold::validate_bitcoin_gold_address(value) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -292,27 +207,8 @@ fn validate_kaspa_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
-fn validate_dash_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if crate::derivation::dash::validate_dash_address(value, testnet) {
-        return make_result(value.to_string());
-    }
-    invalid_result()
-}
-
 fn validate_bittensor_address(value: &str) -> AddressValidationResult {
     if crate::derivation::bittensor::validate_bittensor_address(value) {
-        return make_result(value.to_string());
-    }
-    invalid_result()
-}
-
-fn validate_dogecoin_address(value: &str, testnet: bool) -> AddressValidationResult {
-    let versions = if testnet {
-        &[0x71, 0xc4][..]
-    } else {
-        &[0x1e, 0x16][..]
-    };
-    if validate_legacy_base58_payload(value, versions).is_some() {
         return make_result(value.to_string());
     }
     invalid_result()

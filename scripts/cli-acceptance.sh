@@ -50,6 +50,8 @@ with_journal() { local journal="$1"; shift; SPECTRA_LOOPBACK_ONLY="$journal" "$@
 source "$(dirname "$0")/cli-assertions.sh"
 
 check "transparent transaction stages" 0 python3 "$(dirname "$0")/cli-send-stages.py" "$BIN"
+check "UTXO recipients preserve output script types" 0 python3 "$(dirname "$0")/cli-send-utxo.py" "$BIN"
+check "wallet deletion preserves keys and retries cleanup" 0 python3 "$(dirname "$0")/cli-wallet-deletion.py" "$BIN"
 
 
 # Shortcuts are floored in core over the exact balance, never through a float.

@@ -41,7 +41,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::derive_slip10_ed25519_key;
@@ -75,7 +75,7 @@ fn sui_internal(
     })
 }
 
-/// UniFFI export: derive Sui mainnet wallet from a seed phrase.
+/// Derive Sui mainnet wallet from a seed phrase.
 pub fn derive_sui(
     seed_phrase: String,
     derivation_path: String,
@@ -94,7 +94,7 @@ pub fn derive_sui(
     )
 }
 
-/// UniFFI export: derive Sui testnet wallet from a seed phrase.
+/// Derive Sui testnet wallet from a seed phrase.
 pub fn derive_sui_testnet(
     seed_phrase: String,
     derivation_path: String,

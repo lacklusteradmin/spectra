@@ -105,16 +105,6 @@ pub struct BlockbookClient {
 }
 
 impl BlockbookClient {
-    #[cfg(test)]
-    pub(crate) fn require_chain(&self, expected: crate::registry::Chain) -> Result<(), ApiError> {
-        if self.chain.mainnet_counterpart() != expected {
-            return Err(ApiError::InvalidInput(
-                "signer does not match the client's network".into(),
-            ));
-        }
-        Ok(())
-    }
-
     fn normalize_address(&self, address: &str) -> String {
         if self.chain.mainnet_counterpart() == crate::registry::Chain::BitcoinCash {
             crate::derivation::bitcoin_cash::normalize_bch_address(address)
@@ -271,14 +261,6 @@ impl BlockbookClient {
             }
         })
         .await
-    }
-
-    /// The backend's current chain tip. Zcash's V5 builder needs it to pick an
-    /// `nExpiryHeight` (`tip + 40`, the zcashd default).
-    #[cfg(test)]
-    pub async fn fetch_chain_tip_height(&self) -> Result<u64, ApiError> {
-        let status: BlockbookStatus = self.get("/api/v2").await?;
-        Ok(u64::from(status.backend.blocks))
     }
 
     /// Submit a signed transaction. Blockbook answers with the txid.

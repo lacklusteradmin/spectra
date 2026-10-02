@@ -361,7 +361,7 @@ pub(crate) fn derive_ton_standard(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::hmac_sha512;
@@ -392,7 +392,7 @@ fn ton_internal(
     })
 }
 
-/// UniFFI export: derive TON mainnet wallet (v4R2 bounceable address) from a seed phrase.
+/// Derive TON mainnet wallet (v4R2 bounceable address) from a seed phrase.
 pub fn derive_ton(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -409,7 +409,7 @@ pub fn derive_ton(
     )
 }
 
-/// UniFFI export: derive TON testnet wallet from a seed phrase (same derivation as mainnet).
+/// Derive TON testnet wallet from a seed phrase (same derivation as mainnet).
 pub fn derive_ton_testnet(
     seed_phrase: String,
     passphrase: Option<String>,

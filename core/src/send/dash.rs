@@ -6,11 +6,14 @@ use crate::send::error::SendError;
 
 use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
-use crate::derivation::dash::decode_dash_address;
+use crate::derivation::utxo_address::parse_utxo_address;
+use crate::registry::Chain;
 
 const SIGHASH_ALL: u32 = 1;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sign_dash_p2pkh(
+    chain: Chain,
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
     amount_sat: u64,
@@ -32,10 +35,11 @@ pub(crate) fn sign_dash_p2pkh(
         fee_sat,
     )?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> =
-        vec![(p2pkh_script(&decode_dash_address(to_address)?), amount_sat)];
+    let to_script = parse_utxo_address(chain, to_address)?.script_pubkey();
+    let change_hash = parse_utxo_address(chain, change_address)?.require_p2pkh()?;
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((p2pkh_script(&decode_dash_address(change_address)?), change));
+        outputs.push((p2pkh_script(&change_hash), change));
     }
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::new();

@@ -40,7 +40,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::derive_slip10_ed25519_key;
@@ -76,7 +76,7 @@ fn solana_internal(
     })
 }
 
-/// UniFFI export: derive Solana mainnet keys from a BIP-39 seed phrase.
+/// Derive Solana mainnet keys from a BIP-39 seed phrase.
 pub fn derive_solana(
     seed_phrase: String,
     derivation_path: String,
@@ -97,7 +97,7 @@ pub fn derive_solana(
     )
 }
 
-/// UniFFI export: derive Solana devnet keys (identical derivation to mainnet).
+/// Derive Solana devnet keys (identical derivation to mainnet).
 pub fn derive_solana_devnet(
     seed_phrase: String,
     derivation_path: String,

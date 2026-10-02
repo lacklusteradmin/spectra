@@ -1,10 +1,8 @@
 //! Funds Finder — scan many derivation paths from a seed phrase to locate
 //! hidden or lost funds across supported blockchains.
 //!
-//! `generate_funds_finder_candidates` is a pure computation step: it
-//! derives addresses for every (chain, path, script-type) combination in the
-//! candidate matrix and returns them to Swift. Swift then calls the existing
-//! `fetch_native_balance_summary` for each candidate and surfaces hits.
+//! Candidate generation derives addresses without network requests. The core
+//! FundsScan session checks their balances and reports funded candidates.
 
 use crate::SpectraBridgeError;
 use crate::derivation::types::BitcoinScriptType;
@@ -38,8 +36,6 @@ pub struct FundsFinderCandidate {
     /// The derived address to check.
     pub address: String,
 }
-
-// ── FFI export ────────────────────────────────────────────────────────────────
 
 /// Derive addresses for every (chain, path) combination in the candidate
 /// matrix and return the full list. Pure computation — no network calls.

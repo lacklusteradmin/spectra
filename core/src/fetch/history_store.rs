@@ -1,17 +1,8 @@
 //! Per-wallet history pagination state: cursor strings, page counters, and
 //! exhaustion flags — one entry per (chain_id, wallet_id) pair.
 //!
-//! Designed to replace the 22 @Published cursor/exhaustion vars that Swift's
-//! StoreHistoryRefresh.swift currently owns. Swift still drives the actual
-//! HTTP fetches; this store only owns *where we are* in the pagination.
-//!
-//! ## Key conventions
-//!
-//! - UTXO chains (BTC / BCH / BSV / LTC / DOGE / Tron) use a `cursor`
-//!   string (a txid or offset token returned by the last page).
-//! - EVM and other page-numbered chains use a `page` counter (0 = start).
-//! - `exhausted = true` means no more pages exist; Swift should not attempt
-//!   another fetch until `reset` is called.
+//! Core's history services read and advance this state as they fetch pages.
+//! Provider adapters determine whether pagination uses a cursor or page number.
 
 use std::collections::HashMap;
 use std::sync::RwLock;

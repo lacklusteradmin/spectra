@@ -3818,3 +3818,132 @@ rendering in a real window.
 - **CLI check:** `spectra wallet import --chain Solana --no-password` with a
   phrase on stdin; `<data-dir>/secrets/device_key/` then holds a key, and
   neither the words nor their base64 appear under `<data-dir>/secrets/seed/`.
+
+## 2026-10-02 — sUSDS icon has no outer ring
+
+- **Before:** the sUSDS icon had a thin gradient stroke around its background
+  disc.
+- **After:** the gradient background fills the 64×64 disc without an outer
+  stroke; the unused stroke gradient is removed.
+- **Why:** remove the requested border and use the library's full-disc shape.
+- **CLI check:** none applies — icon resource only.
+- **Verification:** `scripts/normalize-icons.sh --check` passed; SVG structure
+  and exported-asset equality checks passed; the sUSDS asset compiled with
+  `actool` for iOS 26.
+
+## 2026-10-02 — Monad artwork uses direct 64×64 coordinates
+
+- **Before:** Monad kept a 480-unit path and shadow filter inside a group with
+  `scale(.13333)`. Normalization left that group intact because of its filter.
+- **After:** the path, filter bounds, shadow offset and blur are expressed
+  directly in 64×64 coordinates, without a group or transform.
+- **Why:** the icon has no gradient requiring the library's transform
+  exception; baking its geometry makes the source conform to the icon style.
+- **CLI check:** `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/monad.svg swift/Assets.xcassets/crypto/monad.imageset/monad.svg`.
+- **Verification:** normalization and exported-asset equality checks passed;
+  XML inspection found no transforms; the Monad asset compiled with `actool`
+  for iOS 26 and its artwork was reviewed side by side.
+
+## 2026-10-02 — Wallet removal cannot destroy keys on a database failure
+
+- **Before:** removing a wallet or resetting wallets deleted its signing
+  secrets before committing SQLite. A rejected database write left the wallet
+  stored but its recovery phrase or private key gone; a partial secret-store
+  failure could also leave a wallet with only part of its signing material.
+- **After:** wallet removal and a secret-cleanup queue commit atomically in
+  SQLite before any secret is deleted. Database failure retains the wallet
+  and its secrets. Committed removal returns the removed state even if cleanup
+  fails, records a diagnostic warning, and retries queued cleanup on reopen
+  and later writes. An uncleared wallet ID cannot be reused. A service with a
+  secret backend must open its database before deleting wallets.
+- **Why:** SQLite and Keychain/file storage cannot share a transaction. Durable
+  cleanup after the commit prevents a refused operation from losing funds and
+  keeps interrupted cleanup retryable without a second authoritative wallet.
+- **CLI check:** `python3 scripts/cli-wallet-deletion.py target/debug/spectra`
+  injects a failed wallet deletion and a failed cleanup acknowledgment, checks
+  that the phrase remains exportable on rollback, and retries cleanup after
+  reopening.
+- **Verification:** `make verify` passed: rustfmt/clippy, 904 core unit tests
+  and one integration test, 460 offline CLI checks and 105 iPhone simulator
+  tests. The four deletion regressions and CLI fault-injection check passed.
+
+## 2026-10-02 — Token queries keep the wallet's concrete network
+
+- **Before:** the token-balance fallback matched only the mainnets of Tron,
+  Solana, NEAR, Sui and TON, refusing their testnets. NEAR Testnet refreshes
+  failed entirely when a token was configured; the other testnets failed when
+  a holdings listing was unavailable. CLI token discovery replaced every
+  selected testnet with its mainnet and queried that network instead.
+- **After:** balance reads choose the protocol by the registry's family and
+  retain the concrete network for endpoints, metadata and EVM chain identity.
+  CLI discovery forwards the wallet's concrete chain unchanged.
+- **Why:** a shared protocol or address does not make two networks' balances
+  interchangeable. Every catalogued testnet must use its family's adapter.
+- **CLI check:** `python3 scripts/cli-portfolio.py target/debug/spectra
+  PortfolioTests.test_near_testnet_token_refresh
+  PortfolioTests.test_token_discovery_uses_wallet_network` verifies persisted
+  NEAR Testnet token balances and Devnet-only discovery with loopback nodes.
+- **Verification:** both CLI regressions and the registry-wide balance-dispatch
+  regression passed; full `make verify` passed (905 Rust tests, 460 CLI checks,
+  105 iPhone simulator tests).
+
+## 2026-10-02 — UTXO sends pay the script named by the recipient address
+
+- **Before:** Bitcoin Cash, Bitcoin SV, Dogecoin, Litecoin, Dash and Bitcoin
+  Gold accepted P2SH recipients but discarded their script type and generated
+  P2PKH outputs, risking an unspendable payment. BCH CashAddr and Litecoin/BTG
+  witness addresses passed validation but failed in Base58-only signers. Dash
+  Testnet's sender also went through a mainnet-only decoder.
+- **After:** one typed address parser validates network/checksum and derives
+  the recipient's P2PKH, P2SH or supported witness script; sender and change
+  addresses must be P2PKH. Network address facts live on `Chain`. BCH CashAddr
+  decodes its full version byte and HASH160 payload, and equivalent legacy and
+  CashAddr destinations produce the same output. Litecoin supports witness v0
+  and v1 with a 32-byte program; BTG accepts only verified witness v0. Unsupported
+  witness versions and malformed CashAddr payloads are refused before fetching
+  inputs. CashAddr, witness and MWEB spellings canonicalize to lowercase.
+- **Why:** validating an address and paying a different script is a funds-loss
+  bug. Validation, transaction building and signing must share one model of the
+  address rather than extracting a hash and guessing its meaning.
+- **CLI check:** `python3 scripts/cli-send-utxo.py target/debug/spectra` builds
+  and signs with loopback providers, decodes each output, and checks mainnet and
+  testnet script types, CashAddr and supported witness programs.
+- **Verification:** all five Rust output/parser regressions and the CLI
+  build/sign fixture passed. Full `make verify` passed (905 Rust tests,
+  460 CLI checks, 105 iPhone simulator tests).
+
+## 2026-10-02 — A hidden seed-phrase screen rejects late secret reads
+
+- **Before:** an asynchronous seed reveal could finish after the app entered
+  the background, the details screen disappeared or the wallet was removed,
+  restoring the phrase and reopening its sheet after lifecycle cleanup.
+- **After:** each reveal belongs to one visible screen lifetime. Backgrounding,
+  disappearance and wallet removal invalidate it; inactive scenes clear the
+  displayed secret and reject late presentation. Old completions cannot clear
+  a newer request's password or busy state. The password is captured before
+  dismissing its prompt.
+- **Why:** clearing a secret is effective only if an obsolete request cannot
+  put it back. Native authentication may briefly make the scene inactive, so
+  backgrounding invalidates the request while inactivity hides its contents.
+- **CLI check:** none applies — transient native presentation only. Core's
+  secret-read operation is unchanged.
+- **Verification:** the lifecycle and delayed-completion Swift Testing
+  regressions passed in the iPhone simulator. Full `make verify` passed
+  (905 Rust tests, 460 CLI checks, 105 iPhone simulator tests).
+
+## 2026-10-02 — A cancelled Monero scan cannot overwrite its replacement
+
+- **Before:** Cancel allowed a new scan before the old Rust batch completed;
+  the old task could then overwrite progress/error and clear the new scan's
+  password and running state.
+- **After:** each native scan has a request identity. Cancel and disappearance
+  invalidate it; only the current request can submit, publish progress or
+  complete cleanup. The durable scan remains owned by core.
+- **Why:** cancelling a Swift task does not cancel an already running UniFFI
+  call. Its eventual completion must be treated as obsolete.
+- **CLI check:** none applies — cancellation of native view work only. CLI
+  Monero scanning uses the same unchanged core operations.
+- **Verification:** both delayed-batch/restart Swift Testing regressions
+  passed in the iPhone simulator. Full `make verify` passed (905 Rust tests,
+  460 CLI checks, 105 iPhone simulator tests).

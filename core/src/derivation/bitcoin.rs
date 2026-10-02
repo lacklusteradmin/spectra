@@ -446,7 +446,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 // Validate and decode a 64-character hex private key string into 32 raw bytes.
 fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {

@@ -358,7 +358,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;

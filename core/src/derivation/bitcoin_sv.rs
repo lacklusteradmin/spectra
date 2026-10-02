@@ -1,83 +1,12 @@
-//! Bitcoin SV: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
+//! Bitcoin SV: BIP-39 + BIP-32 derivation, legacy P2PKH
 //! base58check encoding.
-
-use crate::derivation::error::DerivationError;
-
-// ── Address validation ───────────────────────────────────────────────────
-
-/// BSV network encoded in the address version byte. Validation and output
-/// construction must reject addresses belonging to the other network.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BsvNetwork {
-    Mainnet,
-    Testnet,
-}
-
-impl BsvNetwork {
-    /// The P2PKH and P2SH version bytes, in that order. One table, so the
-    /// validator, the decoder and the deriver cannot disagree about which
-    /// byte belongs where.
-    pub(crate) const fn versions(self) -> [u8; 2] {
-        match self {
-            BsvNetwork::Mainnet => [0x00, 0x05],
-            BsvNetwork::Testnet => [0x6f, 0xc4],
-        }
-    }
-
-    /// The version byte a P2PKH address on this network carries.
-    pub(crate) const fn p2pkh_version(self) -> u8 {
-        self.versions()[0]
-    }
-
-    fn of_version(version: u8) -> Option<Self> {
-        [BsvNetwork::Mainnet, BsvNetwork::Testnet]
-            .into_iter()
-            .find(|network| network.versions()[0] == version || network.versions()[1] == version)
-    }
-}
-
-/// Base58check-decode a BSV address into its 20-byte hash and the network its
-/// version byte names.
-///
-/// The network comes back with the hash because the caller always needs it:
-/// two addresses in one transaction have to agree about which chain they are
-/// on, and the hash alone cannot say.
-pub(crate) fn decode_bsv_address(address: &str) -> Result<([u8; 20], BsvNetwork), DerivationError> {
-    let decoded = bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid bsv address: {e}").into()))?;
-    if decoded.len() != 21 {
-        return Err(DerivationError::Invalid("bsv address wrong length".into()));
-    }
-    let network = BsvNetwork::of_version(decoded[0]).ok_or_else(|| {
-        DerivationError::Invalid(
-            format!("unexpected bsv version byte: 0x{:02x}", decoded[0]).into(),
-        )
-    })?;
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&decoded[1..21]);
-    Ok((hash, network))
-}
-
-/// Whether `address` is valid BSV base58check **on the network asked about**.
-pub fn validate_bsv_address(address: &str, testnet: bool) -> bool {
-    let wanted = if testnet {
-        BsvNetwork::Testnet
-    } else {
-        BsvNetwork::Mainnet
-    };
-    decode_bsv_address(address).is_ok_and(|(_, network)| network == wanted)
-}
 
 use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::registry::Chain;
 
-pub(crate) const BSV_MAINNET_VERSION: u8 = BsvNetwork::Mainnet.p2pkh_version();
-pub(crate) const BSV_TESTNET_VERSION: u8 = BsvNetwork::Testnet.p2pkh_version();
-
-/// UniFFI export: derive Bitcoin SV mainnet keys (P2PKH only).
+/// Derive Bitcoin SV mainnet keys (P2PKH only).
 pub fn derive_bitcoin_sv(
     seed_phrase: String,
     derivation_path: String,
@@ -88,7 +17,7 @@ pub fn derive_bitcoin_sv(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     derive_legacy_p2pkh(
-        BSV_MAINNET_VERSION,
+        Chain::BitcoinSV.fixed_utxo_address_versions()?.0,
         seed_phrase,
         derivation_path,
         passphrase,
@@ -99,7 +28,7 @@ pub fn derive_bitcoin_sv(
     )
 }
 
-/// UniFFI export: derive Bitcoin SV testnet keys (P2PKH only).
+/// Derive Bitcoin SV testnet keys (P2PKH only).
 pub fn derive_bitcoin_sv_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -110,7 +39,7 @@ pub fn derive_bitcoin_sv_testnet(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     derive_legacy_p2pkh(
-        BSV_TESTNET_VERSION,
+        Chain::BitcoinSVTestnet.fixed_utxo_address_versions()?.0,
         seed_phrase,
         derivation_path,
         passphrase,
@@ -124,73 +53,71 @@ pub fn derive_bitcoin_sv_testnet(
 /// A version byte names a network, and BSV has two of them.
 #[cfg(test)]
 mod a_bsv_address_belongs_to_one_network {
-    use super::*;
     use crate::derivation::bitcoin::base58check_encode;
+    use crate::derivation::utxo_address::parse_utxo_address;
+    use crate::registry::Chain;
 
     /// Build an address carrying `version` over a fixed hash.
     fn address(version: u8) -> String {
         base58check_encode(&[&[version][..], &[0x11u8; 20][..]].concat())
     }
 
-    /// The four version bytes, each valid on exactly one network.
-    ///
-    /// `validate_bsv_address` took no network and accepted all four, and both
-    /// `"bitcoinSV"` and `"bitcoinSVTestnet"` dispatched to it — so a mainnet
-    /// send accepted an `m…`/`n…`/`2…` destination and a testnet send accepted
-    /// a `1…`/`3…` one.
     #[test]
     fn each_version_byte_validates_on_its_own_network_only() {
-        for (version, is_testnet, shape) in [
-            (0x00u8, false, "mainnet P2PKH"),
-            (0x05, false, "mainnet P2SH"),
-            (0x6f, true, "testnet P2PKH"),
-            (0xc4, true, "testnet P2SH"),
+        for (version, chain, other_chain, shape) in [
+            (
+                0x00u8,
+                Chain::BitcoinSV,
+                Chain::BitcoinSVTestnet,
+                "mainnet P2PKH",
+            ),
+            (
+                0x05,
+                Chain::BitcoinSV,
+                Chain::BitcoinSVTestnet,
+                "mainnet P2SH",
+            ),
+            (
+                0x6f,
+                Chain::BitcoinSVTestnet,
+                Chain::BitcoinSV,
+                "testnet P2PKH",
+            ),
+            (
+                0xc4,
+                Chain::BitcoinSVTestnet,
+                Chain::BitcoinSV,
+                "testnet P2SH",
+            ),
         ] {
             let address = address(version);
             assert!(
-                validate_bsv_address(&address, is_testnet),
+                parse_utxo_address(chain, &address).is_ok(),
                 "{shape} must validate on its own network"
             );
             assert!(
-                !validate_bsv_address(&address, !is_testnet),
+                parse_utxo_address(other_chain, &address).is_err(),
                 "{shape} must not validate on the other network"
             );
         }
     }
 
-    /// A byte belonging to neither is neither, and a corrupt checksum is not
-    /// an address on any network.
     #[test]
     fn an_unknown_version_or_bad_checksum_is_refused_on_both() {
-        for candidate in [address(0x01), address(0x80), "not-an-address".to_string()] {
-            assert!(!validate_bsv_address(&candidate, false), "{candidate}");
-            assert!(!validate_bsv_address(&candidate, true), "{candidate}");
+        let mut corrupt = bs58::decode(address(0x00)).into_vec().unwrap();
+        *corrupt.last_mut().unwrap() ^= 1;
+        for candidate in [
+            address(0x01),
+            address(0x80),
+            bs58::encode(corrupt).into_string(),
+            "not-an-address".to_string(),
+        ] {
+            for chain in [Chain::BitcoinSV, Chain::BitcoinSVTestnet] {
+                assert!(
+                    parse_utxo_address(chain, &candidate).is_err(),
+                    "{candidate}"
+                );
+            }
         }
-    }
-
-    /// What the deriver produces is what the validator accepts, on both
-    /// networks. The version constants and the validator read one table now,
-    /// so they cannot answer differently.
-    #[test]
-    fn the_deriver_and_the_validator_agree() {
-        assert_eq!(BSV_MAINNET_VERSION, BsvNetwork::Mainnet.p2pkh_version());
-        assert_eq!(BSV_TESTNET_VERSION, BsvNetwork::Testnet.p2pkh_version());
-        assert!(validate_bsv_address(&address(BSV_MAINNET_VERSION), false));
-        assert!(validate_bsv_address(&address(BSV_TESTNET_VERSION), true));
-    }
-
-    /// The decoder hands back the network with the hash, which is what lets
-    /// the signer refuse a transaction whose outputs straddle two chains.
-    #[test]
-    fn the_decoder_reports_which_network_it_read() {
-        assert_eq!(
-            decode_bsv_address(&address(0x00)).unwrap().1,
-            BsvNetwork::Mainnet
-        );
-        assert_eq!(
-            decode_bsv_address(&address(0xc4)).unwrap().1,
-            BsvNetwork::Testnet
-        );
-        assert!(decode_bsv_address(&address(0x42)).is_err());
     }
 }

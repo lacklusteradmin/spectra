@@ -31,6 +31,7 @@ pub(crate) struct AppStateChanges {
     replace: bool,
     wallets: Vec<(usize, WalletState, String)>,
     removed_wallets: Vec<String>,
+    secret_deletions: Vec<String>,
     addresses: Vec<(usize, AddressBookEntry, String)>,
     removed_addresses: Vec<String>,
     meta: Vec<(&'static str, Option<String>)>,
@@ -61,6 +62,7 @@ impl AppStateChanges {
             replace: before.is_none(),
             wallets: vec![],
             removed_wallets: vec![],
+            secret_deletions: vec![],
             addresses: vec![],
             removed_addresses: vec![],
             meta: vec![],
@@ -117,10 +119,38 @@ impl AppStateChanges {
         Ok(changes)
     }
 
+    /// Record cleanup in the same transaction that removes the wallets. Secret
+    /// stores cannot join SQLite's transaction, so cleanup follows the commit.
+    pub(crate) fn queue_secret_deletions(&mut self, wallet_ids: Vec<String>) {
+        self.secret_deletions = wallet_ids;
+    }
+
     pub(crate) fn save(self, database: &WalletDatabase) -> Result<(), DbError> {
         with_conn(database, |conn| {
             let tx = conn.unchecked_transaction().map_err(DbError::from)?;
             let updated_at = now_secs();
+            for (_, wallet, _) in &self.wallets {
+                let pending: bool = tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM wallet_secret_deletions WHERE wallet_id = ?1)",
+                        params![wallet.id],
+                        |row| row.get(0),
+                    )
+                    .map_err(DbError::from)?;
+                if pending {
+                    return Err(DbError::Invalid(format!(
+                        "wallet {} still has pending secret cleanup; its ID cannot be reused",
+                        wallet.id
+                    )));
+                }
+            }
+            for id in self.secret_deletions {
+                tx.execute(
+                    "INSERT OR IGNORE INTO wallet_secret_deletions (wallet_id) VALUES (?1)",
+                    params![id],
+                )
+                .map_err(DbError::from)?;
+            }
             if self.replace {
                 tx.execute("DELETE FROM monero_wallets", [])
                     .map_err(DbError::from)?;
@@ -197,6 +227,33 @@ impl AppStateChanges {
             tx.commit().map_err(DbError::from)
         })
     }
+}
+
+pub(crate) fn pending_secret_deletions(database: &WalletDatabase) -> Result<Vec<String>, DbError> {
+    with_conn(database, |conn| {
+        let mut statement = conn
+            .prepare("SELECT wallet_id FROM wallet_secret_deletions ORDER BY wallet_id")
+            .map_err(DbError::from)?;
+        statement
+            .query_map([], |row| row.get(0))
+            .map_err(DbError::from)?
+            .collect::<Result<_, _>>()
+            .map_err(DbError::from)
+    })
+}
+
+pub(crate) fn complete_secret_deletion(
+    database: &WalletDatabase,
+    wallet_id: &str,
+) -> Result<(), DbError> {
+    with_conn(database, |conn| {
+        conn.execute(
+            "DELETE FROM wallet_secret_deletions WHERE wallet_id = ?1",
+            params![wallet_id],
+        )
+        .map_err(DbError::from)?;
+        Ok(())
+    })
 }
 
 /// Explicit snapshot replacement (imports and standalone store callers).

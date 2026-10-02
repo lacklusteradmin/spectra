@@ -435,7 +435,9 @@ impl WalletService {
             }};
         }
 
-        let results: Vec<TokenBalanceResult> = match chain {
+        // Choose the protocol by family while every read keeps the concrete
+        // network's endpoints and identity.
+        let results: Vec<TokenBalanceResult> = match chain.mainnet_counterpart() {
             Chain::Tron => {
                 use futures::future::join_all;
                 let client = std::sync::Arc::new(TronHttpClient::with_metadata_cache(
@@ -552,7 +554,7 @@ impl WalletService {
                 fetch_coin_balance,
                 fetch_coin_decimals
             ),
-            Chain::Aptos | Chain::AptosTestnet => own_decimals_token_balances!(
+            Chain::Aptos => own_decimals_token_balances!(
                 AptosClient,
                 endpoints,
                 fetch_token_balance,
@@ -568,7 +570,7 @@ impl WalletService {
                 self.balances_from_holdings(chain, held, &tokens).await
             }
             // The EVM family.
-            c if c.is_evm() => {
+            _ if chain.is_evm() => {
                 // A row with no contract is a bad row, not a bad chain: it
                 // cannot be read, and failing the request over it would take
                 // every other token with it.
@@ -588,7 +590,7 @@ impl WalletService {
                 // catalog row that disagrees with the contract can only be the
                 // one that is wrong, and the two numbers together are what a
                 // balance means.
-                let reads = EvmClient::new(endpoints, c.evm_chain_id()?)
+                let reads = EvmClient::new(endpoints, chain.evm_chain_id()?)
                     .fetch_erc20_balances(&address, &contracts)
                     .await;
                 readable_tokens(
@@ -612,9 +614,9 @@ impl WalletService {
                         .collect(),
                 )
             }
-            c => {
+            _ => {
                 return Err(SpectraBridgeError::failure(format!(
-                    "fetch_token_balances: unsupported chain: {c:?}"
+                    "fetch_token_balances: unsupported chain: {chain:?}"
                 )));
             }
         };
@@ -722,15 +724,18 @@ mod decimals_come_from_the_chain {
     #[tokio::test]
     async fn an_unreadable_contract_is_left_out_rather_than_reported_as_zero() {
         let service = WalletService::new(Vec::new()).expect("service");
-        for chain in [
-            Chain::Ethereum,
-            Chain::Tron,
-            Chain::Near,
-            Chain::Ton,
-            Chain::Sui,
-            Chain::Aptos,
-            Chain::Solana,
-        ] {
+        for chain in Chain::all().filter(|chain| {
+            chain.is_evm()
+                || matches!(
+                    chain.mainnet_counterpart(),
+                    Chain::Tron
+                        | Chain::Near
+                        | Chain::Ton
+                        | Chain::Sui
+                        | Chain::Aptos
+                        | Chain::Solana
+                )
+        }) {
             let results = service
                 .fetch_token_balances(
                     chain,
@@ -743,7 +748,7 @@ mod decimals_come_from_the_chain {
                     }],
                 )
                 .await;
-            match chain {
+            match chain.mainnet_counterpart() {
                 // TON reads every jetton the address holds in one call, so a
                 // failure there is the chain's answer and not one token's.
                 Chain::Ton => assert!(results.is_err(), "ton"),

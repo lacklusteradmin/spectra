@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum PreparedPayload {
     Evm(super::evm::PreparedEvmTransaction),
-    Zcash(super::zcash::PreparedZcashTransaction),
-    Icp(super::icp::PreparedIcpTransaction),
+    Zcash(super::zcash_stages::PreparedZcashTransaction),
+    Icp(super::icp_stages::PreparedIcpTransaction),
     Monero(super::monero_local::PreparedMoneroTransaction),
     Decred(super::decred::PreparedDecredTransaction),
     Kaspa(super::kaspa::PreparedKaspaTransaction),

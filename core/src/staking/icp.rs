@@ -2,9 +2,7 @@
 
 use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
-pub struct IcpStakingClient {
-    _rosetta_endpoints: Vec<String>,
-}
+pub struct IcpStakingClient;
 
 // ── Hardcoded well-known NNS named neurons ────────────────────────────────────
 //
@@ -42,12 +40,6 @@ const KNOWN_NEURONS: &[(&str, &str, &str)] = &[
 ];
 
 impl IcpStakingClient {
-    pub fn new(rosetta_endpoints: Vec<String>) -> Self {
-        Self {
-            _rosetta_endpoints: rosetta_endpoints,
-        }
-    }
-
     /// Known-good neurons / followee identities the user can delegate
     /// liquid-democracy votes to. ICP doesn't have validator picking like
     /// other PoS chains; instead users follow other neurons for proposal
@@ -73,8 +65,7 @@ impl IcpStakingClient {
         Ok(validators)
     }
 
-    /// All neurons controlled by this wallet's principal. Calls
-    /// `list_neurons` on the NNS governance canister.
+    /// Position queries are not implemented; no NNS governance call is made.
     pub async fn fetch_positions(
         &self,
         _wallet_address: &str,

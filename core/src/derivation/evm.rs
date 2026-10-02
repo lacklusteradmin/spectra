@@ -97,7 +97,7 @@ pub(crate) fn derive_from_private_key_bytes(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;

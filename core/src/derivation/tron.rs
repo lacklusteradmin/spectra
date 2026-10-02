@@ -84,7 +84,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;
@@ -118,7 +118,7 @@ fn tron_internal(
     })
 }
 
-/// UniFFI export: derive Tron mainnet wallet from a seed phrase.
+/// Derive Tron mainnet wallet from a seed phrase.
 pub fn derive_tron(
     seed_phrase: String,
     derivation_path: String,
@@ -137,7 +137,7 @@ pub fn derive_tron(
     )
 }
 
-/// UniFFI export: derive Tron Nile testnet wallet from a seed phrase.
+/// Derive Tron Nile testnet wallet from a seed phrase.
 pub fn derive_tron_nile(
     seed_phrase: String,
     derivation_path: String,

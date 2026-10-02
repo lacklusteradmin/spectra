@@ -237,14 +237,14 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::primitives::derive_bip39_seed;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
-/// UniFFI export: derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
+/// Derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
 pub fn derive_kaspa(
     seed_phrase: String,
     derivation_path: String,
@@ -273,7 +273,7 @@ pub fn derive_kaspa(
     })
 }
 
-/// UniFFI export: derive Kaspa testnet wallet (kaspatest:… Schnorr address) from a seed phrase.
+/// Derive Kaspa testnet wallet (kaspatest:… Schnorr address) from a seed phrase.
 pub fn derive_kaspa_testnet(
     seed_phrase: String,
     derivation_path: String,

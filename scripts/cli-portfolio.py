@@ -6,6 +6,7 @@ Uses temporary stores and loopback nodes; no public network is required.
 """
 import http.server
 import json
+import os
 import pathlib
 import sqlite3
 import subprocess
@@ -194,6 +195,120 @@ class PortfolioTests(unittest.TestCase):
             # A testnet coin has no market: no price, not a zero one.
             quote = run('price', 'bitcoin-testnet-4')
             assert quote['priceUsd'] is None and quote['price'] is None and quote['currency'] == 'USD', quote
+
+    def test_near_testnet_token_refresh(self):
+        """Testnet token reads use their family's adapter and concrete network."""
+        calls = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                params = request['params']
+                calls.append(params)
+                if params['request_type'] == 'view_account':
+                    result = {'amount': str(10**24)}
+                else:
+                    value = ('2500000' if params['account_id'] == 'fixture.testnet' else '0') \
+                        if params['method_name'] == 'ft_balance_of' else {
+                        'spec': 'ft-1.0.0', 'name': 'Fixture', 'symbol': 'TST', 'decimals': 6}
+                    result = {'result': list(json.dumps(value).encode())}
+                data = json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': result}).encode()
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        with tempfile.TemporaryDirectory(prefix='spectra-near-testnet-') as directory:
+            def run(*args):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                        capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+                return json.loads(result.stdout)
+            run('wallet', 'watch', '--chain', 'near', '--address', 'owner.testnet', '--name', 'Fixture')
+            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                wallet = json.loads(db.execute('SELECT payload FROM wallets').fetchone()[0])
+                wallet['chainId'] = 'near-testnet'
+                wallet['addresses'][0]['chainId'] = 'near-testnet'
+                wallet['holdings'] = []
+                db.execute('UPDATE wallets SET chain_id=?, payload=?', ('near-testnet', json.dumps(wallet)))
+            run('token', 'add', '--chain', 'near-testnet', '--contract', 'fixture.testnet',
+                '--symbol', 'TST', '--name', 'Fixture', '--decimals', '6')
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                refreshed = run('refresh', '--wallet', 'Fixture', '--endpoint',
+                                f'http://127.0.0.1:{server.server_port}')
+                self.assertEqual(refreshed['refreshed'], 1, refreshed)
+                self.assertEqual(refreshed['errors'], 0, refreshed)
+                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                    wallet = json.loads(db.execute('SELECT payload FROM wallets').fetchone()[0])
+                self.assertEqual({h['symbol']: h['amount'] for h in wallet['holdings']},
+                                 {'tNEAR': '1', 'TST': '2.5'})
+                self.assertEqual({c.get('method_name') for c in calls if c['request_type'] == 'call_function'},
+                                 {'ft_balance_of', 'ft_metadata'})
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join()
+
+    def test_token_discovery_uses_wallet_network(self):
+        """A devnet wallet queries only devnet endpoints, even with a shared address."""
+        owner = 'BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX'
+        mint = 'So11111111111111111111111111111111111111112'
+        calls = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                calls.append(request)
+                assert request['method'] == 'getTokenAccountsByOwner', request
+                assert request['params'][0] == owner, request
+                value = [{'account': {'data': {'parsed': {'info': {
+                    'mint': mint, 'tokenAmount': {'amount': '2500000', 'decimals': 6}}}}}}] \
+                    if request['params'][1]['programId'].startswith('Tokenkeg') else []
+                data = json.dumps({'jsonrpc': '2.0', 'id': request['id'],
+                                   'result': {'value': value}}).encode()
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        with tempfile.TemporaryDirectory(prefix='spectra-devnet-discover-') as directory:
+            def run(*args):
+                env = dict(os.environ, SPECTRA_LOOPBACK_ONLY=str(pathlib.Path(directory) / 'network-journal'))
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                        capture_output=True, text=True, timeout=30, env=env)
+                self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+                return json.loads(result.stdout)
+            run('wallet', 'watch', '--chain', 'solana', '--address', owner, '--name', 'Fixture')
+            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                wallet = json.loads(db.execute('SELECT payload FROM wallets').fetchone()[0])
+                wallet['chainId'] = 'solana-devnet'
+                wallet['addresses'][0]['chainId'] = 'solana-devnet'
+                wallet['holdings'] = []
+                db.execute('UPDATE wallets SET chain_id=?, payload=?', ('solana-devnet', json.dumps(wallet)))
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                run('endpoints', '--chain', 'solana-devnet', '--api', 'solana-json-rpc',
+                    '--capabilities', 'token-discovery', '--add', f'http://127.0.0.1:{server.server_port}')
+                held = run('token', 'discover', '--wallet', 'Fixture')['holdings']
+                self.assertEqual(len(held), 1)
+                self.assertEqual(held[0]['contract'], mint)
+                self.assertEqual(held[0]['balance'], '2.5')
+                self.assertEqual(len(calls), 2)
+                journal = pathlib.Path(directory) / 'network-journal'
+                self.assertFalse(journal.exists() and journal.read_text())
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join()
 
     def test_balance_refresh(self):
         """Save refreshed balances and preserve token balances when their query fails."""

@@ -3,7 +3,8 @@
 use crate::send::error::SendError;
 
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
-use crate::derivation::bitcoin_sv::decode_bsv_address;
+use crate::derivation::utxo_address::parse_utxo_address;
+use crate::registry::Chain;
 
 // ── BSV SIGHASH_FORKID signing (BIP143-variant, inherited from BCH fork)
 
@@ -13,7 +14,9 @@ const SIGHASH_ALL_FORKID: u32 = 0x41;
 /// Sign a BSV P2PKH transaction using SIGHASH_FORKID.
 ///
 /// `utxos` — (txid, vout, value_sat, script_pubkey) for each selected input.
+#[allow(clippy::too_many_arguments)]
 pub fn sign_bsv_tx(
+    chain: Chain,
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
     amount_sat: u64,
@@ -36,16 +39,9 @@ pub fn sign_bsv_tx(
         fee_sat,
     )?;
 
-    // Every output address must belong to the transaction's network.
-    let (to_hash, to_network) = decode_bsv_address(to_address)?;
-    let (change_hash, change_network) = decode_bsv_address(change_address)?;
-    if to_network != change_network {
-        return Err(SendError::Invalid(
-            "bsv destination and change are on different networks".into(),
-        ));
-    }
-
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_sat)];
+    let to_script = parse_utxo_address(chain, to_address)?.script_pubkey();
+    let change_hash = parse_utxo_address(chain, change_address)?.require_p2pkh()?;
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
         outputs.push((p2pkh_script(&change_hash), change));
     }

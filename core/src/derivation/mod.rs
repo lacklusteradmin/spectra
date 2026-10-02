@@ -1,8 +1,7 @@
 //! Cryptographic key + address derivation for every supported chain.
 //!
-//! Layout: `<chain>.rs` is the leaf — each file owns its full
-//! derivation pipeline (BIP-39, the relevant curve walk, the chain-specific
-//! address encoder, and the UniFFI export surface).
+//! Chain modules implement key and address derivation; typed dispatch
+//! selects the implementation for each network.
 
 pub mod aptos;
 pub mod bitcoin;
@@ -35,6 +34,7 @@ pub mod ton;
 pub(crate) mod ton_cell;
 pub mod tron;
 pub mod types;
+pub(crate) mod utxo_address;
 pub mod xpub_walker;
 pub mod xrp;
 pub mod zcash;

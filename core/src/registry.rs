@@ -1,9 +1,8 @@
 //! Central chain + token registry.
 //!
-//! The canonical `Chain` enum identifies chains by stable string ids
-//! (e.g. `"bitcoin"`, `"ethereum"`). `Chain::str_id()` returns the id;
-//! `Chain::from_str_id()` parses one back. The numeric discriminants were
-//! removed in favour of string-keyed lookups throughout the codebase.
+//! The canonical `Chain` enum crosses domain and FFI boundaries. Storage and
+//! text input use its stable string ids (e.g. `"bitcoin"`, `"ethereum"`),
+//! written by `Chain::str_id()` and parsed by `Chain::from_str_id()`.
 
 /// Every chain Spectra knows about.
 ///
@@ -599,6 +598,51 @@ impl Chain {
         None
     }
 
+    /// Legacy output address versions: P2PKH, followed by accepted P2SH aliases.
+    pub(crate) fn fixed_utxo_address_versions(self) -> Result<(u8, &'static [u8]), RegistryError> {
+        match self {
+            Self::BitcoinCash | Self::BitcoinSV => Ok((0x00, &[0x05])),
+            Self::BitcoinCashTestnet | Self::BitcoinSVTestnet => Ok((0x6f, &[0xc4])),
+            Self::Dogecoin => Ok((0x1e, &[0x16])),
+            Self::DogecoinTestnet => Ok((0x71, &[0xc4])),
+            Self::Litecoin => Ok((0x30, &[0x32, 0x05])),
+            Self::LitecoinTestnet => Ok((0x6f, &[0x3a, 0xc4])),
+            Self::Dash => Ok((0x4c, &[0x10])),
+            Self::DashTestnet => Ok((0x8c, &[0x13])),
+            Self::BitcoinGold => Ok((0x26, &[0x17])),
+            _ => Err(self.not_in("fixed-fee UTXO")),
+        }
+    }
+
+    pub(crate) fn fixed_utxo_segwit_hrp(self) -> Option<&'static str> {
+        match self {
+            Self::Litecoin => Some("ltc"),
+            Self::LitecoinTestnet => Some("tltc"),
+            Self::BitcoinGold => Some("btg"),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn cashaddr_prefix(self) -> Option<&'static str> {
+        match self {
+            Self::BitcoinCash => Some("bitcoincash"),
+            Self::BitcoinCashTestnet => Some("bchtest"),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn fixed_utxo_supports_witness(self, version: u8, program_length: usize) -> bool {
+        match self {
+            Self::Litecoin | Self::LitecoinTestnet => {
+                (version == 0 && matches!(program_length, 20 | 32))
+                    || (version == 1 && program_length == 32)
+            }
+            // BTG's Taproot deployment is not an established active consensus rule.
+            Self::BitcoinGold => version == 0 && matches!(program_length, 20 | 32),
+            _ => false,
+        }
+    }
+
     /// Minimum retained change for the fixed-fee P2PKH send adapters.
     pub(crate) fn legacy_change_dust(self) -> Result<u64, RegistryError> {
         match self.mainnet_counterpart() {
@@ -959,8 +1003,7 @@ impl Chain {
         use crate::derivation::error::DerivationError;
         use crate::derivation::types::BitcoinScriptType;
         use crate::derivation::{
-            bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, dogecoin as doge,
-            litecoin as ltc,
+            bitcoin as btc, bitcoin_cash as bch, dogecoin as doge, litecoin as ltc,
         };
         Ok(match self {
             Self::Bitcoin => return btc::encode_address_inner(btc::BTC_MAINNET, script, key),
@@ -971,8 +1014,9 @@ impl Chain {
             Self::BitcoinCashTestnet => {
                 btc::encode_p2pkh(bch::BCH_TESTNET_VERSION, &key.serialize())
             }
-            Self::BitcoinSV => btc::encode_p2pkh(bsv::BSV_MAINNET_VERSION, &key.serialize()),
-            Self::BitcoinSVTestnet => btc::encode_p2pkh(bsv::BSV_TESTNET_VERSION, &key.serialize()),
+            Self::BitcoinSV | Self::BitcoinSVTestnet => {
+                btc::encode_p2pkh(self.fixed_utxo_address_versions()?.0, &key.serialize())
+            }
             Self::Dogecoin => btc::encode_p2pkh(doge::DOGE_MAINNET_VERSION, &key.serialize()),
             Self::DogecoinTestnet => {
                 btc::encode_p2pkh(doge::DOGE_TESTNET_VERSION, &key.serialize())

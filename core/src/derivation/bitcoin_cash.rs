@@ -1,30 +1,13 @@
 //! Bitcoin Cash: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
 //! base58check encoding.
 
-use crate::derivation::error::DerivationError;
-
-// ── Address validation (preserved) ───────────────────────────────────────
-
-// Strip the "bitcoincash:" prefix if present, returning just the payload string.
-pub(crate) fn normalize_bch_address(addr: &str) -> String {
-    addr.strip_prefix("bitcoincash:")
-        .unwrap_or(addr)
+/// Blockbook accepts CashAddr payloads without their network prefix.
+pub(crate) fn normalize_bch_address(address: &str) -> String {
+    address
+        .strip_prefix("bitcoincash:")
+        .or_else(|| address.strip_prefix("bchtest:"))
+        .unwrap_or(address)
         .to_string()
-}
-
-// Base58check-decode a BCH address (with or without "bitcoincash:" prefix) into the 20-byte hash.
-pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], DerivationError> {
-    let norm = normalize_bch_address(address);
-    if let Ok(decoded) = bs58::decode(&norm).with_check(None).into_vec()
-        && decoded.len() == 21
-    {
-        let mut hash = [0u8; 20];
-        hash.copy_from_slice(&decoded[1..21]);
-        return Ok(hash);
-    }
-    Err(DerivationError::Invalid(
-        format!("cannot decode BCH address: {address}").into(),
-    ))
 }
 
 use crate::SpectraBridgeError;

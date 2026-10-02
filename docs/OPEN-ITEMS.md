@@ -21,9 +21,8 @@ Delete an item once it is done; what changed belongs in
   (`solana_json_rpc`, `sui_json_rpc`, `near_json_rpc`, `aptos_rest`) as a client
   method, and have `staking/` take that client and keep only the staking
   decisions: ranking, commission and APY projection, position shaping.
-  `IcpStakingClient` and `PolkadotStakingClient` hold endpoint lists they never
-  read (a static NNS neuron directory; no keyless Sidecar), so drop those fields
-  rather than route them. Record any change in what a validator query returns
+  ICP's static NNS neuron directory and Polkadot's unwired Sidecar queries
+  make no network requests. Record any change in what a validator query returns
   in [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md) and pass `make verify`.
 - [ ] **Name FFI types once, in Rust, so Swift needs no typealiases.** Swift
   renames nine UniFFI types with `typealias`, so each has two names and both

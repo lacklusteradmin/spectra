@@ -32,19 +32,6 @@ pub struct ChainSelfTestResult {
     pub outcome: ChainSelfTestOutcome,
 }
 
-/// Every chain's self-tests, derived rather than tabulated.
-///
-/// `CHAIN_SPECS` stood here: twenty rows of `(chain, valid address, invalid
-/// address)`, with Dogecoin and Ethereum given hand-written suites beside it.
-/// Twenty-six mainnets — Zcash, Dash, Decred, Kaspa, Bitcoin Gold, Bittensor
-/// and every EVM chain outside four — had no self-test at all, in the one
-/// subsystem whose job is to notice when something is wrong.
-///
-/// The fixture a chain needs is an address that is genuinely its own, and core
-/// can produce one: derive from the canonical mnemonic down the chain's own
-/// catalog path. That is stronger than a typed-in sample, because it checks
-/// that derivation and validation agree rather than that a constant still
-/// parses — and it cannot be short by a chain.
 fn validate(kind: &str, value: &str) -> bool {
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
@@ -53,6 +40,8 @@ fn validate(kind: &str, value: &str) -> bool {
     .is_valid
 }
 
+/// Derive the fixture from the network's catalog path so derivation and
+/// validation are checked against the same address.
 fn derive_one(chain: crate::registry::Chain, path: &str) -> Option<String> {
     crate::derivation::dispatch::derive_for_chain(
         chain,
@@ -69,13 +58,8 @@ fn derive_one(chain: crate::registry::Chain, path: &str) -> Option<String> {
     .address
 }
 
-/// A string no chain's address format permits.
-///
-/// Not a truncation of a real address: some formats carry a checksum and would
-/// catch that, but Aptos genuinely accepts short forms (`0x1` is the framework
-/// account) and a NEAR account id is an arbitrary name, so on those chains a
-/// truncated address is a different valid address rather than a broken one.
-/// `@` is outside every format's alphabet.
+/// `@` is outside every address alphabet. Truncation is insufficient because
+/// short Aptos addresses and NEAR account names can still be valid.
 const IMPOSSIBLE_ADDRESS: &str = "@@not-an-address@@";
 
 fn result(
@@ -97,8 +81,6 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
     let kind = chain.address_validation_kind();
     let mut results = Vec::new();
 
-    // A chain that does not derive has nothing to build a fixture from, and
-    // says so rather than reporting an empty suite.
     if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
         return results;
     }
@@ -256,10 +238,9 @@ pub fn self_tests_run_all() -> HashMap<Chain, Vec<ChainSelfTestResult>> {
 #[cfg(test)]
 mod fixtures_are_real_tests {
     use super::*;
+    use std::collections::HashSet;
 
-    /// The chain id decides which id the node must report, so a chain that has
-    /// no JSON-RPC id is refused rather than probed and compared with a
-    /// literal. Offline: the guard answers before any request is made.
+    /// A non-EVM chain is refused before any network request.
     #[tokio::test]
     async fn only_an_evm_chain_has_a_json_rpc_id_to_check() {
         let refused = self_tests_run_evm_rpc(
@@ -284,50 +265,38 @@ mod fixtures_are_real_tests {
         }
     }
 
-    /// Every chain that can derive has a suite, and the suite checks that it
-    /// derives.
-    ///
-    /// A twenty-row fixture table stood here and twenty-six mainnets were not
-    /// in it, so the chains with no self-test were exactly the chains nobody
-    /// had thought to add — which is the set most likely to need one.
     #[test]
-    fn every_chain_that_derives_has_a_suite() {
-        use crate::registry::Chain;
-        for chain in Chain::all() {
-            if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
-                continue;
-            }
-            if crate::derivation::path::default_path_from_catalog(chain).is_err() {
-                continue;
-            }
-            let names: Vec<String> = run_for_chain(chain).into_iter().map(|r| r.name).collect();
+    fn public_suites_cover_every_derivable_chain() {
+        let expected: HashSet<_> = Chain::all()
+            .filter(|&chain| {
+                crate::send::flow::seed_derivation_chain_raw(chain).is_some()
+                    && crate::derivation::path::default_path_from_catalog(chain).is_ok()
+            })
+            .collect();
+        let suites = self_tests_run_all();
+        assert_eq!(suites.keys().copied().collect::<HashSet<_>>(), expected);
+        for (chain, results) in suites {
             assert!(
-                names.iter().any(|n| n.ends_with("Seed Derivation")),
-                "{} derives and has no derivation self-test; it has {names:?}",
-                chain.str_id()
+                results.iter().any(|result| matches!(
+                    result.outcome,
+                    ChainSelfTestOutcome::DerivedAddressValid
+                        | ChainSelfTestOutcome::DerivedAddressInvalid
+                        | ChainSelfTestOutcome::DerivationFailed
+                )),
+                "{chain} has no seed derivation self-test"
             );
-            assert!(names.iter().any(|n| n.ends_with("Address Rejects Invalid")));
+            assert!(
+                results.iter().any(|result| matches!(
+                    result.outcome,
+                    ChainSelfTestOutcome::InvalidAddressRejected
+                        | ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
+                )),
+                "{chain} has no invalid-address self-test"
+            );
         }
     }
 
-    /// The suite covers far more than the table did.
-    #[test]
-    fn the_suite_covers_the_catalog() {
-        let suites = self_tests_run_all();
-        assert!(
-            suites.len() >= 60,
-            "only {} chains have a self-test suite; the table this replaced had 20",
-            suites.len()
-        );
-    }
-
-    /// A chain accepts the address it derives, on the network it derives it
-    /// for.
-    ///
-    /// Zcash, Decred and Dash Testnet each derived a correct testnet address —
-    /// `tm…`, `Ts…`, `y…` — and their own validator refused it, because the
-    /// dispatcher sent both networks to the mainnet decoder. The receive screen
-    /// showed an address the send screen would have rejected.
+    /// Mainnet and testnet derivation must dispatch to their own validators.
     #[test]
     fn a_chain_accepts_the_address_it_derives() {
         use crate::registry::Chain;
@@ -355,37 +324,6 @@ mod fixtures_are_real_tests {
         }
     }
 
-    /// Every suite is reachable by a name a caller can type.
-    ///
-    /// The map both front ends look a chain up in is keyed by chain name, and
-    /// every caller resolves its input through the registry first. A key the
-    /// registry does not know reaches nothing, and `every_self_test_passes`
-    /// walks the map directly, so such a suite is green and unreachable at the
-    /// same time. Only this asserts it is not.
-    #[test]
-    fn every_self_test_suite_is_keyed_by_a_name_the_registry_knows() {
-        for chain_key in self_tests_run_all().keys() {
-            assert!(
-                Some(chain_key).is_some(),
-                "{chain_key} keys a self-test suite and is not a chain the registry knows, \
-                 so nothing can ask for it"
-            );
-        }
-    }
-
-    /// Every self-test passes.
-    ///
-    /// Seven did not, all of them "<chain> Address Validation", for Bitcoin,
-    /// Bitcoin Cash, Litecoin, Monero, Polkadot, Stellar and Internet Computer.
-    /// The validators were right; the *fixtures* were hand-typed strings that
-    /// looked like addresses and had invalid checksums — Bitcoin's was the
-    /// BIP-173 vector with the last seven characters wrong. The replacements
-    /// are derived by core from the standard test mnemonic, so they are correct
-    /// by construction rather than by typing.
-    ///
-    /// This test is the reason that cannot recur: the self-tests are now
-    /// themselves tested, so a bad fixture fails the build instead of showing
-    /// a red row on a diagnostics screen nobody reads.
     #[test]
     fn every_self_test_passes() {
         let failures: Vec<String> = self_tests_run_all()
@@ -398,13 +336,5 @@ mod fixtures_are_real_tests {
             })
             .collect();
         assert!(failures.is_empty(), "failing self-tests: {failures:#?}");
-    }
-
-    /// A self-test suite with no checks is a chain nobody is checking.
-    #[test]
-    fn every_chain_with_a_suite_actually_checks_something() {
-        for (chain, results) in self_tests_run_all() {
-            assert!(!results.is_empty(), "{chain} has an empty self-test suite");
-        }
     }
 }

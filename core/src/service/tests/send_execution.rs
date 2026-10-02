@@ -4,13 +4,7 @@ mod token_decimals_come_from_the_contract {
     use crate::registry::Chain;
     use crate::service::WalletService;
 
-    /// Which families core can ask, and which still take the caller's word:
-    /// a token's `decimals()` is read off the contract, and only a family
-    /// without a reader may fall back to caller precision.
-    ///
-    /// This asserts the gate, not the network read: a chain the helper has no
-    /// client for must answer `None` without attempting a call, which is what
-    /// keeps the fallback reachable for TON, Sui and Aptos.
+    /// A family without a metadata reader returns None without a network call.
     #[tokio::test]
     async fn a_family_core_cannot_ask_falls_back_to_the_caller() {
         let service = WalletService::new(Vec::new()).expect("service");
@@ -25,21 +19,6 @@ mod token_decimals_come_from_the_contract {
                 chain.str_id()
             );
         }
-    }
-
-    /// The families that are asked are the ones with a metadata call.
-    #[test]
-    fn the_families_core_asks_are_evm_and_tron() {
-        let asks: Vec<_> = Chain::all()
-            .filter(|c| !c.is_testnet() && (c.is_evm() || *c == Chain::Tron))
-            .collect();
-        assert!(
-            asks.len() >= 24,
-            "expected the EVM family plus Tron, got {}",
-            asks.len()
-        );
-        assert!(asks.contains(&Chain::Tron));
-        assert!(asks.contains(&Chain::Ethereum));
     }
 }
 

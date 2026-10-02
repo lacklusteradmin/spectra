@@ -370,7 +370,7 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
 
 fn discover(ctx: &Ctx, out: Out, args: DiscoverArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = wallet.chain_id.mainnet_counterpart();
+    let chain = wallet.chain_id;
     let address = wallet_address(&wallet).to_string();
     if address.is_empty() {
         return Err(CliError::rejected(format!(

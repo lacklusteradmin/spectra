@@ -7,7 +7,8 @@ use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{
     build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint,
 };
-use crate::derivation::dogecoin::decode_doge_address;
+use crate::derivation::utxo_address::parse_utxo_address;
+use crate::registry::Chain;
 
 // ── Dogecoin P2PKH signing
 
@@ -16,7 +17,9 @@ use crate::derivation::dogecoin::decode_doge_address;
 /// `utxos` — selected UTXOs with their redeeming scripts (the previous P2PKH
 /// scriptPubKey for each input).
 /// Returns raw transaction bytes ready for broadcast.
+#[allow(clippy::too_many_arguments)]
 pub fn sign_doge_p2pkh(
+    chain: Chain,
     utxos: &[(String, u32, u64, Vec<u8>)], // (txid, vout, value_koin, script_pubkey)
     to_address: &str,
     amount_koin: u64,
@@ -39,10 +42,11 @@ pub fn sign_doge_p2pkh(
         fee_koin,
     )?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> =
-        vec![(p2pkh_script(&decode_doge_address(to_address)?), amount_koin)];
+    let to_script = parse_utxo_address(chain, to_address)?.script_pubkey();
+    let change_hash = parse_utxo_address(chain, change_address)?.require_p2pkh()?;
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_koin)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((p2pkh_script(&decode_doge_address(change_address)?), change));
+        outputs.push((p2pkh_script(&change_hash), change));
     }
 
     // Sign each input.

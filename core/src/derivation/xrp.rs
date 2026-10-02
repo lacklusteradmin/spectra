@@ -96,7 +96,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;
@@ -130,7 +130,7 @@ fn xrp_internal(
     })
 }
 
-/// UniFFI export: derive XRP Ledger mainnet wallet from a seed phrase.
+/// Derive XRP Ledger mainnet wallet from a seed phrase.
 pub fn derive_xrp(
     seed_phrase: String,
     derivation_path: String,
@@ -149,7 +149,7 @@ pub fn derive_xrp(
     )
 }
 
-/// UniFFI export: derive XRP Ledger testnet wallet from a seed phrase.
+/// Derive XRP Ledger testnet wallet from a seed phrase.
 pub fn derive_xrp_testnet(
     seed_phrase: String,
     derivation_path: String,

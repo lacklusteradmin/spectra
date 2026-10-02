@@ -3,7 +3,8 @@
 use crate::send::error::SendError;
 
 use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
-use crate::derivation::bitcoin_cash::decode_bch_to_hash20;
+use crate::derivation::utxo_address::parse_utxo_address;
+use crate::registry::Chain;
 
 // ── BCH SIGHASH_FORKID signing (BIP143-variant)
 
@@ -13,7 +14,9 @@ const SIGHASH_ALL_FORKID: u32 = 0x41;
 /// Sign a BCH P2PKH transaction using SIGHASH_FORKID.
 ///
 /// `utxos` — (txid, vout, value_sat, script_pubkey) for each selected input.
+#[allow(clippy::too_many_arguments)]
 pub fn sign_bch_tx(
+    chain: Chain,
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
     amount_sat: u64,
@@ -36,10 +39,9 @@ pub fn sign_bch_tx(
         fee_sat,
     )?;
 
-    let to_hash = decode_bch_to_hash20(to_address)?;
-    let change_hash = decode_bch_to_hash20(change_address)?;
-
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_sat)];
+    let to_script = parse_utxo_address(chain, to_address)?.script_pubkey();
+    let change_hash = parse_utxo_address(chain, change_address)?.require_p2pkh()?;
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
         outputs.push((p2pkh_script(&change_hash), change));
     }

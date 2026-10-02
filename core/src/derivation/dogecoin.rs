@@ -1,24 +1,6 @@
 //! Dogecoin: address validation, BIP-32 derivation, P2PKH (D…) base58check
 //! encoding
 
-use crate::derivation::error::DerivationError;
-
-// ── Address validation (preserved from prior file) ───────────────────────
-
-// Base58check-decode a DOGE address and return the 20-byte pubkey hash.
-pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], DerivationError> {
-    let decoded = bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid doge address: {e}").into()))?;
-    if decoded.len() < 21 {
-        return Err(DerivationError::Invalid("address too short".into()));
-    }
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&decoded[1..21]);
-    Ok(hash)
-}
-
 use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{derive_legacy_p2pkh, encode_p2pkh};
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};

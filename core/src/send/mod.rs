@@ -31,7 +31,6 @@ pub mod dash;
 pub mod decred;
 pub mod dogecoin;
 pub mod evm;
-pub mod icp;
 pub(crate) mod icp_stages;
 pub mod kaspa;
 pub mod litecoin;
@@ -48,6 +47,10 @@ pub mod tron;
 pub mod xrp;
 pub mod zcash;
 pub(crate) mod zcash_stages;
+
+#[cfg(test)]
+#[path = "tests/utxo_outputs.rs"]
+mod utxo_output_tests;
 
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
@@ -230,12 +233,7 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     // An amount that is not a decimal cannot be judged, and is not sent.
     let exceeds = |a: &str, b: &str| compare(a, b).is_none_or(|o| o == Greater);
 
-    // A chain whose gas asset we cannot name is not a chain we can judge a
-    // token send on, so treat the send as native: that path needs no gas
-    // symbol and still refuses amount + fee over the balance.
-    let is_native = input.is_native;
-
-    if is_native {
+    if input.is_native {
         let Some(total) = add(&input.amount, &input.network_fee) else {
             return SendAffordability::Unavailable;
         };

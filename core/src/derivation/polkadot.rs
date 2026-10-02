@@ -18,7 +18,7 @@ pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], DerivationError> {
     decode_ss58_with_prefix(address, None).map(|(_, key)| key)
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::types::DerivationResult;
@@ -53,7 +53,7 @@ fn substrate_internal(
     })
 }
 
-/// UniFFI export: derive Polkadot mainnet wallet (SS58 prefix 0, "1…" addresses).
+/// Derive Polkadot mainnet wallet (SS58 prefix 0, "1…" addresses).
 pub fn derive_polkadot(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -73,7 +73,7 @@ pub fn derive_polkadot(
     )
 }
 
-/// UniFFI export: derive Polkadot Westend testnet wallet (SS58 prefix 42, "5…" addresses).
+/// Derive Polkadot Westend testnet wallet (SS58 prefix 42, "5…" addresses).
 pub fn derive_polkadot_westend(
     seed_phrase: String,
     passphrase: Option<String>,

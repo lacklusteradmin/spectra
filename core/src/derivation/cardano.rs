@@ -290,7 +290,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
-// ── UniFFI exports ────────────────────────────────────────────────────────
+// ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
 use crate::derivation::primitives::hmac_sha512;
@@ -329,7 +329,7 @@ fn cardano_internal(
     })
 }
 
-/// UniFFI export: derive Cardano mainnet wallet (addr1… bech32 address) from a seed phrase.
+/// Derive Cardano mainnet wallet (addr1… bech32 address) from a seed phrase.
 pub fn derive_cardano(
     seed_phrase: String,
     derivation_path: Option<String>,
@@ -349,7 +349,7 @@ pub fn derive_cardano(
     )
 }
 
-/// UniFFI export: derive Cardano Preprod testnet wallet (addr_test1… bech32 address) from a seed phrase.
+/// Derive Cardano Preprod testnet wallet (addr_test1… bech32 address) from a seed phrase.
 pub fn derive_cardano_preprod(
     seed_phrase: String,
     derivation_path: Option<String>,
