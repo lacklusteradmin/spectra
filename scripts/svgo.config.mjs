@@ -91,9 +91,15 @@ const scaleToLibraryViewBox = {
         const k = 64 / Number(box[1]);
         const num = (v) => String(Number((Number(v) * k).toFixed(6)));
         for (const child of node.children) {
-          if (child.type !== 'element') continue;
+          // <defs>, <clipPath>, <mask> and paint servers resolve in the user
+          // space of whatever references them, so the scale has to land on the
+          // referencing shape, not on them.
+          if (child.type !== 'element' || SKIP.has(child.name)) continue;
+          // A userSpaceOnUse gradient sits in the source's coordinates; scaling
+          // the shape's attributes would leave the paint behind at source size.
+          const paintServer = ['fill', 'stroke'].some((a) => /^url\(/.test(child.attributes[a] ?? ''));
           const geometry = SCALES[child.name];
-          if (geometry && child.attributes.transform === undefined) {
+          if (geometry && !paintServer && child.attributes.transform === undefined) {
             for (const attr of geometry) {
               if (child.attributes[attr] !== undefined) {
                 child.attributes[attr] = num(child.attributes[attr]);
