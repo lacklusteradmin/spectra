@@ -77,13 +77,13 @@ impl WalletService {
                     .ok_or_else(|| SpectraBridgeError::InvalidInput {
                         message: "Wallet not found".into(),
                     })?;
-                let network = if chain.is_testnet() {
-                    chain
-                } else if wallet.family() == chain.mainnet_counterpart() {
-                    wallet.chain_id
-                } else {
-                    state.settings.selected_chain_for_family(chain)
-                };
+                // A mainnet of the wallet's own family names the wallet's network.
+                let network =
+                    if !chain.is_testnet() && wallet.family() == chain.mainnet_counterpart() {
+                        wallet.chain_id
+                    } else {
+                        chain
+                    };
                 (
                     wallet.id.clone(),
                     network,

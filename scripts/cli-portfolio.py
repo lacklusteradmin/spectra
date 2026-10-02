@@ -176,9 +176,10 @@ class PortfolioTests(unittest.TestCase):
                 # No address: the balance read fails before any request, and
                 # fresh quotes are not due, so nothing here needs a network.
                 wallet['addresses'] = []
+                # Stored unpriced first: the output order is core's, by value.
                 wallet['holdings'] = [
-                    dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum', tokenStandard='Native', contractAddress=None, amount='2'),
-                    dict(name='Unpriced', symbol='UNP', coingeckoId='', chainId='ethereum', tokenStandard='ERC-20', contractAddress='0x'+'22'*20, amount='5')]
+                    dict(name='Unpriced', symbol='UNP', coingeckoId='', chainId='ethereum', tokenStandard='ERC-20', contractAddress='0x'+'22'*20, amount='5'),
+                    dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum', tokenStandard='Native', contractAddress=None, amount='2')]
                 db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
                 db.execute('INSERT OR REPLACE INTO app_state_meta VALUES (?,?)', ('quotes', json.dumps(
                     {'prices': {'ethereum:native': 3000.5}, 'pricesAttemptAt': now, 'pricesSuccessAt': now})))
@@ -189,7 +190,7 @@ class PortfolioTests(unittest.TestCase):
             assert row['total'] == 6001.0, row
             values = {h['deploymentId']: h['value'] for h in row['holdings']}
             assert values['ethereum:native'] == 6001.0 and values['ethereum:erc-20:0x'+'22'*20] is None, values
-            assert {h['amount'] for h in row['holdings']} == {'2', '5'}, row
+            assert [h['symbol'] for h in row['holdings']] == ['ETH', 'UNP'], row
             # A testnet coin has no market: no price, not a zero one.
             quote = run('price', 'bitcoin-testnet-4')
             assert quote['priceUsd'] is None and quote['price'] is None and quote['currency'] == 'USD', quote
@@ -364,12 +365,9 @@ class PortfolioTests(unittest.TestCase):
             assert any(g["id"].startswith("custom:ethereum:erc-20:") for g in groups)
             run("send", "preview", "--wallet", "Identity", "--holding", "Ethereum|ETH", "--amount", "1", succeeds=False)
             run("token", "add", "--chain", "ethereum", "--symbol", "ETH", "--name", "Lookalike", "--contract", "invalid", "--decimals", "18", succeeds=False)
-            run("network", "set", "ethereum-sepolia")
-            run("network", "set", "ethereum")
             with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
                 wallet = json.loads(db.execute("SELECT payload FROM wallets").fetchone()[0])
                 assert wallet["chainId"] == "ethereum"
-            assert len(next(n for n in run("network", "list")["families"] if n["family"] == "ethereum")["choices"]) >= 3
 
     def test_price_alerts(self):
         """Persist precise targets and reject invalid or duplicate alerts."""

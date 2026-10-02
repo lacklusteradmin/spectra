@@ -1,4 +1,5 @@
 pub mod artwork;
+mod device_key;
 pub mod password_verifier;
 pub mod persistence_models;
 mod price_alerts;
@@ -68,15 +69,22 @@ pub fn merge_built_in_token_preferences(
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     let mut merged = built_ins;
     merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
-    merged.sort_by(|lhs, rhs| {
-        lhs.token
-            .chain_id
-            .str_id()
-            .cmp(rhs.token.chain_id.str_id())
-            .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
-            .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
-    });
+    sort_token_preferences(&mut merged);
     merged
+}
+
+/// The catalog's own rows before the user's, then symbol, then token, then
+/// chain: one token's deployments sit together, so a list grouped by token
+/// keeps this order without sorting again. Every writer of the list sorts
+/// with this, so an edited list matches the one a reload builds.
+pub(crate) fn sort_token_preferences(entries: &mut [wallet_domain::CoreTokenPreferenceEntry]) {
+    entries.sort_by(|lhs, rhs| {
+        rhs.is_built_in
+            .cmp(&lhs.is_built_in)
+            .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
+            .then_with(|| lhs.token.token_id.cmp(&rhs.token.token_id))
+            .then_with(|| lhs.token.chain_id.str_id().cmp(rhs.token.chain_id.str_id()))
+    });
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -551,6 +559,10 @@ pub struct TransactionStatusChange {
     pub old_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub new_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub status_changed: bool,
+    /// Whether to tell the user: the status reached confirmed or failed while
+    /// transaction status notifications are on. Core's rule, as for price
+    /// alerts and large movements; a front end only delivers it.
+    pub notify: bool,
 }
 
 pub(crate) fn apply_resolved_pending_transaction_statuses(

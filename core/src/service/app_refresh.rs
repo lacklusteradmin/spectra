@@ -9,9 +9,21 @@ pub enum AppRefreshIntent {
     Foreground,
     BalancesUpdated,
     User,
-    Chain { chain_id: crate::registry::Chain },
-    AfterSend { chain_id: crate::registry::Chain },
-    DeepRescan { chain_id: crate::registry::Chain },
+    Chain {
+        chain_id: crate::registry::Chain,
+    },
+    AfterSend {
+        chain_id: crate::registry::Chain,
+    },
+    DeepRescan {
+        chain_id: crate::registry::Chain,
+    },
+    /// Wallets whose fetch inputs just changed — an import, or another
+    /// network: their balances and history, then prices. The refresh engine
+    /// sends this itself when the wallet list changes.
+    Wallets {
+        wallet_ids: Vec<String>,
+    },
 }
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct AppRefreshResult {
@@ -157,6 +169,10 @@ impl WalletService {
             | AppRefreshIntent::DeepRescan { chain_id } => Some(*chain_id),
             _ => None,
         };
+        let wallets = match &intent {
+            AppRefreshIntent::Wallets { wallet_ids } => Some(wallet_ids.clone()),
+            _ => None,
+        };
         let deep_rescan = matches!(intent, AppRefreshIntent::DeepRescan { .. });
         if deep_rescan && !chain.is_some_and(|c| c.supports_deep_utxo_discovery()) {
             return Err(SpectraBridgeError::failure(
@@ -213,6 +229,7 @@ impl WalletService {
         let heavy = !balances_updated
             && (!scheduled || (!conditions.app_is_active && plan.allow_heavy_background_work));
         let poll = !balances_updated
+            && wallets.is_none()
             && (!scheduled || plan.refresh_pending_transactions || plan.run_background_tick);
         if poll {
             match self.refresh_pending_transactions().await {
@@ -233,12 +250,15 @@ impl WalletService {
                 crate::fetch::refresh_engine::refresh_entries_for(&state)
             };
             let entries = entries.into_iter().filter(|entry| {
-                chain.is_none_or(|c| {
-                    entry.chain_id == c
-                        || (deep_rescan
-                            && !c.is_testnet()
-                            && entry.chain_id.mainnet_counterpart() == c)
-                })
+                wallets
+                    .as_ref()
+                    .is_none_or(|ids| ids.contains(&entry.wallet_id))
+                    && chain.is_none_or(|c| {
+                        entry.chain_id == c
+                            || (deep_rescan
+                                && !c.is_testnet()
+                                && entry.chain_id.mainnet_counterpart() == c)
+                    })
             });
             let outcomes = stream::iter(entries)
                 .map(|entry| self.refresh_wallet_balances(entry.wallet_id))
@@ -252,11 +272,14 @@ impl WalletService {
             }
             // History remains useful on receipt-polling chains too: it supplies
             // incoming transfers and complete transaction details after a send.
-            let scope = match chain {
-                Some(c) => HistoryRefreshScope::Chains {
+            let scope = match (chain, &wallets) {
+                (_, Some(wallet_ids)) => HistoryRefreshScope::Wallets {
+                    wallet_ids: wallet_ids.clone(),
+                },
+                (Some(c), None) => HistoryRefreshScope::Chains {
                     chain_ids: vec![c.str_id().into()],
                 },
-                None => HistoryRefreshScope::All,
+                (None, None) => HistoryRefreshScope::All,
             };
             let interval = if scheduled { 300.0 } else { 0.0 };
             match self.refresh_history(scope, false, None, interval).await {
@@ -313,6 +336,7 @@ impl WalletService {
         }
         if heavy
             && chain.is_none()
+            && wallets.is_none()
             && result.failures.is_empty()
             && result
                 .pending

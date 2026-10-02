@@ -184,6 +184,8 @@ class HistoryTests(unittest.TestCase):
             assert len(run('txs','--page','--search','éTHER 测试')['page']['records']) == 20
             assert run('txs','--page','--search','no-such-address')['page']['records']==[]
             assert run('txs','--page','--oldest-first','--limit','1')['page']['records'][0]['id']=='tx-000'
+            # Past core's page cap a limit is cut to it, not refused.
+            assert len(run('txs','--page','--limit','100000')['page']['records']) == 55
             summary = run('txs','--summary')['summary']
             assert summary['totalCount'] == 55
             assert len(summary['recentAndPending']) == 50

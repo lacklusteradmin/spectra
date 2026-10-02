@@ -19,6 +19,9 @@ pub enum HistoryQueryFilter {
 /// to an address, not a judgement of what an amount is worth.
 pub const HISTORY_SMALL_AMOUNT_THRESHOLD: &str = "0.00001";
 
+/// The most records one history page returns. A larger limit is cut to it.
+pub const HISTORY_PAGE_MAX: u32 = 200;
+
 /// `HISTORY_SMALL_AMOUNT_THRESHOLD`, for a front end to name in its filter.
 #[uniffi::export]
 pub fn history_small_amount_threshold() -> String {
@@ -227,18 +230,23 @@ impl WalletService {
         .await
     }
 
+    /// One page of stored history: at most `limit` records, and never more
+    /// than [`HISTORY_PAGE_MAX`] whatever was asked. A caller that wants more
+    /// follows `next_cursor` while `has_more`, so it never needs to know the
+    /// cap; only a zero limit, which asks for nothing, is refused.
     pub async fn history_page(
         &self,
-        query: HistoryQuery,
+        mut query: HistoryQuery,
     ) -> Result<HistoryPage, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            if query.limit == 0 || query.limit > 200 {
+            if query.limit == 0 {
                 return Err(SpectraBridgeError::failure(
-                    "history query limit must be 1...200",
+                    "history query limit must be at least 1",
                 ));
             }
+            query.limit = query.limit.min(HISTORY_PAGE_MAX);
             let database = this.bound_database().await?;
             tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))
                 .await

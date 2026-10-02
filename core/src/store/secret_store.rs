@@ -24,15 +24,18 @@ use thiserror::Error;
 /// the appropriate accessibility / encryption policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum SecretClass {
-    /// BIP39 seed phrase. Platform should apply the strongest available
-    /// protection (on iOS: envelope-encrypted with AES-GCM, stored with
+    /// BIP39 seed phrase, already sealed under the device key by core. The
+    /// platform stores it in its strongest bucket (on iOS, with
     /// `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`).
     Seed,
-    /// Raw private-key material (hex/WIF). Stored in a dedicated Keychain
-    /// service distinct from the seed bucket.
+    /// Raw private-key material (hex/WIF), sealed like a seed. Stored in a
+    /// bucket distinct from the seed one.
     PrivateKey,
     /// Non-seed secrets: API tokens, password verifiers, per-wallet config.
     Generic,
+    /// The device key that seals seeds and private keys, as
+    /// [`SecretStore::wrap_device_key`] returned it.
+    DeviceKey,
 }
 
 impl SecretClass {
@@ -46,6 +49,7 @@ impl SecretClass {
             SecretClass::Seed => "seed",
             SecretClass::PrivateKey => "private_key",
             SecretClass::Generic => "generic",
+            SecretClass::DeviceKey => "device_key",
         }
     }
 }
@@ -89,4 +93,15 @@ pub trait SecretStore: Send + Sync {
     /// Remove the entry for `key` within the `kind` bucket. Succeeds whether
     /// or not the key existed (idempotent delete).
     fn delete_secret(&self, kind: SecretClass, key: String) -> Result<(), SecretStoreError>;
+
+    /// Protect the device key with something only this device holds — on iOS,
+    /// encryption to a Secure Enclave key. Core stores what this returns and
+    /// mints, seals and refuses by its own rules; see
+    /// [`device_key`](super::device_key). A backend with nothing stronger
+    /// returns `key` unchanged.
+    fn wrap_device_key(&self, key: Vec<u8>) -> Result<Vec<u8>, SecretStoreError>;
+
+    /// Undo [`wrap_device_key`](Self::wrap_device_key). A failure is an error,
+    /// never an empty key: core would otherwise take it for no key at all.
+    fn unwrap_device_key(&self, wrapped: Vec<u8>) -> Result<Vec<u8>, SecretStoreError>;
 }

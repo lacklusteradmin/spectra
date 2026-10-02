@@ -66,8 +66,7 @@ impl WalletService {
     /// Forget history pagination, for as much of it as `scope` names.
     ///
     /// Internal: the commands that invalidate a feed — removing a wallet,
-    /// switching a family's network, changing Bitcoin's Esplora source — reset
-    /// it where they commit.
+    /// changing Bitcoin's Esplora source — reset it where they commit.
     pub fn reset_history(&self, scope: HistoryScope) {
         match scope {
             HistoryScope::ChainAndWallet {

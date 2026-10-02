@@ -100,60 +100,24 @@ async fn wallets_excluded_from_the_total_contribute_nothing() {
 #[tokio::test]
 async fn no_testnet_coin_is_quoted_on_any_family() {
     use crate::registry::Chain;
-    for (chain, network) in [
-        (Chain::Bitcoin, Chain::BitcoinTestnet),
-        (Chain::Ethereum, Chain::EthereumSepolia),
-        (Chain::Dogecoin, Chain::DogecoinTestnet),
+    for network in [
+        Chain::BitcoinTestnet,
+        Chain::EthereumSepolia,
+        Chain::DogecoinTestnet,
     ] {
         let service = service_with(vec![(
             "w1",
-            chain,
+            network,
             vec![coin(network.coin_symbol(), network, 1.0)],
             true,
         )])
         .await;
-        service
-            .apply_state_command(StateCommand::SelectChainForFamily { chain_id: network })
-            .await
-            .expect("select");
         let derived = service.wallet_derived_state().await.expect("derived");
         assert!(
             derived.unique_price_request_coins.is_empty(),
-            "{chain} testnet coins have no price to request"
+            "{network} coins have no price to request"
         );
     }
-}
-
-/// Selecting the mainnet clears the entry rather than storing it, so the
-/// two ways of saying "mainnet" cannot drift apart.
-#[tokio::test]
-async fn choosing_mainnet_stores_its_explicit_id() {
-    let service = WalletService::new(Vec::new()).expect("service");
-    let after_testnet = service
-        .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::BitcoinTestnet4,
-        })
-        .await
-        .expect("select");
-    assert_eq!(
-        after_testnet.state.settings.selected_chain_by_family.len(),
-        1
-    );
-
-    let after_mainnet = service
-        .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::Bitcoin,
-        })
-        .await
-        .expect("select");
-    assert_eq!(
-        after_mainnet
-            .state
-            .settings
-            .selected_chain_by_family
-            .get(&crate::registry::Chain::Bitcoin),
-        Some(&crate::registry::Chain::Bitcoin)
-    );
 }
 
 #[tokio::test]

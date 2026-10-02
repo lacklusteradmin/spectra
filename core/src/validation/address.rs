@@ -4,21 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::derivation::bitcoin::{BitcoinNetworkKind, parse_bitcoin_address};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressValidationRequest {
     pub kind: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressValidationResult {
     pub is_valid: bool,
     pub normalized_value: Option<String>,
 }
 
-#[uniffi::export]
 pub fn validate_address(request: AddressValidationRequest) -> AddressValidationResult {
     let normalized_input = trim_string(&request.value);
     if normalized_input.is_empty() {

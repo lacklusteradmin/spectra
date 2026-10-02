@@ -179,16 +179,10 @@ async fn an_unquoted_holding_stays_unpriced_until_a_quote_arrives() {
 async fn a_testnet_row_has_no_value() {
     let service = service_with(vec![(
         "w1",
-        crate::registry::Chain::Ethereum,
+        crate::registry::Chain::EthereumSepolia,
         vec![holding("ETH", crate::registry::Chain::EthereumSepolia, 2.0)],
     )])
     .await;
-    service
-        .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::EthereumSepolia,
-        })
-        .await
-        .expect("select");
     service
         .wallet_state
         .write()

@@ -27,7 +27,7 @@ class DiagnosticsTests(unittest.TestCase):
                 assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
                 return json.loads(p.stdout) if success else None
             conditions = dict(appIsActive=True, isNetworkReachable=False, isConstrainedNetwork=False, isExpensiveNetwork=False, isLowPowerMode=False, batteryLevel=1, wantsPriceRefresh=True)
-            for intent in ['user','scheduled','foreground','balancesUpdated',{'afterSend':{'chain_id':'ethereum'}},{'chain':{'chain_id':'bitcoin'}}]:
+            for intent in ['user','scheduled','foreground','balancesUpdated',{'afterSend':{'chain_id':'ethereum'}},{'chain':{'chain_id':'bitcoin'}},{'wallets':{'wallet_ids':['imported']}}]:
                 result = run('diagnostics','refresh','--intent',json.dumps(intent),'--conditions',json.dumps(conditions))['refresh']
                 assert result['pending'] is None and result['failures'] == []
             run('diagnostics','refresh','--intent',json.dumps({'afterSend':{'chain_id':'missing'}}),'--conditions',json.dumps(conditions),success=False)
@@ -73,7 +73,7 @@ class DiagnosticsTests(unittest.TestCase):
                 server.shutdown();server.server_close();thread.join()
 
     def test_configured_network(self):
-        """Diagnostics use the selected network and refuse a node on the wrong chain."""
+        """Diagnostics run on the network named and refuse a node on the wrong chain."""
         seen = []
 
         chain_id = '0xaa36a7'
@@ -103,14 +103,11 @@ class DiagnosticsTests(unittest.TestCase):
                 endpoint=f'http://127.0.0.1:{server.server_port}'
                 run('endpoints','--chain','ethereum','--api','evm-json-rpc','--capabilities','balance,fee,broadcast,verification,token-balance','--add',endpoint)
                 run('endpoints','--chain','ethereum-sepolia','--api','evm-json-rpc','--capabilities','balance,fee,broadcast,verification,token-balance','--add',endpoint)
-                run('network','set','ethereum-sepolia')
-                report=run('diagnostics','configured','--chain','ethereum')['report']
+                report=run('diagnostics','configured','--chain','ethereum-sepolia')['report']
                 assert report['chain_id']=='ethereum-sepolia' and report['rpc_endpoint']==endpoint, report
                 assert report['results'] and all(r['passed'] for r in report['results']), report
-                run('network','set','ethereum')
                 failed=run('diagnostics','configured','--chain','ethereum',success=False)
                 assert not failed['ok'], failed
-                # Explicit testnets remain explicit even when the family's selected network changes.
                 assert run('diagnostics','configured','--chain','ethereum-sepolia')['ok']
                 assert seen==['eth_chainId','eth_blockNumber']*3,seen
             finally:
@@ -130,6 +127,12 @@ class DiagnosticsTests(unittest.TestCase):
             recovered = run('diagnostics', 'state')['state']
             assert not recovered['degraded'] and 'solana' in recovered['last_good_unix'], recovered
             assert len(recovered['logs']) == 2 and recovered['logs'][0]['input']['message'] == 'Chain recovered', recovered
+            # Key material is redacted as a line is stored; a hash field is kept.
+            key = 'ab' * 32
+            line = dict(level='error', category='Import', message=f'refused 0x{key}', chain_id=None, wallet_id=None,
+                        transaction_hash=key, source=None, metadata=None)
+            stored = run('diagnostics', 'state', '--command', json.dumps({'Append': {'input': line}}))['state']['logs'][0]['input']
+            assert key not in stored['message'] and stored['transaction_hash'] == key, stored
             conditions = dict(appIsActive=True, isNetworkReachable=False, isConstrainedNetwork=False,
                               isExpensiveNetwork=False, isLowPowerMode=False, batteryLevel=1, wantsPriceRefresh=True)
             plan = run('diagnostics', 'maintenance', '--conditions', json.dumps(conditions))['plan']

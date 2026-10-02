@@ -24,6 +24,8 @@ struct Inner {
     maintenance_stop_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     /// Whether the task forwarding Tor status to the observer is running.
     forwards_tor_status: AtomicBool,
+    /// Whether the task following the service's published state is running.
+    follows_wallets: AtomicBool,
     /// True while a refresh cycle is in flight. The timer tick path skips
     /// missed ticks via `MissedTickBehavior::Skip`, but `trigger_immediate`
     /// spawns its own task and can stack concurrent cycles when several
@@ -62,6 +64,7 @@ impl RefreshEngine {
                 stop_tx: Mutex::new(None),
                 maintenance_stop_tx: Mutex::new(None),
                 forwards_tor_status: AtomicBool::new(false),
+                follows_wallets: AtomicBool::new(false),
                 is_cycle_running: AtomicBool::new(false),
                 pending_trigger: AtomicBool::new(false),
             }),
@@ -94,34 +97,6 @@ impl RefreshEngine {
         .await
     }
 
-    /// Adopt core's wallets and refresh only when fetch inputs change.
-    /// Returns whether they changed. Balance-only updates must not retrigger
-    /// a sweep, since sweeps themselves update wallet balances.
-    pub async fn reconcile_wallets(&self) -> bool {
-        let this = self.clone();
-        crate::worker::run(async move {
-            let this = &this;
-            let state = this.inner.wallet_service.app_state().await;
-            let entries = refresh_entries_for(&state);
-            if !this.replace_entries(entries) {
-                return false;
-            }
-            if !this.has_entries() {
-                this.stop();
-            } else if this.app_is_active() {
-                if this.is_running() {
-                    this.trigger_immediate().await;
-                } else {
-                    this.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
-                        .await;
-                }
-            }
-            this.reconcile_maintenance();
-            true
-        })
-        .await
-    }
-
     /// What only the device knows. Coming to the foreground restarts the
     /// balance sweep, whose first tick runs at once; leaving it stops both
     /// loops. Other changes only reach the next maintenance tick.
@@ -138,44 +113,11 @@ impl RefreshEngine {
             } else if !was_active {
                 this.stop();
                 if this.sync_entries(None).await > 0 {
-                    this.start(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS)
-                        .await;
+                    this.start(true);
                 }
             }
             this.reconcile_maintenance();
-        })
-        .await
-    }
-
-    /// Start the periodic refresh loop.
-    ///
-    /// This method is `async` to ensure it runs inside the UniFFI tokio runtime,
-    /// which is required for `tokio::spawn` to work. No-op if already running.
-    pub async fn start(&self, interval_secs: u64) {
-        let this = self.clone();
-        crate::worker::run(async move {
-            let this = &this;
-            let mut stop_lock = this.inner.stop_tx.lock().unwrap();
-            if stop_lock.is_some() {
-                return; // already running
-            }
-            let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
-            *stop_lock = Some(tx);
-            drop(stop_lock);
-
-            let inner = Arc::clone(&this.inner);
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
-                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            Self::run_cycle(&inner).await;
-                        }
-                        _ = &mut rx => break,
-                    }
-                }
-            });
+            this.follow_wallets();
         })
         .await
     }
@@ -211,6 +153,88 @@ impl RefreshEngine {
         true
     }
 
+    /// Start the periodic balance sweep, its first tick at once or after one
+    /// interval. No-op if already running. Called from async exports, so a
+    /// runtime is present for the spawn.
+    fn start(&self, sweep_now: bool) {
+        let mut stop_lock = self.inner.stop_tx.lock().unwrap();
+        if stop_lock.is_some() {
+            return;
+        }
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        *stop_lock = Some(tx);
+        drop(stop_lock);
+
+        let inner = Arc::clone(&self.inner);
+        let period = Duration::from_secs(super::refresh_policy::AUTOMATIC_REFRESH_SECONDS);
+        let first = tokio::time::Instant::now() + if sweep_now { Duration::ZERO } else { period };
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval_at(first, period);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        Self::run_cycle(&inner).await;
+                    }
+                    _ = &mut rx => break,
+                }
+            }
+        });
+    }
+
+    /// Adopt core's wallets. Only a change in what a sweep fetches counts:
+    /// the end of every sweep publishes new balances, and treating that as a
+    /// change is what made each sweep start the next one. A wallet whose fetch
+    /// inputs are new — an import, another network — has its balances and
+    /// history read at once; the others wait for the next tick. Answers
+    /// whether the list changed.
+    async fn reconcile_wallets(&self) -> bool {
+        let state = self.inner.wallet_service.app_state().await;
+        let entries = refresh_entries_for(&state);
+        let fresh: Vec<String> = {
+            let current = self.inner.entries.read().unwrap();
+            entries
+                .iter()
+                .filter(|entry| !current.contains(entry))
+                .map(|entry| entry.wallet_id.clone())
+                .collect()
+        };
+        if !self.replace_entries(entries) {
+            return false;
+        }
+        if !self.has_entries() {
+            self.stop();
+        } else if self.app_is_active() && !fresh.is_empty() {
+            self.start(false);
+            Self::refresh_and_notify(&self.inner, AppRefreshIntent::Wallets { wallet_ids: fresh })
+                .await;
+        }
+        self.reconcile_maintenance();
+        true
+    }
+
+    /// Reconcile the wallets on every state core publishes, for as long as the
+    /// engine lives. The platform never has to say that the wallets changed:
+    /// core made the change. Called from an async export, so a runtime is
+    /// present for the spawn.
+    fn follow_wallets(&self) {
+        if self.inner.follows_wallets.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let inner = Arc::downgrade(&self.inner);
+        let mut published = self.inner.wallet_service.published.subscribe();
+        tokio::spawn(async move {
+            loop {
+                published.borrow_and_update();
+                let Some(inner) = inner.upgrade() else { return };
+                RefreshEngine { inner }.reconcile_wallets().await;
+                if published.changed().await.is_err() {
+                    return;
+                }
+            }
+        });
+    }
+
     fn has_entries(&self) -> bool {
         !self.inner.entries.read().unwrap().is_empty()
     }
@@ -224,6 +248,7 @@ impl RefreshEngine {
             .is_some_and(|c| c.app_is_active)
     }
 
+    #[cfg(test)]
     fn is_running(&self) -> bool {
         self.inner.stop_tx.lock().unwrap().is_some()
     }
@@ -643,20 +668,9 @@ mod refresh_entry_tests {
         assert_eq!(mainnet.len(), 1);
         assert_eq!(mainnet[0].address, "bc1main");
 
-        // The app's selection moves the whole family.
-        state
-            .settings
-            .selected_chain_by_family
-            .insert(Chain::Bitcoin, Chain::BitcoinTestnet4);
-        assert_eq!(
-            refresh_entries_for(&state)[0].address,
-            "bc1main",
-            "settings cannot retarget a stored wallet"
-        );
         state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
         assert_eq!(refresh_entries_for(&state)[0].address, "tb1test");
 
-        // A wallet's own network wins over the app's selection.
         state.wallets[0].chain_id = Chain::Bitcoin;
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
     }
@@ -778,7 +792,7 @@ mod refresh_entry_tests {
             })
             .await
             .unwrap();
-        engine.reconcile_wallets().await;
+        // Nobody tells the engine about the wallet: it follows core's state.
         for _ in 0..100 {
             if ticks.0.load(Ordering::SeqCst) > 0 {
                 break;
@@ -787,8 +801,9 @@ mod refresh_entry_tests {
         }
         assert!(
             ticks.0.load(Ordering::SeqCst) > 0,
-            "the first tick runs at once"
+            "a new wallet is refreshed at once"
         );
+        assert!(engine.has_entries(), "the engine adopted the wallet");
         assert!(
             ticks.1.load(Ordering::SeqCst) > 0,
             "the observer is told the Tor status without asking"

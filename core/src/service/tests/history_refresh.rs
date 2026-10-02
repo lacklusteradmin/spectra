@@ -1,5 +1,5 @@
 use super::*;
-use crate::store::state::{AppSettings, WalletAddress, WalletState};
+use crate::store::state::{WalletAddress, WalletState};
 
 fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
     WalletState {
@@ -71,11 +71,6 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
         )],
         ..Default::default()
     };
-    state
-        .settings
-        .selected_chain_by_family
-        .insert(Chain::Bitcoin, Chain::BitcoinTestnet4);
-
     state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
     let target = &targets(&state, Chain::Bitcoin, &[])[0];
     assert_eq!(target.network, Chain::BitcoinTestnet4, "fetched from");
@@ -161,12 +156,6 @@ fn a_target_follows_the_network_the_wallet_is_on() {
     };
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "bc1main");
 
-    state.settings = AppSettings {
-        selected_chain_by_family: [(Chain::Bitcoin, Chain::BitcoinTestnet4)]
-            .into_iter()
-            .collect(),
-        ..AppSettings::default()
-    };
     state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "tb1test");
 }

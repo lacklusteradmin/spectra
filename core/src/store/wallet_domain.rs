@@ -363,11 +363,8 @@ impl WalletView {
             derivation_path: derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
             holdings: self.holdings.clone(),
-            // Every slot this wallet holds, not only its own chain's. A wallet
-            // on a family that has testnets holds one address per network, and
-            // dropping the rest here is what left a network switch re-deriving
-            // from the seed on every read — which a sealed wallet cannot do, so
-            // it silently showed the mainnet address instead.
+            // Every slot this wallet holds, not only its own chain's: an EVM
+            // wallet holds both Ethereum's and Ethereum Classic's.
             //
             // The wallet's own slot comes first and the rest follow by slot id:
             // `primary_address` takes the first `receive` entry, and a

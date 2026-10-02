@@ -1,8 +1,7 @@
 use crate::derivation::import::WalletImportAddresses;
 
-/// Mainnet, which is what every case here means unless it says otherwise.
 fn validated_addresses(addresses: &WalletImportAddresses) -> (WalletImportAddresses, Vec<String>) {
-    crate::derivation::import::validated_addresses(addresses, &Default::default())
+    crate::derivation::import::validated_addresses(addresses)
 }
 
 fn addresses(pairs: &[(&str, &str)]) -> WalletImportAddresses {
@@ -62,30 +61,10 @@ fn the_bitcoin_xpub_is_carried_through_untouched() {
     assert_eq!(kept.bitcoin_xpub.as_deref(), Some("zpub-whatever"));
 }
 
-/// A derived address is mainnet-format even on a testnet import, so the
-/// slot map is judged against mainnet regardless of the selected mode.
-///
-/// Derivation at import runs against the mainnet chain, and the testnet
-/// address is re-derived for display. Judging this map by the selected
-/// network mode would drop every address on a testnet import.
+/// A derived address is judged by the network that owns its slot.
 #[test]
-fn a_derived_address_is_kept_on_a_testnet_import() {
+fn a_derived_address_is_judged_by_its_slots_network() {
     let derived = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
-    // Even asked for testnet4, the slot map is mainnet.
-    let (kept, rejected) = crate::derivation::import::validated_addresses(
-        &addresses(&[("bitcoin", derived)]),
-        &crate::derivation::import::ImportNetworks {
-            by_family: std::collections::HashMap::from([(
-                crate::registry::Chain::Bitcoin,
-                crate::registry::Chain::BitcoinTestnet4,
-            )]),
-        },
-    );
-    // The helper itself honours what it is told...
-    assert_eq!(rejected, vec![derived.to_string()]);
-    assert!(kept.by_slot.is_empty());
-    // ...so it is `import_wallets` that must pass mainnet here, which is
-    // what the default does.
     let (kept, rejected) = validated_addresses(&addresses(&[("bitcoin", derived)]));
     assert!(rejected.is_empty());
     assert_eq!(
@@ -106,22 +85,14 @@ fn a_rejection_names_the_address_not_the_slot() {
 /// The watch-only list is a separate input from the slot map, and it is the
 /// one where the address is typed rather than derived.
 mod watch_only {
-    use crate::derivation::import::{ImportNetworks, WalletImportWatchOnlyEntries};
+    use crate::derivation::import::WalletImportWatchOnlyEntries;
     use crate::registry::Chain;
     use std::collections::HashMap;
 
-    /// Mainnet, as above.
     fn validated_watch_only_entries(
         entries: &WalletImportWatchOnlyEntries,
     ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
-        validated_watch_only_entries_on(entries, Default::default())
-    }
-
-    fn validated_watch_only_entries_on(
-        entries: &WalletImportWatchOnlyEntries,
-        networks: ImportNetworks,
-    ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
-        crate::derivation::import::validated_watch_only_entries(entries, &networks)
+        crate::derivation::import::validated_watch_only_entries(entries)
     }
 
     fn entries(slot: Chain, addresses: &[&str]) -> WalletImportWatchOnlyEntries {
@@ -244,37 +215,10 @@ mod watch_only {
         );
     }
 
-    /// A testnet address arrives in its mainnet's slot, so validation has
-    /// to be told which network the import is for.
-    ///
-    /// `ImportDraft` keys watched addresses by the chain picked, and the
-    /// picker lists mainnets only — there is no "Bitcoin Testnet" row — so a
-    /// testnet watch import puts a testnet address in the `bitcoin` slot. Validating that slot as
-    /// mainnet refuses a wallet the app has always allowed.
+    /// Watching is offered on mainnets only, so a testnet address typed for
+    /// one is refused rather than stored as a mainnet wallet's.
     #[test]
-    fn a_testnet_watch_address_survives_when_the_import_is_for_testnet() {
-        // tb1 prefix — valid Bitcoin testnet, invalid on mainnet.
-        let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
-        let (kept, rejected) = validated_watch_only_entries_on(
-            &entries(Chain::Bitcoin, &[typed]),
-            ImportNetworks {
-                by_family: std::collections::HashMap::from([(
-                    Chain::Bitcoin,
-                    Chain::BitcoinTestnet,
-                )]),
-            },
-        );
-        assert!(rejected.is_empty(), "testnet address refused: {rejected:?}");
-        assert_eq!(
-            kept.by_chain_id
-                .get(&crate::registry::Chain::Bitcoin)
-                .map(Vec::len),
-            Some(1)
-        );
-    }
-
-    #[test]
-    fn a_testnet_watch_address_is_still_refused_on_mainnet() {
+    fn a_testnet_watch_address_is_refused() {
         let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
         let (kept, rejected) = validated_watch_only_entries(&entries(Chain::Bitcoin, &[typed]));
         assert_eq!(rejected, vec![typed.to_string()]);
@@ -313,7 +257,7 @@ fn watch_only_chain_identity_is_not_an_evm_storage_slot() {
         ]),
         bitcoin_xpub: None,
     };
-    let (valid, rejected) = validated_watch_only_entries(&entries, &Default::default());
+    let (valid, rejected) = validated_watch_only_entries(&entries);
     assert_eq!(valid.by_chain_id.len(), 2);
     assert_eq!(
         valid.by_chain_id[&crate::registry::Chain::Arbitrum].len(),

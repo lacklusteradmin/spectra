@@ -15,9 +15,9 @@
 //!
 //! The trait contract says values are opaque strings and the *caller* picks the
 //! encoding. These backends honour that exactly: they store the bytes they are
-//! handed and add no encryption of their own. Seed material handed to
-//! [`FileSecretStore`] is expected to already be a
-//! [`seed_envelope`](super::seed_envelope) ciphertext.
+//! handed and add no encryption of their own. Seed and private-key material
+//! arrives already sealed under core's [`device_key`](super::device_key); with
+//! no hardware to wrap that key, these store it unwrapped, in the same root.
 //!
 //! On Unix the root directory is created `0700` and each secret file `0600`.
 //! That is filesystem permissions and nothing more — a file store has no
@@ -116,6 +116,14 @@ impl SecretStore for InMemorySecretStore {
         self.entries.lock().remove(&(kind.bucket(), key));
         Ok(())
     }
+
+    fn wrap_device_key(&self, key: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
+        Ok(key)
+    }
+
+    fn unwrap_device_key(&self, wrapped: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
+        Ok(wrapped)
+    }
 }
 
 // ── Filesystem ───────────────────────────────────────────────────────────────
@@ -199,6 +207,16 @@ impl SecretStore for FileSecretStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(backend(&path, "delete", &e)),
         }
+    }
+
+    /// No hardware to wrap with: the device key is stored as it is, beside
+    /// what it seals. See the module docs.
+    fn wrap_device_key(&self, key: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
+        Ok(key)
+    }
+
+    fn unwrap_device_key(&self, wrapped: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
+        Ok(wrapped)
     }
 }
 

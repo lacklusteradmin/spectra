@@ -16,6 +16,233 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-02 — Core's refresh engine follows the wallets; core decides status notifications
+
+- **Before:** the refresh engine learned that the wallets changed only when
+  Swift told it. Every assignment of Swift's wallet projection — each balance
+  a sweep landed included — scheduled a `reconcileWallets()` call back into
+  core, and `reconcileWallets` was exported for nothing else. An import then
+  asked for a full user refresh as well, so the engine swept every wallet's
+  balances because the list changed and the user refresh swept them again,
+  with history and prices. Whether a send's confirmation or failure became a
+  notification was decided in Swift from `useTransactionStatusNotifications`,
+  while price alerts and large movements were already gated in core. Swift
+  also derived `walletIdentityRevision` itself, by comparing every wallet
+  without its holdings on each projection write.
+- **After:** core publishes the revision of every state it commits, and the
+  engine follows it from the first time the platform reports device
+  conditions. A wallet whose fetch inputs are new or changed is refreshed at
+  once with the new `Wallets` refresh intent — its balances and history, then
+  prices — and the sweep timer, if it was not running, starts one interval
+  later instead of sweeping everything again. A removal or a balance-only
+  change refreshes nothing. `reconcile_wallets` and `start` are no longer
+  exported. `TransactionStatusChange.notify` says whether a change is worth a
+  notification: the status reached confirmed or failed while the setting is
+  on. Swift posts only those, and still ends a Live Activity on every change.
+  The portfolio snapshot carries `wallet_identity_revision`, bumped when a
+  published state adds or removes a wallet or changes one apart from its
+  balances.
+- **Why:** core owns the wallets and the engine; a front end relaying one to
+  the other is a rule every platform must repeat, and Kotlin forgetting it
+  would leave new wallets unswept. The double sweep after import was wasted
+  network work. The notification gate was one decision of three made on the
+  other side of the boundary, invisible to the CLI.
+- **CLI check:** `spectra --json diagnostics refresh --intent
+  '{"wallets":{"wallet_ids":["<id>"]}}' --conditions '<conditions>'` runs the
+  wallet-scoped refresh (offline in `scripts/cli-diagnostics.py`). Pending
+  changes in a refresh's `pending.changes` carry `notify`. Core tests cover the
+  rest: `device_conditions_start_and_stop_the_maintenance_loop` (a wallet added
+  after conditions is adopted and refreshed with no platform call),
+  `a_status_change_is_not_announced_while_status_notifications_are_off`, and
+  `wallet_identity_revision_ignores_balances_and_other_state`.
+- **Verification:** `make verify` passed: fmt and clippy clean, 896 core
+  tests, 456 CLI acceptance checks and 96 iOS tests.
+
+## 2026-10-02 — Failed calls show a sentence; an empty dashboard is one welcome card
+
+- **Before:** about forty iOS surfaces showed a failed call's
+  `localizedDescription`. UniFFI words its errors as their Swift debug
+  description, so the History tab, the dashboard notices, the send, receive
+  and import flows and others showed text such as
+  `Spectra.SpectraBridgeError.Decode(message: "app_state_load settings: unknown
+  field …")`. With no wallets the dashboard showed a "—" portfolio total,
+  disabled Send and Receive buttons and an assets card holding a small "Add
+  Wallet" button, and the toolbar showed a grey Tor icon whenever Tor was off.
+- **After:** `userErrorMessage` words every failure shown on screen: core's own
+  sentence for refused input and failed requests, a fixed sentence for a
+  network or decoding failure, and a generic one for any other UniFFI error. A
+  failed state command and a failed History page also log the full error, so
+  the detail the message drops stays in Operational Logs; diagnostics panels
+  still show raw errors. With no wallets the dashboard is a single welcome card
+  with a full-width Add Wallet button, and the Tor toolbar item appears only
+  while Tor is starting, running or failing.
+- **Why:** the debug description is a developer's view of an error, not a
+  message, and an empty dashboard spent its first screen on controls that
+  could do nothing.
+- **CLI check:** none applies; presentation only. The CLI already prints core's
+  messages, and core's error categories are unchanged.
+- **Verification:** 105 iOS tests and `make check-ui` passed on HEAD plus this
+  change. `make lint test test-cli` was not run: no Rust changed.
+
+## 2026-10-02 — A wallet's network is fixed at import; per-family network selection is gone
+
+- **Before:** `AppSettings.selected_chain_by_family` named which network each
+  chain family was on, and `StateCommand::SelectChainForFamily` set it. The
+  command moved every wallet of the family to the chosen network, cleared the
+  family's keypool, owned addresses and history cursor, and the selection
+  steered import (a watch-only address, a Bitcoin xpub prefix and each new
+  wallet's network were read on the family's selected network), receive
+  addresses on another family, endpoint probes, self-tests and chain
+  diagnostics. A seed import derived and stored an address for every network
+  of each selected family so a switch needed no seed. The iOS app had no
+  control for the selection any more — only tests called
+  `selectChainForFamily` — so on iOS it was always mainnet while it still drove
+  all of the above; `spectra network set` could change it.
+- **After:** the setting, the command, the `SelectedChainChanged` event, the
+  switch's keypool/history reset, `ImportNetworks`, `NetworkChoice` and
+  `spectra network` are removed. A wallet is on the network its import names
+  (the chain picker already lists testnets) and stays there. Import stores only
+  that network's address (plus the shared EVM/ETC slot). Watch-only addresses
+  and the account xpub are judged on the chain picked, which is always a
+  mainnet, so a testnet address or a `tpub` typed for a watch import is
+  refused. Diagnostics, endpoint probes and self-tests run on the network named;
+  the diagnostics bundle carries every network's document, testnets included,
+  instead of every mainnet's on its selected network. Swift's watch-only form
+  asks core's new `is_valid_watch_only_address` instead of re-deriving core's
+  network rule and calling the now unexported `validate_address`.
+- **Why:** two models of one thing. Wallets already carry their own
+  `chain_id`, and the per-family selection was a second, app-wide answer to
+  "which network" that the iOS shell could neither see nor change yet core
+  consulted on import, receive and diagnostics. Keeping a network per wallet
+  removes the switch, its cleanup transaction and every address stored only
+  for a switch nobody can make.
+- **CLI check:** `spectra network list` is a usage error;
+  `spectra wallet import --chain bitcoin-testnet-4 …` creates a wallet whose
+  `wallet show` has a `tb1` address and no `bc1` one;
+  `spectra --json wallet show` of a Bitcoin wallet has no `bitcoin-testnet-4`
+  slot (all asserted in `scripts/cli-acceptance.sh`).
+- **Verification:** `make verify`: fmt and clippy clean, 891 core tests plus
+  the transport test, 458 CLI acceptance checks, 103 iOS tests.
+
+## 2026-10-02 — Known tokens list built-ins first, by symbol, each token together
+
+- **Before:** core kept the known-token list by chain, then built-ins before
+  custom rows, then symbol — the same sort written twice, in
+  `merge_built_in_token_preferences` and the reducer. The settings screen
+  regrouped it by token, sorted each group's rows by chain id, built-in and
+  contract, then sorted the groups by built-in and symbol; the detail screen
+  sorted by chain id again.
+- **After:** one core sort, `store::sort_token_preferences`: built-ins first,
+  then symbol, token id and chain, so a token's deployments sit together. Both
+  screens keep that order and sort nothing. `spectra token list` prints the
+  same order, so it now reads alphabetically rather than chain by chain.
+- **Why:** the screen's order was a second ordering rule kept beside core's;
+  with one token's rows adjacent, grouping needs no sort of its own.
+- **CLI check:** `spectra --json token list` — rows are ordered by
+  (not built-in, symbol) and no `token_id` appears in two separate runs
+  (asserted in `scripts/cli-token-preferences.py`).
+- **Verification:** `make verify`: fmt and clippy clean, 896 core tests, 473 CLI
+  acceptance checks, 106 iOS tests.
+
+## 2026-10-02 — A wallet's holdings come from core most valuable first
+
+- **Before:** `portfolio_snapshot` returned each wallet's holdings in stored
+  order. The wallet detail screen re-sorted them by value with its own rule,
+  and `spectra portfolio` printed them unsorted.
+- **After:** core orders each wallet's holdings as it renders the snapshot:
+  most valuable first, unpriced after, ties by symbol
+  (`valuation::order_holdings_by_value`). The app and the CLI show that order;
+  the screen only hides empty balances.
+- **Why:** display order was decided twice, and the CLI could not see the
+  app's.
+- **CLI check:** `spectra --json portfolio` lists `ETH` before an unpriced
+  token stored ahead of it (asserted in
+  `scripts/cli-portfolio.py::test_live_portfolio_is_core_valuation`).
+- **Verification:** `make verify`: fmt and clippy clean, 896 core tests, 473 CLI
+  acceptance checks, 106 iOS tests.
+
+## 2026-10-02 — Probing a mainnet's endpoints probes its family's selected network
+
+- **Before:** `probe_chain_endpoints` probed exactly the chain it was given.
+  The diagnostics screen therefore resolved the family's selected network in
+  Swift before asking, while `chain_diagnostics` and
+  `run_configured_self_tests` resolved it in core, each with its own copy of
+  the rule.
+- **After:** `AppSettings::diagnosed_network` is the one rule — a mainnet names
+  its family on the selected network, any other network names itself — and
+  all three operations apply it. Swift passes the family. `spectra endpoints`
+  without `--chain` probes each network once; with `--chain ethereum` while
+  Sepolia is selected it probes Sepolia, as `spectra diagnostics self-test`
+  already did. Probe Ethereum mainnet then by selecting it.
+- **Why:** three diagnostics addressed by family resolved it in two places;
+  one of them was the platform.
+- **CLI check:** none offline: a probe contacts the endpoints. With network,
+  `spectra network set ethereum-sepolia` then
+  `spectra --json endpoints --chain ethereum` reports rows whose `chainId` is
+  `ethereum-sepolia`. The rule is covered by
+  `a_mainnet_is_diagnosed_on_its_selected_network_and_a_testnet_on_itself`.
+- **Verification:** `make verify`: fmt and clippy clean, 896 core tests, 473 CLI
+  acceptance checks, 106 iOS tests.
+
+## 2026-10-02 — The send composer resolves the recipient once
+
+- **Before:** the composer resolved the recipient on the recipient page, then
+  resolved it again when leaving the amount page, and only that second answer
+  produced the "Resolved ENS … to …" note — shown back on the recipient page,
+  which the user had already left. `resolveSendDestination` also had an
+  `expectedAddress` branch calling the exported `verifySendDestination`,
+  which nothing passed.
+- **After:** the recipient page's resolution is kept with the input it
+  answered. It shows the ENS note at once, under the field, and gates both the
+  amount page and the build; leaving the amount page asks nothing. Preview and
+  build still check the recipient themselves, and the build still binds the
+  review. `verify_send_destination` is no longer an FFI export; the CLI and
+  core's review call it as Rust.
+- **Why:** a second resolution of the same input answered nothing new and put
+  its one visible effect where it could not be seen; the dead branch kept an
+  export alive.
+- **CLI check:** unchanged: `spectra --json send destination` resolves a typed
+  recipient, and the build path in `scripts/cli-send-stages.py` still binds the
+  review. The composer is covered by the iOS suite.
+- **Verification:** `make verify`: fmt and clippy clean, 896 core tests, 473 CLI
+  acceptance checks, 106 iOS tests.
+
+## 2026-10-02 — Secret entry follows core's rules for its shape
+
+- **Before:** the private-key field counted characters against a fixed 64 in
+  warning colour, so a valid `0x`-prefixed key read "66 / 64" in orange beside
+  "Looks like a valid private key". The seed-phrase length error spelled
+  "12, 15, 18, 21 or 24" in its copy while the picker read core's table.
+- **After:** the counter is gone; the hint, the border and the feedback, all
+  from core's `isPrivateKeyHex`, say whether the key fits. The length error
+  lists core's `seedPhraseLengths()` with the locale's list format.
+- **Why:** each was a second statement of a rule core owns, and the first
+  already disagreed with it.
+- **CLI check:** `KEY=0x… spectra wallet import --chain ethereum
+  --private-key-env KEY` accepts the prefixed form; the wording is the app's and is covered by
+  `SeedPhraseEntryTests.everyProblemIsWorded`.
+- **Verification:** `make verify`: fmt and clippy clean, 896 core tests, 473 CLI
+  acceptance checks, 106 iOS tests.
+
+## 2026-10-02 — A send artifact names its asset by symbol
+
+- **Before:** `SendArtifact.asset` was the coin's symbol or a token's exact
+  contract. The signing confirmation and the saved-sends list printed it as
+  the unit, so a token send read "10 0x1c7d…7238 → …". The stage view looked
+  the contract up in the wallet's current holdings for a symbol and fell back
+  to the contract when the token was no longer held.
+- **After:** core adds `SendArtifact.symbol` at build time, from the same
+  token lookup the history record uses (`send_asset_names`), and binds it into
+  the review digest. Every screen and `spectra send list` show it; `asset`
+  stays the identity.
+- **Why:** one transaction was named three ways, two of them by an address;
+  the name is part of what the user reviews, so it is fixed with the review.
+- **CLI check:** `spectra --json send build …` returns `"symbol":"ETH"`; an
+  artifact whose stored symbol is altered fails `send inspect` (both asserted
+  in `scripts/cli-send-stages.py`).
+- **Verification:** `make verify`: fmt and clippy clean, 896 core tests, 473 CLI
+  acceptance checks, 106 iOS tests.
+
 ## 2026-10-02 — Watching an EVM layer 2 imports a wallet on it
 
 - **Before:** the watch-addresses page grouped its fields by address slot and
@@ -292,7 +519,7 @@ how to check it without the app:
 - **CLI check:** none applies — the CLI takes the method as `--seed-env` or
   `--private-key-env`/`--private-key-file` and the chain as `--chain`, and
   already refuses a chain the key cannot derive on. The registry flags the
-  picker filters on are covered by `only_monero_is_excluded_from_watch_only_import`
+  picker filters on are covered by `watch_only_support_excludes_monero_and_testnets`
   and the private-key import checks in `scripts/cli-acceptance.sh`;
   `ImportMethodTests` covers the filter.
 - **Verification:** `make lint`, `make test` (887 core tests), `make test-cli`
@@ -3279,3 +3506,83 @@ rendering in a real window.
   prints `https://sepolia.etherscan.io/tx/0xabc`;
   `spectra --json explorers --chain solana-devnet --tx abc` prints
   `https://solscan.io/tx/abc?cluster=devnet`.
+
+## 2026-10-02 — Appearance follows the system by default
+
+- **Before:** a fresh install, or Reset, rendered the app in Dark regardless of
+  the device's appearance; Settings → Appearance listed Dark, Light, System.
+- **After:** the default is System, so the app follows the device's light or
+  dark setting until the user picks one. The list reads System, Light, Dark,
+  and its footer says "Defaults to System." A saved choice is unchanged.
+- **Why:** an iOS app should match the appearance the user already chose for
+  the device; forcing Dark overrode that without asking.
+- **CLI check:** none applies — appearance is a platform-only preference that
+  core does not hold.
+
+## 2026-10-02 — Log lines are redacted when they are stored
+
+- **Before:** operational log lines were stored as given. Only the diagnostics
+  bundle ran its strings through core's sanitizer; the logs screen's Copy
+  button, which the app formatted itself, put the stored text on the clipboard
+  unredacted, and `spectra diagnostics state` printed it the same way.
+- **After:** `DiagnosticState::append`, the one way a line is stored, redacts
+  64-digit hex keys, extended private keys and runs of 12+ BIP-39 words in the
+  category, message, source and metadata. `wallet_id` and `transaction_hash`
+  are kept as given: a transaction hash is 64 hex digits too.
+- **Why:** key material that reaches a log must not leave the device by any
+  path, and one choke point at write time covers every reader — the screen, a
+  copy, the CLI, the bundle — instead of each export remembering to redact.
+- **CLI check:** `spectra --json diagnostics state --command '{"Append":{"input":{"level":"error","category":"t","message":"k 0x<64 hex digits>","chain_id":null,"wallet_id":null,"transaction_hash":null,"source":null,"metadata":null}}}'`
+  stores the message as `k [REDACTED_PRIVATE_KEY]`.
+
+## 2026-10-02 — A history page past the cap is cut to it, not refused
+
+- **Before:** `history_page` refused any limit above 200 with "history query
+  limit must be 1...200", so the app restated 200 to stay under it.
+- **After:** a limit above `HISTORY_PAGE_MAX` (200) returns at most 200 rows
+  with `hasMore` and a cursor for the rest; only a zero limit is refused. The
+  app passes the rows it wants and follows the cursor, with no copy of the cap.
+- **Why:** a page is a bound on one read, not a contract the caller has to
+  know; cutting to it is what every paged reader already handles.
+- **CLI check:** with more than 200 stored records,
+  `spectra --json txs --page --limit 100000` returns 200 and `"hasMore":true`;
+  `--limit 0` is refused.
+
+## 2026-10-02 — The send network card no longer has a UTXO variant
+
+- **Before:** Bitcoin, Bitcoin Cash, Bitcoin SV, Litecoin and Dogecoin (and
+  their testnets) — chosen by `supportsDeepUTXODiscovery`, a discovery
+  capability standing in for "UTXO" — got a card of their own that printed
+  "Estimated Fee Rate: N sat/vB" above the same rate in the "Fee Rate" row
+  below it. Zcash, Dash, Decred and the other UTXO chains got the common card.
+- **After:** every non-EVM chain gets the common card: the fee, the preview's
+  own lines, and the detail rows (fee rate, size, inputs, change) once.
+- **Why:** the card's shape was inferred from an unrelated capability, and
+  what it added was a duplicate.
+- **CLI check:** none applies — layout only; core's preview details are
+  unchanged, and their `feeRateDescription` is the rate the detail row shows.
+
+## 2026-10-02 — Core seals signing material under its device key
+
+- **Before:** the iOS shell sealed every seed and private key in an AES-GCM
+  envelope under a device master key, wrapped by a Secure Enclave key, before
+  the Keychain — and owned the rules for that key: mint it only when absent,
+  never take an unreadable key for an absent one, never fall back to
+  plaintext. Core exported three primitives for it. The CLI had none of this:
+  a wallet with no password was stored as base64 of the phrase.
+- **After:** core's `device_key` module seals seeds and private keys, with or
+  without a wallet password, and owns those rules on every platform; one
+  process mints at most one key, so two first seals can no longer race. The
+  `SecretStore` trait gains `wrap_device_key`/`unwrap_device_key` and a
+  `DeviceKey` class. iOS wraps with the Secure Enclave as before; the CLI's
+  file store has no hardware and stores the key unwrapped beside what it
+  seals. The three envelope FFI exports are gone.
+- **Why:** key handling is core's. The rules are the same on every platform
+  and a second implementation would have to get each one exactly right.
+- **Format:** the device key now sits at `device_key/signing-material`
+  (Keychain service `com.spectra.seed.masterkey`, account `signing-material`)
+  as base64 of the wrapped bytes. Seeds stored by an earlier build cannot be
+  opened; reset Wallets & Secrets and import again. No migration: prelaunch.
+- **CLI check:** `spectra wallet import --chain Solana --no-password` with a
+  phrase on stdin; `<data-dir>/secrets/device_key/` then holds a key, and
+  neither the words nor their base64 appear under `<data-dir>/secrets/seed/`.

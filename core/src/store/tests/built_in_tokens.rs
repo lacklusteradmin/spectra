@@ -100,3 +100,41 @@ fn a_built_in_cannot_be_removed() {
     );
     assert_eq!(state.token_preferences.len(), count);
 }
+
+/// One order for the known-token list: built-ins first, by symbol, with a
+/// token's deployments next to each other so a screen grouping by token
+/// needs no sort of its own.
+#[test]
+fn the_token_list_keeps_each_tokens_deployments_together() {
+    let mut custom = crate::store::built_in_token_preferences()
+        .into_iter()
+        .next()
+        .unwrap();
+    custom.is_built_in = false;
+    custom.token.symbol = "AAA".into();
+    custom.token.token_id = "custom:aaa".into();
+    let merged = crate::store::merge_built_in_token_preferences(
+        crate::store::built_in_token_preferences(),
+        vec![custom],
+    );
+    assert!(!merged.last().unwrap().is_built_in, "built-ins come first");
+    let mut finished = std::collections::HashSet::new();
+    for pair in merged.windows(2) {
+        let (a, b) = (&pair[0], &pair[1]);
+        if a.is_built_in == b.is_built_in {
+            assert!(
+                a.token.symbol <= b.token.symbol,
+                "{} before {}",
+                a.token.symbol,
+                b.token.symbol
+            );
+        }
+        if a.token.token_id != b.token.token_id {
+            assert!(
+                finished.insert(a.token.token_id.clone()),
+                "{} is split",
+                a.token.token_id
+            );
+        }
+    }
+}

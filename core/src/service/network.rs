@@ -27,8 +27,8 @@ impl WalletService {
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
     // wrappers below call into those internal helpers.
 
-    /// Run read-only protocol checks for every API on this concrete network.
-    /// A pass never promises broadcast support.
+    /// Run read-only protocol checks for every API on `chain`. A pass never
+    /// promises broadcast support.
     pub async fn probe_chain_endpoints(
         &self,
         chain: crate::registry::Chain,

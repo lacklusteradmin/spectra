@@ -268,10 +268,11 @@ mod tests {
             .execute_batch("DROP TRIGGER reject_balance")
             .unwrap();
 
+        // A result fetched for the wallet's previous network does not land.
+        let mut moved = service.app_state().await.wallets[0].clone();
+        moved.chain_id = crate::registry::Chain::EthereumSepolia;
         service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: crate::registry::Chain::EthereumSepolia,
-            })
+            .apply_state_command(StateCommand::UpsertWallet { wallet: moved })
             .await
             .unwrap();
         coin.amount = "99".into();
@@ -299,58 +300,6 @@ mod tests {
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
-    #[tokio::test]
-    async fn network_setting_and_derivation_cleanup_rollback_together() {
-        let service = WalletService::new(vec![]).unwrap();
-        let path = std::env::temp_dir().join(format!(
-            "network-atomic-{}.sqlite",
-            crate::store::new_event_id()
-        ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
-        let db = rusqlite::Connection::open(&path).unwrap();
-        db.execute_batch("CREATE TRIGGER reject_cleanup BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'fixture cleanup failure'); END;").unwrap();
-        service
-            .reserve_receive_index("w".into(), crate::registry::Chain::Ethereum, 0)
-            .await
-            .unwrap();
-        assert!(
-            service
-                .apply_state_command(StateCommand::SelectChainForFamily {
-                    chain_id: crate::registry::Chain::EthereumSepolia
-                })
-                .await
-                .is_err()
-        );
-        assert_eq!(
-            service
-                .app_state()
-                .await
-                .settings
-                .selected_chain_for_family(Chain::Ethereum),
-            Chain::Ethereum
-        );
-        db.execute_batch("DROP TRIGGER reject_cleanup;").unwrap();
-        service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: crate::registry::Chain::EthereumSepolia,
-            })
-            .await
-            .unwrap();
-        assert!(service.keypool.read().await.is_empty());
-        let reopened = WalletService::new(vec![]).unwrap();
-        assert_eq!(
-            reopened
-                .open_state(path.to_string_lossy().into())
-                .await
-                .unwrap()
-                .settings
-                .selected_chain_for_family(Chain::Ethereum),
-            Chain::EthereumSepolia
-        );
-    }
     #[tokio::test]
     async fn wallet_delete_removes_secrets_and_relations_and_can_retry() {
         let service = WalletService::new(vec![]).unwrap();

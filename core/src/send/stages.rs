@@ -103,6 +103,9 @@ pub struct SendArtifact {
     pub amount: String,
     /// Native symbol or exact token contract/mint identity.
     pub asset: String,
+    /// What the asset is called on screen: the coin's symbol, the known
+    /// token's symbol, or the contract when no known token claims it.
+    pub symbol: String,
     pub created_at: f64,
     /// Fingerprint of the complete immutable prepared content, confirmed by Sign.
     pub review_digest: String,
@@ -135,6 +138,7 @@ impl StoredSend {
             self.view.created_at,
             &self.view.signing_payload_hex,
             &self.view.asset,
+            &self.view.symbol,
             &self.view.review,
         ))?;
         Ok(hex::encode(sha2::Sha256::digest(bytes)))

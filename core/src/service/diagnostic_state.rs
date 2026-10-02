@@ -87,18 +87,24 @@ pub enum DiagnosticCommand {
     Reset,
 }
 impl DiagnosticState {
+    /// The one way a log line is stored. Free text is redacted here, before
+    /// it is kept, so every reader — the logs screen, a copy, the CLI — gets
+    /// what the bundle export already got. Identifiers are kept as given: a
+    /// transaction hash is 64 hex digits and would read as a private key.
     fn append(&mut self, mut input: DiagnosticLogInput) {
-        input.category = input.category.trim().into();
-        input.message = input.message.trim().into();
-        for text in [
-            &mut input.wallet_id,
-            &mut input.transaction_hash,
-            &mut input.source,
-            &mut input.metadata,
-        ] {
+        use crate::diagnostics::sanitizer::sanitize_diagnostics_string as sanitize;
+        input.category = sanitize(input.category.trim());
+        input.message = sanitize(input.message.trim());
+        for text in [&mut input.wallet_id, &mut input.transaction_hash] {
             *text = text
                 .take()
                 .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+        }
+        for text in [&mut input.source, &mut input.metadata] {
+            *text = text
+                .take()
+                .map(|s| sanitize(s.trim()))
                 .filter(|s| !s.is_empty());
         }
         self.logs.insert(
@@ -216,22 +222,16 @@ pub struct DiagnosticsPlatformInfo {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// A family's diagnostics, on the network the family is on. A concrete
-    /// network id reads that network.
+    /// One network's diagnostics.
     pub async fn chain_diagnostics(
         &self,
         chain: crate::registry::Chain,
     ) -> Result<ChainDiagnostics, SpectraBridgeError> {
-        let this = self.clone();
-        crate::worker::run(async move {
-            let settings = this.app_state().await.settings;
-            Ok(chain_diagnostics_for(chain, &settings))
-        })
-        .await
+        Ok(chain_diagnostics_for(chain))
     }
 
-    /// The diagnostics bundle, as the JSON a file holds: every mainnet's
-    /// document, degraded chains, and a header from core's own counts and the
+    /// The diagnostics bundle, as the JSON a file holds: every network's
+    /// document, testnets included, degraded chains, and a header from core's own counts and the
     /// platform's description of itself.
     pub async fn diagnostics_bundle(
         &self,
@@ -257,13 +257,7 @@ impl WalletService {
                 environment,
                 chain_degraded: state.diagnostics.degraded.clone(),
                 chain_diagnostics_json: Chain::all()
-                    .filter(|c| !c.is_testnet())
-                    .map(|c| {
-                        (
-                            c.str_id().to_string(),
-                            chain_diagnostics_for(c, &state.settings).document,
-                        )
-                    })
+                    .map(|c| (c.str_id().to_string(), chain_diagnostics_for(c).document))
                     .collect(),
             };
             crate::diagnostics::diagnostics_bundle_to_json(payload).ok_or_else(|| {
@@ -274,16 +268,8 @@ impl WalletService {
     }
 }
 
-fn chain_diagnostics_for(
-    requested: Chain,
-    settings: &crate::store::state::AppSettings,
-) -> ChainDiagnostics {
-    let family = requested.mainnet_counterpart();
-    let network = if requested == family {
-        settings.selected_chain_for_family(family)
-    } else {
-        requested
-    };
+fn chain_diagnostics_for(network: Chain) -> ChainDiagnostics {
+    let family = network.mainnet_counterpart();
     let recorded = crate::diagnostics::diagnostics_recorded(family, network);
     let mut counts: HashMap<String, u32> = HashMap::new();
     for row in &recorded.history {
@@ -342,12 +328,12 @@ mod tests {
     use super::*;
 
     /// The screen and the bundle read one answer: history keyed by the family,
-    /// endpoints by the network it is on, and the header from core's counts.
+    /// endpoints by the network named, and the header from core's counts.
     // The guard only serializes tests over the shared registry; holding it
     // across awaits is the point, and nothing else locks it.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
-    async fn chain_diagnostics_follow_the_selected_network_into_the_bundle() {
+    async fn chain_diagnostics_read_the_named_network_into_the_bundle() {
         use crate::diagnostics::*;
         let _g = registry::diagnostics_test_lock();
         diagnostics_clear_all();
@@ -399,14 +385,8 @@ mod tests {
         assert_eq!(mainnet.network_id, Chain::Litecoin);
         assert_eq!(mainnet.endpoints[0].endpoint, "https://main");
 
-        service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: crate::registry::Chain::LitecoinTestnet,
-            })
-            .await
-            .unwrap();
         let selected = service
-            .chain_diagnostics(crate::registry::Chain::Litecoin)
+            .chain_diagnostics(crate::registry::Chain::LitecoinTestnet)
             .await
             .unwrap();
         assert_eq!(selected.network_id, Chain::LitecoinTestnet);
@@ -440,13 +420,39 @@ mod tests {
         assert_eq!(parsed.environment.app_version, "9.9");
         assert_eq!(parsed.environment.selected_fiat_currency, "USD");
         assert_eq!(parsed.environment.wallet_count, 0);
+        assert_eq!(parsed.chain_diagnostics_json.len(), Chain::all().count());
         assert_eq!(
-            parsed.chain_diagnostics_json.len(),
-            Chain::all().filter(|c| !c.is_testnet()).count()
+            parsed.chain_diagnostics_json["litecoin-testnet"],
+            selected.document
         );
-        assert_eq!(parsed.chain_diagnostics_json["litecoin"], selected.document);
+        assert_eq!(parsed.chain_diagnostics_json["litecoin"], mainnet.document);
         diagnostics_clear_all();
     }
+    /// Key material in a log line's text never reaches the stored log; the
+    /// transaction hash beside it is an identifier and stays readable.
+    #[test]
+    fn appended_logs_are_redacted_before_they_are_stored() {
+        let key = "ab".repeat(32);
+        let phrase = "abandon ".repeat(11) + "about";
+        let mut state = DiagnosticState::default();
+        state.append(DiagnosticLogInput {
+            level: DiagnosticLogLevel::Error,
+            category: "Import".into(),
+            message: format!("refused {phrase}"),
+            chain_id: None,
+            wallet_id: Some("w1".into()),
+            transaction_hash: Some(key.clone()),
+            source: Some(format!("key={key}")),
+            metadata: Some(format!("0x{key}")),
+        });
+        let stored = &state.logs[0].input;
+        assert!(!stored.message.contains("abandon"), "{}", stored.message);
+        assert!(!stored.source.as_deref().unwrap().contains(&key));
+        assert!(!stored.metadata.as_deref().unwrap().contains(&key));
+        assert_eq!(stored.transaction_hash.as_deref(), Some(key.as_str()));
+        assert_eq!(stored.wallet_id.as_deref(), Some("w1"));
+    }
+
     #[tokio::test]
     async fn diagnostic_intents_persist_and_recover() {
         let service = WalletService::new(vec![]).unwrap();
@@ -491,7 +497,7 @@ mod tests {
     }
 }
 
-/// Diagnostics of the service's selected network and first configured RPC.
+/// Diagnostics of the network named and its first configured RPC.
 /// The selected endpoint is explicit in the result; a failure never silently
 /// tests a different provider and reports it as the configured node.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
@@ -511,14 +517,6 @@ impl WalletService {
         crate::worker::run(async move {
             let this = &this;
             use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
-            let chain = if chain == chain.mainnet_counterpart() {
-                this.app_state()
-                    .await
-                    .settings
-                    .selected_chain_for_family(chain)
-            } else {
-                chain
-            };
             let mut results = self_tests_run_chain(chain);
             let rpc_endpoint = if chain.is_evm() {
                 let endpoints = this.configured_endpoint_urls(chain).await;
@@ -569,7 +567,7 @@ mod configured_tests {
     use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
     #[tokio::test]
-    async fn configured_diagnostics_follow_selected_network_and_report_wrong_chain() {
+    async fn configured_diagnostics_run_on_the_named_network_and_report_wrong_chain() {
         let server = MockServer::start().await;
         Mock::given(any())
             .respond_with(|r: &Request| {
@@ -603,14 +601,8 @@ mod configured_tests {
                 .await
                 .unwrap();
         }
-        service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: crate::registry::Chain::EthereumSepolia,
-            })
-            .await
-            .unwrap();
         let selected = service
-            .run_configured_self_tests(crate::registry::Chain::Ethereum)
+            .run_configured_self_tests(crate::registry::Chain::EthereumSepolia)
             .await
             .unwrap();
         assert_eq!(selected.chain_id, crate::registry::Chain::EthereumSepolia);
@@ -623,12 +615,6 @@ mod configured_tests {
             "{:?}",
             selected.results
         );
-        service
-            .apply_state_command(StateCommand::SelectChainForFamily {
-                chain_id: crate::registry::Chain::Ethereum,
-            })
-            .await
-            .unwrap();
         let mainnet = service
             .run_configured_self_tests(crate::registry::Chain::Ethereum)
             .await

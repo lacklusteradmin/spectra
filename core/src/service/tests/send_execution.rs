@@ -132,7 +132,7 @@ mod send_chain_tests {
     /// id.
     #[test]
     fn a_send_requires_the_explicit_network_and_never_retargets() {
-        let mut state = CoreAppState {
+        let state = CoreAppState {
             wallets: vec![wallet("w1", Chain::Ethereum, Some(Chain::EthereumSepolia))],
             ..Default::default()
         };
@@ -142,14 +142,6 @@ mod send_chain_tests {
             Chain::EthereumSepolia
         );
         assert!(send_chain_for(&state, "nobody", Chain::Ethereum).is_err());
-        state
-            .settings
-            .selected_chain_by_family
-            .insert(Chain::Ethereum, Chain::EthereumHoodi);
-        assert_eq!(
-            send_chain_for(&state, "w1", Chain::EthereumSepolia).unwrap(),
-            Chain::EthereumSepolia
-        );
     }
 }
 
@@ -195,6 +187,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
             recipient: "to".into(),
             amount: "1.5".into(),
             asset: "TON".into(),
+            symbol: "TON".into(),
             created_at: 0.0,
             review_digest: String::new(),
             review: SendArtifactReview::default(),

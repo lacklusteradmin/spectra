@@ -3,6 +3,30 @@ use super::*;
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 
+/// The symbol and name a send's asset is shown by: the chain's coin, or the
+/// known token at `contract`. A contract no known token claims is named by
+/// the contract itself rather than by a guess.
+pub(super) fn send_asset_names(
+    state: &crate::store::state::CoreAppState,
+    chain: Chain,
+    contract: Option<&str>,
+) -> (String, String) {
+    let Some(contract) = contract else {
+        return (chain.coin_symbol().into(), chain.coin_symbol().into());
+    };
+    let wanted = crate::tokens::normalize_token_identifier(Some(contract.into()), chain);
+    state
+        .token_preferences
+        .iter()
+        .find(|p| {
+            p.hosting_chain() == Some(chain.mainnet_counterpart())
+                && crate::tokens::normalize_token_identifier(Some(p.token.contract.clone()), chain)
+                    == wanted
+        })
+        .map(|p| (p.token.symbol.clone(), p.token.name.clone()))
+        .unwrap_or_else(|| (contract.into(), contract.into()))
+}
+
 impl WalletService {
     pub(super) async fn begin_send_record(
         &self,
@@ -17,28 +41,15 @@ impl WalletService {
             .iter()
             .find(|w| w.id == request.wallet_id)
             .ok_or_else(|| SpectraBridgeError::failure("wallet removed before submission"))?;
-        let token = request.contract_address.as_ref().and_then(|contract| {
-            state.token_preferences.iter().find(|p| {
-                p.hosting_chain() == Some(chain.mainnet_counterpart())
-                    && crate::tokens::normalize_token_identifier(
-                        Some(p.token.contract.clone()),
-                        chain,
-                    ) == crate::tokens::normalize_token_identifier(Some(contract.clone()), chain)
-            })
-        });
-        let symbol = token.map(|p| p.token.symbol.as_str()).unwrap_or_else(|| {
-            request
-                .contract_address
-                .as_deref()
-                .unwrap_or(chain.coin_symbol())
-        });
+        let (symbol, display_name) =
+            send_asset_names(&state, chain, request.contract_address.as_deref());
         let deployment_id =
             crate::tokens::deployment_id_for(chain, request.contract_address.as_deref())
                 .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
-            "walletName": wallet.name, "assetDisplayName": token.map(|p| p.token.name.as_str()).unwrap_or(symbol), "symbol": symbol,
+            "walletName": wallet.name, "assetDisplayName": display_name, "symbol": symbol,
             "chainId": chain.str_id(), "amount": crate::decimal::canonical(&request.amount_str).ok_or_else(|| SpectraBridgeError::failure("invalid amount"))?,
             "address": request.to_address, "sourceAddress": source,
             "failureReason": {"kind": "submissionOutcomeUnknown"},
@@ -425,5 +436,40 @@ mod tests {
         );
         assert!(service.rebroadcast_transaction(record.id).await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod send_asset_name_tests {
+    use super::*;
+
+    #[test]
+    fn a_send_asset_is_named_by_its_coin_its_token_or_its_contract() {
+        let state = crate::store::state::CoreAppState {
+            token_preferences: crate::store::built_in_token_preferences(),
+            ..Default::default()
+        };
+        let token = state
+            .token_preferences
+            .iter()
+            .find(|p| p.hosting_chain() == Some(Chain::Ethereum) && !p.token.contract.is_empty())
+            .expect("the catalog ships an Ethereum token");
+        assert_eq!(
+            send_asset_names(&state, Chain::Ethereum, None),
+            ("ETH".to_string(), "ETH".to_string())
+        );
+        assert_eq!(
+            send_asset_names(
+                &state,
+                Chain::Ethereum,
+                Some(&token.token.contract.to_uppercase().replace("0X", "0x"))
+            ),
+            (token.token.symbol.clone(), token.token.name.clone())
+        );
+        let unknown = format!("0x{}", "ab".repeat(20));
+        assert_eq!(
+            send_asset_names(&state, Chain::Ethereum, Some(&unknown)),
+            (unknown.clone(), unknown)
+        );
     }
 }

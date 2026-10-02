@@ -131,24 +131,6 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
             .unwrap(),
         1
     );
-    sql(
-        &db,
-        "CREATE TRIGGER reject_delete BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;",
-    );
-    assert!(
-        s.apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::BitcoinTestnet4
-        })
-        .await
-        .is_err()
-    );
-    assert_eq!(
-        s.keypool_state("w".into(), crate::registry::Chain::Bitcoin)
-            .await
-            .unwrap()
-            .reserved_receive_index,
-        Some(1)
-    );
 }
 
 #[tokio::test]
@@ -576,13 +558,6 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
         })
         .await
         .unwrap();
-    service
-        .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::EthereumSepolia,
-        })
-        .await
-        .unwrap();
-    // A network selection does not change the identity of a mainnet price alert.
     let (a, b) = tokio::join!(
         service.evaluate_price_alerts(),
         service.evaluate_price_alerts()
@@ -849,4 +824,50 @@ fn stored_keypool(db: &str) -> crate::wallet_db::KeypoolState {
     crate::wallet_db::keypool_load_all(&crate::wallet_db::WalletDatabase::new(db)).unwrap()
         [&crate::registry::Chain::Bitcoin]["w"]
         .clone()
+}
+
+/// A view keyed on a wallet's name and addresses re-reads when those change,
+/// not when a balance, or a setting that is not a wallet's, does.
+#[tokio::test]
+async fn wallet_identity_revision_ignores_balances_and_other_state() {
+    let s = service();
+    s.open_state(database()).await.unwrap();
+    let identity = || async {
+        s.portfolio_snapshot()
+            .await
+            .unwrap()
+            .wallet_identity_revision
+    };
+    let wallet = |name: &str, amount: &str| {
+        let mut wallet = crate::store::state::WalletState::single_address(
+            "w",
+            name,
+            crate::registry::Chain::Ethereum,
+            "0x1111111111111111111111111111111111111111",
+            None,
+            true,
+        );
+        wallet.holdings = vec![crate::store::wallet_domain::AssetHolding {
+            id: String::new(),
+            name: "Ether".into(),
+            symbol: "ETH".into(),
+            coingecko_id: "ethereum".into(),
+            chain_id: crate::registry::Chain::Ethereum,
+            token_standard: "Native".into(),
+            contract_address: None,
+            amount: amount.into(),
+        }];
+        StateCommand::UpsertWallet { wallet }
+    };
+
+    let empty = identity().await;
+    s.apply_state_command(wallet("W", "1")).await.unwrap();
+    let added = identity().await;
+    assert!(added > empty, "a new wallet");
+    s.apply_state_command(wallet("W", "2")).await.unwrap();
+    assert_eq!(identity().await, added, "a balance");
+    s.apply_state_command(currency("EUR")).await.unwrap();
+    assert_eq!(identity().await, added, "a setting");
+    s.apply_state_command(wallet("Renamed", "2")).await.unwrap();
+    assert!(identity().await > added, "a rename");
 }

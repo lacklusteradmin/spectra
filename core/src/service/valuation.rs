@@ -49,6 +49,22 @@ fn value_of(state: &CoreAppState, holding: &AssetHolding, amount: &str) -> Optio
     value.is_finite().then_some(value)
 }
 
+/// A wallet's holdings in the order it shows them: most valuable first,
+/// unpriced ones after, each run by symbol. Stable, so equal rows keep
+/// the catalog's order.
+pub(super) fn order_holdings_by_value(state: &CoreAppState, holdings: &mut [AssetHolding]) {
+    use std::cmp::Ordering;
+    holdings.sort_by(|a, b| {
+        match (value(state, a), value(state, b)) {
+            (Some(a), Some(b)) => b.total_cmp(&a),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then_with(|| a.symbol.to_lowercase().cmp(&b.symbol.to_lowercase()))
+    });
+}
+
 /// USD to the display currency, when the rate is known.
 pub(super) fn display_rate(state: &CoreAppState) -> Option<f64> {
     if state.settings.fiat_currency == crate::store::state::FiatCurrency::Usd {
@@ -196,5 +212,35 @@ mod tests {
         state.quotes.prices.insert(coin.deployment_id(), 3000.0);
         assert_eq!(value(&state, &coin), None);
         assert_eq!(total(&state, std::iter::once(&coin)).total, 0.0);
+    }
+
+    /// Most valuable first, unpriced after, ties by symbol.
+    #[test]
+    fn a_wallet_shows_its_most_valuable_holdings_first() {
+        let mut state = CoreAppState::default();
+        let tokens: Vec<_> = crate::store::built_in_token_preferences()
+            .into_iter()
+            .filter(|p| p.token.chain_id == crate::registry::Chain::Ethereum)
+            .take(2)
+            .collect();
+        let holding = |deployment_id: &str, amount: &str| {
+            let mut coin = crate::tokens::deployment(deployment_id)
+                .unwrap()
+                .holding_template();
+            coin.amount = amount.into();
+            coin
+        };
+        let ether = holding("ethereum:native", "1");
+        let cheap = holding(&tokens[0].token.deployment_id, "10");
+        let unpriced = holding(&tokens[1].token.deployment_id, "5");
+        state.quotes.prices.insert(ether.deployment_id(), 3000.0);
+        state.quotes.prices.insert(cheap.deployment_id(), 1.0);
+        let mut holdings = vec![unpriced.clone(), cheap.clone(), ether.clone()];
+        order_holdings_by_value(&state, &mut holdings);
+        let order: Vec<_> = holdings.iter().map(AssetHolding::deployment_id).collect();
+        assert_eq!(
+            order,
+            [ether, cheap, unpriced].map(|h| h.deployment_id()).to_vec()
+        );
     }
 }

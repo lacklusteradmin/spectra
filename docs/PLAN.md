@@ -103,9 +103,6 @@ Navigation, editing and rendering caches remain platform view state.
 
 Use reproducible checks rather than retaining per-session counts:
 
-- `scripts/count-exports.sh`: callable FFI surface, with a working target of
-  roughly 150. Cross-check macros against generated bindings and exclude
-  converter helpers. Do not merge unrelated operations merely to reduce counts.
 - `scripts/unreachable-exports.sh`: unused export candidates.
 - Domain collections and decisions must have one owner; new operations must be
   reachable through the CLI and state must survive reopening the database.

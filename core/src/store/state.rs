@@ -220,12 +220,6 @@ pub struct AppSettings {
     /// Token IDs pinned in display order. An empty list means no pins.
     /// Defaults are applied only when settings or this field are initialized.
     pub pinned_dashboard_token_ids: Vec<String>,
-    /// Which network the user selected for each chain family that offers a
-    /// choice, as `mainnet str_id -> selected str_id`.
-    ///
-    /// Absent means mainnet, so the map is empty for most users.
-    pub selected_chain_by_family:
-        std::collections::HashMap<crate::registry::Chain, crate::registry::Chain>,
 
     // ── Providers ─────────────────────────────────────────────────────────
     /// Which price source to quote from.
@@ -378,21 +372,6 @@ fn default_large_movement_usd() -> f64 {
     50.0
 }
 
-impl AppSettings {
-    /// The chain the user is actually on for a family, defaulting to mainnet.
-    pub fn selected_chain_for_family(
-        &self,
-        chain: crate::registry::Chain,
-    ) -> crate::registry::Chain {
-        let family = chain.mainnet_counterpart();
-        self.selected_chain_by_family
-            .get(&family)
-            .copied()
-            .filter(|selected| selected.mainnet_counterpart() == family)
-            .unwrap_or(family)
-    }
-}
-
 /// The display currencies this app quotes in.
 ///
 /// The codes are the domain's, so they are here: the reducer cannot be handed
@@ -492,7 +471,6 @@ impl Default for AppSettings {
         Self {
             fiat_currency: FiatCurrency::Usd,
             pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
-            selected_chain_by_family: std::collections::HashMap::new(),
             custom_endpoints: Vec::new(),
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
             background_sync_profile: BackgroundSyncProfile::Balanced,
@@ -674,15 +652,6 @@ pub enum StateCommand {
         token_id: String,
         is_pinned: bool,
     },
-    /// Pick which network of a chain family the user is on.
-    ///
-    /// `chain_id` is any chain in the family; the reducer files the choice
-    /// under the family's mainnet. Selecting the mainnet clears the entry
-    /// rather than storing it, so "no choice made" and "chose mainnet" are the
-    /// same state and cannot drift apart.
-    SelectChainForFamily {
-        chain_id: crate::registry::Chain,
-    },
     /// Add a custom token. Trim input, uppercase the symbol, validate the
     /// contract using the chain's rule, and reject duplicates.
     /// Rejection emits `tokenPreferenceRejected` without changing state.
@@ -818,9 +787,6 @@ pub enum StateEvent {
         reason: super::PriceAlertRejection,
     },
     PriceAlertsEvaluated,
-    SelectedChainChanged {
-        chain_id: crate::registry::Chain,
-    },
     PinnedDashboardAssetsChanged,
     QuotesUpdated,
     FiatRatesChanged,
@@ -900,21 +866,6 @@ fn valid_price_id(value: &str) -> bool {
 
 fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
     StateEvent::TokenPreferenceRejected { reason }
-}
-
-/// Chain, then the catalog's own rows before the user's, then symbol.
-///
-/// The same order `merge_built_in_token_preferences` produces, so a list
-/// that has just been added to still matches the one a reload builds.
-fn sort_token_preferences(entries: &mut [crate::store::wallet_domain::CoreTokenPreferenceEntry]) {
-    entries.sort_by(|lhs, rhs| {
-        lhs.token
-            .chain_id
-            .str_id()
-            .cmp(rhs.token.chain_id.str_id())
-            .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
-            .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
-    });
 }
 
 /// Apply a state command in place, returning only the events.
@@ -1294,7 +1245,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                             },
                         },
                     );
-                    sort_token_preferences(&mut state.token_preferences);
+                    crate::store::sort_token_preferences(&mut state.token_preferences);
                     events.push(StateEvent::TokenPreferencesChanged {
                         symbol: Some(symbol),
                     });
@@ -1343,7 +1294,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 token.decimals = decimals;
                 state.quotes.prices.remove(&token.deployment_id);
                 state.quotes.prices_attempt_at = None;
-                sort_token_preferences(&mut state.token_preferences);
+                crate::store::sort_token_preferences(&mut state.token_preferences);
                 events.push(StateEvent::TokenPreferencesChanged {
                     symbol: Some(symbol),
                 });
@@ -1404,29 +1355,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             let defaults = crate::store::built_in_token_preferences();
             if defaults != state.token_preferences {
                 state.token_preferences = defaults;
-                sort_token_preferences(&mut state.token_preferences);
+                crate::store::sort_token_preferences(&mut state.token_preferences);
                 events.push(StateEvent::TokenPreferencesChanged { symbol: None });
-            }
-        }
-        StateCommand::SelectChainForFamily { chain_id: chosen } => {
-            let family = chosen.mainnet_counterpart();
-            let before = state.settings.selected_chain_by_family.clone();
-            state
-                .settings
-                .selected_chain_by_family
-                .insert(family, chosen);
-            for wallet in &mut state.wallets {
-                if wallet.chain_id.mainnet_counterpart() == family {
-                    wallet.chain_id = chosen;
-                    wallet.derivation_path = wallet
-                        .addresses
-                        .iter()
-                        .find(|a| a.chain_id == chosen)
-                        .and_then(|a| a.derivation_path.clone());
-                }
-            }
-            if before != state.settings.selected_chain_by_family {
-                events.push(StateEvent::SelectedChainChanged { chain_id: chosen });
             }
         }
         StateCommand::ResetPinnedDashboardAssets => {

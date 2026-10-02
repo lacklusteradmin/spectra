@@ -63,12 +63,11 @@ async fn imported_wallets_land_in_core_state() {
     );
 }
 
-/// A seed import stores an address for every network of the family, so
-/// switching to a testnet is a read rather than a derivation — which a
-/// password-sealed wallet could not do. The addresses survive into the stored
-/// record, which is what makes the switch work after a restart.
+/// A seed import stores the address of the network it names, valid by that
+/// network's own validator, and no other network's: a wallet never changes
+/// network, so another network's address would be data nothing reads.
 #[tokio::test]
-async fn a_seed_import_stores_one_address_per_network_of_its_family() {
+async fn a_seed_import_stores_only_its_own_networks_address() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
@@ -92,32 +91,22 @@ async fn a_seed_import_stores_one_address_per_network_of_its_family() {
         .wallets;
     assert_eq!(stored.len(), 1);
     let addresses = &stored[0].addresses;
-    for network in crate::registry::Chain::Bitcoin.network_choices() {
-        let address = addresses
-            .get(network.address_slot())
-            .unwrap_or_else(|| panic!("no address for {}", network.str_id()));
-        let verdict = crate::validation::address::validate_address(
-            crate::validation::address::AddressValidationRequest {
-                kind: network.address_validation_kind().to_string(),
-                value: address.clone(),
-            },
-        );
-        assert!(
-            verdict.is_valid,
-            "{} stored {address}, which its own validator refuses",
-            network.str_id()
-        );
-    }
-    // The networks are different keys, so the mainnet address is not the
-    // testnet one.
-    assert_ne!(
-        addresses.get(crate::registry::Chain::Bitcoin.address_slot()),
-        addresses.get(crate::registry::Chain::BitcoinTestnet4.address_slot())
+    let bitcoin = crate::registry::Chain::Bitcoin;
+    let address = addresses
+        .get(bitcoin.address_slot())
+        .expect("no Bitcoin address");
+    assert!(crate::derivation::import::is_valid_watch_only_address(
+        bitcoin,
+        address.clone()
+    ));
+    assert_eq!(
+        addresses.get(crate::registry::Chain::BitcoinTestnet4.address_slot()),
+        None
     );
 }
 
 #[tokio::test]
-async fn a_network_selection_applies_only_to_its_own_family() {
+async fn each_wallet_is_on_the_network_its_import_named() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
@@ -128,16 +117,9 @@ async fn a_network_selection_applies_only_to_its_own_family() {
         .open_state(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
-    // The selection is core's own setting, not something the commit carries.
-    service
-        .apply_state_command(crate::store::state::StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::BitcoinTestnet,
-        })
-        .await
-        .unwrap();
     let outcome = service
         .import_wallets(commit(&[
-            crate::registry::Chain::Bitcoin,
+            crate::registry::Chain::BitcoinTestnet,
             crate::registry::Chain::Solana,
         ]))
         .await
@@ -152,7 +134,6 @@ async fn a_network_selection_applies_only_to_its_own_family() {
         by_chain[&crate::registry::Chain::Bitcoin].chain_id,
         crate::registry::Chain::BitcoinTestnet
     );
-    // Choosing Bitcoin testnet must not drag the Solana wallet with it.
     assert_eq!(
         by_chain[&crate::registry::Chain::Solana].chain_id,
         crate::registry::Chain::Solana
@@ -194,10 +175,12 @@ impl crate::store::secret_store::SecretStore for FailingSecrets {
         key: String,
         value: String,
     ) -> Result<(), crate::store::secret_store::SecretStoreError> {
-        if self
-            .writes
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            == 1
+        // The device key is minted on the first seal and is not a wallet's.
+        if kind != crate::store::secret_store::SecretClass::DeviceKey
+            && self
+                .writes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                == 1
         {
             return Err(crate::store::secret_store::SecretStoreError::Backend {
                 message: "injected write failure".into(),
@@ -211,6 +194,18 @@ impl crate::store::secret_store::SecretStore for FailingSecrets {
         key: String,
     ) -> Result<(), crate::store::secret_store::SecretStoreError> {
         self.inner.delete_secret(kind, key)
+    }
+    fn wrap_device_key(
+        &self,
+        key: Vec<u8>,
+    ) -> Result<Vec<u8>, crate::store::secret_store::SecretStoreError> {
+        self.inner.wrap_device_key(key)
+    }
+    fn unwrap_device_key(
+        &self,
+        wrapped: Vec<u8>,
+    ) -> Result<Vec<u8>, crate::store::secret_store::SecretStoreError> {
+        self.inner.unwrap_device_key(wrapped)
     }
 }
 
@@ -233,7 +228,8 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
     ]);
     assert!(service.import_wallets(input.clone()).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());
-    assert_eq!(store.inner.len(), 0);
+    // Only the device key is left, for every later seal to reuse.
+    assert_eq!(store.inner.len(), 1);
     assert!(
         crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(
             path.to_str().unwrap()
@@ -328,7 +324,8 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
             .await
             .is_err()
     );
-    assert_eq!(store.len(), 0);
+    // Only the device key is left, for every later seal to reuse.
+    assert_eq!(store.len(), 1);
     assert!(service.app_state().await.wallets.is_empty());
 }
 
@@ -451,10 +448,9 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
 }
 
 #[tokio::test]
-async fn testnet_paths_survive_reopen_switching_and_signing() {
+async fn testnet_paths_survive_reopen_and_signing() {
     use crate::registry::Chain;
     use crate::store::secret_backends::InMemorySecretStore;
-    use crate::store::state::StateCommand;
     use std::sync::Arc;
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
@@ -463,7 +459,12 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
     service.open_state(db.clone()).await.unwrap();
-    let mut input = commit(&[crate::registry::Chain::Bitcoin]);
+    let mut input = commit(&[
+        Chain::BitcoinTestnet4,
+        Chain::BitcoinSignet,
+        Chain::BitcoinTestnet,
+        Chain::Bitcoin,
+    ]);
     input.password = Some("test-password".into());
     // Custom mainnet and testnet paths must not overwrite each other.
     input
@@ -477,8 +478,7 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
     input
         .seed_derivation_paths
         .set_path_for(Chain::BitcoinSignet, "m/84'/0'/9'/0/0");
-    let outcome = service.import_wallets(input).await.unwrap();
-    let wallet_id = outcome.wallets[0].id.clone();
+    service.import_wallets(input).await.unwrap();
     drop(service);
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets);
@@ -489,12 +489,12 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
         (Chain::BitcoinTestnet, "m/84'/1'/0'/0/0"),
         (Chain::Bitcoin, "m/84'/0'/2'/0/0"),
     ] {
-        service
-            .apply_state_command(StateCommand::SelectChainForFamily { chain_id: chain })
-            .await
-            .unwrap();
         let state = service.app_state().await;
-        let wallet = &state.wallets[0];
+        let wallet = state
+            .wallets
+            .iter()
+            .find(|wallet| wallet.chain_id == chain)
+            .expect("one wallet per imported network");
         assert_eq!(wallet.derivation_path.as_deref(), Some(path));
         let expected = crate::derivation::dispatch::derive_for_chain(
             chain, MNEMONIC, path, None, None, None, true, false, false,
@@ -505,7 +505,7 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
         assert_eq!(wallet.address_on(chain), Some(expected.as_str()));
         assert_eq!(
             service
-                .send_identity_address(wallet_id.clone(), chain, Some("test-password".into()))
+                .send_identity_address(wallet.id.clone(), chain, Some("test-password".into()))
                 .await
                 .unwrap(),
             expected

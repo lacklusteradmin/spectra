@@ -309,8 +309,12 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             out.text(|| {
                 for artifact in &artifacts {
                     println!(
-                        "{} {:?} {} {}",
-                        artifact.id, artifact.stage, artifact.chain_id, artifact.amount
+                        "{} {:?} {} {} {}",
+                        artifact.id,
+                        artifact.stage,
+                        artifact.chain_id,
+                        artifact.amount,
+                        artifact.symbol
                     );
                 }
             });

@@ -117,8 +117,13 @@ impl WalletService {
         })
         .await
     }
+}
 
+impl WalletService {
     /// Bind the user's review to an address. A changed name requires a new review.
+    ///
+    /// Not exported: the build binds the review itself, and the CLI calls it
+    /// as Rust.
     pub async fn verify_send_destination(
         &self,
         chain: crate::registry::Chain,

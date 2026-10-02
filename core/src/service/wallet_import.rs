@@ -154,32 +154,13 @@ impl WalletService {
                     }
                 }
             }
-            // The two inputs carry addresses of different provenance, so they are
-            // judged against different networks.
-            //
-            // `resolved_addresses` contains core-derived addresses for each
-            // concrete network, stored under that network's validated slot.
-            // Validate each slot as its own network, independently of the current
-            // UI selection.
-            //
-            // `watch_only_entries` holds what the user *typed*, for the network
-            // they are on, and `ImportDraft` has no testnet row to put it in — so
-            // a testnet address arrives in the mainnet slot and only the mode says
-            // how to read it.
-            //
-            // The selection is core's setting, read here.
-            let typed_networks = crate::derivation::import::ImportNetworks {
-                by_family: this.app_state().await.settings.selected_chain_by_family,
-            };
+            // Core-derived addresses are judged by the network that owns their
+            // slot; typed watch-only addresses by the chain they were typed for.
             let (validated, mut rejected_addresses) =
-                crate::derivation::import::validated_addresses(
-                    &resolved_addresses,
-                    &crate::derivation::import::ImportNetworks::default(),
-                );
+                crate::derivation::import::validated_addresses(&resolved_addresses);
             let (validated_watch_only, rejected_watch_only) =
                 crate::derivation::import::validated_watch_only_entries(
                     &commit.request.watch_only_entries,
-                    &typed_networks,
                 );
             commit.request.watch_only_entries = validated_watch_only;
             rejected_addresses.extend(rejected_watch_only);
@@ -202,8 +183,7 @@ impl WalletService {
                 }
                 Err(message) => return Err(SpectraBridgeError::from(message)),
             };
-            let mut wallets =
-                crate::derivation::import::wallets_for_import(&commit, &plan, &typed_networks);
+            let mut wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
             let is_watch_only = commit.request.is_watch_only_import;
             let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
             let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);

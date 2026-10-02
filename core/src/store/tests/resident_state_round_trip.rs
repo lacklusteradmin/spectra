@@ -132,12 +132,6 @@ fn resetting_settings_restores_every_default() {
             currency: crate::store::state::FiatCurrency::Eur,
         },
     );
-    reduce_state_in_place(
-        &mut state,
-        StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::BitcoinTestnet,
-        },
-    );
     assert_ne!(state.settings, defaults, "nothing was actually changed");
 
     let events = reduce_state_in_place(&mut state, StateCommand::ResetAppSettings);

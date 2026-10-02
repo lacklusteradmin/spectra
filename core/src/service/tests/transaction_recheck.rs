@@ -66,6 +66,11 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         assert_eq!(change.old_status.as_raw(), previous);
         assert_eq!(change.new_status, CoreTransactionStatus::Confirmed);
         assert_eq!(change.status_changed, previous != "confirmed");
+        assert_eq!(
+            change.notify,
+            previous != "confirmed",
+            "only a new outcome is news"
+        );
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path.clone()).await.unwrap();
         let rows = reopened.fetch_all_history_records().await.unwrap();
@@ -83,6 +88,36 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         );
     }
     server.verify().await;
+}
+
+/// The setting is core's to apply, as it is for price alerts and large
+/// movements: the change is still reported, for a front end's own record of
+/// it, but not as something to tell the user.
+#[tokio::test]
+async fn a_status_change_is_not_announced_while_status_notifications_are_off() {
+    let server = MockServer::start().await;
+    let (service, _) = service(Chain::BitcoinTestnet4, &server).await;
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"confirmed":true,"block_height":123})),
+        )
+        .mount(&server)
+        .await;
+    service
+        .apply_state_command(crate::store::state::StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::UseTransactionStatusNotifications {
+                value: false,
+            },
+        })
+        .await
+        .unwrap();
+    save(&service, record("target", Chain::BitcoinTestnet4, "failed")).await;
+    let change = service
+        .recheck_transaction_status("target".into())
+        .await
+        .unwrap();
+    assert!(change.status_changed);
+    assert!(!change.notify);
 }
 
 #[tokio::test]
@@ -108,6 +143,10 @@ async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
         .await
         .unwrap();
     assert_eq!(change.new_status, CoreTransactionStatus::Pending);
+    assert!(
+        !change.notify,
+        "pending again is not an outcome to announce"
+    );
     let row = service.transactions().await.unwrap().remove(0);
     assert_eq!(row.receipt_block_number, None);
     assert_eq!(row.confirmation_count, Some(0));

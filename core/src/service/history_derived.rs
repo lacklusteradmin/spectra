@@ -182,6 +182,57 @@ mod tests {
         assert_eq!(earliest.len(), 1);
         assert_eq!(earliest[0].earliest_created_at_unix, 1_723_507_200.25);
     }
+
+    /// A limit past the page cap is cut to it rather than refused, so a caller
+    /// follows the cursor without knowing the cap; a zero limit is refused.
+    #[tokio::test]
+    async fn a_page_larger_than_the_cap_is_cut_to_it() {
+        let service = WalletService::new(Vec::new()).expect("service");
+        service.open_state(temp_db("page_cap")).await.expect("open");
+        crate::wallet_db::wallet_upsert(
+            &service.bound_database().await.unwrap(),
+            &crate::store::state::WalletState::single_address(
+                "w1",
+                "W",
+                crate::registry::Chain::Bitcoin,
+                "bc1qreceive",
+                None,
+                true,
+            ),
+        )
+        .unwrap();
+        let cap = crate::service::HISTORY_PAGE_MAX as usize;
+        let records = (0..=cap)
+            .map(|n| {
+                let id = format!("00000000-0000-0000-0000-{n:012}");
+                let mut payload = record(&id, "w1", "bitcoin", 1_700_000_000.0 + n as f64);
+                payload.transaction_hash = Some(format!("{n:064x}"));
+                crate::wallet_db::history_record_from_payload(payload)
+            })
+            .collect();
+        service
+            .upsert_history_records(records)
+            .await
+            .expect("upsert");
+
+        let query = |limit| crate::service::HistoryQuery {
+            limit,
+            ..Default::default()
+        };
+        let first = service.history_page(query(u32::MAX)).await.expect("page");
+        assert_eq!(first.records.len(), cap);
+        assert!(first.has_more);
+        let rest = service
+            .history_page(crate::service::HistoryQuery {
+                cursor: first.next_cursor,
+                ..query(u32::MAX)
+            })
+            .await
+            .expect("next page");
+        assert_eq!(rest.records.len(), 1);
+        assert!(!rest.has_more);
+        assert!(service.history_page(query(0)).await.is_err());
+    }
 }
 
 #[cfg(test)]

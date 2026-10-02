@@ -105,7 +105,7 @@ impl WalletService {
             None
         };
         let confirmed = status.confirmed;
-        let (change, tracker) = tokio::task::spawn_blocking(move || {
+        let (mut change, tracker) = tokio::task::spawn_blocking(move || {
             crate::wallet_db::history_update_chain(&database, chain, |rows| {
                 let mut row = rows
                     .into_iter()
@@ -170,6 +170,7 @@ impl WalletService {
                     old_status: current_status,
                     new_status,
                     status_changed: decision.status_changed,
+                    notify: false,
                 };
                 let tracker = trackers.remove(&current.id).unwrap();
                 // Keep the indexed timestamp and unrelated metadata from the latest row.
@@ -182,7 +183,7 @@ impl WalletService {
             .write()
             .await
             .insert(change.id.clone(), tracker);
-        self.record_status_changes(std::slice::from_ref(&change))
+        self.record_status_changes(std::slice::from_mut(&mut change))
             .await;
         Ok(change)
     }

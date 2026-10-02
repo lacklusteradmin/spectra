@@ -36,8 +36,8 @@ impl WalletImportAddresses {
     }
 }
 
-/// Watch-only address lists, keyed by concrete chain id (or family id for the selected network). A watch-only
-/// import can supply several addresses per chain; each becomes one wallet.
+/// Watch-only address lists, keyed by concrete chain id. A watch-only import
+/// can supply several addresses per chain; each becomes one wallet.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportWatchOnlyEntries {
@@ -203,14 +203,7 @@ pub fn derive_private_key_import_address(
     Ok(std::iter::once((chain, address)).collect())
 }
 
-/// Derive an address for every network of every selected chain, keyed by chain
-/// display name.
-///
-/// Every network, not just the mainnet: a wallet on Bitcoin Testnet4 has a
-/// different key and a different address. Deriving them here means the seed
-/// is needed once, at import — a password-sealed wallet cannot derive on each
-/// read — and the address for a network the user switches to later is
-/// already stored under that network's own slot.
+/// Derive an address for every selected chain, keyed by chain.
 ///
 /// The path comes from `CoreSeedDerivationPaths::path_for` for the concrete
 /// network. A chain whose derivation fails is skipped
@@ -229,16 +222,6 @@ pub fn derive_import_addresses(
     let mut chains = selected_chain_ids.to_vec();
     if chains.iter().any(|c| c.is_evm()) && !chains.contains(&Chain::Ethereum) {
         chains.push(Chain::Ethereum);
-    }
-    // The testnets of each selected family, so switching network is a read.
-    for network in chains
-        .iter()
-        .flat_map(|chain| chain.network_choices())
-        .collect::<Vec<_>>()
-    {
-        if !chains.contains(&network) {
-            chains.push(network);
-        }
     }
     for chain in chains {
         let path = match paths.path_for(chain) {
@@ -280,31 +263,17 @@ pub struct WalletImportOutcome {
     pub rejected_addresses: Vec<String>,
 }
 
-/// Which network the import's addresses should be validated against.
-///
-/// Only two chains have a user-selectable network mode, and both put their
-/// testnet addresses in the *mainnet* slot: the import form is keyed by
-/// mainnet display name, so there is no "Bitcoin Testnet" row to carry them.
-/// Without this, validating the `bitcoin` slot as mainnet refuses a testnet
-/// wallet.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ImportNetworks {
-    /// `mainnet id -> selected id`, absent meaning mainnet. Two mode fields
-    /// before, each with its own match to turn it back into a chain.
-    pub by_family: std::collections::HashMap<Chain, Chain>,
-}
-
-/// Keep a Bitcoin account xpub only if it carries a serialization prefix this
-/// network uses. `None` in, `None` out.
-fn validated_bitcoin_xpub(
-    xpub: Option<&String>,
-    networks: &ImportNetworks,
-) -> (Option<String>, Option<String>) {
+/// Keep a Bitcoin account xpub only if it carries a mainnet serialization
+/// prefix: one per BIP, 44 → `xpub`, 49 → `ypub`, 84 → `zpub`. Only Bitcoin
+/// mainnet takes an account xpub (`Chain::accepts_account_xpub`). An xpub is
+/// not an address, so `validate_address` has nothing to say about it — but
+/// storing an arbitrary string as one means a watch wallet that derives
+/// nothing and shows no address. `None` in, `None` out.
+fn validated_bitcoin_xpub(xpub: Option<&String>) -> (Option<String>, Option<String>) {
     let Some(trimmed) = xpub.map(|value| value.trim()).filter(|v| !v.is_empty()) else {
         return (None, None);
     };
-    if networks
-        .bitcoin_xpub_prefixes()
+    if ["xpub", "ypub", "zpub"]
         .iter()
         .any(|prefix| trimmed.starts_with(prefix))
     {
@@ -314,76 +283,36 @@ fn validated_bitcoin_xpub(
     }
 }
 
-impl ImportNetworks {
-    /// Serialization prefixes a Bitcoin account xpub may carry on this network.
-    ///
-    /// One per BIP: 44 → `xpub`, 49 → `ypub`, 84 → `zpub`, with the testnet
-    /// counterparts. An xpub is not an address, so `validate_address` has
-    /// nothing to say about it — but storing an arbitrary string as one means
-    /// a watch wallet that derives nothing and shows no address.
-    fn bitcoin_xpub_prefixes(&self) -> &'static [&'static str] {
-        if self.selected(Chain::Bitcoin).is_testnet() {
-            &["tpub", "upub", "vpub"]
-        } else {
-            &["xpub", "ypub", "zpub"]
-        }
-    }
-
-    /// The network selected for a family, defaulting to its mainnet.
-    pub(crate) fn selected(&self, chain: Chain) -> Chain {
-        if chain.is_testnet() {
-            return chain;
-        }
-        let family = chain.mainnet_counterpart();
-        self.by_family
-            .get(&family)
-            .copied()
-            .filter(|c| c.mainnet_counterpart() == family)
-            .unwrap_or(family)
-    }
-
-    /// The chain whose address format answers for `slot`.
-    ///
-    /// No per-family arms: find the chain that owns the slot, then apply the
-    /// selection to it. Every other slot is shared by a family (all EVM
-    /// mainnets use one), and applying a selection there is a no-op.
-    ///
-    /// A testnet's slot is its own id, so it names a network rather than a
-    /// family and the selection does not apply: an address stored under
-    /// `bitcoin-testnet-4` is a testnet address whatever network the importer
-    /// is currently looking at. The selection still applies to the family slot,
-    /// which is where a *typed* testnet address arrives — the import draft has
-    /// no testnet row to put one in.
-    fn chain_for(&self, slot: &str) -> Option<Chain> {
-        let owner = Chain::all().find(|chain| chain.address_slot() == slot)?;
-        if owner.is_testnet() {
-            return Some(owner);
-        }
-        Some(self.selected(owner))
-    }
-}
-
-/// Validate one address against the chain that owns `slot` on this network.
-///
-/// `Ok` carries the normalized form to store; `Err` means the address does not
-/// parse for that chain.
-fn validated_address_in_slot(
-    slot: &str,
-    address: &str,
-    networks: &ImportNetworks,
-) -> Result<String, ()> {
-    let chain = networks.chain_for(slot).ok_or(())?;
+/// Validate one address as `chain`'s, returning the normalized form to store,
+/// or `None` when it does not parse for that chain.
+fn normalized_import_address(chain: Chain, address: &str) -> Option<String> {
     let result = validate_address(AddressValidationRequest {
         kind: chain.address_validation_kind().to_string(),
         value: address.to_string(),
     });
-    if result.is_valid {
-        Ok(result
+    result.is_valid.then(|| {
+        result
             .normalized_value
-            .unwrap_or_else(|| address.to_string()))
-    } else {
-        Err(())
-    }
+            .unwrap_or_else(|| address.to_string())
+    })
+}
+
+/// Whether a watch-only import on `chain` would keep `address`: the rule
+/// `validated_watch_only_entries` applies, for a form to judge each line by.
+#[uniffi::export]
+pub fn is_valid_watch_only_address(chain: Chain, address: String) -> bool {
+    chain.supports_watch_only_import() && normalized_import_address(chain, address.trim()).is_some()
+}
+
+/// Validate one address against the chain that owns `slot`.
+///
+/// `Ok` carries the normalized form to store; `Err` means the address does not
+/// parse for that chain.
+fn validated_address_in_slot(slot: &str, address: &str) -> Result<String, ()> {
+    let chain = Chain::all()
+        .find(|chain| chain.address_slot() == slot)
+        .ok_or(())?;
+    normalized_import_address(chain, address).ok_or(())
 }
 
 /// Drop any address that does not validate for its chain, reporting what was
@@ -393,7 +322,6 @@ fn validated_address_in_slot(
 /// storing none: it renders as the wallet's receive address.
 pub(crate) fn validated_addresses(
     addresses: &WalletImportAddresses,
-    networks: &ImportNetworks,
 ) -> (WalletImportAddresses, Vec<String>) {
     let mut kept = HashMap::new();
     let mut rejected = Vec::new();
@@ -402,15 +330,14 @@ pub(crate) fn validated_addresses(
         if trimmed.is_empty() {
             continue;
         }
-        match validated_address_in_slot(slot, trimmed, networks) {
+        match validated_address_in_slot(slot, trimmed) {
             Ok(normalized) => {
                 kept.insert(slot.clone(), normalized);
             }
             Err(()) => rejected.push(trimmed.to_string()),
         }
     }
-    let (bitcoin_xpub, refused_xpub) =
-        validated_bitcoin_xpub(addresses.bitcoin_xpub.as_ref(), networks);
+    let (bitcoin_xpub, refused_xpub) = validated_bitcoin_xpub(addresses.bitcoin_xpub.as_ref());
     rejected.extend(refused_xpub);
     (
         WalletImportAddresses {
@@ -430,7 +357,6 @@ pub(crate) fn validated_addresses(
 /// could not fail and skipped the one that could.
 pub(crate) fn validated_watch_only_entries(
     entries: &WalletImportWatchOnlyEntries,
-    networks: &ImportNetworks,
 ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
     let mut kept: HashMap<Chain, Vec<String>> = HashMap::new();
     let mut rejected = Vec::new();
@@ -442,28 +368,14 @@ pub(crate) fn validated_watch_only_entries(
             }
             let normalized = Some(chain)
                 .filter(|chain| chain.supports_watch_only_import())
-                .ok_or(())
-                .and_then(|chain| {
-                    let selected = networks.selected(chain);
-                    let result = validate_address(AddressValidationRequest {
-                        kind: selected.address_validation_kind().to_string(),
-                        value: trimmed.to_string(),
-                    });
-                    if !result.is_valid {
-                        return Err(());
-                    }
-                    Ok(result
-                        .normalized_value
-                        .unwrap_or_else(|| trimmed.to_string()))
-                });
+                .and_then(|chain| normalized_import_address(chain, trimmed));
             match normalized {
-                Ok(normalized) => kept.entry(chain).or_default().push(normalized),
-                Err(()) => rejected.push(trimmed.to_string()),
+                Some(normalized) => kept.entry(chain).or_default().push(normalized),
+                None => rejected.push(trimmed.to_string()),
             }
         }
     }
-    let (bitcoin_xpub, refused_xpub) =
-        validated_bitcoin_xpub(entries.bitcoin_xpub.as_ref(), networks);
+    let (bitcoin_xpub, refused_xpub) = validated_bitcoin_xpub(entries.bitcoin_xpub.as_ref());
     rejected.extend(refused_xpub);
     (
         WalletImportWatchOnlyEntries {
@@ -474,18 +386,16 @@ pub(crate) fn validated_watch_only_entries(
     )
 }
 
-/// Build imported wallets without storing them. Core's network settings
-/// select each wallet's network and initial native holding.
+/// Build imported wallets without storing them. Each wallet is on the network
+/// the import selected for it, for good: there is no switching it later.
 pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     plan: &WalletImportPlan,
-    networks: &ImportNetworks,
 ) -> Vec<crate::store::wallet_domain::WalletView> {
     plan.wallets
         .iter()
         .map(|planned| {
-            // The selection applies only to the family the wallet is on.
-            let network = networks.selected(planned.chain_id);
+            let network = planned.chain_id;
             crate::store::wallet_domain::WalletView {
                 id: planned.wallet_id.clone(),
                 name: planned.name.clone(),
@@ -679,12 +589,8 @@ fn watch_only_addresses_for_chain(
 /// Bitcoin additionally carries the account xpub when one was supplied.
 fn addresses_for_chain(chain: Chain, addresses: &WalletImportAddresses) -> WalletImportAddresses {
     let mut by_slot = HashMap::new();
-    // Store an address for each network in the wallet's family so network
-    // switching does not need to reopen the seed.
-    for network in chain.network_choices() {
-        if let Some(address) = addresses.address_for(network) {
-            by_slot.insert(network.address_slot().to_string(), address.to_string());
-        }
+    if let Some(address) = addresses.address_for(chain) {
+        by_slot.insert(chain.address_slot().to_string(), address.to_string());
     }
     // Ethereum Classic is EVM-shaped but has its own slot, while every other
     // EVM chain shares Ethereum's. A derived EVM wallet holds one key, and its

@@ -774,16 +774,6 @@ impl Chain {
         self.entry().native_coingecko_id.as_str()
     }
 
-    /// Selectable networks: mainnet first, then testnets in registry order.
-    pub fn network_choices(self) -> Vec<Chain> {
-        let mainnet = self.mainnet_counterpart();
-        std::iter::once(mainnet)
-            .chain(
-                Chain::all().filter(move |c| c.is_testnet() && c.mainnet_counterpart() == mainnet),
-            )
-            .collect()
-    }
-
     /// The `bitcoin` crate's network for this chain.
     ///
     /// Replaces `bitcoin_network_for_mode(&str)`, which matched on the mode
@@ -1306,7 +1296,8 @@ impl Chain {
     }
 
     /// Iterator over only mainnet chains.
-    pub fn mainnets() -> impl Iterator<Item = Self> {
+    #[cfg(test)]
+    pub(crate) fn mainnets() -> impl Iterator<Item = Self> {
         Self::all().filter(|c| !c.is_testnet())
     }
 
@@ -1360,16 +1351,6 @@ pub enum PendingStatusPoll {
     None,
 }
 
-/// The networks available for a chain's family, mainnet first.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct NetworkChoice {
-    /// Registry id — what `SelectChainForFamily` takes.
-    pub chain_id: crate::registry::Chain,
-    /// What to show in a picker: "Bitcoin", "Bitcoin Testnet4", …
-    pub title: String,
-    pub is_testnet: bool,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1385,8 +1366,8 @@ mod tests {
         }
     }
 
-    /// Every EVM chain carries its EIP-155 id, and Ethereum's test networks
-    /// carry theirs.
+    /// Every EVM chain carries its EIP-155 id, and each id is the one its
+    /// network signs for.
     #[test]
     fn evm_chains_carry_their_eip155_ids() {
         for chain in Chain::all().filter(|chain| chain.is_evm()) {
@@ -1396,9 +1377,31 @@ mod tests {
                 chain.str_id()
             );
         }
+        assert_eq!(Chain::Ethereum.evm_chain_id().unwrap(), 1);
         assert_eq!(Chain::EthereumSepolia.evm_chain_id().unwrap(), 11_155_111);
         assert_eq!(Chain::EthereumHoodi.evm_chain_id().unwrap(), 560_048);
+        assert_eq!(Chain::Arbitrum.evm_chain_id().unwrap(), 42161);
+        assert_eq!(Chain::Optimism.evm_chain_id().unwrap(), 10);
+        assert_eq!(Chain::Avalanche.evm_chain_id().unwrap(), 43114);
+        assert_eq!(Chain::Base.evm_chain_id().unwrap(), 8453);
         assert_eq!(Chain::EthereumClassic.evm_chain_id().unwrap(), 61);
+        assert_eq!(Chain::BnbChain.evm_chain_id().unwrap(), 56);
+        assert_eq!(Chain::Hyperliquid.evm_chain_id().unwrap(), 999);
+        assert_eq!(Chain::Polygon.evm_chain_id().unwrap(), 137);
+        assert_eq!(Chain::Linea.evm_chain_id().unwrap(), 59144);
+        assert_eq!(Chain::Scroll.evm_chain_id().unwrap(), 534352);
+        assert_eq!(Chain::Blast.evm_chain_id().unwrap(), 81457);
+        assert_eq!(Chain::Mantle.evm_chain_id().unwrap(), 5000);
+        assert_eq!(Chain::Sei.evm_chain_id().unwrap(), 1329);
+        assert_eq!(Chain::Celo.evm_chain_id().unwrap(), 42220);
+        assert_eq!(Chain::Cronos.evm_chain_id().unwrap(), 25);
+        assert_eq!(Chain::OpBnb.evm_chain_id().unwrap(), 204);
+        assert_eq!(Chain::ZkSyncEra.evm_chain_id().unwrap(), 324);
+        assert_eq!(Chain::Sonic.evm_chain_id().unwrap(), 146);
+        assert_eq!(Chain::Berachain.evm_chain_id().unwrap(), 80094);
+        assert_eq!(Chain::Unichain.evm_chain_id().unwrap(), 130);
+        assert_eq!(Chain::Ink.evm_chain_id().unwrap(), 57073);
+        assert_eq!(Chain::XLayer.evm_chain_id().unwrap(), 196);
     }
 
     #[test]
@@ -1481,8 +1484,11 @@ mod tests {
         }
     }
 
-    /// Watch-only support must never be claimed for a chain with no slot to
-    /// read, and Monero must stay excluded.
+    /// Watch-only support must never be claimed for a testnet, and Monero is
+    /// the only mainnet excluded. One piece of iOS copy depends on that: the
+    /// watch-only footer note names Monero while its condition reads the flag.
+    /// A second excluded chain means generalising the string, which is a
+    /// localisation edit rather than something to discover from a screenshot.
     #[test]
     fn watch_only_support_excludes_monero_and_testnets() {
         assert_eq!(
@@ -1492,16 +1498,18 @@ mod tests {
             vec![Chain::Bitcoin],
             "only Bitcoin's import carries an account xpub"
         );
-        assert!(!Chain::Monero.supports_watch_only_import());
-        assert!(!Chain::BitcoinTestnet.supports_watch_only_import());
-        assert!(Chain::Bitcoin.supports_watch_only_import());
-        assert!(Chain::Polygon.supports_watch_only_import());
-        assert!(Chain::EthereumClassic.supports_watch_only_import());
-        for chain in Chain::all() {
-            if chain.supports_watch_only_import() {
-                assert!(!chain.is_testnet(), "{} is a testnet", chain.str_id());
-            }
+        for chain in Chain::all().filter(|c| c.is_testnet()) {
+            assert!(
+                !chain.supports_watch_only_import(),
+                "{} is a testnet",
+                chain.str_id()
+            );
         }
+        let excluded: Vec<&str> = Chain::all()
+            .filter(|c| !c.is_testnet() && !c.supports_watch_only_import())
+            .map(|c| c.str_id())
+            .collect();
+        assert_eq!(excluded, vec!["monero"]);
     }
 
     /// Tracked tokens live exactly on the networks the catalog gives a token
@@ -1535,20 +1543,6 @@ mod tests {
                 chain.str_id()
             );
         }
-    }
-
-    /// Monero is the only mainnet the flag excludes, and one piece of iOS copy
-    /// depends on that: the watch-only footer note names Monero while its
-    /// condition reads the flag. A second excluded chain means generalising the
-    /// string, which is a localisation edit rather than something to discover
-    /// from a screenshot.
-    #[test]
-    fn only_monero_is_excluded_from_watch_only_import() {
-        let excluded: Vec<&str> = Chain::all()
-            .filter(|c| !c.is_testnet() && !c.supports_watch_only_import())
-            .map(|c| c.str_id())
-            .collect();
-        assert_eq!(excluded, vec!["monero"]);
     }
 
     #[test]
@@ -1639,33 +1633,6 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn evm_mainnet_chain_ids_match_eip155() {
-        assert_eq!(Chain::Ethereum.evm_chain_id().unwrap(), 1);
-        assert_eq!(Chain::Arbitrum.evm_chain_id().unwrap(), 42161);
-        assert_eq!(Chain::Optimism.evm_chain_id().unwrap(), 10);
-        assert_eq!(Chain::Avalanche.evm_chain_id().unwrap(), 43114);
-        assert_eq!(Chain::Base.evm_chain_id().unwrap(), 8453);
-        assert_eq!(Chain::EthereumClassic.evm_chain_id().unwrap(), 61);
-        assert_eq!(Chain::BnbChain.evm_chain_id().unwrap(), 56);
-        assert_eq!(Chain::Hyperliquid.evm_chain_id().unwrap(), 999);
-        assert_eq!(Chain::Polygon.evm_chain_id().unwrap(), 137);
-        assert_eq!(Chain::Linea.evm_chain_id().unwrap(), 59144);
-        assert_eq!(Chain::Scroll.evm_chain_id().unwrap(), 534352);
-        assert_eq!(Chain::Blast.evm_chain_id().unwrap(), 81457);
-        assert_eq!(Chain::Mantle.evm_chain_id().unwrap(), 5000);
-        assert_eq!(Chain::Sei.evm_chain_id().unwrap(), 1329);
-        assert_eq!(Chain::Celo.evm_chain_id().unwrap(), 42220);
-        assert_eq!(Chain::Cronos.evm_chain_id().unwrap(), 25);
-        assert_eq!(Chain::OpBnb.evm_chain_id().unwrap(), 204);
-        assert_eq!(Chain::ZkSyncEra.evm_chain_id().unwrap(), 324);
-        assert_eq!(Chain::Sonic.evm_chain_id().unwrap(), 146);
-        assert_eq!(Chain::Berachain.evm_chain_id().unwrap(), 80094);
-        assert_eq!(Chain::Unichain.evm_chain_id().unwrap(), 130);
-        assert_eq!(Chain::Ink.evm_chain_id().unwrap(), 57073);
-        assert_eq!(Chain::XLayer.evm_chain_id().unwrap(), 196);
-    }
 }
 
 // ── FFI surface ──────────────────────────────────────────────────────────
@@ -1695,8 +1662,6 @@ pub struct ChainIdentity {
     /// Which chain's slot this chain's address is stored under. The EVM family
     /// shares Ethereum's.
     pub address_slot: String,
-    /// The address format family `validate_address` dispatches on.
-    pub address_validation_kind: String,
     /// HD discovery walks this chain's addresses past the last used one.
     pub supports_deep_utxo_discovery: bool,
     /// A watch-only import can carry addresses for this chain.
@@ -1714,8 +1679,6 @@ pub struct ChainIdentity {
     pub hosts_tokens: bool,
     /// The mainnet this chain belongs to, or itself.
     pub mainnet_counterpart: Chain,
-    /// The networks this chain's family offers, mainnet first.
-    pub network_choices: Vec<NetworkChoice>,
 }
 
 /// The whole catalog as identities, in declaration order.
@@ -1734,7 +1697,6 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             is_testnet: chain.is_testnet(),
             is_evm: chain.is_evm(),
             address_slot: chain.address_slot().to_string(),
-            address_validation_kind: chain.address_validation_kind().to_string(),
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
             supports_watch_only_import: chain.supports_watch_only_import(),
             accepts_account_xpub: chain.accepts_account_xpub(),
@@ -1743,15 +1705,6 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             has_send_preview: chain.has_send_preview(),
             hosts_tokens: chain.hosts_tokens(),
             mainnet_counterpart: chain.mainnet_counterpart(),
-            network_choices: chain
-                .network_choices()
-                .into_iter()
-                .map(|c| NetworkChoice {
-                    chain_id: c,
-                    title: c.chain_display_name().to_string(),
-                    is_testnet: c.is_testnet(),
-                })
-                .collect(),
         })
         .collect()
 }

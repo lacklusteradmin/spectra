@@ -50,11 +50,8 @@ Search both Rust names and generated camelCase names before deleting an export.
 implementations need no Swift caller. A dead Swift wrapper does not prove that
 the export behind it is unused.
 
-Use `scripts/unreachable-exports.sh` to find candidates and
-`scripts/count-exports.sh` to measure the callable surface. Cross-check generated
-bindings when macros are involved; exclude `FfiConverter*` helpers from API
-counts. Counting attribute occurrences or all generated `public func` lines
-measures neither the same set nor the same thing.
+Use `scripts/unreachable-exports.sh` to find candidates. Cross-check generated
+bindings when macros are involved.
 
 `scripts/uncalled-core-fns.sh` checks the layer below. A `pub fn` that no
 longer carries `#[uniffi::export]` is invisible to both gates rustc offers —

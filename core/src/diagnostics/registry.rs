@@ -182,7 +182,7 @@ mod tests {
         assert!(diagnostics_all(crate::registry::Chain::Bitcoin).is_empty());
     }
 
-    /// History is the family's, endpoints the selected network's, and each
+    /// History is the family's, endpoints the named network's, and each
     /// carries the time its run finished.
     #[test]
     fn recorded_diagnostics_join_family_history_with_network_endpoints() {

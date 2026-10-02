@@ -76,6 +76,13 @@ try:
         run(*token_args,'--decimals','6',success=False)
         state['metadata_fail']=False
         first=build();competing=build();assert first['stage']=='Prepared' and not state['submitted']
+        assert first['symbol']=='ETH', first['symbol']
+        renamed=build()
+        with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
+            data=json.loads(db.execute('SELECT payload FROM send_artifacts WHERE id=?',(renamed['id'],)).fetchone()[0])
+            data['view']['symbol']='USDC'
+            db.execute('UPDATE send_artifacts SET payload=? WHERE id=?',(json.dumps(data),renamed['id']))
+        run('send','inspect',renamed['id'],success=False)
         assert run('send','inspect',first['id'])['artifact']==first
         assert first['review']['warnings'] == [{'code':'new_address'}]
         self_send=run('send','build','--from','Stages','--to','0x9858EfFD232B4033E47d90003D41EC34EcaEda94',

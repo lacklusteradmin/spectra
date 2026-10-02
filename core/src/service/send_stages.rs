@@ -529,6 +529,12 @@ impl WalletService {
                     .contract_address
                     .clone()
                     .unwrap_or_else(|| chain.coin_symbol().into()),
+                symbol: super::send_records::send_asset_names(
+                    &state,
+                    chain,
+                    request.contract_address.as_deref(),
+                )
+                .0,
                 created_at: crate::store::now_unix().floor(),
                 review_digest: String::new(),
                 review,

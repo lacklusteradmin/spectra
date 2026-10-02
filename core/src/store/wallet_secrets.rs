@@ -128,14 +128,28 @@ fn engine() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
 
+impl Blob {
+    /// Seeds and private keys are sealed under the device key on the way to
+    /// the store, password or not; the salt and verifier are not secret alone.
+    fn is_signing_material(self) -> bool {
+        matches!(self, Blob::Seed | Blob::PrivateKey)
+    }
+}
+
 fn write_blob(
     store: &dyn SecretStore,
     wallet_id: &str,
     blob: Blob,
     value: &[u8],
 ) -> Result<(), WalletSecretError> {
+    let encoded = Zeroizing::new(engine().encode(value));
+    let stored = if blob.is_signing_material() {
+        super::device_key::seal(store, encoded.as_bytes())?
+    } else {
+        encoded.to_string()
+    };
     store
-        .save_secret(blob.class(), blob.key(wallet_id), engine().encode(value))
+        .save_secret(blob.class(), blob.key(wallet_id), stored)
         .map_err(WalletSecretError::from)
 }
 
@@ -144,7 +158,10 @@ fn read_blob(
     wallet_id: &str,
     blob: Blob,
 ) -> Result<Vec<u8>, WalletSecretError> {
-    let raw = store.load_secret(blob.class(), blob.key(wallet_id))?;
+    let mut raw = Zeroizing::new(store.load_secret(blob.class(), blob.key(wallet_id))?);
+    if blob.is_signing_material() {
+        raw = super::device_key::open(store, &raw)?;
+    }
     engine()
         .decode(raw.trim())
         .map_err(|e| WalletSecretError::Corrupt {
@@ -566,6 +583,26 @@ mod tests {
         );
     }
 
+    /// No password is no reason to store a phrase or key in the clear: both
+    /// are sealed under the device key on the way to the store.
+    #[test]
+    fn material_without_a_password_is_still_device_sealed() {
+        let store = InMemorySecretStore::new();
+        store_seed_phrase(&store, "w", PHRASE, None).unwrap();
+        let key = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
+        store_private_key(&store, "k", key, None).unwrap();
+        let seed = store
+            .load_secret(SecretClass::Seed, Blob::Seed.key("w"))
+            .unwrap();
+        let private = store
+            .load_secret(SecretClass::PrivateKey, Blob::PrivateKey.key("k"))
+            .unwrap();
+        assert!(!seed.contains("abandon") && !seed.contains(&engine().encode(PHRASE)));
+        assert!(!private.contains(&key[..16]) && !private.contains(&engine().encode(key)));
+        assert_eq!(&*load_seed_phrase(&store, "w", None).unwrap(), PHRASE);
+        assert_eq!(&*load_private_key(&store, "k", None).unwrap(), key);
+    }
+
     #[test]
     fn each_wallet_gets_its_own_salt() {
         // Two wallets sealed with the same phrase and password must not
@@ -723,6 +760,12 @@ mod tests {
         }
         fn delete_secret(&self, kind: SecretClass, key: String) -> Result<(), SecretStoreError> {
             self.0.delete_secret(kind, key)
+        }
+        fn wrap_device_key(&self, key: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
+            self.0.wrap_device_key(key)
+        }
+        fn unwrap_device_key(&self, wrapped: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
+            self.0.unwrap_device_key(wrapped)
         }
     }
 

@@ -81,8 +81,8 @@ mod history_cursor;
 pub(crate) mod history_derived;
 mod history_query;
 pub use history_query::{
-    EndpointHolder, HISTORY_SMALL_AMOUNT_THRESHOLD, HistoryPage, HistoryQuery, HistoryQueryFilter,
-    TransactionSnapshot,
+    EndpointHolder, HISTORY_PAGE_MAX, HISTORY_SMALL_AMOUNT_THRESHOLD, HistoryPage, HistoryQuery,
+    HistoryQueryFilter, TransactionSnapshot,
 };
 mod history_refresh;
 pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
@@ -190,6 +190,15 @@ pub struct WalletService {
     pub(crate) secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Canonical in-memory wallet + holdings state.
     pub(crate) wallet_state: Arc<AsyncRwLock<CoreAppState>>,
+    /// The revision of each state `publish_state` commits — every state
+    /// command, import, reset and open, but not a sweep's balances. The refresh
+    /// engine follows it to learn that the wallets changed.
+    pub(crate) published: Arc<tokio::sync::watch::Sender<u64>>,
+    /// Bumped when a published state adds or removes a wallet or changes one
+    /// in anything but its balances. Carried by the portfolio snapshot, so a
+    /// view keyed on a wallet's name and addresses is not re-read for every
+    /// balance a sweep lands.
+    pub(crate) wallet_identity_revision: Arc<std::sync::atomic::AtomicU64>,
     /// Database handle for persistent state and key/value storage.
     /// Unbound until `open_state` is called, in which case commands apply in
     /// memory only — the shape tests and short-lived tools want that.
@@ -248,6 +257,8 @@ impl WalletService {
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(AsyncRwLock::new(CoreAppState::default())),
+            published: Arc::new(tokio::sync::watch::Sender::new(0)),
+            wallet_identity_revision: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             state_binding: Arc::new(crate::service::state::StateBinding::default()),
             status_trackers: Arc::new(AsyncRwLock::new(HashMap::new())),
             keypool: Arc::new(crate::service::keypool::Keypool::default()),

@@ -74,23 +74,10 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
 }
 
 #[tokio::test]
-async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
-    let path = db("switch");
+async fn an_esplora_change_restarts_the_bitcoin_feed() {
+    let path = db("esplora");
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(path.clone()).await.expect("open");
-
-    service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
-    service
-        .apply_state_command(StateCommand::SelectChainForFamily {
-            chain_id: crate::registry::Chain::BitcoinTestnet,
-        })
-        .await
-        .expect("switch");
-    assert!(
-        !service
-            .history_cursor(crate::registry::Chain::Bitcoin, "w".into())
-            .is_exhausted
-    );
 
     service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
     service

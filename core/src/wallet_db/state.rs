@@ -29,7 +29,6 @@ pub(super) const META_FIAT_RATES: &str = "fiat_rates_from_usd";
 /// service writer is held. Unchanged collections are neither encoded nor written.
 pub(crate) struct AppStateChanges {
     replace: bool,
-    reset_chains: Vec<crate::registry::Chain>,
     wallets: Vec<(usize, WalletState, String)>,
     removed_wallets: Vec<String>,
     addresses: Vec<(usize, AddressBookEntry, String)>,
@@ -60,9 +59,6 @@ impl AppStateChanges {
             .collect();
         let mut changes = Self {
             replace: before.is_none(),
-            reset_chains: before
-                .map(|b| changed_selected_chains(b, after))
-                .unwrap_or_default(),
             wallets: vec![],
             removed_wallets: vec![],
             addresses: vec![],
@@ -136,15 +132,6 @@ impl AppStateChanges {
                     .map_err(DbError::from)?;
                 tx.execute("DELETE FROM address_book", [])
                     .map_err(DbError::from)?;
-            }
-            for chain in self.reset_chains {
-                for table in ["wallet_keypool", "wallet_owned_addresses"] {
-                    tx.execute(
-                        &format!("DELETE FROM {table} WHERE chain_id = ?1"),
-                        params![chain],
-                    )
-                    .map_err(DbError::from)?;
-                }
             }
             for id in self.removed_wallets {
                 tx.execute("DELETE FROM monero_wallets WHERE wallet_id=?1", params![id])
@@ -335,18 +322,4 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, DbError
         }
         Ok(state)
     })
-}
-
-/// All members of a changed family are invalidated in the settings transaction.
-pub(crate) fn changed_selected_chains(
-    before: &CoreAppState,
-    after: &CoreAppState,
-) -> Vec<crate::registry::Chain> {
-    crate::registry::Chain::mainnets()
-        .filter(|c| {
-            before.settings.selected_chain_for_family(*c)
-                != after.settings.selected_chain_for_family(*c)
-        })
-        .flat_map(|c| c.network_choices().to_vec())
-        .collect()
 }

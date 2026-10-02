@@ -18,6 +18,12 @@ with tempfile.TemporaryDirectory() as directory:
     usdc = [r for r in initial if r['token_id'] == 'usd-coin']
     assert len({r['chain_id'] for r in usdc}) > 2
     assert all('isEnabled' not in r for r in initial)
+    # One order: built-ins first, then by symbol, with each token's
+    # deployments together, so a screen grouping by token need not sort.
+    keys = [(not r['isBuiltIn'], r['symbol']) for r in initial]
+    assert keys == sorted(keys)
+    token_runs = [r['token_id'] for i, r in enumerate(initial) if i == 0 or initial[i - 1]['token_id'] != r['token_id']]
+    assert len(token_runs) == len(set(token_runs)), 'a token is split across the list'
 
     address = '0x1111111111111111111111111111111111111111'
     base = ['--chain', 'Base', '--contract', address, '--symbol', 'USDC', '--name', 'Independent token', '--decimals', '6']

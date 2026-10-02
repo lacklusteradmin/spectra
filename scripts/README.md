@@ -1,6 +1,6 @@
 # Scripts
 
-This directory contains 31 scripts and tool configuration files. Use the Makefile
+This directory contains 30 scripts and tool configuration files. Use the Makefile
 for routine work:
 
 ```sh
@@ -66,7 +66,6 @@ other cases a scan cannot resolve. Not all of these checks are part of
 
 | File | Purpose |
 |---|---|
-| `count-exports.sh` | Counts Rust functions and methods exposed to Swift. |
 | `unreachable-exports.sh` | Finds exported Rust interfaces with no detected Swift or CLI callers. |
 | `uncalled-core-fns.sh` | Finds public Rust core functions with no detected callers. |
 | `unused-strings.sh` | Finds unused text and inconsistent translation keys across locales. |

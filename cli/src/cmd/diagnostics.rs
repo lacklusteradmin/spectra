@@ -37,7 +37,7 @@ pub enum DiagnosticsCommand {
     },
     /// The diagnostics document core builds for a chain, on its selected network.
     Show(ShowArgs),
-    /// The diagnostics bundle core builds: every mainnet's document and a header.
+    /// The diagnostics bundle core builds: every network's document and a header.
     Bundle,
 }
 

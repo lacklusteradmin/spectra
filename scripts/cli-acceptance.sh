@@ -555,6 +555,16 @@ check "exports with no password asked"      $OK \
 contains "and the phrase is the one imported" \
     '"seedPhrase":"legal winner thank year wave sausage worth useful legal winner thank yellow"' \
     spectra --json wallet export "Open SOL" --yes
+# No password is no plaintext: core seals the phrase under its device key, so
+# neither the words nor their base64 are in the seed bucket.
+if [[ -n "$(find "$DATA_DIR/secrets/device_key" -type f 2>/dev/null)" ]] \
+    && ! grep -rqE 'legal winner|bGVnYWwgd2lubmVy' "$DATA_DIR/secrets/seed"; then
+    PASSED=$((PASSED + 1))
+    printf '  \033[32m✓\033[0m and stores the phrase sealed under the device key\n'
+else
+    FAILED=$((FAILED + 1))
+    printf '  \033[31m✗\033[0m and stores the phrase sealed under the device key\n'
+fi
 # A password and no password are different states, not the same one with a
 # blank field: the sealed wallet still demands its password.
 check "the sealed wallet still wants its password" $REJECTED \
@@ -583,18 +593,14 @@ check "deletes the unsealed wallet"         $OK \
 
 # ── Addresses per network ───────────────────────────────────────────────────
 #
-# A wallet on a family with testnets holds one address per network, derived
-# once at import, so a password-sealed wallet — which has no seed to read —
-# still shows the right address on a testnet.
+# A wallet holds the address of the network it is on and no other network's:
+# it never changes network, so another network's address is nothing it reads.
 
 section "addresses per network"
-contains "a Bitcoin wallet stores its testnet4 address too" '"bitcoin-testnet-4"' \
+lacks "a Bitcoin wallet stores no testnet4 address" '"bitcoin-testnet-4"' \
     spectra --json wallet show "Multi 1"
-contains "and its signet one" '"bitcoin-signet"' spectra --json wallet show "Multi 1"
+lacks "and no signet one" '"bitcoin-signet"' spectra --json wallet show "Multi 1"
 contains "the mainnet address is the primary" 'bc1q' spectra --json wallet show "Multi 1"
-# One key, two encodings: a testnet address is not the mainnet one.
-check "the testnet address differs from the mainnet address" $OK \
-    bash -c '"$1" --data-dir "$2" --json wallet show "Multi 1" | grep -q "tb1"' _ "$BIN" "$DATA_DIR"
 # The EVM family shares one address, and Ethereum Classic has a slot of its own
 # holding the same key — so an Ethereum wallet answers on both.
 contains "an EVM wallet fills the Ethereum Classic slot too" '"ethereum-classic"' \
@@ -1028,53 +1034,18 @@ for ens_chain in Arbitrum Base Polygon Bitcoin; do
         spectra send destination --chain $ens_chain --to vitalik.eth
 done
 
-# ── Network selection ───────────────────────────────────────────────────────
-#
-# Which `Chain` of a family the user is on, for every family the registry
-# offers a choice in.
-
-section "network selection"
-check "lists the families that have a choice" $OK spectra network list
-contains "and defaults to mainnet"          '"family":"bitcoin","isTestnet":false,"selected":"bitcoin"' \
-    spectra --json network list
-check "puts a family on a testnet"          $OK spectra network set solana-devnet
-contains "and reads it back"                '"selected":"solana-devnet"' \
-    spectra --json network list
-check "and another, on a different family"  $OK spectra network set bitcoin-signet
-check "refuses an id the registry does not know" $REJECTED \
-    spectra network set nonsuch
-# A switch has to take the family's derivation state with it: reserved keypool
-# indices and discovered addresses belong to the network they were derived on.
-contains "clears the family's derivation state with the switch" \
-    '"clearedDerivationState":["solana","solana-devnet"]' \
-    spectra --json network set solana-devnet
-contains "and names both sides of a bitcoin switch" '"clearedDerivationState":[' \
-    spectra --json network set bitcoin-signet
-check "clearing a chain nothing derived on still succeeds" $OK \
-    spectra network set solana
-# The bug this axis hid: the reset named bitcoin, ethereum and dogecoin.
-check "resetting settings clears every family" $OK spectra settings reset --yes
-contains "including the two just moved"     '"family":"solana","isTestnet":false,"selected":"solana"' \
-    spectra --json network list
-contains "and the other one"                '"family":"bitcoin","isTestnet":false,"selected":"bitcoin"' \
-    spectra --json network list
-
 section "testnet derivation identity"
-check "selects Bitcoin Testnet4 for import" $OK spectra network set bitcoin-testnet-4
 check "imports a testnet wallet with network-local paths" $OK \
     with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
-    spectra wallet import --chain Bitcoin --name "Testnet Paths"
+    spectra wallet import --chain bitcoin-testnet-4 --name "Testnet Paths"
 contains "stored testnet path uses coin type one" "m/84'/1'/0'/0/0" \
     spectra --json wallet show "Testnet Paths"
 contains "wallet summary shows the active testnet address" '"address":"tb1' \
     spectra --json wallet show "Testnet Paths"
 check "reopened testnet wallet resolves its signer" $OK \
     spectra send identity --from "Testnet Paths" --chain bitcoin-testnet-4
-check "switches the wallet back to mainnet" $OK spectra network set bitcoin
-contains "mainnet keeps its own path" "m/84'/0'/0'/0/0" \
+lacks "and holds no mainnet address" '"address":"bc1' \
     spectra --json wallet show "Testnet Paths"
-check "mainnet signer still matches after the switch" $OK \
-    spectra send identity --from "Testnet Paths" --chain bitcoin
 check "cleans up testnet derivation wallet" $OK spectra wallet delete "Testnet Paths" --yes
 
 # ── Token discovery ─────────────────────────────────────────────────────────
@@ -1118,11 +1089,7 @@ check "the app names no chain by spelling and fixes no amount precision" $OK \
     "$(cd "$(dirname "$0")" && pwd)/swift-shell-literals.sh"
 
 section "settings"
-check "backend key setting is removed" $REJECTED spectra settings set monero-backend-api-key KEY
-check "Etherscan key setting is removed" $REJECTED spectra settings set etherscan-api-key KEY
 check "lists the settings core owns"        $OK spectra settings list
-check "automatic refresh has no manual interval setting" $REJECTED \
-    spectra settings set refresh-frequency-minutes 30
 check "adds a typed custom endpoint" $OK \
     spectra endpoints --chain monero --api monero-daemon-rpc --capabilities fee,broadcast,verification --add https://wallet.example
 contains "a second process reads the custom endpoint" '"endpoint":"https://wallet.example"' \
@@ -1285,19 +1252,22 @@ contains "with its minimum stake and unbonding period" '"unbondingPeriod":"28 da
 # ── Deletion ────────────────────────────────────────────────────────────────
 
 section "deletion"
-check "will not delete without --yes"       $USAGE spectra wallet delete "Renamed BTC"
-check "deletes a wallet"                    $OK spectra wallet delete "Renamed BTC" --yes
-check "the deleted wallet is gone"          1 spectra wallet show "Renamed BTC"
 # Checked on disk rather than through `export`, which stops at "no such wallet"
 # before it ever reaches the secret store. A wallet row can go while its sealed
 # seed stays behind, and that is exactly the leak worth asserting against.
-if [[ -z "$(find "$DATA_DIR/secrets" -name "*.seed" -print -quit 2>/dev/null)" ]]; then
-    PASSED=$((PASSED + 1))
-    printf '  \033[32m✓\033[0m its sealed seed went with it\n'
-else
-    FAILED=$((FAILED + 1))
-    printf '  \033[31m✗\033[0m its sealed seed went with it \033[2m(a .seed blob survived)\033[0m\n'
-fi
+# The file store percent-encodes `.`, so the key `<id>.seed` is the file
+# `seed/<id>%2Eseed`. The seed must be there before deletion, or the absence
+# check afterwards proves nothing about where it looked.
+DELETED_ID="$(spectra --json wallet show "Renamed BTC" \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["wallet"]["id"])')"
+DELETED_SEED="$DATA_DIR/secrets/seed/${DELETED_ID}%2Eseed"
+DELETED_KEY="$DATA_DIR/secrets/private_key/${DELETED_ID}%2Eprivatekey"
+check "its sealed seed is on disk before deletion" $OK test -f "$DELETED_SEED"
+check "will not delete without --yes"       $USAGE spectra wallet delete "Renamed BTC"
+check "deletes a wallet"                    $OK spectra wallet delete "Renamed BTC" --yes
+check "the deleted wallet is gone"          1 spectra wallet show "Renamed BTC"
+check "its sealed seed went with it"        1 test -e "$DELETED_SEED"
+check "its sealed private key went with it" 1 test -e "$DELETED_KEY"
 
 section "reviewed destinations and Aptos derivation"
 check "accepts the reviewed destination" $OK spectra send destination --chain Ethereum --to 0x1111111111111111111111111111111111111111 --expected 0x1111111111111111111111111111111111111111
@@ -1345,7 +1315,6 @@ check "dashboard reset restores defaults explicitly" $OK closure_spectra setting
 contains "reset pins bitcoin again" '"is_pinned":true' closure_spectra --json portfolio --pin-options
 contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
 check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
-check "provider state is no longer a reset scope" $REJECTED closure_spectra settings reset --scope providerState --yes
 check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111
 contains "receive falls back to the stored address on an account chain" \
     '0x1111111111111111111111111111111111111111' closure_spectra --json wallet receive "Closure Watch"

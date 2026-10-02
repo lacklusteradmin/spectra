@@ -489,23 +489,16 @@ impl KeypoolTables {
         self.owned = owned;
     }
 
-    /// Drop everything belonging to deleted wallets or reset chains.
+    /// Drop everything belonging to deleted wallets.
     ///
     /// Both tables in one call, because forgetting an index without forgetting
     /// the addresses it issued — or the reverse — is how the same address gets
     /// handed out twice.
-    pub(crate) fn forget(
-        &mut self,
-        removed_wallets: &[String],
-        reset_chains: &[crate::registry::Chain],
-    ) {
+    pub(crate) fn forget(&mut self, removed_wallets: &[String]) {
         self.indices.retain(|key, _| {
-            key.split_once('|').is_none_or(|(wallet_id, chain_id)| {
-                !removed_wallets.iter().any(|r| r == wallet_id)
-                    && !reset_chains.iter().any(|c| c.str_id() == chain_id)
-            })
+            key.split_once('|')
+                .is_none_or(|(wallet_id, _)| !removed_wallets.iter().any(|r| r == wallet_id))
         });
-        self.owned.retain(|chain, _| !reset_chains.contains(chain));
         for rows in self.owned.values_mut() {
             rows.retain(|row| !removed_wallets.contains(&row.wallet_id));
         }
@@ -717,7 +710,7 @@ mod the_keypool_forgets_indices_and_addresses_together {
     #[test]
     fn a_deleted_wallet_leaves_neither_table_holding_it() {
         let mut tables = populated();
-        tables.forget(&["w1".to_string()], &[]);
+        tables.forget(&["w1".to_string()]);
 
         assert!(
             tables
@@ -737,32 +730,6 @@ mod the_keypool_forgets_indices_and_addresses_together {
 
         let left: Vec<_> = tables.owned_everywhere().map(|r| &r.wallet_id).collect();
         assert_eq!(left, vec!["w2"], "w1 kept addresses after its indices went");
-    }
-
-    /// Resetting a chain is the same rule along the other axis.
-    #[test]
-    fn a_reset_chain_leaves_neither_table_holding_it() {
-        let mut tables = populated();
-        tables.forget(&[], &[crate::registry::Chain::Bitcoin]);
-
-        assert!(
-            tables
-                .state(&keypool_key("w1", crate::registry::Chain::Bitcoin))
-                .is_none()
-        );
-        assert!(
-            tables
-                .state(&keypool_key("w2", crate::registry::Chain::Bitcoin))
-                .is_none()
-        );
-        assert!(
-            tables
-                .state(&keypool_key("w1", crate::registry::Chain::Litecoin))
-                .is_some()
-        );
-
-        assert!(tables.owned_on(crate::registry::Chain::Bitcoin).is_empty());
-        assert_eq!(tables.owned_on(crate::registry::Chain::Litecoin).len(), 1);
     }
 
     /// Registering the same address twice updates the row rather than issuing

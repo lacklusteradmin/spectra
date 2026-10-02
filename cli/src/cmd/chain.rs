@@ -275,13 +275,18 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         return Ok(());
     }
     let service = ctx.service()?;
+    // Probe each network once however many times the request names it.
+    let mut probed = std::collections::HashSet::new();
 
     let mut rows = Vec::new();
     let mut networks_without_apis = Vec::new();
-    for chain in chains {
-        let probes = ctx.rt.block_on(service.probe_chain_endpoints(chain))?;
+    for network in chains {
+        if !probed.insert(network) {
+            continue;
+        }
+        let probes = ctx.rt.block_on(service.probe_chain_endpoints(network))?;
         if probes.is_empty() {
-            networks_without_apis.push(chain.str_id());
+            networks_without_apis.push(network.str_id());
         }
         rows.extend(probes);
     }

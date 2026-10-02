@@ -357,7 +357,7 @@ impl WalletService {
     {
         self.write_persisted(move |service| async move {
             let database = service.state_binding.connection().await;
-            let (snapshot, events, changes, removed, reset_chains, esplora_changed) = {
+            let (snapshot, events, changes, removed, esplora_changed) = {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
                 let events = mutate(&mut state);
@@ -380,17 +380,9 @@ impl WalletService {
                     .filter(|w| !state.wallets.iter().any(|next| next.id == w.id))
                     .map(|w| w.id.clone())
                     .collect();
-                let reset_chains = crate::wallet_db::changed_selected_chains(&before, &state);
                 let esplora_changed =
                     before.settings.custom_endpoints != state.settings.custom_endpoints;
-                (
-                    state,
-                    events,
-                    changes,
-                    removed,
-                    reset_chains,
-                    esplora_changed,
-                )
+                (state, events, changes, removed, esplora_changed)
             };
 
             // Secret deletion is idempotent. A backend failure leaves the wallet
@@ -437,23 +429,13 @@ impl WalletService {
             // Both tables under one lock and in one call: forgetting an index
             // without forgetting the addresses it issued — or the reverse — is
             // how the same address gets handed out twice.
-            service
-                .keypool
-                .write()
-                .await
-                .forget(&removed, &reset_chains);
+            service.keypool.write().await.forget(&removed);
             // History pagination and the diagnostics rows describe what was
             // fetched, so they go with what they were fetched for: a removed
-            // wallet, a family whose network changed, and Bitcoin when its
-            // Esplora source did.
+            // wallet, and Bitcoin when its Esplora source changed.
             for id in &removed {
                 service.history_pagination.reset_all_for_wallet(id);
                 crate::diagnostics::diagnostics_forget_wallet(id.clone());
-            }
-            for chain in &reset_chains {
-                service
-                    .history_pagination
-                    .reset_chain(chain.mainnet_counterpart());
             }
             if esplora_changed {
                 service
@@ -476,7 +458,13 @@ impl WalletService {
     pub(super) async fn publish_state(&self, mut state: CoreAppState) -> CoreAppState {
         let mut current = self.wallet_state.write().await;
         state.revision = current.revision + 1;
+        if !same_wallets_apart_from_balances(&current.wallets, &state.wallets) {
+            self.wallet_identity_revision
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
         *current = state.clone();
+        drop(current);
+        self.published.send_replace(state.revision);
         state
     }
 
@@ -610,7 +598,9 @@ fn wallets_for_display(
     for wallet in wallets {
         let defaults =
             crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
-        rendered.push(wallet.to_wallet_view(&defaults));
+        let mut view = wallet.to_wallet_view(&defaults);
+        valuation::order_holdings_by_value(state, &mut view.holdings);
+        rendered.push(view);
     }
     Ok(rendered)
 }
@@ -988,6 +978,9 @@ impl WalletService {
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioSnapshot {
     pub revision: u64,
+    /// Changes when a wallet is added, removed, or changes in anything but
+    /// its balances: what history rows and transaction details read.
+    pub wallet_identity_revision: u64,
     pub state: CoreAppState,
     pub wallets: Vec<crate::store::wallet_domain::WalletView>,
     pub derived: WalletDerivedState,
@@ -1012,6 +1005,9 @@ impl WalletService {
             let derived = this.derive_wallet_projection(&state)?;
             Ok(PortfolioSnapshot {
                 revision,
+                wallet_identity_revision: this
+                    .wallet_identity_revision
+                    .load(std::sync::atomic::Ordering::SeqCst),
                 wallets: wallets_for_display(&state)?,
                 groups: dashboard_groups_from(&state, &derived)?,
                 pin_options: dashboard_pin_options_from(&state)?,
@@ -1033,4 +1029,21 @@ impl WalletService {
     ) -> Option<AssetHolding> {
         pinned_prototype(&self.app_state().await, token_id, derived)
     }
+}
+
+/// Whether two wallet lists differ only in what a balance sweep writes.
+fn same_wallets_apart_from_balances(
+    before: &[crate::store::state::WalletState],
+    after: &[crate::store::state::WalletState],
+) -> bool {
+    before.len() == after.len()
+        && before.iter().zip(after).all(|(old, new)| {
+            crate::store::state::WalletState {
+                holdings: Vec::new(),
+                ..old.clone()
+            } == crate::store::state::WalletState {
+                holdings: Vec::new(),
+                ..new.clone()
+            }
+        })
 }

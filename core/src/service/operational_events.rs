@@ -30,12 +30,24 @@ impl WalletService {
             .await;
     }
 
-    /// One line per transaction whose stored status a poll or recheck changed.
+    /// One line per transaction whose stored status a poll or recheck changed,
+    /// and whether each is worth a notification under the user's settings.
     pub(crate) async fn record_status_changes(
         &self,
-        changes: &[crate::store::TransactionStatusChange],
+        changes: &mut [crate::store::TransactionStatusChange],
     ) {
         use crate::store::wallet_domain::CoreTransactionStatus as Status;
+        let notifications_on = self
+            .wallet_state
+            .read()
+            .await
+            .settings
+            .use_transaction_status_notifications;
+        for change in changes.iter_mut() {
+            change.notify = notifications_on
+                && change.status_changed
+                && !matches!(change.new_status, Status::Pending);
+        }
         for change in changes.iter().filter(|c| c.status_changed) {
             let (level, message) = match change.new_status {
                 Status::Confirmed => (DiagnosticLogLevel::Info, "Transaction confirmed on-chain."),
