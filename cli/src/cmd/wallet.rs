@@ -247,8 +247,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                 "isComplete": verdict.is_complete,
                 "checksumValid": verdict.checksum_valid,
                 "invalidWordCount": verdict.invalid_words.len(),
-                "lengthWarning": verdict.length_warning,
-                "error": verdict.error,
+                "problem": verdict.problem,
             }));
             out.text(|| {
                 let language = verdict
@@ -261,8 +260,8 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                     "not valid"
                 };
                 println!("{} words, {language}: {state}", verdict.word_count);
-                if let Some(error) = &verdict.error {
-                    println!("{error}");
+                if let Some(problem) = verdict.problem {
+                    println!("{}", super::seed_phrase_problem_text(problem));
                 }
             });
             Ok(())

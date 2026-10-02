@@ -1,7 +1,8 @@
 //! Concrete network registry embedded from `chains.toml`.
 //! Mainnets and testnets are equal records. Native token metadata in the public
 //! projection is joined from `tokens.toml`; it is never stored as a network fact.
-//! `chain-ui.toml` supplies presentation by network ID; `chain-wiki.toml` holds prose.
+//! `chain-ui.toml` supplies presentation by network ID; `chain-wiki.toml` and
+//! `staking.toml` hold prose.
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
@@ -9,6 +10,7 @@ use std::sync::LazyLock;
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 static CHAIN_UI_TOML: &str = include_str!("../data/chain-ui.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
+static STAKING_TOML: &str = include_str!("../data/staking.toml");
 
 /// A filter the chain picker offers. A display classification only: it never
 /// decides a protocol capability.
@@ -157,6 +159,22 @@ struct TomlWikiFile {
 }
 
 #[derive(Debug, Deserialize)]
+struct TomlStakingFile {
+    chains: Vec<TomlStakingChain>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TomlStakingChain {
+    chain: String,
+    apy_estimate: String,
+    short_mechanic: String,
+    unbonding_period: String,
+    minimum_stake: String,
+    explanation: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct TomlWikiChain {
     chain: String,
     tags: Vec<String>,
@@ -250,6 +268,20 @@ pub struct ChainWikiEntry {
     pub consensus: String,
     pub state_model: String,
     pub derivation_path: Vec<ChainDerivationPathEntry>,
+}
+
+/// What staking on a chain means, for a reader — one row per chain that
+/// `Chain::supports_staking`, in catalog order. Editorial copy: estimates to
+/// compare chains by, not quotes, and nothing computes anything from it.
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingChainEntry {
+    pub chain: crate::registry::Chain,
+    pub apy_estimate: String,
+    pub short_mechanic: String,
+    pub unbonding_period: String,
+    pub minimum_stake: String,
+    pub explanation: String,
 }
 
 impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
@@ -449,6 +481,45 @@ static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
         .collect()
 });
 
+static STAKING: LazyLock<Vec<StakingChainEntry>> = LazyLock::new(|| {
+    let parsed: TomlStakingFile = toml::from_str(STAKING_TOML)
+        .expect("staking.toml is embedded at compile time and must be valid TOML");
+    let mut rows: Vec<StakingChainEntry> = parsed
+        .chains
+        .into_iter()
+        .map(|row| {
+            let chain = crate::registry::Chain::from_str_id(&row.chain)
+                .unwrap_or_else(|| panic!("staking.toml: unknown chain {}", row.chain));
+            // Copy for a chain the tab does not offer is a page no one can
+            // reach, claiming an APY for a chain Spectra cannot stake on.
+            assert!(
+                chain.supports_staking(),
+                "staking.toml: {} does not support staking",
+                row.chain
+            );
+            StakingChainEntry {
+                chain,
+                apy_estimate: row.apy_estimate,
+                short_mechanic: row.short_mechanic,
+                unbonding_period: row.unbonding_period,
+                minimum_stake: row.minimum_stake,
+                explanation: row.explanation,
+            }
+        })
+        .collect();
+    rows.sort_by_key(|row| row.chain);
+    for chain in crate::registry::Chain::all() {
+        if chain.supports_staking() {
+            assert!(
+                rows.iter().filter(|row| row.chain == chain).count() == 1,
+                "staking.toml: {} needs exactly one row",
+                chain.str_id()
+            );
+        }
+    }
+    rows
+});
+
 // ── Public API
 
 /// Return all chain entries (mainnet + testnet).
@@ -467,6 +538,12 @@ pub fn list_chain_tags() -> Vec<ChainTag> {
 #[uniffi::export]
 pub fn list_chain_wiki() -> Vec<ChainWikiEntry> {
     WIKI.clone()
+}
+
+/// What staking means on each chain that supports it, in catalog order.
+#[uniffi::export]
+pub fn list_staking_chains() -> Vec<StakingChainEntry> {
+    STAKING.clone()
 }
 
 /// Return a reference to the static catalog slice.
@@ -786,6 +863,56 @@ mod explicit_network_catalog {
                 entry(chain.str_id()).is_evm,
                 "{} disagrees about being EVM",
                 chain.str_id()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod staking_table_tests {
+    use super::*;
+    use crate::registry::Chain;
+
+    /// Loading the table checks it against the registry: a row for every
+    /// staking chain, none for any other, no unknown field.
+    #[test]
+    fn the_staking_table_covers_exactly_the_staking_chains() {
+        let rows = list_staking_chains();
+        let staking: Vec<Chain> = Chain::all().filter(|c| c.supports_staking()).collect();
+        assert!(!staking.is_empty());
+        assert_eq!(rows.iter().map(|r| r.chain).collect::<Vec<_>>(), staking);
+        for row in &rows {
+            assert!(
+                !row.chain.is_testnet(),
+                "{} is a testnet",
+                row.chain.str_id()
+            );
+            for field in [
+                &row.apy_estimate,
+                &row.short_mechanic,
+                &row.unbonding_period,
+                &row.minimum_stake,
+                &row.explanation,
+            ] {
+                assert!(
+                    !field.trim().is_empty(),
+                    "{} has a blank field",
+                    row.chain.str_id()
+                );
+            }
+        }
+    }
+
+    /// Spectra does not sign or submit staking transactions, so no row may
+    /// say that it does.
+    #[test]
+    fn no_staking_copy_claims_spectra_acts() {
+        for row in list_staking_chains() {
+            assert!(
+                !row.explanation.contains("Spectra"),
+                "{}: {}",
+                row.chain.str_id(),
+                row.explanation
             );
         }
     }

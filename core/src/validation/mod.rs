@@ -73,7 +73,7 @@ pub struct SeedPhraseLanguage {
 
 /// Everything there is to say about a seed-phrase entry, decided once.
 ///
-/// `error` is the one line to show under the field; the rest is what a UI
+/// `problem` is the one thing to say under the field; the rest is what a UI
 /// needs to size its grid, colour individual words and enable its button, and
 /// is derived from the same pass so the parts can never disagree.
 #[derive(uniffi::Record, Debug, Clone)]
@@ -97,12 +97,24 @@ pub struct SeedPhraseVerdict {
     pub is_complete: bool,
     /// The phrase parses, with its checksum, in `language`.
     pub checksum_valid: bool,
-    /// An advisory about a fixed `word_count` itself, shown beside the
-    /// control that fixed it rather than under the field.
-    pub length_warning: Option<String>,
-    /// The field's inline error, or `None` while the entry is unfinished or
-    /// already valid.
-    pub error: Option<String>,
+    /// What is wrong with the entry, or `None` while it is unfinished or
+    /// already valid. A front end words it.
+    pub problem: Option<SeedPhraseProblem>,
+}
+
+/// Why a seed-phrase entry is not a phrase, once there is something to say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SeedPhraseProblem {
+    /// The entry is judged at a length BIP-39 does not define: a fixed length
+    /// outside 12, 15, 18, 21 and 24, or more than 24 words typed. No such
+    /// phrase has a checksum that can hold.
+    NonStandardLength { word_count: u32 },
+    /// More words than the fixed length. They are kept, not cut, so the
+    /// phrase is refused rather than silently shortened.
+    WrongWordCount { expected: u32 },
+    /// Every word is in the list but the checksum does not hold.
+    InvalidChecksum,
 }
 
 /// Every BIP-39 wordlist, English first.
@@ -205,16 +217,21 @@ pub fn check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
         && language
             .is_some_and(|language| bip39::Mnemonic::parse_in(language, words.join(" ")).is_ok());
 
-    let error = if !is_complete || !invalid_words.is_empty() {
+    // A fixed length BIP-39 does not define can never hold, so it is named at
+    // once; an inferred one only once the entry is finished.
+    let standard = seed_phrase_entropy_bits(word_count).is_some();
+    let problem = if !standard && check.word_count.is_some() {
+        Some(SeedPhraseProblem::NonStandardLength { word_count })
+    } else if !is_complete || !invalid_words.is_empty() {
         None
-    } else if check.word_count.is_none() && expected > 24 {
-        Some(format!(
-            "That is {expected} words. A seed phrase has 12, 15, 18, 21 or 24."
-        ))
+    } else if !standard {
+        Some(SeedPhraseProblem::NonStandardLength { word_count })
     } else if words.len() != expected {
-        Some(format!("Seed phrase must be {expected} words."))
+        Some(SeedPhraseProblem::WrongWordCount {
+            expected: word_count,
+        })
     } else if !checksum_valid {
-        Some("Invalid seed phrase checksum. Please verify your words.".to_string())
+        Some(SeedPhraseProblem::InvalidChecksum)
     } else {
         None
     };
@@ -228,8 +245,7 @@ pub fn check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
         invalid_words,
         is_complete,
         checksum_valid,
-        length_warning: check.word_count.and_then(seed_phrase_length_warning),
-        error,
+        problem,
     }
 }
 
@@ -282,27 +298,6 @@ pub fn bip39_language(code: Option<&str>) -> bip39::Language {
         "traditional-chinese" | "zh-hant" | "zh-tw" => Language::TraditionalChinese,
         _ => Language::English,
     }
-}
-
-/// An advisory when `word_count` is outside the BIP-39 standard lengths
-/// (12, 15, 18, 21, 24), or `None` when it is one of them.
-///
-/// Below 12 is a refusal; a non-standard length above it is only a warning,
-/// because some wallets do issue them.
-fn seed_phrase_length_warning(word_count: u32) -> Option<String> {
-    if word_count == 0 {
-        return Some("Seed phrase length must be at least 1 word.".to_string());
-    }
-    if word_count < 12 {
-        return Some("Seed phrase is too short. Use at least 12 words.".to_string());
-    }
-    if seed_phrase_entropy_bits(word_count).is_none() {
-        return Some(
-            "Non-standard length selected. BIP-39 standard lengths are 12, 15, 18, 21, or 24 words."
-                .to_string(),
-        );
-    }
-    None
 }
 
 /// Returns a typed rejection when `password` / `confirmation` fail the wallet
@@ -428,10 +423,10 @@ mod seed_phrase_tests {
         });
         assert_eq!(gapped.word_count, 15);
         assert!(!gapped.is_complete);
-        assert_eq!(gapped.error, None);
+        assert_eq!(gapped.problem, None);
         let pasted = infer(&ENGLISH_24.split_whitespace().collect::<Vec<_>>().join(" "));
         assert_eq!(pasted.word_count, 24);
-        assert!(pasted.checksum_valid, "{:?}", pasted.error);
+        assert!(pasted.checksum_valid, "{:?}", pasted.problem);
     }
 
     #[test]
@@ -444,8 +439,8 @@ mod seed_phrase_tests {
         assert_eq!(verdict.word_count, 25);
         assert_eq!(verdict.words.len(), 25);
         assert_eq!(
-            verdict.error.as_deref(),
-            Some("That is 25 words. A seed phrase has 12, 15, 18, 21 or 24.")
+            verdict.problem,
+            Some(SeedPhraseProblem::NonStandardLength { word_count: 25 })
         );
     }
 
@@ -456,8 +451,8 @@ mod seed_phrase_tests {
         assert_eq!(verdict.words.len(), 24);
         assert!(!verdict.checksum_valid);
         assert_eq!(
-            verdict.error.as_deref(),
-            Some("Seed phrase must be 12 words.")
+            verdict.problem,
+            Some(SeedPhraseProblem::WrongWordCount { expected: 12 })
         );
     }
 
@@ -484,7 +479,7 @@ mod seed_phrase_tests {
         let verdict = infer(&ENGLISH.replacen("abandon", "abandn", 1));
         assert_eq!(verdict.language.map(|l| l.code), Some("en".to_string()));
         assert_eq!(verdict.invalid_words, vec!["abandn".to_string()]);
-        assert_eq!(verdict.error, None);
+        assert_eq!(verdict.problem, None);
     }
 
     #[test]
@@ -517,8 +512,7 @@ mod seed_phrase_tests {
         assert!(verdict.is_complete);
         assert!(verdict.checksum_valid);
         assert!(verdict.invalid_words.is_empty());
-        assert_eq!(verdict.error, None);
-        assert_eq!(verdict.length_warning, None);
+        assert_eq!(verdict.problem, None);
     }
 
     #[test]
@@ -529,7 +523,7 @@ mod seed_phrase_tests {
         let verdict = check("abandon abandon   ", Some("en"), 12);
         assert!(!verdict.is_complete);
         assert!(!verdict.checksum_valid);
-        assert_eq!(verdict.error, None);
+        assert_eq!(verdict.problem, None);
     }
 
     #[test]
@@ -541,7 +535,7 @@ mod seed_phrase_tests {
             12,
         );
         assert_eq!(verdict.invalid_words, vec!["zzzz".to_string()]);
-        assert_eq!(verdict.error, None);
+        assert_eq!(verdict.problem, None);
     }
 
     #[test]
@@ -550,10 +544,7 @@ mod seed_phrase_tests {
         let verdict = check(&broken, Some("en"), 12);
         assert!(verdict.invalid_words.is_empty());
         assert!(!verdict.checksum_valid);
-        assert_eq!(
-            verdict.error.as_deref(),
-            Some("Invalid seed phrase checksum. Please verify your words.")
-        );
+        assert_eq!(verdict.problem, Some(SeedPhraseProblem::InvalidChecksum));
     }
 
     #[test]
@@ -561,13 +552,12 @@ mod seed_phrase_tests {
         let verdict = check(ENGLISH, Some("en"), 24);
         // Twelve filled slots do not finish a 24-word entry.
         assert!(!verdict.is_complete);
-        assert_eq!(verdict.error, None);
-        assert_eq!(verdict.length_warning, None);
+        assert_eq!(verdict.problem, None);
     }
 
     #[test]
     fn entries_are_normalized_the_way_bip39_reads_them() {
-        let verdict = check(" ABANDON  abandon ", Some("en"), 2);
+        let verdict = check(" ABANDON  abandon ", Some("en"), 12);
         assert_eq!(
             verdict.words,
             vec!["abandon".to_string(), "abandon".to_string()]
@@ -585,10 +575,14 @@ mod seed_phrase_tests {
     }
 
     #[test]
-    fn a_length_warning_is_about_the_picker_not_the_field() {
-        assert!(check("abandon", Some("en"), 13).length_warning.is_some());
-        assert!(check("abandon", Some("en"), 8).length_warning.is_some());
-        assert!(check(ENGLISH, Some("en"), 12).length_warning.is_none());
+    fn a_fixed_length_bip39_does_not_define_is_named_before_any_typing() {
+        for word_count in [0, 8, 13, 25] {
+            assert_eq!(
+                check("abandon", Some("en"), word_count).problem,
+                Some(SeedPhraseProblem::NonStandardLength { word_count }),
+            );
+        }
+        assert_eq!(check(ENGLISH, Some("en"), 12).problem, None);
     }
 }
 

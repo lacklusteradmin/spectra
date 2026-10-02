@@ -192,10 +192,14 @@ contains "a Chinese phrase is detected as Chinese"        '"language":"zh-hans"'
     with_seed "的 的 的 的 的 的 的 的 的 的 的 在" spectra --json wallet check-seed
 contains "a typo leaves the length unfinished, not wrong" '"invalidWordCount":1' \
     with_seed "abandon abandn abandon" spectra --json wallet check-seed
-contains "a fixed length refuses a longer phrase"         '"error":"Seed phrase must be 12 words."' \
+contains "a fixed length refuses a longer phrase"         '"problem":{"wrongWordCount":{"expected":12}}' \
     with_seed "$ZERO_24" spectra --json wallet check-seed --words 12
-contains "and more than 24 words is named"                'That is 25 words' \
+contains "and more than 24 words is named"                '"problem":{"nonStandardLength":{"wordCount":25}}' \
     with_seed "$ZERO_24 abandon" spectra --json wallet check-seed
+# BIP-39 defines five lengths; a phrase of any other has no checksum that can
+# hold, so fixing one is named before a single word is checked.
+contains "a fixed non-standard length is named at once"   '"problem":{"nonStandardLength":{"wordCount":13}}' \
+    with_seed "abandon" spectra --json wallet check-seed --words 13
 check "an unknown wordlist is a usage error"              $USAGE \
     with_seed "$ZERO_24" spectra wallet check-seed --language klingon
 contains_exit 3 "an import names an unfinished length"   "13 words" \
@@ -1272,6 +1276,11 @@ contains "and which do not"                   '"staking":false' \
     spectra --json chains --filter Dogecoin
 check "a testnet does not stake where its mainnet does" $REJECTED \
     spectra staking validators --chain solana-devnet
+# The staking tab's per-chain facts are core's table, one row per staking chain.
+contains "the staking table lists each staking chain" '"chain":"polkadot"' \
+    spectra --json staking chains
+contains "with its minimum stake and unbonding period" '"unbondingPeriod":"28 days"' \
+    spectra --json staking chains
 
 # ── Deletion ────────────────────────────────────────────────────────────────
 

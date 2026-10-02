@@ -16,6 +16,97 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-02 — Watching an EVM layer 2 imports a wallet on it
+
+- **Before:** the watch-addresses page grouped its fields by address slot and
+  bound each to the slot's first chain in catalog order. Every EVM mainnet
+  shares Ethereum's slot, so addresses typed for Arbitrum, Base, Polygon or any
+  other EVM chain but Ethereum and Ethereum Classic were sent to core keyed by
+  Ethereum. Core plans the chain the user picked, found no addresses for it,
+  and refused with "Enter at least one valid address to import." The field also
+  read "EVM" and "One address covers: …", left from multi-chain watch imports.
+- **After:** a watch-only import has one chain, so the page has one field,
+  titled with that chain, and the draft keys the addresses by that chain. The
+  xpub field shows only on a chain that `acceptsAccountXpub`, and the xpub is
+  sent only for one.
+- **Why:** core decides which chain an address belongs to; the app was
+  regrouping by slot on its own and disagreed with core about the key.
+- **CLI check:** `spectra wallet watch --chain Arbitrum --name W --address
+  0x000000000000000000000000000000000000dead` imports; the CLI always keyed by
+  the chosen chain, which is why acceptance never caught this. In the app,
+  `watchingAnEvmLayerTwoImportsAWalletOnIt` drives the page's draft through
+  core.
+- **Verification:** `make lint`, `make test` (892 core tests), `make test-cli`
+  (473 checks) and `make test-ios` (105 tests) pass.
+
+## 2026-10-02 — Seed phrases have BIP-39 lengths only, and core names the problem
+
+- **Before:** the import page and the create page each had a "Custom length"
+  field taking any count from 1 to 48. A created wallet at a non-standard count
+  generated no phrase and could not continue; an imported phrase at one could
+  never pass its checksum. `check_seed_phrase` returned an English `error`
+  sentence and an English `length_warning`, which the app showed verbatim in
+  every language.
+- **After:** both pages offer only core's five lengths (12, 15, 18, 21, 24),
+  with Auto on import. `SeedPhraseVerdict` carries a typed
+  `problem: SeedPhraseProblem` — `nonStandardLength`, `wrongWordCount` or
+  `invalidChecksum` — in place of `error` and `length_warning`, and each front
+  end words it. A fixed non-standard length is named at once rather than after
+  the last word.
+- **Why:** a feature that can never succeed is not worth two fields and a
+  clamp; and core states reasons while front ends supply the words, as every
+  other refusal already did.
+- **CLI check:** `SPECTRA_SEED=abandon spectra --json wallet check-seed
+  --words 13` prints `"problem":{"nonStandardLength":{"wordCount":13}}`;
+  `--words 12` on 24 words prints `"problem":{"wrongWordCount":{"expected":12}}`.
+- **Verification:** `make lint`, `make test` (892 core tests), `make test-cli`
+  (473 checks) and `make test-ios` (105 tests) pass.
+
+## 2026-10-02 — The funds finder reads a phrase like the import does
+
+- **Before:** the funds finder had its own word grid: 12 slots, or 24 behind a
+  link, and a scan started once 12 words were filled, whether or not they were
+  a phrase. A 15-, 18- or 21-word phrase had no matching grid.
+- **After:** it uses the import page's grid (`SeedPhraseEntry` and
+  `SeedPhraseEntryView`): the grid grows to the length core judges, typos and
+  the wordlist are reported the same way, and a scan starts only on a phrase
+  whose checksum holds.
+- **Why:** two grids with two rules for one input; the import's is core's.
+- **CLI check:** `spectra wallet check-seed` is the rule both screens apply.
+  `SeedPhraseEntryTests` covers the shared entry.
+- **Verification:** `make lint`, `make test` (892 core tests), `make test-cli`
+  (473 checks) and `make test-ios` (105 tests) pass.
+
+## 2026-10-02 — Staking facts come from core, and the copy stops claiming Spectra signs
+
+- **Before:** each staking chain's APY estimate, minimum stake, unbonding period
+  and explanation were a Swift `switch` in `StakingView`, with a tint per
+  chain; the CLI could not show them. Solana's explanation said "Spectra
+  creates a fresh keypair … and delegates", and NEAR's said "Spectra calls
+  `deposit_and_stake`", though Spectra signs no staking transaction.
+- **After:** they are `core/data/staking.toml`, exported as
+  `list_staking_chains()`. Core refuses to load a table that misses a staking
+  chain or names another. The two explanations describe what the protocol
+  does. Badges use the chain's catalog colour. `Chain.stakingChains` and
+  `Chain.supportsStaking` are gone from Swift; the tab lists core's rows.
+- **Why:** per-chain facts belong beside the registry, where every front end
+  reads one copy; and copy must not claim an action the app does not take.
+- **CLI check:** `spectra --json staking chains` lists six chains, with Polkadot
+  at `"unbondingPeriod":"28 days"`.
+- **Verification:** `make lint`, `make test` (892 core tests), `make test-cli`
+  (473 checks) and `make test-ios` (105 tests) pass.
+
+## 2026-10-02 — The send risk summary shows the amount in the reader's locale
+
+- **Before:** the first line of the high-risk confirmation printed the
+  artifact's amount as stored (`1.5`), while every other amount on the send
+  screens used the display locale's decimal separator (`1,5`).
+- **After:** it goes through `AmountPresentation.localizedDecimal` like the rest.
+- **Why:** one amount, one rendering.
+- **CLI check:** none applies; the CLI prints canonical decimals by design.
+- **Verification:** `make lint`, `make test` (892 core tests), `make test-cli`
+  (473 checks) and `make test-ios` (105 tests) pass.
+
 ## 2026-10-01 — Testnet tokens are named as test coins
 
 - **Before:** a testnet token carried its mainnet token's name — Bitcoin

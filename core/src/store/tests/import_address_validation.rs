@@ -247,9 +247,9 @@ mod watch_only {
     /// A testnet address arrives in its mainnet's slot, so validation has
     /// to be told which network the import is for.
     ///
-    /// `ImportDraft.watchOnlyInputsByChainName` is keyed by mainnet display
-    /// name — there is no "Bitcoin Testnet" row — so a testnet watch import
-    /// puts a testnet address in the `bitcoin` slot. Validating that slot as
+    /// `ImportDraft` keys watched addresses by the chain picked, and the
+    /// picker lists mainnets only — there is no "Bitcoin Testnet" row — so a
+    /// testnet watch import puts a testnet address in the `bitcoin` slot. Validating that slot as
     /// mainnet refuses a wallet the app has always allowed.
     #[test]
     fn a_testnet_watch_address_survives_when_the_import_is_for_testnet() {

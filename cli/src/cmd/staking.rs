@@ -11,6 +11,9 @@ use crate::out::{self, Out};
 
 #[derive(Subcommand)]
 pub enum StakingCommand {
+    /// The chains that stake, with what staking means on each: the staking
+    /// tab's copy. Offline.
+    Chains,
     /// Validators a chain offers, with their APY.
     Validators(ValidatorsArgs),
     /// What a wallet currently has staked.
@@ -37,6 +40,25 @@ pub struct PositionsArgs {
 
 pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
     match command {
+        StakingCommand::Chains => {
+            let chains = spectra_core::chains::list_staking_chains();
+            out.text(|| {
+                for entry in &chains {
+                    println!(
+                        "  {}  {:<20} {}",
+                        out::tint("●", entry.chain).bold(),
+                        entry.chain.chain_display_name(),
+                        out::hint(&entry.apy_estimate),
+                    );
+                    println!(
+                        "     minimum {} · unbonding {}",
+                        entry.minimum_stake, entry.unbonding_period
+                    );
+                }
+            });
+            out.emit(serde_json::json!({"ok": true, "chains": chains}));
+            Ok(())
+        }
         StakingCommand::Validators(args) => validators(ctx, out, args),
         StakingCommand::Positions(args) => positions(ctx, out, args),
         StakingCommand::Endpoints(args) => {

@@ -68,9 +68,26 @@ pub fn reject_bad_seed_phrase(phrase: &str) -> CliResult<()> {
         )));
     }
     if !verdict.checksum_valid {
-        return Err(CliError::rejected(verdict.error.unwrap_or_else(|| {
-            "not a valid BIP-39 mnemonic (check the words and the count)".to_string()
-        })));
+        return Err(CliError::rejected(verdict.problem.map_or_else(
+            || "not a valid BIP-39 mnemonic (check the words and the count)".to_string(),
+            seed_phrase_problem_text,
+        )));
     }
     Ok(())
+}
+
+/// Core's seed-phrase problem, worded for the terminal.
+pub fn seed_phrase_problem_text(problem: spectra_core::validation::SeedPhraseProblem) -> String {
+    use spectra_core::validation::SeedPhraseProblem;
+    match problem {
+        SeedPhraseProblem::NonStandardLength { word_count } => {
+            format!("{word_count} words; a seed phrase has 12, 15, 18, 21 or 24")
+        }
+        SeedPhraseProblem::WrongWordCount { expected } => {
+            format!("seed phrase must be {expected} words")
+        }
+        SeedPhraseProblem::InvalidChecksum => {
+            "invalid seed phrase checksum; check the words".to_string()
+        }
+    }
 }
