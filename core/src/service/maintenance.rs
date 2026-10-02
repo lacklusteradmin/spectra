@@ -35,9 +35,8 @@ impl WalletService {
 
     /// Whether any recorded send is still worth polling for confirmation.
     ///
-    /// Read from core's own store. iOS derived this from its transaction
-    /// projection and passed the answer in, which is the shape the migration
-    /// removes: core has the transactions.
+    /// Read from core's own store: core has the transactions, so no platform
+    /// passes this answer in from its projection.
     async fn has_pending_transaction_work(&self) -> bool {
         self.pending_maintenance_chains()
             .await

@@ -228,8 +228,8 @@ mod dispatch_export_tests {
                 crate::registry::Chain::from_str_id(name).expect("a chain the registry knows");
             assert!(
                 !chain.derives_from_private_key(),
-                "{name} now derives from a private key — that is a widening, so say so \
-                 in PLAN.md and take it off this list"
+                "{name} now derives from a private key — that is a widening, so record it \
+                 in BEHAVIOUR-CHANGES.md and take it off this list"
             );
         }
     }

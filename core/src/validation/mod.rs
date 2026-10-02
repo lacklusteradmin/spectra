@@ -305,16 +305,23 @@ pub fn bip39_language(code: Option<&str>) -> bip39::Language {
 ///
 /// Rules:
 ///  * Both empty → valid (no password is allowed).
-///  * Otherwise a password shorter than 4 characters, surrounding whitespace
-///    excluded → error. A whitespace-only field is a blank password, which
+///  * Otherwise a password shorter than `MIN_WALLET_PASSWORD_CHARS`
+///    characters, surrounding whitespace excluded → error. A whitespace-only field is a blank password, which
 ///    core refuses to store, not the choice of none.
 ///  * Password and confirmation mismatch → error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum WalletPasswordRejection {
-    TooShort,
+    /// Carries the minimum, so no platform restates the rule in its copy.
+    #[serde(rename_all = "camelCase")]
+    TooShort {
+        min_chars: u32,
+    },
     ConfirmationMismatch,
 }
+
+/// The fewest characters a wallet password may have.
+pub const MIN_WALLET_PASSWORD_CHARS: u32 = 4;
 
 #[uniffi::export]
 pub fn validate_wallet_password(
@@ -326,8 +333,10 @@ pub fn validate_wallet_password(
     }
     let p = password.trim();
     let c = confirmation.trim();
-    if p.chars().count() < 4 {
-        return Some(WalletPasswordRejection::TooShort);
+    if p.chars().count() < MIN_WALLET_PASSWORD_CHARS as usize {
+        return Some(WalletPasswordRejection::TooShort {
+            min_chars: MIN_WALLET_PASSWORD_CHARS,
+        });
     }
     if p != c {
         return Some(WalletPasswordRejection::ConfirmationMismatch);
@@ -591,12 +600,13 @@ mod password_verdict_tests {
     use super::*;
     #[test]
     fn password_rejections_are_typed_and_count_unicode_characters() {
+        let too_short = Some(WalletPasswordRejection::TooShort { min_chars: 4 });
         for (password, confirmation, expected) in [
             ("", "", None),
-            ("   ", " ", Some(WalletPasswordRejection::TooShort)),
-            ("", "    ", Some(WalletPasswordRejection::TooShort)),
-            ("abc", "abc", Some(WalletPasswordRejection::TooShort)),
-            ("密碼", "密碼", Some(WalletPasswordRejection::TooShort)),
+            ("   ", " ", too_short),
+            ("", "    ", too_short),
+            ("abc", "abc", too_short),
+            ("密碼", "密碼", too_short),
             ("密碼測試", "密碼測試", None),
             (
                 "abcd",

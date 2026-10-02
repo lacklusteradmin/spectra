@@ -1,8 +1,10 @@
 # Architecture decisions
 
 Spectra is one application with a shared Rust core and native front ends.
-[PLAN.md](PLAN.md) tracks implementation status; [FFI-BOUNDARY.md](FFI-BOUNDARY.md)
-covers binding mechanics.
+Core owns both the data and the decisions, no platform persists a second
+authoritative copy, and the CLI can drive every domain operation.
+[FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics;
+[OPEN-ITEMS.md](OPEN-ITEMS.md) holds remaining work.
 
 ## Workspace
 
@@ -116,6 +118,23 @@ nonce and fee configuration.
 The native UIs share domain code, not a cross-platform UI framework. Core must
 not exit the process or install a global logger; the executable owns logging
 configuration and keeps stdout available for CLI JSON.
+
+Rules for keeping the shell thin:
+
+- Swift code that reads core-owned data only to send it back for a decision is
+  a misplaced rule: make the owning service compute the answer instead. Audit
+  views and record extensions too, not only `AppState`.
+- Keep one writer per UI projection. Adopt core-derived answers
+  asynchronously; local indexes and button-enabling checks may remain view
+  state, with core enforcing validation on writes.
+- Delete projection and cache fields when their last reader disappears.
+- Keep concrete network, token and deployment identities distinct; never infer
+  identity from a ticker or a price provider's id.
+- Remove a dead wrapper only after checking direct FFI callers and foreign
+  callback implementations. Delete tests of a removed helper only once the
+  replacement's meaningful coverage is identified.
+- An export that removes a Swift rule can be worthwhile; moving code only to
+  lower a line count is not.
 
 ## Signing and service modules
 

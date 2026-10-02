@@ -1,6 +1,6 @@
 # Open items
 
-Work that remains after the stages in [PLAN.md](PLAN.md), whose Rule 0 applies.
+Engineering work that remains. Rule 0 in [AGENTS.md](../AGENTS.md) applies.
 Delete an item once it is done; what changed belongs in
 [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md).
 
@@ -45,7 +45,7 @@ Delete an item once it is done; what changed belongs in
   pass `make verify`. No behaviour changes; nothing to record beyond the
   commit.
 - [ ] **Give `AppState`'s domains their own observable state.** `AppState` is
-  one `@Observable` class whose methods are spread over 31
+  one `@Observable` class whose methods are spread over 30
   `AppState+<Domain>.swift` extensions, a third of them under 40 lines. The
   extensions share every stored property, so the split hides line count but
   not coupling, and any view that reads one property is in the same
@@ -53,12 +53,12 @@ Delete an item once it is done; what changed belongs in
   `preferences` and `diagnostics` already show the target shape: a small
   `@MainActor @Observable` type that `AppState` owns, holding that domain's
   view state and exposing its actions. Move the remaining domains the same way
-  — address book, token preferences, price alerts, Tor, networks/endpoints,
-  history paging, send execution and preview, notifications and Live
+  — address book, token preferences, price alerts, Tor, history paging,
+  send execution and preview, notifications and Live
   Activities — one domain per change, each taking its properties out of
   `AppState` and its views reading the new object rather than the store.
   Merge the tiny extensions that are only adapters (`Diagnostics`,
-  `Persistence`, `Networks`, `TorLifecycle`) into the domain that owns them
+  `Persistence`, `TorLifecycle`) into the domain that owns them
   rather than giving each a type. Keep core as the owner of domain state: the
   new types hold projections and view state only, per AGENTS.md. Each step
   needs the iOS suite green and no user-visible change; record nothing unless

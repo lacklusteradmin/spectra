@@ -68,8 +68,10 @@ class WalletsTests(unittest.TestCase):
                 assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
                 return json.loads(p.stdout)
             # Only empty fields mean no password; whitespace is a blank one.
-            for password, confirmation, reason in [('', '', None), ('   ','   ','tooShort'), ('abc','abc','tooShort'),
-                    ('密碼','密碼','tooShort'), ('密碼測試','密碼測試',None), ('abcd','abce','confirmationMismatch')]:
+            # A short password names core's minimum, so no client restates it.
+            short={'tooShort':{'minChars':4}}
+            for password, confirmation, reason in [('', '', None), ('   ','   ',short), ('abc','abc',short),
+                    ('密碼','密碼',short), ('密碼測試','密碼測試',None), ('abcd','abce','confirmationMismatch')]:
                 result=run('wallet','check-password',env={'SPECTRA_PASSWORD':password,'SPECTRA_PASSWORD_CONFIRMATION':confirmation})
                 assert result=={'valid':reason is None,'rejection':reason}, result
 

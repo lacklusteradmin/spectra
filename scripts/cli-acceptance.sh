@@ -2,12 +2,12 @@
 #
 # Drives `spectra` end to end against a throwaway data directory.
 #
-# This is the acceptance gate `PLAN.md` rule 1 asks for: "if `spectra` cannot
-# drive it, it is in the wrong place." Every check here exercises a rule that
-# lives in core — address validation, import planning, the address-book
-# reducer, the shared display currency — through the same entry points the iOS
-# app uses. A slice of Swift is not deleted until the rule it held is provable
-# from this script.
+# This is the acceptance gate AGENTS.md asks for: new domain logic "must be
+# drivable from `spectra`", or it is in the wrong place. Every check here
+# exercises a rule that lives in core — address validation, import planning,
+# the address-book reducer, the shared display currency — through the same
+# entry points the iOS app uses. A rule moved out of Swift is provable from
+# this script before its Swift implementation is deleted.
 #
 # No external network. State, crypto and validation run offline; the Bitcoin
 # pagination and service checks use isolated loopback fixtures. Balance,

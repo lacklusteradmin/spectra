@@ -146,8 +146,8 @@ mod tests {
         ] {
             assert!(
                 !chain.supports_staking(),
-                "{} now stakes — that is a new client, so say so in PLAN.md and \
-                 take it off this list",
+                "{} now stakes — that is a new client, so record it in \
+                 BEHAVIOUR-CHANGES.md and take it off this list",
                 chain.str_id()
             );
         }

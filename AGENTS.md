@@ -6,18 +6,40 @@ Do not run any Git state-modifying command (including commit, add/stage, reset
 or checkout) unless explicitly requested. Finish edits and stop; the user will
 say when to commit.
 
+## Rule 0
+
+Rule 0 outranks every other rule here: **change behaviour, or remove
+functionality, when doing so makes the system simpler or more correct.**
+Preserving existing behaviour is not the goal. When the code as it stands and
+the code as it should be disagree, write the second and delete the first.
+
+- **Fix an inconsistency instead of preserving it.** If twenty chains do one
+  thing and three do another, pick the right one for all of them. Do not write
+  a test that pins the split in place.
+- **Delete a feature that is not worth its complexity**, and say so.
+- **Collapse two models of one thing**, even when both have callers.
+- **Change a stored shape, an id format or a schema outright.** Spectra is
+  prelaunch with no existing users: change storage formats, schemas, keychain
+  keys and serialized structures directly, without migration or
+  backward-compatibility shims.
+
+What it does not license:
+
+- **Silence.** Record each behaviour change in
+  [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md) with before/after,
+  rationale, a CLI check and the verification run.
+- **Guessing at the safe side.** For funds, keys and addresses, refuse early,
+  validate before storing and derive rather than trust caller input.
+- **Dropping scope quietly.** Removing a feature is a decision stated in the
+  change, not an omission to notice later.
+
+If you find yourself writing "preserved exactly" or a test that asserts
+today's oddity, stop and fix the oddity instead.
+
 ## Architecture
 
-Read [PLAN.md](docs/PLAN.md), starting with **Rule 0**, which outranks the rules
-below: rewrite for simplicity and correctness rather than reproduce existing
-behaviour. Record each behaviour change in
-[docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md) with before/after,
-rationale and a CLI check. For funds, keys and addresses,
-refuse early, validate before storing and derive rather than trust caller input.
-
-Spectra is prelaunch with no existing users. Change storage formats, schemas,
-keychain keys and serialized structures directly; do not add migration or
-backward-compatibility shims.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains ownership and the
+boundary rules; [docs/OPEN-ITEMS.md](docs/OPEN-ITEMS.md) holds remaining work.
 
 - Core owns domain state and decisions; the CLI proves they need no platform;
   Swift renders and forwards. New domain logic belongs in `core/` and must be
@@ -31,7 +53,7 @@ backward-compatibility shims.
 - Do not add `core_plan_*` functions; core must own the state it decides about.
 - Swift may hold view state, not authoritative domain state. If losing data on
   restart would be a bug, core owns it.
-- Prefer deleting unnecessary Swift files over porting them.
+- Prefer deleting unnecessary Swift code over moving it into core.
 
 ## Verification
 

@@ -25,11 +25,11 @@ upsells.
 ## Development
 
 One Rust wallet core serves several front ends: the `spectra` CLI, a native
-SwiftUI iOS app, and an Android skeleton. The iOS app predates the core; work is
-underway to finish moving domain state and decisions into Rust.
+SwiftUI iOS app, and an Android skeleton. Core owns domain state and decisions;
+the front ends render its results and forward user intent.
 
-- [AGENTS.md](AGENTS.md): the rules for working in this repository. Read first.
-- [PLAN.md](docs/PLAN.md): Rule 0 and the migration stages.
+- [AGENTS.md](AGENTS.md): the rules for working in this repository, Rule 0
+  first. Read first.
 - [Open items](docs/OPEN-ITEMS.md): remaining work and known limitations.
 - [Behaviour changes](docs/BEHAVIOUR-CHANGES.md): what changed on purpose, and why.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.

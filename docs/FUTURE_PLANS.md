@@ -1,9 +1,9 @@
 # Future product plans
 
 These are planned directions, not completed features. Some build on existing
-capabilities; audit those before implementing replacements. Active architecture
-and implementation work remains in [PLAN.md](PLAN.md), whose Rule 0 applies,
-and [OPEN-ITEMS.md](OPEN-ITEMS.md).
+capabilities; audit those before implementing replacements. Engineering work
+that remains is in [OPEN-ITEMS.md](OPEN-ITEMS.md); Rule 0 in
+[AGENTS.md](../AGENTS.md) applies to both.
 
 ## Product principles
 
@@ -17,7 +17,7 @@ technical details need not become mandatory pages.
 
 Core owns domain state, validation, persistence and decisions. Swift renders
 core-derived information and forwards user intent. New rules must be drivable
-through the CLI. Follow PLAN.md's verification requirements when implementing
+through the CLI. Follow AGENTS.md's verification requirements when implementing
 these items and record intentional behaviour changes in
 [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md).
 
@@ -54,6 +54,11 @@ these items and record intentional behaviour changes in
   [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md)).
 
 ## Medium priority
+
+- [ ] **Android front end.** `kotlin/` is a skeleton. Implement it against the
+  shared core through the same boundary iOS uses: render core's projections,
+  forward intents, and hold view state only. Domain rules it needs that core
+  does not yet export belong in core first, drivable from the CLI.
 
 - [ ] **Explainable coin selection and address management.** For UTXO chains,
   show selected inputs, the selection rationale and the derived change

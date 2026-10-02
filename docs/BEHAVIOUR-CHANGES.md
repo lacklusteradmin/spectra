@@ -1,6 +1,6 @@
 # Behaviour changed on purpose
 
-The log Rule 0 requires. [PLAN.md](PLAN.md) holds the rules and
+The log Rule 0 requires. [AGENTS.md](../AGENTS.md) holds the rules and
 [OPEN-ITEMS.md](OPEN-ITEMS.md) the work still open; this file holds what has
 already changed and why, so a decision can be found later without reading the
 plan around it.
@@ -16,6 +16,41 @@ how to check it without the app:
 - **CLI check** — the `spectra` invocation that shows it, or an honest note
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
+
+## 2026-10-02 — A short wallet password is refused with core's minimum
+
+- **Before:** `validate_wallet_password` returned a bare `TooShort`, and the
+  app's message spelled the minimum itself: "at least 4 characters". The
+  CLI's `wallet check-password` printed `"tooShort"`.
+- **After:** the rejection carries the minimum,
+  `TooShort { min_chars: MIN_WALLET_PASSWORD_CHARS }`, and the message is
+  formatted from it. The CLI prints `{"tooShort":{"minChars":4}}`.
+- **Why:** the rule's number lived in core and in three string tables; a
+  change to one would have left the app quoting a minimum core no longer
+  enforced.
+- **CLI check:** `SPECTRA_PASSWORD=abc SPECTRA_PASSWORD_CONFIRMATION=abc
+  spectra wallet check-password` prints `{"tooShort":{"minChars":4}}`;
+  `scripts/cli-wallets.py` asserts it.
+- **Verification:** `make verify` green: fmt and clippy clean, 905 Rust tests, CLI
+  acceptance 458/458, iOS 99 tests in 21 suites.
+
+## 2026-10-02 — Token and diagnostics-import failures say what went wrong
+
+- **Before:** a token-preference command that failed in core (not one core
+  refused with a reason) showed "This token could not be saved." — on a
+  removal too — and was not logged. Importing a file that is not a
+  diagnostics bundle showed Foundation's "The operation couldn't be
+  completed. (…DiagnosticsBundleError error 0.)".
+- **After:** a failed token command shows core's message through
+  `userErrorMessage` and is logged under "Tokens", as address-book commands
+  already were. A file that is not a bundle reads "That file is not a Spectra
+  diagnostics bundle."
+- **Why:** the two command flows worded and logged failures differently, and
+  a bridge error type's debug description reached the screen.
+- **CLI check:** none applies — both are the app's wording of a failure; core
+  is unchanged. `spectra state` commands already print core's error.
+- **Verification:** `make verify` green: fmt and clippy clean, 905 Rust tests, CLI
+  acceptance 458/458, iOS 99 tests in 21 suites.
 
 ## 2026-10-02 — Decimal fields accept the region's decimal separator
 

@@ -1,8 +1,7 @@
 # FFI boundary
 
 Integration rules for **UniFFI 0.31.2 + Swift 6**. See
-[architecture](ARCHITECTURE.md) for ownership and [PLAN.md](PLAN.md) for the
-work to reduce the boundary.
+[architecture](ARCHITECTURE.md) for ownership.
 
 ## Export shapes
 
