@@ -1666,10 +1666,10 @@ pub(crate) fn decode_monero_electrum_seed(
 
     let words: Vec<&str> = phrase.split_whitespace().collect();
     if words.len() != 25 {
-        return Err(DerivationError::Invalid(format!(
-            "Monero Electrum seed must be 25 words, got {}",
-            words.len()
-        )));
+        return Err(DerivationError::refused(
+            "A Monero Electrum seed has 25 words, not %@.",
+            [words.len()],
+        ));
     }
 
     // Look up each word by its 3-char prefix.
@@ -1685,11 +1685,10 @@ pub(crate) fn decode_monero_electrum_seed(
             .iter()
             .position(|&wl| wl.starts_with(pfx))
             .ok_or_else(|| {
-                DerivationError::Invalid(format!(
-                    "Unknown Monero word at position {}: '{}'",
-                    i + 1,
-                    word
-                ))
+                DerivationError::refused(
+                    "Word %@ is not a Monero seed word: %@",
+                    [(i + 1).to_string(), word.to_string()],
+                )
             })?;
         indices[i] = idx as u32;
     }

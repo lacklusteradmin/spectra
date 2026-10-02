@@ -1183,14 +1183,21 @@ lacks "and stores no wallet for it"          '"Blank PK"' \
     spectra --json wallet list
 contains "and reports how it signs"          'private key' \
     spectra wallet show "PK Wallet"
-# Core derives the address from the key on the commit now, the way it already
-# did from a seed phrase — neither front end derives an import address itself
-# any more. The CLI still asks core the same question before sealing, because
-# a refusal after sealing leaves a key stored under an id no wallet references.
+# Core derives the address from the key on the commit, the way it does from a
+# seed phrase, and refuses before sealing: a refusal after sealing would leave
+# a key stored under an id no wallet references.
 SECRETS_BEFORE="$(find "$DATA_DIR/secrets" -type f 2>/dev/null | wc -l | tr -d ' ')"
 check "refuses a chain that cannot derive from a key" $REJECTED \
     with_password "correct horse" spectra wallet import --chain Cardano \
         --name "No PK" --private-key-file "$DATA_DIR/pk.hex"
+# A key belongs to one network. Two chains used to import the first and drop
+# the second here; through the app's binding they planned a second wallet with
+# no address and sealed the key under it.
+contains_exit $REJECTED "refuses a private key on two chains" 'imports on one chain' \
+    with_password "correct horse" spectra wallet import --chain Ethereum --chain Solana \
+        --name "Two PK" --private-key-file "$DATA_DIR/pk.hex"
+lacks "and stores no wallet for it"          '"Two PK"' \
+    spectra --json wallet list
 if [[ "$(find "$DATA_DIR/secrets" -type f 2>/dev/null | wc -l | tr -d ' ')" == "$SECRETS_BEFORE" ]]; then
     PASSED=$((PASSED + 1))
     printf '  \033[32m✓\033[0m and seals no key on the way to refusing\n'

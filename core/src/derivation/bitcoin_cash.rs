@@ -22,9 +22,9 @@ pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], Derivation
         hash.copy_from_slice(&decoded[1..21]);
         return Ok(hash);
     }
-    Err(DerivationError::Invalid(format!(
-        "cannot decode BCH address: {address}"
-    )))
+    Err(DerivationError::Invalid(
+        format!("cannot decode BCH address: {address}").into(),
+    ))
 }
 
 use crate::SpectraBridgeError;

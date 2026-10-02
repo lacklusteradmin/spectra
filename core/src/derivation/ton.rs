@@ -180,15 +180,15 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), DerivationError> 
     let _has_crc32c = (flags & 0x40) != 0;
     let ref_size = (flags & 0x07) as usize;
     if ref_size == 0 || ref_size > 4 {
-        return Err(DerivationError::Invalid(format!(
-            "TON BOC: invalid ref size {ref_size}"
-        )));
+        return Err(DerivationError::Invalid(
+            format!("TON BOC: invalid ref size {ref_size}").into(),
+        ));
     }
     let off_size = bytes[5] as usize;
     if off_size == 0 || off_size > 8 {
-        return Err(DerivationError::Invalid(format!(
-            "TON BOC: invalid offset size {off_size}"
-        )));
+        return Err(DerivationError::Invalid(
+            format!("TON BOC: invalid offset size {off_size}").into(),
+        ));
     }
     let mut cursor = 6usize;
     let read_uint = |buf: &[u8], off: usize, n: usize| -> Result<u64, DerivationError> {

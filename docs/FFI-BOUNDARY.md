@@ -16,6 +16,15 @@ work to reduce the boundary.
 | `#[uniffi::export] impl` | Methods on an object; keep internal helpers in an unexported block |
 | `#[uniffi::export(with_foreign)]` trait | Shell callbacks implemented by Swift and called by Rust |
 
+`SpectraBridgeError::InvalidInput` and `Failure` carry a `CoreMessage`: an
+English `template` with a `%@` for each of its `args`. The template is the key a
+front end looks up in its string tables, so a sentence a person reads names its
+values as `args` (`SpectraBridgeError::refused`, `failed`,
+`DerivationError::refused`) rather than interpolating them with `format!`.
+`scripts/unused-strings.sh` fails on a templated sentence the tables do not
+translate. Transport, parser and library text arrives with no args and reads
+as sent.
+
 Borrowed types, lifetimes, generics, closures and unexported trait objects do
 not cross. Do not rely on a custom `Drop` implementation on a secret-bearing
 record: scrub its owned strings on the receiving call path.
@@ -63,7 +72,7 @@ still said it was exported. All three scripts run in `scripts/cli-acceptance.sh`
 An export used only by the app may have no Rust coverage. Add a CLI entry point
 for domain rules: `spectra send assemble` exercises EVM assembly without keys
 or network. Offline assembly does not prove broadcasting works; the remaining
-coverage gaps are listed in [PLAN.md](PLAN.md#known-open-items).
+coverage gaps are listed in [OPEN-ITEMS.md](OPEN-ITEMS.md).
 
 ## Regenerating bindings
 

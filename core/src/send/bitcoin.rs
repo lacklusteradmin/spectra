@@ -143,7 +143,7 @@ fn total_value<'a>(utxos: impl IntoIterator<Item = &'a Utxo>) -> Result<u64, Sen
 
 fn tx_input_for_utxo(utxo: &Utxo, sequence: Sequence) -> Result<TxIn, SendError> {
     let txid = Txid::from_str(&utxo.txid)
-        .map_err(|e| SendError::Invalid(format!("bad txid {}: {e}", utxo.txid)))?;
+        .map_err(|e| SendError::Invalid(format!("bad txid {}: {e}", utxo.txid).into()))?;
     Ok(TxIn {
         previous_output: OutPoint {
             txid,
@@ -180,26 +180,26 @@ fn parse_spend_identity(
 
     let mut key_bytes = zeroize::Zeroizing::new(
         hex::decode(params.private_key_hex.as_bytes())
-            .map_err(|e| SendError::Invalid(format!("bad private key hex: {e}")))?,
+            .map_err(|e| SendError::Invalid(format!("bad private key hex: {e}").into()))?,
     );
     let secret_key = SecretKey::from_slice(&key_bytes)
-        .map_err(|e| SendError::Invalid(format!("bad private key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("bad private key: {e}").into()))?;
     key_bytes.zeroize();
 
     let public_key = CompressedPublicKey::from_slice(
         &secp256k1::PublicKey::from_secret_key(secp, &secret_key).serialize(),
     )
-    .map_err(|e| SendError::Invalid(format!("pk: {e}")))?;
+    .map_err(|e| SendError::Invalid(format!("pk: {e}").into()))?;
 
     let to = Address::from_str(&params.to_address)
-        .map_err(|e| SendError::Invalid(format!("bad recipient address: {e}")))?
+        .map_err(|e| SendError::Invalid(format!("bad recipient address: {e}").into()))?
         .require_network(network)
-        .map_err(|e| SendError::Invalid(format!("recipient on wrong network: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("recipient on wrong network: {e}").into()))?;
 
     let from = Address::from_str(&params.from_address)
-        .map_err(|e| SendError::Invalid(format!("bad from address: {e}")))?
+        .map_err(|e| SendError::Invalid(format!("bad from address: {e}").into()))?
         .require_network(network)
-        .map_err(|e| SendError::Invalid(format!("from address on wrong network: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("from address on wrong network: {e}").into()))?;
 
     Ok(SpendIdentity {
         secret_key,

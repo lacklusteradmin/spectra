@@ -1,8 +1,9 @@
 # Behaviour changed on purpose
 
-The log Rule 0 requires. [PLAN.md](PLAN.md) holds the rules and the work
-still open; this file holds what has already changed and why, so a decision can
-be found later without reading the plan around it.
+The log Rule 0 requires. [PLAN.md](PLAN.md) holds the rules and
+[OPEN-ITEMS.md](OPEN-ITEMS.md) the work still open; this file holds what has
+already changed and why, so a decision can be found later without reading the
+plan around it.
 
 Rule 0 licenses changing behaviour, not changing it silently. One entry per
 change, newest first, and each says what it was, what it is, why that side, and
@@ -15,6 +16,202 @@ how to check it without the app:
 - **CLI check** — the `spectra` invocation that shows it, or an honest note
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
+
+## 2026-10-02 — Decimal fields accept the region's decimal separator
+
+- **Before:** the send amount and the EVM Max/Priority Fee fields use the
+  decimal pad, which types the device region's separator — a comma in, for
+  example, a German region. Core reads only `.`, so `1,5` was refused as
+  "Enter a positive decimal amount" and a fractional send could not be
+  typed. Only the price-alert target replaced the separator, with its own
+  copy of the rule.
+- **After:** every decimal field reaches core through
+  `AmountPresentation.canonicalDecimalInput`, which trims and replaces the
+  region's separator with `.`. The amount check, the preview, the build, the
+  custom fees and the price-alert target all read it.
+- **Why:** one rule, applied in one of four places. Core keeps reading only
+  `.`: guessing whether a comma is a decimal or a grouping mark is the
+  platform's job, because only the platform knows which keyboard typed it.
+- **CLI check:** none applies — the CLI takes `.` amounts as arguments.
+  `AmountPresentationTests.decimalInputReachesCoreWithAPoint` covers it.
+
+## 2026-10-02 — Saving a send's recipient asks core whether it is saved
+
+- **Before:** after a send, the card's "Save Recipient To Address Book"
+  button was enabled whenever the address was valid, and read "Recipient
+  Already Saved" only when it was not — so a saved recipient offered to be
+  saved again (and core refused the duplicate on a screen that did not show
+  why), and a recipient that was one of the user's own wallets offered to
+  become a contact.
+- **After:** the card asks core who holds the recipient (`addressHolder`),
+  again whenever the address book changes. A saved contact reads "Recipient
+  Already Saved", disabled; one of the user's wallets shows no button; any
+  other address can be saved. `canSaveRecipientToAddressBook` is gone.
+- **Why:** whether two addresses are the same recipient is core's rule, and
+  the Swift check never asked it.
+- **CLI check:** `spectra address holder --wallet <wallet> <address>` names
+  a saved contact or one of your wallets — the answer the card now reads.
+
+## 2026-10-02 — Funds Finder words a failed read like any other failed call
+
+- **Before:** `FundsScanRead.error` was the failure flattened to a string
+  with `to_string()`. The Funds Finder showed that string as it came —
+  transport or parser detail, untranslated — and each failed read replaced
+  the last, so one banner named whichever address failed most recently, with
+  no chain. With every read failed, the screen also said "No funds found".
+- **After:** `error` is the typed `SpectraBridgeError`. The screen words it
+  with `userErrorMessage`, as every other failed call is worded, and keeps
+  the first failure per chain: one banner per chain that could not be read,
+  in catalog order. "No funds found" — the card and the progress line's
+  "no funds found" — is shown only when every read succeeded.
+- **Why:** core had already decided what kind of failure it was and threw
+  that away at the boundary, leaving the one screen that showed raw
+  transport text. Unread addresses are not empty ones.
+- **CLI check:** `spectra rescan` counts unreadable candidates as before
+  (`read.error.is_some()`); the type change shows only in the app.
+
+## 2026-10-02 — The display currency is a setting like the others
+
+- **Before:** `fiat_currency` sat in `AppSettings` but changed through its
+  own `StateCommand::SetFiatCurrency`, emitting `FiatCurrencyChanged`, which
+  only tests read. Swift had a second setter for it — a `Task` per
+  assignment — outside `updateSetting`, so the picker waited for core while
+  every other setting showed the edit at once.
+- **After:** `AppSettingUpdate::FiatCurrency { value }` through
+  `SetAppSetting`, emitting `AppSettingChanged` like any field. The command
+  and the event are gone; the picker binds through `settingBinding`.
+- **Why:** two write paths for one settings record.
+- **CLI check:** `spectra currency CHF`, then `spectra --json currency`
+  reads `"currency":"CHF"` (covered in `scripts/cli-acceptance.sh`, "display
+  currency").
+
+## 2026-10-02 — The Crypto Wiki lists coins and chains, not where coins live
+
+- **Before:** the Crypto Wiki was one list of coins, each subtitled "On N
+  chains" (or "On <chain>"), and searching a chain name found the coins
+  deployed there. Each coin page had a "Lives On" card listing every chain
+  the coin is native to or deployed on, with standard and contract; its rows
+  were the only way from the wiki to a chain's page.
+- **After:** the list has a Coins section, subtitled by symbol, and a Chains
+  section, subtitled by family, each with its count. Search and the tag
+  filter apply to both, by name, description, tags and (for chains) family.
+  A coin page is the description, tags and circulation model. Core returns
+  the chain wiki sorted by name, as it does coins. The "Lives On" card stays
+  on a held asset's Details page. A chain page no longer has a Derivation
+  Paths card, and `ChainWikiEntry` no longer carries `derivation_path`; the
+  paths stay on `ChainEntry`, which is where derivation reads them.
+- **Why:** Known Tokens already lists every deployment of a coin, with
+  standard, decimals and contract; the wiki repeated it at length, and a
+  chain's page was reachable only through that repetition. Derivation paths
+  are a wallet setting, not encyclopedia copy, and the wiki's copy of them
+  was a second place to keep in step.
+- **CLI check:** none applies — layout only; `list_asset_wiki()` and its
+  `lives_on` are unchanged and covered by `the_wiki_is_one_asset_table`;
+  `list_chain_wiki()` order is covered by `the_chain_wiki_is_sorted_by_name`.
+
+## 2026-10-02 — Core revalues a new display currency itself
+
+- **Before:** after choosing a currency, Swift asked core for a forced
+  exchange-rate fetch, and at launch it fetched rates beside the refresh
+  engine's first tick, which fetches them too. A Swift flag dropped a forced
+  fetch requested while another was in flight, so a currency chosen during the
+  launch fetch was not fetched for. A failed fetch call wrote the fiat notice
+  from Swift, and the next snapshot overwrote it. The CLI's `currency <code>`
+  fetched nothing.
+- **After:** the refresh engine follows core's published state and, when the
+  display currency changes while the app is active, runs a `Revalue` refresh:
+  prices and rates when due, then alerts and movement, handed to the observer
+  like any other. Rates are fetched for every currency at once, so the
+  ordinary due policy covers a new one; nothing is forced. Swift sends the
+  command and nothing else; the launch fetch, the flag and the second writer
+  are gone. `AppRefreshIntent::BalancesUpdated` is renamed `Revalue`, since a
+  sweep's new balances and a new currency both ask for the same work.
+- **Why:** reacting to a setting is a decision about domain state, and the
+  engine already followed state for wallets. The Swift path duplicated core's
+  quote lock and lost requests the lock would have queued.
+- **CLI check:** `spectra --json diagnostics refresh --intent '"revalue"'
+  --conditions '{"appIsActive":true,"isNetworkReachable":false,"isConstrainedNetwork":false,"isExpensiveNetwork":false,"isLowPowerMode":false,"batteryLevel":1,"wantsPriceRefresh":true}'`
+  answers like the other intents (`scripts/cli-diagnostics.py`). The engine's
+  reaction is covered by `a_new_display_currency_is_revalued_by_core`.
+
+## 2026-10-02 — Quote and rate failures are reasons, worded by the front end
+
+- **Before:** `quotes.pricesError` and `quotes.fiatError` were English
+  sentences core stored, and a transport failure stored the transport's own
+  message — URLs, retry counts, `tcp connect error`. The app showed either on
+  the dashboard and in Pricing settings as-is, in every language. The
+  "Secure Storage Unavailable" notice showed the binding's debug description
+  of its error.
+- **After:** both fields are `QuoteRefreshFailure`: `noUsableQuote`, or
+  `unreachable { detail }` with the transport's message kept for the log. The
+  app words each one in the reader's language and never shows `detail`; the
+  log and the CLI read it through `Display`, prefixed `prices:` or
+  `fiat rates:`. The secure-storage notice uses the same wording as every
+  other failed call, and the log keeps the full error.
+- **Why:** a stored sentence is in whichever language wrote it, and a
+  transport message is for whoever debugs it. `ChainDegradation` already
+  stores the reason and lets the front end word it; quotes now do the same.
+- **Format:** the `quotes` metadata row stores each failure as
+  `{"kind":"noUsableQuote"}` or `{"kind":"unreachable","detail":…}`. No
+  migration: prelaunch, and an absent failure is `null` in both shapes.
+- **CLI check:** with no route to a provider (for example
+  `HTTPS_PROXY=http://127.0.0.1:9`), `spectra --json price --refresh` and then
+  `spectra --json price --stored` both show
+  `"pricesError":{"kind":"unreachable","detail":"…"}`.
+
+## 2026-10-02 — Core refuses imports it would narrow, and its refusals reach the reader's language
+
+- **Before:** a private-key or watch-only import took one chain only because
+  the Swift draft cut the selection to its first entry. Core did not check:
+  through the binding, a private key on `[Ethereum, Solana]` derived Ethereum's
+  address, planned a Solana wallet with no address, and sealed the key under
+  both; a watch-only import used its first chain and silently ignored the rest
+  and any addresses typed for another chain. The CLI's `wallet import
+  --private-key-file` with several `--chain` flags imported the first and
+  dropped the others. A signing import whose secret derived nothing for one of
+  several selected chains stored that wallet without an address. A comment
+  beside `derive_private_key_import_address` said the planner refused more than
+  one chain; it did not. Separately, core's refusals crossed as English strings
+  and `userErrorMessage` showed them verbatim, so a Chinese reader saw English
+  for every refused import, send, endpoint or Monero sync, while address-book,
+  token and seed-phrase refusals were already typed and translated.
+- **After:** `WalletImportRequest::check_shape` runs before anything is
+  derived or sealed, and the planner applies the same rule: a private key or a
+  watch-only import takes exactly one chain, watched addresses and an account
+  xpub are refused outside a watch-only import or on a chain that does not take
+  them, and an import cannot be both kinds. The planner refuses any signing
+  wallet without an address on its own chain.
+  `derive_private_key_import_address` takes one chain. The CLI passes every
+  `--chain` to core and no longer derives the address itself before importing.
+  `SpectraBridgeError::InvalidInput` and `Failure` carry a `CoreMessage`
+  (`template`, `args`). Swift looks the template up in the string tables and
+  fills in the values; 223 of core's sentences now have Simplified and
+  Traditional Chinese translations, including the insufficient-funds,
+  stale-review, broadcast, endpoint, import, password and Monero sync messages.
+  Low-level codec, overflow and invariant failures (a malformed TON cell, an
+  `ss58` slice, a missing raw-broadcast field) stay English: they describe a
+  bug or a bad provider answer rather than something the reader can act on.
+  `scripts/unused-strings.sh` fails on a templated core sentence with no
+  translation. Swift's `WalletDiagnosticsState.chainDegraded`, read only by a
+  test, is gone.
+- **Why:** a key and an address are the stricter side of Rule 0 — refuse early
+  rather than store something that cannot sign or that the user did not see
+  dropped. The one-chain rule lived only in a Swift draft, so the CLI and any
+  other binding caller did not have it. Core's refusals were the only
+  user-facing copy outside the string tables.
+- **CLI check:** `spectra wallet import --chain Ethereum --chain Solana
+  --private-key-file <key>` is refused with "A private key imports on one
+  chain" and stores nothing (`scripts/cli-acceptance.sh`, private-key import).
+  Core tests `a_private_key_import_takes_one_chain`,
+  `every_signing_wallet_needs_its_own_address`,
+  `a_watch_only_import_takes_one_chain_and_only_its_addresses`,
+  `an_account_xpub_needs_a_chain_that_takes_one` and
+  `a_message_renders_its_values_into_its_template` cover the rest. The CLI
+  prints the English rendered from the template; the sentences that gained
+  values were reworded to read as sentences (insufficient funds, the Monero
+  seed length and word, derivation path segments, watch-only chains).
+- **Verification:** `make verify` passed: fmt and clippy clean, 901 core
+  tests, 458 CLI acceptance checks and 98 iOS tests.
 
 ## 2026-10-02 — Core's refresh engine follows the wallets; core decides status notifications
 

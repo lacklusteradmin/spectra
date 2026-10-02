@@ -54,9 +54,13 @@ impl From<WalletSecretError> for crate::SpectraBridgeError {
             | WalletSecretError::IncorrectPassword
             | WalletSecretError::EmptyPassword
             | WalletSecretError::PasswordRequired
-            | WalletSecretError::PasswordNotRequired => Self::InvalidInput { message },
+            | WalletSecretError::PasswordNotRequired => Self::InvalidInput {
+                message: message.into(),
+            },
             WalletSecretError::Corrupt { .. } => Self::Decode { message },
-            WalletSecretError::Backend { .. } => Self::Failure { message },
+            WalletSecretError::Backend { .. } => Self::Failure {
+                message: message.into(),
+            },
         }
     }
 }

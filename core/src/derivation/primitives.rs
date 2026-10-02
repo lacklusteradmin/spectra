@@ -38,9 +38,10 @@ fn resolve_bip39_language(name: &str) -> Result<Language, DerivationError> {
         | "traditional_chinese"
         | "zh-hant"
         | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(DerivationError::Invalid(format!(
-            "Unsupported mnemonic wordlist: {other}"
-        ))),
+        other => Err(DerivationError::refused(
+            "Unsupported mnemonic wordlist: %@",
+            [other],
+        )),
     }
 }
 
@@ -145,13 +146,14 @@ pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, DerivationError> 
         } else {
             (segment, false)
         };
-        let raw: u32 = value
-            .parse()
-            .map_err(|_| DerivationError::Invalid(format!("invalid path segment: {segment}")))?;
+        let raw: u32 = value.parse().map_err(|_| {
+            DerivationError::refused("Invalid derivation path segment: %@", [segment])
+        })?;
         if raw >= HARDENED_OFFSET {
-            return Err(DerivationError::Invalid(format!(
-                "path segment out of range: {segment}"
-            )));
+            return Err(DerivationError::refused(
+                "Derivation path segment out of range: %@",
+                [segment],
+            ));
         }
         out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
     }
@@ -211,8 +213,9 @@ pub(crate) fn derive_substrate_sr25519_material(
         iteration_count,
     )?;
 
-    let mini = schnorrkel::MiniSecretKey::from_bytes(&*mini_secret)
-        .map_err(|e| DerivationError::Invalid(format!("Invalid sr25519 mini-secret: {e}")))?;
+    let mini = schnorrkel::MiniSecretKey::from_bytes(&*mini_secret).map_err(|e| {
+        DerivationError::Invalid(format!("Invalid sr25519 mini-secret: {e}").into())
+    })?;
     let mode = if uniform_expansion {
         schnorrkel::ExpansionMode::Uniform
     } else {
@@ -279,19 +282,20 @@ pub(crate) fn decode_ss58(
 ) -> Result<(u16, [u8; 32]), DerivationError> {
     let decoded = bs58::decode(address)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("ss58 decode: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("ss58 decode: {e}").into()))?;
     let (prefix, key_start) = ss58_prefix_from_bytes(&decoded)?;
     if let Some(expected) = expected_prefix
         && prefix != expected
     {
-        return Err(DerivationError::Invalid(format!("ss58 prefix: {prefix}")));
+        return Err(DerivationError::Invalid(
+            format!("ss58 prefix: {prefix}").into(),
+        ));
     }
     let checksum_start = key_start + 32;
     if decoded.len() != checksum_start + 2 {
-        return Err(DerivationError::Invalid(format!(
-            "ss58 payload length: {}",
-            decoded.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("ss58 payload length: {}", decoded.len()).into(),
+        ));
     }
     let checksum = ss58_checksum(&decoded[..checksum_start]);
     if decoded[checksum_start] != checksum[0] || decoded[checksum_start + 1] != checksum[1] {
@@ -422,12 +426,13 @@ pub(crate) fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, Derivati
     for segment in body.split('/') {
         let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
         let raw: u32 = cleaned.parse().map_err(|_| {
-            DerivationError::Invalid(format!("Invalid derivation path segment: {segment}"))
+            DerivationError::refused("Invalid derivation path segment: %@", [segment])
         })?;
         if raw & 0x8000_0000 != 0 {
-            return Err(DerivationError::Invalid(format!(
-                "Derivation path segment out of range: {segment}"
-            )));
+            return Err(DerivationError::refused(
+                "Derivation path segment out of range: %@",
+                [segment],
+            ));
         }
         indices.push(raw | 0x8000_0000);
     }

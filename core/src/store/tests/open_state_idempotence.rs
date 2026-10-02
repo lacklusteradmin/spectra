@@ -21,8 +21,10 @@ async fn reopening_does_not_revert_newer_writes() {
     service.open_state(db.clone()).await.expect("open");
 
     service
-        .apply_state_command(StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Eur,
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Eur,
+            },
         })
         .await
         .expect("apply");
@@ -42,8 +44,10 @@ async fn opening_a_different_database_replaces_the_state() {
     let first = tmp_db();
     service.open_state(first.clone()).await.expect("open");
     service
-        .apply_state_command(StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Eur,
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Eur,
+            },
         })
         .await
         .expect("apply");

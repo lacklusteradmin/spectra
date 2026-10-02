@@ -112,7 +112,7 @@ pub struct SendExecutionRequest {
     /// identity is resolved, the amount and fees are converted, the live nonce
     /// or UTXO set is read, the transaction is built and signed, and the raw
     /// payload comes back. It is how the send path is exercised end to end
-    /// without moving funds — see "Known open items". The EVM builder already
+    /// without moving funds. The EVM builder already
     /// had this behind `EvmSendOverridesInput::sign_only`; the Bitcoin builder
     /// had it and the execution path hard-coded it to `false`.
     #[uniffi(default = false)]
@@ -279,10 +279,9 @@ pub fn validate_send_preflight(
     }
     let asset = asset.ok_or_else(|| SendError::Invalid("Select an asset".into()))?;
     if !asset.is_sendable() {
-        return Err(SendError::Invalid(format!(
-            "{} transfers are not enabled yet.",
-            asset.symbol
-        )));
+        return Err(SendError::Invalid(
+            format!("{} transfers are not enabled yet.", asset.symbol).into(),
+        ));
     }
 
     let normalized_destination_address = destination_address.trim().to_string();

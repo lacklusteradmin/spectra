@@ -146,7 +146,7 @@ pub enum RegistryError {
 impl From<RegistryError> for crate::SpectraBridgeError {
     fn from(error: RegistryError) -> Self {
         Self::InvalidInput {
-            message: error.to_string(),
+            message: error.to_string().into(),
         }
     }
 }

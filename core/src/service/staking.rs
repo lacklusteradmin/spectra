@@ -31,7 +31,8 @@ impl WalletService {
                 message: format!(
                     "Staking queries are unavailable for {}",
                     chain.chain_display_name()
-                ),
+                )
+                .into(),
             });
         }
         if !chain.staking_uses_endpoint() {

@@ -10,7 +10,7 @@ pub(crate) fn decode_ltc_address(address: &str) -> Result<[u8; 20], DerivationEr
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid ltc address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid ltc address: {e}").into()))?;
     if decoded.len() < 21 {
         return Err(DerivationError::Invalid("address too short".into()));
     }
@@ -32,18 +32,20 @@ pub struct MwebAddress {
 /// Decode a bech32m MWEB stealth address into its constituent scan and spend public keys.
 pub fn parse_mweb_address(address: &str) -> Result<MwebAddress, DerivationError> {
     let (hrp, data) = bech32::decode(address)
-        .map_err(|e| DerivationError::Invalid(format!("invalid mweb address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid mweb address: {e}").into()))?;
     if hrp.as_str() != "ltcmweb" && hrp.as_str() != "tmweb" {
-        return Err(DerivationError::Invalid(format!(
-            "expected ltcmweb or tmweb HRP, got \"{}\"",
-            hrp.as_str()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("expected ltcmweb or tmweb HRP, got \"{}\"", hrp.as_str()).into(),
+        ));
     }
     if data.len() != 66 {
-        return Err(DerivationError::Invalid(format!(
-            "mweb address payload must be 66 bytes (scan+spend pubkeys), got {}",
-            data.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!(
+                "mweb address payload must be 66 bytes (scan+spend pubkeys), got {}",
+                data.len()
+            )
+            .into(),
+        ));
     }
     let mut scan_pubkey = [0u8; 33];
     let mut spend_pubkey = [0u8; 33];

@@ -20,10 +20,10 @@ pub async fn sign_and_submit(
     public_key_bytes: &[u8],
 ) -> Result<IcpSendResult, SendError> {
     let key = secp256k1::SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
     let derived = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &key);
     let supplied = secp256k1::PublicKey::from_slice(public_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid public key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid public key: {e}").into()))?;
     if supplied != derived {
         return Err(SendError::Invalid(
             "public key does not match signing key".into(),
@@ -96,7 +96,7 @@ pub async fn sign_and_submit(
             ));
         }
         let hash_bytes = hex::decode(hex_bytes)
-            .map_err(|e| SendError::Invalid(format!("payloads: invalid hex: {e}")))?;
+            .map_err(|e| SendError::Invalid(format!("payloads: invalid hex: {e}").into()))?;
         let sig_hex = sign_icp_payload(&hash_bytes, private_key_bytes)?;
         signatures.push(json!({
             "signing_payload": payload_item,
@@ -160,7 +160,7 @@ fn sign_icp_payload(hash_bytes: &[u8], private_key_bytes: &[u8]) -> Result<Strin
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
     // ICP signs the domain-separated request id (11-byte prefix + 32-byte id).
     // https://docs.internetcomputer.org/references/ic-interface-spec/https-interface/
     if hash_bytes.len() != 43 || !hash_bytes.starts_with(b"\x0aic-request") {

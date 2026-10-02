@@ -31,7 +31,7 @@ pub fn build_signed_payment(
     let msg_hash = sha512_half(&signing_payload);
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
     let msg = Message::from_digest_slice(&msg_hash)
         .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let sig = secp.sign_ecdsa(&msg, &secret_key);
@@ -80,8 +80,8 @@ fn encode_payment_fields(
     out.extend_from_slice(&fee_encoded.to_be_bytes());
     // SigningPubKey, field 3, type 7 (VL)
     out.push(0x73);
-    let pk_bytes =
-        hex::decode(public_key_hex).map_err(|e| SendError::Invalid(format!("pubkey hex: {e}")))?;
+    let pk_bytes = hex::decode(public_key_hex)
+        .map_err(|e| SendError::Invalid(format!("pubkey hex: {e}").into()))?;
     push_vl(&mut out, &pk_bytes);
     // Account (from), field 1, type 8 (AccountID)
     out.push(0x81);
@@ -108,7 +108,7 @@ fn encode_payment_fields_signed(
     // TxnSignature, field 4, type 7
     out.push(0x74);
     let sig_bytes =
-        hex::decode(sig_hex).map_err(|e| SendError::Invalid(format!("sig hex: {e}")))?;
+        hex::decode(sig_hex).map_err(|e| SendError::Invalid(format!("sig hex: {e}").into()))?;
     push_vl(&mut out, &sig_bytes);
     Ok(out)
 }

@@ -67,7 +67,7 @@ impl From<spectra_core::SpectraBridgeError> for CliError {
         use spectra_core::SpectraBridgeError as Bridge;
         match error {
             // Bad input is core saying no, not core falling over.
-            Bridge::InvalidInput { message } => Self::rejected(message),
+            Bridge::InvalidInput { message } => Self::rejected(message.to_string()),
             other => Self::failure(other.to_string()),
         }
     }

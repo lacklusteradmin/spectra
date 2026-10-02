@@ -13,17 +13,16 @@ pub(crate) fn decode_dash_address(address: &str) -> Result<[u8; 20], DerivationE
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid dash address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid dash address: {e}").into()))?;
     if decoded.len() != 21 {
         return Err(DerivationError::Invalid(
             "dash legacy payload must be 21 bytes".into(),
         ));
     }
     if decoded[0] != DASH_P2PKH_VERSION && decoded[0] != DASH_P2SH_VERSION {
-        return Err(DerivationError::Invalid(format!(
-            "unrecognised dash version byte: 0x{:02x}",
-            decoded[0]
-        )));
+        return Err(DerivationError::Invalid(
+            format!("unrecognised dash version byte: 0x{:02x}", decoded[0]).into(),
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);
@@ -41,7 +40,9 @@ pub(crate) fn decode_dash_testnet_address(address: &str) -> Result<[u8; 20], Der
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid dash testnet address: {e}")))?;
+        .map_err(|e| {
+            DerivationError::Invalid(format!("invalid dash testnet address: {e}").into())
+        })?;
     if decoded.len() != 21 || decoded[0] != DASH_TESTNET_P2PKH {
         return Err(DerivationError::Invalid(
             "not a dash testnet address".into(),

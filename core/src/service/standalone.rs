@@ -114,7 +114,8 @@ pub fn generate_mnemonic(word_count: u32) -> Result<String, SpectraBridgeError> 
             SpectraBridgeError::InvalidInput {
                 message: format!(
                     "{word_count} is not a BIP-39 phrase length. Use 12, 15, 18, 21 or 24 words."
-                ),
+                )
+                .into(),
             }
         })?;
     let mut entropy = vec![0u8; entropy_bits as usize / 8];

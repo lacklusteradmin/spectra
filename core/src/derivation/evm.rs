@@ -80,7 +80,7 @@ pub(crate) fn derive_from_private_key_bytes(
 ) -> Result<(Option<String>, Option<String>), DerivationError> {
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(key_bytes)
-        .map_err(|e| DerivationError::Invalid(format!("invalid private key: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid private key: {e}").into()))?;
     let public_key = PublicKey::from_secret_key(&secp, &secret_key);
 
     let address = if want_address {

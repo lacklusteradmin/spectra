@@ -26,6 +26,9 @@ struct Inner {
     forwards_tor_status: AtomicBool,
     /// Whether the task following the service's published state is running.
     follows_wallets: AtomicBool,
+    /// The display currency in the last state followed. `None` until the
+    /// first one, which only sets it.
+    fiat_currency: Mutex<Option<crate::store::state::FiatCurrency>>,
     /// True while a refresh cycle is in flight. The timer tick path skips
     /// missed ticks via `MissedTickBehavior::Skip`, but `trigger_immediate`
     /// spawns its own task and can stack concurrent cycles when several
@@ -65,6 +68,7 @@ impl RefreshEngine {
                 maintenance_stop_tx: Mutex::new(None),
                 forwards_tor_status: AtomicBool::new(false),
                 follows_wallets: AtomicBool::new(false),
+                fiat_currency: Mutex::new(None),
                 is_cycle_running: AtomicBool::new(false),
                 pending_trigger: AtomicBool::new(false),
             }),
@@ -213,10 +217,30 @@ impl RefreshEngine {
         true
     }
 
-    /// Reconcile the wallets on every state core publishes, for as long as the
-    /// engine lives. The platform never has to say that the wallets changed:
-    /// core made the change. Called from an async export, so a runtime is
-    /// present for the spawn.
+    /// Value everything again when the display currency changes. Core stores
+    /// a rate for every currency it quotes, so this refreshes only what is
+    /// due; a currency nothing has fetched a rate for yet is due at once.
+    /// Answers whether it revalued.
+    async fn reconcile_currency(&self) -> bool {
+        let currency = self
+            .inner
+            .wallet_service
+            .app_state()
+            .await
+            .settings
+            .fiat_currency;
+        let previous = self.inner.fiat_currency.lock().unwrap().replace(currency);
+        if previous.is_none_or(|previous| previous == currency) || !self.app_is_active() {
+            return false;
+        }
+        Self::refresh_and_notify(&self.inner, AppRefreshIntent::Revalue).await;
+        true
+    }
+
+    /// Reconcile the wallets and the display currency on every state core
+    /// publishes, for as long as the engine lives. The platform never has to
+    /// say that either changed: core made the change. Called from an async
+    /// export, so a runtime is present for the spawn.
     fn follow_wallets(&self) {
         if self.inner.follows_wallets.swap(true, Ordering::AcqRel) {
             return;
@@ -226,8 +250,12 @@ impl RefreshEngine {
         tokio::spawn(async move {
             loop {
                 published.borrow_and_update();
-                let Some(inner) = inner.upgrade() else { return };
-                RefreshEngine { inner }.reconcile_wallets().await;
+                {
+                    let Some(inner) = inner.upgrade() else { return };
+                    let engine = RefreshEngine { inner };
+                    engine.reconcile_wallets().await;
+                    engine.reconcile_currency().await;
+                }
                 if published.changed().await.is_err() {
                     return;
                 }
@@ -417,7 +445,7 @@ impl RefreshEngine {
             }
             // New balances can cross an alert or a movement threshold. An app
             // that reported conditions gets that judgement with the sweep.
-            Self::refresh_and_notify(inner, AppRefreshIntent::BalancesUpdated).await;
+            Self::refresh_and_notify(inner, AppRefreshIntent::Revalue).await;
 
             let elapsed_ms = cycle_start.elapsed().as_millis();
             tracing::debug!(refreshed, errors, elapsed_ms, "refresh cycle end");
@@ -867,6 +895,63 @@ mod refresh_entry_tests {
             .await
             .unwrap();
         assert!(engine.reconcile_wallets().await, "a removal is a change");
+    }
+
+    /// A new display currency is valued at once, without the platform asking
+    /// for rates. The first state followed is not a change, and neither is
+    /// choosing the currency already shown.
+    #[tokio::test]
+    async fn a_new_display_currency_is_revalued_by_core() {
+        use super::RefreshEngine;
+        use crate::fetch::refresh_policy::DeviceConditions;
+        use crate::service::WalletService;
+        use crate::store::state::{FiatCurrency, StateCommand};
+
+        let service = WalletService::new(vec![]).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "reconcile-currency-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        let engine = RefreshEngine::new(service.clone());
+        // Offline: the revaluation answers without touching a network.
+        *engine.inner.conditions.write().unwrap() = Some(DeviceConditions {
+            app_is_active: true,
+            is_network_reachable: false,
+            is_constrained_network: false,
+            is_expensive_network: false,
+            is_low_power_mode: false,
+            battery_level: 1.0,
+            wants_price_refresh: true,
+        });
+        let set = |currency| StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency { value: currency },
+        };
+
+        assert!(
+            !engine.reconcile_currency().await,
+            "the first state sets the baseline"
+        );
+        service
+            .apply_state_command(set(FiatCurrency::Eur))
+            .await
+            .unwrap();
+        assert!(
+            engine.reconcile_currency().await,
+            "another currency is revalued"
+        );
+        assert!(
+            !engine.reconcile_currency().await,
+            "the same currency again is not"
+        );
+        service
+            .apply_state_command(set(FiatCurrency::Eur))
+            .await
+            .unwrap();
+        assert!(!engine.reconcile_currency().await);
     }
 }
 

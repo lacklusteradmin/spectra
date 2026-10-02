@@ -74,7 +74,7 @@ pub fn build_signed_transfer(
     // canonical substrate signing context. ExpansionMode::Ed25519 matches the
     // public key encoded in the SS58 address.
     let mini = schnorrkel::MiniSecretKey::from_bytes(private_key)
-        .map_err(|e| SendError::Invalid(format!("invalid sr25519 mini-secret: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid sr25519 mini-secret: {e}").into()))?;
     let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
     let signature = keypair.sign_simple(SR25519_SIGNING_CONTEXT, &signing_input);
 

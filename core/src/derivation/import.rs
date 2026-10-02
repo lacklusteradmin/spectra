@@ -175,18 +175,14 @@ impl WalletImportCommit {
     }
 }
 
-/// The address a private-key import stores, keyed by chain id.
+/// The address a private-key import stores on its one chain.
 ///
-/// One chain: `plan_signing_import` refuses more than one for this path. A
-/// chain with no private-key derivation refuses here, before the key is
+/// A chain with no private-key derivation refuses here, before the key is
 /// sealed, rather than storing a wallet that could never sign with it.
 pub fn derive_private_key_import_address(
     private_key: &str,
-    selected_chain_ids: &[Chain],
+    chain: Chain,
 ) -> Result<std::collections::HashMap<Chain, String>, DerivationError> {
-    let Some(&chain) = selected_chain_ids.first() else {
-        return Err(DerivationError::Invalid("Select a chain first.".into()));
-    };
     let address = crate::derivation::dispatch::derive_from_private_key(
         chain,
         private_key.trim().trim_start_matches("0x").to_string(),
@@ -196,9 +192,10 @@ pub fn derive_private_key_import_address(
     .map_err(DerivationError::invalid)?
     .and_then(|result| result.address)
     .ok_or_else(|| {
-        DerivationError::Invalid(format!(
-            "{chain} cannot derive an address from a private key."
-        ))
+        DerivationError::refused(
+            "%@ cannot derive an address from a private key.",
+            [chain.chain_display_name()],
+        )
     })?;
     Ok(std::iter::once((chain, address)).collect())
 }
@@ -206,9 +203,8 @@ pub fn derive_private_key_import_address(
 /// Derive an address for every selected chain, keyed by chain.
 ///
 /// The path comes from `CoreSeedDerivationPaths::path_for` for the concrete
-/// network. A chain whose derivation fails is skipped
-/// rather than failing the import: `validated_addresses` reports what is
-/// missing, and an import left with nothing is refused by the planner.
+/// network. A chain whose derivation fails is left out here; the planner
+/// refuses an import that leaves any selected chain without an address.
 pub fn derive_import_addresses(
     seed_phrase: &str,
     selected_chain_ids: &[Chain],
@@ -417,9 +413,83 @@ pub(crate) fn wallets_for_import(
         .collect()
 }
 
+impl WalletImportRequest {
+    /// Refuse a request whose parts do not belong together, before anything
+    /// is derived or sealed.
+    ///
+    /// A private key and a watched address each belong to one network, so
+    /// those imports take exactly one chain. Narrowing a longer list to its
+    /// first entry, or ignoring addresses typed for a chain the import is not
+    /// on, would drop part of what the caller asked for without saying so.
+    pub fn check_shape(&self) -> Result<(), DerivationError> {
+        check_import_shape(
+            &self.selected_chain_ids,
+            self.is_watch_only_import,
+            self.is_private_key_import,
+            &self.watch_only_entries,
+        )
+    }
+}
+
+fn check_import_shape(
+    chains: &[Chain],
+    is_watch_only: bool,
+    is_private_key: bool,
+    entries: &WalletImportWatchOnlyEntries,
+) -> Result<(), DerivationError> {
+    let Some(&chain) = chains.first() else {
+        return Err(DerivationError::invalid("Select a chain first."));
+    };
+    if is_watch_only && is_private_key {
+        return Err(DerivationError::invalid(
+            "An import is either watch-only or from a private key, not both.",
+        ));
+    }
+    if is_private_key && chains.len() > 1 {
+        return Err(DerivationError::invalid(
+            "A private key imports on one chain. Select one chain.",
+        ));
+    }
+    if !is_watch_only {
+        if !entries.by_chain_id.is_empty() || entries.bitcoin_xpub.is_some() {
+            return Err(DerivationError::invalid(
+                "Watched addresses belong to a watch-only import.",
+            ));
+        }
+        return Ok(());
+    }
+    if chains.len() > 1 {
+        return Err(DerivationError::invalid(
+            "A watch-only import uses one chain. Select one chain.",
+        ));
+    }
+    if entries
+        .by_chain_id
+        .keys()
+        .any(|entry_chain| *entry_chain != chain)
+    {
+        return Err(DerivationError::invalid(
+            "Watched addresses must be on the selected chain.",
+        ));
+    }
+    if entries.bitcoin_xpub.is_some() && !chain.accepts_account_xpub() {
+        return Err(DerivationError::refused(
+            "%@ does not take an account xpub.",
+            [chain.chain_display_name()],
+        ));
+    }
+    Ok(())
+}
+
 pub fn plan_wallet_import(
     request: WalletImportPlanRequest,
 ) -> Result<WalletImportPlan, DerivationError> {
+    check_import_shape(
+        &request.selected_chain_ids,
+        request.is_watch_only_import,
+        request.is_private_key_import,
+        &request.watch_only_entries,
+    )?;
     if request.is_watch_only_import {
         plan_watch_only_import(request)
     } else {
@@ -430,9 +500,6 @@ pub fn plan_wallet_import(
 fn plan_signing_import(
     request: WalletImportPlanRequest,
 ) -> Result<WalletImportPlan, DerivationError> {
-    if request.selected_chain_ids.is_empty() {
-        return Err(DerivationError::Invalid("Select a chain first.".into()));
-    }
     let mut request = request;
     if request.planned_wallet_ids.is_empty() {
         request.planned_wallet_ids = request
@@ -461,6 +528,16 @@ fn plan_signing_import(
         .zip(request.planned_wallet_ids.iter())
         .enumerate()
     {
+        // Every wallet a secret is sealed under answers on its own chain. A
+        // chain the secret derived nothing for refuses the import rather than
+        // storing a wallet with no address beside a key it cannot use.
+        let addresses = addresses_for_chain(*chain_id, &request.resolved_addresses);
+        if addresses.address_for(*chain_id).is_none() {
+            return Err(DerivationError::refused(
+                "Could not derive a %@ address from this secret.",
+                [chain_id.chain_display_name()],
+            ));
+        }
         wallets.push(PlannedWallet {
             wallet_id: wallet_id.clone(),
             name: wallet_display_name(
@@ -470,7 +547,7 @@ fn plan_signing_import(
                 selected_chain_count,
             ),
             chain_id: *chain_id,
-            addresses: addresses_for_chain(*chain_id, &request.resolved_addresses),
+            addresses,
         });
         secret_instructions.push(WalletSecretInstruction {
             wallet_id: wallet_id.clone(),
@@ -492,10 +569,8 @@ fn plan_signing_import(
 fn plan_watch_only_import(
     request: WalletImportPlanRequest,
 ) -> Result<WalletImportPlan, DerivationError> {
-    let primary = *request
-        .selected_chain_ids
-        .first()
-        .ok_or_else(|| DerivationError::Invalid("Select a chain first.".into()))?;
+    // `check_import_shape` has held this to exactly one chain.
+    let primary = request.selected_chain_ids[0];
     let watch_entries = watch_only_addresses_for_chain(primary, &request.watch_only_entries)?;
     if watch_entries.is_empty() {
         return Err(DerivationError::Invalid(
@@ -557,9 +632,10 @@ fn watch_only_addresses_for_chain(
     entries: &WalletImportWatchOnlyEntries,
 ) -> Result<Vec<(Chain, WalletImportAddresses)>, DerivationError> {
     if !chain.supports_watch_only_import() {
-        return Err(DerivationError::Invalid(format!(
-            "Watch-only planning is not available for chain: {chain}"
-        )));
+        return Err(DerivationError::refused(
+            "%@ cannot be imported as watch-only.",
+            [chain.chain_display_name()],
+        ));
     }
 
     // Bitcoin has a second form: one xpub stands in for the whole account, so
@@ -906,7 +982,122 @@ mod tests {
 
         // Monero watch-only needs a view key, so an address alone is refused.
         assert!(plan.is_err());
-        assert!(plan.unwrap_err().to_string().contains("not available"));
+        assert!(
+            plan.unwrap_err()
+                .to_string()
+                .contains("cannot be imported as watch-only")
+        );
+    }
+
+    fn shaped(
+        chains: &[Chain],
+        watch_only: bool,
+        private_key: bool,
+        entries: WalletImportWatchOnlyEntries,
+    ) -> Result<WalletImportPlan, DerivationError> {
+        plan_wallet_import(WalletImportPlanRequest {
+            wallet_name: "W".to_string(),
+            selected_chain_ids: chains.to_vec(),
+            planned_wallet_ids: Vec::new(),
+            is_watch_only_import: watch_only,
+            is_private_key_import: private_key,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses {
+                by_slot: HashMap::from([("ethereum".to_string(), "0xabc".to_string())]),
+                bitcoin_xpub: None,
+            },
+            watch_only_entries: entries,
+        })
+    }
+
+    /// A private key belongs to one network. A second chain used to plan a
+    /// second wallet with no address and seal the key under it too.
+    #[test]
+    fn a_private_key_import_takes_one_chain() {
+        let refused = shaped(
+            &[Chain::Ethereum, Chain::Solana],
+            false,
+            true,
+            WalletImportWatchOnlyEntries::default(),
+        );
+        assert!(refused.unwrap_err().to_string().contains("one chain"));
+        assert!(
+            shaped(
+                &[Chain::Ethereum],
+                false,
+                true,
+                WalletImportWatchOnlyEntries::default()
+            )
+            .is_ok()
+        );
+    }
+
+    /// A signing wallet without an address on its own chain is refused, not
+    /// stored beside a secret it cannot use.
+    #[test]
+    fn every_signing_wallet_needs_its_own_address() {
+        let refused = shaped(
+            &[Chain::Ethereum, Chain::Solana],
+            false,
+            false,
+            WalletImportWatchOnlyEntries::default(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused,
+            DerivationError::Invalid(crate::CoreMessage::new(
+                "Could not derive a %@ address from this secret.",
+                ["Solana"],
+            ))
+        );
+    }
+
+    /// Watched addresses were narrowed to the first selected chain, and lines
+    /// typed for any other chain were dropped without a word.
+    #[test]
+    fn a_watch_only_import_takes_one_chain_and_only_its_addresses() {
+        let entries = |chain: Chain| WalletImportWatchOnlyEntries {
+            by_chain_id: HashMap::from([(chain, vec!["addr".to_string()])]),
+            bitcoin_xpub: None,
+        };
+        assert!(
+            shaped(
+                &[Chain::Solana, Chain::Ethereum],
+                true,
+                false,
+                entries(Chain::Solana)
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("one chain")
+        );
+        assert!(
+            shaped(&[Chain::Solana], true, false, entries(Chain::Ethereum))
+                .unwrap_err()
+                .to_string()
+                .contains("selected chain")
+        );
+        assert!(shaped(&[Chain::Solana], true, false, entries(Chain::Solana)).is_ok());
+    }
+
+    #[test]
+    fn an_account_xpub_needs_a_chain_that_takes_one() {
+        let xpub = WalletImportWatchOnlyEntries {
+            by_chain_id: HashMap::new(),
+            bitcoin_xpub: Some("xpub123".to_string()),
+        };
+        assert!(
+            shaped(&[Chain::Litecoin], true, false, xpub.clone())
+                .unwrap_err()
+                .to_string()
+                .contains("account xpub")
+        );
+        assert!(
+            shaped(&[Chain::Ethereum], false, false, xpub)
+                .unwrap_err()
+                .to_string()
+                .contains("watch-only import")
+        );
     }
 
     #[test]

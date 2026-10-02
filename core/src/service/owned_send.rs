@@ -477,14 +477,16 @@ impl WalletService {
                 ));
             }
             SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
-                return Err(SpectraBridgeError::failure(format!(
-                    "Insufficient {symbol} for amount plus network fee (requires {required} {symbol})"
-                )));
+                return Err(SpectraBridgeError::failed(
+                    "Insufficient %@ for the amount plus the network fee (requires %@ %@).",
+                    [symbol.as_str(), required.as_str(), symbol.as_str()],
+                ));
             }
             SendAffordability::AmountExceedsBalance { symbol } => {
-                return Err(SpectraBridgeError::failure(format!(
-                    "Insufficient {symbol} balance"
-                )));
+                return Err(SpectraBridgeError::failed(
+                    "Insufficient %@ balance.",
+                    [symbol],
+                ));
             }
             SendAffordability::FeeExceedsGasBalance {
                 gas_symbol,
@@ -492,9 +494,15 @@ impl WalletService {
                 chain_id,
             } => {
                 let network = chain_id.chain_display_name();
-                return Err(SpectraBridgeError::failure(format!(
-                    "Insufficient {gas_symbol} for the {network} network fee ({fee} {gas_symbol})"
-                )));
+                return Err(SpectraBridgeError::failed(
+                    "Insufficient %@ for the %@ network fee (%@ %@).",
+                    [
+                        gas_symbol.as_str(),
+                        network,
+                        fee.as_str(),
+                        gas_symbol.as_str(),
+                    ],
+                ));
             }
         }
         let fee_rate_svb = match &preview {

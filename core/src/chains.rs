@@ -267,7 +267,6 @@ pub struct ChainWikiEntry {
     pub family: String,
     pub consensus: String,
     pub state_model: String,
-    pub derivation_path: Vec<ChainDerivationPathEntry>,
 }
 
 /// What staking on a chain means, for a reader — one row per chain that
@@ -457,7 +456,7 @@ static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
     let parsed: TomlWikiFile = toml::from_str(CHAIN_WIKI_TOML)
         .expect("chain-wiki.toml is embedded at compile time and must be valid TOML");
 
-    parsed
+    let mut rows: Vec<ChainWikiEntry> = parsed
         .chains
         .into_iter()
         .map(|w| {
@@ -475,10 +474,12 @@ static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
                 family: w.family,
                 consensus: w.consensus,
                 state_model: w.state_model,
-                derivation_path: chain.derivation_path.clone(),
             }
         })
-        .collect()
+        .collect();
+    // The library lists chains beside coins, which are alphabetical.
+    rows.sort_by(|a, b| a.name.cmp(&b.name));
+    rows
 });
 
 static STAKING: LazyLock<Vec<StakingChainEntry>> = LazyLock::new(|| {
@@ -534,7 +535,7 @@ pub fn list_chain_tags() -> Vec<ChainTag> {
     ChainTag::ALL.to_vec()
 }
 
-/// Return the chain wiki rows — one per chain, never one per network.
+/// Return the chain wiki rows — one per chain, never one per network, by name.
 #[uniffi::export]
 pub fn list_chain_wiki() -> Vec<ChainWikiEntry> {
     WIKI.clone()
@@ -838,8 +839,13 @@ mod explicit_network_catalog {
         let catalog = entry("polkadot");
         assert_eq!(dot.name, catalog.name);
         assert_eq!(dot.native_deployment_id, catalog.native_deployment_id);
-        assert_eq!(dot.derivation_path.len(), catalog.derivation_path.len());
         assert!(!dot.family.is_empty());
+    }
+
+    /// The library shows chains under coins, which are alphabetical.
+    #[test]
+    fn the_chain_wiki_is_sorted_by_name() {
+        assert!(WIKI.windows(2).all(|pair| pair[0].name <= pair[1].name));
     }
 
     /// Contract prompts follow token standards; EVM membership comes from the registry.

@@ -159,7 +159,7 @@ impl WalletService {
                     .find(|h| h.deployment_id() == holding_key)
             })
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: format!("no holding {holding_key} on wallet {wallet_id}"),
+                message: format!("no holding {holding_key} on wallet {wallet_id}").into(),
             })?;
         let (family, token) = destination_probe_asset(holding, &state.token_preferences)?;
         let chain = super::send_execution::send_chain_for(&state, wallet_id, family)?;
@@ -173,7 +173,7 @@ pub(super) fn destination_probe_asset(
 ) -> Result<(Chain, Option<TokenDescriptor>), SpectraBridgeError> {
     let asset = crate::send::SendAsset::of(holding, preferences).ok_or_else(|| {
         SpectraBridgeError::InvalidInput {
-            message: format!("unknown chain: {}", holding.chain_id),
+            message: format!("unknown chain: {}", holding.chain_id).into(),
         }
     })?;
     let chain = asset.chain;
@@ -185,7 +185,8 @@ pub(super) fn destination_probe_asset(
                 message: format!(
                     "{} on {} is not a token this wallet tracks",
                     holding.symbol, holding.chain_id
-                ),
+                )
+                .into(),
             });
         }
     };
@@ -196,7 +197,8 @@ pub(super) fn destination_probe_asset(
             message: format!(
                 "{} on {} declares {} decimals",
                 holding.symbol, holding.chain_id, identity.decimals
-            ),
+            )
+            .into(),
         })?;
     Ok((
         chain,
@@ -231,14 +233,15 @@ where
             message: format!(
                 "enter a valid {} destination address",
                 chain.chain_display_name()
-            ),
+            )
+            .into(),
         });
     }
     let address = lookup(typed.clone())
         .await?
         .filter(|a| crate::send::flow::is_valid_send_address(id, a.clone()))
         .ok_or_else(|| SpectraBridgeError::InvalidInput {
-            message: format!("unable to resolve ENS name '{typed}'"),
+            message: format!("unable to resolve ENS name '{typed}'").into(),
         })?;
     Ok(SendDestinationResolution {
         address: crate::send::flow::normalized_send_address(id, address),
@@ -258,7 +261,8 @@ pub(super) fn verify_reviewed_destination(
             message: format!(
                 "Destination changed to {}. Review the recipient again before sending.",
                 resolved.address
-            ),
+            )
+            .into(),
         });
     }
     Ok(resolved)

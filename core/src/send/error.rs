@@ -15,11 +15,11 @@ pub enum SendError {
     /// The spendable balance does not cover the amount plus the fee. The
     /// message names what fell short where a chain has more than one balance.
     #[error("{0}")]
-    InsufficientFunds(String),
+    InsufficientFunds(crate::CoreMessage),
     /// The send as requested cannot be built: an amount, address, fee or
     /// reviewed plan that is out of range or no longer matches.
     #[error("{0}")]
-    Invalid(String),
+    Invalid(crate::CoreMessage),
     /// Building or signing failed on a valid request.
     #[error("{0}")]
     Internal(String),
@@ -27,7 +27,7 @@ pub enum SendError {
 
 impl SendError {
     pub(crate) fn invalid(message: impl std::fmt::Display) -> Self {
-        Self::Invalid(message.to_string())
+        Self::Invalid(message.to_string().into())
     }
 
     pub(crate) fn insufficient_funds() -> Self {
@@ -37,7 +37,7 @@ impl SendError {
 
 impl From<crate::registry::RegistryError> for SendError {
     fn from(error: crate::registry::RegistryError) -> Self {
-        Self::Invalid(error.to_string())
+        Self::Invalid(error.to_string().into())
     }
 }
 
@@ -49,13 +49,13 @@ impl From<crate::store::seed_envelope::EnvelopeError> for SendError {
 
 impl From<serde_json::Error> for SendError {
     fn from(error: serde_json::Error) -> Self {
-        Self::Invalid(format!("json: {error}"))
+        Self::Invalid(format!("json: {error}").into())
     }
 }
 
 impl From<hex::FromHexError> for SendError {
     fn from(error: hex::FromHexError) -> Self {
-        Self::Invalid(format!("hex decode: {error}"))
+        Self::Invalid(format!("hex decode: {error}").into())
     }
 }
 
@@ -64,10 +64,12 @@ impl From<SendError> for crate::SpectraBridgeError {
         match error {
             SendError::Api(error) => error.into(),
             SendError::Derivation(error) => error.into(),
-            SendError::InsufficientFunds(_) | SendError::Invalid(_) => Self::InvalidInput {
-                message: error.to_string(),
+            SendError::InsufficientFunds(message) | SendError::Invalid(message) => {
+                Self::InvalidInput { message }
+            }
+            SendError::Internal(message) => Self::Failure {
+                message: message.into(),
             },
-            SendError::Internal(message) => Self::Failure { message },
         }
     }
 }

@@ -14,8 +14,10 @@ fn service() -> Arc<WalletService> {
     WalletService::new(vec![]).unwrap()
 }
 fn currency(code: &str) -> StateCommand {
-    StateCommand::SetFiatCurrency {
-        currency: crate::store::state::FiatCurrency::from_code(code).unwrap(),
+    StateCommand::SetAppSetting {
+        update: crate::store::state::AppSettingUpdate::FiatCurrency {
+            value: crate::store::state::FiatCurrency::from_code(code).unwrap(),
+        },
     }
 }
 fn sql(path: &str, statement: &str) {

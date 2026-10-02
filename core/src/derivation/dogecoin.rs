@@ -10,7 +10,7 @@ pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], DerivationE
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid doge address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid doge address: {e}").into()))?;
     if decoded.len() < 21 {
         return Err(DerivationError::Invalid("address too short".into()));
     }

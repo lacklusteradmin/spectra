@@ -111,7 +111,7 @@ pub fn derive_for_chain(
         c if c.is_evm() => evm::derive_evm(s, p, pass, wa, wp, wk)?,
         other => {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!("unsupported chain: {}", other.chain_display_name()),
+                message: format!("unsupported chain: {}", other.chain_display_name()).into(),
             });
         }
     };

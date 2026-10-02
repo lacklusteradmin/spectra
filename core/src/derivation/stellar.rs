@@ -15,19 +15,18 @@ use ed25519_dalek::SigningKey;
 // Decode a Stellar G-account strkey and return the inner 32-byte ed25519 public key.
 pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], DerivationError> {
     let decoded = base32_decode_rfc4648(address.trim()).ok_or_else(|| {
-        DerivationError::Invalid(format!("stellar base32 decode failed: {address}"))
+        DerivationError::Invalid(format!("stellar base32 decode failed: {address}").into())
     })?;
     if decoded.len() != 35 {
-        return Err(DerivationError::Invalid(format!(
-            "stellar address wrong length: {}",
-            decoded.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("stellar address wrong length: {}", decoded.len()).into(),
+        ));
     }
     let version = decoded[0];
     if version != 0x30 {
-        return Err(DerivationError::Invalid(format!(
-            "stellar address wrong version: {version:#x}"
-        )));
+        return Err(DerivationError::Invalid(
+            format!("stellar address wrong version: {version:#x}").into(),
+        ));
     }
     let expected_checksum = crc16_xmodem(&decoded[..33]);
     let observed_checksum = u16::from_le_bytes(

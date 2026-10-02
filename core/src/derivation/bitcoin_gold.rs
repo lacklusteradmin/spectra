@@ -13,17 +13,16 @@ pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], DerivationEr
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid btg address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid btg address: {e}").into()))?;
     if decoded.len() != 21 {
         return Err(DerivationError::Invalid(
             "btg legacy payload must be 21 bytes".into(),
         ));
     }
     if decoded[0] != BTG_P2PKH_VERSION && decoded[0] != BTG_P2SH_VERSION {
-        return Err(DerivationError::Invalid(format!(
-            "unrecognised btg version byte: 0x{:02x}",
-            decoded[0]
-        )));
+        return Err(DerivationError::Invalid(
+            format!("unrecognised btg version byte: 0x{:02x}", decoded[0]).into(),
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);

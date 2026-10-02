@@ -5,14 +5,16 @@ use crate::derivation::funds_finder::{
 };
 use futures::{StreamExt, stream};
 
-#[derive(Clone, serde::Serialize, uniffi::Record)]
+#[derive(Clone, uniffi::Record)]
 pub struct FundsScanRead {
     pub candidate: FundsFinderCandidate,
     pub balance: Option<NativeBalanceSummary>,
     pub funded: bool,
-    pub error: Option<String>,
+    /// Why this address could not be read. Typed, so a front end words it as
+    /// it words any other failed call rather than showing transport detail.
+    pub error: Option<SpectraBridgeError>,
 }
-#[derive(Clone, serde::Serialize, uniffi::Record)]
+#[derive(Clone, uniffi::Record)]
 pub struct FundsScanProgress {
     pub total: u32,
     pub checked: u32,
@@ -80,7 +82,7 @@ impl FundsScan {
                             candidate,
                             balance: None,
                             funded: false,
-                            error: Some(error.to_string()),
+                            error: Some(error),
                         },
                     }
                 })

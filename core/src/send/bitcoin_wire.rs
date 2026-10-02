@@ -37,7 +37,7 @@ pub(crate) fn dsha256(data: &[u8]) -> [u8; 32] {
 /// carries.
 pub(crate) fn decode_txid_le(txid: &str) -> Result<Vec<u8>, SendError> {
     let mut bytes =
-        hex::decode(txid).map_err(|e| SendError::Invalid(format!("txid decode: {e}")))?;
+        hex::decode(txid).map_err(|e| SendError::Invalid(format!("txid decode: {e}").into()))?;
     if bytes.len() != 32 {
         return Err(SendError::Invalid(
             "txid must contain exactly 32 bytes".into(),

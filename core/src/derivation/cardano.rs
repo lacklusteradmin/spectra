@@ -24,12 +24,12 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, Deriva
     if address.starts_with("addr1") || address.starts_with("addr_test1") {
         bech32::decode(address)
             .map(|(_, data)| data)
-            .map_err(|e| DerivationError::Invalid(format!("cardano bech32 decode: {e}")))
+            .map_err(|e| DerivationError::Invalid(format!("cardano bech32 decode: {e}").into()))
     } else {
         let decoded = bs58::decode(address)
             .with_check(None)
             .into_vec()
-            .map_err(|e| DerivationError::Invalid(format!("cardano base58 decode: {e}")))?;
+            .map_err(|e| DerivationError::Invalid(format!("cardano base58 decode: {e}").into()))?;
         Ok(decoded)
     }
 }
@@ -63,12 +63,13 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, DerivationError> {
             (seg, false)
         };
         let raw: u32 = digits.parse().map_err(|_| {
-            DerivationError::Invalid(format!("Invalid derivation path segment: {segment}"))
+            DerivationError::refused("Invalid derivation path segment: %@", [segment])
         })?;
         if raw & 0x8000_0000 != 0 {
-            return Err(DerivationError::Invalid(format!(
-                "Derivation path segment out of range: {segment}"
-            )));
+            return Err(DerivationError::refused(
+                "Derivation path segment out of range: %@",
+                [segment],
+            ));
         }
         out.push(if hardened { raw | 0x8000_0000 } else { raw });
     }

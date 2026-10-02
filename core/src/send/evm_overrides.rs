@@ -7,9 +7,7 @@ use super::evm::{AccessListEntry, EvmSendOverrides};
 use crate::SpectraBridgeError;
 
 fn invalid(message: impl Into<String>) -> SpectraBridgeError {
-    SpectraBridgeError::InvalidInput {
-        message: message.into(),
-    }
+    SpectraBridgeError::invalid(message.into())
 }
 
 fn bytes(raw: &str, field: &str) -> Result<Vec<u8>, SpectraBridgeError> {

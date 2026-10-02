@@ -53,6 +53,7 @@ impl WalletService {
             // address core derived itself and skipped the path where the user
             // typed it.
             let mut commit = commit;
+            commit.request.check_shape()?;
             // Canonicalize before both derivation and storage, regardless of caller.
             commit.seed_phrase = commit.seed_phrase.map(|phrase| {
                 phrase
@@ -118,9 +119,10 @@ impl WalletService {
                     .filter(|_| !commit.request.is_private_key_import);
                 let derived = match (&key, &seed) {
                     (Some(key), _) => Some(
+                        // `check_shape` has held a private-key import to one chain.
                         crate::derivation::import::derive_private_key_import_address(
                             key,
-                            &commit.request.selected_chain_ids,
+                            commit.request.selected_chain_ids[0],
                         )?,
                     ),
                     (None, Some(seed)) => Some(crate::derivation::import::derive_import_addresses(
@@ -146,11 +148,9 @@ impl WalletService {
                     // address that read to the user as "imported", which is the
                     // mistake watch-only imports already refuse to make.
                     if resolved_addresses.by_slot.is_empty() {
-                        return Err(SpectraBridgeError::InvalidInput {
-                            message: "Could not derive an address from this secret for any \
-                                  selected chain."
-                                .to_string(),
-                        });
+                        return Err(SpectraBridgeError::invalid(
+                            "Could not derive an address from this secret for any selected chain.",
+                        ));
                     }
                 }
             }
@@ -178,7 +178,8 @@ impl WalletService {
                 Ok(plan) => plan,
                 Err(message) if !rejected_addresses.is_empty() => {
                     return Err(SpectraBridgeError::InvalidInput {
-                        message: format!("{message} Rejected: {}", rejected_addresses.join(", ")),
+                        message: format!("{message} Rejected: {}", rejected_addresses.join(", "))
+                            .into(),
                     });
                 }
                 Err(message) => return Err(SpectraBridgeError::from(message)),

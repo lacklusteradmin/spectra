@@ -13,7 +13,7 @@ pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], Derivation
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid zcash address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid zcash address: {e}").into()))?;
     if decoded.len() != 22 {
         return Err(DerivationError::Invalid(
             "zcash address payload must be 22 bytes (2 version + 20 hash)".into(),
@@ -21,9 +21,9 @@ pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], Derivation
     }
     let version = [decoded[0], decoded[1]];
     if version != ZCASH_T1_VERSION && version != ZCASH_T3_VERSION {
-        return Err(DerivationError::Invalid(format!(
-            "unrecognised zcash version bytes: {version:02x?}"
-        )));
+        return Err(DerivationError::Invalid(
+            format!("unrecognised zcash version bytes: {version:02x?}").into(),
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[2..22]);
@@ -41,7 +41,9 @@ pub(crate) fn decode_zcash_testnet_address(address: &str) -> Result<[u8; 20], De
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid zcash testnet address: {e}")))?;
+        .map_err(|e| {
+            DerivationError::Invalid(format!("invalid zcash testnet address: {e}").into())
+        })?;
     if decoded.len() != 22
         || ![ZCASH_TESTNET_VERSION, [0x1c, 0xba]].contains(&[decoded[0], decoded[1]])
     {

@@ -70,8 +70,8 @@ fn encode_tx_body(
     let encoded_inputs: Vec<Vec<u8>> = inputs
         .iter()
         .map(|(hash, idx, _)| {
-            let hash_bytes =
-                hex::decode(hash).map_err(|e| SendError::Invalid(format!("input txid: {e}")))?;
+            let hash_bytes = hex::decode(hash)
+                .map_err(|e| SendError::Invalid(format!("input txid: {e}").into()))?;
             if hash_bytes.len() != 32 {
                 return Err(SendError::Invalid(
                     "input txid must contain exactly 32 bytes".into(),

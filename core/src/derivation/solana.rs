@@ -10,9 +10,9 @@ use ed25519_dalek::SigningKey;
 pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], DerivationError> {
     let bytes = bs58::decode(b58)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("b58 decode {b58}: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("b58 decode {b58}: {e}").into()))?;
     bytes.try_into().map_err(|v: Vec<u8>| {
-        DerivationError::Invalid(format!("b58 {b58} not 32 bytes: {}", v.len()))
+        DerivationError::Invalid(format!("b58 {b58} not 32 bytes: {}", v.len()).into())
     })
 }
 

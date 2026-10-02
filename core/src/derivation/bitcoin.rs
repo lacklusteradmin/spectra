@@ -51,7 +51,7 @@ pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, DerivationError> {
     bs58::decode(s)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("base58check decode: {e}")))
+        .map_err(|e| DerivationError::Invalid(format!("base58check decode: {e}").into()))
 }
 
 // ── BIP-32 extended keys ─────────────────────────────────────────────────
@@ -238,7 +238,7 @@ impl ExtendedPublicKey {
         let (version, depth, parent_fingerprint, child_number, chain_code, key_bytes) =
             decode_extended_key(s)?;
         let public_key = PublicKey::from_slice(&key_bytes)
-            .map_err(|e| DerivationError::Invalid(format!("xpub: invalid pubkey: {e}")))?;
+            .map_err(|e| DerivationError::Invalid(format!("xpub: invalid pubkey: {e}").into()))?;
         Ok((
             Self {
                 depth,
@@ -277,10 +277,9 @@ fn decode_extended_key(
 ) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), DerivationError> {
     let payload = base58check_decode(s)?;
     if payload.len() != 78 {
-        return Err(DerivationError::Invalid(format!(
-            "xpub/xprv payload must be 78 bytes, got {}",
-            payload.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("xpub/xprv payload must be 78 bytes, got {}", payload.len()).into(),
+        ));
     }
     let mut version = [0u8; 4];
     version.copy_from_slice(&payload[0..4]);
@@ -354,7 +353,7 @@ pub(crate) fn encode_p2wpkh(
 ) -> Result<String, DerivationError> {
     let program = hash160(compressed_pubkey);
     let hrp = Hrp::parse(params.bech32_hrp)
-        .map_err(|e| DerivationError::Invalid(format!("bech32 hrp: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("bech32 hrp: {e}").into()))?;
     bech32::segwit::encode_v0(hrp, &program)
         .map_err(|e| DerivationError::Internal(format!("bech32 encode v0: {e}")))
 }
@@ -378,7 +377,7 @@ pub(crate) fn encode_p2tr(
         .add_tweak(secp, &tweak)
         .map_err(|e| DerivationError::Internal(format!("taproot tweak: {e}")))?;
     let hrp = Hrp::parse(params.bech32_hrp)
-        .map_err(|e| DerivationError::Invalid(format!("bech32 hrp: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("bech32 hrp: {e}").into()))?;
     bech32::segwit::encode_v1(hrp, &tweaked.serialize())
         .map_err(|e| DerivationError::Internal(format!("bech32 encode v1: {e}")))
 }
@@ -632,9 +631,9 @@ pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, Der
             "bc" => BitcoinNetworkKind::Mainnet,
             "tb" | "bcrt" => BitcoinNetworkKind::Testnet,
             other => {
-                return Err(DerivationError::Invalid(format!(
-                    "unknown bech32 HRP: {other}"
-                )));
+                return Err(DerivationError::Invalid(
+                    format!("unknown bech32 HRP: {other}").into(),
+                ));
             }
         };
         return Ok(ParsedBitcoinAddress::SegWit { network });
@@ -642,18 +641,17 @@ pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, Der
     // Legacy base58check: 0x00/0x05 mainnet, 0x6f/0xc4 testnet.
     let payload = base58check_decode(s)?;
     if payload.len() != 21 {
-        return Err(DerivationError::Invalid(format!(
-            "legacy payload must be 21 bytes, got {}",
-            payload.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("legacy payload must be 21 bytes, got {}", payload.len()).into(),
+        ));
     }
     let network = match payload[0] {
         0x00 | 0x05 => BitcoinNetworkKind::Mainnet,
         0x6f | 0xc4 => BitcoinNetworkKind::Testnet,
         other => {
-            return Err(DerivationError::Invalid(format!(
-                "unknown legacy version byte: 0x{other:02x}"
-            )));
+            return Err(DerivationError::Invalid(
+                format!("unknown legacy version byte: 0x{other:02x}").into(),
+            ));
         }
     };
     Ok(ParsedBitcoinAddress::Legacy { network })

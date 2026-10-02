@@ -23,7 +23,7 @@ pub(crate) fn sign_dash_p2pkh(
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("dash invalid privkey: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("dash invalid privkey: {e}").into()))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     let change = super::accounting::checked_change(

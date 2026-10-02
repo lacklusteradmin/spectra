@@ -328,9 +328,8 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
 
 fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     let chains = resolve_chains(&args.creation.chain)?;
-    let chain = chains[0];
     if args.private_key_file.is_some() || args.private_key_env.is_some() {
-        return import_private_key(ctx, out, args, chain);
+        return import_private_key(ctx, out, args, &chains);
     }
     let env = args
         .seed_env
@@ -364,7 +363,7 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
 /// The last wallet operation the CLI could not drive. Core has dispatched
 /// private-key derivation by chain since `derive_from_private_key`, so
 /// what was missing was this command, not the derivation.
-fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> CliResult<()> {
+fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -> CliResult<()> {
     if args.creation.derivation_input_file.is_some() {
         return Err(CliError::rejected(
             "Derivation overrides require a mnemonic wallet",
@@ -380,19 +379,13 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     }
     .resolve("private key")?;
     let private_key = private_key.trim().trim_start_matches("0x").to_string();
-
-    // Refuse before sealing anything: a chain with no private-key derivation
-    // must not leave a key stored for a wallet that can never sign with it.
-    // Core does the deriving — this call is the same rule the commit below
-    // applies, asked early enough to keep the key out of the store.
-    spectra_core::derivation::import::derive_private_key_import_address(&private_key, &[chain])
-        .map_err(|e| CliError::rejected(e.to_string()))?;
-
     let password = args.creation.password()?;
 
+    // Every chain named goes to core, which takes one for a private key and
+    // derives its address before sealing anything.
     let name = args.creation.name.clone().unwrap_or_default();
     let mut commit = commit_for(
-        request_for(&[chain], &name),
+        request_for(chains, &name),
         CoreSeedDerivationPaths::default(),
     );
     commit.request.is_private_key_import = true;

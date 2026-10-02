@@ -46,12 +46,14 @@ pub(crate) fn decode_bsv_address(address: &str) -> Result<([u8; 20], BsvNetwork)
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid bsv address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("invalid bsv address: {e}").into()))?;
     if decoded.len() != 21 {
         return Err(DerivationError::Invalid("bsv address wrong length".into()));
     }
     let network = BsvNetwork::of_version(decoded[0]).ok_or_else(|| {
-        DerivationError::Invalid(format!("unexpected bsv version byte: 0x{:02x}", decoded[0]))
+        DerivationError::Invalid(
+            format!("unexpected bsv version byte: 0x{:02x}", decoded[0]).into(),
+        )
     })?;
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);

@@ -43,7 +43,7 @@ impl WalletService {
                         .iter()
                         .map(|id| {
                             Chain::from_str_id(id).ok_or_else(|| SpectraBridgeError::InvalidInput {
-                                message: format!("unknown chain {id}"),
+                                message: format!("unknown chain {id}").into(),
                             })
                         })
                         .collect::<Result<Vec<_>, _>>()?,

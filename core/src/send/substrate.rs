@@ -58,10 +58,11 @@ pub(super) fn scale_compact_u128(n: u128) -> Vec<u8> {
 
 pub(super) fn decode_hash_hex(hex_str: &str) -> Result<[u8; 32], SendError> {
     let s = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    let bytes = hex::decode(s).map_err(|e| SendError::Invalid(format!("hash decode: {e}")))?;
+    let bytes =
+        hex::decode(s).map_err(|e| SendError::Invalid(format!("hash decode: {e}").into()))?;
     bytes
         .try_into()
-        .map_err(|_| SendError::Invalid(format!("hash wrong length: {}", hex_str)))
+        .map_err(|_| SendError::Invalid(format!("hash wrong length: {}", hex_str).into()))
 }
 
 pub(super) fn blake2b_256(data: &[u8]) -> [u8; 32] {

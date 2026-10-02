@@ -258,6 +258,27 @@ pub const BITCOIN_STOP_GAP_RANGE: std::ops::RangeInclusive<u32> = 1..=200;
 pub const LARGE_MOVEMENT_PERCENT_RANGE: std::ops::RangeInclusive<f64> = 1.0..=90.0;
 pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_000.0;
 
+/// The bounds the reducer holds edits to, for the controls that set them.
+/// Only bounds a front end's control reads are here; the reducer enforces
+/// every bound whether or not a control knows it.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct InputBounds {
+    /// The most decimal places a custom token may declare.
+    pub max_token_decimals: u32,
+    /// The large-movement alert threshold, in percent.
+    pub large_movement_percent_min: f64,
+    pub large_movement_percent_max: f64,
+}
+
+#[uniffi::export]
+pub fn input_bounds() -> InputBounds {
+    InputBounds {
+        max_token_decimals: MAX_TOKEN_DECIMALS,
+        large_movement_percent_min: *LARGE_MOVEMENT_PERCENT_RANGE.start(),
+        large_movement_percent_max: *LARGE_MOVEMENT_PERCENT_RANGE.end(),
+    }
+}
+
 /// A part of the app's data a reset can clear.
 ///
 /// Strings before: `reset_data` checked them against a list and the platform
@@ -540,13 +561,18 @@ impl Default for CoreAppState {
 
 /// Most tokens use 18 or fewer; the ceiling exists to stop a typo from
 /// producing an unrenderable amount.
-pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
+pub const MAX_TOKEN_DECIMALS: u32 = 30;
 
 /// One settings field and its new value. Field-level updates avoid
 /// overwriting unrelated settings with a caller's stale snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "field", rename_all = "camelCase")]
 pub enum AppSettingUpdate {
+    /// The display currency. Core's refresh engine values everything again
+    /// in it, fetching rates if they are due.
+    FiatCurrency {
+        value: FiatCurrency,
+    },
     AddCustomEndpoint {
         capabilities: Vec<crate::EndpointCapability>,
         chain_id: crate::registry::Chain,
@@ -628,9 +654,6 @@ pub enum StateCommand {
     },
     RemoveWallet {
         wallet_id: String,
-    },
-    SetFiatCurrency {
-        currency: FiatCurrency,
     },
     /// Change one settings field. Values are trimmed and bounded here, so a
     /// front end cannot store a stop gap of zero by writing to its own copy.
@@ -761,9 +784,6 @@ pub enum StateEvent {
     },
     AddressBookRejected {
         reason: AddressBookRejection,
-    },
-    FiatCurrencyChanged {
-        currency: FiatCurrency,
     },
     AppSettingChanged,
     AppSettingRejected,
@@ -902,6 +922,7 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
         }
     }
     match update {
+        AppSettingUpdate::FiatCurrency { value } => settings.fiat_currency = value,
         AppSettingUpdate::AddCustomEndpoint {
             capabilities,
             chain_id,
@@ -1119,12 +1140,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 events.push(StateEvent::AddressBookEntryRemoved { id });
             }
         }
-        StateCommand::SetFiatCurrency { currency } => {
-            if currency != state.settings.fiat_currency {
-                state.settings.fiat_currency = currency;
-                events.push(StateEvent::FiatCurrencyChanged { currency });
-            }
-        }
         StateCommand::SetAppSetting { update } => {
             let before = state.settings.clone();
             let accepted = apply_app_setting(&mut state.settings, update);
@@ -1186,7 +1201,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     Some(TokenPreferenceRejection::InvalidPriceId)
                 }
                 Some(_) if contract.is_empty() => Some(TokenPreferenceRejection::EmptyContract),
-                Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => {
+                Some(_) if decimals > MAX_TOKEN_DECIMALS => {
                     Some(TokenPreferenceRejection::TooManyDecimals)
                 }
                 Some(hosting)
@@ -1278,7 +1293,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 Some(_) if !valid_price_id(&coingecko_id) || !valid_price_id(&coinpaprika_id) => {
                     Some(TokenPreferenceRejection::InvalidPriceId)
                 }
-                Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => {
+                Some(_) if decimals > MAX_TOKEN_DECIMALS => {
                     Some(TokenPreferenceRejection::TooManyDecimals)
                 }
                 Some(_) => None,
@@ -1327,9 +1342,9 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             Some(index) if state.token_preferences[index].is_built_in => events.push(
                 token_preference_rejected(TokenPreferenceRejection::BuiltInToken),
             ),
-            Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => events.push(
-                token_preference_rejected(TokenPreferenceRejection::TooManyDecimals),
-            ),
+            Some(_) if decimals > MAX_TOKEN_DECIMALS => events.push(token_preference_rejected(
+                TokenPreferenceRejection::TooManyDecimals,
+            )),
             Some(index) => {
                 if state.token_preferences[index].token.decimals != decimals {
                     state.token_preferences[index].token.decimals = decimals;
@@ -1439,6 +1454,39 @@ mod tests {
     }
 
     const EVM_CONTRACT: &str = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
+
+    /// The bounds a control reads are the reducer's: the highest it offers
+    /// is accepted and one past it is not.
+    #[test]
+    fn input_bounds_are_the_reducers_bounds() {
+        let bounds = input_bounds();
+        let at = |decimals| {
+            reduce_state(
+                CoreAppState::default(),
+                add_token(
+                    crate::registry::Chain::Ethereum,
+                    "AT",
+                    EVM_CONTRACT,
+                    decimals,
+                ),
+            )
+        };
+        assert_eq!(rejection(&at(bounds.max_token_decimals)), None);
+        assert_eq!(
+            rejection(&at(bounds.max_token_decimals + 1)),
+            Some(TokenPreferenceRejection::TooManyDecimals)
+        );
+
+        let percent = |value| {
+            app_settings_applying(
+                AppSettings::default(),
+                AppSettingUpdate::LargeMovementAlertPercentThreshold { value },
+            )
+            .large_movement_alert_percent_threshold
+        };
+        assert_eq!(percent(0.0), bounds.large_movement_percent_min);
+        assert_eq!(percent(1_000.0), bounds.large_movement_percent_max);
+    }
 
     /// A contract is judged by the chain that would host it, not by whichever
     /// arm a switch fell into. The composer's `default` assumed EVM and the

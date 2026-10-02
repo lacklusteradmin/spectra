@@ -61,10 +61,13 @@ pub(crate) async fn prepare_transfer(
         ));
     }
     if to_decoded.0 != 0 && to_decoded.0 != 1 && to_decoded.0 != 8 {
-        return Err(SendError::Invalid(format!(
-            "kaspa: unsupported destination version 0x{:02x}",
-            to_decoded.0
-        )));
+        return Err(SendError::Invalid(
+            format!(
+                "kaspa: unsupported destination version 0x{:02x}",
+                to_decoded.0
+            )
+            .into(),
+        ));
     }
 
     let total_in = utxos.iter().try_fold(0u64, |sum, u| {
@@ -76,9 +79,10 @@ pub(crate) async fn prepare_transfer(
         .checked_add(actual_fee)
         .ok_or_else(|| SendError::Invalid("kaspa amount plus fee overflow".into()))?;
     if total_in < needed {
-        return Err(SendError::Invalid(format!(
-            "kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi"
-        )));
+        return Err(SendError::Invalid(
+            format!("kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi")
+                .into(),
+        ));
     }
     let change = total_in - needed;
 
@@ -103,7 +107,7 @@ pub(crate) async fn prepare_transfer(
         .iter()
         .map(|u| {
             let script_pubkey = hex::decode(&u.script_pubkey_hex)
-                .map_err(|e| SendError::Invalid(format!("kaspa utxo script hex: {e}")))?;
+                .map_err(|e| SendError::Invalid(format!("kaspa utxo script hex: {e}").into()))?;
             Ok::<KaspaInputBuild, SendError>(KaspaInputBuild {
                 txid: u.txid.clone(),
                 vout: u.vout,
@@ -202,15 +206,15 @@ fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, SendErro
             s.push(0x87); // OP_EQUAL
             Ok(s)
         }
-        v => Err(SendError::Invalid(format!(
-            "kaspa: unsupported address version: 0x{v:02x}"
-        ))),
+        v => Err(SendError::Invalid(
+            format!("kaspa: unsupported address version: 0x{v:02x}").into(),
+        )),
     }
 }
 
 fn decode_transaction_id(txid: &str) -> Result<[u8; 32], SendError> {
     hex::decode(txid)
-        .map_err(|e| SendError::Invalid(format!("kaspa txid: {e}")))?
+        .map_err(|e| SendError::Invalid(format!("kaspa txid: {e}").into()))?
         .try_into()
         .map_err(|_| SendError::Invalid("kaspa txid must contain 32 bytes".into()))
 }
@@ -307,7 +311,7 @@ fn sign_kaspa_inputs(
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("kaspa invalid privkey: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("kaspa invalid privkey: {e}").into()))?;
     let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
     let prevouts = prev_outputs_hash(inputs)?;

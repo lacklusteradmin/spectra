@@ -95,7 +95,7 @@ mod network_balance;
 mod network_hd;
 mod network_history;
 mod network_prices;
-pub use network_prices::{NativeSpotPrice, QuoteRefreshState};
+pub use network_prices::{NativeSpotPrice, QuoteRefreshFailure, QuoteRefreshState};
 mod endpoint_directory;
 mod endpoint_health;
 mod network_tokens;

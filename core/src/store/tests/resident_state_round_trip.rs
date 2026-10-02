@@ -56,8 +56,10 @@ fn alerts_contacts_and_currency_survive_reopening() {
     );
     reduce_state_in_place(
         &mut state,
-        StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Chf,
+        StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Chf,
+            },
         },
     );
     wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
@@ -128,8 +130,10 @@ fn resetting_settings_restores_every_default() {
     }
     reduce_state_in_place(
         &mut state,
-        StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Eur,
+        StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Eur,
+            },
         },
     );
     assert_ne!(state.settings, defaults, "nothing was actually changed");

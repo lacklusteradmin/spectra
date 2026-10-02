@@ -18,23 +18,21 @@ const XRP_ALPHABET_BYTES: &[u8; 58] = b"rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg
 // Decode an XRP address using the Ripple base58 alphabet; returns the 20-byte account ID.
 pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, DerivationError> {
     let alphabet = bs58::Alphabet::new(XRP_ALPHABET_BYTES)
-        .map_err(|e| DerivationError::Invalid(format!("alphabet: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("alphabet: {e}").into()))?;
     let decoded = bs58::decode(address)
         .with_alphabet(&alphabet)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("xrp address decode: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("xrp address decode: {e}").into()))?;
     if decoded.len() != 21 {
-        return Err(DerivationError::Invalid(format!(
-            "xrp address length: {}",
-            decoded.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("xrp address length: {}", decoded.len()).into(),
+        ));
     }
     if decoded[0] != 0x00 {
-        return Err(DerivationError::Invalid(format!(
-            "xrp address version: 0x{:02x}",
-            decoded[0]
-        )));
+        return Err(DerivationError::Invalid(
+            format!("xrp address version: 0x{:02x}", decoded[0]).into(),
+        ));
     }
     Ok(decoded[1..].to_vec())
 }
@@ -80,7 +78,7 @@ pub(crate) fn derive_from_seed_phrase(
         let mut payload = vec![0x00u8];
         payload.extend_from_slice(&hash160_bytes(&public_key.serialize()));
         let alphabet = bs58::Alphabet::new(XRP_ALPHABET_BYTES)
-            .map_err(|e| DerivationError::Invalid(format!("xrp alphabet: {e}")))?;
+            .map_err(|e| DerivationError::Invalid(format!("xrp alphabet: {e}").into()))?;
         Some(
             bs58::encode(&payload)
                 .with_alphabet(&alphabet)

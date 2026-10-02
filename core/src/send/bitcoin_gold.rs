@@ -29,7 +29,7 @@ pub(crate) fn sign_btg_tx(
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     let change = super::accounting::checked_change(

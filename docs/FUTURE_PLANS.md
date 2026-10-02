@@ -2,7 +2,8 @@
 
 These are planned directions, not completed features. Some build on existing
 capabilities; audit those before implementing replacements. Active architecture
-and implementation work remains in [PLAN.md](PLAN.md), whose Rule 0 applies.
+and implementation work remains in [PLAN.md](PLAN.md), whose Rule 0 applies,
+and [OPEN-ITEMS.md](OPEN-ITEMS.md).
 
 ## Product principles
 
@@ -17,7 +18,8 @@ technical details need not become mandatory pages.
 Core owns domain state, validation, persistence and decisions. Swift renders
 core-derived information and forwards user intent. New rules must be drivable
 through the CLI. Follow PLAN.md's verification requirements when implementing
-these items and record intentional behaviour changes there.
+these items and record intentional behaviour changes in
+[BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md).
 
 ## High priority
 
@@ -46,10 +48,10 @@ these items and record intentional behaviour changes there.
   assets, fees, change outputs and supported contract operations before signing.
   Surface unknown or undecodable operations explicitly. If a transaction must
   be rebuilt, highlight changes relative to the previously reviewed version
-  and require fresh confirmation and signing. Implement this alongside or
-  immediately after the transparent send stages already tracked under
-  “Known open items” in [PLAN.md](PLAN.md): core and Swift Build/Sign/Broadcast
-  separation, user-selected broadcast endpoints and per-endpoint outcomes.
+  and require fresh confirmation and signing. Build this on the transparent
+  send stages: core and Swift Build/Sign/Broadcast separation, user-selected
+  broadcast endpoints and per-endpoint outcomes (see the 2026-09-22 entry in
+  [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md)).
 
 ## Medium priority
 

@@ -18,12 +18,11 @@ pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, DerivationError> 
     let decoded = bs58::decode(address)
         .with_check(None)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("base58 decode: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("base58 decode: {e}").into()))?;
     if decoded.len() != 21 || decoded[0] != 0x41 {
-        return Err(DerivationError::Invalid(format!(
-            "invalid Tron address length/prefix: len={}",
-            decoded.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!("invalid Tron address length/prefix: len={}", decoded.len()).into(),
+        ));
     }
     Ok(hex::encode(&decoded[1..]))
 }
@@ -32,12 +31,15 @@ pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, DerivationError> 
 /// hash) as the base58check "T…" form.
 pub fn tron_hex_to_base58(hex_address: &str) -> Result<String, DerivationError> {
     let payload = hex::decode(hex_address)
-        .map_err(|e| DerivationError::Invalid(format!("Tron hex address: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("Tron hex address: {e}").into()))?;
     if payload.len() != 21 || payload[0] != 0x41 {
-        return Err(DerivationError::Invalid(format!(
-            "invalid Tron hex address length/prefix: len={}",
-            payload.len()
-        )));
+        return Err(DerivationError::Invalid(
+            format!(
+                "invalid Tron hex address length/prefix: len={}",
+                payload.len()
+            )
+            .into(),
+        ));
     }
     Ok(bs58::encode(&payload).with_check().into_string())
 }

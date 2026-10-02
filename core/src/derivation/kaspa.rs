@@ -81,9 +81,9 @@ fn convert_bits(data: &[u8], from: u32, to: u32, pad: bool) -> Result<Vec<u8>, D
     for &v in data {
         let v = v as u32;
         if v >> from != 0 {
-            return Err(DerivationError::Invalid(format!(
-                "convert_bits: input value out of range: {v}"
-            )));
+            return Err(DerivationError::Invalid(
+                format!("convert_bits: input value out of range: {v}").into(),
+            ));
         }
         acc = ((acc << from) | v) & max_acc;
         bits += from;
@@ -137,15 +137,15 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
         KASPA_HRP => false,
         KASPA_TESTNET_HRP => true,
         other => {
-            return Err(DerivationError::Invalid(format!(
-                "unknown kaspa hrp: {other}"
-            )));
+            return Err(DerivationError::Invalid(
+                format!("unknown kaspa hrp: {other}").into(),
+            ));
         }
     };
     let mut data = Vec::with_capacity(body.len());
     for ch in body.bytes() {
         let pos = CHARSET.iter().position(|&c| c == ch).ok_or_else(|| {
-            DerivationError::Invalid(format!("invalid kaspa base32 char: {}", ch as char))
+            DerivationError::Invalid(format!("invalid kaspa base32 char: {}", ch as char).into())
         })?;
         data.push(pos as u8);
     }
@@ -164,7 +164,7 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
         return Err(DerivationError::Invalid("kaspa checksum mismatch".into()));
     }
     let bytes = convert_bits(payload5, 5, 8, false)
-        .map_err(|e| DerivationError::Invalid(format!("kaspa decode 5→8: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("kaspa decode 5→8: {e}").into()))?;
     if bytes.is_empty() {
         return Err(DerivationError::Invalid("kaspa empty payload".into()));
     }
@@ -174,16 +174,16 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
         KASPA_VERSION_SCHNORR | KASPA_VERSION_P2SH => 32,
         KASPA_VERSION_ECDSA => 33,
         v => {
-            return Err(DerivationError::Invalid(format!(
-                "unsupported kaspa address version: 0x{v:02x}"
-            )));
+            return Err(DerivationError::Invalid(
+                format!("unsupported kaspa address version: 0x{v:02x}").into(),
+            ));
         }
     };
     if payload.len() != expected_len {
         return Err(DerivationError::Invalid(format!(
             "kaspa address payload length mismatch: version {version}, got {}, expected {expected_len}",
             payload.len()
-        )));
+        ).into()));
     }
     Ok((version, payload, is_testnet))
 }

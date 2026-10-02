@@ -69,7 +69,7 @@ impl WalletService {
             },
         )
         .map_err(|e| SpectraBridgeError::InvalidInput {
-            message: e.to_string(),
+            message: e.to_string().into(),
         })?;
         self.fetch_evm_send_preview(
             chain,
@@ -459,7 +459,7 @@ impl WalletService {
     ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
         if chain.mainnet_counterpart() != Chain::Bitcoin {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!("{chain} is not a Bitcoin network"),
+                message: format!("{chain} is not a Bitcoin network").into(),
             });
         }
         let (balance, rate) = tokio::try_join!(
@@ -492,7 +492,7 @@ impl WalletService {
             chain_id
                 .simple_preview_chain()
                 .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                    message: format!("{chain_id} has no shared-path send preview"),
+                    message: format!("{chain_id} has no shared-path send preview").into(),
                 })?;
         let raw = self
             .fetch_simple_chain_send_preview_json(chain_id, address)

@@ -27,7 +27,7 @@ class DiagnosticsTests(unittest.TestCase):
                 assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
                 return json.loads(p.stdout) if success else None
             conditions = dict(appIsActive=True, isNetworkReachable=False, isConstrainedNetwork=False, isExpensiveNetwork=False, isLowPowerMode=False, batteryLevel=1, wantsPriceRefresh=True)
-            for intent in ['user','scheduled','foreground','balancesUpdated',{'afterSend':{'chain_id':'ethereum'}},{'chain':{'chain_id':'bitcoin'}},{'wallets':{'wallet_ids':['imported']}}]:
+            for intent in ['user','scheduled','foreground','revalue',{'afterSend':{'chain_id':'ethereum'}},{'chain':{'chain_id':'bitcoin'}},{'wallets':{'wallet_ids':['imported']}}]:
                 result = run('diagnostics','refresh','--intent',json.dumps(intent),'--conditions',json.dumps(conditions))['refresh']
                 assert result['pending'] is None and result['failures'] == []
             run('diagnostics','refresh','--intent',json.dumps({'afterSend':{'chain_id':'missing'}}),'--conditions',json.dumps(conditions),success=False)

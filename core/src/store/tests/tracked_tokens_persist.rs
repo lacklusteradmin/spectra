@@ -51,12 +51,12 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
 
     crate::store::state::reduce_state_in_place(
         &mut state,
-        add_custom("USDT", crate::store::state::MAX_TOKEN_DECIMALS as u32),
+        add_custom("USDT", crate::store::state::MAX_TOKEN_DECIMALS),
     );
     assert_eq!(state.token_preferences.len(), 1);
     assert_eq!(
         state.token_preferences[0].token.decimals,
-        crate::store::state::MAX_TOKEN_DECIMALS as u32
+        crate::store::state::MAX_TOKEN_DECIMALS
     );
     wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
     let reloaded =

@@ -219,7 +219,7 @@ pub(crate) fn dcr_base58check_encode(payload: &[u8]) -> String {
 pub(crate) fn dcr_base58check_decode(input: &str) -> Result<Vec<u8>, DerivationError> {
     let raw = bs58::decode(input)
         .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("dcr base58 decode: {e}")))?;
+        .map_err(|e| DerivationError::Invalid(format!("dcr base58 decode: {e}").into()))?;
     if raw.len() < 5 {
         return Err(DerivationError::Invalid(
             "dcr base58check payload too short".into(),
@@ -256,9 +256,9 @@ pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], DerivationEr
     }
     let version = [payload[0], payload[1]];
     if version != DCR_P2PKH_VERSION && version != DCR_P2SH_VERSION {
-        return Err(DerivationError::Invalid(format!(
-            "unrecognised dcr version bytes: {version:02x?}"
-        )));
+        return Err(DerivationError::Invalid(
+            format!("unrecognised dcr version bytes: {version:02x?}").into(),
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&payload[2..22]);

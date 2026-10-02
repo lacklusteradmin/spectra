@@ -156,7 +156,7 @@ impl WalletService {
                     {
                         if !options.iter().any(|option| option.token_id == id) {
                             return Err(SpectraBridgeError::InvalidInput {
-                                message: format!("unknown or unpinnable token ID: {id}"),
+                                message: format!("unknown or unpinnable token ID: {id}").into(),
                             });
                         }
                     }
@@ -169,7 +169,7 @@ impl WalletService {
                     let id = token_id.trim();
                     if !options.iter().any(|option| option.token_id == id) {
                         return Err(SpectraBridgeError::InvalidInput {
-                            message: format!("unknown or unpinnable token ID: {id}"),
+                            message: format!("unknown or unpinnable token ID: {id}").into(),
                         });
                     }
                 }

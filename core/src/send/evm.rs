@@ -240,10 +240,9 @@ pub fn build_eip1559_tx(
 ) -> Result<Vec<u8>, SendError> {
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
-        return Err(SendError::Invalid(format!(
-            "invalid EVM address length: {}",
-            to_bytes.len()
-        )));
+        return Err(SendError::Invalid(
+            format!("invalid EVM address length: {}", to_bytes.len()).into(),
+        ));
     }
     let to_arr: [u8; 20] = to_bytes.try_into().unwrap();
 
@@ -272,7 +271,7 @@ pub fn build_eip1559_tx(
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid key: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
     let msg = Message::from_digest_slice(&msg_hash)
         .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let (rec_id, sig_bytes) = secp
@@ -397,10 +396,9 @@ fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
 pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, SendError> {
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
-        return Err(SendError::Invalid(format!(
-            "invalid EVM to length: {}",
-            to_bytes.len()
-        )));
+        return Err(SendError::Invalid(
+            format!("invalid EVM to length: {}", to_bytes.len()).into(),
+        ));
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
     out.extend_from_slice(&SEL_TRANSFER);

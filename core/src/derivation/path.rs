@@ -130,9 +130,9 @@ pub(crate) fn default_path_from_catalog(chain: Chain) -> Result<String, Derivati
     // the mainnet that says it. That is an answer, not a broken catalog row,
     // so it is not an error.
     if chain.uses_derivation_path() {
-        Err(DerivationError::Invalid(format!(
-            "Missing default derivation path for {chain}."
-        )))
+        Err(DerivationError::Invalid(
+            format!("Missing default derivation path for {chain}.").into(),
+        ))
     } else {
         Ok(String::new())
     }

@@ -7,7 +7,11 @@ use crate::fetch::refresh_policy::{DeviceConditions, RefreshKind};
 pub enum AppRefreshIntent {
     Scheduled,
     Foreground,
-    BalancesUpdated,
+    /// Balances or the display currency changed: refresh prices and rates
+    /// when due and judge alerts and movement again. Fetches no balances,
+    /// history or pending sends. The refresh engine sends this itself after a
+    /// sweep and when the display currency changes.
+    Revalue,
     User,
     Chain {
         chain_id: crate::registry::Chain,
@@ -220,15 +224,15 @@ impl WalletService {
                 result.failures.push(error.to_string());
             }
         }
-        let balances_updated = matches!(intent, AppRefreshIntent::BalancesUpdated);
+        let revalue = matches!(intent, AppRefreshIntent::Revalue);
         let scheduled = matches!(intent, AppRefreshIntent::Scheduled);
         if scheduled && !conditions.app_is_active && !plan.run_background_tick {
             return Ok(result);
         }
         let after_send = matches!(intent, AppRefreshIntent::AfterSend { .. });
-        let heavy = !balances_updated
+        let heavy = !revalue
             && (!scheduled || (!conditions.app_is_active && plan.allow_heavy_background_work));
-        let poll = !balances_updated
+        let poll = !revalue
             && wallets.is_none()
             && (!scheduled || plan.refresh_pending_transactions || plan.run_background_tick);
         if poll {
@@ -309,7 +313,7 @@ impl WalletService {
             {
                 match self.refresh_owned_prices(false).await {
                     Ok(state) => match state.quotes.prices_error {
-                        Some(error) => result.failures.push(error),
+                        Some(failure) => result.failures.push(format!("prices: {failure}")),
                         None => self.record_refresh(RefreshKind::LivePrices).await,
                     },
                     Err(e) => result.failures.push(e.to_string()),
@@ -317,8 +321,8 @@ impl WalletService {
             }
             match self.refresh_owned_fiat_rates(false).await {
                 Ok(state) => {
-                    if let Some(error) = state.quotes.fiat_error {
-                        result.failures.push(error);
+                    if let Some(failure) = state.quotes.fiat_error {
+                        result.failures.push(format!("fiat rates: {failure}"));
                     }
                 }
                 Err(e) => result.failures.push(e.to_string()),

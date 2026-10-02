@@ -56,8 +56,10 @@ async fn a_command_persists_without_the_caller_saving() {
     let first = service();
     first.open_state(db.clone()).await.expect("open");
     let transition = first
-        .apply_state_command(StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Eur,
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Eur,
+            },
         })
         .await
         .expect("apply");
@@ -68,7 +70,7 @@ async fn a_command_persists_without_the_caller_saving() {
     assert_eq!(transition.events.len(), 1);
     assert!(matches!(
         transition.events[0],
-        crate::store::state::StateEvent::FiatCurrencyChanged { .. }
+        crate::store::state::StateEvent::AppSettingChanged
     ));
 
     // A second service, as a second process would see it.
@@ -101,8 +103,10 @@ async fn a_no_op_command_emits_no_event() {
     let service = service();
     service.open_state(tmp_db("noop")).await.expect("open");
     let transition = service
-        .apply_state_command(StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Usd,
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Usd,
+            },
         })
         .await
         .expect("apply");
@@ -119,8 +123,10 @@ async fn a_no_op_command_emits_no_event() {
 async fn commands_apply_in_memory_when_no_database_is_bound() {
     let service = service();
     let transition = service
-        .apply_state_command(StateCommand::SetFiatCurrency {
-            currency: crate::store::state::FiatCurrency::Jpy,
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::FiatCurrency {
+                value: crate::store::state::FiatCurrency::Jpy,
+            },
         })
         .await
         .expect("apply");

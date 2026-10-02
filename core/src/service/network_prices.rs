@@ -10,10 +10,33 @@ pub struct QuoteRefreshState {
     pub prices: HashMap<String, f64>,
     pub prices_attempt_at: Option<f64>,
     pub prices_success_at: Option<f64>,
-    pub prices_error: Option<String>,
+    pub prices_error: Option<QuoteRefreshFailure>,
     pub fiat_attempt_at: Option<f64>,
     pub fiat_success_at: Option<f64>,
-    pub fiat_error: Option<String>,
+    pub fiat_error: Option<QuoteRefreshFailure>,
+}
+
+/// Why the last price or rate refresh left the stored values in place. A
+/// front end words each one; the stored form is the reason, not a sentence in
+/// whichever language wrote it, and a transport's own message stays in
+/// `detail` for the log.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum QuoteRefreshFailure {
+    /// Every provider answered, and none with a usable value.
+    NoUsableQuote,
+    /// No provider could be reached or read.
+    Unreachable { detail: String },
+}
+
+impl std::fmt::Display for QuoteRefreshFailure {
+    /// English, for logs and the CLI.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoUsableQuote => f.write_str("no provider returned a usable value"),
+            Self::Unreachable { detail } => write!(f, "no provider could be reached: {detail}"),
+        }
+    }
 }
 fn now() -> f64 {
     std::time::SystemTime::now()
@@ -46,14 +69,18 @@ fn apply_price_result(
                 .filter(|(_, p)| p.is_finite() && *p > 0.0)
                 .collect();
             if valid.is_empty() {
-                quotes.prices_error = Some("No price provider had a valid quote".into());
+                quotes.prices_error = Some(QuoteRefreshFailure::NoUsableQuote);
             } else {
                 quotes.prices.extend(valid);
                 quotes.prices_success_at = Some(time);
                 quotes.prices_error = None;
             }
         }
-        Err(error) => quotes.prices_error = Some(error.to_string()),
+        Err(error) => {
+            quotes.prices_error = Some(QuoteRefreshFailure::Unreachable {
+                detail: error.to_string(),
+            })
+        }
     }
 }
 
@@ -117,8 +144,10 @@ impl WalletService {
         &self,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
         let state = self.refresh_owned_fiat_rates(true).await?;
-        if let Some(message) = state.quotes.fiat_error {
-            return Err(SpectraBridgeError::Network { message });
+        if let Some(failure) = state.quotes.fiat_error {
+            return Err(SpectraBridgeError::Network {
+                message: format!("fiat rates: {failure}"),
+            });
         }
         Ok(state.fiat_rates_from_usd)
     }
@@ -255,9 +284,11 @@ impl WalletService {
                             state.quotes.fiat_success_at = Some(time);
                             state.quotes.fiat_error = None;
                         }
-                        _ => {
-                            state.quotes.fiat_error =
-                                Some("No fiat-rate provider answered; using stored rates".into())
+                        Ok(_) => state.quotes.fiat_error = Some(QuoteRefreshFailure::NoUsableQuote),
+                        Err(error) => {
+                            state.quotes.fiat_error = Some(QuoteRefreshFailure::Unreachable {
+                                detail: error.to_string(),
+                            })
                         }
                     }
                     vec![StateEvent::QuotesUpdated]
@@ -339,7 +370,9 @@ mod tests {
             .mutate_persisted_state(|s| {
                 s.quotes.prices.insert("ethereum:native".into(), 12.0);
                 s.quotes.prices_attempt_at = Some(now());
-                s.quotes.prices_error = Some("provider unavailable".into());
+                s.quotes.prices_error = Some(QuoteRefreshFailure::Unreachable {
+                    detail: "provider unavailable".into(),
+                });
                 vec![StateEvent::QuotesUpdated]
             })
             .await

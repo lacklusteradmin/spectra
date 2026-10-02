@@ -154,10 +154,10 @@ impl WalletService {
                 .iter()
                 .any(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
             {
-                return Err(SpectraBridgeError::failure(format!(
-                    "Submission not accepted or uncertain; inspect transaction {} before retrying",
-                    completed.id
-                )));
+                return Err(SpectraBridgeError::failed(
+                    "Submission not accepted or uncertain; inspect transaction %@ before retrying.",
+                    [&completed.id],
+                ));
             }
             completed
         };

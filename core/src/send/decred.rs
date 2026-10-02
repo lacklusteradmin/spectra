@@ -115,7 +115,7 @@ fn sign_dcr_tx(
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("dcr invalid privkey: {e}")))?;
+        .map_err(|e| SendError::Invalid(format!("dcr invalid privkey: {e}").into()))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     // Decred sighash optimization: prefix hash is constant across all inputs

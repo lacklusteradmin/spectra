@@ -3,7 +3,7 @@
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::store::state::{FiatCurrency, StateCommand};
+use spectra_core::store::state::{AppSettingUpdate, FiatCurrency, StateCommand};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
@@ -155,12 +155,20 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
     }
     let mut failures = Vec::new();
     let quotes = ctx.rt.block_on(service.refresh_owned_prices(false))?.quotes;
-    failures.extend(quotes.prices_error);
+    failures.extend(
+        quotes
+            .prices_error
+            .map(|failure| format!("prices: {failure}")),
+    );
     let quotes = ctx
         .rt
         .block_on(service.refresh_owned_fiat_rates(false))?
         .quotes;
-    failures.extend(quotes.fiat_error);
+    failures.extend(
+        quotes
+            .fiat_error
+            .map(|failure| format!("fiat rates: {failure}")),
+    );
     let snapshot = ctx.rt.block_on(service.portfolio_snapshot())?;
     let valuation = &snapshot.valuation;
     let code = valuation.currency.code();
@@ -267,7 +275,9 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
             "{requested:?} is not a currency this app quotes in"
         )));
     };
-    let transition = ctx.apply(StateCommand::SetFiatCurrency { currency })?;
+    let transition = ctx.apply(StateCommand::SetAppSetting {
+        update: AppSettingUpdate::FiatCurrency { value: currency },
+    })?;
     let updated = transition.state.settings.fiat_currency.code();
 
     out.text(|| {
