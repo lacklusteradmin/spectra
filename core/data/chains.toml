@@ -130,7 +130,7 @@ derivation_path = [
 
 [[chains]]
 id = "arbitrum"
-name = "Arbitrum"
+name = "Arbitrum One"
 family = "arbitrum"
 environment = "mainnet"
 token_standard = "ERC-20"
@@ -150,7 +150,7 @@ derivation_path = [
 
 [[chains]]
 id = "avalanche"
-name = "Avalanche"
+name = "Avalanche C"
 family = "avalanche"
 environment = "mainnet"
 token_standard = "ARC-20"
@@ -248,7 +248,7 @@ derivation_path = [
 
 [[chains]]
 id = "bnb"
-name = "BNB Chain"
+name = "BNB Smart Chain"
 family = "bnb"
 environment = "mainnet"
 token_standard = "BEP-20"
@@ -258,7 +258,7 @@ derivation_path = [
 
 [[chains]]
 id = "hyperliquid"
-name = "Hyperliquid"
+name = "HyperEVM"
 family = "hyperliquid"
 environment = "mainnet"
 token_standard = "ERC-20"
@@ -268,7 +268,7 @@ derivation_path = [
 
 [[chains]]
 id = "polygon"
-name = "Polygon"
+name = "Polygon PoS"
 family = "polygon"
 environment = "mainnet"
 token_standard = "ERC-20"
@@ -378,7 +378,7 @@ derivation_path = [
 
 [[chains]]
 id = "cronos"
-name = "Cronos"
+name = "Cronos EVM"
 family = "cronos"
 environment = "mainnet"
 token_standard = "ERC-20"
@@ -398,7 +398,7 @@ derivation_path = [
 
 [[chains]]
 id = "zksync-era"
-name = "zkSync Era"
+name = "ZKsync Era"
 family = "zksync-era"
 environment = "mainnet"
 token_standard = "ERC-20"
@@ -478,7 +478,7 @@ derivation_path = [
 
 [[chains]]
 id = "bitcoin-testnet"
-name = "Bitcoin Testnet"
+name = "Bitcoin Testnet 3"
 family = "bitcoin"
 environment = "testnet"
 token_standard = ""
@@ -493,7 +493,7 @@ derivation_path = [
 
 [[chains]]
 id = "bitcoin-testnet-4"
-name = "Bitcoin Testnet4"
+name = "Bitcoin Testnet 4"
 family = "bitcoin"
 environment = "testnet"
 token_standard = ""
@@ -577,7 +577,7 @@ derivation_path = [
 
 [[chains]]
 id = "decred-testnet"
-name = "Decred Testnet"
+name = "Decred Testnet 3"
 family = "decred"
 environment = "testnet"
 token_standard = ""
@@ -587,7 +587,7 @@ derivation_path = [
 
 [[chains]]
 id = "kaspa-testnet"
-name = "Kaspa Testnet"
+name = "Kaspa Testnet 10"
 family = "kaspa"
 environment = "testnet"
 token_standard = ""
@@ -657,7 +657,7 @@ derivation_path = [
 
 [[chains]]
 id = "bnb-testnet"
-name = "BNB Chain Testnet"
+name = "BNB Smart Chain Testnet"
 family = "bnb"
 environment = "testnet"
 token_standard = "BEP-20"
@@ -667,7 +667,7 @@ derivation_path = [
 
 [[chains]]
 id = "avalanche-fuji"
-name = "Avalanche Fuji"
+name = "Avalanche Fuji C"
 family = "avalanche"
 environment = "testnet"
 token_standard = "ARC-20"
@@ -687,7 +687,7 @@ derivation_path = [
 
 [[chains]]
 id = "hyperliquid-testnet"
-name = "Hyperliquid Testnet"
+name = "HyperEVM Testnet"
 family = "hyperliquid"
 environment = "testnet"
 token_standard = "ERC-20"
@@ -717,7 +717,7 @@ derivation_path = [
 
 [[chains]]
 id = "cronos-testnet"
-name = "Cronos Testnet"
+name = "Cronos EVM Testnet"
 family = "cronos"
 environment = "testnet"
 token_standard = "ERC-20"
@@ -727,7 +727,7 @@ derivation_path = [
 
 [[chains]]
 id = "zksync-era-sepolia"
-name = "zkSync Era Sepolia"
+name = "ZKsync Era Sepolia"
 family = "zksync-era"
 environment = "testnet"
 token_standard = "ERC-20"

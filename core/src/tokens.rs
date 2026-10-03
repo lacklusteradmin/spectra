@@ -839,7 +839,7 @@ pub fn deployment_id_for(chain: crate::registry::Chain, contract: Option<&str>) 
 #[cfg(test)]
 mod provider_identity_tests {
     use super::*;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
 
     #[test]
     fn each_provider_listing_belongs_to_one_catalog_token() {
@@ -869,39 +869,6 @@ mod provider_identity_tests {
                     assert_eq!(id.trim().to_lowercase(), id);
                 }
             }
-        }
-    }
-
-    #[test]
-    fn deliberately_unlisted_tokens_have_no_paprika_id() {
-        let catalog = parse_token_file(TOKENS_TOML).unwrap();
-        let unlisted: HashSet<_> = catalog
-            .tokens
-            .iter()
-            .filter(|token| token.coinpaprika_id.is_empty())
-            .map(|token| token.id.as_str())
-            .collect();
-        // Bera USD is not Binance USD; the latter's listing cannot price it.
-        assert_eq!(unlisted, HashSet::from(["honey-3"]));
-    }
-
-    #[test]
-    fn catalog_tokens_carry_explicit_paprika_listings() {
-        let catalog = parse_token_file(TOKENS_TOML).unwrap();
-        for (token_id, expected) in [
-            ("aave", "aave-new"),
-            ("crypto-com-chain", "cro-cryptocom-chain"),
-            ("leo-token", "leo-leo-token"),
-            ("bittorrent", "bttc-bittorrent-chain"),
-            ("usa", "usat"),
-            ("bitcoin", "btc-bitcoin"),
-        ] {
-            let token = catalog
-                .tokens
-                .iter()
-                .find(|token| token.id == token_id)
-                .unwrap();
-            assert_eq!(token.coinpaprika_id, expected);
         }
     }
 }

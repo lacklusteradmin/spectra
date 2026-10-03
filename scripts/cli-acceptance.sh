@@ -326,7 +326,7 @@ check "watches a chain with its own slot inside the EVM family" $OK \
 check "and one outside the seven the app used to name"        $OK \
     spectra wallet watch --chain Polygon --name "Watch Polygon" \
         --address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
-contains "the catalog says which chains can be watched" '"name":"Polygon"' \
+contains "the catalog says which chains can be watched" '"name":"Polygon PoS"' \
     spectra --json chains --filter Polygon
 contains "and that Polygon is one of them"   '"watchOnlyImport":true' \
     spectra --json chains --filter Polygon
@@ -500,7 +500,7 @@ lacks "Sepolia never returns mainnet ownership" '"chainId":"ethereum"' \
     spectra --json endpoints --catalog --chain ethereum-sepolia
 lacks "Ethereum does not absorb testnet endpoints" 'ethereum-sepolia' \
     spectra --json endpoints --catalog --chain ethereum
-contains "Bitcoin Testnet4 is independent of its display title" '"chainId":"bitcoin-testnet-4"' \
+contains "Bitcoin Testnet 4 is independent of its display title" '"chainId":"bitcoin-testnet-4"' \
     spectra --json endpoints --catalog --chain bitcoin-testnet-4
 lacks "catalog identity carries no grouping title" '"groupTitle"' \
     spectra --json endpoints --catalog
@@ -522,7 +522,7 @@ contains "Cardano has no staking query implementation" '"staking":false' spectra
 
 section "evm history source"
 # No API-key provider is configured; missing history is explicit.
-for chain in "BNB Chain" Sonic opBNB Sei Linea Hyperliquid Cronos "X Layer"; do
+for chain in "BNB Smart Chain" Sonic opBNB Sei Linea HyperEVM "Cronos EVM" "X Layer"; do
     contains "$chain has no history source" '"historySource":"none"' \
         spectra --json chains --filter "$chain"
 done
@@ -770,7 +770,7 @@ contains "Sepolia keeps its derived deployment ID" '"deployment_id":"ethereum-se
     spectra --json token catalog --chain ethereum-sepolia
 contains "testnet token has no market identity" '"coingecko_id":""' \
     spectra --json token catalog --chain ethereum-sepolia
-contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"deployment_id":"bitcoin-testnet-4:native"' \
+contains "Bitcoin Testnet 4 resolves from the flat testnet tables" '"deployment_id":"bitcoin-testnet-4:native"' \
     spectra --json token catalog --chain bitcoin-testnet-4
 contains "a testnet coin is named as a test coin" '"name":"Test Bitcoin"' \
     spectra --json token catalog --chain bitcoin-testnet-4
@@ -1216,7 +1216,7 @@ contains "the same key derives on every EVM chain" '0x2c7536e3605d9c16a7a3d7b189
 check "and on the fifth UTXO chain"           $OK \
     with_password "correct horse" spectra wallet import --chain Decred \
         --name "PK Decred" --private-key-file "$DATA_DIR/pk.hex"
-contains "a chain that derives says so in the catalog" '"name":"Polygon"' \
+contains "a chain that derives says so in the catalog" '"name":"Polygon PoS"' \
     spectra --json chains --filter Polygon
 contains "and one that does not says that"    '"privateKeyImport":false' \
     spectra --json chains --filter Solana

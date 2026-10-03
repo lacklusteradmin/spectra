@@ -6,6 +6,17 @@ Delete an item once it is done; what changed belongs in
 
 ## Tasks
 
+- [ ] **Support Plasma and add EURC and USDC deployments.** Plasma is not
+  yet in the chain registry. Once supported, add `euro-coin` (EURC) at
+  `0x3EE196E78d4d4248b849B8E1C7F44C5457FAFD2C` and `usd-coin` (USDC)
+  at `0x2d661C89D812261039AF9764eceaAee884f5F67F`, both ERC-20 with
+  6 decimals. [Circle's launch announcement](https://www.circle.com/blog/now-available-usdc-eurc-cctp-and-bridge-kit-on-plasma)
+  identifies both as native Circle-issued tokens, and live Plasma RPC
+  reads confirmed their precision. The user requested recording these
+  addresses here before adding Plasma chain support.
+- [ ] **Support Monad and add its CAKE deployment.** Monad is not yet in the
+  chain registry. Once supported, add a deployment of `pancakeswap-token`
+  (CAKE) at `0xF59D81cd43f620E722E07f9Cb3f6E41B031017a3`.
 - [ ] **Detect FFI record fields with no production writer.** A syntactic scan
   cannot reliably distinguish unwritten fields from serde or multi-line writes.
   A useful gate needs type-aware analysis before it can reject unused fields.

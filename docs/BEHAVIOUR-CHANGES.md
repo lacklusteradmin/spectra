@@ -17,6 +17,284 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-03 — ETHFI, EURC and USDC cover eleven more deployments
+
+- **Before:** ETHFI listed Ethereum, Arbitrum, Base and Scroll; EURC listed
+  Ethereum, Solana and Avalanche C; USDC listed 13 deployments.
+- **After:** ETHFI also lists Optimism with 18 decimals. EURC also lists
+  Base and Cronos with 6 decimals. USDC also lists Celo, Cronos, Ink,
+  Optimism, Sonic, Unichain, X Layer and ZKsync Era with 6 decimals.
+  All eleven new deployments use ERC-20 and share their existing token's
+  identity, artwork and price-provider IDs. ETHFI now has five deployments,
+  EURC five and USDC 21. Plasma's EURC and USDC addresses are recorded in
+  [OPEN-ITEMS.md](OPEN-ITEMS.md) at the user's request until that chain is
+  supported.
+- **Why:** [Ether.fi's deployed-contract table](https://etherfi.gitbook.io/etherfi/developers/contracts-and-integrations/deployed-contracts#cross-chain-token-contracts)
+  confirms Optimism ETHFI, and Circle's
+  [EURC](https://developers.circle.com/stablecoins/eurc-contract-addresses)
+  and [USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+  tables confirm the supplied stablecoin addresses. These native Circle
+  deployments belong in the shared catalog so users do not need to enter
+  their contracts and precision as custom tokens.
+- **CLI check:** `spectra --json token catalog --chain optimism` lists
+  ETHFI and USDC; the same command on Base and Cronos lists EURC, and on
+  Celo, Cronos, Ink, Sonic, Unichain, X Layer and ZKsync Era lists USDC.
+  `spectra --json token list` includes all five ETHFI, five EURC and
+  21 USDC deployments as built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 21 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks passed for
+  all eleven contracts, ERC-20 standard, precision, deployment IDs,
+  price-provider IDs and artwork, the complete built-in counts and Plasma's
+  absence from the registry and catalog. All 13 supplied addresses passed
+  EIP-55 validation. Read-only RPC calls confirmed ETHFI's 18 decimals and
+  all nine supplied USDC contracts' 6 decimals and mainnet chain IDs.
+  EURC's 6 decimals were confirmed by BaseScan on Base, exact-address
+  CoinGecko metadata on Cronos and a live RPC read on Plasma.
+  `git diff --check` passed. Full workspace, network-service, CLI acceptance
+  and iOS suites were not run for this catalog-only addition.
+
+## 2026-10-03 — Remove TON tsUSDe and token-specific provider test lists
+
+- **Before:** the preceding catalog addition included a separate TON
+  tsUSDe entry. Provider tests also repeated concrete CoinPaprika mappings
+  and required the exact set of tokens with no CoinPaprika ID to match a
+  hardcoded list.
+- **After:** the TON tsUSDe identity and deployment are removed as requested.
+  USDe's nine new deployments and sUSDe's nine new EVM/Aptos deployments
+  remain in the catalog. Provider tests check nonempty listing IDs are unique
+  and all IDs are lowercase and trimmed; no per-token list controls which
+  assets can have an empty provider ID. Bera USD's empty CoinPaprika ID
+  remains declared only in the catalog.
+- **Why:** token facts belong in `tokens.toml`; repeating provider mappings
+  and exceptions in Rust tests creates another catalog to maintain and
+  prevents valid additions with unverified provider IDs. Removing TON
+  tsUSDe is an explicit scope decision requested by the user.
+- **CLI check:** `spectra --json token catalog --chain ton` omits the
+  supplied tsUSDe contract; `spectra --json token list` includes 15 USDe
+  deployments and 13 sUSDe deployments, with no tsUSDe identity.
+  `spectra --json token catalog --chain berachain` still lists Bera USD
+  with an empty CoinPaprika ID.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 21 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet`, `cargo fmt --all -- --check`,
+  `cargo clippy -p spectra_core --all-targets -- -D warnings` and
+  `git diff --check` passed. Offline CLI checks confirmed TON tsUSDe's
+  absence, all 18 remaining USDe/sUSDe additions and their built-in counts,
+  and Bera USD's catalog-only provider mapping. Full workspace,
+  network-service, CLI acceptance and iOS suites were not run for this
+  catalog removal and test cleanup.
+
+## 2026-10-03 — USDe and sUSDe cover more chains; TON tsUSDe has its own identity
+
+- **Before:** the built-in USDe catalog listed Ethereum, Solana, Arbitrum,
+  Aptos, TON and BNB Smart Chain. sUSDe listed Ethereum, Solana, Arbitrum
+  and Base; TON tsUSDe was absent.
+- **After:** USDe also lists ZKsync Era, Optimism, Base, Mantle, Blast,
+  Berachain, Linea, Scroll and X Layer. sUSDe also lists ZKsync Era,
+  Optimism, Mantle, Blast, Berachain, Linea, Scroll, X Layer and Aptos.
+  The 17 new EVM deployments use ERC-20 and 18 decimals; Aptos sUSDe uses
+  its fungible-asset metadata address, AIP-21 and 6 decimals. The supplied
+  TON jetton master is added as the separate `ethena-tsusde` identity,
+  symbol `TSUSDE`, with TEP-74 and 6 decimals. It reuses sUSDe artwork and
+  has empty price-provider IDs because no independent listing was verified.
+  Existing USDe/sUSDe identities and price-provider IDs cover their new
+  deployments; Base sUSDe remains a single entry.
+- **Why:** [Ethena's official address table](https://docs.ethena.fi/technical-design/key-addresses)
+  confirms all supplied addresses and explicitly calls the TON asset
+  tsUSDe. Its [deployed vault implementation](https://github.com/ton-community/contract-abis/blob/fe1d9b690646ef86927dc7dc554e0829139b18ea/verified/9d/54931c9d43e8699d2382095e8237b5acb1beecaf236d337210acd0b43cd19d/orbs.com/sources/src/vault/handlerVault.fc)
+  derives shares from local USDe assets and share supply and vests local
+  rewards. That independent conversion rate is why the catalog gives it
+  its own price identity instead of assigning Ethereum sUSDe's quote.
+  Confirmed deployment precision prevents incorrect balance and send scaling.
+- **CLI check:** `spectra --json token catalog --chain <chain>` lists
+  USDe and sUSDe on the new EVM chains, USDe on Base, sUSDe on Aptos and
+  TSUSDE on TON. `spectra --json token list` includes 15 USDe deployments,
+  13 sUSDe deployments and one tsUSDe deployment as built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 23 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet`, `cargo fmt --all -- --check` and
+  `cargo clippy -p spectra_core --all-targets -- -D warnings` passed.
+  Offline CLI checks passed for all 19 added contracts, standards,
+  precision, deployment IDs, provider IDs and artwork, the complete built-in
+  counts, Base sUSDe's uniqueness and TON's separate identity with empty
+  provider IDs. CLI validation accepted all six distinct supplied addresses.
+  Read-only `decimals()` calls returned 18 for both ZKsync contracts and
+  both common EVM contracts on Optimism. Public
+  [Aptos metadata](https://api.mainnet.aptoslabs.com/v1/accounts/0xb30a694a344edee467d9f82330bbe7c3b89f440a1ecd2da1f3bca266560fce69/resource/0x1::fungible_asset::Metadata)
+  and [TON metadata](https://tonapi.io/v2/jettons/EQDQ5UUyPHrLcQJlPAczd_fjxn8SLrlNQwolBznxCdSlfQwr)
+  confirmed their token identifiers, names and 6 decimals. `git diff --check`
+  passed. Full workspace, network-service, CLI acceptance and iOS suites
+  were not run for this catalog addition.
+
+## 2026-10-03 — ENA is known on nine more supported chains
+
+- **Before:** the built-in ENA catalog listed Ethereum, Solana, Arbitrum,
+  TON and BNB Smart Chain.
+- **After:** it also lists ZKsync Era, Optimism, Base, Mantle, Blast,
+  Berachain, Linea, Scroll and X Layer as ERC-20 deployments with 18
+  decimals. ZKsync uses `0x686b311f82b407f0be842652a98e5619f64cc25f`;
+  the other eight use `0x58538e6a46e07434d7e7375bc268d3cb839c0133`.
+  Each shares the existing Ethena identity, artwork and price-provider IDs.
+- **Why:** deployments listed in
+  [Ethena's official address table](https://docs.ethena.fi/technical-design/key-addresses)
+  belong in the shared catalog so users do not need to enter their contracts
+  and precision as custom tokens.
+- **CLI check:** `spectra --json token catalog --chain <chain>` lists ENA
+  for `zksync-era`, `optimism`, `base`, `mantle`, `blast`, `berachain`,
+  `linea`, `scroll` and `x-layer`; `spectra --json token list` includes
+  all 14 ENA deployments as built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 23 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks passed for
+  all nine contracts, ERC-20 standard, precision, deployment IDs,
+  price-provider IDs and artwork, plus all 14 deployments' built-in status.
+  CLI address validation accepted both supplied EIP-55 addresses. Ethena's
+  official table confirms all nine addresses; a read-only ZKsync RPC
+  `decimals()` call and the
+  [BaseScan token page](https://basescan.org/token/0x58538e6a46e07434d7e7375bc268d3cb839c0133)
+  confirm 18 decimals on those two networks. `git diff --check` passed.
+  Full workspace, network-service, CLI acceptance and iOS suites were not
+  run for this catalog-only addition.
+
+## 2026-10-03 — DAI is known on eight more supported chains
+
+- **Before:** the built-in DAI catalog listed Ethereum, Base and Polygon PoS.
+- **After:** it also lists Arbitrum One, Optimism, Avalanche C, Linea,
+  Scroll, ZKsync Era, Unichain and Celo, all with 18 decimals. Avalanche C
+  uses ARC-20 and the other seven use ERC-20. Each deployment shares the
+  existing DAI identity, artwork and price-provider IDs. BNB and Mode
+  deployments are excluded as requested.
+- **Why:** verified issuer or canonical-bridge deployments belong in the
+  shared catalog so users do not need to enter their contracts and precision
+  as custom tokens. The issuer documents the
+  [Arbitrum](https://github.com/sky-ecosystem/arbitrum-dai-bridge#deployments)
+  and [Optimism](https://github.com/sky-ecosystem/optimism-dai-bridge#deployments)
+  addresses; the bridge operators document
+  [Avalanche DAI.e](https://avawarden-prod.s3.amazonaws.com/bridge_settings.json),
+  [Linea](https://github.com/Consensys-Incorporated/linea-token-list/blob/main/docs/development.md),
+  [Scroll](https://github.com/scroll-tech/token-list/blob/main/data/DAI/data.json)
+  and [Unichain/Celo](https://github.com/ethereum-optimism/ethereum-optimism.github.io/blob/master/data/DAI/data.json).
+  Avalanche's deployment is the bridge representation DAI.e. ZKsync's
+  canonical address is derived from the default L2 shared bridge returned by
+  [`zks_getBridgeContracts`](https://docs.zksync.io/zksync-protocol/api/zks-rpc):
+  `l2TokenAddress(Ethereum DAI)` returns
+  `0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656`, and
+  `l1TokenAddress()` maps it back to Ethereum DAI.
+- **CLI check:** `spectra --json token catalog --chain <chain>` lists DAI
+  for `arbitrum`, `optimism`, `avalanche`, `linea`, `scroll`, `zksync-era`,
+  `unichain` and `celo`; `spectra --json token list` includes all 11 DAI
+  deployments as built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 23 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks passed for
+  all 11 DAI contracts, chain standards, precision, deployment IDs,
+  price-provider IDs and built-in status, plus the excluded chains' absence.
+  Read-only mainnet RPC checks confirmed each of the eight new token
+  contracts has bytecode and 18 decimals; Avalanche reports `DAI.e`, the
+  other seven report `DAI`. Scroll, Unichain and Celo expose Ethereum DAI
+  as their counterpart, and ZKsync's default shared bridge confirms both
+  mapping directions. `git diff --check` passed. Full workspace,
+  network-service, CLI acceptance and iOS suites were not run for this
+  catalog-only addition.
+
+## 2026-10-03 — USDS and sUSDS cover Avalanche, Base and Unichain
+
+- **Before:** the built-in USDS catalog listed Ethereum, Solana, Arbitrum
+  and Optimism; sUSDS listed Ethereum, Arbitrum, Optimism and Base.
+- **After:** USDS also lists Avalanche C, Base and Unichain; sUSDS also
+  lists Avalanche C and Unichain. All six deployments on these three
+  networks use 18 decimals, with ARC-20 on Avalanche C and ERC-20 on Base
+  and Unichain. The existing Base sUSDS entry already matches the supplied
+  address, so it is not duplicated. Each deployment shares its token's
+  existing identity, artwork and price-provider IDs.
+- **Why:** supported deployments belong in the shared catalog so their
+  contracts and precision do not need to be entered as custom tokens.
+  The supplied Avalanche sUSDS address
+  `0x48C4DbA0833748e576Ad60E12a3c01C5785b09Ab` is the
+  [deployment account](https://github.com/sky-ecosystem/spells-mainnet/blob/master/archive/2026-04-09-DssSpell/DssSpell.t.sol#L1672),
+  not a token contract. The catalog uses
+  `0xb94d9613c7aab11e548a327154cc80eca911b5c1` from
+  [Sky's official Avalanche address table](https://github.com/sky-ecosystem/spells-mainnet/blob/master/src/test/addresses_avalanche.sol#L28),
+  confirmed by the official sUSDS bridge's on-chain `token()` value.
+- **CLI check:** `spectra --json token catalog --chain <chain>` lists both
+  USDS and sUSDS for `avalanche`, `base` and `unichain`;
+  `spectra --json token list` includes all 13 deployments as built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 23 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks passed for
+  all six contracts, chain standards, precision, deployment IDs and
+  price-provider IDs, plus all 13 deployments' built-in status and the
+  rejected deployment account's absence. Read-only mainnet RPC checks
+  confirmed chain IDs and each of the six token contracts' symbols and
+  18 decimals; both Avalanche RPCs returned no bytecode at the rejected
+  deployment-account address. Full workspace, network-service, CLI
+  acceptance and iOS suites were not run for this catalog-only addition.
+
+## 2026-10-03 — CRV is known on eight more supported chains
+
+- **Before:** the built-in CRV catalog listed Ethereum, Arbitrum, Optimism
+  and Base.
+- **After:** it also lists Avalanche C, BNB Smart Chain, Celo, Ink, Mantle,
+  Polygon PoS, Sonic and X Layer at their supplied contracts, all with
+  18 decimals. Each deployment shares the existing `curve-dao-token`
+  identity, artwork and price-provider IDs.
+- **Why:** supported CRV deployments belong in the shared catalog so users
+  do not need to enter these contracts and their precision as custom tokens.
+- **CLI check:** `spectra --json token catalog --chain <chain>` lists CRV
+  for `avalanche`, `bnb`, `celo`, `ink`, `mantle`, `polygon`, `sonic` and
+  `x-layer`; `spectra --json token list` includes all 12 CRV deployments as
+  built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 23 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks passed for
+  each new contract, chain standard, precision, deployment ID and
+  price-provider IDs, plus all 12 deployments' built-in status. Read-only
+  RPC checks on each of the eight networks confirmed its chain ID and the
+  supplied contract's `symbol() = CRV` and `decimals() = 18`. Full
+  workspace, network-service, CLI acceptance and iOS suites were not run for
+  this catalog-only addition.
+
+## 2026-10-03 — CAKE is known on five more supported chains
+
+- **Before:** the built-in CAKE catalog listed Ethereum, Solana, Base and
+  BNB Chain.
+- **After:** it also lists Arbitrum, Linea, opBNB and ZKsync Era as ERC-20
+  deployments with 18 decimals, and Aptos with its `oft::CakeOFT` coin type
+  and 8 decimals. Each shares the existing `pancakeswap-token` identity,
+  artwork and price-provider IDs. Monad's CAKE contract is recorded in
+  [OPEN-ITEMS.md](OPEN-ITEMS.md) for when Monad is supported.
+- **Why:** supported CAKE deployments belong in the shared catalog;
+  [PancakeSwap's Aptos precision](https://docs.pancakeswap.finance/bridge/faq)
+  must be used so balances and transfers are scaled correctly.
+- **CLI check:** `spectra --json token catalog --chain <chain>` lists CAKE
+  for `arbitrum`, `linea`, `opbnb`, `zksync-era` and `aptos`;
+  `spectra --json token list` includes all five as built-in tokens.
+- **Verification:** `cargo test -p spectra_core tokens:: -- --skip
+  service::network_tokens::` passed all 23 catalog and built-in-token tests;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks passed for
+  each contract, standard, precision, deployment ID, price-provider IDs and
+  built-in status. Full workspace, network-service, CLI acceptance and iOS
+  suites were not run for this catalog-only addition.
+
+## 2026-10-03 — AAVE is known on Base, Optimism and Polygon
+
+- **Before:** the built-in AAVE catalog listed only Ethereum and Arbitrum.
+- **After:** it also lists Base, Optimism and Polygon at their deployed
+  ERC-20 contracts, all with 18 decimals. Each deployment shares the existing
+  AAVE identity, artwork and price-provider IDs.
+- **Why:** these deployments belong in the shared catalog so their contracts
+  and precision do not need to be entered as custom tokens.
+- **CLI check:** `spectra --json token catalog --chain base`,
+  `spectra --json token catalog --chain optimism` and
+  `spectra --json token catalog --chain polygon` each list the AAVE deployment.
+- **Verification:** `cargo test -p spectra_core tokens::` passed all 30 tests
+  after rerunning outside the sandbox to allow local mock-server ports;
+  `cargo build -p spectra_cli --quiet` and offline CLI checks for all three
+  contracts, deployment IDs, ERC-20 standard, 18 decimals and price-provider
+  IDs passed. Full workspace, CLI acceptance and iOS suites were not run for
+  this catalog-only addition.
+
 ## 2026-10-02 — A short wallet password is refused with core's minimum
 
 - **Before:** `validate_wallet_password` returned a bare `TooShort`, and the
@@ -3947,3 +4225,48 @@ rendering in a real window.
 - **Verification:** both delayed-batch/restart Swift Testing regressions
   passed in the iPhone simulator. Full `make verify` passed (905 Rust tests,
   460 CLI checks, 105 iPhone simulator tests).
+
+## 2026-10-03 — Use concrete network names in the chain catalog
+
+- **Before:** chain labels were `Arbitrum`, `Polygon` and `Bitcoin Testnet`.
+- **After:** the shared catalog displays `Arbitrum One`, `Polygon PoS` and
+  `Bitcoin Testnet 3` throughout the app and CLI.
+- **Why:** identify the concrete networks, including Bitcoin's testnet version.
+- **CLI check:** `spectra --json chains --filter "Arbitrum One"`,
+  `spectra --json chains --filter "Polygon PoS"` and
+  `spectra --json chains --testnets --filter "Bitcoin Testnet 3"` report the
+  requested labels.
+  `spectra --json endpoints --catalog --chain "Bitcoin Testnet 3"` resolves
+  the renamed network.
+- **Verification:** `every_catalog_name_resolves` and
+  `settings_keeps_a_chain_and_its_testnets_together` passed. The rebuilt CLI
+  passed six offline checks for the three catalog labels and endpoint lookup
+  titles. `cargo fmt --all -- --check`, shell syntax and `git diff --check`
+  passed. No full suite was run for this display-only change.
+
+## 2026-10-03 — Clarify more concrete networks and their testnets
+
+- **Before:** mainnets were labeled `Avalanche`, `BNB Chain`, `Cronos`,
+  `Hyperliquid` and `zkSync Era`, with matching generic testnet labels.
+  `Kaspa Testnet` and `Decred Testnet` omitted their version, and
+  `Bitcoin Testnet4` omitted a space.
+- **After:** mainnet labels are `Avalanche C`, `BNB Smart Chain`, `Cronos EVM`,
+  `HyperEVM` and `ZKsync Era`. Their testnets are `Avalanche Fuji C`,
+  `BNB Smart Chain Testnet`, `Cronos EVM Testnet`, `HyperEVM Testnet` and
+  `ZKsync Era Sepolia`. The versioned labels are `Kaspa Testnet 10`,
+  `Decred Testnet 3` and `Bitcoin Testnet 4`. Optimism and Optimism Sepolia
+  retain their current labels at the user's request.
+- **Why:** identify the specific supported networks and execution environment,
+  and use consistent spelling across the shared app and CLI catalog.
+- **CLI check:** `spectra --json chains --testnets` lists all renamed labels;
+  `spectra --json endpoints --catalog --chain "HyperEVM Testnet"` resolves the
+  renamed network. Display-name filters for `BNB Smart Chain`, `HyperEVM` and
+  `Cronos EVM` still expose `historySource: "none"`.
+- **Verification:** `every_catalog_name_resolves` and
+  `settings_keeps_a_chain_and_its_testnets_together` passed. The rebuilt CLI
+  passed 26 offline catalog-filter/display-name lookup checks, plus checks for
+  the history-source filters, unchanged Optimism labels and earlier renames.
+  The iPhone simulator passed `bitcoinWalletDisplayTitleUsesWalletSpecificNetwork`
+  and `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
+  `cargo fmt --all -- --check`, shell syntax and `git diff --check` passed.
+  No full suite was run for this display-only change.

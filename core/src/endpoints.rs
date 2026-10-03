@@ -226,7 +226,7 @@ mod network_index_tests {
             .into_iter()
             .map(|group| group.title)
             .collect();
-        for expected in ["Bitcoin Testnet", "Bitcoin Testnet4", "Bitcoin Signet"] {
+        for expected in ["Bitcoin Testnet 3", "Bitcoin Testnet 4", "Bitcoin Signet"] {
             assert!(titles.contains(&expected.to_string()), "missing {expected}");
         }
     }

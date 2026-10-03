@@ -690,6 +690,30 @@ standard = "ERC-20"
 contract = "0xba5ddd1f9d7f570dc94a51479a000e3bce967196"
 decimals = 18
 
+[[deployments]]
+token_id = "aave"
+chain_id = "base"
+kind = "token"
+standard = "ERC-20"
+contract = "0x63706e401c06ac8513145b7687a14804d17f814b"
+decimals = 18
+
+[[deployments]]
+token_id = "aave"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0x76fb31fb4af56892a25e32cfc43de717950c9278"
+decimals = 18
+
+[[deployments]]
+token_id = "aave"
+chain_id = "polygon"
+kind = "token"
+standard = "ERC-20"
+contract = "0xd6df932a45c0f255f85145f286ea0b292b21c90b"
+decimals = 18
+
 [[tokens]]
 id = "aerodrome-finance"
 symbol = "AERO"
@@ -848,6 +872,46 @@ standard = "BEP-20"
 contract = "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
 decimals = 18
 
+[[deployments]]
+token_id = "pancakeswap-token"
+chain_id = "arbitrum"
+kind = "token"
+standard = "ERC-20"
+contract = "0x1b896893dfc86bb67cf57767298b9073d2c1ba2c"
+decimals = 18
+
+[[deployments]]
+token_id = "pancakeswap-token"
+chain_id = "linea"
+kind = "token"
+standard = "ERC-20"
+contract = "0x0d1e753a25ebda689453309112904807625befbe"
+decimals = 18
+
+[[deployments]]
+token_id = "pancakeswap-token"
+chain_id = "opbnb"
+kind = "token"
+standard = "ERC-20"
+contract = "0x2779106e4f4a8a28d77a24c18283651a2ae22d1c"
+decimals = 18
+
+[[deployments]]
+token_id = "pancakeswap-token"
+chain_id = "zksync-era"
+kind = "token"
+standard = "ERC-20"
+contract = "0x3a287a06c66f9e95a56327185ca2bdf5f031cecd"
+decimals = 18
+
+[[deployments]]
+token_id = "pancakeswap-token"
+chain_id = "aptos"
+kind = "token"
+standard = "AIP-21"
+contract = "0x159df6b7689437016108a019fd5bef736bac692b6d4a1f10c941f6fbb9a74ca6::oft::CakeOFT"
+decimals = 8
+
 [[tokens]]
 id = "coinbase-wrapped-btc"
 symbol = "CBBTC"
@@ -932,6 +996,70 @@ standard = "ERC-20"
 contract = "0x8ee73c484a26e0a5df2ee2a4960b789967dd0415"
 decimals = 18
 
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "avalanche"
+kind = "token"
+standard = "ARC-20"
+contract = "0xeebc562d445f4bc13ac75c8caabb438dfae42a1b"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "bnb"
+kind = "token"
+standard = "BEP-20"
+contract = "0x9996d0276612d23b35f90c51ee935520b3d7355b"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "celo"
+kind = "token"
+standard = "ERC-20"
+contract = "0x75184c282e55a7393053f0b8f4f3e7beae067fdc"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "ink"
+kind = "token"
+standard = "ERC-20"
+contract = "0xac73671a1762fe835208fb93b7ae7490d1c2ccb3"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "mantle"
+kind = "token"
+standard = "ERC-20"
+contract = "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "polygon"
+kind = "token"
+standard = "ERC-20"
+contract = "0x172370d5cd63279efa6d502dab29171933a610af"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "sonic"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5af79133999f7908953e94b7a5cf367740ebee35"
+decimals = 18
+
+[[deployments]]
+token_id = "curve-dao-token"
+chain_id = "x-layer"
+kind = "token"
+standard = "ERC-20"
+contract = "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89"
+decimals = 18
+
 [[tokens]]
 id = "dai"
 symbol = "DAI"
@@ -964,6 +1092,70 @@ chain_id = "polygon"
 kind = "token"
 standard = "ERC-20"
 contract = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "arbitrum"
+kind = "token"
+standard = "ERC-20"
+contract = "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "avalanche"
+kind = "token"
+standard = "ARC-20"
+contract = "0xd586e7f844cea2f87f50152665bcbc2c279d8d70"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "linea"
+kind = "token"
+standard = "ERC-20"
+contract = "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "scroll"
+kind = "token"
+standard = "ERC-20"
+contract = "0xca77eb3fefe3725dc33bccb54edefc3d9f764f97"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "zksync-era"
+kind = "token"
+standard = "ERC-20"
+contract = "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "unichain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x20cab320a855b39f724131c69424240519573f81"
+decimals = 18
+
+[[deployments]]
+token_id = "dai"
+chain_id = "celo"
+kind = "token"
+standard = "ERC-20"
+contract = "0xac177de2439bd0c7659c61f373dbf247d1f41abe"
 decimals = 18
 
 [[tokens]]
@@ -1013,6 +1205,78 @@ token_id = "ethena"
 chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "zksync-era"
+kind = "token"
+standard = "ERC-20"
+contract = "0x686b311f82b407f0be842652a98e5619f64cc25f"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "base"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "mantle"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "blast"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "berachain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "linea"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "scroll"
+kind = "token"
+standard = "ERC-20"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena"
+chain_id = "x-layer"
+kind = "token"
+standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
 
@@ -1076,6 +1340,14 @@ standard = "ERC-20"
 contract = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
 decimals = 18
 
+[[deployments]]
+token_id = "ether-fi"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
+decimals = 18
+
 [[tokens]]
 id = "euro-coin"
 symbol = "EURC"
@@ -1108,6 +1380,22 @@ chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0xc891eb4cbdeff6e073e859e987815ed1505c2acd"
+decimals = 6
+
+[[deployments]]
+token_id = "euro-coin"
+chain_id = "base"
+kind = "token"
+standard = "ERC-20"
+contract = "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42"
+decimals = 6
+
+[[deployments]]
+token_id = "euro-coin"
+chain_id = "cronos"
+kind = "token"
+standard = "ERC-20"
+contract = "0xa6de01a2d62c6b5f3525d768f34d276652c554c8"
 decimals = 6
 
 [[tokens]]
@@ -1866,6 +2154,78 @@ standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
 
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "zksync-era"
+kind = "token"
+standard = "ERC-20"
+contract = "0xad17da2f6ac76746ef261e835c50b2651ce36da8"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "aptos"
+kind = "token"
+standard = "AIP-21"
+contract = "0xb30a694a344edee467d9f82330bbe7c3b89f440a1ecd2da1f3bca266560fce69"
+decimals = 6
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "mantle"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "blast"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "berachain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "linea"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "scroll"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-staked-usde"
+chain_id = "x-layer"
+kind = "token"
+standard = "ERC-20"
+contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
+decimals = 18
+
 [[tokens]]
 id = "susds"
 symbol = "SUSDS"
@@ -1906,6 +2266,22 @@ chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x5875eee11cf8398102fdad704c9e96607675467a"
+decimals = 18
+
+[[deployments]]
+token_id = "susds"
+chain_id = "avalanche"
+kind = "token"
+standard = "ARC-20"
+contract = "0xb94d9613c7aab11e548a327154cc80eca911b5c1"
+decimals = 18
+
+[[deployments]]
+token_id = "susds"
+chain_id = "unichain"
+kind = "token"
+standard = "ERC-20"
+contract = "0xa06b10db9f390990364a3984c04fadf1c13691b5"
 decimals = 18
 
 [[tokens]]
@@ -2184,6 +2560,70 @@ standard = "ERC-20"
 contract = "0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9"
 decimals = 6
 
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "celo"
+kind = "token"
+standard = "ERC-20"
+contract = "0xceba9300f2b948710d2653dd7b07f33a8b32118c"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "cronos"
+kind = "token"
+standard = "ERC-20"
+contract = "0x3d7f2c478aafdb65542bcb44bceec05849999d2d"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "ink"
+kind = "token"
+standard = "ERC-20"
+contract = "0x2d270e6886d130d724215a266106e6832161eaed"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0x0b2c639c533813f4aa9d7837caf62653d097ff85"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "sonic"
+kind = "token"
+standard = "ERC-20"
+contract = "0x29219dd400f2bf60e5a23d13be72b486d4038894"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "unichain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x078d782b760474a361dda0af3839290b0ef57ad6"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "x-layer"
+kind = "token"
+standard = "ERC-20"
+contract = "0xb6ceceab302e2e4948951ee7843fc24e92933061"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "zksync-era"
+kind = "token"
+standard = "ERC-20"
+contract = "0x1d17cbcf0d6d143135ae902365d2e5e2a16538d4"
+decimals = 6
+
 [[tokens]]
 id = "usdd"
 symbol = "USDD"
@@ -2276,6 +2716,78 @@ standard = "BEP-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
 
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "zksync-era"
+kind = "token"
+standard = "ERC-20"
+contract = "0x39fe7a0dacce31bd90418e3e659fb0b5f0b3db0d"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "optimism"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "base"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "mantle"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "blast"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "berachain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "linea"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "scroll"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "x-layer"
+kind = "token"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
 [[tokens]]
 id = "global-dollar"
 symbol = "USDG"
@@ -2342,6 +2854,30 @@ chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3"
+decimals = 18
+
+[[deployments]]
+token_id = "usds"
+chain_id = "avalanche"
+kind = "token"
+standard = "ARC-20"
+contract = "0x86ff09db814ac346a7c6fe2cd648f27706d1d470"
+decimals = 18
+
+[[deployments]]
+token_id = "usds"
+chain_id = "base"
+kind = "token"
+standard = "ERC-20"
+contract = "0x820c137fa70c8691f0e44dc420a5e53c168921dc"
+decimals = 18
+
+[[deployments]]
+token_id = "usds"
+chain_id = "unichain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x7e10036acc4b56d4dfca3b77810356ce52313f9c"
 decimals = 18
 
 [[tokens]]
