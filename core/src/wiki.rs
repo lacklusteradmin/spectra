@@ -106,7 +106,7 @@ fn build() -> Vec<AssetWikiEntry> {
     }
 
     // Then the deployments. A coin already listed gains places rather than a
-    // second row: CRO is native to Cronos and a contract on Ethereum. Testnet
+    // second row: a registered token can have native and contract deployments. Testnet
     // tokens are skipped for the reason testnet coins are: nothing prices them.
     for token in tokens::catalog()
         .iter()
@@ -204,11 +204,31 @@ mod the_wiki_is_one_asset_table {
         for a in ASSETS.iter() {
             assert!(!a.comment.is_empty(), "{} has no description", a.symbol);
             assert!(!a.lives_on.is_empty(), "{} lives nowhere", a.symbol);
-            // A coin enabled anywhere must be priceable. USD1 and WLFI once
-            // had no id at all; both are disabled, so nothing showed an
-            // unpriced balance, but enabling one would have.
-            assert!(!a.coingecko_id.is_empty(), "{} has no market id", a.symbol);
+            // Pricing belongs to the registered identity. A verified legacy
+            // asset may have no quote; the wiki must neither invent one nor
+            // borrow the market identity of its redenominated replacement.
+            let identity = tokens::catalog()
+                .iter()
+                .find(|token| token.token_id == a.token_id && !token.chain_id.is_testnet())
+                .expect("wiki asset has a registered mainnet deployment");
+            assert_eq!(a.coingecko_id, identity.coingecko_id, "{}", a.token_id);
         }
+    }
+
+    #[test]
+    fn legacy_bittorrent_does_not_borrow_its_replacements_market_identity() {
+        let old = asset("bittorrent-old");
+        let replacement = asset("bittorrent");
+        assert!(old.coingecko_id.is_empty());
+        assert!(!replacement.coingecko_id.is_empty());
+        assert_ne!(old.token_id, replacement.token_id);
+        assert_eq!(old.lives_on.len(), 1);
+        let place = &old.lives_on[0];
+        assert_eq!(place.chain_id, crate::registry::Chain::Tron);
+        assert_eq!(place.token_standard, "TRC-10");
+        assert_eq!(place.contract, "1002000");
+        assert_eq!(place.decimals, 6);
+        assert!(!place.is_native);
     }
 
     /// ETH is one row across Ethereum and its rollups.
@@ -231,23 +251,6 @@ mod the_wiki_is_one_asset_table {
         assert_eq!(eth.lives_on[0].chain_id, crate::registry::Chain::Ethereum);
         assert_eq!(eth.name, "Ethereum");
         assert!(!eth.total_circulation_model.is_empty());
-    }
-
-    /// A coin that is native on one chain and a contract on another is one
-    /// row with both kinds of place.
-    ///
-    /// CRO is the only one: the native coin and the ERC-20 share a token id,
-    /// which is what makes them one row.
-    #[test]
-    fn a_coin_can_be_native_here_and_a_contract_there() {
-        let cro = asset("crypto-com-chain");
-        assert_eq!(cro.lives_on.len(), 2);
-        assert!(cro.lives_on[0].is_native);
-        assert_eq!(cro.lives_on[0].chain_id, crate::registry::Chain::Cronos);
-        assert!(!cro.lives_on[1].is_native);
-        assert_eq!(cro.lives_on[1].chain_id, crate::registry::Chain::Ethereum);
-        assert_eq!(cro.lives_on[1].token_standard, "ERC-20");
-        assert!(!cro.lives_on[1].contract.is_empty());
     }
 
     /// A token's places are its deployments, with the per-chain facts intact.

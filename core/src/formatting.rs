@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 /// How to render one amount of one asset.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetAmountDisplay {
     /// Decimal places to render at. Trailing zeros are trimmed by the caller's

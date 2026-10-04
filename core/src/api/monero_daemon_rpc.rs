@@ -3,7 +3,7 @@
 //! and on a supported hard fork. Scanning and signing stay on the device, in
 //! `send::monero_local`.
 
-use crate::api::error::ApiError;
+use crate::api::error::{ApiError, OrDecode};
 use crate::{api::http::HttpClient, registry::Chain};
 use monero_daemon_rpc::{HttpTransport, MoneroDaemon};
 use monero_wallet::interface::InterfaceError;
@@ -75,4 +75,106 @@ pub(crate) async fn daemon(endpoint: &str, chain: Chain) -> Result<Daemon, ApiEr
         ));
     }
     MoneroDaemon::new(transport).await.map_err(ApiError::decode)
+}
+
+pub(crate) async fn fetch_transaction_status(
+    endpoint: &str,
+    chain: Chain,
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    crate::api::transaction_status::validate_hex_hash(hash)?;
+    daemon(endpoint, chain).await?;
+    let transport = DaemonTransport {
+        endpoint: endpoint.into(),
+    };
+    let response: serde_json::Value = serde_json::from_slice(
+        &transport
+            .post(
+                "get_transactions",
+                serde_json::to_vec(
+                    &serde_json::json!({"txs_hashes":[hash],"decode_as_json":false,"prune":true}),
+                )?,
+                Some(4 * 1024 * 1024),
+            )
+            .await
+            .map_err(ApiError::decode)?,
+    )?;
+    monero_transaction_status(&response, hash)
+}
+
+fn monero_transaction_status(
+    response: &serde_json::Value,
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    if response["status"].as_str() != Some("OK") || response["untrusted"].as_bool() == Some(true) {
+        return Err(ApiError::decode(
+            "Monero status: daemon did not supply a trusted result",
+        ));
+    }
+    if response["missed_tx"].as_array().is_some_and(|rows| {
+        rows.iter().any(|value| {
+            value
+                .as_str()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(hash))
+        })
+    }) {
+        return Ok(TransactionStatus::Pending);
+    }
+    let rows = response["txs"]
+        .as_array()
+        .filter(|rows| rows.len() == 1)
+        .or_decode("Monero status: expected one transaction")?;
+    let row = &rows[0];
+    if !row["tx_hash"]
+        .as_str()
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(hash))
+    {
+        return Err(ApiError::decode("Monero status: transaction hash mismatch"));
+    }
+    if row["in_pool"]
+        .as_bool()
+        .or_decode("Monero status: missing pool membership")?
+    {
+        return Ok(TransactionStatus::Pending);
+    }
+    Ok(TransactionStatus::Confirmed {
+        succeeded: true,
+        block: Some(
+            row["block_height"]
+                .as_u64()
+                .or_decode("Monero status: missing block height")?,
+        ),
+    })
+}
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+    use serde_json::json;
+
+    #[test]
+    fn missing_or_pool_transaction_cannot_become_a_failed_execution() {
+        assert_eq!(
+            monero_transaction_status(&json!({"status":"OK","missed_tx":["h"]}), "h").unwrap(),
+            TransactionStatus::Pending
+        );
+        let mut response = json!({"status":"OK","untrusted":false,"txs":[{"tx_hash":"h","in_pool":true,"block_height":123}]});
+        assert_eq!(
+            monero_transaction_status(&response, "h").unwrap(),
+            TransactionStatus::Pending
+        );
+        response["txs"][0]["in_pool"] = json!(false);
+        assert_eq!(
+            monero_transaction_status(&response, "h").unwrap(),
+            TransactionStatus::Confirmed {
+                succeeded: true,
+                block: Some(123)
+            }
+        );
+        assert!(monero_transaction_status(&response, "other").is_err());
+        response["untrusted"] = json!(true);
+        assert!(monero_transaction_status(&response, "h").is_err());
+    }
 }

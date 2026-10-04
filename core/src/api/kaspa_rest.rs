@@ -172,13 +172,40 @@ impl KaspaClient {
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<KasHistoryEntry>, ApiError> {
-        let txs: Vec<ApiTxEntry> = self
-            .get(&format!(
-                // Without resolving previous outpoints the inputs name no
-                // address, so a send read as receiving its own change.
-                "/addresses/{address}/full-transactions-page?limit=50&resolve_previous_outpoints=light"
-            ))
-            .await?;
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<KasHistoryEntry>, ApiError> {
+        let before = cursor
+            .map(|value| value.parse::<u64>().map_err(ApiError::invalid))
+            .transpose()?;
+        let continuation = before
+            .map(|value| format!("&before={value}"))
+            .unwrap_or_default();
+        let (txs, headers): (Vec<ApiTxEntry>, _) = race(&self.endpoints, |base| {
+            let continuation = &continuation;
+            async move {
+                self.client.get_json_with_response_headers(&format!("{}/addresses/{address}/full-transactions-page?limit=50&resolve_previous_outpoints=light{continuation}", base.trim_end_matches('/')), RetryProfile::ChainRead).await
+            }
+        }).await?;
+        let next_cursor = headers
+            .get("x-next-page-before")
+            .map(|value| value.to_str().map(str::to_string).map_err(ApiError::decode))
+            .transpose()?;
+        if next_cursor.as_deref() == cursor {
+            return Err(ApiError::Decode("Kaspa repeated a history cursor".into()));
+        }
+        // The backend expands equal-time cohorts, so page length alone cannot
+        // infer continuation. A full page without its contract header is refused.
+        if txs.len() >= 50 && next_cursor.is_none() {
+            return Err(ApiError::Decode(
+                "Kaspa history: full page omitted continuation header".into(),
+            ));
+        }
         // Every listed transaction is in a block, so each has a time.
         let entries: Result<Vec<Option<KasHistoryEntry>>, ApiError> = txs
             .into_iter()
@@ -219,7 +246,10 @@ impl KaspaClient {
                 }))
             })
             .collect();
-        Ok(entries?.into_iter().flatten().collect())
+        Ok(crate::api::HistoryPage {
+            items: entries?.into_iter().flatten().collect(),
+            next_cursor,
+        })
     }
 
     pub async fn fetch_tx_status(

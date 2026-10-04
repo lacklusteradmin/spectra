@@ -4,9 +4,8 @@
 
 use serde_json::Value;
 
-/// Convenience for Swift call sites: partition a history JSON payload
-/// into (entry_count, confirmed_txids) in one FFI hop. Useful where
-/// callers need both (e.g. UTXO diagnostics + pending-refresh).
+/// Partition a history JSON payload into (entry_count, confirmed_txids).
+/// Useful where callers need both (e.g. UTXO diagnostics + pending-refresh).
 pub fn diagnostics_history_summary(json: String) -> HistorySummary {
     let entries: Vec<Value> = serde_json::from_str::<Value>(&json)
         .ok()
@@ -25,7 +24,7 @@ pub fn diagnostics_history_summary(json: String) -> HistorySummary {
     }
 }
 
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HistorySummary {
     pub entry_count: u32,
     pub confirmed_txids: Vec<String>,

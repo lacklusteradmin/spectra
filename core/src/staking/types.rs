@@ -4,12 +4,126 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
+pub enum StakingAction {
+    Stake,
+    Unstake,
+    Withdraw,
+    ClaimRewards,
+}
+
+impl StakingAction {
+    pub fn transaction_kind(self) -> crate::store::wallet_domain::CoreTransactionKind {
+        use crate::store::wallet_domain::CoreTransactionKind as K;
+        match self {
+            Self::Stake => K::Stake,
+            Self::Unstake => K::Unstake,
+            Self::Withdraw => K::Withdraw,
+            Self::ClaimRewards => K::ClaimRewards,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+pub struct StakingReview {
+    pub network_fee: String,
+    pub fee_is_upper_bound: bool,
+    /// Governance disbursement fees reduce the reviewed principal payout.
+    pub fee_is_deducted_from_amount: bool,
+    /// Recovery completes management steps for an already funded neuron.
+    pub funding_already_completed: bool,
+    pub refundable_deposit: Option<String>,
+    pub lockup_seconds: Option<u64>,
+    /// ICP maturity is queued for a delayed payout and modulated by governance.
+    pub reward_payout_is_delayed: bool,
+}
+
+/// An intent resolved against the wallet's owned identity and current chain state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+pub struct StakingRequest {
+    pub wallet_id: String,
+    pub chain_id: crate::registry::Chain,
+    pub action: StakingAction,
+    pub validator_id: Option<String>,
+    pub position_id: Option<String>,
+    pub amount: Option<String>,
+    /// Explicit ICP neuron dissolve delay. It is part of the signed review.
+    pub lockup_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
 pub enum StakingPositionStatus {
     Active,
     Activating,
     Unbonding,
     Withdrawable,
     Inactive,
+}
+
+/// Exact on-chain balances, with unknown rewards distinguished from zero.
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+pub struct StakingPosition {
+    pub id: String,
+    pub owner: String,
+    pub validator_identifier: String,
+    pub status: StakingPositionStatus,
+    pub staked_amount_smallest_unit: String,
+    pub unbonding_amount_smallest_unit: String,
+    pub withdrawable_amount_smallest_unit: String,
+    pub claimable_rewards_smallest_unit: Option<String>,
+    /// Rewards already queued for a protocol-delayed payout.
+    pub pending_rewards_smallest_unit: Option<String>,
+    pub rewards_unlock_time_unix: Option<u64>,
+    pub unlock_epoch: Option<u64>,
+    pub unlock_time_unix: Option<u64>,
+    /// Core determines which actions are currently valid; the UI renders them.
+    pub available_actions: Vec<StakingAction>,
+}
+
+/// Render exact native balances without doing money arithmetic in a platform view.
+#[uniffi::export]
+pub fn format_staking_amount(
+    chain: crate::registry::Chain,
+    smallest_unit: String,
+) -> Option<String> {
+    crate::decimal::from_unit_digits(&smallest_unit, u32::from(chain.native_decimals()))
+}
+
+/// Form requirements are protocol facts. They guide rendering; builders still
+/// resolve authority, balances and valid actions against current chain state.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct StakingInputRules {
+    pub amount_required: bool,
+    pub amount_allowed: bool,
+    pub validator_required: bool,
+    pub lockup_required: bool,
+    pub positions_require_authorization: bool,
+    pub repair_allowed: bool,
+}
+
+#[uniffi::export]
+pub fn staking_input_rules(
+    chain: crate::registry::Chain,
+    action: StakingAction,
+) -> StakingInputRules {
+    use crate::registry::Chain;
+    let amount_required = match chain {
+        Chain::Polkadot => matches!(action, StakingAction::Stake | StakingAction::Unstake),
+        Chain::Icp => action == StakingAction::Stake,
+        Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near => {
+            action != StakingAction::ClaimRewards
+        }
+        _ => false,
+    };
+    StakingInputRules {
+        amount_required,
+        amount_allowed: amount_required
+            || (chain == Chain::Icp && action == StakingAction::Withdraw),
+        validator_required: action == StakingAction::Stake && chain.supports_staking(),
+        lockup_required: chain == Chain::Icp && action == StakingAction::Stake,
+        positions_require_authorization: chain == Chain::Icp,
+        repair_allowed: chain == Chain::Icp && action == StakingAction::Stake,
+    }
 }
 
 /// Validator / pool / canister metadata as it appears in the picker UI.
@@ -21,8 +135,8 @@ pub struct StakingValidator {
     /// Display name. Falls back to a truncated identifier if the chain has no
     /// validator naming convention.
     pub display_name: String,
-    /// Annualised reward rate as a fraction (0.06 == 6%). 0 if unknown.
-    pub apy: f64,
+    /// Annualised measured reward rate as a fraction; None when unavailable.
+    pub apy: Option<f64>,
     /// Validator commission as a fraction (0.05 == 5%). None if not modeled.
     pub commission: Option<f64>,
     /// Total stake assigned to this validator, in the chain's native smallest
@@ -47,35 +161,11 @@ pub struct StakingValidator {
     pub next_epoch_active: Option<bool>,
 }
 
-/// One staking position held by a wallet on a given chain. A wallet can
-/// hold multiple positions if it stakes to multiple validators / pools.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-pub struct StakingPosition {
-    pub validator_identifier: String,
-    pub validator_display_name: String,
-    pub status: StakingPositionStatus,
-    /// Active stake principal in smallest unit, decimal string.
-    pub staked_amount_smallest_unit: String,
-    /// Pending unbonded amount that's not yet withdrawable, decimal string.
-    pub unbonding_amount_smallest_unit: String,
-    /// Withdrawable amount (cooldown elapsed), decimal string.
-    pub withdrawable_amount_smallest_unit: String,
-    /// Outstanding rewards yet to be claimed, decimal string.
-    pub claimable_rewards_smallest_unit: String,
-    /// Unix timestamp when the unbonding period ends, if applicable.
-    pub unbonding_completes_at_unix: Option<i64>,
-    /// Chain epoch (or slot / era) when this position was first created.
-    /// Useful for calculating lock-up age and APY realised. `None` if not tracked.
-    pub epoch_created: Option<i64>,
-    /// Rewards accrued since the last claim action, smallest unit decimal string.
-    /// Distinct from `claimable_rewards` on chains where rewards vest continuously
-    /// but can only be claimed periodically. `None` if not tracked.
-    pub accrued_since_last_claim_smallest_unit: Option<String>,
-}
-
 /// Internal staking query refusal; WalletService maps it to the bridge error.
 #[derive(Debug, thiserror::Error)]
 pub enum StakingError {
+    #[error(transparent)]
+    Api(#[from] crate::api::error::ApiError),
     #[error("staking is not yet implemented for this chain")]
     NotYetImplemented,
 }

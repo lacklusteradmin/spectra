@@ -78,7 +78,7 @@ impl WalletService {
                     super::standalone::private_key_hex(
                         commit.private_key.take().unwrap_or_default(),
                     )
-                    .ok_or_else(|| SpectraBridgeError::failure("Enter a valid 32-byte hex key."))?,
+                    .ok_or_else(|| SpectraBridgeError::failure("Enter a valid hex signing key."))?,
                 );
             }
             if (commit.request.is_watch_only_import || commit.request.is_private_key_import)

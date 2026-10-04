@@ -277,9 +277,11 @@ impl WalletService {
         }
         if chain.mainnet_counterpart() == Chain::Tron {
             let client = crate::api::tron_http::TronHttpClient::new(endpoints);
-            return Ok(Some(u32::from(
-                client.fetch_trc20_metadata(contract).await?.decimals,
-            )));
+            return Ok(Some(u32::from(if standard == "TRC-10" {
+                client.fetch_trc10_metadata(chain, contract).await?.decimals
+            } else {
+                client.fetch_trc20_metadata(contract).await?.decimals
+            })));
         }
         if chain.mainnet_counterpart() == Chain::Solana {
             let client = crate::api::solana_json_rpc::SolanaClient::new(endpoints);
@@ -292,6 +294,36 @@ impl WalletService {
             return Ok(Some(u32::from(
                 client.fetch_ft_metadata(contract).await?.decimals,
             )));
+        }
+        if chain.mainnet_counterpart() == Chain::Sui {
+            return Ok(SuiClient::new(endpoints)
+                .fetch_coin_decimals(contract)
+                .await
+                .map(u32::from));
+        }
+        if chain.mainnet_counterpart() == Chain::Aptos {
+            return Ok(AptosClient::new(endpoints)
+                .fetch_token_decimals(contract)
+                .await
+                .map(u32::from));
+        }
+        if chain.mainnet_counterpart() == Chain::Ton {
+            let endpoints = self
+                .api_endpoints(
+                    chain,
+                    crate::EndpointApi::ToncenterV3,
+                    &[
+                        EndpointCapability::Verification,
+                        EndpointCapability::TokenBalance,
+                    ],
+                )
+                .await?;
+            return Ok(
+                crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(endpoints))
+                    .fetch_jetton_decimals(chain, contract)
+                    .await
+                    .map(u32::from),
+            );
         }
         Ok(None)
     }

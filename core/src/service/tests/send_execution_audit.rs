@@ -24,10 +24,15 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
     ] {
         let server = MockServer::start().await;
         let v = fixture.clone();
+        let transaction_hash = Arc::new(std::sync::Mutex::new(None::<String>));
+        let response_hash = transaction_hash.clone();
+        let wrong_response = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let response_is_wrong = wrong_response.clone();
         Mock::given(any()).respond_with(move |request: &Request| {
             let body:Value=serde_json::from_slice(&request.body).unwrap_or(Value::Null);
             let path=request.url.path();
             let result = match body["method"].as_str().unwrap_or(path) {
+                "getGenesisHash" => json!(Chain::Solana.solana_genesis_hash().unwrap()),
                 "getAccountInfo" => json!({"value":{"owner":if token2022 {"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"} else {"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":6,"extensions":[]}}}}}),
                 "isBlockhashValid" => json!({"value":true}),
                 "getLatestBlockhash" => json!({"value":{"blockhash":v["solana"]["blockhash"]}}),
@@ -42,12 +47,22 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     json!(bs58::encode(&tx[1..65]).into_string())
                 },
                 "suix_getReferenceGasPrice" => json!("1000"),
+                "sui_getChainIdentifier" => json!(Chain::Sui.sui_network_identity().unwrap().0),
+                "sui_getCheckpoint" => {
+                    assert_eq!(body["params"],json!(["0"]));
+                    json!({"sequenceNumber":"0","digest":Chain::Sui.sui_network_identity().unwrap().1})
+                },
                 "suix_getCoins" => json!({"data":[{"coinObjectId":format!("0x{}","33".repeat(32)),"version":"7","digest":"11111111111111111111111111111111","balance":"200000000"}],"hasNextPage":false,"nextCursor":null}),
                 "sui_executeTransactionBlock" => {
                     let bytes=STANDARD.decode(body["params"][0].as_str().unwrap()).unwrap();
                     assert_eq!(hex::encode(&bytes),v["sui"]["raw"]);
                     assert_eq!(body["params"][1][0],v["sui"]["signature"]);
-                    json!({"digest":"11111111111111111111111111111111","effects":{"status":{"status":"success"}}})
+                    let digest = if response_is_wrong.load(std::sync::atomic::Ordering::Relaxed) {
+                        "11111111111111111111111111111111".to_string()
+                    } else {
+                        response_hash.lock().unwrap().clone().unwrap()
+                    };
+                    json!({"digest":digest,"effects":{"status":{"status":"success"}}})
                 },
                 "/" => json!({"chain_id":1,"ledger_version":"1"}),
                 "/estimate_gas_price" => json!({"gas_estimate":100}),
@@ -55,9 +70,18 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                 "/transactions" => {
                     assert_eq!(body["sender"],v["aptos"]["address"]);
                     assert_eq!(body["signature"]["public_key"],format!("0x{}",v["aptos"]["public_key"].as_str().unwrap()));
-                    json!({"hash":format!("0x{}","ab".repeat(32))})
+                    let hash = if response_is_wrong.load(std::sync::atomic::Ordering::Relaxed) {
+                        format!("0x{}","ab".repeat(32))
+                    } else {
+                        response_hash.lock().unwrap().clone().unwrap()
+                    };
+                    json!({"hash":hash})
                 },
                 "/wallet/getnowblock" => json!({"blockID":format!("0000000000000007{}","33".repeat(24)),"block_header":{"raw_data":{"number":7}}}),
+                "/wallet/getblockbynum" => {
+                    assert_eq!(body,json!({"num":0}));
+                    json!({"blockID":Chain::Tron.tron_genesis_block_id().unwrap()})
+                },
                 "/wallet/broadcasttransaction" => {
                     assert_eq!(body["raw_data"]["contract"][0]["parameter"]["value"]["owner_address"],v["tron"]["transactions"][0]["raw_data"]["contract"][0]["parameter"]["value"]["owner_address"]);
                     json!({"result":true})
@@ -67,6 +91,11 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     json!({"result":{"result":true},"constant_result":[result]})
                 },
                 p if p.starts_with("/accounts/") => json!({"sequence_number":"7"}),
+                p if p.starts_with("/transactions/by_hash/") => {
+                    let hash = response_hash.lock().unwrap().clone().unwrap();
+                    assert_eq!(p,format!("/transactions/by_hash/{hash}"));
+                    json!({"hash":hash,"type":"pending_transaction"})
+                },
                 other => panic!("unexpected provider request: {other} ({body})"),
             };
             ResponseTemplate::new(200).set_body_json(if body["method"].is_string(){json!({"jsonrpc":"2.0","id":body["id"],"result":result})}else{result})
@@ -160,6 +189,13 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             .sign_send(prepared.id.clone(), prepared.review_digest, None)
             .await
             .unwrap_or_else(|e| panic!("{chain:?}: {e}"));
+        *transaction_hash.lock().unwrap() = signed.transaction_hash.clone();
+        if chain == Chain::Sui {
+            assert_eq!(
+                signed.transaction_hash.as_deref(),
+                fixture["sui"]["transaction_digest"].as_str()
+            );
+        }
         assert!(server.received_requests().await.unwrap().iter().all(|r| {
             let text = String::from_utf8_lossy(&r.body);
             !text.contains("sendTransaction")
@@ -167,37 +203,48 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                 && !r.url.path().ends_with("/transactions")
                 && !r.url.path().contains("broadcasttransaction")
         }));
-        if chain == Chain::Aptos {
-            let result = service
+        if matches!(chain, Chain::Sui | Chain::Aptos) {
+            assert!(signed.transaction_hash.is_some());
+            wrong_response.store(true, std::sync::atomic::Ordering::Relaxed);
+            let uncertain = service
                 .broadcast_send(signed.id.clone(), vec![server.uri()])
                 .await
                 .unwrap();
             assert_eq!(
-                result.attempts[0].outcome,
-                crate::send::stages::SubmissionOutcome::Accepted
+                uncertain.attempts[0].outcome,
+                crate::send::stages::SubmissionOutcome::Uncertain
             );
-            assert_eq!(service.fetch_all_history_records().await.unwrap().len(), 1);
-        } else {
-            // An unregistered custom node cannot prove these network identities.
-            // Still exercise the protocol wire adapter with locally verified signatures.
-            assert!(
-                service
-                    .broadcast_send(signed.id.clone(), vec![server.uri()])
-                    .await
-                    .unwrap_err()
-                    .to_string()
-                    .contains("cannot be verified")
+            assert_eq!(uncertain.transaction_hash, signed.transaction_hash);
+            let history = service.fetch_all_history_records().await.unwrap();
+            assert_eq!(history.len(), 1);
+            assert_eq!(
+                history[0].payload.status,
+                crate::store::wallet_domain::CoreTransactionStatus::Pending
             );
-            service
-                .broadcast_at(
-                    chain,
-                    chain.default_api().unwrap(),
-                    Arc::new(vec![server.uri()]),
-                    signed.signed_payload.clone().unwrap(),
-                )
-                .await
-                .unwrap();
+            assert_eq!(history[0].payload.transaction_hash, signed.transaction_hash);
+            wrong_response.store(false, std::sync::atomic::Ordering::Relaxed);
         }
+        let result = service
+            .broadcast_send(signed.id.clone(), vec![server.uri()])
+            .await
+            .unwrap();
+        assert_eq!(
+            result.attempts.last().unwrap().outcome,
+            crate::send::stages::SubmissionOutcome::Accepted
+        );
+        assert!(
+            result
+                .transaction_hash
+                .as_ref()
+                .is_some_and(|hash| !hash.is_empty())
+        );
+        assert_eq!(
+            result.transaction_hash,
+            result.attempts.last().unwrap().transaction_hash
+        );
+        let history = service.fetch_all_history_records().await.unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].payload.transaction_hash, result.transaction_hash);
         let reopened = WalletService::new(vec![]).unwrap();
         reopened
             .open_state(db.to_string_lossy().into())
@@ -206,6 +253,13 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         let restored = reopened.inspect_send(signed.id).await.unwrap();
         assert_eq!(restored.signed_payload, signed.signed_payload);
         assert_eq!(restored.review_digest, signed.review_digest);
+        assert_eq!(restored.transaction_hash, result.transaction_hash);
+        assert_eq!(
+            reopened.fetch_all_history_records().await.unwrap()[0]
+                .payload
+                .transaction_hash,
+            result.transaction_hash
+        );
         let requests = server.received_requests().await.unwrap();
         assert!(
             !requests
@@ -499,7 +553,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     }
     assert!(
         reopened
-            .stale_pending_failure_ids(crate::registry::Chain::Ethereum)
+            .apply_resolved_pending_statuses(crate::registry::Chain::Ethereum, vec![])
             .await
             .unwrap()
             .is_empty(),
@@ -561,7 +615,7 @@ mod signed_world_chain_fee_budget {
     }
 
     #[tokio::test]
-    async fn increased_oracle_budget_refuses_first_broadcast_and_rebroadcast_without_mutation() {
+    async fn increased_oracle_budget_refuses_first_broadcast_but_replays_submitted_bytes() {
         let chain = Chain::WorldChain;
         let server = MockServer::start().await;
         let l1_fee = Arc::new(AtomicU64::new(100_000));
@@ -678,16 +732,19 @@ mod signed_world_chain_fee_budget {
         assert_eq!(submitted.attempts[0].outcome, SubmissionOutcome::Accepted);
         assert_eq!(service.transactions().await.unwrap().len(), 1);
         assert_eq!(broadcasts(&server).await, 1);
-        let submitted_snapshot = snapshot(&service, &signed.id).await;
+        let signed_payload = submitted.signed_payload.clone();
+        let signed_hash = submitted.transaction_hash.clone();
 
         operator_fee.store(200_001, Ordering::SeqCst);
-        let error = service
+        service
             .rebroadcast_transaction(signed.id.clone())
             .await
-            .unwrap_err();
-        assert!(error.to_string().contains("Network fee changed"), "{error}");
-        assert_eq!(snapshot(&service, &signed.id).await, submitted_snapshot);
-        assert_eq!(broadcasts(&server).await, 1);
+            .unwrap();
+        let replayed = service.inspect_send(signed.id.clone()).await.unwrap();
+        assert_eq!(replayed.signed_payload, signed_payload);
+        assert_eq!(replayed.transaction_hash, signed_hash);
+        assert_eq!(replayed.attempts.len(), 2);
+        assert_eq!(broadcasts(&server).await, 2);
     }
 }
 

@@ -4,6 +4,10 @@ use crate::send::stages::*;
 use crate::store::wallet_domain::CoreTransactionStatus;
 use zeroize::Zeroizing;
 
+#[cfg(test)]
+#[path = "tests/send_uncertain_recovery.rs"]
+mod uncertain_recovery_tests;
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn build_send(
@@ -33,6 +37,7 @@ impl WalletService {
                 warnings: review.warnings,
                 recipient_warnings: review.recipient_warnings,
                 requires_self_send_confirmation: review.requires_self_send_confirmation,
+                staking: None,
             };
             this.build_send_with_review(review.request, Some(advisories))
                 .await
@@ -101,40 +106,18 @@ impl WalletService {
                 ));
             }
             let _guard = this.lock_sender(chain, &signer.from_address).await?;
+            if stored.view.staking.is_some() {
+                this.validate_staking_protocol_state(&stored).await?;
+                if chain == crate::registry::Chain::Icp {
+                    this.validate_icp_staking_signer_state(&stored, &signer)
+                        .await?;
+                }
+            } else {
+                this.validate_prepared_protocol_state(chain, &stored)
+                    .await?;
+            }
             let (submission, resources) = match &stored.prepared {
                 PreparedPayload::Evm(p) => {
-                    let client = EvmClient::new(
-                        this.endpoints_for(chain, &[EndpointCapability::Verification])
-                            .await,
-                        chain.evm_chain_id()?,
-                    );
-                    let nonce = if stored
-                        .request
-                        .evm_overrides
-                        .as_ref()
-                        .and_then(|o| o.nonce)
-                        .is_some()
-                    {
-                        let response = client
-                            .call(
-                                "eth_getTransactionCount",
-                                json!([signer.from_address, "latest"]),
-                            )
-                            .await?;
-                        crate::api::evm_json_rpc::parse_hex_u64(response.as_str().ok_or_else(
-                            || SpectraBridgeError::failure("Missing confirmed nonce"),
-                        )?)?
-                    } else {
-                        client.fetch_nonce(&signer.from_address).await?
-                    };
-                    if p.chain_id != chain.evm_chain_id()? || nonce > p.nonce {
-                        return Err(crate::SpectraBridgeError::failure(
-                            "Prepared nonce or network is stale; build and review again",
-                        ));
-                    }
-                    this.validate_evm_fee_budget(chain, p).await?;
-                    this.validate_evm_funds(chain, &signer.from_address, p)
-                        .await?;
                     let key = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                     let raw = p.sign(&key)?;
                     use sha3::Digest;
@@ -210,7 +193,7 @@ impl WalletService {
         let db = self.bound_database().await?;
         Ok(tokio::task::spawn_blocking(move || crate::wallet_db::send_load(&db, &id)).await??)
     }
-    async fn save_send_artifact(
+    pub(super) async fn save_send_artifact(
         &self,
         stored: &StoredSend,
         resources: Vec<String>,
@@ -246,7 +229,12 @@ impl WalletService {
             ));
         }
         let chain = stored.view.chain_id;
-        let configured = self.send_endpoints(chain).await?;
+        let icp_staking = matches!(&stored.prepared, PreparedPayload::IcpStaking(_));
+        let configured = if stored.view.staking.is_some() {
+            self.staking_broadcast_endpoints(chain).await?
+        } else {
+            self.send_endpoints(chain).await?
+        };
         let mut unique = std::collections::HashSet::new();
         // Validate every destination before submitting to any of them.
         for endpoint in &endpoints {
@@ -255,8 +243,127 @@ impl WalletService {
                     "Select distinct configured broadcast endpoints",
                 ));
             }
-            self.validate_broadcast_endpoint(chain, endpoint).await?;
-            if let PreparedPayload::Polkadot(transaction) = &stored.prepared {
+            if !icp_staking {
+                self.validate_broadcast_endpoint(chain, endpoint).await?;
+            }
+        }
+        if !stored.view.attempts.is_empty()
+            && matches!(&stored.prepared, PreparedPayload::Substrate(_))
+        {
+            let record = self
+                .fetch_all_history_records()
+                .await?
+                .into_iter()
+                .find(|r| r.id == stored.view.id)
+                .map(|r| r.payload)
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure("Missing journaled submission record")
+                })?;
+            if record.status != CoreTransactionStatus::Pending {
+                return Err(SpectraBridgeError::failure(
+                    "Substrate operation is already final; do not rebroadcast",
+                ));
+            }
+            let hash = submission
+                .transaction_hash
+                .as_deref()
+                .ok_or_else(|| SpectraBridgeError::failure("Missing committed extrinsic hash"))?;
+            if let Some(outcome) = self
+                .poll_substrate_artifact(chain, &stored.view.id, hash)
+                .await?
+            {
+                self.apply_polled_pending_statuses(
+                    chain,
+                    vec![crate::store::ResolvedPendingStatus {
+                        id: record.id.clone(),
+                        status: if outcome.succeeded {
+                            "confirmed"
+                        } else {
+                            "failed"
+                        }
+                        .into(),
+                        confirmations: None,
+                        receipt_block_number: Some(
+                            i64::try_from(outcome.block_number)
+                                .map_err(SpectraBridgeError::failure)?,
+                        ),
+                        evm_receipt_cost: None,
+                    }],
+                    Some(vec![record]),
+                )
+                .await?;
+                return Err(SpectraBridgeError::failure(if outcome.succeeded {
+                    "Transaction is already confirmed"
+                } else {
+                    "Transaction execution failed; do not rebroadcast"
+                }));
+            }
+            stored = self.load_send_artifact(stored.view.id.clone()).await?;
+        }
+        // An expired local signature may already have executed. Read the exact
+        // committed hash before rejecting expiry or resubmitting saved bytes.
+        // An absent result is still pending; failed reads never claim a refund.
+        if !stored.view.attempts.is_empty()
+            && !icp_staking
+            && (stored.view.staking.is_some() && chain != Chain::Polkadot
+                || matches!(
+                    &stored.prepared,
+                    PreparedPayload::Ton { .. }
+                        | PreparedPayload::Aptos(_)
+                        | PreparedPayload::Near { .. }
+                        | PreparedPayload::NearFunctionCall(_)
+                ))
+        {
+            let crate::registry::PendingStatusPoll::TransactionStatus(api) =
+                chain.pending_status_poll()
+            else {
+                return Err(SpectraBridgeError::failure(
+                    "Missing exact transaction status reader",
+                ));
+            };
+            let record = self
+                .fetch_all_history_records()
+                .await?
+                .into_iter()
+                .find(|row| row.id == stored.view.id)
+                .map(|row| row.payload)
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure("Missing journaled submission record")
+                })?;
+            match self
+                .fetch_pending_transaction_status(chain, api, &record)
+                .await?
+            {
+                crate::api::transaction_status::TransactionStatus::Pending => {}
+                crate::api::transaction_status::TransactionStatus::Confirmed {
+                    succeeded,
+                    block,
+                } => {
+                    self.apply_polled_pending_statuses(
+                        chain,
+                        vec![crate::store::ResolvedPendingStatus {
+                            id: record.id.clone(),
+                            status: if succeeded { "confirmed" } else { "failed" }.into(),
+                            confirmations: None,
+                            receipt_block_number: block
+                                .map(i64::try_from)
+                                .transpose()
+                                .map_err(SpectraBridgeError::failure)?,
+                            evm_receipt_cost: None,
+                        }],
+                        Some(vec![record]),
+                    )
+                    .await?;
+                    return Err(SpectraBridgeError::failure(if succeeded {
+                        "Transaction is already confirmed"
+                    } else {
+                        "Transaction execution failed; do not rebroadcast"
+                    }));
+                }
+            }
+        }
+        if let PreparedPayload::Substrate(transaction) = &stored.prepared {
+            for endpoint in &endpoints {
                 transaction
                     .validate_for_submission(
                         &SubstrateClient::new(Arc::new(vec![endpoint.clone()])),
@@ -264,12 +371,24 @@ impl WalletService {
                     )
                     .await?;
             }
-        }
-        if !matches!(&stored.prepared, PreparedPayload::Polkadot(_)) {
+        } else {
             self.validate_signed_expiry(chain, &stored).await?;
         }
-        if let PreparedPayload::Evm(transaction) = &stored.prepared {
-            self.validate_evm_fee_budget(chain, transaction).await?;
+        // NEAR bytes do not cap the gas price. Pending retries must still fit
+        // the reviewed budget and current spendable balance after checking the
+        // original transaction's execution result and reference block above.
+        if stored.view.attempts.is_empty()
+            || matches!(
+                &stored.prepared,
+                PreparedPayload::Near { .. } | PreparedPayload::NearFunctionCall(_)
+            )
+        {
+            if stored.view.staking.is_some() {
+                self.validate_staking_protocol_state(&stored).await?;
+            } else {
+                self.validate_prepared_protocol_state(chain, &stored)
+                    .await?;
+            }
         }
         stored.view.selected_endpoints = endpoints.clone();
         stored.view.revision += 1;
@@ -295,8 +414,17 @@ impl WalletService {
             }
         };
         history.id = stored.view.id.clone();
+        if let Some(intent) = &stored.view.staking {
+            history.kind = intent.action.transaction_kind();
+        }
         history.created_at_unix = stored.view.created_at;
-        if history.transaction_hash.is_none() {
+        if icp_staking {
+            // A repaired neuron reuses its original history identity, while the
+            // reviewed management revision has new ingress request IDs.
+            history.status = CoreTransactionStatus::Pending;
+            history.failure_reason = None;
+            history.transaction_hash = submission.transaction_hash.clone();
+        } else if history.transaction_hash.is_none() {
             history.transaction_hash = submission.transaction_hash.clone();
         }
         history.nonce = submission
@@ -313,7 +441,12 @@ impl WalletService {
         let first = stored.view.attempts.len();
         let mut submissions = Vec::with_capacity(endpoints.len());
         for endpoint in endpoints {
-            let api = self.endpoint_api(chain, &endpoint).await.ok_or_else(|| {
+            let api = if icp_staking {
+                Some(crate::EndpointApi::IcpReplica)
+            } else {
+                self.endpoint_api(chain, &endpoint).await
+            }
+            .ok_or_else(|| {
                 SpectraBridgeError::failure(
                     "Endpoint does not support broadcasts on the selected network",
                 )
@@ -330,9 +463,15 @@ impl WalletService {
         stored.view.revision += 1;
         self.save_send_artifact(&stored, Vec::new()).await?;
         let submission = &submission;
+        let artifact_id = &stored.view.id;
         let results = futures::future::join_all(submissions.into_iter().map(|(api, endpoint)| {
             let payload = submission.payload.clone();
             async move {
+                if icp_staking {
+                    return self
+                        .broadcast_icp_staking_at(&endpoint, artifact_id, &payload)
+                        .await;
+                }
                 self.broadcast_at(chain, api, Arc::new(vec![endpoint]), payload)
                     .await
                     .and_then(|result| {
@@ -366,6 +505,9 @@ impl WalletService {
                     attempt.transaction_hash = Some(hash);
                     attempt.detail =
                         "Node accepted the transaction; on-chain confirmation is pending".into();
+                    if icp_staking {
+                        attempt.detail = "Every ICP funding and governance step has a verified execution receipt".into();
+                    }
                 }
                 Ok(_) => {
                     attempt.detail =
@@ -404,11 +546,16 @@ impl WalletService {
         if let Some(accepted) = stored
             .view
             .attempts
+            .get(first..)
+            .unwrap_or_default()
             .iter()
             .find(|a| a.outcome == SubmissionOutcome::Accepted)
         {
             history.transaction_hash = accepted.transaction_hash.clone();
             history.failure_reason = None;
+            if icp_staking {
+                history.status = CoreTransactionStatus::Confirmed;
+            }
             self.save_send_record(history).await?;
         }
         Ok(stored.view)
@@ -567,7 +714,7 @@ impl WalletService {
             PreparedPayload::Evm(p) => p.signing_payload()?,
             PreparedPayload::Bitcoin(p) => hex::decode(&p.unsigned_hex)?,
             PreparedPayload::Icp(p) => hex::decode(&p.argument_hex)?,
-            PreparedPayload::Polkadot(p) => p.signing_payload()?,
+            PreparedPayload::Substrate(p) => p.signing_payload()?,
             PreparedPayload::Solana(p) => p.message.clone(),
             PreparedPayload::Tron(p) => p.raw.clone(),
             PreparedPayload::Aptos(p) => p.message.clone(),
@@ -602,6 +749,7 @@ impl WalletService {
                     request.contract_address.as_deref(),
                 )
                 .0,
+                staking: None,
                 created_at: crate::store::now_unix().floor(),
                 review_digest: String::new(),
                 review,
@@ -617,6 +765,7 @@ impl WalletService {
             submission: None,
             signed_digest: None,
             substrate_verified_through: None,
+            icp_staking_receipts: vec![],
         };
         stored.view.review_digest = stored.digest()?;
         self.save_send_artifact(&stored, Vec::new()).await?;
@@ -625,7 +774,7 @@ impl WalletService {
 }
 
 impl WalletService {
-    async fn validate_evm_fee_budget(
+    pub(super) async fn validate_evm_fee_budget(
         &self,
         chain: Chain,
         transaction: &crate::send::evm::PreparedEvmTransaction,
@@ -646,7 +795,7 @@ impl WalletService {
         Ok(())
     }
 
-    async fn validate_evm_funds(
+    pub(super) async fn validate_evm_funds(
         &self,
         chain: Chain,
         sender: &str,

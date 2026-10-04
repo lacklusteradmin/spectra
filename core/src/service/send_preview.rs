@@ -117,6 +117,14 @@ impl WalletService {
         };
         match chain.mainnet_counterpart() {
             // Chains with live RPC fee fetches.
+            Chain::Near => {
+                let client = NearClient::new(endpoints);
+                client.verify_network(chain).await?;
+                Ok(native(
+                    client.transfer_fee_budget("", &"0".repeat(64)).await?,
+                    "rpc",
+                ))
+            }
             Chain::Xrp => {
                 let drops = XrplClient::new(endpoints).fetch_fee().await?;
                 Ok(native(drops as u128, "rpc"))
@@ -329,16 +337,17 @@ impl WalletService {
         .to_string())
     }
 
-    pub(crate) async fn fetch_tron_send_preview_json(
+    pub(crate) async fn fetch_tron_send_preview_json_on_chain(
         &self,
+        chain: Chain,
         address: String,
         symbol: String,
         contract_address: String,
     ) -> Result<String, SpectraBridgeError> {
         if !contract_address.is_empty() {
-            let standard = Chain::Tron.token_standard_for_identifier(&contract_address);
-            crate::tokens::validate_protocol_identifier(Chain::Tron, standard, &contract_address)?;
-            if !Chain::Tron.sends_token_standard(standard) {
+            let standard = chain.token_standard_for_identifier(&contract_address);
+            crate::tokens::validate_protocol_identifier(chain, standard, &contract_address)?;
+            if !chain.sends_token_standard(standard) {
                 return Err(SpectraBridgeError::invalid(format!(
                     "{standard} transfers are not supported"
                 )));
@@ -346,7 +355,7 @@ impl WalletService {
         }
         let eps = self
             .endpoints_for(
-                crate::registry::Chain::Tron,
+                chain,
                 if contract_address.is_empty() {
                     &[EndpointCapability::Balance]
                 } else {
@@ -355,6 +364,28 @@ impl WalletService {
             )
             .await;
         let client = TronHttpClient::new(eps);
+
+        if !contract_address.is_empty()
+            && chain.token_standard_for_identifier(&contract_address) == "TRC-10"
+        {
+            // The preview has no recipient. Reserve both activation fees and
+            // all paid bandwidth; actual execution may use free or issuer bandwidth.
+            let state = client
+                .fetch_trc10_transfer_state(chain, &contract_address, &address, None, 512)
+                .await?;
+            if state.native_balance < state.fee_budget_sun {
+                return Err(SpectraBridgeError::failure(
+                    "Insufficient TRX for the TRC-10 bandwidth and account activation budget",
+                ));
+            }
+            return Ok(json!({
+                "estimated_fee_trx": crate::decimal::from_units(u128::from(state.fee_budget_sun), u32::from(chain.native_decimals())),
+                "fee_limit_sun": 0_i64,
+                "spendable_balance": state.token.balance_display,
+                "max_sendable": state.token.balance_display,
+                "fee_rate_description": "TRC-10 paid bandwidth and account activation upper bound",
+            }).to_string());
+        }
 
         // The native asset, by the catalog's gas token rather than the string
         // "TRX" — the same fact the rest of the send path routes on.
@@ -416,7 +447,21 @@ impl WalletService {
         chain: crate::registry::Chain,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
-        if chain.mainnet_counterpart() == Chain::Polkadot {
+        if chain.mainnet_counterpart() == Chain::Near {
+            let preview = self.preview_near_send(chain, &address, "", 0, None).await?;
+            return Ok(json!({
+                "fee_display": preview.estimatedNetworkFee,
+                "fee_raw": preview.feeBudgetYoctoNear,
+                "fee_rate_description": preview.feeRateDescription,
+                "balance_display": preview.spendableBalance,
+                "max_sendable": preview.maxSendable,
+            })
+            .to_string());
+        }
+        if matches!(
+            chain.mainnet_counterpart(),
+            Chain::Polkadot | Chain::Bittensor
+        ) {
             let endpoints = self
                 .endpoints_for(
                     chain,
@@ -443,7 +488,7 @@ impl WalletService {
             return Ok(json!({
                 "fee_display": crate::decimal::from_units(fee, decimals),
                 "fee_raw": fee.to_string(),
-                "fee_rate_description": "Asset Hub RPC quote; existential deposit retained",
+                "fee_rate_description": "Substrate RPC quote; existential deposit retained",
                 "balance_display": crate::decimal::from_units(balance, decimals),
                 "max_sendable": crate::decimal::from_units(balance.saturating_sub(fee), decimals),
                 "estimated_transaction_bytes": bytes,
@@ -573,19 +618,6 @@ impl WalletService {
             .await?;
         Ok(crate::send::preview_decode::build_simple_chain_preview(
             raw, chain,
-        ))
-    }
-    pub async fn fetch_tron_send_preview(
-        &self,
-        address: String,
-        symbol: String,
-        contract_address: String,
-    ) -> Result<Option<crate::send::preview_types::TronSendPreview>, SpectraBridgeError> {
-        let raw = self
-            .fetch_tron_send_preview_json(address, symbol, contract_address)
-            .await?;
-        Ok(crate::send::preview_decode::build_tron_send_preview_record(
-            raw,
         ))
     }
     pub async fn fetch_utxo_fee_preview(

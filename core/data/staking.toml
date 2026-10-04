@@ -8,56 +8,50 @@
 #
 # One row per chain that `Chain::supports_staking`, joined to `chains.toml` by
 # `chain`; core refuses to load a table that misses one or names another. The
-# figures are estimates for a reader to compare chains by, not quotes: the
-# validator list carries each validator's live APY.
+# table describes protocol mechanics. A validator directory does not claim
+# a yield without chain evidence.
 #
-# Spectra does not sign or submit staking transactions yet, so the prose says
-# what the protocol does, never what Spectra does.
+# Queries and signed actions resolve current balances, minimums and protocol state.
 
 [[chains]]
 chain = "solana"
-apy_estimate = "~6–7% APY"
 short_mechanic = "Delegate to a vote account; rewards each epoch (~2 days)."
 unbonding_period = "2–3 days deactivation"
-minimum_stake = "≥ 0.001 SOL recommended"
-explanation = "Each stake position is its own on-chain stake account: a fresh keypair initialized with `StakeProgram` and delegated to a vote account. Rewards land at every epoch boundary."
-
-[[chains]]
-chain = "polkadot"
-apy_estimate = "~14% APY"
-short_mechanic = "Bond + nominate up to 16 validators, OR join a nomination pool."
-unbonding_period = "28 days"
-minimum_stake = "Direct: 250 DOT · Pool: 1 DOT"
-explanation = "Two paths: direct nomination (`staking::bond` + `staking::nominate`, requires the chain's active minimum bond, currently ~250 DOT) or nomination pools (`nomination_pools::join`, no minimum, recommended for smaller stakers)."
+minimum_stake = "Current on-chain minimum delegation + stake-account rent"
+explanation = "Each stake position is an on-chain stake account created with a wallet-derived seeded address and delegated to a vote account. The wallet retains stake and withdrawal authority. Rewards compound into the stake account; deactivation and withdrawal depend on the current epoch and lockup state."
 
 [[chains]]
 chain = "sui"
-apy_estimate = "~3% APY"
 short_mechanic = "Move call `request_add_stake` to a validator; epoch ~24h."
-unbonding_period = "Until end of current epoch"
+unbonding_period = "Withdrawal returns principal and rewards in the execution transaction"
 minimum_stake = "1 SUI"
-explanation = "Staking creates a `StakedSui` object owned by your wallet. To unstake, the same object is passed to `request_withdraw_stake`; principal + rewards return at the next epoch boundary."
+explanation = "Staking creates a `StakedSui` object owned by your wallet. To unstake, the same object is passed to `request_withdraw_stake`; principal and available rewards return in that transaction, subject to the live stake-object state."
 
 [[chains]]
 chain = "aptos"
-apy_estimate = "~7% APY"
 short_mechanic = "Add stake to a delegation pool; epoch ~2h."
 unbonding_period = "~30-day lockup cycle"
-minimum_stake = "11 APT to a delegation pool"
+minimum_stake = "Current delegation-pool minimum after commission"
 explanation = "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (typically 30 days) it becomes withdrawable."
 
 [[chains]]
 chain = "near"
-apy_estimate = "~9% APY"
-short_mechanic = "`deposit_and_stake` on a `*.poolv1.near` contract."
+short_mechanic = "`deposit_and_stake` on a verified staking-pool contract."
 unbonding_period = "~52h (4 epochs)"
 minimum_stake = "Pool-dependent"
 explanation = "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (~52h) they're withdrawable via `withdraw`."
 
+
+[[chains]]
+chain = "polkadot"
+short_mechanic = "Join a nomination pool on Polkadot Asset Hub."
+unbonding_period = "Until the runtime unbonding era matures"
+minimum_stake = "Current on-chain pool minimum"
+explanation = "Nomination Pools hold DOT on Polkadot Asset Hub. Pool points convert to balances through the runtime, including any slashes. Unbonded funds become withdrawable when their unlock era matures; rewards are claimed separately. Legacy pool and member delegation state is migrated atomically when an action requires it."
+
 [[chains]]
 chain = "internet-computer"
-apy_estimate = "Up to ~14% APY"
-short_mechanic = "Lock ICP into a neuron; rewards scale with dissolve delay."
-unbonding_period = "Dissolve delay (6 months – 8 years)"
-minimum_stake = "1 ICP"
-explanation = "Staking on ICP means creating an NNS neuron with a chosen dissolve delay (≥ 6 months for rewards eligibility, up to 8 years for max maturity bonus). Voting on proposals — directly or via followees — drives the reward rate."
+short_mechanic = "Stake into an NNS governance neuron."
+unbonding_period = "The neuron's configured dissolve delay"
+minimum_stake = "Current NNS governance minimum"
+explanation = "The wallet funds a derived NNS neuron account, claims the neuron, sets an explicitly reviewed dissolve delay and follows a known neuron. Spectra accepts delays up to two years. Starting dissolution applies to the entire neuron; disbursement requires an unlocked controlled position. Claiming maturity queues a delayed, governance-modulated payout. Every funding and management ingress is signed locally and requires its own certified execution receipt."

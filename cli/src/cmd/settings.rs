@@ -4,6 +4,7 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
+use spectra_core::store::CoreResetPlan;
 use spectra_core::store::state::{
     AppSettingUpdate, AppSettings, BackgroundSyncProfile, ResetScope, StateCommand, StateEvent,
 };
@@ -14,22 +15,22 @@ use crate::out::{self, Out};
 
 #[derive(Subcommand)]
 pub enum SettingsCommand {
-    /// Every setting and its current value.
+    /// List settings available through this command and their current values.
     List,
     /// Read one setting.
     Get(GetArgs),
     /// Change one setting.
     Set(SetArgs),
-    /// Put every setting back to its default.
+    /// Reset selected data scopes; default: settings, endpoints and token preferences.
     Reset(ResetArgs),
 }
 
 #[derive(Args)]
 pub struct ResetArgs {
-    /// Domain reset scopes; repeat for multiple scopes. Default: settings only.
-    #[arg(long)]
+    /// Data scope; repeat for multiple scopes. Removing wallets also clears history and cache.
+    #[arg(long, value_parser = ResetScope::ALL.map(ResetScope::as_raw))]
     scope: Vec<String>,
-    /// Reset without asking for confirmation.
+    /// Confirm resetting the selected data scopes.
     #[arg(long)]
     yes: bool,
 }
@@ -223,18 +224,8 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     Ok(())
 }
 
-/// Put every setting core owns back to its default.
-///
-/// The defaults live in `AppSettings::default()`. This is the only way to ask
-/// for all of them at once, and it is what makes the rule testable — iOS reset
-/// settings by assigning each mirror a literal it believed was the default,
-/// which no test on either side could check against core.
+/// Reset core-owned data and describe the effective plan, including implied scopes.
 fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
-    if !args.yes {
-        return Err(CliError::usage(
-            "this discards every setting, including endpoints and preferences — re-run with --yes",
-        ));
-    }
     let scopes = if args.scope.is_empty() {
         vec![ResetScope::SettingsAndEndpoints]
     } else {
@@ -246,9 +237,38 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
             })
             .collect::<CliResult<Vec<_>>>()?
     };
-    ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
-    let count = FIELDS.len();
-    out.text(|| println!("  {} {count} settings at their defaults", out::ok_mark()));
-    out.emit(serde_json::json!({ "ok": true, "settings": count }));
+    if !args.yes {
+        let plan = spectra_core::store::reset_dispatch(scopes);
+        return Err(CliError::usage(format!(
+            "this resets {} — re-run with --yes",
+            reset_description(&plan)
+        )));
+    }
+    let outcome = ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
+    out.text(|| {
+        println!(
+            "  {} reset: {}",
+            out::ok_mark(),
+            reset_description(&outcome.plan)
+        )
+    });
+    out.emit(serde_json::json!({ "ok": true, "plan": outcome.plan }));
     Ok(())
+}
+
+fn reset_description(plan: &CoreResetPlan) -> String {
+    [
+        (plan.reset_wallets_and_secrets, "wallets and secrets"),
+        (plan.reset_history_and_cache, "history and cache"),
+        (plan.reset_alerts_and_contacts, "alerts and contacts"),
+        (
+            plan.reset_settings_and_endpoints,
+            "settings, endpoints and token preferences",
+        ),
+        (plan.reset_dashboard_customization, "dashboard pins"),
+    ]
+    .into_iter()
+    .filter_map(|(enabled, description)| enabled.then_some(description))
+    .collect::<Vec<_>>()
+    .join(", ")
 }

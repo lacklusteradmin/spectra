@@ -65,7 +65,7 @@ pub struct FeeRate {
 }
 
 /// A transaction's confirmation status.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UtxoTxStatus {
     pub txid: String,
     pub confirmed: bool,
@@ -167,37 +167,80 @@ impl UtxoClient {
         .await
     }
 
-    /// Recent history, newest first. `after_txid` continues from a confirmed
-    /// transaction, which only Esplora can do; the others answer the first
-    /// page alone.
-    pub async fn fetch_history(
+    pub async fn fetch_history_page(
         &self,
         address: &str,
-        after_txid: Option<&str>,
-    ) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        let mut entries = self
-            .race(|adapter| async move {
-                match (adapter, after_txid) {
-                    (Adapter::Esplora(c), after) => c.fetch_history(address, after).await,
-                    (_, Some(_)) => Err(ApiError::InvalidInput(
-                        "this indexer cannot continue history".into(),
-                    )),
-                    (Adapter::Blockbook(c), None) => c.fetch_history(address).await,
-                    (Adapter::Blockcypher(c), None) => c.fetch_history(address).await,
-                    (Adapter::Whatsonchain(c), None) => c.fetch_history(address).await,
-                    (Adapter::BchRest(c), None) => c.fetch_history(address).await,
-                }
-            })
-            .await?;
-        // Unconfirmed first, then newest block first; stable, so an order the
-        // indexer already gave within a block stands.
-        entries.sort_by_key(|entry| {
-            std::cmp::Reverse(match (entry.confirmed, entry.block_height) {
-                (true, Some(height)) => height,
-                _ => u64::MAX,
-            })
-        });
-        Ok(entries)
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError> {
+        #[derive(Serialize, Deserialize)]
+        struct Cursor {
+            api: EndpointApi,
+            endpoint: String,
+            after: String,
+        }
+        let position: Option<Cursor> = cursor.map(serde_json::from_str).transpose()?;
+        first_success(
+            self.endpoints
+                .iter()
+                .filter(|endpoint| {
+                    position.as_ref().is_none_or(|value| {
+                        value.api == endpoint.api && value.endpoint == endpoint.url
+                    })
+                })
+                .map(|endpoint| {
+                    let adapter = self.adapter(endpoint);
+                    let after = position.as_ref().map(|value| value.after.as_str());
+                    async move {
+                        let mut page = match adapter? {
+                            Adapter::Esplora(client) => {
+                                let items = client.fetch_history(address, after).await?;
+                                let next_cursor =
+                                    (items.iter().filter(|row| row.confirmed).count() == 25)
+                                        .then(|| {
+                                            items
+                                                .iter()
+                                                .rev()
+                                                .find(|row| row.confirmed)
+                                                .map(|row| row.txid.clone())
+                                        })
+                                        .flatten();
+                                crate::api::HistoryPage { items, next_cursor }
+                            }
+                            Adapter::Blockbook(client) => {
+                                client.fetch_history_page(address, after).await?
+                            }
+                            Adapter::Blockcypher(client) => {
+                                client.fetch_history_page(address, after).await?
+                            }
+                            Adapter::Whatsonchain(client) => {
+                                client.fetch_history_page(address, after).await?
+                            }
+                            Adapter::BchRest(client) => {
+                                client.fetch_history_page(address, after).await?
+                            }
+                        };
+                        page.items.sort_by_key(|row| {
+                            std::cmp::Reverse(if row.confirmed {
+                                row.block_height.unwrap_or(0)
+                            } else {
+                                u64::MAX
+                            })
+                        });
+                        page.next_cursor = page
+                            .next_cursor
+                            .map(|after| {
+                                serde_json::to_string(&Cursor {
+                                    api: endpoint.api,
+                                    endpoint: endpoint.url.clone(),
+                                    after,
+                                })
+                            })
+                            .transpose()?;
+                        Ok(page)
+                    }
+                }),
+        )
+        .await
     }
 
     /// The fee rate for a `confirmation_target` in blocks. WhatsOnChain and
@@ -322,17 +365,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[tokio::test]
-    async fn only_esplora_continues_history() {
-        let blockcypher = MockServer::start().await;
-        let client = UtxoClient::new(
-            Chain::Bitcoin,
-            vec![endpoint(EndpointApi::Blockcypher, &blockcypher)],
-        );
-        assert!(client.fetch_history("bc1q", Some("txid")).await.is_err());
-        assert!(blockcypher.received_requests().await.unwrap().is_empty());
     }
 
     /// A broadcast reaches every endpoint, even after one has accepted it.

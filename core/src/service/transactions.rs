@@ -272,14 +272,9 @@ impl WalletService {
         expected: Option<Vec<crate::store::persistence_models::CorePersistedTransactionRecord>>,
     ) -> Result<Vec<crate::store::TransactionStatusChange>, SpectraBridgeError> {
         use super::history_derived::status_string;
-        let stale: std::collections::HashSet<String> = self
-            .stale_pending_failure_ids(chain_id)
-            .await?
-            .into_iter()
-            .collect();
         let by_id: HashMap<String, crate::store::ResolvedPendingStatus> =
             resolutions.into_iter().map(|r| (r.id.clone(), r)).collect();
-        if by_id.is_empty() && stale.is_empty() {
+        if by_id.is_empty() {
             return Ok(Vec::new());
         }
 
@@ -293,7 +288,7 @@ impl WalletService {
                 let stored: Vec<_> = rows
                     .into_iter()
                     .map(|row| row.payload)
-                    .filter(|t| by_id.contains_key(&t.id) || stale.contains(&t.id))
+                    .filter(|t| by_id.contains_key(&t.id))
                     .filter(|t| {
                         expected.as_ref().is_none_or(|snapshots| {
                             snapshots.iter().any(|old| {
@@ -314,15 +309,7 @@ impl WalletService {
                     .map(|t| crate::store::ResolvedPendingTransactionInput {
                         id: t.id.clone(),
                         old_status: status_string(t.status),
-                        old_failure_reason: t.failure_reason.clone(),
-                        resolution: by_id.get(&t.id).map(|r| {
-                            crate::store::ResolvedPendingStatusInput {
-                                status: r.status.clone(),
-                            }
-                        }),
-                        is_stale_failure: stale.contains(&t.id)
-                            && t.status
-                                == crate::store::wallet_domain::CoreTransactionStatus::Pending,
+                        new_status: by_id[&t.id].status.clone(),
                     })
                     .collect();
 
@@ -356,17 +343,12 @@ impl WalletService {
                     let resolution = by_id.get(&decision.id);
                     let mut updated = old.clone();
                     updated.status = new_status;
-                    updated.failure_reason = match decision.failure_reason_disposition {
-                        crate::store::FailureReasonDisposition::None => None,
-                        crate::store::FailureReasonDisposition::ExecutionFailed => Some(
-                            crate::store::persistence_models::TransactionFailure::ExecutionFailed,
-                        ),
-                        crate::store::FailureReasonDisposition::Preserve => {
-                            old.failure_reason.clone()
-                        }
-                        crate::store::FailureReasonDisposition::LocalizedFallback => Some(
-                            crate::store::persistence_models::TransactionFailure::StuckAfterRetries,
-                        ),
+                    updated.failure_reason = if new_status
+                        == crate::store::wallet_domain::CoreTransactionStatus::Failed
+                    {
+                        Some(crate::store::persistence_models::TransactionFailure::ExecutionFailed)
+                    } else {
+                        None
                     };
                     if new_status == crate::store::wallet_domain::CoreTransactionStatus::Pending {
                         updated.receipt_block_number = None;
@@ -390,19 +372,23 @@ impl WalletService {
                         if let Some(c) = r.confirmations {
                             updated.confirmation_count = Some(i64::from(c));
                         }
-                        if updated.chain_id.evm_rollup_fee_model().is_some() {
-                            // An older execution subtotal is no more complete
-                            // than today's cost payload. Until the full fee is
-                            // decoded, no status route can publish it as a total.
+                        if let Some(cost) = r
+                            .evm_receipt_cost
+                            .as_ref()
+                            .and_then(|cost| cost.validated_for_chain(updated.chain_id))
+                        {
+                            updated.receipt_gas_used = Some(cost.gas_used);
+                            updated.receipt_effective_gas_price_gwei =
+                                Some(cost.effective_gas_price_gwei);
+                            updated.receipt_network_fee = Some(cost.network_fee.clone());
+                            updated.confirmed_network_fee = Some(cost.network_fee);
+                        } else if updated.chain_id.evm_rollup_fee_model().is_some() {
+                            // Never retain an execution subtotal when a complete
+                            // actual rollup cost is unavailable or inconsistent.
                             updated.receipt_gas_used = None;
                             updated.receipt_effective_gas_price_gwei = None;
                             updated.receipt_network_fee = None;
                             updated.confirmed_network_fee = None;
-                        } else if let Some(cost) = &r.evm_receipt_cost {
-                            updated.receipt_gas_used = Some(cost.gas_used.clone());
-                            updated.receipt_effective_gas_price_gwei =
-                                Some(cost.effective_gas_price_gwei.clone());
-                            updated.receipt_network_fee = Some(cost.network_fee.clone());
                         }
                     }
                     changes.push(crate::store::TransactionStatusChange {
@@ -446,8 +432,8 @@ impl WalletService {
     }
 }
 
-/// What one confirmation poll found: one of three outcomes, so no
-/// meaningless combination can be expressed.
+/// What one confirmation poll found. Provider errors remain separate from
+/// transaction execution outcomes.
 #[derive(Debug, Clone, Copy, uniffi::Enum)]
 pub enum StatusPollOutcome {
     /// The provider reported the transaction confirmed.
@@ -589,7 +575,7 @@ mod status_commit_regressions {
     }
 
     #[tokio::test]
-    async fn unresolved_timeout_does_not_claim_on_chain_execution_failed() {
+    async fn six_provider_failures_leave_old_and_uncertain_transactions_pending() {
         use crate::registry::Chain;
         use crate::store::persistence_models::TransactionFailure;
         use crate::store::wallet_domain::CoreTransactionStatus;
@@ -614,15 +600,27 @@ mod status_commit_regressions {
             .apply_resolved_pending_statuses(Chain::Bitcoin, vec![])
             .await
             .unwrap();
-        assert_eq!(changes.len(), 2);
+        assert!(changes.is_empty());
         let rows = service.transactions().await.unwrap();
         for (id, expected) in [
-            ("uncertain", TransactionFailure::SubmissionOutcomeUnknown),
-            ("unresolved", TransactionFailure::StuckAfterRetries),
+            (
+                "uncertain",
+                Some(TransactionFailure::SubmissionOutcomeUnknown),
+            ),
+            ("unresolved", None),
         ] {
             let stored = rows.iter().find(|row| row.id == id).unwrap();
-            assert_eq!(stored.status, CoreTransactionStatus::Failed);
-            assert_eq!(stored.failure_reason.as_ref(), Some(&expected));
+            assert_eq!(stored.status, CoreTransactionStatus::Pending);
+            assert_eq!(stored.failure_reason, expected);
+            let tracker = service.status_trackers.read().await[id].clone();
+            assert_eq!(tracker.consecutive_failures, 6);
+            assert!(!tracker.polling_complete);
+            assert!(
+                service
+                    .transactions_due_for_status_poll(vec![id.into()])
+                    .await
+                    .is_empty()
+            );
         }
     }
 
@@ -951,53 +949,5 @@ impl WalletService {
         .await
         .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
         .map_err(Into::into)
-    }
-}
-
-impl WalletService {
-    pub(crate) async fn stale_pending_failure_ids(
-        &self,
-        chain_id: crate::registry::Chain,
-    ) -> Result<Vec<String>, SpectraBridgeError> {
-        use crate::store::wallet_domain::CoreTransactionKind::Send;
-        // Whether receives count is `Chain::pending_status_poll`'s
-        // `require_send_kind` — Litecoin's explorer confirms receives on its
-        // own cadence, so its sweep tracks them too.
-        let require_send_kind = match chain_id.pending_status_poll() {
-            crate::registry::PendingStatusPoll::Utxo {
-                require_send_kind, ..
-            } => require_send_kind,
-            _ => true,
-        };
-        let failures: HashMap<String, u32> = self
-            .status_trackers
-            .read()
-            .await
-            .iter()
-            .map(|(id, tracker)| (id.clone(), tracker.consecutive_failures))
-            .collect();
-        let inputs: Vec<crate::store::StalePendingFailureTransactionInput> = self
-            .transactions()
-            .await?
-            .into_iter()
-            .filter(|t| t.chain_id == chain_id && (!require_send_kind || t.kind == Send))
-            // A missing response/receipt cannot prove a journaled send failed.
-            // Keep its nonce reserved until an actual network outcome is known.
-            .filter(|t| {
-                t.signed_transaction_payload_format.as_deref() != Some("core.submission_json")
-            })
-            .map(|t| crate::store::StalePendingFailureTransactionInput {
-                id: t.id,
-                created_at_unix: t.created_at_unix,
-                status_is_pending: t.status
-                    == crate::store::wallet_domain::CoreTransactionStatus::Pending,
-            })
-            .collect();
-        Ok(crate::store::stale_pending_failure_ids(
-            inputs,
-            &failures,
-            crate::wallet_db::now_secs() as f64,
-            TransactionStatusPollConfig::default(),
-        ))
     }
 }

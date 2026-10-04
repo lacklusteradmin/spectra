@@ -71,6 +71,9 @@ fn bitcoin_account_xpubs_validate_checksums_payloads_and_public_keys() {
         [0x04, 0x88, 0xb2, 0x1e],
         [0x04, 0x9d, 0x7c, 0xb2],
         [0x04, 0xb2, 0x47, 0x46],
+        [0x04, 0x35, 0x87, 0xcf],
+        [0x04, 0x4a, 0x52, 0x62],
+        [0x04, 0x5f, 0x1c, 0xf6],
     ] {
         let mut payload = original.clone();
         payload[..4].copy_from_slice(&version);
@@ -259,14 +262,20 @@ mod watch_only {
         );
     }
 
-    /// Watching is offered on mainnets only, so a testnet address typed for
-    /// one is refused rather than stored as a mainnet wallet's.
+    /// A watched address belongs to its concrete network.
     #[test]
     fn a_testnet_watch_address_is_refused() {
         let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
         let (kept, rejected) = validated_watch_only_entries(&entries(Chain::Bitcoin, &[typed]));
         assert_eq!(rejected, vec![typed.to_string()]);
         assert!(kept.by_chain_id.is_empty());
+        let (kept, rejected) =
+            validated_watch_only_entries(&entries(Chain::BitcoinTestnet, &[typed]));
+        assert!(rejected.is_empty());
+        assert_eq!(
+            kept.by_chain_id[&Chain::BitcoinTestnet],
+            vec![typed.to_string()]
+        );
     }
 
     #[test]

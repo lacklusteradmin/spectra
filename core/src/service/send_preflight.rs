@@ -275,6 +275,7 @@ impl WalletService {
         let requires_self_send_confirmation =
             self.is_own_address(chain, &request.to_address).await?;
         Ok(crate::send::stages::SendArtifactReview {
+            staking: None,
             warnings: without_new_address_for_self_send(warnings, requires_self_send_confirmation),
             recipient_warnings,
             requires_self_send_confirmation,
@@ -370,7 +371,9 @@ mod preflight_tests {
     async fn sendability_follows_the_token_list_core_holds() {
         let service = WalletService::new(Vec::new()).expect("service");
         let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-        let standard = Chain::Solana.token_standard().to_string();
+        let standard = Chain::Solana
+            .token_standard_for_identifier(mint)
+            .to_string();
         {
             let mut state = service.wallet_state.write().await;
             let mut wallet = WalletState::single_address(

@@ -25,19 +25,20 @@ pub mod bitcoin_cash;
 pub mod bitcoin_gold;
 pub mod bitcoin_sv;
 pub(crate) mod bitcoin_wire;
-pub mod bittensor;
 pub mod cardano;
 pub mod dash;
 pub mod decred;
 pub mod dogecoin;
 pub mod evm;
 pub(crate) mod icp_stages;
+pub(crate) mod icp_staking;
 pub mod kaspa;
 pub mod litecoin;
 pub(crate) mod litecoin_quote;
 pub(crate) mod monero_local;
 pub mod near;
 pub mod polkadot;
+pub mod polkadot_pools;
 pub mod solana;
 pub mod stellar;
 pub mod substrate;
@@ -70,10 +71,6 @@ pub struct SendPreflight {
     /// cannot identify is refused rather than sent with a guessed scale.
     pub token_contract_address: Option<String>,
     pub token_decimals: Option<u32>,
-    /// The gas-asset balance a token send needs before it can land, where the
-    /// chain has no fee estimate for that path — see
-    /// `Chain::token_send_gas_reserve`. `None` for a native send.
-    pub token_send_gas_reserve: Option<String>,
 }
 
 /// Unified request for `WalletService::execute_send`.
@@ -312,17 +309,12 @@ pub fn validate_send_preflight(
         amount: amount_input.to_string(),
         token_contract_address: token.map(|token| token.contract.clone()),
         token_decimals: token.map(|token| token.decimals),
-        // Only a token send needs it: the native asset pays its own fee out
-        // of the amount, which the balance check above already covers.
-        token_send_gas_reserve: token.and(asset.chain.token_send_gas_reserve()),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        SendAsset, SendAssetKind, SendExecutionRequest, SendTokenIdentity, validate_send_preflight,
-    };
+    use super::{SendAsset, SendAssetKind, SendExecutionRequest, validate_send_preflight};
     use crate::registry::Chain;
 
     /// Every chain sends its native asset, so every chain can name a fee: its
@@ -374,6 +366,39 @@ mod tests {
                 sample,
                 "{} altered an address whose case is significant",
                 chain.str_id()
+            );
+        }
+    }
+
+    #[test]
+    fn stellar_addresses_remain_canonical_uppercase_through_sender_resolution() {
+        let address = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ";
+        for chain in [
+            crate::registry::Chain::Stellar,
+            crate::registry::Chain::StellarTestnet,
+        ] {
+            assert_eq!(
+                crate::send::flow::normalize_address(chain, address),
+                address
+            );
+            assert_eq!(
+                crate::send::flow::normalize_address(chain, &address.to_ascii_lowercase()),
+                address
+            );
+            assert!(crate::send::flow::is_valid_send_address(
+                chain,
+                address.to_string()
+            ));
+            let validated = crate::validation::address::validate_address(
+                crate::validation::address::AddressValidationRequest {
+                    kind: chain.address_validation_kind().into(),
+                    value: address.to_ascii_lowercase(),
+                },
+            );
+            assert_eq!(validated.normalized_value.as_deref(), Some(address));
+            assert!(
+                crate::derivation::stellar::decode_stellar_address(&(address.to_string() + "A"))
+                    .is_err()
             );
         }
     }
@@ -458,46 +483,6 @@ mod tests {
         let error = validate_send_preflight(true, Some(&usdt), "10", "0xabc", "1")
             .expect_err("an untracked token has no contract to send");
         assert_eq!(error.to_string(), "USDT transfers are not enabled yet.");
-    }
-
-    /// The gas floor a NEP-141 send has to clear is a fact about NEAR, so core
-    /// states it — and only where it applies: a native NEAR send pays its fee
-    /// out of the amount, and every other chain estimates one.
-    #[test]
-    fn a_near_token_send_carries_the_chains_gas_floor() {
-        let preflight = |asset: &SendAsset, destination: &str| {
-            validate_send_preflight(true, Some(asset), "10", destination, "1")
-                .expect("a sendable asset")
-        };
-        let token = |standard: &str, contract: &str, decimals| {
-            SendAssetKind::Token(SendTokenIdentity {
-                standard: standard.into(),
-                contract: contract.into(),
-                decimals,
-            })
-        };
-
-        let usdc = asset(Chain::Near, "USDC", token("NEP-141", "usdc.near", 6));
-        assert_eq!(
-            preflight(&usdc, "receiver.near")
-                .token_send_gas_reserve
-                .as_deref(),
-            Some("0.001")
-        );
-        let near = asset(Chain::Near, "NEAR", SendAssetKind::Native);
-        assert_eq!(
-            preflight(&near, "receiver.near").token_send_gas_reserve,
-            None
-        );
-
-        let usdt = asset(
-            Chain::Tron,
-            "USDT",
-            token("TRC-20", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),
-        );
-        let tron = preflight(&usdt, "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7");
-        assert_eq!(tron.token_send_gas_reserve, None);
-        assert_eq!(tron.token_decimals, Some(6));
     }
 
     #[test]

@@ -1,6 +1,10 @@
 //! Endpoint health, contract probes and transaction status reads.
 use super::*;
 
+#[cfg(test)]
+#[path = "tests/network_receipt.rs"]
+mod network_receipt;
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     // `fetch_history` lives in the plain-impl block below (JSON shuttle —
@@ -22,7 +26,7 @@ impl WalletService {
     // `fetch_utxo_fee_preview_json` and `broadcast_raw` live in the plain-impl
     // block below (JSON shuttles — kept internal, not exported to Swift).
 
-    // `fetch_evm_send_preview_json` / `fetch_tron_send_preview_json` /
+    // `fetch_evm_send_preview_json` / `fetch_tron_send_preview_json_on_chain` /
     // `fetch_simple_chain_send_preview_json` live in the plain-impl block below
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
     // wrappers below call into those internal helpers.
@@ -180,9 +184,6 @@ impl WalletService {
                 is_confirmed: receipt.is_confirmed,
                 is_failed: receipt.is_failed,
                 block_number: receipt.block_number.map(|n| n as i64),
-                // Execution gas alone is not the complete actual fee on OP
-                // Stack. Omit cost until historical L1/operator charges are
-                // decoded, rather than display this subtotal as Network Fee.
                 cost: if chain.evm_rollup_fee_model().is_none() {
                     crate::store::EvmReceiptCost::from_receipt(
                         receipt.gas_used.as_deref(),
@@ -190,7 +191,13 @@ impl WalletService {
                         chain.native_decimals(),
                     )
                 } else {
-                    None
+                    crate::store::EvmReceiptCost::from_rollup_receipt(
+                        receipt.gas_used.as_deref(),
+                        receipt.effective_gas_price_wei.as_deref(),
+                        receipt.l1_fee_wei.as_deref(),
+                        receipt.operator_fee_wei.as_deref(),
+                        chain.native_decimals(),
+                    )
                 },
             }),
         )

@@ -77,18 +77,8 @@ impl WalletService {
     }
 }
 
-/// A holding's identity when matching a listing against known tokens: the
-/// canonical identifier, except on TON, where the indexer names a jetton
-/// master by its raw address and the catalog spells it user-friendly.
+/// The same canonical identity used by catalog, custom tokens and storage.
 fn holding_key(chain: Chain, contract: &str) -> Option<String> {
-    if chain.mainnet_counterpart() == Chain::Ton {
-        let address = crate::derivation::ton::parse_ton_address(contract.trim()).ok()?;
-        return Some(format!(
-            "{}:{}",
-            address.workchain,
-            hex::encode_upper(address.account_id)
-        ));
-    }
     crate::tokens::normalize_token_identifier(Some(contract.to_string()), chain)
 }
 
@@ -101,14 +91,22 @@ impl WalletService {
         chain: Chain,
         api: crate::EndpointApi,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let required = [EndpointCapability::TokenDiscovery];
+        let required: &[EndpointCapability] = if api == crate::EndpointApi::ToncenterV3 {
+            &[
+                EndpointCapability::TokenDiscovery,
+                EndpointCapability::TokenBalance,
+                EndpointCapability::Verification,
+            ]
+        } else {
+            &[EndpointCapability::TokenDiscovery]
+        };
         if self
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
         {
-            self.api_endpoints(chain, api, &required).await
+            self.api_endpoints(chain, api, required).await
         } else {
-            Ok(self.custom_api_endpoints(chain, &[api], &required).await)
+            Ok(self.custom_api_endpoints(chain, &[api], required).await)
         }
     }
 
@@ -117,8 +115,7 @@ impl WalletService {
     ///
     /// A token contract only answers about a holder you name, so a list needs
     /// a node that indexes by owner (Solana, Sui) or an indexer (TronGrid,
-    /// TON Center v3, Blockscout). EVM chains without an explorer, NEAR and
-    /// Aptos — whose node cannot list fungible-asset stores — have none.
+    /// TON Center v3, Nearblocks, Aptos Indexer, Blockscout).
     pub(crate) async fn held_tokens(
         &self,
         chain: Chain,
@@ -151,24 +148,64 @@ impl WalletService {
                     .fetch_all_coin_balances(address)
                     .await?
             }
+            Chain::Aptos | Chain::AptosTestnet => {
+                let endpoints = self
+                    .listing_endpoints(chain, crate::EndpointApi::AptosIndexer)
+                    .await?;
+                if endpoints.is_empty() {
+                    return Ok(None);
+                }
+                let expected = chain
+                    .aptos_chain_id()
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
+                crate::api::aptos_indexer::AptosIndexerClient::new(Arc::new(endpoints), expected)
+                    .fetch_holdings(address)
+                    .await?
+            }
+            Chain::Near | Chain::NearTestnet => {
+                let endpoints = self
+                    .listing_endpoints(chain, crate::EndpointApi::Nearblocks)
+                    .await?;
+                if endpoints.is_empty() {
+                    return Ok(None);
+                }
+                crate::api::nearblocks::NearblocksClient::new(Arc::new(endpoints))
+                    .fetch_ft_holdings(address)
+                    .await?
+            }
             Chain::Tron | Chain::TronNile => {
                 let primary = self.endpoints_for(chain, &discovery).await;
                 let accounts = self
                     .tron_account_endpoints(chain, &primary, &discovery)
                     .await?;
-                if accounts.is_empty() {
+                let nodes = self
+                    .endpoints_for(
+                        chain,
+                        &[
+                            EndpointCapability::TokenBalance,
+                            EndpointCapability::Verification,
+                        ],
+                    )
+                    .await;
+                if nodes.is_empty() || accounts.is_empty() {
                     return Ok(None);
                 }
-                crate::api::trongrid_v1::TrongridClient::new(Arc::new(accounts))
-                    .fetch_trc20_holdings(address)
-                    .await?
-                    .into_iter()
-                    .map(|(contract, balance_raw)| crate::api::HeldToken {
-                        contract,
-                        balance_raw,
-                        decimals: None,
-                    })
-                    .collect()
+                let trc10 = TronHttpClient::new(nodes)
+                    .fetch_trc10_holdings(chain, address)
+                    .await?;
+                let mut held: Vec<_> =
+                    crate::api::trongrid_v1::TrongridClient::new(Arc::new(accounts))
+                        .fetch_trc20_holdings(address)
+                        .await?
+                        .into_iter()
+                        .map(|(contract, balance_raw)| crate::api::HeldToken {
+                            contract,
+                            balance_raw,
+                            decimals: None,
+                        })
+                        .collect();
+                held.extend(trc10);
+                held
             }
             Chain::Ton | Chain::TonTestnet => {
                 let v3 = self
@@ -178,7 +215,7 @@ impl WalletService {
                     return Ok(None);
                 }
                 crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(v3))
-                    .fetch_jetton_balances(address)
+                    .fetch_jetton_balances(chain, address)
                     .await?
             }
             c if c.is_evm() => {
@@ -219,21 +256,30 @@ impl WalletService {
                     .or_decode("coin decimals unavailable")?
             }
             Chain::Tron | Chain::TronNile => {
-                TronHttpClient::with_metadata_cache(
+                let client = TronHttpClient::with_metadata_cache(
                     self.endpoints_for(chain, &balance).await,
                     chain,
                     self.trc20_metadata.clone(),
-                )
-                .read_metadata(contract)
-                .await?
-                .decimals
+                );
+                if standard == "TRC-10" {
+                    client.fetch_trc10_metadata(chain, contract).await?.decimals
+                } else {
+                    client.read_metadata(contract).await?.decimals
+                }
             }
             Chain::Ton | Chain::TonTestnet => {
                 crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(
-                    self.api_endpoints(chain, crate::EndpointApi::ToncenterV3, &balance)
-                        .await?,
+                    self.api_endpoints(
+                        chain,
+                        crate::EndpointApi::ToncenterV3,
+                        &[
+                            EndpointCapability::Verification,
+                            EndpointCapability::TokenBalance,
+                        ],
+                    )
+                    .await?,
                 ))
-                .fetch_jetton_decimals(contract)
+                .fetch_jetton_decimals(chain, contract)
                 .await
                 .or_decode("jetton decimals unavailable")?
             }
@@ -492,6 +538,24 @@ impl WalletService {
                         let symbol = t.symbol.clone();
                         let standard = t.standard_on(chain).to_string();
                         async move {
+                            if standard == "TRC-10" {
+                                let b = client
+                                    .fetch_trc10_balance(chain, &contract, &holder)
+                                    .await?;
+                                return Ok::<_, ApiError>(TokenBalanceResult {
+                                    standard,
+                                    contract_address: contract,
+                                    symbol: if symbol.is_empty() {
+                                        b.metadata.symbol
+                                    } else {
+                                        symbol
+                                    },
+                                    decimals: b.metadata.decimals,
+                                    balance_raw: b.balance_raw.to_string(),
+                                    balance_display: b.balance_display,
+                                    is_known: true,
+                                });
+                            }
                             let b = client.fetch_trc20_balance(&contract, &holder).await?;
                             Ok::<_, ApiError>(TokenBalanceResult {
                                 standard,
@@ -983,12 +1047,17 @@ mod decimals_come_from_the_chain {
         }])
         .unwrap();
         let token = TokenDescriptor {
-            standard: "TRC-10".into(),
+            standard: "TRC-20".into(),
             contract: "1002000".into(),
             symbol: "T10".into(),
             decimals: 6,
             name: None,
         };
+        let mut legacy = [TokenDescriptor {
+            standard: "TRC-10".into(),
+            ..token.clone()
+        }];
+        super::validate_token_reads(Chain::Tron, &mut legacy).expect("TRC-10 is supported on Tron");
         for result in [
             service
                 .fetch_token_balances(Chain::Tron, "owner".into(), vec![token.clone()])
@@ -1001,7 +1070,7 @@ mod decimals_come_from_the_chain {
                 result
                     .unwrap_err()
                     .to_string()
-                    .contains("TRC-10 balance reads are not supported")
+                    .contains("invalid token identifier for protocol")
             );
         }
         assert!(

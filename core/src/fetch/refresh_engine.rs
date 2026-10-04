@@ -630,7 +630,7 @@ pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Op
 /// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
 /// `WalletService::fetch_native_balance_summary_auto` detects extended keys
 /// automatically.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize)]
 pub struct RefreshEntry {
     /// The chain the balance is *filed* under: the wallet's family, which is
     /// what its holding is named after and what pricing keys on.

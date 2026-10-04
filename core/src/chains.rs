@@ -117,7 +117,7 @@ pub(crate) struct TomlChain {
     name: String,
     family: String,
     pub(crate) environment: String,
-    pub(crate) token_standard: String,
+    pub(crate) token_standards: Vec<String>,
     derivation_path: Vec<TomlDerivationPathEntry>,
 }
 
@@ -167,7 +167,6 @@ struct TomlStakingFile {
 #[serde(deny_unknown_fields)]
 struct TomlStakingChain {
     chain: String,
-    apy_estimate: String,
     short_mechanic: String,
     unbonding_period: String,
     minimum_stake: String,
@@ -184,18 +183,26 @@ struct TomlWikiChain {
     state_model: String,
 }
 
-/// The prompt shown above a contract-address field, from the standard the
-/// chain hosts.
-fn contract_address_prompt_for(token_standard: &str) -> String {
-    match token_standard {
-        "" => "",
-        "AIP-21" => "Fungible Asset Metadata or Package Address",
-        "NEP-141" => "Contract Account ID",
-        "SPL" => "Mint Address",
-        "Sui Coin" => "Coin Standard Type",
-        "TEP-74" => "Jetton Master Address",
-        // ARC-20, BEP-20, ERC-20, TRC-20 — the contract-address families.
-        _ => "Contract Address",
+/// Token input copy follows the network's protocol set, without picking a
+/// single protocol for its deployments.
+fn contract_address_prompt_for(token_standards: &[String]) -> String {
+    let has = |standard: &str| token_standards.iter().any(|s| s == standard);
+    if token_standards.is_empty() {
+        ""
+    } else if has("Aptos Coin") || has("AIP-21") {
+        "Fungible Asset Metadata or Coin Type"
+    } else if has("TRC-10") {
+        "Token ID or Contract Address"
+    } else if has("NEP-141") {
+        "Contract Account ID"
+    } else if has("SPL") {
+        "Mint Address"
+    } else if has("Sui Coin") {
+        "Coin Standard Type"
+    } else if has("TEP-74") {
+        "Jetton Master Address"
+    } else {
+        "Contract Address"
     }
     .to_string()
 }
@@ -237,8 +244,8 @@ pub struct ChainEntry {
     pub is_evm: bool,
     pub color: CatalogColor,
     pub artwork_name: String,
-    /// Default for token inputs; each deployment owns its actual standard.
-    pub token_standard: String,
+    /// Every protocol the network supports; each deployment owns its actual standard.
+    pub token_standards: Vec<String>,
     pub contract_address_prompt: String,
     pub native_coingecko_id: String,
     pub native_decimals: u32,
@@ -271,13 +278,12 @@ pub struct ChainWikiEntry {
 }
 
 /// What staking on a chain means, for a reader — one row per chain that
-/// `Chain::supports_staking`, in catalog order. Editorial copy: estimates to
-/// compare chains by, not quotes, and nothing computes anything from it.
+/// `Chain::supports_staking`, in catalog order. Protocol information and
+/// validator directories; no yield quote or transaction execution.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingChainEntry {
     pub chain: crate::registry::Chain,
-    pub apy_estimate: String,
     pub short_mechanic: String,
     pub unbonding_period: String,
     pub minimum_stake: String,
@@ -302,8 +308,37 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
 /// token, and the token catalog checks its deployments against these rows, so
 /// neither can wait for the other's catalog.
 static DECLARED: LazyLock<TomlFile> = LazyLock::new(|| {
-    toml::from_str(CHAINS_TOML)
-        .expect("chains.toml is embedded at compile time and must be valid TOML")
+    let parsed: TomlFile = toml::from_str(CHAINS_TOML)
+        .expect("chains.toml is embedded at compile time and must be valid TOML");
+    for chain in &parsed.chains {
+        let mut standards = std::collections::HashSet::new();
+        for standard in &chain.token_standards {
+            assert!(
+                matches!(
+                    standard.as_str(),
+                    "ERC-20"
+                        | "BEP-20"
+                        | "ARC-20"
+                        | "SPL"
+                        | "TRC-10"
+                        | "TRC-20"
+                        | "TEP-74"
+                        | "NEP-141"
+                        | "Sui Coin"
+                        | "Aptos Coin"
+                        | "AIP-21"
+                ),
+                "unknown token protocol on {}: {standard}",
+                chain.id
+            );
+            assert!(
+                standards.insert(standard),
+                "duplicate token protocol on {}",
+                chain.id
+            );
+        }
+    }
+    parsed
 });
 
 /// A network's row as `chains.toml` declares it.
@@ -432,8 +467,8 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
                 is_evm: chain.is_evm(),
                 color: ui.color,
                 artwork_name: ui.artwork_name,
-                token_standard: c.token_standard.clone(),
-                contract_address_prompt: contract_address_prompt_for(&c.token_standard),
+                token_standards: c.token_standards.clone(),
+                contract_address_prompt: contract_address_prompt_for(&c.token_standards),
                 native_coingecko_id: native.coingecko_id.clone(),
                 native_decimals: native.decimals,
                 native_asset_display_name: native.name.clone(),
@@ -492,8 +527,8 @@ static STAKING: LazyLock<Vec<StakingChainEntry>> = LazyLock::new(|| {
         .map(|row| {
             let chain = crate::registry::Chain::from_str_id(&row.chain)
                 .unwrap_or_else(|| panic!("staking.toml: unknown chain {}", row.chain));
-            // Copy for a chain the tab does not offer is a page no one can
-            // reach, claiming an APY for a chain Spectra cannot stake on.
+            // A directory description must name a chain whose validators
+            // the tab can actually query.
             assert!(
                 chain.supports_staking(),
                 "staking.toml: {} does not support staking",
@@ -501,7 +536,6 @@ static STAKING: LazyLock<Vec<StakingChainEntry>> = LazyLock::new(|| {
             );
             StakingChainEntry {
                 chain,
-                apy_estimate: row.apy_estimate,
                 short_mechanic: row.short_mechanic,
                 unbonding_period: row.unbonding_period,
                 minimum_stake: row.minimum_stake,
@@ -855,10 +889,10 @@ mod explicit_network_catalog {
         for e in CATALOG.iter() {
             assert_eq!(
                 e.contract_address_prompt,
-                if e.token_standard.is_empty() {
+                if e.token_standards.is_empty() {
                     String::new()
                 } else {
-                    contract_address_prompt_for(&e.token_standard)
+                    contract_address_prompt_for(&e.token_standards)
                 },
                 "{}",
                 e.id
@@ -895,7 +929,6 @@ mod staking_table_tests {
                 row.chain.str_id()
             );
             for field in [
-                &row.apy_estimate,
                 &row.short_mechanic,
                 &row.unbonding_period,
                 &row.minimum_stake,
@@ -907,20 +940,6 @@ mod staking_table_tests {
                     row.chain.str_id()
                 );
             }
-        }
-    }
-
-    /// Spectra does not sign or submit staking transactions, so no row may
-    /// say that it does.
-    #[test]
-    fn no_staking_copy_claims_spectra_acts() {
-        for row in list_staking_chains() {
-            assert!(
-                !row.explanation.contains("Spectra"),
-                "{}: {}",
-                row.chain.str_id(),
-                row.explanation
-            );
         }
     }
 }

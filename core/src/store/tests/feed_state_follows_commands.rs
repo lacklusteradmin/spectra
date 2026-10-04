@@ -46,7 +46,9 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
         })
         .await
         .expect("upsert");
-    service.advance_history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone(), None);
+    service
+        .advance_history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone(), None)
+        .unwrap();
     crate::diagnostics::diagnostics_record(crate::registry::Chain::Bitcoin, row(&wallet_id));
     assert!(
         service
@@ -79,7 +81,9 @@ async fn an_esplora_change_restarts_the_bitcoin_feed() {
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(path.clone()).await.expect("open");
 
-    service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
+    service
+        .advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None)
+        .unwrap();
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: AppSettingUpdate::AddCustomEndpoint {
@@ -101,7 +105,9 @@ async fn an_esplora_change_restarts_the_bitcoin_feed() {
     );
 
     // A change that is not about the feed leaves it where it was.
-    service.advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None);
+    service
+        .advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None)
+        .unwrap();
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: AppSettingUpdate::UsePriceAlerts { value: false },

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Asset Hub balance, fees, staged signing and finalized outcomes on loopback."""
 import hashlib
+from decimal import Decimal
 import http.server
 import json
 import os
@@ -13,9 +14,16 @@ import threading
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BINARY = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / 'target/debug/spectra').resolve())
-GENESIS = '0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f'
+CHAIN = sys.argv[2] if len(sys.argv) > 2 else 'polkadot'
+FINNEY = CHAIN == 'bittensor'
+SYMBOL = 'TAO' if FINNEY else 'DOT'
+DECIMALS = 9 if FINNEY else 10
+SCALE = 10 ** DECIMALS
+ED = 500 if FINNEY else 100_000_000
+GENESIS = '0x2f0555cc76fc2840a25a6ea3b9637146806f1f44b090c175ffde2a7e5ab36c03' if FINNEY else '0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f'
 RELAY_GENESIS = '0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3'
-METADATA = '0x' + (ROOT / 'core/tests/fixtures/asset-hub-polkadot-metadata.scale').read_bytes().hex()
+METADATA = '0x' + (ROOT / 'core/tests/fixtures' / ('bittensor-finney-metadata.scale' if FINNEY else 'asset-hub-polkadot-metadata.scale')).read_bytes().hex()
+def units(value): return format((Decimal(value) / SCALE).normalize(), 'f')
 EVENTS_KEY = '0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7'
 
 
@@ -45,7 +53,7 @@ def dispatch_event(succeeded):
     return '0x' + (compact(1) + event + bytes(4) + b'\x00').hex()
 
 
-live = dict(genesis=GENESIS, nonce=7, fee=10_000_000, free=100_000_000_000,
+live = dict(genesis=GENESIS, nonce=7, fee=SCALE // 1000, free=10*SCALE,
             reserved=0, frozen=0, spec=2_005_000, metadata=METADATA, finalized=100,
             blocks={}, succeeded={}, submitted=[], calls=[])
 
@@ -69,16 +77,18 @@ class Node(http.server.BaseHTTPRequestHandler):
             raw = bytes.fromhex(params[0][2:]); size, body = read_compact(raw)
             assert size == len(body) and body[:2] == b'\x84\x00' and body[34] == 1
             _, after_nonce = read_compact(body[100:])
-            assert after_nonce[:3] == bytes(3), 'native fee asset + metadata hash mode must be encoded'
-            assert after_nonce[3:6] == bytes([10, 3, 0]), 'Asset Hub Balances transfer_keep_alive call'
+            extra_len = 2 if FINNEY else 3
+            assert after_nonce[:extra_len] == bytes(extra_len), 'native fee + metadata hash mode must be encoded'
+            assert after_nonce[extra_len:extra_len+3] == bytes([5 if FINNEY else 10, 3, 0]), 'runtime Balances transfer_keep_alive call'
             result = dict(partialFee=str(live['fee']))
         elif name == 'state_getStorage':
             if params[0] == EVENTS_KEY:
                 height = int(params[1], 16)
                 result = dispatch_event(live['succeeded'][height])
             else:
-                record = bytes(16) + live['free'].to_bytes(16, 'little')
-                record += live['reserved'].to_bytes(16, 'little') + live['frozen'].to_bytes(16, 'little') + bytes(16)
+                width = 8 if FINNEY else 16
+                record = bytes(16) + live['free'].to_bytes(width, 'little')
+                record += live['reserved'].to_bytes(width, 'little') + live['frozen'].to_bytes(width, 'little') + bytes(16)
                 result = '0x' + record.hex()
         elif name == 'author_submitExtrinsic':
             live['submitted'].append(params[0])
@@ -117,7 +127,7 @@ try:
                 return json.loads(db.execute('SELECT payload FROM send_artifacts WHERE id=?', (id,)).fetchone()[0])
 
         def build(amount='1'):
-            return run('send', 'build', '--from', 'DOT', '--to', recipient,
+            return run('send', 'build', '--from', SYMBOL, '--to', recipient,
                        '--amount', amount, '--endpoint', endpoint)['artifact']
 
         def sign(prepared, success=True):
@@ -128,50 +138,50 @@ try:
             return run('send', 'broadcast-signed', id, '--endpoint', endpoint, '--yes', success=success)
 
         def poll():
-            return run('txs', '--poll-chain', 'polkadot')['changes']
+            return run('txs', '--poll-chain', CHAIN)['changes']
 
-        imported = run('wallet', 'import', '--chain', 'polkadot', '--name', 'DOT', '--no-password')['wallet']
-        recipient = '13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB'
-        run('endpoints', '--chain', 'polkadot', '--api', 'substrate-json-rpc',
+        imported = run('wallet', 'import', '--chain', CHAIN, '--name', SYMBOL, '--no-password')['wallet']
+        recipient = imported['address'] if FINNEY else '13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB'
+        run('endpoints', '--chain', CHAIN, '--api', 'substrate-json-rpc',
             '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
         with sqlite3.connect(db_path) as db:
             wid, payload = db.execute('SELECT id,payload FROM wallets').fetchone()
             wallet = json.loads(payload)
-            wallet['holdings'] = [dict(name='Polkadot', symbol='DOT', coingeckoId='polkadot', chainId='polkadot',
+            wallet['holdings'] = [dict(name=CHAIN, symbol=SYMBOL, coingeckoId=CHAIN, chainId=CHAIN,
                                       tokenStandard='Native', contractAddress=None, amount='10')]
             db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
-        owned = ('--wallet', 'DOT', '--holding', 'polkadot:native', '--destination', recipient)
+        owned = ('--wallet', SYMBOL, '--holding', CHAIN + ':native', '--destination', recipient)
         preview = run('send', 'preview', *owned, '--amount', '1')['preview']
-        assert preview['network_fee'] == '0.001' and preview['details']['maxSendable'] == '9.989', preview
+        assert preview['network_fee'] == '0.001' and preview['details']['maxSendable'] == units(10*SCALE-ED-SCALE//1000), preview
         assert preview['details']['estimatedTransactionBytes'] > 145, preview
         quote = run('send', 'quote', *owned, '--amount', '1')['quote']
         assert quote['request']['fee_amount'] == '0.001', quote
-        live['frozen'], live['reserved'] = 50_000_000_000, 10_000_000_000
+        live['frozen'], live['reserved'] = 5*SCALE, SCALE
         locked = run('send', 'preview', *owned, '--amount', '1')['preview']
-        assert locked['details']['maxSendable'] == '5.999', locked
+        assert locked['details']['maxSendable'] == units(6*SCALE-SCALE//1000), locked
         live['frozen'], live['reserved'] = 0, 0
         live['genesis'] = RELAY_GENESIS
         before = len(live['calls'])
         run('send', 'preview', *owned, '--amount', '1', success=False)
         assert set(live['calls'][before:]) == {'chain_getBlockHash'}, live['calls'][before:]
-        build_result = run('send', 'build', '--from', 'DOT', '--to', recipient, '--amount', '1',
+        build_result = run('send', 'build', '--from', SYMBOL, '--to', recipient, '--amount', '1',
                            '--endpoint', endpoint, success=False)
-        assert 'wrong Asset Hub' in str(build_result), build_result
+        assert 'wrong Substrate' in str(build_result), build_result
         live['genesis'] = GENESIS
         live['metadata'] = '0x00'
         run('send', 'preview', *owned, '--amount', '1', success=False)
         live['metadata'] = METADATA
-        run('send', 'build', '--from', 'DOT', '--to', recipient, '--amount', '9.99', '--endpoint', endpoint, success=False)
+        run('send', 'build', '--from', SYMBOL, '--to', recipient, '--amount', '10', '--endpoint', endpoint, success=False)
         prepared = build()
-        content = json.loads(prepared['prepared_details'])['Polkadot']
-        assert content['runtime']['transfer_pallet'] == 10 and content['runtime']['existential_deposit'] == 100_000_000
-        assert content['fee'] == 10_000_000 and content['finalized_number'] == 100
+        content = json.loads(prepared['prepared_details'])['Substrate']
+        assert content['runtime']['transfer_pallet'] == (5 if FINNEY else 10) and content['runtime']['existential_deposit'] == ED
+        assert content['fee'] == SCALE//1000 and content['finalized_number'] == 100
         assert prepared['signing_payload_hex'] and not live['submitted']
         live['spec'] += 1; sign(prepared, success=False); live['spec'] -= 1
         live['nonce'] += 1; sign(prepared, success=False); live['nonce'] -= 1
         live['fee'] += 1; sign(prepared, success=False); live['fee'] -= 1
-        live['free'] = content['amount'] + content['fee'] + 100_000_000 - 1
-        sign(prepared, success=False); live['free'] = 100_000_000_000
+        live['free'] = content['amount'] + content['fee'] + ED - 1
+        sign(prepared, success=False); live['free'] = 10*SCALE
         signed = sign(prepared)['artifact']
         assert not live['submitted'] and run('send', 'inspect', signed['id'])['artifact'] == signed
         raw = json.loads(signed['signed_payload'])['extrinsic_hex']
@@ -207,6 +217,6 @@ try:
         assert artifact(failed_signed['id'])['substrate_verified_through'] == 166
         assert run('txs', '--maintenance')['chains'] == []
         assert all(url.startswith('http://127.0.0.1:') for url in [endpoint])
-        print('Asset Hub offline CLI: identity, metadata, keep-alive/freeze budgets, fees, staged sr25519 and finalized success/failure passed')
+        print(CHAIN + ' offline CLI: identity, metadata, keep-alive/freeze budgets, fees, staged sr25519 and finalized success/failure passed')
 finally:
     server.shutdown(); server.server_close(); worker.join()

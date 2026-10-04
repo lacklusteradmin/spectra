@@ -17,6 +17,376 @@ fn aptos_reviewed_gas_price(
 }
 
 impl WalletService {
+    /// Verify the persisted transaction against current chain state without
+    /// substituting new fields. Used before signing and before its first send.
+    pub(super) async fn validate_prepared_protocol_state(
+        &self,
+        chain: Chain,
+        stored: &StoredSend,
+    ) -> Result<(), SpectraBridgeError> {
+        let now = crate::store::now_unix() as u64;
+        match &stored.prepared {
+            PreparedPayload::Near { .. } => self.validate_near_transfer_state(stored).await?,
+            PreparedPayload::Evm(prepared) => {
+                let client = EvmClient::new(
+                    self.endpoints_for(chain, &[EndpointCapability::Verification])
+                        .await,
+                    chain.evm_chain_id()?,
+                );
+                let nonce =
+                    if stored
+                        .request
+                        .evm_overrides
+                        .as_ref()
+                        .and_then(|overrides| overrides.nonce)
+                        .is_some()
+                    {
+                        let response = client
+                            .call(
+                                "eth_getTransactionCount",
+                                json!([stored.view.sender, "latest"]),
+                            )
+                            .await?;
+                        crate::api::evm_json_rpc::parse_hex_u64(response.as_str().ok_or_else(
+                            || SpectraBridgeError::failure("Missing confirmed nonce"),
+                        )?)?
+                    } else {
+                        client.fetch_nonce(&stored.view.sender).await?
+                    };
+                if prepared.chain_id != chain.evm_chain_id()? || nonce > prepared.nonce {
+                    return Err(SpectraBridgeError::failure(
+                        "Prepared nonce or network is stale; build and review again",
+                    ));
+                }
+                self.validate_evm_fee_budget(chain, prepared).await?;
+                self.validate_evm_funds(chain, &stored.view.sender, prepared)
+                    .await?;
+            }
+            PreparedPayload::Sui(_) => {
+                let mut request = stored.request.clone();
+                let refreshed = self
+                    .prepare_staged_protocol(chain, &mut request, &stored.view.sender)
+                    .await?;
+                if serde_json::to_vec(&refreshed)? != serde_json::to_vec(&stored.prepared)? {
+                    return Err(SpectraBridgeError::failure(
+                        "Sui objects or gas changed; build and review again",
+                    ));
+                }
+            }
+            PreparedPayload::Aptos(prepared) => {
+                let client = AptosClient::new(
+                    self.endpoints_for(
+                        chain,
+                        &[
+                            EndpointCapability::Verification,
+                            EndpointCapability::Balance,
+                        ],
+                    )
+                    .await,
+                );
+                let expected = chain
+                    .aptos_chain_id()
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
+                if client.fetch_ledger_info().await?.0 != u64::from(expected)
+                    || prepared.chain_id() != Some(expected)
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Aptos endpoint or prepared transaction is on the wrong network",
+                    ));
+                }
+                let sequence = prepared.body["sequence_number"]
+                    .as_str()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos sequence"))?;
+                let expiry = prepared.body["expiration_timestamp_secs"]
+                    .as_str()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos expiration"))?;
+                if sequence != client.fetch_account_info(&stored.view.sender).await?.0
+                    || expiry <= now
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Aptos sequence or expiration is stale; build and review again",
+                    ));
+                }
+                let max_gas = chain
+                    .aptos_max_gas_amount()
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+                let fee = stored
+                    .request
+                    .fee_amount
+                    .as_deref()
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas budget"))?;
+                let price = aptos_reviewed_gas_price(chain, fee, max_gas)?;
+                if prepared.body["max_gas_amount"].as_str() != Some(max_gas.to_string().as_str())
+                    || prepared.body["gas_unit_price"].as_str() != Some(price.to_string().as_str())
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "Aptos gas budget changed; build and review again",
+                    ));
+                }
+                let decimals = stored
+                    .request
+                    .token_decimals
+                    .unwrap_or(u32::from(chain.native_decimals()));
+                let amount = crate::send::amount_input::parse_raw_amount(
+                    &stored.request.amount_str,
+                    decimals,
+                )?;
+                let native_amount = if let Some(contract) = &stored.request.contract_address {
+                    if self.token_contract_decimals(chain, contract).await? != Some(decimals) {
+                        return Err(SpectraBridgeError::failure(
+                            "Aptos token precision changed; review again",
+                        ));
+                    }
+                    if u128::from(
+                        client
+                            .fetch_token_balance(&stored.view.sender, contract)
+                            .await?,
+                    ) < amount
+                    {
+                        return Err(SpectraBridgeError::failure(
+                            "Insufficient Aptos token balance",
+                        ));
+                    }
+                    0
+                } else {
+                    amount
+                };
+                let budget = u128::from(max_gas)
+                    .checked_mul(u128::from(price))
+                    .and_then(|fee| fee.checked_add(native_amount))
+                    .ok_or_else(|| SpectraBridgeError::invalid("Aptos gas budget overflow"))?;
+                if u128::from(client.fetch_balance(&stored.view.sender).await?.octas) < budget {
+                    return Err(SpectraBridgeError::failure(
+                        "Insufficient APT for the reviewed gas budget",
+                    ));
+                }
+            }
+            PreparedPayload::Ton {
+                seqno,
+                amount,
+                valid_until,
+                jetton,
+            } => {
+                let client = ToncenterV2Client::new(
+                    self.endpoints_for(
+                        chain,
+                        &[
+                            EndpointCapability::Verification,
+                            EndpointCapability::Balance,
+                        ],
+                    )
+                    .await,
+                );
+                client.verify_network(chain).await?;
+                if u64::from(*valid_until) <= now
+                    || client.fetch_seqno(&stored.view.sender).await? != *seqno
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "TON sequence or expiration changed; build and review again",
+                    ));
+                }
+                let value = if let Some(plan) = jetton {
+                    if stored.request.contract_address.as_deref() != Some(plan.master.as_str()) {
+                        return Err(SpectraBridgeError::invalid(
+                            "Jetton master differs from the reviewed asset",
+                        ));
+                    }
+                    if self.token_contract_decimals(chain, &plan.master).await?
+                        != stored.request.token_decimals
+                    {
+                        return Err(SpectraBridgeError::failure(
+                            "Jetton precision changed; review again",
+                        ));
+                    }
+                    if self
+                        .ton_transfer_wallet(chain, &stored.view.sender, &plan.master, *amount)
+                        .await?
+                        != plan.source_wallet
+                    {
+                        return Err(SpectraBridgeError::failure(
+                            "Jetton source wallet changed; review again",
+                        ));
+                    }
+                    u128::from(plan.attached_nanotons)
+                } else {
+                    *amount
+                };
+                let fee = chain
+                    .static_fee_units()
+                    .ok_or_else(|| SpectraBridgeError::failure("TON fee unavailable"))?;
+                if u128::from(client.fetch_balance(&stored.view.sender).await?.nanotons)
+                    < value + fee
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Insufficient TON for the reviewed transfer and network fee",
+                    ));
+                }
+            }
+            PreparedPayload::Tron(prepared)
+                if stored
+                    .request
+                    .contract_address
+                    .as_deref()
+                    .is_some_and(|id| chain.token_standard_for_identifier(id) == "TRC-10") =>
+            {
+                let fee = self
+                    .validate_trc10_funds(chain, prepared, &stored.request, &stored.view.sender)
+                    .await?;
+                let reviewed = stored
+                    .request
+                    .fee_amount
+                    .as_deref()
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing TRC-10 fee budget"))?;
+                if crate::send::payload::fee_units(reviewed, u32::from(chain.native_decimals()))?
+                    < fee
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "TRC-10 fee budget changed; review again",
+                    ));
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn validate_trc10_funds(
+        &self,
+        chain: Chain,
+        prepared: &crate::send::tron::PreparedTronTransfer,
+        request: &crate::send::SendExecutionRequest,
+        sender: &str,
+    ) -> Result<u64, SpectraBridgeError> {
+        let id = request
+            .contract_address
+            .as_deref()
+            .ok_or_else(|| SpectraBridgeError::invalid("Missing TRC-10 ID"))?;
+        let decimals = request
+            .token_decimals
+            .ok_or_else(|| SpectraBridgeError::invalid("Missing TRC-10 precision"))?;
+        let amount = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+        let amount = u64::try_from(amount)
+            .ok()
+            .filter(|n| *n > 0 && *n <= i64::MAX as u64)
+            .ok_or_else(|| {
+                SpectraBridgeError::invalid("TRC-10 amount exceeds positive int64 protocol range")
+            })?;
+        let contract = &prepared.body["raw_data"]["contract"][0];
+        let value = &contract["parameter"]["value"];
+        let owner = format!(
+            "41{}",
+            crate::derivation::tron::tron_base58_to_evm_hex(sender)?
+        );
+        let receiver = format!(
+            "41{}",
+            crate::derivation::tron::tron_base58_to_evm_hex(&request.to_address)?
+        );
+        if contract["type"].as_str() != Some("TransferAssetContract")
+            || value["asset_name"].as_str() != Some(hex::encode(id).as_str())
+            || value["owner_address"].as_str() != Some(owner.as_str())
+            || value["to_address"].as_str() != Some(receiver.as_str())
+            || value["amount"].as_u64() != Some(amount)
+        {
+            return Err(SpectraBridgeError::invalid(
+                "TRC-10 transaction differs from the reviewed transfer",
+            ));
+        }
+        let expiry = prepared.body["raw_data"]["expiration"]
+            .as_u64()
+            .ok_or_else(|| SpectraBridgeError::invalid("Missing Tron expiration"))?;
+        if expiry <= (crate::store::now_unix() * 1000.0) as u64 {
+            return Err(SpectraBridgeError::failure(
+                "Tron transaction expired; build and review again",
+            ));
+        }
+        let state = TronHttpClient::new(
+            self.endpoints_for(
+                chain,
+                &[
+                    EndpointCapability::Verification,
+                    EndpointCapability::TokenBalance,
+                    EndpointCapability::Fee,
+                ],
+            )
+            .await,
+        )
+        .fetch_trc10_transfer_state(
+            chain,
+            id,
+            sender,
+            Some(&request.to_address),
+            prepared.bandwidth_bytes()?,
+        )
+        .await?;
+        if u32::from(state.token.metadata.decimals) != decimals {
+            return Err(SpectraBridgeError::failure(
+                "TRC-10 precision changed; review again",
+            ));
+        }
+        if state.token.balance_raw < amount {
+            return Err(SpectraBridgeError::failure(
+                "Insufficient TRC-10 token balance",
+            ));
+        }
+        if state
+            .recipient_balance
+            .checked_add(amount)
+            .is_none_or(|sum| sum > i64::MAX as u64)
+        {
+            return Err(SpectraBridgeError::failure(
+                "TRC-10 recipient balance would exceed the protocol range",
+            ));
+        }
+        if state.native_balance < state.fee_budget_sun {
+            return Err(SpectraBridgeError::failure(
+                "Insufficient TRX for the TRC-10 bandwidth and account activation budget",
+            ));
+        }
+        Ok(state.fee_budget_sun)
+    }
+
+    async fn ton_transfer_wallet(
+        &self,
+        chain: Chain,
+        owner: &str,
+        master: &str,
+        amount: u128,
+    ) -> Result<String, SpectraBridgeError> {
+        let canonical = |value: &str| {
+            crate::tokens::normalize_token_identifier(Some(value.to_string()), chain)
+                .ok_or_else(|| SpectraBridgeError::invalid("Invalid TON account identity"))
+        };
+        let master = canonical(master)?;
+        let owner = canonical(owner)?;
+        let client = crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(
+            self.api_endpoints(
+                chain,
+                crate::EndpointApi::ToncenterV3,
+                &[
+                    EndpointCapability::Verification,
+                    EndpointCapability::TokenBalance,
+                ],
+            )
+            .await?,
+        ));
+        let wallet = client.fetch_transfer_wallet(chain, &owner, &master).await?;
+        if canonical(&wallet.owner)? != owner || canonical(&wallet.jetton)? != master {
+            return Err(SpectraBridgeError::invalid(
+                "Jetton source wallet owner or master mismatch",
+            ));
+        }
+        let balance: u128 = wallet
+            .balance
+            .parse()
+            .map_err(|_| SpectraBridgeError::invalid("Invalid jetton balance"))?;
+        if balance < amount {
+            return Err(SpectraBridgeError::failure("Insufficient jetton balance"));
+        }
+        canonical(&wallet.address)
+    }
+
     pub(super) async fn prepare_staged_protocol(
         &self,
         chain: Chain,
@@ -44,15 +414,16 @@ impl WalletService {
                     .ok_or_else(|| {
                         SpectraBridgeError::failure("NEAR token precision unavailable")
                     })?,
-                Chain::Tron => u32::from(
-                    TronHttpClient::new(
-                        self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
-                            .await,
-                    )
-                    .fetch_trc20_metadata(contract)
+                Chain::Tron => self
+                    .token_contract_decimals(chain, contract)
                     .await?
-                    .decimals,
-                ),
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure("TRON token precision unavailable")
+                    })?,
+                Chain::Sui | Chain::Aptos | Chain::Ton => self
+                    .token_contract_decimals(chain, contract)
+                    .await?
+                    .ok_or_else(|| SpectraBridgeError::failure("Token precision unavailable"))?,
                 _ => {
                     return Err(SpectraBridgeError::failure(
                         "Token transfer unavailable on this protocol",
@@ -70,7 +441,9 @@ impl WalletService {
             u32::from(chain.native_decimals())
         };
         let amount = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
-        let amount_u64 = if matches!(chain.mainnet_counterpart(), Chain::Near | Chain::Polkadot) {
+        let amount_u64 = if matches!(chain.mainnet_counterpart(), Chain::Near | Chain::Polkadot)
+            || (chain.mainnet_counterpart() == Chain::Ton && request.contract_address.is_some())
+        {
             0
         } else {
             u64::try_from(amount)
@@ -127,6 +500,46 @@ impl WalletService {
             ),
             Chain::Near => {
                 let client = NearClient::new(eps);
+                client.verify_network(chain).await?;
+                let quote = self
+                    .near_send_quote(
+                        chain,
+                        sender,
+                        to,
+                        amount,
+                        request.contract_address.as_deref(),
+                    )
+                    .await?;
+                if let Some(reviewed) = &request.fee_amount
+                    && crate::send::amount_input::parse_raw_amount(
+                        reviewed,
+                        u32::from(chain.native_decimals()),
+                    )? < quote.budget
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "NEAR fee exceeds reviewed budget; review again",
+                    ));
+                }
+                let required = quote
+                    .budget
+                    .checked_add(if request.contract_address.is_none() {
+                        amount
+                    } else {
+                        0
+                    })
+                    .ok_or_else(|| SpectraBridgeError::invalid("NEAR amount and fee overflow"))?;
+                if quote.spendable < required {
+                    return Err(SpectraBridgeError::invalid(
+                        "Insufficient spendable NEAR for amount, protocol fee and storage stake",
+                    ));
+                }
+                if quote.token_balance.is_some_and(|balance| balance < amount) {
+                    return Err(SpectraBridgeError::invalid("Insufficient NEP-141 balance"));
+                }
+                request.fee_amount = Some(crate::decimal::from_units(
+                    quote.budget,
+                    u32::from(chain.native_decimals()),
+                ));
                 let public_key: [u8; 32] = if sender.len() == 64
                     && sender.bytes().all(|b| b.is_ascii_hexdigit())
                 {
@@ -153,7 +566,7 @@ impl WalletService {
                     crate::derivation::solana::decode_b58_32(key)?
                 };
                 let nonce = client
-                    .fetch_access_key_nonce(sender, &bs58::encode(public_key).into_string())
+                    .fetch_full_access_key_nonce(sender, &bs58::encode(public_key).into_string())
                     .await?
                     .checked_add(1)
                     .ok_or_else(|| SpectraBridgeError::failure("Nonce exhausted"))?;
@@ -166,6 +579,7 @@ impl WalletService {
                     block_hash,
                     amount,
                     token_contract: request.contract_address.clone(),
+                    fee_budget: quote.budget.to_string(),
                 }
             }
             Chain::Decred => PreparedPayload::Decred(
@@ -207,12 +621,57 @@ impl WalletService {
                 )
                 .await?,
             ),
-            Chain::Ton => PreparedPayload::Ton {
-                seqno: ToncenterV2Client::new(eps).fetch_seqno(sender).await?,
-                amount: amount_u64,
-                valid_until: u32::try_from(crate::store::now_unix() as u64 + 60)
-                    .map_err(|_| SpectraBridgeError::failure("TON expiry overflow"))?,
-            },
+            Chain::Ton => {
+                if amount >= 1u128 << 120 {
+                    return Err(SpectraBridgeError::invalid(
+                        "Jetton amount exceeds 120-bit protocol range",
+                    ));
+                }
+                let client = ToncenterV2Client::new(eps);
+                client.verify_network(chain).await?;
+                let jetton = if let Some(master) = &request.contract_address {
+                    let source_wallet = self
+                        .ton_transfer_wallet(chain, sender, master, amount)
+                        .await?;
+                    Some(crate::send::ton::PreparedJettonTransfer {
+                        master: master.clone(),
+                        source_wallet,
+                        attached_nanotons: 100_000_000,
+                    })
+                } else {
+                    None
+                };
+                let value = jetton.as_ref().map_or(amount_u64, |j| j.attached_nanotons);
+                let network_fee = chain
+                    .static_fee_units()
+                    .ok_or_else(|| SpectraBridgeError::failure("TON fee unavailable"))?;
+                let required = u128::from(value) + network_fee;
+                if u128::from(client.fetch_balance(sender).await?.nanotons) < required {
+                    return Err(SpectraBridgeError::failure(
+                        "Insufficient TON for transfer and network fee",
+                    ));
+                }
+                request.fee_amount = Some(crate::decimal::from_units(
+                    network_fee
+                        + jetton
+                            .as_ref()
+                            .map_or(0, |j| u128::from(j.attached_nanotons)),
+                    9,
+                ));
+                let seqno = client.fetch_seqno(sender).await?;
+                PreparedPayload::Ton {
+                    seqno,
+                    amount,
+                    // V4R2 deployment messages sign the all-ones expiry value.
+                    valid_until: if seqno == 0 {
+                        u32::MAX
+                    } else {
+                        u32::try_from(crate::store::now_unix() as u64 + 60)
+                            .map_err(|_| SpectraBridgeError::failure("TON expiry overflow"))?
+                    },
+                    jetton,
+                }
+            }
             Chain::Xrp => {
                 let client = XrplClient::new(eps);
                 let fee_drops =
@@ -243,7 +702,7 @@ impl WalletService {
                         .map_err(|_| SpectraBridgeError::failure("Amount too large"))?,
                 }
             }
-            Chain::Polkadot => {
+            Chain::Polkadot | Chain::Bittensor => {
                 let prepared = crate::api::http::race(&eps, |endpoint| async move {
                     crate::send::polkadot::prepare_transfer(
                         &SubstrateClient::new(Arc::new(vec![endpoint])),
@@ -262,7 +721,7 @@ impl WalletService {
                     )?;
                     if prepared.fee > budget {
                         return Err(SpectraBridgeError::failure(
-                            "Asset Hub fee increased; refresh the preview and review again",
+                            "Substrate fee increased; refresh the preview and review again",
                         ));
                     }
                 }
@@ -270,24 +729,7 @@ impl WalletService {
                     prepared.fee,
                     u32::from(chain.native_decimals()),
                 ));
-                PreparedPayload::Polkadot(prepared)
-            }
-            Chain::Bittensor => {
-                let client = SubstrateClient::new(eps);
-                let (nonce, version, genesis_hash, block_hash) = (
-                    client.fetch_nonce(sender).await?,
-                    client.fetch_runtime_version().await?,
-                    client.fetch_genesis_hash().await?,
-                    client.fetch_block_hash_latest().await?,
-                );
-                PreparedPayload::Substrate {
-                    nonce,
-                    spec_version: version.0,
-                    transaction_version: version.1,
-                    genesis_hash,
-                    block_hash,
-                    amount,
-                }
+                PreparedPayload::Substrate(prepared)
             }
             Chain::Cardano => {
                 let client = KoiosClient::new(eps);
@@ -306,7 +748,7 @@ impl WalletService {
                     );
                 let inputs: Vec<_> =
                     KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
-                        .fetch_utxos(sender)
+                        .fetch_ada_utxos(sender)
                         .await?
                         .into_iter()
                         .map(|u| (u.tx_hash, u.tx_index, u.lovelace))
@@ -375,7 +817,18 @@ impl WalletService {
             ),
             Chain::Tron => {
                 use crate::send::tron::{Transfer, prepare_transfer};
+                let trc10 = request
+                    .contract_address
+                    .as_deref()
+                    .is_some_and(|id| chain.token_standard_for_identifier(id) == "TRC-10");
                 let transfer = match request.contract_address.as_deref() {
+                    Some(asset_id) if chain.token_standard_for_identifier(asset_id) == "TRC-10" => {
+                        Transfer::Trc10 {
+                            asset_id,
+                            to,
+                            amount: amount_u64,
+                        }
+                    }
                     Some(contract) => Transfer::Token {
                         contract,
                         to,
@@ -387,11 +840,23 @@ impl WalletService {
                         amount: amount_u64,
                     },
                 };
-                PreparedPayload::Tron(prepare_transfer(
-                    sender,
-                    transfer,
-                    TronHttpClient::new(eps).transfer_reference().await?,
-                )?)
+                let client = TronHttpClient::new(eps);
+                let reference = if trc10 {
+                    client.transfer_reference_for(chain).await?
+                } else {
+                    client.transfer_reference().await?
+                };
+                let prepared = prepare_transfer(sender, transfer, reference)?;
+                if trc10 {
+                    let fee = self
+                        .validate_trc10_funds(chain, &prepared, request, sender)
+                        .await?;
+                    request.fee_amount = Some(crate::decimal::from_units(
+                        u128::from(fee),
+                        u32::from(chain.native_decimals()),
+                    ));
+                }
+                PreparedPayload::Tron(prepared)
             }
             Chain::Aptos => {
                 let max_gas = chain
@@ -428,7 +893,11 @@ impl WalletService {
                 .fetch_balance(sender)
                 .await?
                 .octas;
-                let required = u128::from(amount_u64) + u128::from(gas_budget);
+                let required = request
+                    .contract_address
+                    .as_ref()
+                    .map_or(u128::from(amount_u64), |_| 0)
+                    + u128::from(gas_budget);
                 if u128::from(balance) < required {
                     let required =
                         crate::decimal::from_units(required, u32::from(chain.native_decimals()));
@@ -442,7 +911,14 @@ impl WalletService {
                     u128::from(gas_budget),
                     u32::from(chain.native_decimals()),
                 ));
-                PreparedPayload::Aptos(crate::send::aptos::prepare_transfer(
+                if let Some(contract) = &request.contract_address
+                    && client.fetch_token_balance(sender, contract).await? < amount_u64
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Insufficient Aptos token balance",
+                    ));
+                }
+                PreparedPayload::Aptos(crate::send::aptos::prepare_token_transfer(
                     sender,
                     to,
                     amount_u64,
@@ -451,6 +927,10 @@ impl WalletService {
                     max_gas,
                     crate::store::now_unix() as u64 + 600,
                     network,
+                    request
+                        .contract_address
+                        .as_deref()
+                        .unwrap_or("0x1::aptos_coin::AptosCoin"),
                 )?)
             }
             Chain::Sui => {
@@ -460,26 +940,27 @@ impl WalletService {
                     .map(|v| crate::send::payload::fee_units(v, 9))
                     .transpose()?
                     .unwrap_or(10_000_000);
-                PreparedPayload::Sui(
-                    crate::send::sui::prepare_native_transfer(
-                        &SuiClient::new(
-                            self.endpoints_for(
-                                chain,
-                                &[
-                                    EndpointCapability::Verification,
-                                    EndpointCapability::Balance,
-                                    EndpointCapability::Fee,
-                                ],
-                            )
-                            .await,
-                        ),
-                        sender,
-                        to,
-                        amount_u64,
-                        gas,
+                let client = SuiClient::new(
+                    self.endpoints_for(
+                        chain,
+                        &[
+                            EndpointCapability::Verification,
+                            EndpointCapability::Balance,
+                            EndpointCapability::Fee,
+                        ],
                     )
-                    .await?,
-                )
+                    .await,
+                );
+                client.verify_network(chain).await?;
+                PreparedPayload::Sui(if let Some(coin_type) = &request.contract_address {
+                    crate::send::sui::prepare_token_transfer(
+                        &client, sender, to, amount_u64, gas, coin_type,
+                    )
+                    .await?
+                } else {
+                    crate::send::sui::prepare_native_transfer(&client, sender, to, amount_u64, gas)
+                        .await?
+                })
             }
             _ => {
                 return Err(SpectraBridgeError::failure(
@@ -501,24 +982,48 @@ impl WalletService {
         let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
         let mut resources = Vec::new();
         let (payload, field, hash) = match &stored.prepared {
+            PreparedPayload::NearFunctionCall(p) => {
+                if !NearClient::new(eps)
+                    .transaction_block_is_valid(chain, &p.block_hash)
+                    .await?
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "NEAR block reference is stale; review again",
+                    ));
+                }
+                let (raw, hash) = p.sign(&seed()?)?;
+                resources.push(format!(
+                    "{}:{}:{}:nonce:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    hex::encode(p.public_key),
+                    p.nonce
+                ));
+                (
+                    json!({"signed_tx_b64":STANDARD.encode(raw)}).to_string(),
+                    "txid",
+                    Some(hash),
+                )
+            }
             PreparedPayload::Near {
                 public_key,
                 nonce,
                 block_hash,
                 amount,
                 token_contract,
+                ..
             } => {
                 let client = NearClient::new(eps);
                 if seed()?.public_key() != *public_key
                     || client
-                        .fetch_access_key_nonce(
+                        .fetch_full_access_key_nonce(
                             &stored.view.sender,
                             &bs58::encode(public_key).into_string(),
                         )
                         .await?
                         .checked_add(1)
                         != Some(*nonce)
-                    || crate::store::now_unix() - stored.view.created_at > 120.0
+                    || !client.transaction_block_is_valid(chain, block_hash).await?
                 {
                     return Err(crate::SpectraBridgeError::failure(
                         "NEAR signer, nonce or block reference is stale; build and review again",
@@ -530,9 +1035,8 @@ impl WalletService {
                     .try_into()
                     .map_err(|_| SpectraBridgeError::failure("Invalid NEAR seed"))?;
                 let raw = if let Some(contract) = token_contract {
-                    let args = serde_json::to_vec(
-                        &json!({"receiver_id":stored.view.recipient,"amount":amount.to_string()}),
-                    )?;
+                    let args =
+                        crate::send::near::nep141_transfer_args(&stored.view.recipient, *amount)?;
                     crate::send::near::build_near_function_call_tx(
                         &stored.view.sender,
                         public_key,
@@ -540,7 +1044,7 @@ impl WalletService {
                         contract,
                         "ft_transfer",
                         &args,
-                        30_000_000_000_000,
+                        chain.near_token_gas_limit().unwrap(),
                         1,
                         block_hash,
                         key,
@@ -562,10 +1066,11 @@ impl WalletService {
                     stored.view.sender,
                     hex::encode(public_key)
                 ));
+                let hash = crate::send::near::signed_transaction_hash(&raw)?;
                 (
                     json!({"signed_tx_b64":STANDARD.encode(raw)}).to_string(),
                     "txid",
-                    None,
+                    Some(hash),
                 )
             }
             PreparedPayload::Decred(p) => {
@@ -637,40 +1142,50 @@ impl WalletService {
                 seqno,
                 amount,
                 valid_until,
+                jetton,
             } => {
-                if *valid_until <= crate::store::now_unix() as u32
-                    || ToncenterV2Client::new(eps)
-                        .fetch_seqno(&stored.view.sender)
-                        .await?
-                        != *seqno
-                {
-                    return Err(SpectraBridgeError::failure(
-                        "TON sequence or expiration changed; build and review again",
-                    ));
-                }
                 let key = decode_secret_array::<32>(&signer.private_key_hex)?;
                 let public = seed()?.public_key();
-                let raw = crate::send::ton::build_transfer_for_address(
-                    crate::derivation::ton::parse_ton_address(&stored.view.recipient)?
-                        .for_network(chain.is_testnet())?,
-                    *amount,
-                    *seqno,
-                    None,
-                    &key,
-                    &public,
-                    698_983_191,
-                    *valid_until,
-                    3,
-                )?;
+                let recipient = crate::derivation::ton::parse_ton_address(&stored.view.recipient)?
+                    .for_network(chain.is_testnet())?;
+                let raw = if let Some(plan) = jetton {
+                    crate::send::ton::build_jetton_transfer(
+                        plan,
+                        recipient,
+                        crate::derivation::ton::parse_ton_address(&stored.view.sender)?
+                            .for_network(chain.is_testnet())?,
+                        *amount,
+                        *seqno,
+                        &key,
+                        &public,
+                        *valid_until,
+                        chain.is_testnet(),
+                    )?
+                } else {
+                    crate::send::ton::build_transfer_for_address(
+                        recipient,
+                        u64::try_from(*amount).map_err(|_| {
+                            SpectraBridgeError::invalid("TON native amount exceeds protocol range")
+                        })?,
+                        *seqno,
+                        None,
+                        &key,
+                        &public,
+                        698_983_191,
+                        *valid_until,
+                        3,
+                    )?
+                };
                 resources.push(format!(
                     "{}:{}:sequence:{seqno}",
                     chain.str_id(),
                     stored.view.sender
                 ));
+                let message_hash = STANDARD.encode(crate::derivation::ton::boc_root_hash(&raw)?);
                 (
                     json!({"boc_b64":STANDARD.encode(raw)}).to_string(),
                     "message_hash",
-                    None,
+                    Some(message_hash),
                 )
             }
             PreparedPayload::Monero(p) => {
@@ -698,6 +1213,24 @@ impl WalletService {
                     p.memo
                 ));
                 (p.sign(&seed()?)?, "txid", Some(p.transaction_hash()?))
+            }
+            PreparedPayload::IcpStaking(p) => {
+                if (crate::store::now_unix() * 1_000_000_000.0) as u64 >= p.ingress_expiry_ns {
+                    return Err(SpectraBridgeError::failure(
+                        "ICP staking expired; build and review again",
+                    ));
+                }
+                let calls = p.sign(&seed()?)?;
+                resources.push(format!(
+                    "{}:neuron:{}:{}",
+                    chain.str_id(),
+                    p.controller_hex,
+                    p.subaccount_hex
+                ));
+                let hash = calls.last().map(|c| c.request_id.clone()).ok_or_else(|| {
+                    SpectraBridgeError::invalid("Missing ICP staking ingress IDs")
+                })?;
+                (serde_json::to_string(&calls)?, "ingress_id", Some(hash))
             }
             PreparedPayload::Zcash(p) => {
                 let client = BlockbookClient::new(
@@ -808,7 +1341,7 @@ impl WalletService {
                     None,
                 )
             }
-            PreparedPayload::Polkadot(prepared) => {
+            PreparedPayload::Substrate(prepared) => {
                 crate::api::http::race(&eps, |endpoint| async move {
                     prepared
                         .validate_for_signing(
@@ -849,68 +1382,6 @@ impl WalletService {
                     Some(hash),
                 )
             }
-            PreparedPayload::Substrate {
-                nonce,
-                spec_version,
-                transaction_version,
-                genesis_hash,
-                block_hash,
-                amount,
-            } => {
-                let client = SubstrateClient::new(eps);
-                let (current_nonce, version, genesis) = (
-                    client.fetch_nonce(&stored.view.sender).await?,
-                    client.fetch_runtime_version().await?,
-                    client.fetch_genesis_hash().await?,
-                );
-                if current_nonce != *nonce
-                    || version != (*spec_version, *transaction_version)
-                    || genesis != *genesis_hash
-                {
-                    return Err(crate::SpectraBridgeError::failure(
-                        "Substrate runtime, network or nonce changed; build and review again",
-                    ));
-                }
-                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
-                let key: &[u8; 32] = bytes
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| SpectraBridgeError::failure("Invalid Substrate seed"))?;
-                let public =
-                    hex::decode(signer.public_key_hex.as_deref().ok_or_else(|| {
-                        SpectraBridgeError::failure("Missing Substrate public key")
-                    })?)?;
-                let public: &[u8; 32] = public
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| SpectraBridgeError::failure("Invalid Substrate public key"))?;
-                if chain.mainnet_counterpart() != Chain::Bittensor {
-                    return Err(SpectraBridgeError::failure(
-                        "Legacy Substrate payload is unsupported on Asset Hub; build and review again",
-                    ));
-                }
-                let raw = crate::send::bittensor::build_signed_transfer(
-                    &stored.view.recipient,
-                    *amount,
-                    *nonce,
-                    *spec_version,
-                    *transaction_version,
-                    genesis_hash,
-                    block_hash,
-                    key,
-                    public,
-                )?;
-                resources.push(format!(
-                    "{}:{}:nonce:{nonce}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
-                (
-                    json!({"extrinsic_hex":format!("0x{}",hex::encode(raw))}).to_string(),
-                    "txid",
-                    None,
-                )
-            }
             PreparedPayload::Cardano {
                 inputs,
                 amount,
@@ -925,7 +1396,7 @@ impl WalletService {
                 }
                 let current =
                     KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
-                        .fetch_utxos(&stored.view.sender)
+                        .fetch_ada_utxos(&stored.view.sender)
                         .await?;
                 for (hash, index, value) in inputs {
                     if !current
@@ -987,6 +1458,16 @@ impl WalletService {
                 (raw, "txid", hash)
             }
             PreparedPayload::Solana(p) => {
+                if let Some(staking) = &stored.view.staking {
+                    let account = if let Some(seed) = &p.account_seed {
+                        crate::send::solana::stake_account_address(&stored.view.sender, seed)?
+                    } else {
+                        staking.position_id.clone().ok_or_else(|| {
+                            SpectraBridgeError::invalid("Missing Solana stake account")
+                        })?
+                    };
+                    resources.push(format!("{}:stake:{}", chain.str_id(), account));
+                }
                 let client = SolanaClient::new(eps);
                 let valid = client
                     .call(
@@ -1023,65 +1504,23 @@ impl WalletService {
                 )
             }
             PreparedPayload::Aptos(p) => {
-                let max_gas = chain
-                    .aptos_max_gas_amount()
-                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
-                let fee = stored
-                    .request
-                    .fee_amount
-                    .as_deref()
-                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas budget"))?;
-                let gas_price = aptos_reviewed_gas_price(chain, fee, max_gas)?;
-                if p.body["max_gas_amount"].as_str() != Some(max_gas.to_string().as_str())
-                    || p.body["gas_unit_price"].as_str() != Some(gas_price.to_string().as_str())
-                {
-                    return Err(SpectraBridgeError::invalid(
-                        "Aptos gas budget changed; build and review again",
-                    ));
-                }
-                let seq: u64 = p.body["sequence_number"]
+                let seq = p.body["sequence_number"]
                     .as_str()
-                    .ok_or_else(|| SpectraBridgeError::failure("Missing sequence"))?
-                    .parse()
-                    .map_err(|_| SpectraBridgeError::failure("Invalid sequence"))?;
-                let expiry: u64 = p.body["expiration_timestamp_secs"]
-                    .as_str()
-                    .ok_or_else(|| SpectraBridgeError::failure("Missing expiration"))?
-                    .parse()
-                    .map_err(|_| SpectraBridgeError::failure("Invalid expiration"))?;
-                if AptosClient::new(eps)
-                    .fetch_account_info(&stored.view.sender)
-                    .await?
-                    .0
-                    != seq
-                    || expiry <= crate::store::now_unix() as u64
-                {
-                    return Err(crate::SpectraBridgeError::failure(
-                        "Aptos sequence or expiration is stale; build and review again",
-                    ));
-                }
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos sequence"))?;
                 resources.push(format!(
                     "{}:{}:sequence:{seq}",
                     chain.str_id(),
                     stored.view.sender
                 ));
+                let (body, hash) = p.clone().sign(&seed()?)?;
                 (
-                    json!({"signed_body_json":p.clone().sign(&seed()?)?}).to_string(),
+                    json!({"signed_body_json":body}).to_string(),
                     "txid",
-                    None,
+                    Some(hash),
                 )
             }
             PreparedPayload::Sui(p) => {
-                // Re-read object versions before signing; compare exact bytes, never substitute them.
-                let mut request = stored.request.clone();
-                let refreshed = self
-                    .prepare_staged_protocol(chain, &mut request, &stored.view.sender)
-                    .await?;
-                if serde_json::to_vec(&refreshed)? != serde_json::to_vec(&stored.prepared)? {
-                    return Err(SpectraBridgeError::failure(
-                        "Sui objects or gas changed; build and review again",
-                    ));
-                }
                 resources = p
                     .objects
                     .iter()
@@ -1098,7 +1537,7 @@ impl WalletService {
                 (
                     json!({"tx_bytes_b64":bytes,"sig_b64":signature}).to_string(),
                     "digest",
-                    None,
+                    Some(p.transaction_digest()),
                 )
             }
             PreparedPayload::Evm(_) => {
@@ -1165,8 +1604,25 @@ impl WalletService {
             {
                 return Err(wrong_network());
             }
-        } else if chain.mainnet_counterpart() == Chain::Polkadot {
+        } else if matches!(
+            chain.mainnet_counterpart(),
+            Chain::Polkadot | Chain::Bittensor
+        ) {
             SubstrateClient::new(eps).polkadot_context(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Sui {
+            SuiClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Solana {
+            SolanaClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Near {
+            NearClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Stellar {
+            HorizonClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Xrp {
+            XrplClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Tron {
+            TronHttpClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Ton {
+            ToncenterV2Client::new(eps).verify_network(chain).await?;
         } else if chain.mainnet_counterpart() == Chain::Aptos {
             let expected = chain
                 .aptos_chain_id()
@@ -1202,7 +1658,7 @@ impl WalletService {
             .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let expired = match &stored.prepared {
-            PreparedPayload::Polkadot(prepared) => {
+            PreparedPayload::Substrate(prepared) => {
                 crate::api::http::race(&endpoints, |endpoint| async move {
                     prepared
                         .validate_for_submission(
@@ -1221,8 +1677,18 @@ impl WalletService {
                 height >= p.expiry_height || branch != p.upgrade.consensus_branch_id
             }
             PreparedPayload::Icp(p) => (now * 1_000_000_000.0) as u64 >= p.ingress_expiry_ns,
+            PreparedPayload::IcpStaking(p) => (now * 1_000_000_000.0) as u64 >= p.ingress_expiry_ns,
             PreparedPayload::Ton { valid_until, .. } => now >= f64::from(*valid_until),
-            PreparedPayload::Near { .. } => now - stored.view.created_at >= 120.0,
+            PreparedPayload::Near { block_hash, .. } => {
+                !NearClient::new(endpoints)
+                    .transaction_block_is_valid(chain, block_hash)
+                    .await?
+            }
+            PreparedPayload::NearFunctionCall(p) => {
+                !NearClient::new(endpoints)
+                    .transaction_block_is_valid(chain, &p.block_hash)
+                    .await?
+            }
             PreparedPayload::Tron(p) => p.body["raw_data"]["expiration"]
                 .as_u64()
                 .is_none_or(|expiry| now * 1000.0 >= expiry as f64),

@@ -10,11 +10,13 @@ use crate::api::http::HttpClient;
 use crate::registry::Chain;
 
 mod metadata;
+pub mod pools;
 pub use metadata::{PolkadotExtension, PolkadotRuntime};
 
 const SYSTEM_EVENTS_KEY: &str =
     "0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 
+#[derive(Debug)]
 pub struct PolkadotContext {
     pub runtime: PolkadotRuntime,
     pub block_hash: String,
@@ -123,33 +125,6 @@ impl SubstrateClient {
         .await
     }
 
-    /// The account's balance, zero when the chain has no record of it.
-    /// `balance_bytes` is the chain's `Balance` width.
-    pub async fn fetch_balance(
-        &self,
-        account: &[u8; 32],
-        balance_bytes: usize,
-    ) -> Result<SubstrateBalance, ApiError> {
-        match self
-            .rpc_call("state_getStorage", json!([system_account_key(account)]))
-            .await?
-        {
-            Value::Null => Ok(SubstrateBalance {
-                free: 0,
-                reserved: 0,
-                frozen: 0,
-            }),
-            Value::String(hex) => decode_account_info(
-                &hex::decode(hex.trim_start_matches("0x"))
-                    .map_err(|_| ApiError::Decode("Substrate account record is not hex".into()))?,
-                balance_bytes,
-            ),
-            other => Err(ApiError::Decode(format!(
-                "state_getStorage: unexpected {other}"
-            ))),
-        }
-    }
-
     pub async fn fetch_nonce(&self, address: &str) -> Result<u32, ApiError> {
         let result = self
             .rpc_call("system_accountNextIndex", json!([address]))
@@ -158,27 +133,6 @@ impl SubstrateClient {
             .as_u64()
             .or_decode("system_accountNextIndex: expected number")?;
         u32::try_from(value).map_err(ApiError::decode)
-    }
-
-    pub async fn fetch_runtime_version(&self) -> Result<(u32, u32), ApiError> {
-        let result = self.rpc_call("state_getRuntimeVersion", json!([])).await?;
-        decode_runtime_version(&result)
-    }
-
-    pub async fn fetch_genesis_hash(&self) -> Result<String, ApiError> {
-        let result = self.rpc_call("chain_getBlockHash", json!([0])).await?;
-        result
-            .as_str()
-            .map(|s| s.to_string())
-            .or_decode("chain_getBlockHash: expected string")
-    }
-
-    pub async fn fetch_block_hash_latest(&self) -> Result<String, ApiError> {
-        let result = self.rpc_call("chain_getBlockHash", json!([])).await?;
-        result
-            .as_str()
-            .map(|s| s.to_string())
-            .or_decode("chain_getBlockHash: expected string")
     }
 
     /// Submit a signed extrinsic, fresh or saved for rebroadcast.
@@ -199,14 +153,14 @@ impl SubstrateClient {
         })
     }
 
-    pub async fn verify_polkadot_genesis(&self, chain: Chain) -> Result<String, ApiError> {
+    pub async fn verify_substrate_genesis(&self, chain: Chain) -> Result<String, ApiError> {
         let expected = chain
             .substrate_genesis_hash()
-            .or_decode("Missing Asset Hub network identity")?;
+            .or_decode("Missing Substrate network identity")?;
         let actual = decode_hash(&self.rpc_call("chain_getBlockHash", json!([0])).await?)?;
         if actual != expected {
             return Err(ApiError::invalid(
-                "Endpoint is on the wrong Asset Hub network",
+                "Endpoint is on the wrong Substrate network",
             ));
         }
         Ok(actual)
@@ -215,7 +169,7 @@ impl SubstrateClient {
     /// Call on a single endpoint so the metadata, storage and quote share one
     /// network and one explicitly pinned state, even while a runtime upgrades.
     pub async fn polkadot_context(&self, chain: Chain) -> Result<PolkadotContext, ApiError> {
-        let genesis_hash = self.verify_polkadot_genesis(chain).await?;
+        let genesis_hash = self.verify_substrate_genesis(chain).await?;
         let block_hash = decode_hash(&self.rpc_call("chain_getBlockHash", json!([])).await?)?;
         let version = self
             .rpc_call("state_getRuntimeVersion", json!([block_hash]))
@@ -227,7 +181,7 @@ impl SubstrateClient {
         let bytes = decode_hex(raw.as_str().or_decode("Missing runtime metadata")?)?;
         let metadata = metadata::Metadata::decode(&bytes)?;
         let (transfer_pallet, transfer_call, existential_deposit, extensions) =
-            metadata.contract()?;
+            metadata.contract(chain)?;
         let (_, finalized_number) = self.finalized_head().await?;
         Ok(PolkadotContext {
             runtime: PolkadotRuntime {
@@ -247,6 +201,7 @@ impl SubstrateClient {
 
     pub async fn fetch_balance_at(
         &self,
+        chain: Chain,
         account: &[u8; 32],
         block_hash: &str,
     ) -> Result<SubstrateBalance, ApiError> {
@@ -262,12 +217,18 @@ impl SubstrateClient {
                 reserved: 0,
                 frozen: 0,
             }),
-            Value::String(hex) => decode_account_info(&decode_hex(&hex)?, 16),
+            Value::String(hex) => decode_account_info(
+                &decode_hex(&hex)?,
+                chain
+                    .substrate_balance_bytes()
+                    .or_decode("Unsupported Substrate balance layout")?,
+            ),
             _ => Err(ApiError::Decode("Invalid System.Account storage".into())),
         }
     }
 
-    pub async fn polkadot_balance(
+    /// A verified runtime and storage snapshot from one concrete network.
+    pub async fn fetch_balance(
         &self,
         chain: Chain,
         account: &[u8; 32],
@@ -275,7 +236,8 @@ impl SubstrateClient {
         crate::api::http::race(&self.rpc_endpoints, |endpoint| async move {
             let node = Self::new(std::sync::Arc::new(vec![endpoint]));
             let context = node.polkadot_context(chain).await?;
-            node.fetch_balance_at(account, &context.block_hash).await
+            node.fetch_balance_at(chain, account, &context.block_hash)
+                .await
         })
         .await
     }
@@ -293,7 +255,7 @@ impl SubstrateClient {
             .parse::<u128>()
             .map_err(ApiError::decode)?;
         if fee == 0 {
-            return Err(ApiError::Decode("Invalid zero Asset Hub fee quote".into()));
+            return Err(ApiError::Decode("Invalid zero Substrate fee quote".into()));
         }
         Ok(fee)
     }
@@ -314,7 +276,7 @@ impl SubstrateClient {
         after: u64,
         limit: u64,
     ) -> Result<(Option<SubstrateFinalizedOutcome>, u64), ApiError> {
-        self.verify_polkadot_genesis(chain).await?;
+        self.verify_substrate_genesis(chain).await?;
         let expected = decode_hash(&Value::String(transaction_hash.to_string()))?;
         let (_, finalized) = self.finalized_head().await?;
         let end = finalized.min(after.saturating_add(limit));

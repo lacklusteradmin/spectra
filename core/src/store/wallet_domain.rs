@@ -6,12 +6,59 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-/// Swift `TransactionKind` — rawValues: `"send"`, `"receive"`.
+/// The operation represented by a stored transaction.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreTransactionKind {
     Send,
     Receive,
+    Stake,
+    Unstake,
+    Withdraw,
+    ClaimRewards,
+}
+impl CoreTransactionKind {
+    pub fn as_raw(self) -> &'static str {
+        match self {
+            Self::Send => "send",
+            Self::Receive => "receive",
+            Self::Stake => "stake",
+            Self::Unstake => "unstake",
+            Self::Withdraw => "withdraw",
+            Self::ClaimRewards => "claimRewards",
+        }
+    }
+    pub fn is_submitted(self) -> bool {
+        self != Self::Receive
+    }
+    pub fn is_staking(self) -> bool {
+        matches!(
+            self,
+            Self::Stake | Self::Unstake | Self::Withdraw | Self::ClaimRewards
+        )
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum CoreTransactionDirection {
+    Outgoing,
+    Incoming,
+    Neutral,
+}
+#[uniffi::export]
+pub fn transaction_kind_direction(kind: CoreTransactionKind) -> CoreTransactionDirection {
+    match kind {
+        CoreTransactionKind::Send | CoreTransactionKind::Stake => {
+            CoreTransactionDirection::Outgoing
+        }
+        CoreTransactionKind::Receive
+        | CoreTransactionKind::Withdraw
+        | CoreTransactionKind::ClaimRewards => CoreTransactionDirection::Incoming,
+        CoreTransactionKind::Unstake => CoreTransactionDirection::Neutral,
+    }
+}
+#[uniffi::export]
+pub fn transaction_kind_is_submitted(kind: CoreTransactionKind) -> bool {
+    kind.is_submitted()
 }
 
 /// Swift `TransactionStatus` — rawValues: `"pending"`, `"confirmed"`, `"failed"`.

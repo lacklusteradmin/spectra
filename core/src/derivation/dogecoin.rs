@@ -2,9 +2,8 @@
 //! encoding
 
 use crate::SpectraBridgeError;
-use crate::derivation::bitcoin::{derive_legacy_p2pkh, encode_p2pkh};
+use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 pub(crate) const DOGE_MAINNET_VERSION: u8 = 0x1e;
 pub(crate) const DOGE_TESTNET_VERSION: u8 = 0x71;
@@ -50,32 +49,4 @@ pub fn derive_dogecoin_testnet(
         want_public_key,
         want_private_key,
     )
-}
-
-/// Derive Dogecoin address/pubkey directly from a hex private key.
-pub fn derive_dogecoin_from_private_key(
-    private_key_hex: String,
-    want_address: bool,
-    want_public_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let trimmed = private_key_hex.trim();
-    if trimmed.len() != 64 {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Private key hex must be exactly 64 characters.".into(),
-        });
-    }
-    let bytes = hex::decode(trimmed)?;
-    let mut key_bytes = [0u8; 32];
-    key_bytes.copy_from_slice(&bytes);
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
-    let pk = PublicKey::from_secret_key(&secp, &secret_key);
-    Ok(DerivationResult {
-        address: want_address.then(|| encode_p2pkh(DOGE_MAINNET_VERSION, &pk.serialize())),
-        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
-        private_key_hex: None,
-        account: 0,
-        branch: 0,
-        index: 0,
-    })
 }

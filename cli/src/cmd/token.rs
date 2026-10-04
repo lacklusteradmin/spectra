@@ -18,9 +18,9 @@ pub enum TokenCommand {
     Catalog(CatalogArgs),
     /// Resolve bundled artwork by catalog identity; unknown identities have no mark.
     Artwork(ArtworkArgs),
-    /// Tokens this wallet knows: the catalog's and the ones added to it.
+    /// List stored preferences for built-in and custom tokens.
     List,
-    /// Teach the wallet a token the catalog does not ship.
+    /// Add a custom token to stored preferences.
     Add(AddArgs),
     /// Edit a custom token without changing its network or identifier.
     Edit(AddArgs),
@@ -51,7 +51,7 @@ pub struct ArtworkArgs {
 pub struct FormatArgs {
     /// Amount in the asset's own units, as a person would type it.
     amount: String,
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long)]
     chain: String,
     /// Token symbol. Omit for the chain's native asset.
@@ -68,7 +68,7 @@ pub struct DiscoverArgs {
 
 #[derive(Args)]
 pub struct CatalogArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long)]
     chain: String,
 }
@@ -78,7 +78,7 @@ pub struct AddArgs {
     /// Chain that hosts the token.
     #[arg(long)]
     chain: String,
-    /// Actual protocol; omitted values use the network and identifier default.
+    /// Actual protocol; omitted values are inferred from the identifier shape.
     #[arg(long)]
     standard: Option<String>,
     /// Symbol, as it should be displayed.
@@ -87,7 +87,7 @@ pub struct AddArgs {
     /// Token name.
     #[arg(long)]
     name: String,
-    /// Contract address, mint, jetton master or coin type, per the chain.
+    /// Contract address, TRC-10 numeric ID, mint, jetton master or coin type.
     #[arg(long)]
     contract: String,
     /// How many decimal places the token has.

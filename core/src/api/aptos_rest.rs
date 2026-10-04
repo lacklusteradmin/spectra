@@ -17,19 +17,6 @@ pub struct AptosBalance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AptosHistoryEntry {
-    pub txid: String,
-    pub version: u64,
-    pub timestamp_us: u64,
-    pub from: String,
-    pub to: String,
-    pub amount_octas: u64,
-    pub gas_used: u64,
-    pub gas_unit_price: u64,
-    pub is_incoming: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AptosSendResult {
     pub txid: String,
     pub version: Option<u64>,
@@ -85,6 +72,21 @@ pub struct AptosClient {
 }
 
 impl AptosClient {
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        hash: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        crate::api::transaction_status::validate_hex_hash(hash)?;
+        let response: Value = match self.get(&format!("/transactions/by_hash/{hash}")).await {
+            Ok(response) => response,
+            Err(ApiError::Status { status: 404, .. }) => {
+                return Ok(crate::api::transaction_status::TransactionStatus::Pending);
+            }
+            Err(error) => return Err(error),
+        };
+        aptos_transaction_status(&response, hash)
+    }
+
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -110,6 +112,35 @@ impl AptosClient {
             }
         })
         .await
+    }
+}
+
+fn aptos_transaction_status(
+    response: &Value,
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    if !response["hash"]
+        .as_str()
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(hash))
+    {
+        return Err(ApiError::decode("Aptos status: transaction hash mismatch"));
+    }
+    match response["type"].as_str() {
+        Some("pending_transaction") => Ok(TransactionStatus::Pending),
+        Some("user_transaction") => {
+            response["version"]
+                .as_str()
+                .and_then(|value| value.parse::<u64>().ok())
+                .or_decode("Aptos status: missing committed ledger version")?;
+            Ok(TransactionStatus::Confirmed {
+                succeeded: response["success"]
+                    .as_bool()
+                    .or_decode("Aptos status: missing execution result")?,
+                block: None,
+            })
+        }
+        _ => Err(ApiError::decode("Aptos status: invalid transaction type")),
     }
 }
 // Aptos fetch paths: balance, token balance and decimals, account info,
@@ -192,7 +223,7 @@ impl AptosClient {
                 self.view("0x1::coin::decimals", &[coin_type], &[]).await
             }
         };
-        u8::try_from(returned_number(&values.ok()?)?).ok()
+        crate::api::checked_token_decimals(u128::from(returned_number(&values.ok()?)?)).ok()
     }
 
     pub async fn fetch_account_info(&self, address: &str) -> Result<(u64, u64), ApiError> {
@@ -226,99 +257,12 @@ impl AptosClient {
             .or_decode("estimate_gas_price: missing gas_estimate")
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<AptosHistoryEntry>, ApiError> {
-        let txs: Vec<Value> = self
-            .get(&format!("/accounts/{address}/transactions?limit=50"))
-            .await?;
-
-        aptos_history_from_transactions(&txs, address)
+    /// A committed ledger transaction, independent of who sent it or whether
+    /// it used a sequence number. The indexer supplies the relevant versions.
+    pub(crate) async fn fetch_transaction_version(&self, version: u64) -> Result<Value, ApiError> {
+        self.get(&format!("/transactions/by_version/{version}"))
+            .await
     }
-}
-
-/// The recipient and octas of a successful user transaction that moves APT
-/// through one of the framework's transfer entry functions.
-///
-/// Only those functions count: a token's transfer is not APT, and a
-/// fungible-asset transfer's first argument is the asset, not the recipient.
-fn aptos_native_transfer(tx: &Value) -> Option<(String, u64)> {
-    if tx.get("type").and_then(Value::as_str) != Some("user_transaction")
-        || tx.get("success").and_then(Value::as_bool) != Some(true)
-    {
-        return None;
-    }
-    let payload = tx.get("payload")?;
-    let function = payload.get("function")?.as_str()?;
-    let args = payload.get("arguments")?.as_array()?;
-    let type_args: Vec<&str> = payload
-        .get("type_arguments")
-        .and_then(Value::as_array)
-        .map(|args| args.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
-    let is_apt_coin = type_args.as_slice() == ["0x1::aptos_coin::AptosCoin"];
-    let is_apt_asset = |metadata: &Value| {
-        metadata
-            .get("inner")
-            .and_then(Value::as_str)
-            .map(|inner| inner.trim_start_matches("0x").trim_start_matches('0') == "a")
-            .unwrap_or(false)
-    };
-    let (to, amount) = match function {
-        "0x1::aptos_account::transfer" => (args.first()?, args.get(1)?),
-        "0x1::aptos_account::transfer_coins" | "0x1::coin::transfer" if is_apt_coin => {
-            (args.first()?, args.get(1)?)
-        }
-        "0x1::primary_fungible_store::transfer"
-        | "0x1::aptos_account::transfer_fungible_assets"
-            if is_apt_asset(args.first()?) =>
-        {
-            (args.get(1)?, args.get(2)?)
-        }
-        _ => return None,
-    };
-    Some((to.as_str()?.to_string(), amount.as_str()?.parse().ok()?))
-}
-
-/// Committed user transactions only, so each has a time.
-fn aptos_history_from_transactions(
-    txs: &[Value],
-    address: &str,
-) -> Result<Vec<AptosHistoryEntry>, ApiError> {
-    let number = |tx: &Value, field: &str| -> u64 {
-        tx.get(field)
-            .and_then(Value::as_str)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0)
-    };
-    let mut entries = Vec::new();
-    for tx in txs {
-        let Some((to, amount_octas)) = aptos_native_transfer(tx) else {
-            continue;
-        };
-        let Some(txid) = tx.get("hash").and_then(Value::as_str) else {
-            continue;
-        };
-        if amount_octas == 0 {
-            continue;
-        }
-        let timestamp_us =
-            crate::api::time::confirmed_history_time(Some(number(tx, "timestamp")), txid)?;
-        entries.push(AptosHistoryEntry {
-            txid: txid.to_string(),
-            version: number(tx, "version"),
-            timestamp_us,
-            from: tx
-                .get("sender")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            is_incoming: to.eq_ignore_ascii_case(address),
-            to,
-            amount_octas,
-            gas_used: number(tx, "gas_used"),
-            gas_unit_price: number(tx, "gas_unit_price"),
-        });
-    }
-    Ok(entries)
 }
 
 impl AptosClient {
@@ -340,87 +284,239 @@ impl AptosClient {
     }
 }
 
-#[cfg(test)]
-mod history_tests {
-    use super::*;
-    use serde_json::json;
+#[derive(Debug, Deserialize)]
+pub struct AptosValidator {
+    pub addr: String,
+    pub voting_power: String,
+}
 
-    const ME: &str = "0x6a2c9b3d1f64c2ae7c0e79c56b4b2f8e07c1b5f2aa7ec8bb0e0f2e7c4b6d8e1a";
-    const THEM: &str = "0x1f64c2ae7c0e79c56b4b2f8e07c1b5f2aa7ec8bb0e0f2e7c4b6d8e1a6a2c9b3d";
+#[derive(Debug, Clone)]
+pub(crate) struct AptosDelegation {
+    pub active: u64,
+    pub inactive: u64,
+    pub pending_inactive: u64,
+    pub withdrawable: u64,
+    pub locked_until: u64,
+    pub allowlisted: bool,
+}
 
-    fn tx(
-        hash: &str,
-        function: &str,
-        type_arguments: Value,
-        arguments: Value,
-        success: bool,
-    ) -> Value {
-        json!({
-            "type": "user_transaction", "hash": hash, "version": "1", "timestamp": "1",
-            "sender": ME, "success": success, "gas_used": "10", "gas_unit_price": "100",
-            "payload": {"function": function, "type_arguments": type_arguments, "arguments": arguments}
-        })
+impl AptosClient {
+    pub(crate) async fn fetch_delegation_commission(
+        &self,
+        pool: &str,
+    ) -> Result<Option<u64>, ApiError> {
+        let exists = self
+            .view("0x1::delegation_pool::delegation_pool_exists", &[], &[pool])
+            .await?;
+        match exists.as_slice() {
+            [Value::Bool(false)] => return Ok(None),
+            [Value::Bool(true)] => {}
+            _ => return Err(ApiError::decode("Invalid delegation-pool existence result")),
+        }
+        let commission = self
+            .view(
+                "0x1::delegation_pool::operator_commission_percentage",
+                &[],
+                &[pool],
+            )
+            .await?;
+        let amount = returned_number(&commission)
+            .filter(|v| *v <= 10_000)
+            .or_decode("Invalid delegation-pool commission")?;
+        Ok(Some(amount))
     }
 
-    #[test]
-    fn only_apt_moved_by_a_framework_transfer_is_an_entry() {
-        let usdc = "0x5e156f1207d0ebfa19a9eeff00d62a282278fb8719f4fab3a586a0a2c0fffbea::coin::T";
-        let txs = [
-            tx(
-                "apt",
-                "0x1::aptos_account::transfer",
-                json!([]),
-                json!([THEM, "150000000"]),
-                true,
-            ),
-            tx(
-                "coin",
-                "0x1::coin::transfer",
-                json!(["0x1::aptos_coin::AptosCoin"]),
-                json!([THEM, "2"]),
-                true,
-            ),
-            tx(
-                "fa",
-                "0x1::primary_fungible_store::transfer",
-                json!(["0x1::fungible_asset::Metadata"]),
-                json!([{"inner": "0xa"}, THEM, "3"]),
-                true,
-            ),
-            tx(
-                "token",
-                "0x1::coin::transfer",
-                json!([usdc]),
-                json!([THEM, "5000000"]),
-                true,
-            ),
-            tx(
-                "other-fa",
-                "0x1::primary_fungible_store::transfer",
-                json!(["0x1::fungible_asset::Metadata"]),
-                json!([{"inner": "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"}, THEM, "7"]),
-                true,
-            ),
-            tx(
-                "failed",
-                "0x1::aptos_account::transfer",
-                json!([]),
-                json!([THEM, "9"]),
-                false,
-            ),
-            tx(
-                "nft",
-                "0x4::aptos_token::transfer",
-                json!([]),
-                json!([{"inner": "0x1"}, THEM]),
-                true,
-            ),
-        ];
-        let entries = aptos_history_from_transactions(&txs, ME).unwrap();
-        let hashes: Vec<&str> = entries.iter().map(|e| e.txid.as_str()).collect();
-        assert_eq!(hashes, ["apt", "coin", "fa"]);
-        assert!(entries.iter().all(|e| e.to == THEM && !e.is_incoming));
-        assert_eq!(entries[0].amount_octas, 150_000_000);
-        assert_eq!(entries[2].amount_octas, 3);
+    pub(crate) async fn fetch_add_stake_fee(
+        &self,
+        pool: &str,
+        amount: u64,
+    ) -> Result<u64, ApiError> {
+        returned_number(
+            &self
+                .view(
+                    "0x1::delegation_pool::get_add_stake_fee",
+                    &[],
+                    &[pool, &amount.to_string()],
+                )
+                .await?,
+        )
+        .filter(|v| *v <= amount)
+        .or_decode("Invalid delegation-pool add-stake fee")
+    }
+
+    /// No usable signature is sent. The node executes this exact entry function
+    /// at its current ledger state and reports the gas needed and resulting events.
+    pub(crate) async fn simulate_staking(
+        &self,
+        body: &Value,
+        public: &[u8; 32],
+        estimate: bool,
+        amount: u64,
+    ) -> Result<(u64, u64), ApiError> {
+        let mut body = body.clone();
+        body["signature"] = serde_json::json!({"type":"ed25519_signature","public_key":format!("0x{}",hex::encode(public)),"signature":format!("0x{}",hex::encode([0u8;64]))});
+        let path = if estimate {
+            "/transactions/simulate?estimate_max_gas_amount=true"
+        } else {
+            "/transactions/simulate"
+        };
+        let result = self.post_val(path, &body).await?;
+        let tx = result
+            .as_array()
+            .filter(|v| v.len() == 1)
+            .and_then(|v| v.first())
+            .or_decode("Aptos staking simulation: invalid response")?;
+        if tx["success"].as_bool() != Some(true) {
+            return Err(ApiError::invalid(format!(
+                "Aptos staking simulation refused: {}",
+                tx["vm_status"]
+            )));
+        }
+        let number = |key: &str| {
+            tx[key]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                .or_decode("Aptos simulation: invalid gas")
+        };
+        let gas = number("gas_used")?;
+        let maximum = number("max_gas_amount")?;
+        let function = body["payload"]["function"]
+            .as_str()
+            .or_decode("Missing delegation entry function")?;
+        let (event, field) = if function.ends_with("::add_stake") {
+            ("AddStake", "amount_added")
+        } else if function.ends_with("::unlock") {
+            ("UnlockStake", "amount_unlocked")
+        } else {
+            ("WithdrawStake", "amount_withdrawn")
+        };
+        let matches = tx["events"]
+            .as_array()
+            .or_decode("Aptos staking simulation: missing events")?
+            .iter()
+            .filter(|e| {
+                e["type"]
+                    .as_str()
+                    .is_some_and(|s| s.ends_with(&format!("::delegation_pool::{event}")))
+            })
+            .collect::<Vec<_>>();
+        if matches.len() != 1
+            || matches[0]["data"][field]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                != Some(amount)
+        {
+            return Err(ApiError::invalid(
+                "Aptos delegation would adjust the reviewed amount; select an exact supported amount",
+            ));
+        }
+        Ok((gas, maximum))
+    }
+
+    pub(crate) async fn fetch_delegation(
+        &self,
+        pool: &str,
+        owner: &str,
+    ) -> Result<Option<AptosDelegation>, ApiError> {
+        let exists = self
+            .view("0x1::delegation_pool::delegation_pool_exists", &[], &[pool])
+            .await?;
+        match exists.as_slice() {
+            [Value::Bool(false)] => return Ok(None),
+            [Value::Bool(true)] => {}
+            _ => {
+                return Err(ApiError::decode(
+                    "delegation pool: invalid existence result",
+                ));
+            }
+        }
+        let stake = self
+            .view("0x1::delegation_pool::get_stake", &[], &[pool, owner])
+            .await?;
+        let withdrawal = self
+            .view(
+                "0x1::delegation_pool::get_pending_withdrawal",
+                &[],
+                &[pool, owner],
+            )
+            .await?;
+        let commission = self
+            .view(
+                "0x1::delegation_pool::operator_commission_percentage",
+                &[],
+                &[pool],
+            )
+            .await?;
+        let allowed = self
+            .view(
+                "0x1::delegation_pool::delegator_allowlisted",
+                &[],
+                &[pool, owner],
+            )
+            .await?;
+        let resource: Value = self
+            .get(&format!("/accounts/{pool}/resource/0x1::stake::StakePool"))
+            .await?;
+        let unit = |value: &Value| {
+            value
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                .or_decode("delegation pool: invalid balance")
+        };
+        if stake.len() != 3 || withdrawal.len() != 2 || commission.len() != 1 || allowed.len() != 1
+        {
+            return Err(ApiError::decode("delegation pool: invalid view shape"));
+        }
+        let active = unit(&stake[0])?;
+        let inactive = unit(&stake[1])?;
+        let pending_inactive = unit(&stake[2])?;
+        let withdrawal_ready = withdrawal[0]
+            .as_bool()
+            .or_decode("delegation pool: invalid unlock state")?;
+        let withdrawable = if withdrawal_ready {
+            unit(&withdrawal[1])?
+        } else {
+            0
+        };
+        let total_unlocked = inactive
+            .checked_add(pending_inactive)
+            .or_decode("delegation pool balance overflow")?;
+        if withdrawable > total_unlocked {
+            return Err(ApiError::decode(
+                "delegation pool: inconsistent withdrawal balance",
+            ));
+        }
+        let commission_bps = unit(&commission[0])?;
+        if commission_bps > 10_000 {
+            return Err(ApiError::decode("delegation pool: invalid commission"));
+        }
+        Ok(Some(AptosDelegation {
+            active,
+            inactive,
+            pending_inactive,
+            withdrawable,
+            locked_until: unit(&resource["data"]["locked_until_secs"])?,
+            allowlisted: allowed[0]
+                .as_bool()
+                .or_decode("delegation pool: invalid allowlist state")?,
+        }))
+    }
+}
+
+impl AptosClient {
+    /// Active consensus validators, not a claim that each accepts delegation.
+    pub async fn fetch_staking_validators(&self) -> Result<Vec<AptosValidator>, ApiError> {
+        #[derive(Deserialize)]
+        struct Resource {
+            data: ValidatorSet,
+        }
+        #[derive(Deserialize)]
+        struct ValidatorSet {
+            active_validators: Vec<AptosValidator>,
+        }
+        let response: Resource = self
+            .get("/accounts/0x1/resource/0x1::stake::ValidatorSet")
+            .await?;
+        Ok(response.data.active_validators)
     }
 }

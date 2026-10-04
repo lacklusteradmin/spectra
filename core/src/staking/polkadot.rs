@@ -1,22 +1,35 @@
-//! Polkadot staking validator and position queries.
+//! A live directory of Asset Hub nomination pools; no static validator list.
+use super::{StakingError, StakingValidator};
+use crate::api::substrate_json_rpc::SubstrateClient;
+use std::sync::Arc;
 
-use crate::staking::{StakingError, StakingPosition, StakingValidator};
-
-pub struct PolkadotStakingClient;
-
+pub struct PolkadotStakingClient {
+    client: SubstrateClient,
+}
 impl PolkadotStakingClient {
-    /// Active validator set. Sidecar: `/pallets/staking/storage/validators`.
-    /// Validator data requires SCALE decoding — returns empty until a
-    /// Substrate Sidecar REST endpoint is wired to the endpoint catalog.
-    pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
-        Ok(vec![])
+    pub fn new(endpoints: Vec<String>) -> Self {
+        Self {
+            client: SubstrateClient::new(Arc::new(endpoints)),
+        }
     }
-
-    /// Returns the wallet's bonded ledger + nominations + unlocking chunks.
-    pub async fn fetch_positions(
-        &self,
-        _wallet_address: &str,
-    ) -> Result<Vec<StakingPosition>, StakingError> {
-        Ok(vec![])
+    pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
+        let pools = self.client.fetch_nomination_pools().await?;
+        Ok(pools
+            .into_iter()
+            .map(|pool| StakingValidator {
+                identifier: pool.id.to_string(),
+                display_name: pool.name,
+                apy: None,
+                commission: pool.commission,
+                total_stake_smallest_unit: Some(pool.active_balance.to_string()),
+                is_active: pool.is_open,
+                tags: vec!["nomination pool".into()],
+                min_delegation_smallest_unit: Some(pool.minimum_join.to_string()),
+                uptime_pct: None,
+                website: None,
+                description: None,
+                next_epoch_active: None,
+            })
+            .collect())
     }
 }

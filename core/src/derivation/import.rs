@@ -16,7 +16,7 @@ use crate::validation::address::{AddressValidationRequest, validate_address};
 pub struct WalletImportAddresses {
     /// `Chain::address_slot()` → address. Absent slot means "not supplied".
     pub by_slot: HashMap<String, String>,
-    /// Bitcoin account xpub/ypub/zpub. Not an address, so it gets its own
+    /// Bitcoin account xpub/ypub/zpub or testnet tpub/upub/vpub. It gets its own
     /// field rather than a slot.
     pub bitcoin_xpub: Option<String>,
 }
@@ -254,9 +254,8 @@ pub struct WalletImportOutcome {
     pub rejected_addresses: Vec<String>,
 }
 
-/// Keep a Bitcoin account xpub only if it carries a mainnet serialization
-/// prefix: one per BIP, 44 → `xpub`, 49 → `ypub`, 84 → `zpub`. Only Bitcoin
-/// mainnet takes an account xpub (`Chain::accepts_account_xpub`). Validate the
+/// Keep a Bitcoin account public key carrying a recognized network and
+/// script serialization prefix. Validate the
 /// checksum, full BIP32 payload and public key before storage; its textual
 /// prefix alone does not establish that any addresses can be derived.
 fn validated_bitcoin_xpub(xpub: Option<&String>) -> (Option<String>, Option<String>) {
@@ -267,6 +266,9 @@ fn validated_bitcoin_xpub(xpub: Option<&String>) -> (Option<String>, Option<Stri
         Some("xpub") => Some(super::bitcoin::XPUB_VERSION_MAINNET),
         Some("ypub") => Some([0x04, 0x9d, 0x7c, 0xb2]),
         Some("zpub") => Some([0x04, 0xb2, 0x47, 0x46]),
+        Some("tpub") => Some(super::bitcoin::XPUB_VERSION_TESTNET),
+        Some("upub") => Some([0x04, 0x4a, 0x52, 0x62]),
+        Some("vpub") => Some([0x04, 0x5f, 0x1c, 0xf6]),
         _ => None,
     };
     if version.is_some_and(|expected| {
@@ -478,6 +480,15 @@ fn check_import_shape(
             [chain.chain_display_name()],
         ));
     }
+    if let Some(xpub) = &entries.bitcoin_xpub {
+        let (_, _, network) = super::xpub_walker::normalize_xpub(xpub.trim())?;
+        let testnet = network == super::xpub_walker::HdNetwork::Testnet;
+        if testnet != chain.is_testnet() {
+            return Err(DerivationError::invalid(
+                "Account public key belongs to a different network.",
+            ));
+        }
+    }
     if entries.bitcoin_xpub.is_some() && !entries.addresses_for(chain).is_empty() {
         return Err(DerivationError::invalid(
             "Import either an account xpub or watched addresses, not both.",
@@ -649,7 +660,7 @@ fn watch_only_addresses_for_chain(
 
     // Bitcoin has a second form: one xpub stands in for the whole account, so
     // it plans a single wallet instead of one per address.
-    if chain == Chain::Bitcoin
+    if chain.accepts_account_xpub()
         && let Some(xpub) = trim_optional(entries.bitcoin_xpub.as_deref())
     {
         return Ok(vec![(

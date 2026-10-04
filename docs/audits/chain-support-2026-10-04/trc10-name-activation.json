@@ -1,0 +1,220 @@
+{
+  "sources": [
+    "https://raw.githubusercontent.com/tronprotocol/tips/master/tip-10.md",
+    "https://raw.githubusercontent.com/tronprotocol/java-tron/develop/framework/src/main/java/org/tron/core/db/Manager.java",
+    "https://raw.githubusercontent.com/tronprotocol/java-tron/develop/framework/src/main/java/org/tron/core/consensus/ProposalController.java"
+  ],
+  "networks": [
+    {
+      "chain": "tron",
+      "endpoint": "https://api.trongrid.io",
+      "proposal": {
+        "proposal_id": 14,
+        "proposer_address": "41f70386347e689e6308e4172ed7319c49c0f66e0b",
+        "parameters": [
+          {
+            "key": 15,
+            "value": 1
+          }
+        ],
+        "expiration_time": 1546668000000,
+        "create_time": 1546402917000,
+        "approvals": [
+          "4192c5d96c3b847268f4cb3e33b87ecfc67b5ce3de",
+          "41b3eec71481e8864f0fc1f601b836b74c40548287",
+          "412fb5abdf8a1670f533c219e7251fe30b89849359",
+          "4193a8bc2e7d6bb1bd75fb2d74107ffbda81af439d",
+          "41f70386347e689e6308e4172ed7319c49c0f66e0b",
+          "4138e3e3a163163db1f6cfceca1d1c64594dd1f0ca",
+          "41beab998551416b02f6721129bb01b51fceceba08",
+          "41b668d4991cd636b694989ebf3fa1a84613d7899e",
+          "418a445facc2aa94d72292ebbcb2a611e9fd8a6c6e",
+          "41bac7378c4265ad2739772337682183b8864f517a",
+          "41f29f57614a6b201729473c837e1d2879e9f90b8e",
+          "41c05142fd1ca1e03688a43585096866ae658f2cb2",
+          "41d376d829440505ea13c9d1c455317d51b62e4ab6",
+          "41b487cdc02de90f15ac89a68c82f44cbfe3d915ea",
+          "41c4bc4d7f64df4fd3670ce38e1a60080a50da85cf",
+          "412d7bdb9846499a2e5e6c5a7e6fb05731c83107c7",
+          "41d1dbde8b8f71b48655bec4f6bb532a0142b88bc0",
+          "41d70365508e5a6fe846ad433af9302779fd5fdb1b",
+          "41c189fa6fc9ed7a3580c3fe291915d5c6a6259be7",
+          "415863f6091b8e71766da808b1dd3159790f61de7d",
+          "41d25855804e4e65de904faf3ac74b0bdfc53fac76",
+          "4167e39013be3cdd3814bed152d7439fb5b6791409",
+          "41a4475dbd14feb2221f303fc33dc8d0a08f25f445",
+          "4184399fc6a98edc11a6efb146e86a3e153d0a0933"
+        ],
+        "state": "APPROVED"
+      },
+      "last_block_before_expiry": {
+        "blockID": "000000000054800d6db0ba4021d99a21475a3f8ba631d5a6d9e53c328b7eb0f7",
+        "block_header": {
+          "raw_data": {
+            "timestamp": 1546667997000,
+            "txTrieRoot": "313af30559ad337283687e0bd562246b0998945333316a0608d0c0cd09884d42",
+            "parentHash": "000000000054800cfc6e374bd5cd51b3b06924e2bdee8e820b2e15401bddba9f",
+            "number": 5537805,
+            "witness_address": "4167e39013be3cdd3814bed152d7439fb5b6791409",
+            "version": 6
+          },
+          "witness_signature": "91895a0187d1e76e227c13c525fd4cfec7662aed5d1eb090b120aacc8e4261e045bdd8154ea32c0f3603a5dfe734af322bc0c35de0ce2dcd2e9213019fa37eb300"
+        }
+      },
+      "maintenance_activation_block": {
+        "blockID": "000000000054800eb5e441aaaea68913632323f013c5856f1adf3b580bf75cc1",
+        "block_header": {
+          "raw_data": {
+            "timestamp": 1546668000000,
+            "txTrieRoot": "3cc76afcc99a1d3cc32e38512813440613e60630d3e686351b8880d444983f06",
+            "parentHash": "000000000054800d6db0ba4021d99a21475a3f8ba631d5a6d9e53c328b7eb0f7",
+            "number": 5537806,
+            "witness_address": "41c05142fd1ca1e03688a43585096866ae658f2cb2",
+            "version": 6
+          },
+          "witness_signature": "beafcbe50606a88d3e902762dfd072d12f34c87d8ccd18b27bf84fd31e9cd5963dbdaec73588779fdbaa9b2219db03753b38902a46a44594e1d9f0d3496855b300"
+        }
+      },
+      "first_block_after_activation": {
+        "blockID": "000000000054800f25060f35d6e77fdf546874129bbd0bbd4794a65777bdffa9",
+        "block_header": {
+          "raw_data": {
+            "timestamp": 1546668009000,
+            "txTrieRoot": "a80a2645b49b8fec83749d2fb95153bf49dd6a0fa8222dd9f5f9607357b7914f",
+            "parentHash": "000000000054800eb5e441aaaea68913632323f013c5856f1adf3b580bf75cc1",
+            "number": 5537807,
+            "witness_address": "418a445facc2aa94d72292ebbcb2a611e9fd8a6c6e",
+            "version": 6
+          },
+          "witness_signature": "e6e78edc3a89a1576ccba8b17813963fdcb60a6abf58c874e8dadce34348c5cb12f4172416ee24de74b285f3ab8471bf49157b4980bd15429dbaa170a3c9241900"
+        }
+      },
+      "read_count": 22
+    },
+    {
+      "chain": "tron-nile",
+      "endpoint": "https://api.nileex.io",
+      "proposal": {
+        "proposal_id": 2,
+        "proposer_address": "41217179d498883cdbda5699402905d1feb258796c",
+        "parameters": [
+          {
+            "key": 19,
+            "value": 100000000000
+          },
+          {
+            "key": 9,
+            "value": 1
+          },
+          {
+            "key": 10,
+            "value": 1
+          },
+          {
+            "key": 11,
+            "value": 10
+          },
+          {
+            "key": 15,
+            "value": 1
+          }
+        ],
+        "expiration_time": 1572597600000,
+        "create_time": 1572596772000,
+        "approvals": [
+          "41217179d498883cdbda5699402905d1feb258796c",
+          "411e9c28e5a531e5a14c55530d1db2b62ef7ceeda4",
+          "41c23b971d9f273be3e158b083eb3172b982b88604",
+          "413c85a420eed66135a378eb7e5f9246f6fb896b07",
+          "41f24cbabb5cf3e639e1869a5cc6be49614f8e6a14",
+          "41e084c0bacb0e50ace507398e3b79ea0349099e74",
+          "416d56e4c300a38614bff371518d0941935db78924",
+          "412ace82d8505e63df01f788f7ac825f9a164f9c60",
+          "4139b88be263c171b98562e7348f0ec03844135398",
+          "41210410322f83f78648f8632120dfc2807bee43bd",
+          "4116921563a787b4ab3d86bf12b28d3e9ce5da9638",
+          "41579787d38cc0b8bb8430d33b78d981cdcfaffd23",
+          "41e257a0591dd22aa5ba5dbe88cc4a1d29a61273e4",
+          "41dbfa3f36fe0581b7f0049e114fe5762309426ce9",
+          "41dabf85a8c272ef14248258a705c9afc7cea3a10d",
+          "41d4a4fc2743ef08c88eb5aece7cc4ad1a37449290",
+          "4139822aa747103d981878e5ee8494c3f12cd8e916",
+          "41da04cfbd58dde93d5640691df336c57bdc44ec75",
+          "41b98455e10279744c548ec2a8bfe0aa150213a416",
+          "41c55038ac8cf0a48f714d4c0146bb6192eee5ee5b",
+          "41c6a08c037a102ba3103014ce38d95c4b99f14cf1",
+          "41aecbeb5ef02eda6dd74fc3a1a4880a8bb032a1b8",
+          "41f57bbf6b0c6530eea1f3c5718ebb0c4cdbde2c79",
+          "41a3f6f188f222016740fcd4e733569d252b159af0",
+          "41f40cc0264e9655af1f361c35cee7c954afef5841",
+          "41b0a1489d2688c5cf31efb3d083a8f52809b0f8f9",
+          "416bb84a7fc361486ded6c7ddaa2ffd799c0e4743e"
+        ],
+        "state": "APPROVED"
+      },
+      "last_block_before_expiry": {
+        "blockID": "00000000000070c592c0e7a954203d25c14bb401471e3de86564b40a1d77530e",
+        "block_header": {
+          "raw_data": {
+            "timestamp": 1572597597000,
+            "txTrieRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+            "parentHash": "00000000000070c431772ae37dbd8250593b7bde88d2da48b8acc0067e069c56",
+            "number": 28869,
+            "witness_address": "41f24cbabb5cf3e639e1869a5cc6be49614f8e6a14",
+            "version": 9
+          },
+          "witness_signature": "09e5f4c53ccbc866923a66922d8f5b603d0ed3f4d74dedc031ce547180b5936e6a4bb48f22b2c175cac84d0c5447da5d8a2d5255680d3524b6ea757fbfedc7ae00"
+        }
+      },
+      "maintenance_activation_block": {
+        "blockID": "00000000000070c63cb6a00d044274097a90c82459a581b444f490858698fe2f",
+        "block_header": {
+          "raw_data": {
+            "timestamp": 1572597600000,
+            "txTrieRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+            "parentHash": "00000000000070c592c0e7a954203d25c14bb401471e3de86564b40a1d77530e",
+            "number": 28870,
+            "witness_address": "41e084c0bacb0e50ace507398e3b79ea0349099e74",
+            "version": 9
+          },
+          "witness_signature": "bdacf6462e990dfe815c0b354dd2e65886026e0ebc4c3fac5966393ba85f4d6f5ddd2af790931001c7df29f9a338fcc82963356effe09a3782c3e1236f87e81801"
+        }
+      },
+      "first_block_after_activation": {
+        "blockID": "00000000000070c7b8334eaebeafda2f56af36d7ff6467a429a7951a9601f6ef",
+        "block_header": {
+          "raw_data": {
+            "timestamp": 1572597609000,
+            "txTrieRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+            "parentHash": "00000000000070c63cb6a00d044274097a90c82459a581b444f490858698fe2f",
+            "number": 28871,
+            "witness_address": "416d56e4c300a38614bff371518d0941935db78924",
+            "version": 9
+          },
+          "witness_signature": "cd0f25b6a57e8b6e5a44f7632aaa6eb10f56f9048f1439714a146c49a1641e9a38554f5f7c6b664387b42bdf3340b5107e9c54303b47a119bad5c6a448d76b5b01"
+        }
+      },
+      "read_count": 20
+    }
+  ],
+  "observed_on": "2026-10-04",
+  "historical_java_tron_source": {
+    "commit": "e4537c8de4558f79118220a4b0fab23b53127803",
+    "url": "https://raw.githubusercontent.com/tronprotocol/java-tron/e4537c8de4558f79118220a4b0fab23b53127803/src/main/java/org/tron/core/db/Manager.java",
+    "sha256": "4cc0ad71cfff4fd1b02e6e01991e699aadc579b6866f5b869277817567fb9169",
+    "transaction_loop_lines": [
+      1270,
+      1275
+    ],
+    "process_maintenance_lines": [
+      1377,
+      1381
+    ]
+  },
+  "historical_proposal_expiry_source": {
+    "commit": "e4537c8de4558f79118220a4b0fab23b53127803",
+    "url": "https://raw.githubusercontent.com/tronprotocol/java-tron/e4537c8de4558f79118220a4b0fab23b53127803/src/main/java/org/tron/core/capsule/ProposalCapsule.java",
+    "sha256": "b3ab351bb554bd00b642028b8a07f869c411e618901270c79a6d97571880af6d",
+    "rule": "expiration_time <= maintenance_time"
+  }
+}

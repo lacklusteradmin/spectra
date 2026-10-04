@@ -11,12 +11,16 @@
 //! signing transactions is per chain and lives in `send`.
 
 pub mod error;
+pub(crate) mod history_page;
 pub mod http;
 pub(crate) mod json_rpc;
 pub mod time;
+pub(crate) mod transaction_status;
+pub use history_page::HistoryPage;
 pub(crate) mod tron_metadata_cache;
 pub mod utxo;
 
+pub mod aptos_indexer;
 pub mod aptos_rest;
 pub mod bch_rest_v2;
 pub mod blockbook;
@@ -24,7 +28,9 @@ pub mod blockcypher;
 pub mod blockscout;
 pub mod esplora;
 pub mod evm_json_rpc;
+pub mod fastnear;
 pub mod horizon;
+pub mod icp_replica;
 pub mod icp_rosetta;
 pub mod insight;
 pub mod kaspa_rest;

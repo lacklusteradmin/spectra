@@ -10,7 +10,6 @@ use spectra_core::send::{
     SendAffordability, SendAffordabilityInput, SendExecutionRequest, send_affordability,
 };
 use spectra_core::service::WalletService;
-use spectra_core::store::wallet_domain::CoreTransactionKind;
 
 use super::chain::{EndpointCapability, service_for_chain};
 use super::resolve_chain;
@@ -116,7 +115,7 @@ pub enum SendCommand {
         #[arg(long, requires = "max_fee_gwei")]
         priority_fee_gwei: Option<String>,
     },
-    /// Build a tracked holding from user edits, persisting its risk review.
+    /// Build a transaction for a tracked holding, persisting it with its risk review.
     BuildOwned {
         #[arg(long)]
         wallet: String,
@@ -598,7 +597,7 @@ pub struct IdentityArgs {
     password_env: Option<String>,
 }
 
-fn signing_password(
+pub(super) fn signing_password(
     ctx: &Ctx,
     wallet_id: &str,
     file: Option<String>,
@@ -614,7 +613,9 @@ fn signing_password(
         return Ok(None);
     }
     let env = env.filter(|name| std::env::var_os(name).is_some());
-    Ok(Some(SecretSource { file, env }.resolve("password")?))
+    Ok(Some(
+        SecretSource { file, env }.resolve("password", "password-file")?,
+    ))
 }
 
 fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
@@ -1103,9 +1104,8 @@ pub struct SendArgs {
     /// nonce or UTXO set, moves nothing, and needs no `--yes`.
     #[arg(long)]
     sign_only: bool,
-    /// EVM gas limit. Given explicitly, the builder skips estimation — which
-    /// is what lets an unfunded address sign, since a node refuses to estimate
-    /// a transfer it cannot pay for.
+    /// EVM gas limit. Overrides automatic estimation; amount and fee funding
+    /// checks still apply.
     #[arg(long)]
     gas_limit: Option<i64>,
     /// EVM nonce. Omitted, the live one is read from the node.
@@ -1281,8 +1281,15 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             return;
         }
         for record in &records {
-            let incoming = matches!(record.kind, CoreTransactionKind::Receive);
-            let mark = if incoming { "↓" } else { "↑" };
+            let direction =
+                spectra_core::store::wallet_domain::transaction_kind_direction(record.kind);
+            let incoming =
+                direction == spectra_core::store::wallet_domain::CoreTransactionDirection::Incoming;
+            let mark = match direction {
+                spectra_core::store::wallet_domain::CoreTransactionDirection::Incoming => "↓",
+                spectra_core::store::wallet_domain::CoreTransactionDirection::Outgoing => "↑",
+                spectra_core::store::wallet_domain::CoreTransactionDirection::Neutral => "↔",
+            };
             let colored_mark = if incoming {
                 mark.truecolor(120, 230, 160).bold()
             } else {
@@ -1317,10 +1324,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             .iter()
             .map(|record| serde_json::json!({
                 "hash": record.transaction_hash,
-                "kind": match record.kind {
-                    CoreTransactionKind::Send => "send",
-                    CoreTransactionKind::Receive => "receive",
-                },
+                "kind": record.kind.as_raw(),
                 "amount": record.amount,
                 "symbol": record.symbol,
                 "chain": record.chain_id,

@@ -1,75 +1,59 @@
-//! Icp staking validator and position queries.
+//! Known NNS neurons are voting follow targets, not APR-bearing validators.
+use crate::api::error::ApiError;
+use crate::api::icp_replica::{IcpReplicaClient, ListKnownNeuronsResponse};
+use crate::send::{icp_staking, keys::Ed25519Seed};
+use crate::staking::{StakingError, StakingValidator};
+use std::sync::Arc;
 
-use crate::staking::{StakingError, StakingPosition, StakingValidator};
-
-pub struct IcpStakingClient;
-
-// ── Hardcoded well-known NNS named neurons ────────────────────────────────────
-//
-// ICP staking works through neuron following (liquid democracy) rather than
-// traditional validator picking. These are the most-followed public neurons
-// on the NNS. Users can follow any of them to automatically vote on governance
-// proposals and earn full voting rewards without manual participation.
-
-const KNOWN_NEURONS: &[(&str, &str, &str)] = &[
-    (
-        "6914974521667616512",
-        "DFINITY Foundation",
-        "The official DFINITY Foundation neuron. Votes on most NNS proposals.",
-    ),
-    (
-        "2649066124616010593",
-        "ICA (Internet Computer Association)",
-        "Internet Computer Association governance neuron.",
-    ),
-    (
-        "4966884161088437903",
-        "Synapse.vote",
-        "Community governance aggregator; follows technical proposals.",
-    ),
-    (
-        "7305824810703703771",
-        "Cycle_DAO",
-        "Community-run DAO focused on decentralisation motions.",
-    ),
-    (
-        "6366547817393942096",
-        "Taggr",
-        "Decentralised social platform neuron with active governance participation.",
-    ),
-];
-
+pub struct IcpStakingClient {
+    endpoints: Vec<String>,
+}
 impl IcpStakingClient {
-    /// Known-good neurons / followee identities the user can delegate
-    /// liquid-democracy votes to. ICP doesn't have validator picking like
-    /// other PoS chains; instead users follow other neurons for proposal
-    /// votes. Returned list maps to those followee neurons.
-    pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
-        let validators = KNOWN_NEURONS
-            .iter()
-            .map(|(neuron_id, name, description)| StakingValidator {
-                identifier: neuron_id.to_string(),
-                display_name: name.to_string(),
-                apy: 0.14, // up to 14% with max dissolve delay + full voting participation
-                commission: None,
-                total_stake_smallest_unit: None,
-                is_active: true,
-                tags: vec!["named neuron".to_string()],
-                min_delegation_smallest_unit: Some("100000000".to_string()), // 1 ICP
-                uptime_pct: None,
-                website: None,
-                description: Some(description.to_string()),
-                next_epoch_active: None,
-            })
-            .collect();
-        Ok(validators)
+    pub fn new(endpoints: Vec<String>) -> Self {
+        Self { endpoints }
     }
-
-    /// Position queries are not implemented; no NNS governance call is made.
-    pub async fn fetch_positions(
-        &self,
-        _wallet_address: &str,
-    ) -> Result<Vec<StakingPosition>, StakingError> {
-        Ok(vec![])
+    pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
+        // Public directory: an ephemeral sender authenticates this read, with
+        // no wallet identity, secret-store lookup or funding capability.
+        let key = Ed25519Seed::from_hex(&hex::encode(rand::random::<[u8; 32]>()))
+            .map_err(ApiError::invalid)?;
+        let query = icp_staking::signed_query(
+            "list_known_neurons",
+            &candid::encode_args(()).map_err(ApiError::decode)?,
+            &key,
+        )
+        .map_err(ApiError::invalid)?;
+        let bytes = IcpReplicaClient::new(Arc::new(self.endpoints.clone()))
+            .query(&query)
+            .await?;
+        let response: ListKnownNeuronsResponse =
+            candid::decode_one(&bytes).map_err(ApiError::decode)?;
+        response
+            .known_neurons
+            .into_iter()
+            .map(|neuron| {
+                let id = neuron
+                    .id
+                    .filter(|id| id.id > 0)
+                    .ok_or_else(|| ApiError::decode("Known NNS neuron has no ID"))?;
+                let data = neuron
+                    .known_neuron_data
+                    .ok_or_else(|| ApiError::decode("Known NNS neuron has no metadata"))?;
+                Ok(StakingValidator {
+                    identifier: id.id.to_string(),
+                    display_name: data.name,
+                    apy: None,
+                    commission: None,
+                    total_stake_smallest_unit: None,
+                    is_active: true,
+                    tags: vec!["NNS known neuron".into()],
+                    min_delegation_smallest_unit: None,
+                    uptime_pct: None,
+                    website: None,
+                    description: data.description,
+                    next_epoch_active: None,
+                })
+            })
+            .collect()
     }
 }

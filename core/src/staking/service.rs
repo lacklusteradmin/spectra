@@ -5,8 +5,7 @@ use std::sync::Arc;
 use crate::registry::Chain;
 use crate::service::ChainEndpoints;
 use crate::staking::{
-    StakingError, StakingPosition, StakingValidator, aptos::AptosStakingClient,
-    icp::IcpStakingClient, near::NearStakingClient, polkadot::PolkadotStakingClient,
+    StakingError, StakingValidator, aptos::AptosStakingClient, near::NearStakingClient,
     solana::SolanaStakingClient, sui::SuiStakingClient,
 };
 
@@ -15,6 +14,8 @@ pub struct StakingService {
     sui: SuiStakingClient,
     aptos: AptosStakingClient,
     near: NearStakingClient,
+    polkadot: crate::staking::polkadot::PolkadotStakingClient,
+    icp: crate::staking::icp::IcpStakingClient,
 }
 
 impl StakingService {
@@ -45,6 +46,8 @@ impl StakingService {
             sui: SuiStakingClient::new(eps(Chain::Sui)),
             aptos: AptosStakingClient::new(eps(Chain::Aptos)),
             near: NearStakingClient::new(eps(Chain::Near)),
+            polkadot: crate::staking::polkadot::PolkadotStakingClient::new(eps(Chain::Polkadot)),
+            icp: crate::staking::icp::IcpStakingClient::new(eps(Chain::Icp)),
         })
     }
 
@@ -59,24 +62,8 @@ impl StakingService {
             Chain::Sui => self.sui.fetch_validators().await,
             Chain::Aptos => self.aptos.fetch_validators().await,
             Chain::Near => self.near.fetch_validators().await,
-            Chain::Polkadot => PolkadotStakingClient.fetch_validators().await,
-            Chain::Icp => IcpStakingClient.fetch_validators().await,
-            _ => Err(StakingError::NotYetImplemented),
-        }
-    }
-
-    pub async fn fetch_positions(
-        &self,
-        chain_id: crate::registry::Chain,
-        wallet_address: String,
-    ) -> Result<Vec<StakingPosition>, StakingError> {
-        match self.staking_chain(chain_id)? {
-            Chain::Solana => self.solana.fetch_positions(&wallet_address).await,
-            Chain::Sui => self.sui.fetch_positions(&wallet_address).await,
-            Chain::Aptos => self.aptos.fetch_positions(&wallet_address).await,
-            Chain::Near => self.near.fetch_positions(&wallet_address).await,
-            Chain::Polkadot => PolkadotStakingClient.fetch_positions(&wallet_address).await,
-            Chain::Icp => IcpStakingClient.fetch_positions(&wallet_address).await,
+            Chain::Polkadot => self.polkadot.fetch_validators().await,
+            Chain::Icp => self.icp.fetch_validators().await,
             _ => Err(StakingError::NotYetImplemented),
         }
     }
@@ -88,8 +75,7 @@ mod tests {
 
     /// The picker's list and the dispatch's arms are one answer.
     ///
-    /// Offline: network clients return an empty list without endpoints, and
-    /// ICP returns its static directory. A routed call and a refused one are
+    /// Offline: network clients refuse missing endpoints. A routed call and a refused one are
     /// distinguishable without a network. A chain the registry
     /// says stakes reaches a client, and one it does not is refused rather
     /// than falling through an arm nobody wrote down.

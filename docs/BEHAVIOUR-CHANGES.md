@@ -17,6 +17,388 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-04 — Preserve researched assets, support multiple standards and execute staking
+
+- **Before:** 59 unverified token deployments and their otherwise unused identity
+  and wiki records were deleted. Each chain carried one default token standard,
+  so Tron excluded TRC-10 despite supporting TRC-20 and Aptos's older protocol
+  could be misrepresented. Staking exposed only validator reads; DOT/ICP
+  directories and position/execution placeholders had been removed.
+- **After:** all 59 researched deployments, 21 identities and 21 wiki records
+  return as commented TODO entries with their original fields intact. Unverified
+  entries await activation rather than being lost. Each chain exposes a list
+  of supported protocols; every deployment stores its actual standard. TRC-10
+  has metadata, balances, discovery/history, exact TransferAssetContract
+  preparation, signing, fees and durable execution outcomes on mainnet/Nile.
+  Verified BTTOLD is a separate identity from redenominated BTT.
+  All six staking chains now provide owned positions and executable actions:
+  SOL stake/deactivate/withdraw, SUI stake and whole staking-object withdrawal, Aptos and NEAR
+  delegation pools, DOT Asset Hub nomination pools and ICP NNS neurons. Core
+  derives authority, amounts, unlock state, fees and prerequisites; build,
+  sign and explicit broadcast remain separate durable operations. ICP requires
+  an explicit dissolve delay counted from configuration execution (so short
+  delays do not expire during funding), follows voting topics 0/4/14, retains certified
+  per-step execution proofs and can prepare governance-only recovery against
+  proved original funding without transferring again. Queued maturity remains
+  separate from liquid rewards; its >=1 ICP minimum and ten-payout limit are
+  checked before signing, and minting quotes zero ledger fee. Full ICP
+  disbursement counts outstanding neuron fees once and explains that its ledger
+  fee is deducted from the amount. History distinguishes stake, unstake, withdraw
+  and claim; manual receipt checks bypass background polling backoff. Raw-key
+  CLI import now honors `--no-password` through core's local-key protection
+  instead of ignoring that flag and asking for a wallet password. NEAR native,
+  token and staking validity now follow the chain's canonical reference block
+  and live validity period rather than a fixed 120-second timeout. NEAR native,
+  token and staking budgets share live protocol fee accounting, including
+  implicit-account creation and the minimum prepaid-gas purchase price. The
+  redundant static token reserve is removed; previews expose a total fee budget.
+  Storage reserve, funds and the review budget are revalidated before submission,
+  including pending retries whose signed bytes have no gas-price cap. NEAR native
+  and NEP-141 artifacts now retain the locally derived transaction hash, reject
+  foreign submission identities and resolve that exact execution before retrying.
+  ICP replica diagnostics read and strictly validate the CBOR health response;
+  a health result remains distinct from certified execution proof. Validator CLI
+  JSON includes the chain-read minimum delegation amount.
+- **Why:** incomplete implementation is work to finish, not a reason to discard
+  researched data or claim a chain has only one asset protocol. Funds and
+  withdrawal authority must be validated before signing; node acceptance and
+  a successful first step cannot prove all governance steps executed.
+- **CLI check:** `spectra --json staking chains`, `spectra staking positions
+  --from Wallet`, `spectra staking build --from Wallet --action stake --validator
+  Pool --amount Amount`, then `spectra send sign ID --review-digest Digest` and
+  `spectra send broadcast-signed ID --endpoint URL --yes`. ICP uses explicit
+  `--lockup-seconds`, `staking recheck --id ID` and `staking repair --id ID`;
+  repair returns a new review requiring a separate signature and broadcast.
+  `scripts/cli-trc10.py`, `scripts/cli-staking.py`,
+  `scripts/cli-icp-staking.py` and `scripts/cli-send-near.py` cover the workflows
+  against loopback nodes.
+- **Verification:** all `make verify` gates passed in the final integrated and
+  split runs with `CARGO_INCREMENTAL=0`: rustfmt, Clippy at `-D warnings`,
+  `cargo test --workspace` (1,063 core tests plus the transport integration test),
+  `make test-cli` (476 offline checks) and `make test-ios` (127 tests in 28 suites).
+  Xcode regenerated UniFFI bindings and compiled Swift 6. The final CLI output
+  change was covered by another full lint/CLI run. All nine staking screenshots
+  were inspected, with the rendering suite also run alone to exclude other test
+  windows. `make check-ui`, the unused-string scan and `git diff --check` passed.
+  Independent TronWeb, DFINITY and account-chain SDK fixtures check signed bytes,
+  local hashes and ingress identities; read-only Solana mainnet simulations check
+  deployed instructions. No live transaction has been broadcast.
+
+## 2026-10-04 — Make each send stage readable and finish confirmed transfers
+
+- **Before:** composing a send used an unlabeled progress bar, dense asset
+  rows and a small right-aligned amount. Review mixed the amount, addresses
+  and technical details in one card. Every signed artifact with a submission
+  attempt offered rebroadcast as its primary action, even after confirmation.
+  A saved recipient appeared as a disabled save button, and signing packed
+  the exact amount, network, address and advisories into one bullet list.
+- **After:** four labeled composer steps provide asset/network context,
+  explicit paste/scan/contact actions, a centered amount and a separate
+  transfer summary. Review displays the core-resolved destination in full and
+  withholds an obsolete fee quote while an updated preview is pending.
+  Durable stages share the amount and complete-address presentation; node
+  selection, submission receipts and chain confirmation have distinct states.
+  A confirmed transfer finishes with Done. Accepted submissions open their
+  explorer when available, with same-payload retry as a secondary action;
+  retry waits for a matching history record and follows core's transaction
+  actions. Signing shows the immutable amount, network and complete recipient
+  on separate lines, followed
+  by core's warnings. Technical payloads and submission details are expandable;
+  build-time advisories move into review details after submission. Saved
+  recipient identity comes from core instead of a menu-selection ID or a
+  disabled save action. Long amounts wrap without dropping digits; address
+  input wraps between characters without inserting visual hyphens. Copying a
+  grouped address or hash uses its raw value without display-only spaces. The
+  obsolete address and transaction card views are removed in favor of the
+  shared presentation.
+- **Why:** make the amount and destination easy to check, and make the next
+  action reflect the durable transaction's actual state. Node acceptance alone
+  cannot establish chain confirmation. A transient native history cache belongs
+  to the active session and artifact revision, so late reads cannot update a
+  replacement composer. Building, signing and broadcasting stay separate core
+  operations.
+- **CLI check:** none applies to these native presentation and navigation
+  changes. Core's transaction data, validation, signing and submission APIs
+  are unchanged by this UI work. Native regression tests cover the action
+  mapping, exact signing summary and unchanged data during rendering.
+- **Verification:** 17 tests passed across `SendExecutionActionTests`,
+  `SendSessionTests`, `SendPreviewAdoptionTests`, `SendComposerViewTests` and
+  `SendStagesViewTests` on the iPhone 17 Pro simulator. Twelve native screenshot
+  cases were inspected across light/dark appearance, accessibility text sizes,
+  long amounts and the durable stages; the two stage tests also passed in an
+  isolated run for screenshot inspection without concurrent native windows.
+  `make check-ui`, `scripts/unused-strings.sh` and the scoped `git diff --check`
+  passed. No core, CLI or FFI changes belong to this UI work, so the full
+  `make verify` suite was not run for this change.
+
+## 2026-10-04 — Complete supported chain transfers and network-correct recovery
+
+- **Before:** Sui, Aptos and TON tokens were readable but not transferable;
+  Ethereum Classic and HyperEVM were artificially native-only. Six UTXO test
+  networks derived a mainnet address from a raw key. Raw-key and watch-only
+  pickers excluded implemented formats. Cardano discarded native-asset input
+  facts and signed an expanded scalar as an Ed25519 seed. Bittensor used stale
+  fixed pallet indices and omitted current signed extensions. Five UTXO families
+  and Bittensor had no automatic pending resolution.
+- **After:** Token preview, build, sign and durable review cover the supported
+  token protocols, using on-chain precision and balances. Sui separates token
+  inputs from SUI gas; TON validates the owner's jetton wallet, budgets the
+  attached TON and signs TEP-74's full 120-bit amount range. Raw-key import
+  supports 48 mainnets and corresponding test
+  networks; testnet addresses and Bitcoin account xpubs retain concrete network
+  identity. Stellar receive identities use canonical uppercase StrKeys. Public
+  account nodes prove the registry network identity instead of requiring a
+  built-in URL. Cardano keeps its complete extended signing key, verifies its public
+  key, and selects only explicitly pure-ADA inputs. Bittensor shares the single
+  metadata-driven Substrate transaction model with Polkadot, validates genesis,
+  runtime and fees at every stage, and resolves finalized success/failure events.
+  Account-based sends query execution status directly instead of searching a
+  successful-transfer feed; failed transactions can finish as failed. TON looks
+  up the submitted external message identity. Every native send family has a
+  confirmation path. Elapsed time and repeated provider failures cannot prove a
+  transaction failed; pending records retain their state until an execution
+  result proves the outcome. Current nonce, object identities and native/token budgets
+  are checked before signing and before the first broadcast; uncertain retries
+  keep the original payload recovery path. Sui, Aptos and TON transaction/message
+  hashes are derived locally and checked against submission replies. A retry of
+  an expired Aptos/TON signature first resolves any existing on-chain outcome.
+  TON's prepared expiry matches its signed message, including V4R2's maximum
+  expiry for the first deployment message; an uninitialized wallet's valid
+  signature is no longer incorrectly rejected after 60 seconds.
+- **Why:** A readable asset needs a reviewed executable transfer within the
+  supported scope. Keys, addresses, UTXOs and live runtime layouts must be
+  derived or validated before signing; false support flags and permanently
+  pending records are incorrect behavior.
+- **CLI check:** `python3 scripts/cli-send-tokens.py target/debug/spectra`,
+  `python3 scripts/cli-chain-coverage.py target/debug/spectra`, and the Substrate,
+  Cardano and UTXO loopback acceptance checks exercise recovery and durable
+  transaction stages without sending to a live chain. The exact account-status
+  cases in `cli-history.py`, `cli-finality-account-chains.py` and
+  `cli-send-tokens.py` cover success, failure and incomplete results after reopen.
+- **Verification:** All `make verify` gates passed in the final split runs:
+  `CARGO_INCREMENTAL=0 make lint test` and `make test-cli test-ios` with incremental
+  caching disabled. Rustfmt and Clippy at `-D warnings`, 1,020 core tests plus the
+  transport integration test, 472 offline CLI checks and 116 iOS tests in 26 suites
+  passed. The Xcode build regenerated UniFFI bindings and compiled in Swift 6
+  mode. Independent official SDK fixtures cover Sui, Aptos, TON and Cardano
+  transaction bytes; no live transaction was broadcast.
+
+## 2026-10-04 — Persist honest history pagination and include token activity
+
+- **Before:** Most non-EVM history readers fetched one bounded page but marked
+  it exhausted; restart discarded continuation. Aptos account sequence history
+  omitted received and orderless transactions. Sui, Aptos, TON and NEAR token
+  history, plus Aptos and NEAR token discovery, were absent. EVM networks without
+  a built-in indexer also refused compatible custom Blockscout sources.
+- **After:** Provider pages return validated continuations based on raw rows,
+  with independent native/token and directional streams where needed. Successful
+  transaction merges precede persisted cursor advancement. Refreshes and load
+  more are serialized; failure retains prior continuation. Aptos uses the public
+  address Indexer and verifies its fullnode network; native and token activity
+  are combined. Aptos and NEAR enumerate actual holdings. Compatible custom
+  indexers can be configured independently of built-in provider availability.
+- **Why:** A small or empty transfer page cannot prove that earlier activity
+  does not exist. A process restart must not silently lose progress, and a
+  provider failure must not masquerade as an empty successful wallet.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra` covers
+  provider continuation, repeated refresh, reopen and stored transfer identity;
+  `spectra history <wallet> --save --load-more` resumes a persisted page.
+- **Verification:** The final full gate runs above passed, including history
+  pagination, token activity, recovery and reopen checks in the 472-check offline
+  CLI suite. Public Aptos mainnet/testnet schema and chain IDs were checked
+  read-only in the dated endpoint audit.
+
+## 2026-10-04 — Restore default reads and publish complete historical rollup fees
+
+- **Before:** Monero's default daemons lacked the verification capability used
+  by local scanning; Avalanche defaults omitted ERC-20 reads. Confirmed OP Stack
+  receipts exposed execution gas but could not publish a complete actual fee.
+- **After:** Verified Monero daemon defaults are eligible for local scanning;
+  all Avalanche defaults read tracked tokens. OP Stack receipt cost includes
+  execution and L1 data plus the applicable operator charge, read from the oracle
+  at the mined block. A verified pre-activation block can establish zero operator
+  charge; missing modern components remain unknown. Complete actual totals are
+  persisted for both successful and reverted transactions, and obsolete subtotal
+  projections are cleared when a complete cost is unavailable.
+- **Why:** Capability declarations must match implemented reads. An estimated
+  budget or execution subtotal is not an actual network fee; historical rules
+  must not be inferred from today's deployment.
+- **CLI check:** `python3 scripts/cli-receipt-fees.py target/debug/spectra`
+  proves complete fees and unknown components after reopening. `spectra endpoints
+  --catalog --chain monero` and `--chain avalanche` show eligible defaults.
+- **Verification:** The final full gate runs above passed, including complete,
+  missing and reverted receipt-cost persistence checks. Five Monero daemons passed
+  network/sync/fork and binary scanning reads; three Avalanche defaults passed
+  chain-ID and ERC-20 reads. Evidence and pinned OP Stack fork configurations are
+  under `docs/audits/chain-support-2026-10-04/`.
+
+## 2026-10-04 — Remove unsupported asset and staking representations
+
+- **Before:** TRC-10 identifiers could be stored without any execution adapter.
+  Friendly TON master aliases could duplicate a holding. The trusted built-in
+  catalog contained 59 deployments without recorded issuer/bridge evidence.
+  Staking exposed empty/static directories and fixed yields alongside live
+  validator results.
+- **After:** TRC-10 creation is refused. TON masters use one validated raw
+  account identity. The 59 unverified deployments are removed, retaining the
+  exact audit list and explicit custom-contract tracking. Staking offers live
+  Solana/Sui/Aptos/NEAR validator information, propagates errors and leaves
+  unmeasured APY unknown; empty Polkadot and static ICP directories are removed.
+  Staking position/execution placeholders are removed. The supported protocols,
+  single-address wallet families and custom-provider requirements are stated in
+  [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md).
+- **Why:** Unknown identity, yield or positions must not be presented as trusted
+  catalog data or a working feature. Unsupported protocols are a stated scope
+  decision instead of a stored representation that fails later.
+- **CLI check:** `spectra token catalog`, `spectra token add --help`,
+  `spectra staking chains` and `spectra staking validators --help`; token-protocol
+  acceptance verifies duplicate normalization and early refusal.
+- **Verification:** The final full gate runs above passed, including early
+  protocol refusal, normalized token identity, catalog and staking CLI checks.
+  The removed deployment list is preserved in `removed-token-deployments.json`.
+
+## 2026-10-04 — Remove unused bindings, UI helpers and shipped resources
+
+- **Before:** Nine internal Rust types generated foreign bindings despite never
+  crossing the boundary. The Swift shell retained unread presentation members,
+  a duplicate step table and unused parameters. Four fiat images and retired
+  diagnostic and staking translations shipped without production consumers.
+  Test input could keep the timeout translation alive in the resource scan.
+- **After:** Internal types keep their Rust implementations without UniFFI
+  exports; the transaction-change assertion helper builds only for tests. The
+  unused Swift members and parameters are removed, and the send flow counts
+  its enum cases directly. The four fiat source images and generated asset
+  group are removed, as are three obsolete keys in every locale. Source scans use
+  production references; icon tooling accepts an empty source group and removes
+  its generated group. Eight source-selection regressions now run in CLI
+  acceptance. Android scaffolding and Peercoin artwork remain at the
+  user's request. Monad and Plasma now have live catalog references.
+- **Why:** Remove unused API and packaged content while keeping one definition
+  of send steps. A test fixture must not be evidence that runtime copy is used.
+- **CLI check:** `scripts/uncalled-core-fns.sh`,
+  `scripts/unreachable-exports.sh`, `scripts/unused-strings.sh` and
+  `scripts/normalize-icons.sh --check` verify the remaining source surface and
+  resources. `make test-cli` exercises the unchanged core operations.
+- **Verification:** The initial `make verify` passed rustfmt, Clippy with
+  `-D warnings`, 983 core tests and the integration test. CLI acceptance passed
+  460 checks but failed five when a concurrent build removed its binary.
+  Swift bindings were regenerated; all nine removed type names are absent.
+  Swift 6 parsing of the five edited files, eight source-scan regressions,
+  icon normalization, export reachability and targeted diff checks passed.
+  Production function and string scans passed after cleanup; later scans found
+  new leftovers in concurrent derivation, pagination and staking work. A CLI
+  snapshot retry encountered changed Polkadot assertions and was stopped.
+  iOS reached Swift compilation but ran out of disk during linking; after
+  reclaiming inactive compiler caches, the final retry stopped at a concurrent
+  incomplete `EndpointApi::AptosIndexer` match in `endpoint_health.rs`.
+  iOS tests did not run, and the full verification gate is not green.
+
+## 2026-10-04 — Testnet identity does not initialize joined catalogs
+
+- **Before:** TON token normalization read `Chain::is_testnet()` while loading
+  the token catalog. That method initialized the joined chain catalog, whose
+  native assets initialized the same token catalog again. Catalog reads and
+  ordinary CLI state commands could deadlock during startup.
+- **After:** `Chain::is_testnet()` reads the network's declaration, before its
+  presentation and native token are joined. Testnet identity stays a fact owned
+  by `Chain` and no longer depends on token catalog initialization.
+- **Why:** Loading token identifiers needs network identity; network identity
+  cannot depend on already loading those identifiers.
+- **CLI check:** In a throwaway data directory, `spectra --json chains
+  --testnets --filter TON` and `spectra --json send amount --chain ton --amount
+  1` complete in fresh processes without network requests.
+- **Verification:** CLI build and both fresh-process checks passed. The retried
+  Rust suite completed rather than deadlocking: 864 tests passed and 121 failed
+  amid concurrent endpoint/catalog and protocol refactors. The first endpoint
+  failure was a Polkadot node declaring staking without a current adapter,
+  poisoning the catalog for subsequent tests. Full `make verify` also stopped
+  at formatting differences in concurrent work; CLI acceptance and iOS suites
+  were not reached.
+
+## 2026-10-04 — CLI wording follows the current commands and storage
+
+- **Before:** CLI help still described removed settings, seed-only import and
+  export, USD-only alerts, per-wallet token preferences, additive dashboard
+  pins and signing from unfunded addresses. Password-free storage was called
+  unencrypted, and `currency` claimed to share the phone's store. Missing seed
+  input recommended the nonexistent `--seed-phrase-file`. Reset warnings and
+  results always described all settings, even when another data scope was reset.
+- **After:** Help describes the current command scope, secret kinds, target
+  currency, pin replacement, funding checks and encryption using a local key
+  kept in the CLI data directory. Chain selectors document names and registry
+  IDs rather than promising unsupported ticker-symbol lookup. Secret-input
+  errors name the actual file flag. Wallet-deletion warnings describe stored
+  signing material only when present. Reset help lists core's accepted scopes;
+  unknown scopes fail argument parsing with exit code 2. Reset warnings and
+  success messages describe core's effective plan, including history cleanup
+  implied by wallet removal. Reset JSON returns `plan` instead of a misleading
+  scalar `settings` count. Validator output distinguishes shown rows from the
+  available total. Password errors and their three locale translations refer
+  to password protection rather than encryption presence.
+- **Why:** Help and operation results must describe what the current core
+  actually does, especially when handling secrets or clearing data. The CLI's
+  selected data directory is independent of the phone's local database.
+- **CLI check:** `spectra --help`, `spectra wallet import --help`,
+  `spectra send broadcast --help`, `spectra alert add --help`,
+  `spectra portfolio --help`, and `spectra settings reset --help` show the
+  corrected guidance. In a throwaway data directory, `spectra wallet import
+  --chain ethereum </dev/null` recommends `--seed-file`; `spectra --json
+  settings reset --scope historyAndCache --yes` returns only that effective
+  reset flag, and leaves the selected display currency unchanged.
+- **Verification:** CLI build, inspection of all 105 command help pages,
+  missing-secret guidance, effective reset warnings, invalid-scope refusal,
+  removed-command refusal and offline TON catalog/amount checks passed. All
+  three locale files parsed without duplicate keys. Earlier throwaway-state
+  checks verified reset JSON plans, preservation of EUR after history-only
+  reset, implied history cleanup on wallet removal and default reset to USD.
+  The full verification attempts hit sandbox mock-port restrictions first,
+  then concurrent formatting and endpoint/catalog failures; the final Rust
+  attempt had 864 passes and 121 failures. CLI acceptance and iOS suites were
+  not reached, so this is not a green full verification.
+
+## 2026-10-04 — Remove the unimplemented staking-position command
+
+- **Before:** `spectra staking positions <wallet>` validated the wallet and
+  dispatched to six clients that always returned an empty list. It reported
+  `nothing staked` and successful empty JSON without querying any positions.
+- **After:** The unsupported CLI command and its unused service/client query
+  methods are removed. Staking network information and available validator
+  queries remain; no CLI command claims to know a wallet's staking positions.
+- **Why:** Unknown staking positions cannot be reported as zero. An empty
+  implementation does not justify a successful user-facing query.
+- **CLI check:** `spectra staking --help` offers `chains`, `validators` and
+  `endpoints`; `spectra staking positions <wallet>` fails argument parsing
+  with exit code 2.
+- **Verification:** The initial targeted `cargo test -p spectra_core staking::`
+  run passed all four tests. The rebuilt CLI's help and rejection of the removed
+  command passed. Subsequent full verification was blocked by concurrent
+  formatting and endpoint/catalog changes, as recorded above; CLI acceptance
+  and iOS suites were not reached.
+
+## 2026-10-04 — Monad artwork drops its shadow filter
+
+- **Before:** Monad's white mark depended on an eight-primitive SVG shadow
+  filter. `actool` accepted the asset, but UIKit rendered only the purple
+  background.
+- **After:** Monad uses a flat purple full-disc background and a directly
+  filled white path. The shadow, blur and unused filter definitions are removed
+  from the source and regenerated Swift asset.
+- **Why:** A small decorative shadow does not justify a filter dependency on
+  the entire mark. Two plain shapes express the artwork and avoid the reported
+  missing-logo rendering.
+- **CLI check:** no `spectra` invocation applies — artwork resource only.
+  `scripts/normalize-icons.sh --check` and
+  `cmp icons/crypto/monad.svg swift/Assets.xcassets/crypto/monad.imageset/monad.svg`
+  check the source style and exported asset.
+- **Verification:** Icon normalization/export, normalization check,
+  source/export equality, XML structure and whitespace checks passed. Isolated
+  catalogs compiled with `actool` for the iOS 26 deployment floor. A temporary
+  Swift 6 UIKit executable loaded both compiled assets with `UIImage(named:in:)`
+  and rasterized them on iPhone 18 Pro / iOS 27.0: the original was a purple
+  disc; the simplified asset rendered the white mark. Both PNGs were visually
+  inspected. No core, CLI or full iOS suite was run for this localized resource
+  correction.
+
 ## 2026-10-04 — World Chain reuses Worldcoin artwork
 
 - **Before:** World Chain referenced a separate square-ring `worldchain` icon.

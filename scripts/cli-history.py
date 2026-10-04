@@ -149,6 +149,242 @@ class HistoryTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); worker.join()
 
+    def test_hash_specific_finality_persists_failed_account_transactions(self):
+        """Failed executions close after restart without reading successful history."""
+        alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+        def base58(raw):
+            number = int.from_bytes(raw, 'big'); encoded = ''
+            while number:
+                number, remainder = divmod(number, 58); encoded = alphabet[remainder] + encoded
+            return '1' * (len(raw) - len(raw.lstrip(b'\0'))) + encoded
+        owners = {'solana': '11111111111111111111111111111111',
+                  'aptos': '0x' + '12' * 32, 'sui': '0x' + '12' * 32, 'near': 'me.near'}
+        cases = ['success', 'failed', 'optimistic', 'mismatch', 'unknown']
+        hashes = {chain: {case: ('0x' + f'{index:02x}' * 32 if chain == 'aptos'
+                               else base58(bytes([index]) * (64 if chain == 'solana' else 32)))
+                          for index, case in enumerate(cases, 1)} for chain in owners}
+        reverse = {chain: {hash_value: case for case, hash_value in rows.items()}
+                   for chain, rows in hashes.items()}
+        requests = []; errors = []; polled = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def respond(self, response, status=200):
+                body = json.dumps(response).encode(); self.send_response(status)
+                self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
+            def do_GET(self):
+                try:
+                    requests.append(('GET', self.path))
+                    if self.path == '/aptos/': return self.respond({'chain_id': 1, 'ledger_version': '500'})
+                    prefix = '/aptos/transactions/by_hash/'
+                    assert self.path.startswith(prefix), self.path
+                    hash_value = self.path[len(prefix):]; case = reverse['aptos'][hash_value]; polled.append(('aptos', case))
+                    if case == 'unknown': return self.respond({'error_code': 'transaction_not_found'}, 404)
+                    self.respond({'hash': '0x' + 'aa' * 32 if case == 'mismatch' else hash_value,
+                                  'type': 'pending_transaction' if case == 'optimistic' else 'user_transaction',
+                                  'version': '123', 'success': case != 'failed'})
+                except Exception as error:
+                    errors.append(str(error)); self.send_error(500)
+            def do_POST(self):
+                try:
+                    request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                    chain = self.path.strip('/'); method = request['method']; params = request['params']
+                    requests.append((chain, method)); rpc_error = None
+                    if method == 'getGenesisHash': result = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
+                    elif method == 'sui_getChainIdentifier': result = '35834a8a'
+                    elif method == 'sui_getCheckpoint': result = {'sequenceNumber': '0', 'digest': '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S'}
+                    elif method == 'status': result = {'chain_id': 'mainnet'}
+                    elif method == 'getSignatureStatuses':
+                        assert params[1] == {'searchTransactionHistory': True}, request
+                        case = reverse[chain][params[0][0]]; polled.append((chain, case))
+                        row = None if case == 'unknown' else {'slot': 42, 'err': {'InstructionError': [0, 'Custom']} if case in ('failed', 'optimistic') else None,
+                                  'confirmationStatus': 'confirmed' if case == 'optimistic' else 'finalized'}
+                        result = {'value': [row, row] if case == 'mismatch' else [row]}
+                    elif method == 'sui_getTransactionBlock':
+                        hash_value = params[0]; case = reverse[chain][hash_value]; polled.append((chain, case))
+                        result = {'digest': 'wrong-digest' if case == 'mismatch' else hash_value,
+                                  'checkpoint': None if case == 'optimistic' else '42',
+                                  'effects': {'status': {'status': 'failure' if case in ('failed', 'optimistic') else 'success'}}}
+                        if case == 'unknown': rpc_error = {'code': -32000, 'message': 'Transaction not found'}
+                    elif method == 'tx':
+                        assert params['wait_until'] == 'FINAL' and params['sender_account_id'] == owners[chain], request
+                        hash_value = params['tx_hash']; case = reverse[chain][hash_value]; polled.append((chain, case))
+                        result = {'transaction': {'hash': hash_value, 'signer_id': 'other.near' if case == 'mismatch' else owners[chain]},
+                                  'final_execution_status': 'INCLUDED' if case == 'optimistic' else 'FINAL',
+                                  'status': {'Failure': {'ActionError': {}}} if case in ('failed', 'optimistic') else {'SuccessValue': ''}}
+                        if case == 'unknown': rpc_error = {'code': -32000, 'cause': {'name': 'UNKNOWN_TRANSACTION'}}
+                    else: raise AssertionError(('history must not serve as a status feed', request))
+                    self.respond({'jsonrpc': '2.0', 'id': request['id'], 'error': rpc_error} if rpc_error else
+                                 {'jsonrpc': '2.0', 'id': request['id'], 'result': result})
+                except Exception as error:
+                    errors.append(str(error)); self.send_error(500)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            for chain, api, symbol in [('solana', 'solana-json-rpc', 'SOL'), ('aptos', 'aptos-rest', 'APT'),
+                                       ('sui', 'sui-json-rpc', 'SUI'), ('near', 'near-json-rpc', 'NEAR')]:
+                with self.subTest(chain=chain), tempfile.TemporaryDirectory(prefix='spectra-hash-finality-') as directory:
+                    env = {**os.environ, 'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl')}
+                    def run(*args):
+                        result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                                capture_output=True, text=True, timeout=60, env=env)
+                        assert result.returncode == 0, (args, result.stdout, result.stderr, errors)
+                        return json.loads(result.stdout)
+                    wallet = run('wallet', 'watch', '--chain', chain, '--name', chain, '--address', owners[chain])['wallet']
+                    run('endpoints', '--chain', chain, '--api', api, '--capabilities', 'verification',
+                        '--add', f'http://127.0.0.1:{server.server_port}/{chain}')
+                    with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as database:
+                        for case in cases:
+                            row = dict(id=case, walletId=wallet['id'], walletName=chain, kind='send', status='pending',
+                                       chainId=chain, symbol=symbol, assetDisplayName=symbol, deploymentId=f'{chain}:native',
+                                       amount='1', address=owners[chain], sourceAddress=owners[chain],
+                                       transactionHash=hashes[chain][case], createdAtUnix=1700000000)
+                            database.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
+                                             (case, wallet['id'], chain, row['transactionHash'], row['createdAtUnix'], json.dumps(row)))
+                    changes = run('txs', '--poll-chain', chain)['changes']
+                    assert len(changes) == 2, (chain, changes, errors, requests)
+                    for case in cases:
+                        row = run('txs', '--record', case)['record']
+                        assert row['status'] == {'success': 'confirmed', 'failed': 'failed'}.get(case, 'pending'), (chain, case, row)
+                    count = len(polled)
+                    assert run('txs', '--poll-chain', chain)['changes'] == []
+                    assert set(polled[count:]) <= {(chain, case) for case in ['optimistic', 'mismatch', 'unknown']}, polled[count:]
+            assert not errors, errors
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
+    def test_near_complete_origins_survive_provider_page_boundaries(self):
+        owner='me.near';origin='H'*44;token='token.near'
+        requests=[]
+        def receipt(identity, sender,receiver,amount,children):
+            return {'receipt_id':identity,'predecessor_account_id':sender,'receiver_account_id':receiver,'actions':[{'action':'TRANSFER','args':{'deposit':amount}}],'outcome':{'status':True},'receipts':children,'block':{'block_timestamp':'1700000000000000000'}}
+        tree=receipt('root','other.near',owner,'10000000000000000000000000',[receipt('child',owner,'contract.near','3000000000000000000000000',[])])
+        def ft(index,amount):
+            return {'affected_account_id':owner,'involved_account_id':'other.near','contract_account_id':token,'delta_amount':amount,'cause':'TRANSFER','receipt_id':f'ft-{index}','event_index':index,'event_type':1,'block_timestamp':'1700000000000000000','meta':{'decimals':6},'transaction_hash':origin}
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_GET(self):
+                url=urlsplit(self.path);query=parse_qs(url.query);requests.append(self.path)
+                if url.path==f'/v3/accounts/{owner}/receipts':
+                    data=[{'transaction_hash':origin}]* (1 if query.get('next') else 50)
+                    result={'data':data,'meta':{'next_page':None if query.get('next') else 'native-next'}}
+                elif url.path==f'/v3/accounts/{owner}/ft-txns':
+                    result={'data':[ft(51,'123')],'meta':{'next_page':None}} if query.get('next') else {'data':[ft(i,'1') for i in range(50)],'meta':{'next_page':'ft-next'}}
+                elif url.path==f'/v3/txns/{origin}/receipts':result={'data':tree}
+                elif url.path==f'/v3/txns/{origin}/fts':result={'data':[ft(0,'9000000'),ft(1,'-2000000')]}
+                else:raise AssertionError(self.path)
+                body=json.dumps(result).encode();self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-near-origins-') as directory:
+                env={**os.environ,'SPECTRA_LOOPBACK_ONLY':str(pathlib.Path(directory)/'network.jsonl')}
+                def run(*args):
+                    result=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True,timeout=60,env=env)
+                    assert result.returncode==0,(args,result.stdout,result.stderr)
+                    return json.loads(result.stdout)
+                run('wallet','watch','--chain','near','--address',owner,'--name','NEAR')
+                base=f'http://127.0.0.1:{server.server_port}'
+                run('endpoints','--chain','near','--api','nearblocks','--capabilities','history,token-history,token-discovery','--add',base+'/v3')
+                first=run('history','NEAR','--save','--endpoint',base+'/rpc')
+                assert first['added']==2 and not first['exhausted'] and first['walletsFailed']==0,first
+                rows=run('txs','--page','--wallet','NEAR')['page']['records']
+                assert len(rows)==2 and {row['amount'] for row in rows}=={'7'},rows
+                second=run('history','NEAR','--save','--load-more','--endpoint',base+'/rpc')
+                assert second['exhausted'] and second['added']==0 and second['updated']==0 and second['walletsFailed']==0,second
+                assert len(run('txs','--page','--wallet','NEAR')['page']['records'])==2
+                assert sum(path.endswith('/receipts') and '/txns/' in path for path in requests)==2,requests
+                assert sum(path.endswith('/fts') and '/txns/' in path for path in requests)==2,requests
+        finally:server.shutdown();server.server_close();worker.join()
+
+    def test_aptos_incoming_orderless_and_tokens_are_indexed(self):
+        versions=[]
+        owner='0x'+'12'.rjust(64,'0')
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def respond(self,result):
+                body=json.dumps(result).encode();self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            def do_POST(self):
+                request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                assert self.path=='/graphql',self.path
+                assert request['variables']['owner']==owner,request
+                before=request['variables'].get('before');versions.append(before)
+                batch=list(range(100,50,-1)) if before is None else [50]
+                activity={'amount':'1250000','asset_type':'0xbeef','type':'0x1::fungible_asset::Deposit','is_gas_fee':False,'is_transaction_success':True,'metadata':{'decimals':6}}
+                gas={'amount':'100','asset_type':'0x1::aptos_coin::AptosCoin','type':'0x1::coin::WithdrawEvent','is_gas_fee':True,'is_transaction_success':True}
+                self.respond({'data':{'ledger_infos':[{'chain_id':1}],'account_transactions':[{'transaction_version':str(v),'fungible_asset_activities':[activity,gas] if v==50 else []} for v in batch]}})
+            def do_GET(self):
+                if self.path=='/v1/':result={'chain_id':1,'ledger_version':'101'}
+                else:
+                    assert self.path.startswith('/v1/transactions/by_version/'),self.path
+                    version=self.path.rsplit('/',1)[1]
+                    result={'version':version,'hash':'0x'+f'{int(version):064x}','timestamp':'1700000000000000','success':True,'sender':'0x99','replay_protection_nonce':'123'}
+                self.respond(result)
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-aptos-indexed-') as directory:
+                env={**os.environ,'SPECTRA_LOOPBACK_ONLY':str(pathlib.Path(directory)/'network.jsonl')}
+                def run(*args):
+                    result=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True,timeout=60,env=env)
+                    assert result.returncode==0,(args,result.stdout,result.stderr)
+                    return json.loads(result.stdout)
+                run('wallet','watch','--chain','aptos','--address',owner,'--name','APT')
+                base=f'http://127.0.0.1:{server.server_port}'
+                run('endpoints','--chain','aptos','--api','aptos-indexer','--capabilities','history,token-history,token-discovery','--add',base+'/graphql')
+                first=run('history','APT','--save','--endpoint',base+'/v1')
+                assert first['added']==0 and not first['exhausted'] and first['walletsFailed']==0,first
+                second=run('history','APT','--save','--load-more','--endpoint',base+'/v1')
+                assert second['added']==1 and second['exhausted'] and second['walletsFailed']==0,second
+                assert versions==[None,'51'],versions
+                rows=run('txs','--page','--wallet','APT')['page']['records']
+                assert len(rows)==1 and rows[0]['amount']=='1.25' and rows[0]['kind']=='receive',rows
+                assert rows[0]['symbol']=='0x'+ 'beef'.rjust(64,'0') or rows[0]['symbol']=='0xbeef',rows
+                assert rows[0]['deploymentId']=='aptos:aip-21:0xbeef',rows
+        finally:server.shutdown();server.server_close();worker.join()
+
+    def test_provider_cursor_survives_restart_and_filtered_empty_page(self):
+        owner = '11111111111111111111111111111111'
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_POST(self):
+                request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                if request['method']=='getSignaturesForAddress':
+                    before=request['params'][1].get('before')
+                    requests.append(before)
+                    result=([{'signature':f'{i:088d}'} for i in range(50)] if before is None else [{'signature':'A'*88}])
+                elif request['method']=='getTransaction':
+                    signature=request['params'][0]
+                    result={'slot':42,'blockTime':1700000000,'transaction':{'message':{'accountKeys':[owner]}},'meta':{'fee':0,'preBalances':[100],'postBalances':[200 if signature=='A'*88 else 100]}}
+                else: raise AssertionError(request)
+                body=json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}).encode()
+                self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-provider-pages-') as directory:
+                env={**os.environ,'SPECTRA_LOOPBACK_ONLY':str(pathlib.Path(directory)/'network.jsonl')}
+                def run(*args):
+                    result=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True,timeout=60,env=env)
+                    assert result.returncode==0,(args,result.stdout,result.stderr)
+                    return json.loads(result.stdout)
+                run('wallet','watch','--chain','solana','--address',owner,'--name','Paged')
+                endpoint=f'http://127.0.0.1:{server.server_port}'
+                first=run('history','Paged','--save','--endpoint',endpoint)
+                assert first['added']==0 and not first['exhausted'] and first['walletsFailed']==0,first
+                with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
+                    cursor=db.execute('SELECT cursor,exhausted FROM history_pagination').fetchone()
+                    assert cursor==(f'{49:088d}',0),cursor
+                second=run('history','Paged','--save','--load-more','--endpoint',endpoint)
+                assert second['added']==1 and second['exhausted'] and second['walletsFailed']==0,second
+                assert requests==[None,f'{49:088d}'],requests
+                rows=run('txs','--page','--wallet','Paged')['page']['records']
+                assert len(rows)==1 and rows[0]['amount']=='0.0000001',rows
+                # A successful head refresh retains the older, already stored record.
+                refreshed=run('history','Paged','--save','--endpoint',endpoint)
+                assert not refreshed['exhausted'] and refreshed['added']==0,refreshed
+                assert len(run('txs','--page','--wallet','Paged')['page']['records'])==1
+        finally:
+            server.shutdown();server.server_close();worker.join()
+
     def test_solana_token_history_labels(self):
         """RPC mint addresses resolve to tickers before storage and survive reopening."""
         owner = '11111111111111111111111111111111'

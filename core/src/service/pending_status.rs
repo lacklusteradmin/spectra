@@ -1,8 +1,8 @@
 //! Polling a chain's pending transactions for a final status.
 //!
 //! How a chain resolves pending transactions is a registry fact, and it takes
-//! three shapes — a UTXO status endpoint, an address history that names
-//! confirmed txids, an EVM receipt. Core owns the store, the schedule and the
+//! a UTXO status endpoint, an exact transaction execution result, an EVM
+//! receipt or finalized Substrate events. Core owns the store, the schedule and the
 //! fetch, so it owns the loop; what comes back is what changed, which is what
 //! a front end needs to write an event and a notification.
 
@@ -35,16 +35,16 @@ pub(super) fn needs_status_poll(
     hash: Option<&str>,
     poll: PendingStatusPoll,
 ) -> bool {
-    use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
+    use crate::store::wallet_domain::CoreTransactionStatus as S;
     let sends_only = match poll {
         PendingStatusPoll::Utxo { require_send_kind } => require_send_kind,
         PendingStatusPoll::EvmReceipt
-        | PendingStatusPoll::HistoryTxids
+        | PendingStatusPoll::TransactionStatus(_)
         | PendingStatusPoll::SubstrateFinality => true,
         PendingStatusPoll::None => return false,
     };
     hash.is_some_and(|h| !h.trim().is_empty())
-        && (!sends_only || kind == K::Send)
+        && (!sends_only || kind.is_submitted())
         && status == S::Pending
 }
 
@@ -188,6 +188,18 @@ impl WalletService {
                                 } else {
                                     None
                                 };
+                                let block = match status.block_height.map(i64::try_from).transpose()
+                                {
+                                    Ok(block) => block,
+                                    Err(_) => {
+                                        this.record_status_poll(
+                                            record.id.clone(),
+                                            crate::service::StatusPollOutcome::Failed,
+                                        )
+                                        .await;
+                                        continue;
+                                    }
+                                };
                                 this.record_status_poll(
                                     record.id.clone(),
                                     if status.confirmed {
@@ -206,9 +218,7 @@ impl WalletService {
                                     }
                                     .to_string(),
                                     confirmations,
-                                    receipt_block_number: status
-                                        .block_height
-                                        .map(|height| height as i64),
+                                    receipt_block_number: block,
                                     evm_receipt_cost: None,
                                 });
                             }
@@ -283,6 +293,14 @@ impl WalletService {
                         };
                         match this.poll_substrate_artifact(chain, &record.id, hash).await {
                             Ok(Some(outcome)) => {
+                                let Ok(block) = i64::try_from(outcome.block_number) else {
+                                    this.record_status_poll(
+                                        record.id.clone(),
+                                        crate::service::StatusPollOutcome::Failed,
+                                    )
+                                    .await;
+                                    continue;
+                                };
                                 this.record_status_poll(
                                     record.id.clone(),
                                     crate::service::StatusPollOutcome::Confirmed,
@@ -297,10 +315,7 @@ impl WalletService {
                                     }
                                     .into(),
                                     confirmations: None,
-                                    receipt_block_number: Some(
-                                        i64::try_from(outcome.block_number)
-                                            .map_err(SpectraBridgeError::failure)?,
-                                    ),
+                                    receipt_block_number: Some(block),
                                     evm_receipt_cost: None,
                                 });
                             }
@@ -321,71 +336,51 @@ impl WalletService {
                         }
                     }
                 }
-                PendingStatusPoll::HistoryTxids => {
-                    // One history read per address, not per transaction: the
-                    // records are grouped by the wallet's address first.
-                    let state = this.app_state().await;
-                    let mut by_address: std::collections::HashMap<String, Vec<&_>> =
-                        std::collections::HashMap::new();
-                    for record in records.iter().filter(|r| due.contains(&r.id)) {
-                        let Some(address) = record
-                            .wallet_id
-                            .as_deref()
-                            .and_then(|wallet_id| {
-                                state
-                                    .wallets
-                                    .iter()
-                                    .find(|wallet| wallet.id.eq_ignore_ascii_case(wallet_id))
-                            })
-                            .and_then(|wallet| wallet.active_address())
-                        else {
-                            continue;
-                        };
-                        by_address
-                            .entry(address.to_string())
-                            .or_default()
-                            .push(record);
-                    }
-                    for (address, group) in by_address {
-                        let confirmed = match this.fetch_history_summary(chain, address).await {
-                            Ok(summary) => summary
-                                .confirmed_txids
-                                .into_iter()
-                                .map(|txid| txid.to_lowercase())
-                                .collect::<std::collections::HashSet<_>>(),
-                            Err(_) => {
-                                for record in group {
+                PendingStatusPoll::TransactionStatus(api) => {
+                    for record in records.iter().filter(|record| due.contains(&record.id)) {
+                        let outcome = this
+                            .fetch_pending_transaction_status(chain, api, record)
+                            .await;
+                        match outcome {
+                            Ok(crate::api::transaction_status::TransactionStatus::Pending) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Pending,
+                                )
+                                .await;
+                            }
+                            Ok(crate::api::transaction_status::TransactionStatus::Confirmed {
+                                succeeded,
+                                block,
+                            }) => {
+                                let Ok(block) = block.map(i64::try_from).transpose() else {
                                     this.record_status_poll(
                                         record.id.clone(),
                                         crate::service::StatusPollOutcome::Failed,
                                     )
                                     .await;
-                                }
-                                continue;
+                                    continue;
+                                };
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Confirmed,
+                                )
+                                .await;
+                                resolutions.push(ResolvedPendingStatus {
+                                    id: record.id.clone(),
+                                    status: if succeeded { "confirmed" } else { "failed" }.into(),
+                                    confirmations: None,
+                                    receipt_block_number: block,
+                                    evm_receipt_cost: None,
+                                });
                             }
-                        };
-                        for record in group.into_iter().filter(|r| due.contains(&r.id)) {
-                            let is_confirmed = record
-                                .transaction_hash
-                                .as_deref()
-                                .is_some_and(|hash| confirmed.contains(&hash.to_lowercase()));
-                            this.record_status_poll(
-                                record.id.clone(),
-                                if is_confirmed {
-                                    crate::service::StatusPollOutcome::Confirmed
-                                } else {
-                                    crate::service::StatusPollOutcome::Pending
-                                },
-                            )
-                            .await;
-                            resolutions.push(ResolvedPendingStatus {
-                                id: record.id.clone(),
-                                status: if is_confirmed { "confirmed" } else { "pending" }
-                                    .to_string(),
-                                confirmations: None,
-                                receipt_block_number: None,
-                                evm_receipt_cost: None,
-                            });
+                            Err(_) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Failed,
+                                )
+                                .await;
+                            }
                         }
                     }
                 }
@@ -400,7 +395,163 @@ impl WalletService {
 }
 
 impl WalletService {
-    async fn poll_substrate_artifact(
+    pub(super) async fn fetch_pending_transaction_status(
+        &self,
+        chain: Chain,
+        api: crate::EndpointApi,
+        record: &crate::store::persistence_models::CorePersistedTransactionRecord,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, SpectraBridgeError> {
+        use crate::EndpointApi as Api;
+        use std::sync::Arc;
+        if chain == Chain::Icp && record.kind.is_staking() {
+            let stored = self.load_send_artifact(record.id.clone()).await?;
+            stored.validate()?;
+            return self.icp_staking_receipts(&stored, None).await;
+        }
+        let hash = record
+            .transaction_hash
+            .clone()
+            .ok_or_else(|| SpectraBridgeError::failure("Missing transaction hash"))?;
+        let endpoints = if chain.endpoint_apis().contains(&api) {
+            self.endpoints_for(chain, &[crate::EndpointCapability::Verification])
+                .await
+        } else {
+            Arc::new(
+                self.api_endpoints(chain, api, &[crate::EndpointCapability::Verification])
+                    .await?,
+            )
+        };
+        if api == Api::ToncenterV3 {
+            let stored = self.load_send_artifact(record.id.clone()).await?;
+            stored.validate()?;
+            if stored.view.chain_id != chain
+                || stored.view.transaction_hash.as_deref() != Some(&hash)
+            {
+                return Err(SpectraBridgeError::failure(
+                    "TON status: stored transaction identity mismatch",
+                ));
+            }
+            let crate::send::stages::PreparedPayload::Ton {
+                amount,
+                seqno,
+                jetton,
+                ..
+            } = &stored.prepared
+            else {
+                return Err(SpectraBridgeError::failure(
+                    "TON status: missing transfer artifact",
+                ));
+            };
+            let raw = |address: &str| -> Result<String, SpectraBridgeError> {
+                let address = crate::derivation::ton::parse_ton_address(address)?
+                    .for_network(chain.is_testnet())?;
+                Ok(format!(
+                    "{}:{}",
+                    address.workchain,
+                    hex::encode(address.account_id)
+                ))
+            };
+            let expected = crate::api::toncenter_v3::TonTransferExpectation {
+                owner: raw(&stored.view.sender)?,
+                recipient: raw(&stored.request.to_address)?,
+                amount: *amount,
+                jetton: jetton
+                    .as_ref()
+                    .map(|transfer| {
+                        Ok::<_, SpectraBridgeError>(
+                            crate::api::toncenter_v3::TonJettonExpectation {
+                                master: raw(&transfer.master)?,
+                                source_wallet: raw(&transfer.source_wallet)?,
+                                query_id: u64::from(*seqno),
+                            },
+                        )
+                    })
+                    .transpose()?,
+            };
+            return Ok(crate::api::toncenter_v3::ToncenterV3Client::new(endpoints)
+                .fetch_transaction_status(chain, &hash, &expected)
+                .await?);
+        }
+        let sender = record.source_address.clone().unwrap_or_default();
+        Ok(crate::api::http::race(&endpoints, |endpoint| {
+            let hash = hash.clone();
+            let sender = sender.clone();
+            async move {
+                let eps = Arc::new(vec![endpoint.clone()]);
+                match api {
+                    Api::SolanaJsonRpc => {
+                        let client = crate::api::solana_json_rpc::SolanaClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::AptosRest => {
+                        let client = crate::api::aptos_rest::AptosClient::new(eps);
+                        let expected = chain.aptos_chain_id().ok_or_else(|| {
+                            crate::api::error::ApiError::decode("Missing Aptos network identity")
+                        })?;
+                        if client.fetch_ledger_info().await?.0 != u64::from(expected) {
+                            return Err(crate::api::error::ApiError::decode(
+                                "Aptos status: wrong network",
+                            ));
+                        }
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::SuiJsonRpc => {
+                        let client = crate::api::sui_json_rpc::SuiClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::NearJsonRpc => {
+                        if sender.is_empty() {
+                            return Err(crate::api::error::ApiError::decode(
+                                "NEAR status: missing stored sender",
+                            ));
+                        }
+                        let client = crate::api::near_json_rpc::NearClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash, &sender).await
+                    }
+                    Api::XrplJsonRpc => {
+                        let client = crate::api::xrpl_json_rpc::XrplClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::Horizon => {
+                        let client = crate::api::horizon::HorizonClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::TronHttp => {
+                        let client = crate::api::tron_http::TronHttpClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::Koios => {
+                        crate::api::koios::KoiosClient::new(eps)
+                            .fetch_transaction_status(&hash)
+                            .await
+                    }
+                    Api::IcpRosetta => {
+                        let client = crate::api::icp_rosetta::IcpClient::new(eps);
+                        client.verify_network().await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::MoneroDaemonRpc => {
+                        crate::api::monero_daemon_rpc::fetch_transaction_status(
+                            &endpoint, chain, &hash,
+                        )
+                        .await
+                    }
+                    _ => Err(crate::api::error::ApiError::decode(
+                        "Registry transaction status API is unsupported",
+                    )),
+                }
+            }
+        })
+        .await?)
+    }
+
+    pub(super) async fn poll_substrate_artifact(
         &self,
         chain: Chain,
         id: &str,
@@ -408,22 +559,25 @@ impl WalletService {
     ) -> Result<Option<crate::api::substrate_json_rpc::SubstrateFinalizedOutcome>, SpectraBridgeError>
     {
         let mut stored = self.load_send_artifact(id.to_string()).await?;
-        let crate::send::stages::PreparedPayload::Polkadot(prepared) = &stored.prepared else {
-            return Err(SpectraBridgeError::failure(
-                "Missing Asset Hub transaction artifact",
-            ));
+        let finalized_number = match &stored.prepared {
+            crate::send::stages::PreparedPayload::Substrate(prepared) => prepared.finalized_number,
+            _ => {
+                return Err(SpectraBridgeError::failure(
+                    "Missing Substrate transaction artifact",
+                ));
+            }
         };
         if stored.view.chain_id != chain || stored.view.transaction_hash.as_deref() != Some(hash) {
             return Err(SpectraBridgeError::failure(
-                "Asset Hub transaction identity mismatch",
+                "Substrate transaction identity mismatch",
             ));
         }
         let after = stored
             .substrate_verified_through
-            .unwrap_or(prepared.finalized_number);
-        if after < prepared.finalized_number {
+            .unwrap_or(finalized_number);
+        if after < finalized_number {
             return Err(SpectraBridgeError::failure(
-                "Invalid Asset Hub finality cursor",
+                "Invalid Substrate finality cursor",
             ));
         }
         let endpoints = self
@@ -462,6 +616,37 @@ mod tests {
     use super::*;
     use crate::store::persistence_models::CorePersistedTransactionRecord;
     use serde_json::json;
+
+    #[test]
+    fn all_staking_submissions_remain_eligible_for_pending_verification() {
+        use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
+        for kind in [K::Stake, K::Unstake, K::Withdraw, K::ClaimRewards] {
+            assert!(needs_status_poll(
+                kind,
+                S::Pending,
+                Some("hash"),
+                PendingStatusPoll::SubstrateFinality
+            ));
+            assert!(!needs_status_poll(
+                kind,
+                S::Confirmed,
+                Some("hash"),
+                PendingStatusPoll::SubstrateFinality
+            ));
+            assert!(!needs_status_poll(
+                kind,
+                S::Pending,
+                None,
+                PendingStatusPoll::SubstrateFinality
+            ));
+        }
+        assert!(!needs_status_poll(
+            K::Receive,
+            S::Pending,
+            Some("hash"),
+            PendingStatusPoll::SubstrateFinality
+        ));
+    }
 
     /// Built from the stored JSON shape so a test says only what it is about.
     fn record(
@@ -543,10 +728,10 @@ mod tests {
         );
         assert_eq!(ids(&receives), vec!["pending-send", "pending-receive"]);
 
-        // The receipt and history shapes track pending sends.
+        // Execution result shapes track pending sends.
         for poll in [
             PendingStatusPoll::EvmReceipt,
-            PendingStatusPoll::HistoryTxids,
+            PendingStatusPoll::TransactionStatus(crate::EndpointApi::SolanaJsonRpc),
         ] {
             assert_eq!(
                 ids(&tracked(&all, Chain::Bitcoin, poll)),
@@ -556,21 +741,14 @@ mod tests {
         assert!(tracked(&all, Chain::Bitcoin, PendingStatusPoll::None).is_empty());
     }
 
-    /// A chain the registry does not poll does nothing, and an unknown one is
-    /// refused. Offline: neither reaches a provider.
-    #[tokio::test]
-    async fn a_chain_that_is_not_polled_does_nothing() {
-        let service = WalletService::new(Vec::new()).expect("service");
-        let unpolled = Chain::all()
-            .find(|chain| matches!(chain.pending_status_poll(), PendingStatusPoll::None))
-            .expect("some chain is not polled");
-        assert!(
-            service
-                .poll_pending_transactions(unpolled)
-                .await
-                .expect("poll")
-                .is_empty()
-        );
+    #[test]
+    fn every_send_protocol_has_confirmation_maintenance() {
+        for chain in Chain::all() {
+            assert!(
+                !matches!(chain.pending_status_poll(), PendingStatusPoll::None),
+                "{chain}"
+            );
+        }
     }
     #[tokio::test]
     async fn maintenance_skips_confirmed_records_after_reopening_and_ignores_empty_hashes() {
@@ -675,6 +853,159 @@ mod tests {
         for id in ids {
             assert_eq!(trackers[&id].consecutive_failures, 2, "{id}");
         }
+    }
+
+    #[tokio::test]
+    async fn six_failed_status_reads_never_fail_an_old_transaction() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
+        let server = MockServer::start().await;
+        Mock::given(body_partial_json(json!({"method":"getGenesisHash"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0","id":1,"result":Chain::Solana.solana_genesis_hash().unwrap()})))
+            .mount(&server).await;
+        Mock::given(body_partial_json(json!({"method":"getSignatureStatuses"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporarily unavailable"}})))
+            .expect(6).mount(&server).await;
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+            chain_id: Chain::Solana,
+            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "spectra-status-failures-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        service
+            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+                "old",
+                Chain::Solana,
+                json!({"transactionHash":"1".repeat(64),"createdAtUnix":0.0}),
+            ))])
+            .await
+            .unwrap();
+        for _ in 0..6 {
+            if let Some(tracker) = service.status_trackers.write().await.get_mut("old") {
+                tracker.next_check_at_unix = 0.0;
+            }
+            assert!(
+                service
+                    .poll_pending_transactions(Chain::Solana)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let stored = service.transaction("old".into()).await.unwrap().unwrap();
+        assert_eq!(
+            stored.status,
+            crate::store::wallet_domain::CoreTransactionStatus::Pending
+        );
+        assert!(stored.failure_reason.is_none());
+        let tracker = service.status_trackers.read().await["old"].clone();
+        assert_eq!(tracker.consecutive_failures, 6);
+        assert!(!tracker.polling_complete);
+        assert!(
+            service
+                .transactions_due_for_status_poll(vec!["old".into()])
+                .await
+                .is_empty()
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn overflowing_block_keeps_polling_and_does_not_drop_other_resolutions() {
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|request: &Request| {
+                let body: serde_json::Value = request.body_json().unwrap();
+                let result = match body["method"].as_str().unwrap() {
+                    "getGenesisHash" => json!(Chain::Solana.solana_genesis_hash().unwrap()),
+                    "getSignatureStatuses" => json!({"value":[{
+                        "confirmationStatus":"finalized", "err":null,
+                        "slot":if body["params"][0][0] == "1".repeat(64) {
+                            u64::MAX
+                        } else {
+                            17
+                        }
+                    }]}),
+                    method => panic!("Unexpected status method: {method}"),
+                };
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc":"2.0", "id":body["id"], "result":result}))
+            })
+            .expect(4)
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+            chain_id: Chain::Solana,
+            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "spectra-overflow-status-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        service
+            .upsert_history_records(
+                [
+                    ("overflow", "1".repeat(64)),
+                    ("healthy", bs58::encode([1u8; 64]).into_string()),
+                ]
+                .into_iter()
+                .map(|(id, hash)| {
+                    crate::wallet_db::history_record_from_payload(record(
+                        id,
+                        Chain::Solana,
+                        json!({"transactionHash":hash}),
+                    ))
+                })
+                .collect(),
+            )
+            .await
+            .unwrap();
+        let changes = service
+            .poll_pending_transactions(Chain::Solana)
+            .await
+            .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].id, "healthy");
+        let overflow = service
+            .transaction("overflow".into())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            overflow.status,
+            crate::store::wallet_domain::CoreTransactionStatus::Pending
+        );
+        assert!(overflow.receipt_block_number.is_none());
+        assert!(overflow.failure_reason.is_none());
+        let healthy = service
+            .transaction("healthy".into())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            healthy.status,
+            crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+        );
+        assert_eq!(healthy.receipt_block_number, Some(17));
+        let trackers = service.status_trackers.read().await;
+        assert_eq!(trackers["overflow"].consecutive_failures, 1);
+        assert!(!trackers["overflow"].polling_complete);
+        assert!(trackers["healthy"].polling_complete);
+        server.verify().await;
     }
 
     #[tokio::test]

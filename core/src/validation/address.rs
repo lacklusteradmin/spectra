@@ -262,8 +262,9 @@ fn validate_solana_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_stellar_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::stellar::decode_stellar_address(value).is_ok() {
-        return make_result(value.to_string());
+    let canonical = value.to_ascii_uppercase();
+    if crate::derivation::stellar::decode_stellar_address(&canonical).is_ok() {
+        return make_result(canonical);
     }
     invalid_result()
 }

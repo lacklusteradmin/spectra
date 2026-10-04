@@ -20,13 +20,15 @@ async function main() {
  tx.setGasPayment([{ objectId:'0x'+'33'.repeat(32),version:'7',digest }]);
  const [coin] = tx.splitCoins(tx.gas, [tx.pure.u64(123456789)]); tx.transferObjects([coin],tx.pure.address('0x'+'22'.repeat(32)));
  const bytes = await tx.build(); const signed = await sui.signTransaction(bytes);
- fixtures.sui = { address:sui.toSuiAddress(), public_key:hex(sui.getPublicKey().toRawBytes()), raw:hex(bytes), signature:signed.signature };
+ fixtures.sui = { address:sui.toSuiAddress(), public_key:hex(sui.getPublicKey().toRawBytes()), raw:hex(bytes), signature:signed.signature, transaction_digest:await tx.getDigest() };
  const aptos = apt.Account.fromDerivationPath({ mnemonic, path:"m/44'/637'/0'/0'/0'", legacy:true });
  const recipient = apt.AccountAddress.fromString('0x'+'22'.repeat(32));
  const payload = new apt.TransactionPayloadEntryFunction(apt.EntryFunction.build('0x1::coin','transfer',[apt.parseTypeTag('0x1::aptos_coin::AptosCoin')],[recipient,new apt.U64(123456789n)]));
  const raw = new apt.RawTransaction(aptos.accountAddress,7n,payload,10000n,100n,1800000000n,new apt.ChainId(1));
  const message = apt.generateSigningMessage(raw.bcsToBytes(),'APTOS::RawTransaction');
- fixtures.aptos = { address:aptos.accountAddress.toString(), public_key:aptos.publicKey.toString().replace(/^0x/,''), message:hex(message), signature:aptos.sign(message).toString().replace(/^0x/,'') };
+ const aptosSignature = aptos.sign(message);
+ const transaction_hash = apt.generateUserTransactionHash({ transaction:new apt.SimpleTransaction(raw), senderAuthenticator:new apt.AccountAuthenticatorEd25519(aptos.publicKey,aptosSignature) });
+ fixtures.aptos = { address:aptos.accountAddress.toString(), public_key:aptos.publicKey.toString().replace(/^0x/,''), message:hex(message), signature:aptosSignature.toString().replace(/^0x/,''), transaction_hash };
  const seed = derivePath("m/44'/501'/0'/0'", mnemonicToSeedSync(mnemonic).toString("hex")).key;
  const solana = sol.Keypair.fromSeed(seed); const dest = new sol.PublicKey(Buffer.alloc(32,0x22));
  const blockhash = new sol.PublicKey(Buffer.alloc(32,0x33)).toBase58();

@@ -33,7 +33,7 @@ pub struct RefreshClock {
 }
 
 /// Which clock a completed refresh stamps.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshKind {
     PendingTransactions,
     LivePrices,

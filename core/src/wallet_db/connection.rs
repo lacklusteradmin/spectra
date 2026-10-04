@@ -107,7 +107,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              payload    TEXT NOT NULL CHECK (
                  json_valid(payload)
                  AND json_type(payload, '$.id') IS 'text'
-                 AND coalesce(json_extract(payload, '$.kind'), '') IN ('send', 'receive')
+                 AND coalesce(json_extract(payload, '$.kind'), '') IN ('send', 'receive', 'stake', 'unstake', 'withdraw', 'claimRewards')
                  AND coalesce(json_extract(payload, '$.status'), '') IN ('pending', 'confirmed', 'failed')),
              asset_key TEXT GENERATED ALWAYS AS
                  (coalesce(json_extract(payload, '$.deploymentId'), 'record:' || id)) STORED,
@@ -115,6 +115,14 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
                  (coalesce(nullif(json_extract(payload, '$.transactionHash'), ''), id)) STORED,
              status_rank INTEGER GENERATED ALWAYS AS
                  (CASE json_extract(payload, '$.status') WHEN 'confirmed' THEN 3 WHEN 'pending' THEN 2 ELSE 1 END) STORED
+         );
+         CREATE TABLE IF NOT EXISTS history_pagination (
+             chain_id TEXT NOT NULL,
+             wallet_id TEXT NOT NULL,
+             cursor TEXT,
+             page INTEGER NOT NULL CHECK(page >= 0),
+             exhausted INTEGER NOT NULL CHECK(exhausted IN (0, 1)),
+             PRIMARY KEY(chain_id, wallet_id)
          );
          CREATE INDEX IF NOT EXISTS idx_hr_wallet  ON history_records(wallet_id);
          CREATE INDEX IF NOT EXISTS idx_hr_chain   ON history_records(chain_id);
@@ -128,7 +136,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              (json_extract(payload, '$.status'), created_at DESC, id);
          CREATE INDEX IF NOT EXISTS idx_hr_pending_sender ON history_records
              (chain_id, lower(json_extract(payload, '$.sourceAddress')))
-             WHERE json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending';
+             WHERE json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards') AND json_extract(payload, '$.status') = 'pending';
          CREATE INDEX IF NOT EXISTS idx_hr_source_path ON history_records
              (wallet_id, chain_id, json_extract(payload, '$.sourceDerivationPath'));
          CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records

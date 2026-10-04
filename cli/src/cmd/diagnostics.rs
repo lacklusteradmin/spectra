@@ -43,14 +43,14 @@ pub enum DiagnosticsCommand {
 
 #[derive(Args)]
 pub struct SelfTestArgs {
-    /// Chain display name, registry id or symbol. Omit to run every chain.
+    /// Chain display name or registry id. Omit to run every chain.
     #[arg(long)]
     chain: Option<String>,
 }
 
 #[derive(Args)]
 pub struct ShowArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long)]
     chain: String,
 }

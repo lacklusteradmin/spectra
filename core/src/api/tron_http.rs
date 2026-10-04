@@ -1,4 +1,4 @@
-//! The Tron node HTTP API adapter (`/wallet/...`): balances, TRC-20 reads
+//! The Tron node HTTP API adapter (`/wallet/...`): balances, TRC-10 assets, TRC-20 reads
 //! through constant calls, block references and broadcast. Account history
 //! and holdings come from `trongrid_v1`.
 
@@ -44,6 +44,134 @@ pub struct Trc20Metadata {
     pub decimals: u8,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Trc10Metadata {
+    pub asset_id: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Trc10Balance {
+    pub metadata: Trc10Metadata,
+    pub balance_raw: u64,
+    pub balance_display: String,
+}
+
+pub(crate) struct Trc10TransferState {
+    pub token: Trc10Balance,
+    pub native_balance: u64,
+    /// Upper bound if no issuer, staked or free bandwidth pays for the transfer.
+    pub fee_budget_sun: u64,
+    pub recipient_balance: u64,
+}
+
+pub(crate) fn validate_asset_id(id: &str) -> Result<(), ApiError> {
+    if id.starts_with('0')
+        || !id.bytes().all(|byte| byte.is_ascii_digit())
+        || !id.parse::<i64>().is_ok_and(|id| id > 0)
+    {
+        return Err(ApiError::invalid(
+            "TRC-10 token ID must be canonical positive int64 decimal",
+        ));
+    }
+    Ok(())
+}
+
+fn trc10_metadata(value: &Value, id: &str) -> Result<Trc10Metadata, ApiError> {
+    if value.get("id").and_then(Value::as_str) != Some(id) {
+        return Err(ApiError::decode(
+            "TRC-10 metadata is missing or names a different token",
+        ));
+    }
+    let decode_text = |field: &str| -> Result<String, ApiError> {
+        let raw = value
+            .get(field)
+            .and_then(Value::as_str)
+            .or_decode("TRC-10 metadata text missing")?;
+        let decoded = String::from_utf8(hex::decode(raw).map_err(ApiError::decode)?)
+            .map_err(ApiError::decode)?;
+        if decoded.trim().is_empty() || decoded.chars().any(char::is_control) {
+            return Err(ApiError::decode(
+                "TRC-10 metadata text is empty or contains control characters",
+            ));
+        }
+        Ok(decoded)
+    };
+    let name = decode_text("name")?;
+    // Issuance permits an empty abbreviation; protobuf JSON may either omit it
+    // or emit the default empty bytes. Both spellings use the asset's name.
+    let symbol = if value.get("abbr").is_some_and(|v| v.as_str() != Some("")) {
+        decode_text("abbr")?
+    } else {
+        name.clone()
+    };
+    // Protobuf omits precision=0. TRC-10 issuance only permits 0..=6.
+    let precision = match value.get("precision") {
+        None => 0,
+        Some(value) => value.as_u64().or_decode("Invalid TRC-10 precision")?,
+    };
+    let decimals = u8::try_from(precision)
+        .ok()
+        .filter(|n| *n <= 6)
+        .or_decode("TRC-10 precision exceeds its protocol range")?;
+    Ok(Trc10Metadata {
+        asset_id: id.into(),
+        name,
+        symbol,
+        decimals,
+    })
+}
+
+fn trc10_account(value: &Value, address: &str) -> Result<(u64, Vec<(String, u64)>), ApiError> {
+    let object = value
+        .as_object()
+        .or_decode("Invalid Tron account response")?;
+    if let Some(error) = object.get("Error") {
+        return Err(ApiError::rejected(format!("Tron account: {error}")));
+    }
+    if let Some(actual) = object.get("address") {
+        if actual.as_str() != Some(address) {
+            return Err(ApiError::decode(
+                "Tron account response names a different owner",
+            ));
+        }
+    } else if !object.is_empty() {
+        return Err(ApiError::decode(
+            "Tron account response is missing its owner",
+        ));
+    }
+    let balance = match object.get("balance") {
+        None => 0,
+        Some(value) => value
+            .as_u64()
+            .filter(|n| *n <= i64::MAX as u64)
+            .or_decode("Invalid Tron native balance")?,
+    };
+    let mut held = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    if let Some(assets) = object.get("assetV2") {
+        for asset in assets.as_array().or_decode("Invalid TRC-10 holdings")? {
+            let id = asset
+                .get("key")
+                .and_then(Value::as_str)
+                .or_decode("TRC-10 holding has no ID")?;
+            validate_asset_id(id)?;
+            if !seen.insert(id) {
+                return Err(ApiError::decode("Duplicate TRC-10 token balance"));
+            }
+            let amount = asset
+                .get("value")
+                .and_then(Value::as_u64)
+                .filter(|n| *n <= i64::MAX as u64)
+                .or_decode("Invalid TRC-10 balance")?;
+            held.push((id.into(), amount));
+        }
+    }
+    Ok((balance, held))
+}
+
 // ── Client
 
 use crate::api::tron_metadata_cache::{self as metadata_cache, MetadataCache};
@@ -55,6 +183,253 @@ pub struct TronHttpClient {
 }
 
 impl TronHttpClient {
+    pub(crate) async fn transfer_reference_for(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<BlockReference, ApiError> {
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            node.transfer_reference().await
+        })
+        .await
+    }
+
+    async fn trc10_metadata_at(&self, id: &str) -> Result<Trc10Metadata, ApiError> {
+        validate_asset_id(id)?;
+        let value = self
+            .post("/wallet/getassetissuebyid", &json!({"value":id}))
+            .await?;
+        trc10_metadata(&value, id)
+    }
+
+    async fn account_at(&self, address: &str) -> Result<Value, ApiError> {
+        tron_base58_to_evm_hex(address).map_err(ApiError::invalid)?;
+        self.post(
+            "/wallet/getaccount",
+            &json!({"address":address,"visible":true}),
+        )
+        .await
+    }
+
+    pub async fn fetch_trc10_metadata(
+        &self,
+        chain: crate::registry::Chain,
+        id: &str,
+    ) -> Result<Trc10Metadata, ApiError> {
+        validate_asset_id(id)?;
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            node.trc10_metadata_at(id).await
+        })
+        .await
+    }
+
+    /// Before ALLOW_SAME_TOKEN_NAME, transfer bytes named an asset. Resolve
+    /// through the node's unique-name API, then cross-check its current ID.
+    /// A duplicate name, absent asset or mismatched response refuses the page.
+    pub(crate) async fn fetch_legacy_trc10_metadata(
+        &self,
+        chain: crate::registry::Chain,
+        name: &str,
+    ) -> Result<Trc10Metadata, ApiError> {
+        if name.is_empty()
+            || name.len() > 32
+            || !name.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+        {
+            return Err(ApiError::invalid("Invalid legacy TRC-10 asset name"));
+        }
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let value = node
+                .post(
+                    "/wallet/getassetissuebyname",
+                    &json!({"value":hex::encode(name)}),
+                )
+                .await?;
+            let id = value
+                .get("id")
+                .and_then(Value::as_str)
+                .or_decode("Legacy TRC-10 name has no unambiguous canonical ID")?;
+            validate_asset_id(id)?;
+            let legacy = trc10_metadata(&value, id)?;
+            if legacy.name != name || legacy.decimals != 0 {
+                return Err(ApiError::decode(
+                    "Legacy TRC-10 name or pre-activation precision is inconsistent",
+                ));
+            }
+            let current = node.trc10_metadata_at(id).await?;
+            if current != legacy {
+                return Err(ApiError::decode(
+                    "Legacy TRC-10 name does not match its current asset identity",
+                ));
+            }
+            Ok(current)
+        })
+        .await
+    }
+
+    pub async fn fetch_trc10_balance(
+        &self,
+        chain: crate::registry::Chain,
+        id: &str,
+        owner: &str,
+    ) -> Result<Trc10Balance, ApiError> {
+        validate_asset_id(id)?;
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let (metadata, account) =
+                tokio::try_join!(node.trc10_metadata_at(id), node.account_at(owner))?;
+            let (_, held) = trc10_account(&account, owner)?;
+            let balance_raw = held
+                .into_iter()
+                .find(|(asset_id, _)| asset_id == id)
+                .map_or(0, |(_, balance)| balance);
+            let balance_display =
+                crate::decimal::from_units(u128::from(balance_raw), u32::from(metadata.decimals));
+            Ok(Trc10Balance {
+                metadata,
+                balance_raw,
+                balance_display,
+            })
+        })
+        .await
+    }
+
+    /// TRC-10 is native account state; it needs no TronGrid contract indexer.
+    pub(crate) async fn fetch_trc10_holdings(
+        &self,
+        chain: crate::registry::Chain,
+        owner: &str,
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let (_, held) = trc10_account(&node.account_at(owner).await?, owner)?;
+            let reads = held
+                .into_iter()
+                .filter(|(_, balance)| *balance > 0)
+                .map(|(id, raw)| {
+                    let node = &node;
+                    async move {
+                        let metadata = node.trc10_metadata_at(&id).await?;
+                        Ok::<_, ApiError>(crate::api::HeldToken {
+                            contract: id,
+                            balance_raw: u128::from(raw),
+                            decimals: Some(metadata.decimals),
+                        })
+                    }
+                });
+            use futures::{StreamExt, TryStreamExt};
+            futures::stream::iter(reads).buffered(8).try_collect().await
+        })
+        .await
+    }
+
+    pub(crate) async fn fetch_trc10_transfer_state(
+        &self,
+        chain: crate::registry::Chain,
+        id: &str,
+        owner: &str,
+        receiver: Option<&str>,
+        bandwidth_bytes: u64,
+    ) -> Result<Trc10TransferState, ApiError> {
+        validate_asset_id(id)?;
+        if receiver == Some(owner) {
+            return Err(ApiError::invalid("TRC-10 cannot transfer to its sender"));
+        }
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let empty = json!({});
+            let (metadata, account, parameters) = tokio::try_join!(
+                node.trc10_metadata_at(id),
+                node.account_at(owner),
+                node.post("/wallet/getchainparameters", &empty)
+            )?;
+            let (native_balance, held) = trc10_account(&account, owner)?;
+            let balance_raw = held
+                .into_iter()
+                .find(|(asset_id, _)| asset_id == id)
+                .map_or(0, |(_, balance)| balance);
+            let rows = parameters
+                .get("chainParameter")
+                .and_then(Value::as_array)
+                .or_decode("Tron fee parameters missing")?;
+            let parameter = |name: &str| {
+                let mut values = rows
+                    .iter()
+                    .filter(|row| row.get("key").and_then(Value::as_str) == Some(name));
+                let row = values
+                    .next()
+                    .or_decode("Tron required fee parameter missing")?;
+                if values.next().is_some() {
+                    return Err(ApiError::decode("Duplicate Tron fee parameter"));
+                }
+                // Protobuf omits the default integer zero.
+                match row.get("value") {
+                    None => Ok(0),
+                    Some(value) => value
+                        .as_u64()
+                        .filter(|n| *n <= i64::MAX as u64)
+                        .or_decode("Invalid Tron fee parameter"),
+                }
+            };
+            let recipient = if let Some(receiver) = receiver {
+                let value = node.account_at(receiver).await?;
+                let (_, recipient_held) = trc10_account(&value, receiver)?;
+                let current = recipient_held
+                    .iter()
+                    .find(|(asset_id, _)| asset_id == id)
+                    .map_or(0, |(_, n)| *n);
+                Some((value, current))
+            } else {
+                None
+            };
+            let bandwidth_fee = parameter("getTransactionFee")?
+                .checked_mul(bandwidth_bytes)
+                .or_decode("Tron bandwidth fee overflow")?;
+            let new_account = recipient.as_ref().is_none_or(|(account, _)| {
+                account
+                    .as_object()
+                    .is_some_and(|account| account.is_empty())
+            });
+            let fee_budget_sun = if new_account {
+                parameter("getCreateAccountFee")?
+                    .checked_add(parameter("getCreateNewAccountFeeInSystemContract")?)
+                    .or_decode("Tron activation fee overflow")?
+            } else {
+                bandwidth_fee
+            };
+            let fee_budget_sun = fee_budget_sun.max(bandwidth_fee);
+            if recipient.as_ref().is_some_and(|(account, _)| {
+                account.get("type").and_then(Value::as_str) == Some("Contract")
+            }) && parameter("getForbidTransferToContract")? == 1
+            {
+                return Err(ApiError::invalid(
+                    "TRC-10 transfer to a contract account is forbidden on this network",
+                ));
+            }
+            let recipient_balance = recipient.map_or(0, |(_, amount)| amount);
+            let balance_display =
+                crate::decimal::from_units(u128::from(balance_raw), u32::from(metadata.decimals));
+            Ok(Trc10TransferState {
+                token: Trc10Balance {
+                    metadata,
+                    balance_raw,
+                    balance_display,
+                },
+                native_balance,
+                fee_budget_sun,
+                recipient_balance,
+            })
+        })
+        .await
+    }
+
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             metadata_cache: None,
@@ -117,6 +492,43 @@ use serde_json::json;
 use crate::derivation::tron::tron_base58_to_evm_hex;
 
 impl TronHttpClient {
+    pub(crate) async fn verify_network(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        let expected = chain
+            .tron_genesis_block_id()
+            .or_decode("Missing Tron network identity")?;
+        let result = self
+            .post("/wallet/getblockbynum", &json!({"num":0}))
+            .await?;
+        if !result
+            .get("blockID")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.eq_ignore_ascii_case(expected))
+        {
+            return Err(ApiError::invalid("Tron endpoint is on the wrong network"));
+        }
+        Ok(())
+    }
+
+    /// The solidity receipt is committed; a latest-head receipt can still be reverted.
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        hash: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(ApiError::invalid("Invalid Tron transaction hash"));
+        }
+        let result = self
+            .post(
+                "/walletsolidity/gettransactioninfobyid",
+                &json!({"value":hash}),
+            )
+            .await?;
+        tron_transaction_status(&result, hash)
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<TronBalance, ApiError> {
         let resp = self
             .post(
@@ -237,6 +649,73 @@ impl TronHttpClient {
     }
 }
 
+fn tron_transaction_status(
+    result: &Value,
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    let object = result
+        .as_object()
+        .or_decode("Tron transaction receipt is not an object")?;
+    if object.is_empty() {
+        return Ok(TransactionStatus::Pending);
+    }
+    if let Some(error) = result.get("Error") {
+        return Err(ApiError::rejected(format!(
+            "Tron transaction receipt: {error}"
+        )));
+    }
+    let actual = result
+        .get("id")
+        .and_then(Value::as_str)
+        .or_decode("Tron receipt: missing id")?;
+    if !actual.eq_ignore_ascii_case(hash) {
+        return Err(ApiError::decode("Tron returned a different transaction"));
+    }
+    let block = result
+        .get("blockNumber")
+        .and_then(Value::as_u64)
+        .or_decode("Tron receipt: missing block")?;
+    // TransactionInfo.result defaults to SUCESS=0 and java-tron omits the
+    // default protobuf field. Plain TRX transfers have no VM result either.
+    let transaction_success = match result.get("result") {
+        None => true,
+        Some(Value::String(code)) if matches!(code.as_str(), "SUCESS" | "SUCCESS") => true,
+        Some(Value::String(code)) if code == "FAILED" => false,
+        _ => return Err(ApiError::decode("Tron receipt: invalid transaction result")),
+    };
+    let contract_success = match result.pointer("/receipt/result") {
+        None => true,
+        Some(Value::String(code)) if code == "SUCCESS" => true,
+        Some(Value::String(code))
+            if matches!(
+                code.as_str(),
+                "REVERT"
+                    | "BAD_JUMP_DESTINATION"
+                    | "OUT_OF_MEMORY"
+                    | "PRECOMPILED_CONTRACT"
+                    | "STACK_TOO_SMALL"
+                    | "STACK_TOO_LARGE"
+                    | "ILLEGAL_OPERATION"
+                    | "STACK_OVERFLOW"
+                    | "OUT_OF_ENERGY"
+                    | "OUT_OF_TIME"
+                    | "JVM_STACK_OVER_FLOW"
+                    | "UNKNOWN"
+                    | "TRANSFER_FAILED"
+                    | "INVALID_CODE"
+            ) =>
+        {
+            false
+        }
+        _ => return Err(ApiError::decode("Tron receipt: invalid contract result")),
+    };
+    Ok(TransactionStatus::Confirmed {
+        succeeded: transaction_success && contract_success,
+        block: Some(block),
+    })
+}
+
 // ── TRC-20 helpers
 
 /// A uint256 ABI word must be complete and fit the core's u128 amount type.
@@ -320,6 +799,170 @@ impl TronHttpClient {
 }
 
 #[cfg(test)]
+mod trc10_tests {
+    use super::*;
+    use crate::registry::Chain;
+    use std::sync::Arc;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+    const OWNER: &str = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8";
+
+    #[tokio::test]
+    async fn legacy_trc10_names_require_unique_exact_current_identity() {
+        use wiremock::matchers::body_json;
+        for (name, named, current, succeeds) in [
+            (
+                "Legacy",
+                json!({"id":"1000001","name":hex::encode("Legacy")}),
+                json!({"id":"1000001","name":hex::encode("Legacy")}),
+                true,
+            ),
+            (
+                "1009999",
+                json!({"id":"1000001","name":hex::encode("1009999")}),
+                json!({"id":"1000001","name":hex::encode("1009999")}),
+                true,
+            ),
+            (
+                "Legacy",
+                json!({"Error":"NonUniqueObjectException: more than one asset"}),
+                json!({}),
+                false,
+            ),
+            (
+                "Legacy",
+                json!({"id":"1000001","name":hex::encode("Other")}),
+                json!({}),
+                false,
+            ),
+            (
+                "Legacy",
+                json!({"id":"1000001","name":hex::encode("Legacy")}),
+                json!({"id":"1000001","name":hex::encode("Other")}),
+                false,
+            ),
+            (
+                "Legacy",
+                json!({"id":"1000001","name":hex::encode("Legacy")}),
+                json!({"id":"1000002","name":hex::encode("Legacy")}),
+                false,
+            ),
+            (
+                "Legacy",
+                json!({"id":"1000001","name":hex::encode("Legacy"),"precision":2}),
+                json!({}),
+                false,
+            ),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/wallet/getblockbynum"))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(
+                        json!({"blockID":Chain::Tron.tron_genesis_block_id().unwrap()}),
+                    ),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/wallet/getassetissuebyname"))
+                .and(body_json(json!({"value":hex::encode(name)})))
+                .respond_with(ResponseTemplate::new(200).set_body_json(named))
+                .expect(1)
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/wallet/getassetissuebyid"))
+                .and(body_json(json!({"value":"1000001"})))
+                .respond_with(ResponseTemplate::new(200).set_body_json(current))
+                .mount(&server)
+                .await;
+            let result = TronHttpClient::new(Arc::new(vec![server.uri()]))
+                .fetch_legacy_trc10_metadata(Chain::Tron, name)
+                .await;
+            assert_eq!(result.is_ok(), succeeds, "name={name}, result={result:?}");
+            if let Ok(asset) = result {
+                assert_eq!(asset.asset_id, "1000001");
+                assert_eq!(asset.decimals, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn trc10_precision_identity_and_account_amounts_are_strict() {
+        let metadata = json!({"id":"1002000","name":hex::encode("Legacy"),"abbr":hex::encode("T10"),"precision":2});
+        assert_eq!(trc10_metadata(&metadata, "1002000").unwrap().decimals, 2);
+        assert!(trc10_metadata(&metadata, "1002001").is_err());
+        for precision in [json!(-1), json!(7), json!("6")] {
+            let mut malformed = metadata.clone();
+            malformed["precision"] = precision;
+            assert!(trc10_metadata(&malformed, "1002000").is_err());
+        }
+        let mut zero = metadata.clone();
+        zero.as_object_mut().unwrap().remove("precision");
+        assert_eq!(trc10_metadata(&zero, "1002000").unwrap().decimals, 0);
+        zero["abbr"] = json!("");
+        assert_eq!(trc10_metadata(&zero, "1002000").unwrap().symbol, "Legacy");
+        let account = json!({"address":OWNER,"balance":1,"assetV2":[{"key":"1002000","value":23}]});
+        assert_eq!(
+            trc10_account(&account, OWNER).unwrap(),
+            (1, vec![("1002000".into(), 23)])
+        );
+        assert_eq!(trc10_account(&json!({}), OWNER).unwrap(), (0, vec![]));
+        for malformed in [
+            json!({"Error":"refused"}),
+            json!({"balance":1}),
+            json!({"address":"wrong"}),
+            json!({"address":OWNER,"assetV2":[{"key":"1002000","value":-1}]}),
+            json!({"address":OWNER,"assetV2":[{"key":"1002000","value":1},{"key":"1002000","value":2}]}),
+        ] {
+            assert!(trc10_account(&malformed, OWNER).is_err());
+        }
+        for id in ["", "0", "001002000", "1002a", "9223372036854775808"] {
+            assert!(validate_asset_id(id).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn trc10_wrong_network_refuses_before_any_funds_or_metadata_read() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/wallet/getblockbynum"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"blockID":Chain::TronNile.tron_genesis_block_id().unwrap()}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let client = TronHttpClient::new(Arc::new(vec![server.uri()]));
+        assert!(
+            client
+                .fetch_trc10_balance(Chain::Tron, "1002000", OWNER)
+                .await
+                .is_err()
+        );
+        assert!(
+            client
+                .fetch_trc10_transfer_state(Chain::Tron, "1002000", OWNER, None, 300)
+                .await
+                .is_err()
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| r.url.path() == "/wallet/getblockbynum")
+        );
+    }
+}
+
+#[cfg(test)]
 mod integer_tests {
     use super::*;
     #[test]
@@ -365,6 +1008,116 @@ mod integer_tests {
                     .is_err()
             );
             assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+    use std::sync::Arc;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_json, method, path},
+    };
+
+    #[tokio::test]
+    async fn solidity_receipts_cover_native_vm_failure_and_missing_transaction() {
+        let hash = "ab".repeat(32);
+        for (receipt, expected) in [
+            (json!({}), TransactionStatus::Pending),
+            (
+                json!({"id":hash,"blockNumber":450,"receipt":{"net_usage":280}}),
+                TransactionStatus::Confirmed {
+                    succeeded: true,
+                    block: Some(450),
+                },
+            ),
+            (
+                json!({"id":hash,"blockNumber":451,"receipt":{"result":"SUCCESS"}}),
+                TransactionStatus::Confirmed {
+                    succeeded: true,
+                    block: Some(451),
+                },
+            ),
+            (
+                json!({"id":hash,"blockNumber":452,"receipt":{"result":"OUT_OF_ENERGY"},"result":"FAILED"}),
+                TransactionStatus::Confirmed {
+                    succeeded: false,
+                    block: Some(452),
+                },
+            ),
+            (
+                json!({"id":hash,"blockNumber":453,"receipt":{"result":"REVERT"}}),
+                TransactionStatus::Confirmed {
+                    succeeded: false,
+                    block: Some(453),
+                },
+            ),
+            (
+                json!({"id":hash,"blockNumber":454,"result":"FAILED"}),
+                TransactionStatus::Confirmed {
+                    succeeded: false,
+                    block: Some(454),
+                },
+            ),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/walletsolidity/gettransactioninfobyid"))
+                .and(body_json(json!({"value":hash})))
+                .respond_with(ResponseTemplate::new(200).set_body_json(receipt))
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert_eq!(
+                TronHttpClient::new(Arc::new(vec![server.uri()]))
+                    .fetch_transaction_status(&hash)
+                    .await
+                    .unwrap(),
+                expected
+            );
+        }
+        for bad in [
+            json!({"id":"cd".repeat(32),"blockNumber":450}),
+            json!({"id":hash,"receipt":{"result":"SUCCESS"}}),
+            json!({"id":hash,"blockNumber":450,"result":"refused"}),
+            json!({"id":hash,"blockNumber":450,"receipt":{"result":"DEFAULT"}}),
+            json!({"Error":"node refused"}),
+            Value::Null,
+        ] {
+            assert!(tron_transaction_status(&bad, &hash).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn genesis_identity_is_bound_to_the_concrete_tron_network() {
+        use crate::registry::Chain;
+        for selected in [Chain::Tron, Chain::TronNile] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/wallet/getblockbynum"))
+                .and(body_json(json!({"num":0})))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(
+                        json!({"blockID":selected.tron_genesis_block_id().unwrap()}),
+                    ),
+                )
+                .mount(&server)
+                .await;
+            let client = TronHttpClient::new(Arc::new(vec![server.uri()]));
+            client.verify_network(selected).await.unwrap();
+            assert!(
+                client
+                    .verify_network(if selected == Chain::Tron {
+                        Chain::TronNile
+                    } else {
+                        Chain::Tron
+                    })
+                    .await
+                    .is_err()
+            );
         }
     }
 }

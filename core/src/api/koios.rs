@@ -19,6 +19,14 @@ pub struct CardanoUtxo {
     pub tx_hash: String,
     pub tx_index: u32,
     pub lovelace: u64,
+    pub assets: Vec<CardanoAsset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CardanoAsset {
+    pub policy_id: String,
+    pub asset_name: String,
+    pub quantity: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +58,7 @@ pub(crate) struct KoiosUtxo {
     pub(crate) tx_hash: String,
     pub(crate) tx_index: u32,
     pub(crate) value: String,
+    pub(crate) asset_list: Vec<CardanoAsset>,
     #[serde(default)]
     pub(crate) is_spent: bool,
 }
@@ -165,6 +174,17 @@ impl KoiosClient {
 }
 
 impl KoiosClient {
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        hash: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        crate::api::transaction_status::validate_hex_hash(hash)?;
+        let rows: Vec<serde_json::Value> = self
+            .post("/tx_info", &serde_json::json!({"_tx_hashes":[hash]}))
+            .await?;
+        cardano_transaction_status(&rows, hash)
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<CardanoBalance, ApiError> {
         #[derive(Serialize)]
         struct Req<'a> {
@@ -192,27 +212,52 @@ impl KoiosClient {
         struct Req<'a> {
             #[serde(rename = "_addresses")]
             addresses: &'a [&'a str],
+            #[serde(rename = "_extended")]
+            extended: bool,
         }
         let utxos: Vec<KoiosUtxo> = self
             .post(
                 "/address_utxos",
                 &Req {
                     addresses: &[address],
+                    extended: true,
                 },
             )
             .await?;
-        Ok(utxos
+        utxos
             .into_iter()
             .filter(|u| !u.is_spent)
-            .map(|u| CardanoUtxo {
-                tx_hash: u.tx_hash,
-                tx_index: u.tx_index,
-                lovelace: u.value.parse().unwrap_or(0),
+            .map(|u| {
+                Ok(CardanoUtxo {
+                    tx_hash: u.tx_hash,
+                    tx_index: u.tx_index,
+                    lovelace: u.value.parse().map_err(ApiError::decode)?,
+                    assets: u.asset_list,
+                })
             })
+            .collect::<Result<Vec<_>, ApiError>>()
+    }
+
+    /// ADA-only builders cannot consume an input carrying native assets.
+    /// Keep those outputs untouched; an omitted asset list fails decoding.
+    pub async fn fetch_ada_utxos(&self, address: &str) -> Result<Vec<CardanoUtxo>, ApiError> {
+        Ok(self
+            .fetch_utxos(address)
+            .await?
+            .into_iter()
+            .filter(|u| u.assets.is_empty())
             .collect())
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<CardanoHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<CardanoHistoryEntry>, ApiError> {
         #[derive(Serialize)]
         struct AddrReq<'a> {
             #[serde(rename = "_addresses")]
@@ -226,18 +271,26 @@ impl KoiosClient {
             inputs: bool,
         }
 
+        let number = crate::api::history_page::page_number(cursor)?;
+        let offset = u64::from(number - 1) * 20;
         let tx_refs: Vec<KoiosTxRef> = self
             .post(
-                "/address_txs",
+                &format!(
+                    "/address_txs?order=block_height.desc,tx_hash.desc&limit=20&offset={offset}"
+                ),
                 &AddrReq {
                     addresses: &[address],
                 },
             )
             .await?;
 
-        let hashes: Vec<String> = tx_refs.iter().take(20).map(|r| r.tx_hash.clone()).collect();
+        let next_cursor = (tx_refs.len() == 20).then(|| (number + 1).to_string());
+        let hashes: Vec<String> = tx_refs.iter().map(|r| r.tx_hash.clone()).collect();
         if hashes.is_empty() {
-            return Ok(vec![]);
+            return Ok(crate::api::HistoryPage {
+                items: vec![],
+                next_cursor: None,
+            });
         }
 
         let tx_infos: Vec<KoiosTxInfo> = self
@@ -249,7 +302,10 @@ impl KoiosClient {
                 },
             )
             .await?;
-        cardano_history_from_transactions(tx_infos, address)
+        Ok(crate::api::HistoryPage {
+            items: cardano_history_from_transactions(tx_infos, address)?,
+            next_cursor,
+        })
     }
 
     /// Fetch current slot from the latest block.
@@ -264,6 +320,35 @@ impl KoiosClient {
             .map(|t| t.abs_slot)
             .or_decode("tip: empty response")
     }
+}
+
+fn cardano_transaction_status(
+    rows: &[serde_json::Value],
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    let Some(row) = rows.first() else {
+        return Ok(TransactionStatus::Pending);
+    };
+    if rows.len() != 1
+        || !row["tx_hash"]
+            .as_str()
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(hash))
+    {
+        return Err(ApiError::decode(
+            "Cardano status: transaction hash mismatch",
+        ));
+    }
+    Ok(TransactionStatus::Confirmed {
+        succeeded: row["valid_contract"]
+            .as_bool()
+            .or_decode("Cardano status: missing contract validation result")?,
+        block: Some(
+            row["block_height"]
+                .as_u64()
+                .or_decode("Cardano status: missing block height")?,
+        ),
+    })
 }
 
 impl KoiosClient {
@@ -352,6 +437,39 @@ mod keyless_submission_tests {
     };
 
     #[tokio::test]
+    async fn ada_inputs_exclude_native_assets_and_require_complete_asset_lists() {
+        let server = MockServer::start().await;
+        let client = KoiosClient::new(Arc::new(vec![server.uri()]));
+        Mock::given(method("POST"))
+            .and(path("/address_utxos"))
+            .and(wiremock::matchers::body_json(serde_json::json!({"_addresses":["mixed"],"_extended":true})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"tx_hash":"tokens","tx_index":0,"value":"10000000","is_spent":false,"asset_list":[{"policy_id":"ab".repeat(28),"asset_name":"cafe","quantity":"2"}]},
+                {"tx_hash":"ada","tx_index":1,"value":"5000000","is_spent":false,"asset_list":[]},
+                {"tx_hash":"spent","tx_index":0,"value":"1000000","is_spent":true,"asset_list":[]}
+            ])))
+            .mount(&server).await;
+        let inputs = client.fetch_ada_utxos("mixed").await.unwrap();
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].tx_hash, "ada");
+        assert_eq!(inputs[0].lovelace, 5_000_000);
+        assert!(inputs[0].assets.is_empty());
+        let mixed = client.fetch_utxos("mixed").await.unwrap();
+        assert_eq!(mixed[0].assets[0].quantity, "2");
+        Mock::given(method("POST"))
+            .and(path("/address_utxos"))
+            .and(wiremock::matchers::body_json(
+                serde_json::json!({"_addresses":["incomplete"],"_extended":true}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"tx_hash":"unknown-assets","tx_index":0,"value":"10000000","is_spent":false}
+            ])))
+            .mount(&server)
+            .await;
+        assert!(client.fetch_ada_utxos("incomplete").await.is_err());
+    }
+
+    #[tokio::test]
     async fn koios_receives_raw_cbor_without_credentials_and_requires_a_transaction_id() {
         let server = MockServer::start().await;
         let client = KoiosClient::new(Arc::new(vec![server.uri()]));
@@ -388,5 +506,32 @@ mod keyless_submission_tests {
             .mount(&server)
             .await;
         assert!(client.submit_tx("8100").await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+    use serde_json::json;
+
+    #[test]
+    fn exact_transaction_contract_result_controls_confirmation() {
+        assert_eq!(
+            cardano_transaction_status(&[], "h").unwrap(),
+            TransactionStatus::Pending
+        );
+        let rows = vec![json!({"tx_hash":"h","block_height":100,"valid_contract":false})];
+        assert_eq!(
+            cardano_transaction_status(&rows, "h").unwrap(),
+            TransactionStatus::Confirmed {
+                succeeded: false,
+                block: Some(100)
+            }
+        );
+        assert!(cardano_transaction_status(&rows, "other").is_err());
+        assert!(
+            cardano_transaction_status(&[json!({"tx_hash":"h","block_height":100})], "h").is_err()
+        );
     }
 }

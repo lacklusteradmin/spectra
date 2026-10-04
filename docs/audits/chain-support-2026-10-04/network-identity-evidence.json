@@ -1,0 +1,501 @@
+{
+  "checkedAtUtc": "2026-10-04T17:50:55.767597+00:00",
+  "userAgent": "spectra-core/0.1.0",
+  "suiProviders": [
+    {
+      "provider": "https://sui-rpc.publicnode.com",
+      "method": "sui_getChainIdentifier",
+      "result": "35834a8a",
+      "error": null
+    },
+    {
+      "provider": "https://sui-rpc.publicnode.com",
+      "method": "suix_getBalance",
+      "result": {
+        "coinType": "0x2::sui::SUI",
+        "coinObjectCount": 115168,
+        "totalBalance": "2235507745446",
+        "lockedBalance": {},
+        "fundsInAddressBalance": "647034428"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-rpc.publicnode.com",
+      "method": "suix_getReferenceGasPrice",
+      "result": "100",
+      "error": null
+    },
+    {
+      "provider": "https://sui-rpc.publicnode.com",
+      "method": "suix_getCoinMetadata",
+      "result": {
+        "decimals": 9,
+        "symbol": "SUI",
+        "id": "0xf256d3fb6a50eaa748d94335b34f2982fbc3b63ceec78cafaa29ebc9ebaf2bbc"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-rpc.publicnode.com",
+      "method": "suix_getCoins",
+      "result": {
+        "hasNextPage": true,
+        "nextCursor": "eyJjb2luX3R5cGUiOiIweDI6OnN1aTo6U1VJIiwiaW52ZXJ0ZWRfYmFsYW5jZSI6MTg0NDY3NDMwNzM3MDk1NTE2MTUsIm9iamVjdF9pZCI6IjB4OTlkN2MyMTZhNDdkNGMyNzMzNGIyODNlODMwZWJhZmE5NDQyMTRhZTgzNjlmMjg3MTNiM2Y3ZjcwNTAxNGY5ZCJ9"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-rpc.publicnode.com",
+      "method": "sui_getCheckpoint",
+      "result": {
+        "sequenceNumber": "0",
+        "digest": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-mainnet-endpoint.blockvision.org",
+      "method": "sui_getChainIdentifier",
+      "error": "HTTP Error 429: Too Many Requests"
+    },
+    {
+      "provider": "https://sui-mainnet-endpoint.blockvision.org",
+      "method": "suix_getBalance",
+      "result": {
+        "coinType": "0x2::sui::SUI",
+        "coinObjectCount": 115168,
+        "totalBalance": "2235507745446",
+        "lockedBalance": {},
+        "fundsInAddressBalance": "647034428"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-mainnet-endpoint.blockvision.org",
+      "method": "suix_getReferenceGasPrice",
+      "result": "100",
+      "error": null
+    },
+    {
+      "provider": "https://sui-mainnet-endpoint.blockvision.org",
+      "method": "suix_getCoinMetadata",
+      "result": {
+        "decimals": 9,
+        "symbol": "SUI",
+        "id": "0xf256d3fb6a50eaa748d94335b34f2982fbc3b63ceec78cafaa29ebc9ebaf2bbc"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-mainnet-endpoint.blockvision.org",
+      "method": "suix_getCoins",
+      "error": "HTTP Error 429: Too Many Requests"
+    },
+    {
+      "provider": "https://sui-mainnet-endpoint.blockvision.org",
+      "method": "sui_getCheckpoint",
+      "result": {
+        "sequenceNumber": "0",
+        "digest": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui.blockpi.network/v1/rpc/public",
+      "method": "sui_getChainIdentifier",
+      "result": "35834a8a",
+      "error": null
+    },
+    {
+      "provider": "https://sui.blockpi.network/v1/rpc/public",
+      "method": "suix_getBalance",
+      "result": {
+        "coinType": "0x2::sui::SUI",
+        "coinObjectCount": 5165,
+        "totalBalance": "171223092945",
+        "lockedBalance": {},
+        "fundsInAddressBalance": "647034428"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui.blockpi.network/v1/rpc/public",
+      "method": "suix_getReferenceGasPrice",
+      "result": "100",
+      "error": null
+    },
+    {
+      "provider": "https://sui.blockpi.network/v1/rpc/public",
+      "method": "suix_getCoinMetadata",
+      "result": {
+        "decimals": 9,
+        "symbol": "SUI",
+        "id": "0xf256d3fb6a50eaa748d94335b34f2982fbc3b63ceec78cafaa29ebc9ebaf2bbc"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui.blockpi.network/v1/rpc/public",
+      "method": "suix_getCoins",
+      "result": {
+        "hasNextPage": true,
+        "nextCursor": "eyJjb2luX3R5cGUiOiIweDI6OnN1aTo6U1VJIiwiaW52ZXJ0ZWRfYmFsYW5jZSI6MTg0NDY3NDQwNDI3MzkxMzE5MTMsIm9iamVjdF9pZCI6IjB4NDlmMTVlYTM4Mjc4MWFmYmQwNTc4ZjlmNzA5NTJhZmIzMjg4YjExOTliZDlkYmI4YmNkOWJkMzEzNWM0MzVkNCJ9"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui.blockpi.network/v1/rpc/public",
+      "method": "sui_getCheckpoint",
+      "result": {
+        "sequenceNumber": "0",
+        "digest": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://rpc-mainnet.suiscan.xyz",
+      "method": "sui_getChainIdentifier",
+      "result": "35834a8a",
+      "error": null
+    },
+    {
+      "provider": "https://rpc-mainnet.suiscan.xyz",
+      "method": "suix_getBalance",
+      "result": {
+        "coinType": "0x2::sui::SUI",
+        "coinObjectCount": 115168,
+        "totalBalance": "2235507745446",
+        "lockedBalance": {},
+        "fundsInAddressBalance": "647034428"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://rpc-mainnet.suiscan.xyz",
+      "method": "suix_getReferenceGasPrice",
+      "result": "100",
+      "error": null
+    },
+    {
+      "provider": "https://rpc-mainnet.suiscan.xyz",
+      "method": "suix_getCoinMetadata",
+      "result": {
+        "decimals": 9,
+        "symbol": "SUI",
+        "id": "0xf256d3fb6a50eaa748d94335b34f2982fbc3b63ceec78cafaa29ebc9ebaf2bbc"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://rpc-mainnet.suiscan.xyz",
+      "method": "suix_getCoins",
+      "result": {
+        "hasNextPage": true,
+        "nextCursor": "eyJjb2luX3R5cGUiOiIweDI6OnN1aTo6U1VJIiwiaW52ZXJ0ZWRfYmFsYW5jZSI6MTg0NDY3NDMwNzM3MDk1NTE2MTUsIm9iamVjdF9pZCI6IjB4OTlkN2MyMTZhNDdkNGMyNzMzNGIyODNlODMwZWJhZmE5NDQyMTRhZTgzNjlmMjg3MTNiM2Y3ZjcwNTAxNGY5ZCJ9"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://rpc-mainnet.suiscan.xyz",
+      "method": "sui_getCheckpoint",
+      "result": {
+        "sequenceNumber": "0",
+        "digest": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://1rpc.io/sui",
+      "method": "sui_getChainIdentifier",
+      "result": "35834a8a",
+      "error": null
+    },
+    {
+      "provider": "https://1rpc.io/sui",
+      "method": "suix_getBalance",
+      "result": {
+        "coinType": "0x2::sui::SUI",
+        "coinObjectCount": 115168,
+        "totalBalance": "2235507745446",
+        "lockedBalance": {},
+        "fundsInAddressBalance": "647034428"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://1rpc.io/sui",
+      "method": "suix_getReferenceGasPrice",
+      "result": "100",
+      "error": null
+    },
+    {
+      "provider": "https://1rpc.io/sui",
+      "method": "suix_getCoinMetadata",
+      "result": {
+        "decimals": 9,
+        "symbol": "SUI",
+        "id": "0xf256d3fb6a50eaa748d94335b34f2982fbc3b63ceec78cafaa29ebc9ebaf2bbc"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://1rpc.io/sui",
+      "method": "suix_getCoins",
+      "result": {
+        "hasNextPage": true,
+        "nextCursor": "eyJjb2luX3R5cGUiOiIweDI6OnN1aTo6U1VJIiwiaW52ZXJ0ZWRfYmFsYW5jZSI6MTg0NDY3NDMwNzM3MDk1NTE2MTUsIm9iamVjdF9pZCI6IjB4OTlkN2MyMTZhNDdkNGMyNzMzNGIyODNlODMwZWJhZmE5NDQyMTRhZTgzNjlmMjg3MTNiM2Y3ZjcwNTAxNGY5ZCJ9"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://1rpc.io/sui",
+      "method": "sui_getCheckpoint",
+      "result": {
+        "sequenceNumber": "0",
+        "digest": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-testnet-rpc.publicnode.com",
+      "method": "sui_getChainIdentifier",
+      "result": "4c78adac",
+      "error": null
+    },
+    {
+      "provider": "https://sui-testnet-rpc.publicnode.com",
+      "method": "suix_getBalance",
+      "result": {
+        "coinType": "0x2::sui::SUI",
+        "coinObjectCount": 7092,
+        "totalBalance": "3148704091172",
+        "lockedBalance": {},
+        "fundsInAddressBalance": "33"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-testnet-rpc.publicnode.com",
+      "method": "suix_getReferenceGasPrice",
+      "result": "1000",
+      "error": null
+    },
+    {
+      "provider": "https://sui-testnet-rpc.publicnode.com",
+      "method": "suix_getCoinMetadata",
+      "result": {
+        "decimals": 9,
+        "symbol": "SUI",
+        "id": "0xf256d3fb6a50eaa748d94335b34f2982fbc3b63ceec78cafaa29ebc9ebaf2bbc"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-testnet-rpc.publicnode.com",
+      "method": "suix_getCoins",
+      "result": {
+        "hasNextPage": true,
+        "nextCursor": "eyJjb2luX3R5cGUiOiIweDI6OnN1aTo6U1VJIiwiaW52ZXJ0ZWRfYmFsYW5jZSI6MTg0NDY3NDM5NzM3MDk1NTE2MTUsIm9iamVjdF9pZCI6IjB4MDM2YzFiZTQxNTI2YTRkMzhjM2UxMjhhYmZjNmY1ZjQ2Nzg2YWE2NjIxNmExYWZmODJlMDU2ODdhMGE0ZDA1OSJ9"
+      },
+      "error": null
+    },
+    {
+      "provider": "https://sui-testnet-rpc.publicnode.com",
+      "method": "sui_getCheckpoint",
+      "result": {
+        "sequenceNumber": "0",
+        "digest": "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD"
+      },
+      "error": null
+    }
+  ],
+  "suiOfficial": [
+    {
+      "url": "https://fullnode.mainnet.sui.io:443",
+      "method": "sui_getChainIdentifier",
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found. JSON-RPC on public fullnodes has been deprecated. Please migrate to gRPC or GraphQL endpoints. See https://docs.sui.io/develop/accessing-data/json-rpc-migration for more information."
+        },
+        "id": null
+      }
+    },
+    {
+      "url": "https://graphql.mainnet.sui.io/graphql",
+      "query": "{ chainIdentifier }",
+      "response": {
+        "data": {
+          "chainIdentifier": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+        }
+      }
+    },
+    {
+      "url": "https://fullnode.testnet.sui.io:443",
+      "method": "sui_getChainIdentifier",
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found. JSON-RPC on public fullnodes has been deprecated. Please migrate to gRPC or GraphQL endpoints. See https://docs.sui.io/develop/accessing-data/json-rpc-migration for more information."
+        },
+        "id": null
+      }
+    },
+    {
+      "url": "https://graphql.testnet.sui.io/graphql",
+      "query": "{ chainIdentifier }",
+      "response": {
+        "data": {
+          "chainIdentifier": "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD"
+        }
+      }
+    }
+  ],
+  "tonOfficial": [
+    {
+      "network": "mainnet",
+      "source": "https://raw.githubusercontent.com/ton-blockchain/ton-blockchain.github.io/76e8e80ff3aa131265d6fbc016d4d124afbed3d7/global.config.json",
+      "zeroState": {
+        "workchain": -1,
+        "shard": -9223372036854775808,
+        "seqno": 0,
+        "root_hash": "F6OpKZKqvqeFp6CQmFomXNMfMj2EnaUSOXN+Mh+wVWk=",
+        "file_hash": "XplPz01CXAps5qeSWUtxcyBfdAo5zVb1N979KLSKD24="
+      }
+    },
+    {
+      "network": "mainnet",
+      "source": "https://toncenter.com/api/v2/getMasterchainInfo",
+      "ok": true,
+      "init": {
+        "@type": "ton.blockIdExt",
+        "workchain": -1,
+        "shard": "0",
+        "seqno": 0,
+        "root_hash": "F6OpKZKqvqeFp6CQmFomXNMfMj2EnaUSOXN+Mh+wVWk=",
+        "file_hash": "XplPz01CXAps5qeSWUtxcyBfdAo5zVb1N979KLSKD24="
+      }
+    },
+    {
+      "network": "testnet",
+      "source": "https://raw.githubusercontent.com/ton-blockchain/ton-blockchain.github.io/76e8e80ff3aa131265d6fbc016d4d124afbed3d7/testnet-global.config.json",
+      "zeroState": {
+        "file_hash": "Z+IKwYS54DmmJmesw/nAD5DzWadnOCMzee+kdgSYDOg=",
+        "seqno": 0,
+        "root_hash": "gj+B8wb/AmlPk1z1AhVI484rhrUpgSr2oSFIh56VoSg=",
+        "workchain": -1,
+        "shard": -9223372036854775808
+      }
+    },
+    {
+      "network": "testnet",
+      "source": "https://testnet.toncenter.com/api/v2/getMasterchainInfo",
+      "ok": true,
+      "init": {
+        "@type": "ton.blockIdExt",
+        "workchain": -1,
+        "shard": "0",
+        "seqno": 0,
+        "root_hash": "gj+B8wb/AmlPk1z1AhVI484rhrUpgSr2oSFIh56VoSg=",
+        "file_hash": "Z+IKwYS54DmmJmesw/nAD5DzWadnOCMzee+kdgSYDOg="
+      }
+    }
+  ],
+  "xrpAndTron": {
+    "checkedAtUtc": "2026-10-04T18:03:10.835956+00:00",
+    "checks": [
+      {
+        "label": "xrp-main-s1",
+        "url": "https://s1.ripple.com:51234/",
+        "response": {
+          "network_id": 0,
+          "status": "success"
+        }
+      },
+      {
+        "label": "xrp-main-s2",
+        "url": "https://s2.ripple.com:51234/",
+        "response": {
+          "network_id": 0,
+          "status": "success"
+        }
+      },
+      {
+        "label": "xrp-test",
+        "url": "https://s.altnet.rippletest.net:51234/",
+        "response": {
+          "network_id": 1,
+          "status": "success"
+        }
+      },
+      {
+        "label": "tron-main-grid",
+        "url": "https://api.trongrid.io/wallet/getblockbynum",
+        "response": {
+          "blockID": "00000000000000001ebf88508a03865c71d452e25f4d51194196a1d22b6653dc",
+          "header": {
+            "raw_data": {
+              "txTrieRoot": "8ef446bf3f395af929c218014f6101ec86576c5f61b2ae3236bf3a2ab5e2fecd",
+              "parentHash": "e58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f",
+              "witness_address": "41206e65772073797374656d206d75737420616c6c6f77206578697374696e672073797374656d7320746f206265206c696e6b656420746f67657468657220776974686f757420726571756972696e6720616e792063656e7472616c20636f6e74726f6c206f7220636f6f7264696e6174696f6e"
+            }
+          }
+        }
+      },
+      {
+        "label": "tron-main-pn",
+        "url": "https://tron-rpc.publicnode.com/wallet/getblockbynum",
+        "response": {
+          "blockID": "00000000000000001ebf88508a03865c71d452e25f4d51194196a1d22b6653dc",
+          "header": {
+            "raw_data": {
+              "txTrieRoot": "8ef446bf3f395af929c218014f6101ec86576c5f61b2ae3236bf3a2ab5e2fecd",
+              "parentHash": "e58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f",
+              "witness_address": "41206e65772073797374656d206d75737420616c6c6f77206578697374696e672073797374656d7320746f206265206c696e6b656420746f67657468657220776974686f757420726571756972696e6720616e792063656e7472616c20636f6e74726f6c206f7220636f6f7264696e6174696f6e"
+            }
+          }
+        }
+      },
+      {
+        "label": "tron-nile-grid",
+        "url": "https://nile.trongrid.io/wallet/getblockbynum",
+        "response": {
+          "blockID": "0000000000000000d698d4192c56cb6be724a558448e2684802de4d6cd8690dc",
+          "header": {
+            "raw_data": {
+              "txTrieRoot": "6556a96828248d6b89cfd0487d4cef82b134b5544dc428c8a218beb2db85ab24",
+              "parentHash": "e58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f",
+              "witness_address": "41206e65772073797374656d206d75737420616c6c6f77206578697374696e672073797374656d7320746f206265206c696e6b656420746f67657468657220776974686f757420726571756972696e6720616e792063656e7472616c20636f6e74726f6c206f7220636f6f7264696e6174696f6e"
+            }
+          }
+        }
+      },
+      {
+        "label": "tron-nile-official",
+        "url": "https://api.nileex.io/wallet/getblockbynum",
+        "response": {
+          "blockID": "0000000000000000d698d4192c56cb6be724a558448e2684802de4d6cd8690dc",
+          "header": {
+            "raw_data": {
+              "txTrieRoot": "6556a96828248d6b89cfd0487d4cef82b134b5544dc428c8a218beb2db85ab24",
+              "parentHash": "e58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f",
+              "witness_address": "41206e65772073797374656d206d75737420616c6c6f77206578697374696e672073797374656d7320746f206265206c696e6b656420746f67657468657220776974686f757420726571756972696e6720616e792063656e7472616c20636f6e74726f6c206f7220636f6f7264696e6174696f6e"
+            }
+          }
+        }
+      }
+    ],
+    "officialReferences": [
+      "https://xrpl.org/docs/references/http-websocket-apis/public-api-methods/server-info-methods/server_info",
+      "https://xrpl.org/docs/infrastructure/configuration/connect-your-xrpld-to-the-xrp-test-net",
+      "https://tronprotocol.github.io/documentation-en/using_javatron/connecting_to_tron/",
+      "https://github.com/tronprotocol/tron-deployment",
+      "https://developers.tron.network/docs/confirmation-semantics",
+      "https://developers.tron.network/reference/gettransactioninfobyid-1",
+      "https://raw.githubusercontent.com/tronprotocol/protocol/master/core/Tron.proto"
+    ]
+  }
+}

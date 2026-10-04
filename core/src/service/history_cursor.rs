@@ -89,9 +89,10 @@ impl WalletService {
         chain_id: crate::registry::Chain,
         wallet_id: String,
         next_cursor: Option<String>,
-    ) {
-        self.history_pagination
-            .advance_cursor(chain_id, &wallet_id, next_cursor);
+    ) -> Result<(), SpectraBridgeError> {
+        Ok(self
+            .history_pagination
+            .advance_cursor_checked(chain_id, &wallet_id, next_cursor)?)
     }
 
     /// Record the page just fetched, and whether it was the last one.
@@ -104,10 +105,10 @@ impl WalletService {
         wallet_id: String,
         page: u32,
         is_exhausted: bool,
-    ) {
-        self.history_pagination.set_page(chain_id, &wallet_id, page);
-        self.history_pagination
-            .set_exhausted(chain_id, &wallet_id, is_exhausted);
+    ) -> Result<(), SpectraBridgeError> {
+        Ok(self
+            .history_pagination
+            .set_page_checked(chain_id, &wallet_id, page, is_exhausted)?)
     }
 }
 
@@ -117,13 +118,19 @@ mod tests {
     #[test]
     fn pagination_updates_and_resets_do_not_cross_wallet_or_chain_boundaries() {
         let service = WalletService::new(vec![]).unwrap();
-        service.advance_history_cursor(
-            crate::registry::Chain::Bitcoin,
-            "a".into(),
-            Some("next".into()),
-        );
-        service.set_history_page(crate::registry::Chain::Ethereum, "a".into(), 4, true);
-        service.set_history_page(crate::registry::Chain::Ethereum, "b".into(), 2, false);
+        service
+            .advance_history_cursor(
+                crate::registry::Chain::Bitcoin,
+                "a".into(),
+                Some("next".into()),
+            )
+            .unwrap();
+        service
+            .set_history_page(crate::registry::Chain::Ethereum, "a".into(), 4, true)
+            .unwrap();
+        service
+            .set_history_page(crate::registry::Chain::Ethereum, "b".into(), 2, false)
+            .unwrap();
         assert_eq!(
             service
                 .history_cursor(crate::registry::Chain::Bitcoin, "a".into())

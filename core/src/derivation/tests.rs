@@ -435,7 +435,7 @@ fn cardano_icarus_enterprise_address_structure() {
     let pub_hex = result.public_key_hex.expect("cardano pub");
     let address = result.address.expect("cardano address");
 
-    assert_eq!(priv_hex.len(), 64);
+    assert_eq!(priv_hex.len(), 128);
     assert_eq!(pub_hex.len(), 64);
     assert!(address.starts_with("addr1"), "address: {address}");
     let (hrp, data) = bech32::decode(&address).expect("bech32 decode must succeed");
@@ -470,7 +470,7 @@ fn cardano_icarus_diverges_from_slip10() {
     )
     .expect("slip10")
     .private_key_hex;
-    assert_ne!(icarus_priv, slip10_priv);
+    assert_ne!(&icarus_priv.unwrap()[..64], slip10_priv.unwrap());
 }
 
 #[test]

@@ -18,21 +18,6 @@ fn native(chain: Chain) -> AssetHolding {
 }
 
 #[test]
-fn native_and_protocol_mnt_share_a_token_but_not_a_deployment() {
-    let native = crate::tokens::deployment("mantle:native").unwrap();
-    let contract = crate::tokens::catalog()
-        .iter()
-        .find(|t| t.symbol == "MNT" && t.chain_id == crate::registry::Chain::Ethereum)
-        .unwrap();
-    assert!(native.is_native());
-    assert!(!contract.is_native());
-    assert_eq!(native.token_id, contract.token_id);
-    assert_ne!(native.deployment_id, contract.deployment_id);
-    assert_eq!(Chain::Arbitrum.coin_symbol(), "ETH");
-    assert!(Chain::from_display_name("ETH").is_none());
-}
-
-#[test]
 fn symbols_and_market_ids_never_identify_a_holding() {
     let eth = native(Chain::Ethereum);
     let base = native(Chain::Base);

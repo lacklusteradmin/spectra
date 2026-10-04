@@ -13,7 +13,7 @@ use crate::out::{self, Out};
 
 #[derive(Subcommand)]
 pub enum AlertCommand {
-    /// Alerts this wallet has set.
+    /// List stored price alerts.
     List,
     /// Compare stored portfolio holdings and quotes with the durable movement baseline.
     Movement {
@@ -21,7 +21,7 @@ pub enum AlertCommand {
         #[arg(long)]
         active: bool,
     },
-    /// Add an alert on a chain's native asset.
+    /// Add a price alert for a native asset or stored token holding.
     Add(AddArgs),
     /// Remove an alert by id or symbol.
     Remove(RemoveArgs),
@@ -37,7 +37,7 @@ pub enum AlertCommand {
 
 #[derive(Args)]
 pub struct AddArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long, required_unless_present = "holding", conflicts_with = "holding")]
     chain: Option<String>,
     /// Deployment identifier of a stored asset.
@@ -46,7 +46,7 @@ pub struct AddArgs {
     /// Currency of the entered target; core converts using its stored rate.
     #[arg(long, default_value = "USD")]
     currency: String,
-    /// Price to watch for, in USD.
+    /// Target price in the currency selected with --currency.
     #[arg(long)]
     target: String,
     /// Fire when the price rises above the target instead of below it.

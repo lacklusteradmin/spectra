@@ -24,16 +24,44 @@ mod fee_estimates_are_typed {
         }
     }
 
-    /// NEAR's 24-decimal scale fits u128 and applies to its testnet too.
+    /// Both NEAR networks quote their own live protocol, including the
+    /// implicit receiver's creation costs and minimum gas purchase price.
     #[tokio::test]
-    async fn near_networks_quote_the_same_exact_fee_and_gas_floor() {
-        let service = WalletService::new(Vec::new()).expect("service");
-        for chain in [Chain::Near, Chain::NearTestnet] {
-            let fee = service.native_fee_estimate(chain).await.expect("fee");
-            assert_eq!(fee.raw, "1000000000000000000000");
-            assert_eq!(fee.display, "0.001");
-            assert_eq!(fee.source, "static");
-            assert_eq!(chain.token_send_gas_reserve().as_deref(), Some("0.001"));
+    async fn near_networks_quote_live_protocol_prepayment() {
+        use crate::service::{ChainEndpoints, EndpointCapability};
+        use serde_json::{Value, json};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+        for (chain, network) in [(Chain::Near, "mainnet"), (Chain::NearTestnet, "testnet")] {
+            let server = MockServer::start().await;
+            Mock::given(any())
+                .respond_with(move |request: &Request| {
+                    let request: Value = serde_json::from_slice(&request.body).unwrap();
+                    let result = match request["method"].as_str().unwrap() {
+                        "status" => json!({"chain_id":network}),
+                        "gas_price" => json!({"gas_price":"100000000"}),
+                        "EXPERIMENTAL_protocol_config" => {
+                            serde_json::from_str::<Value>(include_str!(
+                                "../../../tests/fixtures/near-staking-fee-protocol86.json"
+                            ))
+                            .unwrap()
+                        }
+                        other => panic!("Unexpected method {other}"),
+                    };
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"jsonrpc":"2.0","id":request["id"],"result":result}))
+                })
+                .mount(&server)
+                .await;
+            let service = WalletService::new(vec![ChainEndpoints {
+                chain_id: chain,
+                capabilities: vec![EndpointCapability::Fee, EndpointCapability::Verification],
+                endpoints: vec![server.uri()],
+            }])
+            .unwrap();
+            let fee = service.native_fee_estimate(chain).await.unwrap();
+            assert_eq!(fee.raw, "7607442456250000000000");
+            assert_eq!(fee.display, "0.00760744245625");
+            assert_eq!(fee.source, "rpc");
         }
     }
 
@@ -213,10 +241,10 @@ async fn seed_probe_holding(
         symbol: symbol.to_string(),
         coingecko_id: String::new(),
         chain_id: chain,
-        token_standard: if token.is_none() {
-            "Native".into()
+        token_standard: if let Some((contract, _)) = token {
+            chain.token_standard_for_identifier(contract).into()
         } else {
-            chain.entry().token_standard.clone()
+            "Native".into()
         },
         contract_address: token.map(|(contract, _)| contract.to_string()),
         amount: "1".into(),
@@ -814,14 +842,16 @@ mod a_preview_quotes_the_asset_it_moves {
             endpoints: vec![server.uri()],
         }])
         .unwrap();
-        let value = service
-            .fetch_tron_send_preview(
+        let raw = service
+            .fetch_tron_send_preview_json_on_chain(
+                Chain::Tron,
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
                 trc20_contract_fixture(),
             )
             .await
-            .expect("preview")
+            .expect("preview");
+        let value = crate::send::preview_decode::build_tron_send_preview_record(raw)
             .expect("valid typed preview");
 
         assert_eq!(value.spendableBalance, "4.2");
@@ -844,7 +874,8 @@ mod a_preview_quotes_the_asset_it_moves {
         }])
         .unwrap();
         let result = service
-            .fetch_tron_send_preview(
+            .fetch_tron_send_preview_json_on_chain(
+                Chain::Tron,
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
                 trc20_contract_fixture(),

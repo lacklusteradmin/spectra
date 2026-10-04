@@ -14,17 +14,17 @@ pub(crate) fn private_key_hex_normalized(raw_value: String) -> String {
     }
 }
 
-/// The normalised 32-byte hex key, or `None` when the input is not one.
+/// The normalised 32-byte signing seed or 64-byte extended hex key, or `None` when the input is not one.
 ///
 /// Not exported: the import commit is the only caller that needs the key, and
 /// it is in core. The editor needs only [`is_private_key_hex`].
 pub(crate) fn private_key_hex(raw_value: String) -> Option<String> {
     let normalized = private_key_hex_normalized(raw_value);
-    (normalized.len() == 64 && normalized.chars().all(|c| c.is_ascii_hexdigit()))
+    (matches!(normalized.len(), 64 | 128) && normalized.chars().all(|c| c.is_ascii_hexdigit()))
         .then_some(normalized)
 }
 
-/// Whether the input is a 32-byte hex key, once normalised.
+/// Whether the input is a 32-byte signing seed or 64-byte extended hex key, once normalised.
 ///
 /// The key editor asks this on every render. It asked `private_key_hex`,
 /// which answered with the normalised key itself — a fresh copy of a secret

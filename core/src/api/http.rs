@@ -296,6 +296,26 @@ impl HttpClient {
             .await
     }
 
+    /// Read provider pagination metadata without discarding response headers.
+    pub(crate) async fn get_json_with_response_headers<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        profile: RetryProfile,
+    ) -> Result<(T, reqwest::header::HeaderMap), ApiError> {
+        if refuse_non_loopback(url) {
+            return Err(ApiError::Transport("non-loopback endpoint refused".into()));
+        }
+        let response = self
+            .send_with_retry(|client| client.get(url), profile)
+            .await?;
+        let headers = response.headers().clone();
+        let body = response
+            .json()
+            .await
+            .map_err(|error| ApiError::Decode(format!("json decode: {error}")))?;
+        Ok((body, headers))
+    }
+
     /// GET a JSON response with custom headers.
     pub async fn get_json_with_headers<T: DeserializeOwned>(
         &self,

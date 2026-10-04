@@ -30,9 +30,28 @@ pub(crate) fn send_save(
     stored
         .validate()
         .map_err(|e| DbError::Invalid(e.to_string()))?;
-    let payload = serde_json::to_string(stored).map_err(DbError::from)?;
     with_conn(database, |conn| {
         let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+        let mut stored = stored.clone();
+        let previous: Option<String> = tx
+            .query_row(
+                "SELECT payload FROM send_artifacts WHERE id=?1",
+                [&stored.view.id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(DbError::from)?;
+        if let Some(previous) = previous {
+            let previous: StoredSend = serde_json::from_str(&previous).map_err(DbError::from)?;
+            merge_receipts(
+                &mut stored.icp_staking_receipts,
+                &previous.icp_staking_receipts,
+            )?;
+        }
+        stored
+            .validate()
+            .map_err(|e| DbError::Invalid(e.to_string()))?;
+        let payload = serde_json::to_string(&stored).map_err(DbError::from)?;
         let changed = if stored.view.revision == 0 {
             tx.execute(
                 "INSERT INTO send_artifacts(id,revision,payload) VALUES(?1,0,?2)",
@@ -64,7 +83,9 @@ pub(crate) fn send_save(
                 previous
                     .validate()
                     .map_err(|e| DbError::Corrupt(e.to_string()))?;
-                if !permits_evm_replacement(stored, &previous) {
+                if previous.view.id != stored.view.id
+                    && !permits_evm_replacement(&stored, &previous)
+                {
                     return Err(DbError::Invalid("Transaction input is already reserved by another signed transaction; an EVM replacement requires an explicit nonce and higher fees".into()));
                 }
                 tx.execute(
@@ -82,6 +103,60 @@ pub(crate) fn send_save(
         }
         tx.commit().map_err(DbError::from)
     })
+}
+
+/// Execution proofs merge in their own atomic transaction without changing the
+/// immutable review revision. A later ordinary artifact save also merges them,
+/// so parallel endpoint responses cannot overwrite one another's checkpoints.
+pub(crate) fn send_record_icp_receipt(
+    database: &WalletDatabase,
+    id: &str,
+    receipt: crate::send::icp_staking::IcpStakingReceipt,
+) -> Result<(), DbError> {
+    receipt
+        .validate()
+        .map_err(|e| DbError::Invalid(e.to_string()))?;
+    with_conn(database, |conn| {
+        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+        let payload: String = tx
+            .query_row(
+                "SELECT payload FROM send_artifacts WHERE id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .map_err(DbError::from)?;
+        let mut stored: StoredSend = serde_json::from_str(&payload).map_err(DbError::from)?;
+        merge_receipts(&mut stored.icp_staking_receipts, &[receipt])?;
+        stored
+            .validate()
+            .map_err(|e| DbError::Invalid(e.to_string()))?;
+        tx.execute(
+            "UPDATE send_artifacts SET payload=?2 WHERE id=?1",
+            params![id, serde_json::to_string(&stored).map_err(DbError::from)?],
+        )
+        .map_err(DbError::from)?;
+        tx.commit().map_err(DbError::from)
+    })
+}
+fn merge_receipts(
+    into: &mut Vec<crate::send::icp_staking::IcpStakingReceipt>,
+    incoming: &[crate::send::icp_staking::IcpStakingReceipt],
+) -> Result<(), DbError> {
+    for receipt in incoming {
+        if let Some(existing) = into.iter().find(|r| r.request_id == receipt.request_id) {
+            if existing.canister != receipt.canister
+                || existing.kind != receipt.kind
+                || existing.reply_hex != receipt.reply_hex
+            {
+                return Err(DbError::Corrupt(
+                    "Conflicting certified ICP execution proofs".into(),
+                ));
+            }
+        } else {
+            into.push(receipt.clone());
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, DbError> {
@@ -198,6 +273,121 @@ fn permits_evm_replacement(next: &StoredSend, prior: &StoredSend) -> bool {
 #[cfg(test)]
 mod query_tests {
     use super::*;
+
+    #[test]
+    fn repaired_artifact_retains_its_reservation_while_other_artifacts_are_refused() {
+        use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, SendStage};
+        let db = WalletDatabase::new(":memory:");
+        let (key, prepared) = crate::send::icp_staking::tests::new_neuron_fixture();
+        let resource = format!(
+            "icp:neuron:{}:{}",
+            prepared.controller_hex, prepared.subaccount_hex
+        );
+        let recipient = prepared.funding.as_ref().unwrap().recipient.clone();
+        let mut stored = StoredSend {
+            view: SendArtifact {
+                id: "repair".into(),
+                revision: 0,
+                stage: SendStage::Prepared,
+                wallet_id: "wallet".into(),
+                chain_id: crate::registry::Chain::Icp,
+                sender: prepared.sender.clone(),
+                recipient: recipient.clone(),
+                amount: "1".into(),
+                asset: "ICP".into(),
+                symbol: "ICP".into(),
+                staking: None,
+                created_at: 1.0,
+                review_digest: String::new(),
+                review: SendArtifactReview::default(),
+                prepared_details: String::new(),
+                signing_payload_hex: String::new(),
+                signed_payload: None,
+                transaction_hash: None,
+                attempts: vec![],
+                selected_endpoints: vec![],
+            },
+            request: crate::send::SendExecutionRequest {
+                chain_id: crate::registry::Chain::Icp,
+                wallet_id: "wallet".into(),
+                password: None,
+                to_address: recipient,
+                amount_str: "1".into(),
+                contract_address: None,
+                token_standard: None,
+                token_decimals: None,
+                fee_rate_svb: None,
+                fee_sat: None,
+                gas_budget: None,
+                fee_amount: None,
+                evm_overrides: None,
+                monero_priority: None,
+                sign_only: false,
+            },
+            prepared: PreparedPayload::IcpStaking(prepared),
+            submission: None,
+            signed_digest: None,
+            substrate_verified_through: None,
+            icp_staking_receipts: vec![],
+        };
+        fn refresh(stored: &mut StoredSend) {
+            stored.view.prepared_details = serde_json::to_string_pretty(&stored.prepared).unwrap();
+            stored.view.review_digest = stored.digest().unwrap();
+            stored.signed_digest = stored.submission_digest().unwrap();
+        }
+        fn sign(stored: &mut StoredSend, key: &crate::send::keys::Ed25519Seed) {
+            let PreparedPayload::IcpStaking(prepared) = &stored.prepared else {
+                panic!("ICP")
+            };
+            let calls = prepared.sign(key).unwrap();
+            let payload = serde_json::to_string(&calls).unwrap();
+            let hash = calls.last().map(|call| call.request_id.clone());
+            stored.submission = Some(crate::send::payload::PreparedSubmission {
+                payload: payload.clone(),
+                result_field: "hash".into(),
+                transaction_hash: hash.clone(),
+                nonce: None,
+            });
+            stored.view.stage = SendStage::Signed;
+            stored.view.signed_payload = Some(payload);
+            stored.view.transaction_hash = hash;
+            refresh(stored);
+        }
+        refresh(&mut stored);
+        send_save(&db, &stored, &[]).unwrap();
+        stored.view.revision = 1;
+        sign(&mut stored, &key);
+        send_save(&db, &stored, std::slice::from_ref(&resource)).unwrap();
+        let first: Vec<crate::send::icp_staking::SignedIcpStakingCall> =
+            serde_json::from_str(&stored.submission.as_ref().unwrap().payload).unwrap();
+        let PreparedPayload::IcpStaking(prepared) = &mut stored.prepared else {
+            panic!("ICP")
+        };
+        prepared.completed_calls.push(first[0].clone());
+        prepared.prior_calls = first;
+        prepared.calls.remove(0);
+        prepared.ingress_expiry_ns += 1;
+        prepared.fee = 0;
+        prepared.funding_confirmed_by_ledger = true;
+        stored.view.revision = 2;
+        stored.view.stage = SendStage::Prepared;
+        stored.view.signed_payload = None;
+        stored.view.transaction_hash = None;
+        stored.submission = None;
+        refresh(&mut stored);
+        send_save(&db, &stored, &[]).unwrap();
+        stored = send_load(&db, "repair").unwrap();
+        stored.view.revision = 3;
+        sign(&mut stored, &key);
+        send_save(&db, &stored, std::slice::from_ref(&resource)).unwrap();
+        assert_eq!(send_load(&db, "repair").unwrap().view.revision, 3);
+        let mut conflicting = stored.clone();
+        conflicting.view.id = "another-artifact".into();
+        conflicting.view.revision = 0;
+        refresh(&mut conflicting);
+        assert!(send_save(&db, &conflicting, &[resource]).is_err());
+        assert!(!send_exists(&db, "another-artifact").unwrap());
+    }
 
     #[test]
     fn signed_queries_skip_unrelated_artifacts_but_refuse_invalid_selected_artifacts() {

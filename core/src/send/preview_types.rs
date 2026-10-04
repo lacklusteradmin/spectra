@@ -187,7 +187,7 @@ pub struct IcpSendPreview {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct NearSendPreview {
     pub estimatedNetworkFee: String,
-    pub gasPriceYoctoNear: String,
+    pub feeBudgetYoctoNear: String,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
     pub estimatedTransactionBytes: Option<i64>,

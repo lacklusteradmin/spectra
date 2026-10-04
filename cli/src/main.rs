@@ -61,22 +61,22 @@ enum Command {
     History(cmd::chain::HistoryArgs),
     /// Transactions recorded in the local store.
     Txs(cmd::tx::TxsArgs),
-    /// Assemble a transfer, or sign and broadcast one.
+    /// Build, review, sign and broadcast transfers.
     #[command(subcommand)]
     Send(cmd::tx::SendCommand),
-    /// Spot price for a chain's native asset.
+    /// Fetch native asset prices or read and refresh stored quotes.
     Price(cmd::market::PriceArgs),
-    /// Total holdings across every wallet.
+    /// Value portfolio holdings and manage dashboard pins.
     Portfolio(cmd::market::PortfolioArgs),
     /// Read or set the display currency.
     Currency(cmd::market::CurrencyArgs),
-    /// Settings core owns: providers, endpoints, fee priorities, alert rules.
+    /// Read, change or reset stored application settings.
     #[command(subcommand)]
     Settings(cmd::settings::SettingsCommand),
-    /// Validators and staked positions.
+    /// Owned staking positions, transaction preparation and recovery.
     #[command(subcommand)]
     Staking(cmd::staking::StakingCommand),
-    /// The token catalog, and which tokens this wallet tracks.
+    /// Browse the token catalog and manage stored token preferences.
     #[command(subcommand)]
     Token(cmd::token::TokenCommand),
     /// Core's self-tests and diagnostics documents.

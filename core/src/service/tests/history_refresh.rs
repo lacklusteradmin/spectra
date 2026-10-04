@@ -343,12 +343,12 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
     assert!(outcome.diagnostics[0].error.is_some());
 }
 
-/// A UTXO wallet with no known addresses is not refreshed, and asking for
+/// A UTXO wallet with no known addresses cannot claim complete history, and asking for
 /// an unknown chain is refused.
 ///
 /// Offline: the keypool is empty, so no provider is reached.
 #[tokio::test]
-async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
+async fn a_utxo_wallet_with_no_known_addresses_is_not_exhausted() {
     let service = WalletService::new(Vec::new()).expect("service");
     let db = std::env::temp_dir()
         .join(format!(
@@ -370,7 +370,8 @@ async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
-    assert_eq!(outcome.wallets_failed, 0);
+    assert_eq!(outcome.wallets_failed, 1);
+    assert!(!outcome.exhausted);
     assert_eq!(outcome.added, 0);
 }
 
@@ -547,7 +548,7 @@ async fn a_non_evm_chain_is_refused() {
 async fn a_chain_with_no_wallets_refreshes_nothing() {
     let service = WalletService::new(Vec::new()).expect("service");
     let outcome = service
-        .refresh_chain_history(Chain::Solana, Vec::new())
+        .refresh_chain_history_page(Chain::Solana, Vec::new(), false)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);

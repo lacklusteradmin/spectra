@@ -1,7 +1,7 @@
 # Scripts
 
-This directory contains 30 scripts and tool configuration files. Use the Makefile
-for routine work:
+This directory contains build, verification and reference-data tools. Use the
+Makefile for routine work:
 
 ```sh
 make verify       # Formatting, Rust lint/tests, CLI tests and iOS simulator tests
@@ -28,7 +28,18 @@ when tests finish. The environment must allow binding local ports.
 | `cli-endpoints.py` | Typed endpoint persistence, source filters and API selection. |
 | `cli-token-preferences.py` | Token-wide choices and editable price-source metadata survive process restarts. |
 | `cli-send-stages.py` | Durable build, sign and explicit-node submission stages against loopback nodes. |
+| `cli-send-polkadot.py` | Polkadot and Bittensor metadata-driven signing, reviewed fees and finalized success/failure events. |
+| `cli-send-cardano.py` | Independent extended-key witness bytes, pure-ADA input selection and refusal of incomplete or changed UTXO facts. |
+| `cli-finality-account-chains.py` | Exact XRP, Stellar and Tron execution results, failed transactions and pending unknown results across process restarts. |
+| `cli-send-local-digests.py` | Sui/Aptos local transaction digests reject a mismatched submission reply and retain the same signed payload for a fresh-process retry. |
+| `cli-send-tokens.py` | Sui, Aptos and TON token stages, metadata and stale-state refusal, plus ERC-20 on Ethereum Classic and HyperEVM. |
+| `cli-receipt-fees.py` | Complete historical OP Stack actual fees for confirmed and reverted transactions; missing components remain unknown after reopening. |
+| `cli-chain-coverage.py` | Network-correct raw private-key imports, signer identities and testnet watch imports. |
 | `cli-send-icp-zcash.py` | ICP and Zcash send stages against loopback providers. |
+| `cli-trc10.py` | Mainnet/Nile TRC-10 metadata, discovery/history, exact token signing and durable success/failure; wrong identity/precision/funds refuse early. |
+| `cli-staking.py` | Four account chains and DOT nomination pools, ownership/funds checks, fresh-process receipts, same-payload retries and finalized outcomes. |
+| `cli-icp-staking.py` | Controller-only neurons, explicit lock/fee review, independent Candid responses and refusal of forged execution certificates before funding. |
+| `cli-send-near.py` | Mainnet/testnet native and NEP-141 protocol fee budgets, implicit-account costs, storage reserves and fee/funds changes before signing or pending retries. |
 | `cli-send-monero.py` | Monero ownership and network guards; the signature fixture runs in Rust. |
 | `cli-monero-regtest.py` | Optional: a real `monerod` behind a loopback proxy, run by hand with `--monerod /path/to/monerod`. Not part of `make verify`. |
 | `cli-assertions.sh` | Shared shell assertions: checks exit codes and output, and counts passes and failures. Sourced by other scripts. |
@@ -69,8 +80,14 @@ other cases a scan cannot resolve. Not all of these checks are part of
 | `unreachable-exports.sh` | Finds exported Rust interfaces with no detected Swift or CLI callers. |
 | `uncalled-core-fns.sh` | Finds public Rust core functions with no detected callers. |
 | `unused-strings.sh` | Finds unused text and inconsistent translation keys across locales. |
+| `source_scan.py` | Shared production-source extraction for Rust and foreign source scans; test fixtures do not count as runtime callers or copy producers. |
+| `test-source-scan.py` | Tests production/test source selection and Rust module paths; run by CLI acceptance. |
 | `swift-shell-literals.sh` | Finds hard-coded chain names and amount precision in Swift, where domain rules should come from core. |
 | `check-design-tokens.sh` | Finds corner radii, opacity values and other style literals that bypass shared UI design tokens. |
+
+The function scan matches names rather than resolving receiver types or building
+a call graph. An unrelated method with the same name can hide an unused method;
+review these candidates manually even when the scan passes.
 
 ## Icons
 
@@ -94,6 +111,10 @@ SDK versions and installation/run commands.
 
 | File | Purpose |
 |---|---|
+| `generate-trc10-send-vectors.cjs` | Independent TronWeb 6.0.4 TRC-10 protobuf, digest and signature references. |
+| `generate-account-staking-vectors.cjs` | Independent Solana, Sui, Aptos and NEAR staking transaction references. |
+| `generate-polkadot-staking-vectors.cjs` | Independent @polkadot/types 17.0.2 metadata, storage values and nomination-pool call references. |
+| `generate-icp-staking-vectors.cjs` | DFINITY 3.4.3 Candid, ingress IDs and update/read-state signatures; owned and queued-maturity responses. |
 | `generate-protocol-vectors.cjs` | Generates protocol reference data using the TON and NEAR SDKs. |
 | `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
 

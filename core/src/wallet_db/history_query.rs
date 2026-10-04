@@ -70,14 +70,14 @@ fn page_sql(query: &HistoryQuery) -> String {
     // than bound, keeping the parameter numbering the same for every shape.
     let small = if query.hide_small_amounts {
         format!(
-            "AND CAST(json_extract(h.payload, '$.amount') AS REAL) >= {HISTORY_SMALL_AMOUNT_THRESHOLD}"
+            "AND (json_extract(h.payload, '$.kind') NOT IN ('send', 'receive') OR CAST(json_extract(h.payload, '$.amount') AS REAL) >= {HISTORY_SMALL_AMOUNT_THRESHOLD})"
         )
     } else {
         String::new()
     };
     format!("SELECT h.payload, h.created_at, h.id FROM history_records h
         WHERE {wallet} {VISIBLE} {seek} {small}
-        AND (?2 = 'all' OR json_extract(h.payload, '$.kind') = ?2 OR json_extract(h.payload, '$.status') = ?2)
+        AND (?2 = 'all' OR (?2 = 'send' AND json_extract(h.payload, '$.kind') IN ('send', 'stake')) OR (?2 = 'receive' AND json_extract(h.payload, '$.kind') IN ('receive', 'withdraw', 'claimRewards')) OR json_extract(h.payload, '$.status') = ?2)
         AND (?3 = '' OR instr(spectra_lower(coalesce(json_extract(h.payload, '$.walletName'), '') || ' ' ||
           coalesce(json_extract(h.payload, '$.assetDisplayName'), '') || ' ' ||
           coalesce(json_extract(h.payload, '$.symbol'), '') || ' ' || h.chain_id || ' ' ||

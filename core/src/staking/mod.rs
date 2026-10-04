@@ -1,15 +1,5 @@
-//! Cross-chain staking surface.
-//!
-//! Each chain has its own protocol-native staking model (Solana stake
-//! accounts, nominate/bond on
-//! Polkadot, Move calls on Sui/Aptos, function calls on NEAR, neuron
-//! lock-ups on ICP). Rather than try to flatten them into a single
-//! generic "stake" RPC, each chain owns a `<Chain>StakingClient` whose
-//! method names mirror that chain's vocabulary.
-//!
-//! Shared types in this module describe what the UI cares about —
-//! validators and positions — at a level chain-agnostic
-//! enough that Swift can render them uniformly.
+//! Staking validator directory queries.
+//! Chain clients return shared metadata for the CLI and platform views.
 
 mod types;
 pub use types::*;

@@ -29,12 +29,9 @@ impl CustomEndpoint {
         mut capabilities: Vec<EndpointCapability>,
     ) -> Result<Self, SpectraBridgeError> {
         let catalog = crate::endpoints::catalog();
-        let api = catalog
-            .records
-            .iter()
-            .filter(|r| r.chain_id == chain)
-            .map(|r| r.api)
-            .chain(chain.endpoint_apis().iter().copied())
+        let api = chain
+            .compatible_endpoint_apis()
+            .into_iter()
             .find(|value| value.as_str() == api)
             .ok_or_else(|| {
                 SpectraBridgeError::failure("API type is not supported by this network")
@@ -450,9 +447,17 @@ mod tests {
             )
             .await
             .unwrap();
+        let accounts = service
+            .tron_account_endpoints(
+                crate::registry::Chain::Tron,
+                &[],
+                &[EndpointCapability::TokenDiscovery],
+            )
+            .await
+            .unwrap();
         assert!(
-            service
-                .discover_token_balances(crate::registry::Chain::Tron, "test".into())
+            crate::api::trongrid_v1::TrongridClient::new(Arc::new(accounts))
+                .fetch_trc20_holdings("test")
                 .await
                 .unwrap()
                 .is_empty()

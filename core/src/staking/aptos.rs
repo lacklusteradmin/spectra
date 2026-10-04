@@ -1,9 +1,7 @@
-//! Aptos staking validator and position queries.
+//! Aptos staking validator queries.
 
-use serde_json::json;
-
-use crate::api::http::{HttpClient, RetryProfile, race};
-use crate::staking::{StakingError, StakingPosition, StakingValidator};
+use crate::api::aptos_rest::AptosClient;
+use crate::staking::{StakingError, StakingValidator};
 
 pub struct AptosStakingClient {
     rest_endpoints: Vec<String>,
@@ -20,74 +18,47 @@ impl AptosStakingClient {
         Self { rest_endpoints }
     }
 
-    /// REST view: `0x1::delegation_pool::get_all_delegation_pools` — returns
-    /// the on-chain registry of addresses that have a `DelegationPool` resource.
-    /// These are the addresses callers must pass to `add_stake`; they differ
-    /// from validator addresses in the `ValidatorSet`.
+    /// Only active validators with an actual on-chain delegation pool.
     pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
-        if self.rest_endpoints.is_empty() {
-            return Ok(vec![]);
-        }
-        let client = HttpClient::shared();
-        let path = "/v1/view";
-        let body = json!({
-            "function": "0x1::delegation_pool::get_all_delegation_pools",
-            "type_arguments": [],
-            "arguments": []
-        });
-        // Response: [[pool_addr1, pool_addr2, ...]] — outer array = return values,
-        // inner array = the vector<address> return value.
-        let resp: serde_json::Value = match race(&self.rest_endpoints, |base| {
-            let client = client.clone();
-            let body = body.clone();
-            let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
-        })
-        .await
-        {
-            Ok(r) => r,
-            Err(_) => return Ok(vec![]),
-        };
-
-        let pool_addrs: Vec<String> = resp
-            .as_array()
-            .and_then(|outer| outer.first())
-            .and_then(|inner| inner.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
+        use futures::{StreamExt, TryStreamExt, stream};
+        let client = std::sync::Arc::new(AptosClient::new(std::sync::Arc::new(
+            self.rest_endpoints.clone(),
+        )));
+        let pool_addrs = client.fetch_staking_validators().await?;
+        let validators = stream::iter(pool_addrs)
+            .map(|validator| {
+                let client = client.clone();
+                async move {
+                    let Some(commission) =
+                        client.fetch_delegation_commission(&validator.addr).await?
+                    else {
+                        return Ok::<_, crate::api::error::ApiError>(None);
+                    };
+                    Ok(Some(StakingValidator {
+                        display_name: format!("Delegation pool {}", short_id(&validator.addr)),
+                        identifier: validator.addr,
+                        apy: None,
+                        commission: Some(commission as f64 / 10_000.0),
+                        total_stake_smallest_unit: Some(validator.voting_power),
+                        is_active: true,
+                        tags: vec![],
+                        min_delegation_smallest_unit: crate::registry::Chain::Aptos
+                            .aptos_delegation_minimum()
+                            .map(|v| v.to_string()),
+                        uptime_pct: None,
+                        website: None,
+                        description: None,
+                        next_epoch_active: None,
+                    }))
+                }
             })
-            .unwrap_or_default();
-
-        let validators = pool_addrs
+            .buffer_unordered(8)
+            .try_collect::<Vec<_>>()
+            .await?
             .into_iter()
-            .take(100)
-            .map(|addr| StakingValidator {
-                display_name: format!("Pool {}", short_id(&addr)),
-                identifier: addr,
-                apy: 0.07, // ~7% baseline
-                commission: None,
-                total_stake_smallest_unit: None,
-                is_active: true,
-                tags: vec![],
-                min_delegation_smallest_unit: Some("1100000000".to_string()), // 11 APT
-                uptime_pct: None,
-                website: None,
-                description: None,
-                next_epoch_active: None,
-            })
+            .flatten()
             .collect();
 
         Ok(validators)
-    }
-
-    /// REST: per-pool `get_stake(pool_address, wallet_address)` view function
-    /// returns (active, inactive, pending_inactive) buckets.
-    pub async fn fetch_positions(
-        &self,
-        _wallet_address: &str,
-    ) -> Result<Vec<StakingPosition>, StakingError> {
-        Ok(vec![])
     }
 }

@@ -102,8 +102,8 @@ mod tests {
             symbol: symbol.to_string(),
             coingecko_id: String::new(),
             chain_id: chain,
-            token_standard: if contract.is_some() {
-                chain.token_standard().to_string()
+            token_standard: if let Some(contract) = contract {
+                chain.token_standard_for_identifier(contract).to_string()
             } else {
                 "Native".to_string()
             },
@@ -131,7 +131,7 @@ mod tests {
                 chain_id: chain,
                 name: symbol.into(),
                 symbol: symbol.into(),
-                token_standard: chain.token_standard().to_string(),
+                token_standard: chain.token_standard_for_identifier(contract).to_string(),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),

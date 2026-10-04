@@ -31,12 +31,12 @@ pub enum WalletSecretError {
     /// A wallet cannot be sealed with an empty password.
     #[error("password cannot be empty")]
     EmptyPassword,
-    /// The wallet is sealed and no password was supplied.
-    #[error("this wallet is sealed and needs its password")]
+    /// The wallet requires a password and none was supplied.
+    #[error("this wallet requires its password")]
     PasswordRequired,
-    /// A password was supplied for a wallet that is not sealed. Reported
+    /// A password was supplied for a wallet without password protection. Reported
     /// rather than ignored: the caller believes it is unlocking something.
-    #[error("this wallet is not sealed and takes no password")]
+    #[error("this wallet has no password")]
     PasswordNotRequired,
     /// Something is stored, but it is not what this module writes.
     #[error("stored secret is corrupt: {message}")]

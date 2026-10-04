@@ -29,6 +29,8 @@ struct InsightUtxo {
 
 #[derive(Debug, Deserialize)]
 struct InsightTxList {
+    #[serde(default, rename = "pagesTotal")]
+    pages_total: Option<u32>,
     #[serde(default)]
     txs: Vec<InsightTx>,
 }
@@ -158,7 +160,28 @@ impl InsightClient {
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<DcrHistoryEntry>, ApiError> {
-        let list: InsightTxList = self.get(&format!("/txs?address={address}")).await?;
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<DcrHistoryEntry>, ApiError> {
+        let number = crate::api::history_page::page_number(cursor)?;
+        let list: InsightTxList = self
+            .get(&format!("/txs?address={address}&pageNum={}", number - 1))
+            .await?;
+        let next_cursor = match list.pages_total {
+            Some(total) if number < total => Some((number + 1).to_string()),
+            Some(_) => None,
+            None if list.txs.len() >= 10 => {
+                return Err(ApiError::Decode(
+                    "Insight: history page omitted pagesTotal".into(),
+                ));
+            }
+            None => None,
+        };
         let entries: Result<Vec<Option<DcrHistoryEntry>>, ApiError> = list
             .txs
             .into_iter()
@@ -206,7 +229,10 @@ impl InsightClient {
                 }))
             })
             .collect();
-        Ok(entries?.into_iter().flatten().collect())
+        Ok(crate::api::HistoryPage {
+            items: entries?.into_iter().flatten().collect(),
+            next_cursor,
+        })
     }
 
     pub async fn fetch_tx_status(

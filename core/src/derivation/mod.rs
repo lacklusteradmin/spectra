@@ -27,6 +27,7 @@ pub mod near;
 pub mod path;
 pub mod polkadot;
 pub mod primitives;
+mod private_key;
 pub mod solana;
 pub mod stellar;
 pub mod sui;

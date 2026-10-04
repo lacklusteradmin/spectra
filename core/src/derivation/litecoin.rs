@@ -6,7 +6,7 @@ use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{BitcoinNetworkParams, derive_secp_keypair, encode_address_inner};
 use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
 use crate::registry::Chain;
-use secp256k1::{PublicKey, Secp256k1, SecretKey};
+use secp256k1::PublicKey;
 
 /// Wallet-owned Litecoin inputs are legacy or SegWit v0 single-key outputs.
 /// Taproot recipients are supported separately by the send output decoder.
@@ -101,43 +101,6 @@ pub fn derive_litecoin_testnet(
         want_public_key,
         want_private_key,
     )
-}
-
-/// Derive Litecoin address/pubkey directly from a hex private key on its network.
-pub(crate) fn derive_litecoin_from_private_key_on_network(
-    chain: Chain,
-    private_key_hex: String,
-    want_address: bool,
-    want_public_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let trimmed = private_key_hex.trim();
-    if trimmed.len() != 64 {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Private key hex must be exactly 64 characters.".into(),
-        });
-    }
-    let bytes = hex::decode(trimmed)?;
-    let mut key_bytes = [0u8; 32];
-    key_bytes.copy_from_slice(&bytes);
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
-    let pk = PublicKey::from_secret_key(&secp, &secret_key);
-    Ok(DerivationResult {
-        address: if want_address {
-            Some(encode_litecoin_address(
-                chain,
-                BitcoinScriptType::P2pkh,
-                &pk,
-            )?)
-        } else {
-            None
-        },
-        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
-        private_key_hex: None,
-        account: 0,
-        branch: 0,
-        index: 0,
-    })
 }
 
 #[cfg(test)]

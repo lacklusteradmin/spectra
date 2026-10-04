@@ -1,7 +1,7 @@
 //! Outgoing records are written before submission and completed by core.
 use super::*;
 use crate::store::persistence_models::CorePersistedTransactionRecord;
-use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+use crate::store::wallet_domain::CoreTransactionStatus;
 
 /// The symbol and name a send's asset is shown by: the chain's coin, or the
 /// known token at `contract`. A contract no known token claims is named by
@@ -182,7 +182,7 @@ impl WalletService {
 pub(super) fn rebroadcast_input(
     record: &CorePersistedTransactionRecord,
 ) -> Result<(Chain, String, String), SpectraBridgeError> {
-    if record.kind != CoreTransactionKind::Send {
+    if !record.kind.is_submitted() {
         return Err(SpectraBridgeError::failure("only sends can be rebroadcast"));
     }
     if record.status == CoreTransactionStatus::Confirmed {
@@ -298,7 +298,7 @@ impl WalletService {
                 && r.source_address
                     .as_deref()
                     .is_some_and(|a| a.eq_ignore_ascii_case(source))
-                && r.kind == CoreTransactionKind::Send
+                && r.kind.is_submitted()
                 && r.status == CoreTransactionStatus::Pending
                 && let Some(nonce) = r.nonce
             {

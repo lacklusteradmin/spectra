@@ -3,6 +3,27 @@
 
 use crate::send::error::SendError;
 
+pub(crate) fn nep141_transfer_args(receiver: &str, amount: u128) -> Result<Vec<u8>, SendError> {
+    Ok(serde_json::to_vec(
+        &serde_json::json!({"receiver_id":receiver,"amount":amount.to_string()}),
+    )?)
+}
+
+/// NEAR identifies the unsigned Borsh transaction, excluding Signature's
+/// Ed25519 discriminator and 64 signature bytes.
+pub(crate) fn signed_transaction_hash(signed: &[u8]) -> Result<String, SendError> {
+    use sha2::{Digest, Sha256};
+    let end = signed
+        .len()
+        .checked_sub(65)
+        .filter(|end| *end > 0)
+        .ok_or_else(|| SendError::invalid("Invalid signed NEAR transaction"))?;
+    if signed[end] != 0 {
+        return Err(SendError::invalid("Invalid NEAR Ed25519 signature"));
+    }
+    Ok(bs58::encode(Sha256::digest(&signed[..end])).into_string())
+}
+
 // ── NEAR transaction builder (BORSH)
 
 /// Build a signed NEAR Transfer transaction.
@@ -172,6 +193,88 @@ fn borsh_string(out: &mut Vec<u8>, s: &str) {
     out.extend_from_slice(bytes);
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedNearFunctionCall {
+    pub signer: String,
+    pub public_key: [u8; 32],
+    pub nonce: u64,
+    pub receiver: String,
+    pub method: String,
+    pub args: Vec<u8>,
+    pub gas: u64,
+    pub deposit: String,
+    pub block_hash: [u8; 32],
+    pub message: Vec<u8>,
+    pub fee_budget: String,
+}
+impl PreparedNearFunctionCall {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prepare(
+        signer: &str,
+        public_key: [u8; 32],
+        nonce: u64,
+        receiver: &str,
+        method: &str,
+        args: Vec<u8>,
+        gas: u64,
+        deposit: u128,
+        block_hash: [u8; 32],
+    ) -> Self {
+        let message = borsh_encode_function_call(
+            signer,
+            &public_key,
+            nonce,
+            receiver,
+            method,
+            &args,
+            gas,
+            deposit,
+            &block_hash,
+        );
+        Self {
+            signer: signer.into(),
+            public_key,
+            nonce,
+            receiver: receiver.into(),
+            method: method.into(),
+            args,
+            gas,
+            deposit: deposit.to_string(),
+            block_hash,
+            message,
+            fee_budget: "0".into(),
+        }
+    }
+    pub(crate) fn sign(
+        &self,
+        key: &crate::send::keys::Ed25519Seed,
+    ) -> Result<(Vec<u8>, String), SendError> {
+        use sha2::{Digest, Sha256};
+        key.require_public_key(&self.public_key)?;
+        let expected = borsh_encode_function_call(
+            &self.signer,
+            &self.public_key,
+            self.nonce,
+            &self.receiver,
+            &self.method,
+            &self.args,
+            self.gas,
+            self.deposit.parse::<u128>().map_err(SendError::invalid)?,
+            &self.block_hash,
+        );
+        if expected != self.message {
+            return Err(SendError::invalid(
+                "NEAR staking fields differ from reviewed message",
+            ));
+        }
+        let digest = Sha256::digest(&self.message);
+        let mut raw = self.message.clone();
+        raw.push(0);
+        raw.extend(key.sign(&digest));
+        Ok((raw, bs58::encode(digest).into_string()))
+    }
+}
+
 #[cfg(test)]
 mod protocol_tests {
     use super::*;
@@ -213,6 +316,10 @@ mod protocol_tests {
             .zip(fixtures["near"].as_array().unwrap())
         {
             assert_eq!(hex::encode(bytes), vector["signed_hex"].as_str().unwrap());
+            assert_eq!(
+                signed_transaction_hash(bytes).unwrap(),
+                vector["hash"].as_str().unwrap()
+            );
         }
         assert!(
             build_near_transfer_tx(

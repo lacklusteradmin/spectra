@@ -126,24 +126,26 @@ use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 fn kind_from_raw(raw: &str) -> CoreTransactionKind {
     match raw {
         "send" => CoreTransactionKind::Send,
+        "stake" => CoreTransactionKind::Stake,
+        "unstake" => CoreTransactionKind::Unstake,
+        "withdraw" => CoreTransactionKind::Withdraw,
+        "claimRewards" => CoreTransactionKind::ClaimRewards,
         _ => CoreTransactionKind::Receive,
     }
 }
 
 fn kind_to_raw(kind: CoreTransactionKind) -> &'static str {
-    match kind {
-        CoreTransactionKind::Send => "send",
-        CoreTransactionKind::Receive => "receive",
-    }
+    kind.as_raw()
 }
 
 /// Resolve unknown wire status by kind: receives default to pending,
 /// sends to confirmed. Persisted status is required, so this fallback
 /// is applied only at ingestion.
 fn status_from_raw(raw: &str, kind: CoreTransactionKind) -> CoreTransactionStatus {
-    CoreTransactionStatus::from_raw(raw).unwrap_or(match kind {
-        CoreTransactionKind::Send => CoreTransactionStatus::Confirmed,
-        CoreTransactionKind::Receive => CoreTransactionStatus::Pending,
+    CoreTransactionStatus::from_raw(raw).unwrap_or(if kind.is_submitted() {
+        CoreTransactionStatus::Confirmed
+    } else {
+        CoreTransactionStatus::Pending
     })
 }
 
@@ -252,12 +254,25 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
             continue;
         }
 
-        let candidates = index.get(&bucket_key(&incoming));
-        let existing_index = candidates.and_then(|indices| {
-            indices.iter().copied().find(|&i| {
-                matches_identity(&merged_transactions[i], &incoming, &strategy, chain_id)
-            })
-        });
+        let key = bucket_key(&incoming);
+        let candidates = index.get(&key);
+        let staking_key = (key.0, key.1.clone(), "send".to_string(), key.3.clone());
+        let staking_candidates = if incoming.kind == "receive" {
+            index.get(&staking_key)
+        } else {
+            None
+        };
+        let existing_index = candidates
+            .into_iter()
+            .flatten()
+            .chain(
+                staking_candidates
+                    .into_iter()
+                    .flatten()
+                    .filter(|&&i| kind_from_raw(&merged_transactions[i].kind).is_staking()),
+            )
+            .copied()
+            .find(|&i| matches_identity(&merged_transactions[i], &incoming, &strategy, chain_id));
 
         if let Some(existing_index) = existing_index {
             let existing = merged_transactions[existing_index].clone();
@@ -299,7 +314,11 @@ fn bucket_key(record: &CoreTransactionRecord) -> IdentityBucketKey {
     (
         record.chain_id,
         record.transaction_hash.clone(),
-        record.kind.clone(),
+        if kind_from_raw(&record.kind).is_staking() {
+            "send".into()
+        } else {
+            record.kind.clone()
+        },
         record.wallet_id.clone(),
     )
 }
@@ -335,7 +354,7 @@ fn matches_identity(
     }
     if existing.chain_id != chain_id
         || existing.transaction_hash != incoming.transaction_hash
-        || existing.kind != incoming.kind
+        || (existing.kind != incoming.kind && !staking_provider_match(existing, incoming))
     {
         return false;
     }
@@ -351,12 +370,21 @@ fn matches_identity(
         TransactionMergeStrategy::Evm => {
             existing.wallet_id == incoming.wallet_id
                 && incoming.wallet_id.is_some()
-                && normalize_evm_address(&existing.address)
-                    == normalize_evm_address(&incoming.address)
-                && crate::decimal::compare(&existing.amount, &incoming.amount)
-                    == Some(std::cmp::Ordering::Equal)
+                && (staking_provider_match(existing, incoming)
+                    || (normalize_evm_address(&existing.address)
+                        == normalize_evm_address(&incoming.address)
+                        && crate::decimal::compare(&existing.amount, &incoming.amount)
+                            == Some(std::cmp::Ordering::Equal)))
         }
     }
+}
+
+fn staking_provider_match(
+    existing: &CoreTransactionRecord,
+    incoming: &CoreTransactionRecord,
+) -> bool {
+    kind_from_raw(&existing.kind).is_staking()
+        && matches!(incoming.kind.as_str(), "send" | "receive")
 }
 
 fn merge_record(
@@ -365,6 +393,12 @@ fn merge_record(
     strategy: &TransactionMergeStrategy,
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> CoreTransactionRecord {
+    let mut incoming = incoming;
+    if kind_from_raw(&existing.kind).is_staking() {
+        incoming.kind = existing.kind.clone();
+        incoming.amount = existing.amount.clone();
+        incoming.address = existing.address.clone();
+    }
     match strategy {
         TransactionMergeStrategy::StandardUtxo => merge_standard_utxo(existing, incoming),
         TransactionMergeStrategy::Dogecoin => merge_dogecoin(existing, incoming),
@@ -649,6 +683,42 @@ mod tests {
             ),
             transaction_history_source: Some("rpc".to_string()),
             created_at_unix: 250.0,
+        }
+    }
+
+    #[test]
+    fn staking_history_keeps_intent_and_amount_when_native_provider_reports_transfer() {
+        use crate::registry::Chain;
+        for kind in ["stake", "unstake", "withdraw", "claimRewards"] {
+            for provider_kind in ["send", "receive"] {
+                for strategy in [
+                    TransactionMergeStrategy::AccountBased,
+                    TransactionMergeStrategy::Evm,
+                ] {
+                    let mut existing = sample_transaction(Chain::Polkadot);
+                    existing.kind = kind.into();
+                    existing.amount = "90".into();
+                    existing.deployment_id = Some("polkadot:native".into());
+                    let mut incoming = existing.clone();
+                    incoming.kind = provider_kind.into();
+                    incoming.status = "confirmed".into();
+                    incoming.amount = "0".into();
+                    incoming.address = "provider-contract".into();
+                    incoming.receipt_block_number = Some(99);
+                    let result = merge_transactions(TransactionMergeRequest {
+                        existing_transactions: vec![existing],
+                        incoming_transactions: vec![incoming],
+                        strategy,
+                        chain_id: Chain::Polkadot,
+                        preserve_created_at_sentinel_unix: None,
+                    });
+                    assert_eq!(result.len(), 1);
+                    assert_eq!(result[0].kind, kind);
+                    assert_eq!(result[0].amount, "90");
+                    assert_eq!(result[0].status, "confirmed");
+                    assert_eq!(result[0].receipt_block_number, Some(99));
+                }
+            }
         }
     }
 

@@ -45,6 +45,8 @@ struct BlockbookFeeEstimate {
 #[serde(rename_all = "camelCase")]
 struct BlockbookTxList {
     #[serde(default)]
+    total_pages: Option<u32>,
+    #[serde(default)]
     transactions: Vec<BlockbookTx>,
 }
 
@@ -195,13 +197,32 @@ impl BlockbookClient {
     /// `net_sats` is the change to the queried address; the fee is the whole
     /// transaction's.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError> {
+        let number = crate::api::history_page::page_number(cursor)?;
         let normalized = self.normalize_address(address);
         let list: BlockbookTxList = self
             .get(&format!(
-                "/api/v2/address/{normalized}?details=txs&page=1&pageSize=50"
+                "/api/v2/address/{normalized}?details=txs&page={number}&pageSize=50"
             ))
             .await?;
 
+        let next_cursor = match list.total_pages {
+            Some(total) if number < total => Some((number + 1).to_string()),
+            Some(_) => None,
+            None if list.transactions.len() >= 50 => {
+                return Err(ApiError::Decode(
+                    "Blockbook: full history page omitted totalPages".into(),
+                ));
+            }
+            None => None,
+        };
         let entries: Result<Vec<Option<UtxoHistoryEntry>>, ApiError> = list
             .transactions
             .into_iter()
@@ -238,7 +259,10 @@ impl BlockbookClient {
                 }))
             })
             .collect();
-        Ok(entries?.into_iter().flatten().collect())
+        Ok(crate::api::HistoryPage {
+            items: entries?.into_iter().flatten().collect(),
+            next_cursor,
+        })
     }
 
     /// Fetch confirmation status for a single txid via `/api/v2/tx/{txid}`.

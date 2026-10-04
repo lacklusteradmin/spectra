@@ -1,4 +1,4 @@
-//! Asset Hub native transfers, bound to a validated runtime contract.
+//! Substrate native transfers, bound to a validated runtime contract.
 
 use super::substrate::{blake2b_256, decode_hash_hex};
 use crate::api::substrate_json_rpc::{PolkadotExtension, PolkadotRuntime, SubstrateClient};
@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 pub struct PreparedPolkadotTransaction {
     pub runtime: PolkadotRuntime,
     pub sender: [u8; 32],
-    pub recipient: [u8; 32],
+    /// Exact metadata-encoded call, shared by transfers and staking.
+    pub call_data: Vec<u8>,
     pub nonce: u32,
     pub amount: u128,
     pub fee: u128,
@@ -21,16 +22,9 @@ pub struct PreparedPolkadotTransaction {
 }
 
 impl PreparedPolkadotTransaction {
-    fn call(&self) -> Vec<u8> {
-        let mut call = vec![self.runtime.transfer_pallet, self.runtime.transfer_call, 0];
-        call.extend(self.recipient);
-        call.extend(Compact(self.amount).encode());
-        call
-    }
-
     /// SignedPayload encodes call, all Extra, then all AdditionalSigned in
     /// metadata order. Immortal mortality uses genesis for its checkpoint.
-    /// Fees are paid in native DOT/WND, without a tip.
+    /// Fees are paid in the chain's native asset, without a tip.
     fn extensions(&self) -> Result<(Vec<u8>, Vec<u8>), SendError> {
         let mut extra = Vec::new();
         let mut additional = Vec::new();
@@ -50,6 +44,7 @@ impl PreparedPolkadotTransaction {
                     additional.extend(genesis);
                 }
                 PolkadotExtension::Nonce => extra.extend(Compact(self.nonce).encode()),
+                PolkadotExtension::NativePayment => extra.push(0), // zero native tip
                 PolkadotExtension::AssetPayment => extra.extend([0, 0]), // zero tip, None asset_id
                 PolkadotExtension::MetadataHash => {
                     extra.push(0);
@@ -62,7 +57,7 @@ impl PreparedPolkadotTransaction {
 
     pub fn signing_payload(&self) -> Result<Vec<u8>, SendError> {
         let (extra, additional) = self.extensions()?;
-        let mut payload = self.call();
+        let mut payload = self.call_data.clone();
         payload.extend(extra);
         payload.extend(additional);
         Ok(payload)
@@ -74,7 +69,7 @@ impl PreparedPolkadotTransaction {
         body.push(1); // MultiSignature::Sr25519
         body.extend(signature);
         body.extend(self.extensions()?.0);
-        body.extend(self.call());
+        body.extend(&self.call_data);
         let mut bytes = Compact(u32::try_from(body.len()).map_err(SendError::invalid)?).encode();
         bytes.extend(body);
         Ok(bytes)
@@ -125,7 +120,7 @@ impl PreparedPolkadotTransaction {
             .ok_or_else(|| SendError::invalid("Amount and fee overflow"))?;
         if required > balance.keep_alive_spendable(self.runtime.existential_deposit) {
             return Err(SendError::invalid(
-                "Insufficient Asset Hub funds after freezes, fee and existential deposit",
+                "Insufficient Substrate funds after freezes, fee and existential deposit",
             ));
         }
         Ok(())
@@ -140,7 +135,7 @@ impl PreparedPolkadotTransaction {
         let context = client.polkadot_context(chain).await?;
         if context.runtime != self.runtime || client.fetch_nonce(address).await? != self.nonce {
             return Err(SendError::invalid(
-                "Asset Hub runtime, network or nonce changed; build and review again",
+                "Substrate runtime, network or nonce changed; build and review again",
             ));
         }
         if client
@@ -149,12 +144,12 @@ impl PreparedPolkadotTransaction {
             > self.fee
         {
             return Err(SendError::invalid(
-                "Asset Hub fee increased; build and review again",
+                "Substrate fee increased; build and review again",
             ));
         }
         self.validate_funds(
             client
-                .fetch_balance_at(&self.sender, &context.block_hash)
+                .fetch_balance_at(chain, &self.sender, &context.block_hash)
                 .await?,
         )
     }
@@ -168,7 +163,7 @@ impl PreparedPolkadotTransaction {
         let context = client.polkadot_context(chain).await?;
         if context.runtime != self.runtime {
             return Err(SendError::invalid(
-                "Asset Hub runtime changed; build and review again",
+                "Substrate runtime changed; build and review again",
             ));
         }
         if client
@@ -177,7 +172,7 @@ impl PreparedPolkadotTransaction {
             > self.fee
         {
             return Err(SendError::invalid(
-                "Asset Hub fee increased; build and review again",
+                "Substrate fee increased; build and review again",
             ));
         }
         Ok(())
@@ -191,18 +186,23 @@ pub async fn prepare_transfer(
     recipient: &str,
     amount: u128,
 ) -> Result<PreparedPolkadotTransaction, SendError> {
+    if chain.substrate_balance_bytes() == Some(8) && amount > u128::from(u64::MAX) {
+        return Err(SendError::invalid(
+            "Amount exceeds the Substrate runtime balance type",
+        ));
+    }
     if amount == 0 {
         return Err(SendError::invalid(
-            "Asset Hub transfer amount must be positive",
+            "Substrate transfer amount must be positive",
         ));
     }
     let sender_key = decode_ss58(sender)?;
     let recipient_key = decode_ss58(recipient)?;
     let context = client.polkadot_context(chain).await?;
     let mut prepared = PreparedPolkadotTransaction {
+        call_data: native_transfer_call(&context.runtime, &recipient_key, amount),
         runtime: context.runtime,
         sender: sender_key,
-        recipient: recipient_key,
         nonce: client.fetch_nonce(sender).await?,
         amount,
         fee: 0,
@@ -213,11 +213,11 @@ pub async fn prepare_transfer(
         .await?;
     prepared.validate_funds(
         client
-            .fetch_balance_at(&sender_key, &context.block_hash)
+            .fetch_balance_at(chain, &sender_key, &context.block_hash)
             .await?,
     )?;
     let destination = client
-        .fetch_balance_at(&recipient_key, &context.block_hash)
+        .fetch_balance_at(chain, &recipient_key, &context.block_hash)
         .await?;
     if destination
         .free
@@ -225,7 +225,7 @@ pub async fn prepare_transfer(
         .is_none_or(|v| v < prepared.runtime.existential_deposit)
     {
         return Err(SendError::invalid(
-            "Recipient balance would be below the Asset Hub existential deposit or overflow",
+            "Recipient balance would be below the Substrate existential deposit or overflow",
         ));
     }
     Ok(prepared)
@@ -240,22 +240,78 @@ pub async fn preview_transfer(
     let context = client.polkadot_context(chain).await?;
     let sender = decode_ss58(address)?;
     let prepared = PreparedPolkadotTransaction {
+        call_data: native_transfer_call(
+            &context.runtime,
+            &sender,
+            if chain.substrate_balance_bytes() == Some(8) {
+                u128::from(u64::MAX)
+            } else {
+                u128::MAX
+            },
+        ),
         runtime: context.runtime,
         sender,
-        recipient: sender,
         nonce: client.fetch_nonce(address).await?,
-        amount: u128::MAX,
+        amount: if chain.substrate_balance_bytes() == Some(8) {
+            u128::from(u64::MAX)
+        } else {
+            u128::MAX
+        },
         fee: 0,
         finalized_number: context.finalized_number,
     };
     let extrinsic = prepared.fee_extrinsic()?;
     let fee = client.query_fee(&extrinsic, &context.block_hash).await?;
     let balance = client
-        .fetch_balance_at(&sender, &context.block_hash)
+        .fetch_balance_at(chain, &sender, &context.block_hash)
         .await?;
     Ok((
         fee,
         balance.keep_alive_spendable(prepared.runtime.existential_deposit),
         extrinsic.len(),
     ))
+}
+
+/// Native transfers and staking use one extrinsic envelope and one signature model.
+pub fn native_transfer_call(
+    runtime: &PolkadotRuntime,
+    recipient: &[u8; 32],
+    amount: u128,
+) -> Vec<u8> {
+    let mut call = vec![runtime.transfer_pallet, runtime.transfer_call, 0];
+    call.extend(recipient);
+    call.extend(Compact(amount).encode());
+    call
+}
+
+pub async fn prepare_call(
+    client: &SubstrateClient,
+    chain: Chain,
+    sender: &str,
+    context: crate::api::substrate_json_rpc::PolkadotContext,
+    call_data: Vec<u8>,
+    spend_amount: u128,
+) -> Result<PreparedPolkadotTransaction, SendError> {
+    if call_data.len() < 2 {
+        return Err(SendError::invalid("Invalid Substrate call"));
+    }
+    let sender_key = decode_ss58(sender)?;
+    let mut prepared = PreparedPolkadotTransaction {
+        runtime: context.runtime,
+        sender: sender_key,
+        call_data,
+        nonce: client.fetch_nonce(sender).await?,
+        amount: spend_amount,
+        fee: 0,
+        finalized_number: context.finalized_number,
+    };
+    prepared.fee = client
+        .query_fee(&prepared.fee_extrinsic()?, &context.block_hash)
+        .await?;
+    prepared.validate_funds(
+        client
+            .fetch_balance_at(chain, &sender_key, &context.block_hash)
+            .await?,
+    )?;
+    Ok(prepared)
 }

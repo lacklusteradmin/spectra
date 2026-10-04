@@ -1622,10 +1622,10 @@ mod tests {
             add_token(crate::registry::Chain::Base, "  moon ", EVM_CONTRACT, 18),
         );
         assert_eq!(added.state.token_preferences[0].token.symbol, "MOON");
-        // The catalog's standard comes from the chain, not the caller.
+        // The deployment’s standard follows its identifier, not a network-wide default.
         assert_eq!(
             added.state.token_preferences[0].token.token_standard,
-            crate::registry::Chain::Base.token_standard()
+            "ERC-20"
         );
         assert!(!added.state.token_preferences[0].is_built_in);
 

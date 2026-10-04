@@ -77,7 +77,7 @@ pub struct EvmSendResult {
 }
 
 /// Balance of an ERC-20 token held at a given address.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Erc20Balance {
     /// Token contract (checksummed lowercase hex, 0x-prefixed).
     pub contract: String,
@@ -112,6 +112,10 @@ pub struct EvmReceipt {
     pub gas_used: Option<String>,
     /// Effective gas price in wei (decimal string).
     pub effective_gas_price_wei: Option<String>,
+    /// Actual L1 data charge, read from the receipt rather than an estimate.
+    pub l1_fee_wei: Option<String>,
+    /// Actual operator charge at the receipt's historical block. Missing is unknown.
+    pub operator_fee_wei: Option<String>,
     /// `true` when the transaction has been included in a block.
     pub is_confirmed: bool,
     /// `true` when status == "0x0" (execution failed / reverted).
@@ -559,15 +563,77 @@ impl EvmClient {
             .map(|n| n.to_string());
         let is_confirmed = block_number.is_some();
         let is_failed = status.as_deref() == Some("0x0");
+        let l1_fee_wei = result
+            .get("l1Fee")
+            .and_then(Value::as_str)
+            .and_then(|value| parse_hex_u128(value).ok())
+            .map(|value| value.to_string());
+        let operator_fee_wei = if let (Some(block), Some(gas)) = (block_number, gas_used.as_deref())
+        {
+            if l1_fee_wei.is_some() {
+                self.receipt_operator_fee(block, gas)
+                    .await
+                    .map(|fee| fee.to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         Ok(Some(EvmReceipt {
             tx_hash: tx_hash.to_string(),
             block_number,
             status,
             gas_used,
             effective_gas_price_wei,
+            l1_fee_wei,
+            operator_fee_wei,
             is_confirmed,
             is_failed,
         }))
+    }
+
+    /// Query the deployed oracle at the mined block, so Isthmus, Jovian and
+    /// later operator formulas are never inferred from today's deployment.
+    async fn receipt_operator_fee(&self, block: u64, gas: &str) -> Option<u128> {
+        use crate::registry::OpStackFeeModel;
+        let chain = self.chain().ok()?;
+        let model = chain.evm_rollup_fee_model()?;
+        if model != OpStackFeeModel::FjordWithOperator {
+            return Some(0);
+        }
+        let gas = gas.parse::<u64>().ok()?;
+        let block_tag = format!("0x{block:x}");
+        let fee = self
+            .call(
+                "eth_call",
+                json!([{
+                "to": "0x420000000000000000000000000000000000000F",
+                "data": format!("0x275aedd2{gas:064x}")
+            }, block_tag]),
+            )
+            .await
+            .ok()
+            .and_then(|value| {
+                let bytes = decode_hex(value.as_str()?).ok()?;
+                (bytes.len() == 32 && bytes[..16].iter().all(|byte| *byte == 0))
+                    .then(|| u128::from_be_bytes(bytes[16..].try_into().expect("ABI word")))
+            });
+        if fee.is_some() {
+            return fee;
+        }
+        // Before a verified activation timestamp there was no operator fee.
+        // A failed oracle request after activation remains unknown.
+        let activation = chain.evm_operator_fee_activation()?;
+        let header = self
+            .call("eth_getBlockByNumber", json!([block_tag, false]))
+            .await
+            .ok()?;
+        if parse_hex_u64(header.get("number")?.as_str()?).ok()? != block {
+            return None;
+        }
+        let timestamp = parse_hex_u64(header.get("timestamp")?.as_str()?).ok()?;
+        (timestamp < activation).then_some(0)
     }
 
     /// Fetch the bytecode deployed at `address` (eth_getCode).

@@ -58,8 +58,14 @@ class DiagnosticsTests(unittest.TestCase):
                 def log_message(self,*args):pass
                 def do_POST(self):
                     req=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                    seen.append(req['method']); assert req['method']=='getVoteAccounts',req
-                    data=json.dumps({'jsonrpc':'2.0','id':req['id'],'result':{'current':[{'votePubkey':'Validator11111111111111111111111111111111','activatedStake':1000,'commission':5}],'delinquent':[]}}).encode()
+                    seen.append(req['method'])
+                    if req['method']=='getVoteAccounts':
+                        value={'current':[{'votePubkey':'Validator11111111111111111111111111111111','activatedStake':1000,'commission':5}],'delinquent':[]}
+                    elif req['method']=='getStakeMinimumDelegation':
+                        value={'context':{'slot':100},'value':1500000000}
+                    else:
+                        raise AssertionError(req)
+                    data=json.dumps({'jsonrpc':'2.0','id':req['id'],'result':value}).encode()
                     self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
             server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
@@ -67,8 +73,10 @@ class DiagnosticsTests(unittest.TestCase):
                 endpoint=f'http://127.0.0.1:{server.server_port}'
                 run('endpoints','--chain','solana','--api','solana-json-rpc','--capabilities','balance,history,fee,broadcast,verification,token-balance,token-discovery,staking','--add',endpoint)
                 assert run('staking','endpoints','--chain','solana')['endpoints'][0]==endpoint
-                assert len(run('staking','validators','--chain','solana')['validators'])==1
-                assert seen==['getVoteAccounts'],seen
+                validators=run('staking','validators','--chain','solana')['validators']
+                assert len(validators)==1
+                assert validators[0]['minDelegationSmallestUnit']=='1500000000',validators
+                assert seen==['getVoteAccounts','getStakeMinimumDelegation'],seen
             finally:
                 server.shutdown();server.server_close();thread.join()
 

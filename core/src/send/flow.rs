@@ -60,6 +60,7 @@ pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
             }
         }
         AddressNormalization::Lowercase => t.to_lowercase(),
+        AddressNormalization::Uppercase => t.to_ascii_uppercase(),
         AddressNormalization::LowercaseHexPrefixed => {
             let l = t.to_lowercase();
             if l.starts_with("0x") {
@@ -1343,8 +1344,8 @@ mod validating_and_normalising_cannot_disagree {
     }
 }
 
-/// Only a quote for the selected asset can populate its amount field. Generic
-/// simple-chain previews quote the native gas asset even for token holdings.
+/// Owned previews quote the selected asset; token routes read its precision
+/// and balance before they reach this amount transformation.
 pub(crate) fn quoted_send_amount(
     preview: Option<SendPreview>,
     chain: crate::registry::Chain,
@@ -1358,7 +1359,12 @@ pub(crate) fn quoted_send_amount(
     } else {
         match &preview {
             SendPreview::Ethereum { .. } if chain.is_evm() => {}
-            SendPreview::Tron { .. } if chain == Chain::Tron => {}
+            SendPreview::Tron { .. } if chain.mainnet_counterpart() == Chain::Tron => {}
+            SendPreview::Solana { .. } if chain.mainnet_counterpart() == Chain::Solana => {}
+            SendPreview::Sui { .. } if chain.mainnet_counterpart() == Chain::Sui => {}
+            SendPreview::Aptos { .. } if chain.mainnet_counterpart() == Chain::Aptos => {}
+            SendPreview::Ton { .. } if chain.mainnet_counterpart() == Chain::Ton => {}
+            SendPreview::Near { .. } if chain.mainnet_counterpart() == Chain::Near => {}
             _ => return None,
         }
         token_decimals?
@@ -1373,7 +1379,7 @@ pub(crate) fn quoted_send_amount(
 mod shortcut_preview_tests {
     use super::*;
     #[test]
-    fn no_quote_and_gas_coin_quotes_cannot_fill_token_amounts() {
+    fn a_quote_is_required_and_selected_token_quotes_use_token_precision() {
         assert!(
             quoted_send_amount(None, crate::registry::Chain::Bitcoin, true, None, 100).is_none()
         );
@@ -1383,7 +1389,7 @@ mod shortcut_preview_tests {
                 ..Default::default()
             },
         };
-        assert!(
+        assert_eq!(
             quoted_send_amount(
                 Some(preview),
                 crate::registry::Chain::Solana,
@@ -1391,7 +1397,8 @@ mod shortcut_preview_tests {
                 Some(6),
                 100
             )
-            .is_none()
+            .as_deref(),
+            Some("12")
         );
         let preview = SendPreview::Ethereum {
             preview: EvmSendPreview {

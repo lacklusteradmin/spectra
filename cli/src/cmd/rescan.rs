@@ -43,7 +43,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
         file: args.seed_file.clone(),
         env,
     }
-    .resolve("seed phrase")?;
+    .resolve("seed phrase", "seed-file")?;
 
     crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
 

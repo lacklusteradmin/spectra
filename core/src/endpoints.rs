@@ -352,13 +352,12 @@ mod capability_tests {
             assert!(!rows.contains(&"ethereum.rpc.publicnode".into()));
         }
         assert!(!balances.contains(&"ethereum.explorer.blockscout".into()));
-        // Jetton discovery lives on v3, independently of v2's native history.
-        // No TON adapter reads jetton transfers, so nothing claims them.
+        // Jetton discovery and transfers live on v3, independently of v2's native history.
         assert_eq!(selected("ton", "token-discovery"), ["ton.api.v3"]);
         for capability in ["token-discovery", "token-history"] {
             assert!(selected("bitcoin", capability).is_empty());
         }
-        assert!(selected("ton", "token-history").is_empty());
+        assert_eq!(selected("ton", "token-history"), ["ton.api.v3"]);
         // v2 reads the metadata required to interpret v3 token balances.
         assert_eq!(
             selected("ton", "token-balance"),
@@ -366,9 +365,14 @@ mod capability_tests {
         );
         assert!(selected("ton", "history").contains(&"ton.api.v2".into()));
         assert!(selected("solana", "token-discovery").contains(&"solana.rpc.mainnet".into()));
-        assert!(selected("near", "token-discovery").is_empty());
-        // An Aptos node cannot list fungible-asset stores.
-        assert!(selected("aptos", "token-discovery").is_empty());
+        assert_eq!(
+            selected("near", "token-discovery"),
+            ["near.history.nearblocks"]
+        );
+        // Fungible stores and received activities use Aptos' address indexer.
+        for capability in ["history", "token-history", "token-discovery"] {
+            assert_eq!(selected("aptos", capability), ["aptos.indexer.aptoslabs"]);
+        }
         assert!(selected("near", "token-balance").contains(&"near.rpc.mainnet".into()));
     }
 
@@ -392,5 +396,28 @@ mod capability_tests {
         );
         let indexer = record("https://eth.blockscout.com");
         assert!(indexer.capabilities.contains(&EndpointCapability::History));
+    }
+
+    #[test]
+    fn default_monero_scanning_and_avalanche_tokens_have_eligible_nodes() {
+        for chain in [Chain::Monero, Chain::MoneroStagenet] {
+            let rows = records_for_chain(chain, &[EndpointCapability::Verification]);
+            assert!(
+                !rows.is_empty(),
+                "{chain}: local scanning requires a daemon"
+            );
+            assert!(
+                rows.iter()
+                    .all(|row| row.api == EndpointApi::MoneroDaemonRpc)
+            );
+        }
+        let token_readers =
+            records_for_chain(Chain::Avalanche, &[EndpointCapability::TokenBalance]);
+        let nodes = catalog()
+            .records
+            .iter()
+            .filter(|row| row.chain_id == Chain::Avalanche && row.api == EndpointApi::EvmJsonRpc)
+            .count();
+        assert_eq!(token_readers.len(), nodes);
     }
 }

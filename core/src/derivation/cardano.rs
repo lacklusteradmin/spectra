@@ -85,10 +85,7 @@ pub(crate) fn derive_cardano_icarus_material(
     mnemonic_wordlist: Option<&str>,
     iteration_count: u32,
     derivation_path: Option<&str>,
-) -> Result<([u8; 32], [u8; 32]), DerivationError> {
-    use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
-    use curve25519_dalek::scalar::Scalar as DalekScalar;
-
+) -> Result<([u8; 64], [u8; 32]), DerivationError> {
     let root = derive_cardano_icarus_xprv_root(
         seed_phrase,
         passphrase,
@@ -105,18 +102,24 @@ pub(crate) fn derive_cardano_icarus_material(
         xprv = cardano_icarus_derive_child(&xprv, index)?;
     }
 
-    let mut private_key = [0u8; 32];
-    private_key.copy_from_slice(&xprv[0..32]);
+    let mut private_key = [0u8; 64];
+    private_key.copy_from_slice(&xprv[0..64]);
 
-    // Public key = kL * G on Ed25519. kL is already Khovratovich-Law clamped,
-    // so reducing mod ℓ does not change the group element.
-    let mut scalar_bytes = [0u8; 32];
-    scalar_bytes.copy_from_slice(&private_key);
-    let scalar = DalekScalar::from_bytes_mod_order(scalar_bytes);
-    let point = scalar * ED25519_BASEPOINT_POINT;
-    let public_key = point.compress().to_bytes();
+    let public_key = public_from_extended_key(&private_key)?;
 
     Ok((private_key, public_key))
+}
+
+/// Public key of a validated Cardano extended signing scalar and nonce prefix.
+pub(crate) fn public_from_extended_key(key: &[u8; 64]) -> Result<[u8; 32], DerivationError> {
+    use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT, scalar::Scalar};
+    let scalar_bytes =
+        Zeroizing::new(<[u8; 32]>::try_from(&key[..32]).expect("fixed extended key"));
+    if scalar_bytes[0] & 7 != 0 || scalar_bytes[31] & 0xc0 != 0x40 {
+        return Err(DerivationError::invalid("Invalid Cardano extended scalar"));
+    }
+    let scalar = Zeroizing::new(Scalar::from_bytes_mod_order(*scalar_bytes));
+    Ok((*scalar * ED25519_BASEPOINT_POINT).compress().to_bytes())
 }
 
 // CIP-3 Icarus root xprv: PBKDF2-HMAC-SHA512(passphrase, entropy, 4096, 96) then Khovratovich-Law clamp.

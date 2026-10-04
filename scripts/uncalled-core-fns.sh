@@ -13,27 +13,17 @@
 # a function kept alive only by the test that covers it is a test fixture,
 # and belongs behind `#[cfg(test)]`, where `dead_code` can see it again.
 #
+# This is a name-based source scan, not a resolved call graph: another function
+# with the same name, or an unreachable caller, can hide dead code. Review
+# candidates and module ownership rather than treating a clean result as proof.
+#
 # Exits non-zero when any are found, so it can gate.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-python3 - <<'PY'
-import re, pathlib, subprocess, sys
+python3 -B - <<'PY'
+import re, pathlib, sys
+from scripts.source_scan import frontend_test, hand_written, split_test_code, test_modules
 
-def hand_written(root, suffix):
-    """Files under `root` a person wrote: tracked or new, never ignored.
-
-    Walking the directory reads the bindings too — `swift/generated/` and the
-    Kotlin `uniffi/` package, both ignored and both present once bindgen has
-    run. Generated code calls every export and quotes every doc comment, so
-    it made each check pass on a machine that had built for that platform.
-    """
-    listed = subprocess.run(
-        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', root],
-        check=True, capture_output=True, text=True).stdout.split('\0')
-    return [pathlib.Path(p) for p in sorted(listed) if p.endswith(suffix) and pathlib.Path(p).exists()]
-
-ATTRIBUTE = re.compile(r'\s*#\[(cfg\(test\)|test|tokio::test)')
-SKIPPABLE = re.compile(r'\s*(#\[|///|//!|$)')
 DEFINITION = re.compile(r'\s*pub(?:\([^)]*\))? (?:async )?fn (\w+)')
 
 def camel(name):
@@ -46,63 +36,6 @@ def strip_noise(text, keyword):
     text = re.sub(r'(?m)^\s*(?://|///|//!).*$', '', text)
     text = re.sub(r'(?m)^\s*(?:pub )?use .*$', '', text)
     return re.sub(r'\b' + keyword + r'\s+\w+', keyword + ' __declaration__', text)
-
-def item_end(lines, start):
-    """Index just past the item beginning at `start`.
-
-    A one-line declaration ends at its semicolon — `#[cfg(test)] mod tests;`
-    is the shape that matters, and counting braces through it swallows the
-    rest of the file. Anything else is brace-delimited, and its signature may
-    wrap before the opening brace ever appears.
-    """
-    if lines[start].strip().endswith(';'):
-        return start + 1
-    depth, opened, i = 0, False, start
-    while i < len(lines):
-        depth += lines[i].count('{') - lines[i].count('}')
-        opened = opened or '{' in lines[i]
-        i += 1
-        if opened and depth <= 0:
-            break
-    return i
-
-def test_modules(paths):
-    """Files a `#[cfg(test)] mod X;` declaration pulls in.
-
-    The name is not the signal: `diagnostics/self_tests.rs` is production
-    code — the chain self-tests the diagnostics screen runs — and reading it
-    as a test file hides every caller in it. The declaration is the signal.
-    """
-    found = set()
-    for path in paths:
-        lines = path.read_text().splitlines()
-        for i, line in enumerate(lines):
-            if not ATTRIBUTE.match(line):
-                continue
-            m = re.match(r'\s*(?:pub(?:\([^)]*\))? )?mod (\w+);', lines[i + 1] if i + 1 < len(lines) else '')
-            if m:
-                found.add(path.parent / f"{m.group(1)}.rs")
-                found.add(path.parent / m.group(1) / "mod.rs")
-    return found
-
-def split_test_code(path, text, declared_tests):
-    """(production lines as (lineno, text), test text) for one Rust file."""
-    lines = text.splitlines(keepends=True)
-    if 'tests' in path.parts or path in declared_tests:
-        return [], text
-    production, test, i = [], [], 0
-    while i < len(lines):
-        if ATTRIBUTE.match(lines[i]):
-            j = i
-            while j < len(lines) and SKIPPABLE.match(lines[j]):
-                j += 1
-            end = len(lines) if j >= len(lines) else item_end(lines, j)
-            test.extend(lines[i:end])
-            i = end
-            continue
-        production.append((i + 1, lines[i]))
-        i += 1
-    return production, ''.join(test)
 
 sources = sorted(p for d in ('core/src', 'ffi/src', 'cli/src')
                  for p in pathlib.Path(d).rglob('*.rs'))
@@ -122,8 +55,10 @@ for path in sources:
             definitions.append((m.group(1), f"{path.relative_to('core/src')}:{lineno}"))
 rust_calls = '\n'.join(production)
 
-swift = strip_noise('\n'.join(p.read_text() for p in hand_written('swift', '.swift')), 'func')
-kotlin = strip_noise('\n'.join(p.read_text() for p in hand_written('kotlin', '.kt')), 'fun')
+swift = strip_noise('\n'.join(p.read_text() for p in hand_written('swift', '.swift')
+                             if not frontend_test(p)), 'func')
+kotlin = strip_noise('\n'.join(p.read_text() for p in hand_written('kotlin', '.kt')
+                              if not frontend_test(p)), 'fun')
 
 # UniFFI calls these itself; no Rust or Swift source names them.
 ALLOWED = {'new', 'uniffi_reexport_hack'}

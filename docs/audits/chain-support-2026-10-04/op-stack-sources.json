@@ -1,0 +1,176 @@
+{
+  "checked_on": "2026-10-04",
+  "sources": [
+    {
+      "file": "mainnet-op.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/mainnet/op.toml",
+      "sha256": "419779a2c50fa240b97d2e783cb356ec718072011d6d86636c9d10b922121c99",
+      "chain_id": 10,
+      "hardforks": {
+        "canyon_time": 1704992401,
+        "delta_time": 1708560000,
+        "ecotone_time": 1710374401,
+        "fjord_time": 1720627201,
+        "granite_time": 1726070401,
+        "holocene_time": 1736445601,
+        "isthmus_time": 1746806401,
+        "jovian_time": 1764691201,
+        "karst_time": 1783526401,
+        "keep_karst_upgrade_gas": true
+      }
+    },
+    {
+      "file": "mainnet-celo.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/mainnet/celo.toml",
+      "sha256": "61e364e808623634b6716503d476097e113fde362d2dc91177725589aae96941",
+      "chain_id": 42220,
+      "hardforks": {
+        "canyon_time": 0,
+        "delta_time": 0,
+        "ecotone_time": 0,
+        "fjord_time": 0,
+        "granite_time": 0,
+        "holocene_time": 1752073200,
+        "isthmus_time": 1752073200
+      }
+    },
+    {
+      "file": "mainnet-ink.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/mainnet/ink.toml",
+      "sha256": "ba153752dc1972e52167309f02925f965fdf6556826ca84b276c91b7ddafe3ad",
+      "chain_id": 57073,
+      "hardforks": {
+        "canyon_time": 0,
+        "delta_time": 0,
+        "ecotone_time": 0,
+        "fjord_time": 0,
+        "granite_time": 0,
+        "holocene_time": 1742396400,
+        "isthmus_time": 1746806401,
+        "jovian_time": 1764691201,
+        "karst_time": 1783526401,
+        "keep_karst_upgrade_gas": true
+      }
+    },
+    {
+      "file": "mainnet-unichain.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/mainnet/unichain.toml",
+      "sha256": "392154d185e7fe97df1e9ec5415e90449edc5486a2444c5a1382540417b03490",
+      "chain_id": 130,
+      "hardforks": {
+        "canyon_time": 0,
+        "delta_time": 0,
+        "ecotone_time": 0,
+        "fjord_time": 0,
+        "granite_time": 0,
+        "holocene_time": 1736445601,
+        "isthmus_time": 1746806401,
+        "jovian_time": 1764691201,
+        "karst_time": 1783526401,
+        "keep_karst_upgrade_gas": true
+      }
+    },
+    {
+      "file": "mainnet-worldchain.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/mainnet/worldchain.toml",
+      "sha256": "9304938bde8c9f5232e19ab12355127b2d3544f6aee609f1537e1af8aea234d0",
+      "chain_id": 480,
+      "hardforks": {
+        "canyon_time": 0,
+        "delta_time": 0,
+        "ecotone_time": 0,
+        "fjord_time": 1721826000,
+        "granite_time": 1727780400,
+        "holocene_time": 1738238400,
+        "isthmus_time": 1764072000,
+        "jovian_time": 1777593600,
+        "karst_time": 1789992000
+      }
+    },
+    {
+      "file": "sepolia-op.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/sepolia/op.toml",
+      "sha256": "73a161460740462f24b1dda75aaade15dfc5f3256c80d1dbcc66666c8243d928",
+      "chain_id": 11155420,
+      "hardforks": {
+        "canyon_time": 1699981200,
+        "delta_time": 1703203200,
+        "ecotone_time": 1708534800,
+        "fjord_time": 1716998400,
+        "granite_time": 1723478400,
+        "holocene_time": 1732633200,
+        "pectra_blob_schedule_time": 1742486400,
+        "isthmus_time": 1744905600,
+        "jovian_time": 1763568001,
+        "karst_time": 1781712001,
+        "keep_karst_upgrade_gas": true
+      }
+    },
+    {
+      "file": "sepolia-celo-sep.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/sepolia/celo-sep.toml",
+      "sha256": "bd1932e19cc8019ef15c9102989cca2efe50b899ad2f9a2b278912c493aa8df1",
+      "chain_id": 11142220,
+      "hardforks": {
+        "canyon_time": 0,
+        "delta_time": 0,
+        "ecotone_time": 0,
+        "fjord_time": 0,
+        "granite_time": 0,
+        "holocene_time": 0
+      }
+    },
+    {
+      "file": "sepolia-ink.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/95de6f6c8a745bb80412240632f5c93dc8145b4b/superchain/configs/sepolia/ink.toml",
+      "sha256": "7a5012cf1d275cf3d7bbb2685a7ad96f4f1f39393b644997d054643e8935a73a",
+      "chain_id": 763373,
+      "hardforks": {
+        "canyon_time": 1699981200,
+        "delta_time": 1703203200,
+        "ecotone_time": 1708534800,
+        "fjord_time": 1716998400,
+        "granite_time": 1723478400,
+        "holocene_time": 1732633200,
+        "pectra_blob_schedule_time": 1742486400,
+        "isthmus_time": 1744905600,
+        "jovian_time": 1763568001,
+        "karst_time": 1781712001,
+        "keep_karst_upgrade_gas": true
+      }
+    },
+    {
+      "file": "mainnet-base.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/720185c32b0599fa31b14f101cbc990ec39c0a36/superchain/configs/mainnet/base.toml",
+      "sha256": "74f60e7f9e931fb4858883b59b4a096338623a8185ffffc4529c203ffe8403d1",
+      "chain_id": 8453,
+      "hardforks": {
+        "canyon_time": 1704992401,
+        "delta_time": 1708560000,
+        "ecotone_time": 1710374401,
+        "fjord_time": 1720627201,
+        "granite_time": 1726070401,
+        "holocene_time": 1736445601,
+        "isthmus_time": 1746806401,
+        "jovian_time": 1764691201
+      }
+    },
+    {
+      "file": "sepolia-base.toml",
+      "url": "https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/720185c32b0599fa31b14f101cbc990ec39c0a36/superchain/configs/sepolia/base.toml",
+      "sha256": "44c4245ecbb1dbf5f3efe9a4d73c3a6f3dfeb48fef988c1873ce9d856b0b52fa",
+      "chain_id": 84532,
+      "hardforks": {
+        "canyon_time": 1699981200,
+        "delta_time": 1703203200,
+        "ecotone_time": 1708534800,
+        "fjord_time": 1716998400,
+        "granite_time": 1723478400,
+        "holocene_time": 1732633200,
+        "pectra_blob_schedule_time": 1742486400,
+        "isthmus_time": 1744905600,
+        "jovian_time": 1763568001
+      }
+    }
+  ]
+}
