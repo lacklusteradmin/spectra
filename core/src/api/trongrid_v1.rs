@@ -18,8 +18,6 @@ pub struct TronTransfer {
     pub to: String,
     /// Human-readable amount string ("1.5", "10.0", …).
     pub amount_display: String,
-    /// "TRX" for native, token abbreviation (e.g. "USDT") for TRC-20.
-    pub symbol: String,
     pub is_incoming: bool,
 }
 
@@ -162,7 +160,6 @@ fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>
             from,
             to,
             amount_display: crate::decimal::from_units(u128::from(sun), 6),
-            symbol: "TRX".to_string(),
         });
     }
     Ok(entries)
@@ -216,7 +213,6 @@ fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>,
             is_incoming: to == address,
             to,
             amount_display: crate::decimal::from_units(raw, decimals),
-            symbol: text("/token_info/symbol").unwrap_or("?").to_string(),
         });
     }
     Ok(entries)

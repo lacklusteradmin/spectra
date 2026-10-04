@@ -237,6 +237,7 @@ pub struct ChainEntry {
     pub is_evm: bool,
     pub color: CatalogColor,
     pub artwork_name: String,
+    /// Default for token inputs; each deployment owns its actual standard.
     pub token_standard: String,
     pub contract_address_prompt: String,
     pub native_coingecko_id: String,

@@ -389,10 +389,11 @@ mod normalize_chain_history_tests {
                 }])
                 .to_string(),
             )
-            .remove(0)
         };
         for supplied_symbol in [mint, "FAKE"] {
-            let row = normalize(crate::registry::Chain::Solana, mint, supplied_symbol);
+            let mut rows = normalize(crate::registry::Chain::Solana, mint, supplied_symbol);
+            assert_eq!(rows.len(), 1);
+            let row = rows.remove(0);
             assert_eq!(row.symbol, "USDC");
             assert_eq!(row.asset_display_name, "USD Coin");
             assert_eq!(row.deployment_id, Some(format!("solana:spl:{mint}")));
@@ -400,12 +401,17 @@ mod normalize_chain_history_tests {
         }
         for (chain, identifier) in [
             (crate::registry::Chain::SolanaDevnet, mint.to_string()),
-            (crate::registry::Chain::Solana, mint.to_lowercase()),
+            (crate::registry::Chain::Solana, mint.replacen('j', "J", 1)),
         ] {
-            let row = normalize(chain, &identifier, "USDC");
+            let mut rows = normalize(chain, &identifier, "USDC");
+            assert_eq!(rows.len(), 1);
+            let row = rows.remove(0);
             assert_eq!(row.symbol, identifier);
             assert_eq!(row.asset_display_name, identifier);
         }
+        // Folding every letter changes this mint into a 33-byte value, which
+        // cannot name a Solana asset and must not produce a history row.
+        assert!(normalize(crate::registry::Chain::Solana, &mint.to_lowercase(), "USDC").is_empty());
     }
 
     /// A token that borrows a known ticker on another contract is filed under
@@ -536,7 +542,7 @@ mod normalize_chain_history_tests {
         (
             crate::registry::Chain::Ton,
             r#"[{"txid":"l1","amount_nanotons":1000000000.0,"timestamp":1700000017,"from":"tFrom","to":"tTo","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Toncoin","symbol":"TON","chain_id":"ton","amount":"1","counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Gram","symbol":"GRAM","chain_id":"ton","amount":"1","counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
         ),
         (
             crate::registry::Chain::Near,

@@ -25,8 +25,6 @@ pub struct SolanaTransfer {
     pub is_incoming: bool,
     /// Human-readable amount ("1.5", "0.001", …).
     pub amount_display: String,
-    /// "SOL" for native, mint address for SPL token transfers.
-    pub symbol: String,
     /// Empty string for native SOL; mint address for SPL.
     pub mint: String,
     pub from: String,
@@ -371,11 +369,6 @@ fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<
         fee_lamports: fee,
         is_incoming,
         amount_display,
-        symbol: if mint.is_empty() {
-            "SOL".to_string()
-        } else {
-            mint.clone()
-        },
         mint,
         from: from.clone(),
         to: to.clone(),

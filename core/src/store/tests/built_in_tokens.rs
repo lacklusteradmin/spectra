@@ -35,6 +35,7 @@ async fn merging_keeps_what_the_user_added() {
     let service = WalletService::new(Vec::new()).expect("service");
     service
         .apply_state_command(StateCommand::AddCustomToken {
+            standard: None,
             chain_id: crate::registry::Chain::Base,
             symbol: "MOON".into(),
             name: "Moon".into(),
@@ -108,11 +109,22 @@ fn a_built_in_cannot_be_removed() {
 fn the_token_list_keeps_each_tokens_deployments_together() {
     let mut custom = crate::store::built_in_token_preferences()
         .into_iter()
-        .next()
+        .find(|entry| entry.token.chain_id == crate::registry::Chain::Ethereum)
         .unwrap();
     custom.is_built_in = false;
     custom.token.symbol = "AAA".into();
     custom.token.token_id = "custom:aaa".into();
+    custom.token.contract = format!("0x{}", "42".repeat(20));
+    custom.token.kind = crate::tokens::TokenKind::Protocol {
+        standard: custom.token.token_standard.clone(),
+        identifier: custom.token.contract.clone(),
+    };
+    custom.token.deployment_id = crate::tokens::protocol_deployment_id(
+        custom.token.chain_id,
+        &custom.token.token_standard,
+        &custom.token.contract,
+    )
+    .unwrap();
     let merged = crate::store::merge_built_in_token_preferences(
         crate::store::built_in_token_preferences(),
         vec![custom],
@@ -137,4 +149,67 @@ fn the_token_list_keeps_each_tokens_deployments_together() {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() {
+    let built_in = crate::store::built_in_token_preferences()
+        .into_iter()
+        .find(|entry| entry.token.chain_id == crate::registry::Chain::BnbChain)
+        .unwrap();
+    let mut alias = built_in.clone();
+    alias.is_built_in = false;
+    alias.token.token_standard = "ERC-20".into();
+    alias.token.symbol = "STALE".into();
+    let mut custom = alias.clone();
+    custom.token.contract = format!("0x{}", "Aa".repeat(20));
+    custom.token.token_id = "custom:other".into();
+    custom.token.symbol = "OTHER".into();
+    custom.token.kind = crate::tokens::TokenKind::Protocol {
+        standard: custom.token.token_standard.clone(),
+        identifier: custom.token.contract.clone(),
+    };
+    custom.token.deployment_id = crate::tokens::protocol_deployment_id(
+        custom.token.chain_id,
+        &custom.token.token_standard,
+        &custom.token.contract,
+    )
+    .unwrap();
+    let mut second_alias = custom.clone();
+    second_alias.token.contract = custom.token.contract.to_lowercase();
+    second_alias.token.token_standard = "BEP-20".into();
+    second_alias.token.symbol = "DUPLICATE".into();
+    let state = crate::store::state::CoreAppState {
+        token_preferences: vec![alias, custom.clone(), second_alias],
+        ..Default::default()
+    };
+    let db = std::env::temp_dir().join(format!(
+        "spectra-token-alias-{}.sqlite",
+        crate::store::new_event_id()
+    ));
+    crate::wallet_db::app_state_save(
+        &crate::wallet_db::WalletDatabase::new(db.to_str().unwrap()),
+        &state,
+    )
+    .unwrap();
+    let service = WalletService::new(Vec::new()).unwrap();
+    let reopened = service
+        .open_state(db.to_string_lossy().into())
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened.token_preferences.iter().find(|entry| {
+            entry.token.chain_id == built_in.token.chain_id
+                && entry.token.contract == built_in.token.contract
+        }),
+        Some(&built_in)
+    );
+    assert_eq!(
+        reopened
+            .token_preferences
+            .iter()
+            .filter(|entry| !entry.is_built_in)
+            .collect::<Vec<_>>(),
+        [&custom]
+    );
 }

@@ -92,6 +92,9 @@ pub struct SendExecutionRequest {
     // ── Token-specific ──────────────────────────────────────────────────
     /// Contract/mint address for token sends (ERC-20, SPL, TRC-20, NEP-141).
     pub contract_address: Option<String>,
+    /// Actual token protocol; omitted values are resolved by core before reads.
+    #[uniffi(default = None)]
+    pub token_standard: Option<String>,
     /// Token decimals for raw-unit conversion.
     pub token_decimals: Option<u32>,
     // ── Chain-specific optional fields ───────────────────────────────────
@@ -311,9 +314,7 @@ pub fn validate_send_preflight(
         token_decimals: token.map(|token| token.decimals),
         // Only a token send needs it: the native asset pays its own fee out
         // of the amount, which the balance check above already covers.
-        token_send_gas_reserve: token
-            .and(asset.chain.token_send_gas_reserve())
-            .map(str::to_string),
+        token_send_gas_reserve: token.and(asset.chain.token_send_gas_reserve()),
     })
 }
 
@@ -425,29 +426,6 @@ mod tests {
         }
     }
 
-    /// Every EVM chain can name the asset its history is denominated in.
-    #[test]
-    fn every_evm_chain_names_its_native_asset() {
-        use crate::registry::Chain;
-
-        for chain in Chain::all().filter(|c| c.is_evm()) {
-            let asset = crate::fetch::history_decode::history_evm_native_asset(chain)
-                .unwrap_or_else(|| panic!("{} has no native asset", chain.str_id()));
-            assert_eq!(asset.symbol, chain.entry().gas_token_symbol);
-            assert!(
-                !asset.symbol.is_empty(),
-                "{} has no native symbol",
-                chain.str_id()
-            );
-            assert!(!asset.asset_display_name.is_empty());
-        }
-        // And a chain that is not EVM is still refused.
-        assert!(
-            crate::fetch::history_decode::history_evm_native_asset(crate::registry::Chain::Bitcoin)
-                .is_none()
-        );
-    }
-
     /// The MWEB overhead belongs to Litecoin and to MWEB destinations only.
     #[test]
     fn only_litecoin_mweb_destinations_cost_extra_bytes() {
@@ -530,14 +508,15 @@ mod tests {
             validate_send_preflight(true, Some(asset), "10", destination, "1")
                 .expect("a sendable asset")
         };
-        let token = |contract: &str, decimals| {
+        let token = |standard: &str, contract: &str, decimals| {
             SendAssetKind::Token(SendTokenIdentity {
+                standard: standard.into(),
                 contract: contract.into(),
                 decimals,
             })
         };
 
-        let usdc = asset(Chain::Near, "USDC", token("usdc.near", 6));
+        let usdc = asset(Chain::Near, "USDC", token("NEP-141", "usdc.near", 6));
         assert_eq!(
             preflight(&usdc, "receiver.near")
                 .token_send_gas_reserve
@@ -553,7 +532,7 @@ mod tests {
         let usdt = asset(
             Chain::Tron,
             "USDT",
-            token("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),
+            token("TRC-20", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),
         );
         let tron = preflight(&usdt, "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7");
         assert_eq!(tron.token_send_gas_reserve, None);
@@ -563,6 +542,7 @@ mod tests {
     #[test]
     fn send_execution_request_scrubs_secret_fields() {
         let mut request = SendExecutionRequest {
+            token_standard: None,
             chain_id: crate::registry::Chain::Ethereum,
             wallet_id: "w".into(),
             password: Some("password".into()),

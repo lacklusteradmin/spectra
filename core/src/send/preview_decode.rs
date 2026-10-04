@@ -341,11 +341,18 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
             },
         },
         SimpleChain::Aptos => {
-            let gas: u64 = raw.parse().unwrap_or(100);
+            let gas = o
+                .get("gas_unit_price_octas")?
+                .as_u64()
+                .filter(|price| *price > 0)?;
+            let max_gas = o
+                .get("max_gas_amount")?
+                .as_u64()
+                .filter(|amount| *amount > 0)?;
             SimpleChainPreview::Aptos {
                 preview: AptosSendPreview {
                     estimatedNetworkFee: fee,
-                    maxGasAmount: 10_000,
+                    maxGasAmount: max_gas,
                     gasUnitPriceOctas: gas,
                     spendableBalance: bal,
                     feeRateDescription: Some(format!("{} octas/unit", gas)),
@@ -493,6 +500,33 @@ mod tests {
         };
         assert_eq!(preview.maxSendable, "9.5");
         assert!(build_simple_chain_preview("{}".into(), SimpleChain::Solana).is_none());
+    }
+
+    #[test]
+    fn aptos_requires_explicit_gas_parameters_instead_of_guessing_from_the_fee() {
+        let mut value = serde_json::json!({
+            "fee_display":"0.01", "fee_raw":"1000000", "balance_display":"2",
+            "gas_unit_price_octas":100, "max_gas_amount":10000
+        });
+        let SimpleChainPreview::Aptos { preview } =
+            build_simple_chain_preview(value.to_string(), SimpleChain::Aptos).unwrap()
+        else {
+            panic!("Aptos shape");
+        };
+        assert_eq!(preview.gasUnitPriceOctas, 100);
+        assert_eq!(preview.estimatedNetworkFee, "0.01");
+        assert_eq!(preview.maxSendable, "1.99");
+        value["gas_unit_price_octas"] = serde_json::json!(0);
+        assert!(build_simple_chain_preview(value.to_string(), SimpleChain::Aptos).is_none());
+        value["gas_unit_price_octas"] = serde_json::json!(100);
+        value.as_object_mut().unwrap().remove("max_gas_amount");
+        assert!(build_simple_chain_preview(value.to_string(), SimpleChain::Aptos).is_none());
+        value["max_gas_amount"] = serde_json::json!(10000);
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("gas_unit_price_octas");
+        assert!(build_simple_chain_preview(value.to_string(), SimpleChain::Aptos).is_none());
     }
 
     #[test]

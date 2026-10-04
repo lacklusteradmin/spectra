@@ -20,6 +20,84 @@ binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
 
 
 class SendTests(unittest.TestCase):
+    def test_aptos_total_gas_budget_is_affordable_and_bound_to_signing(self):
+        """APT gas price is per unit; the complete reserved fee limits every build."""
+        live = {'gas_price': 100, 'balance': 100000000}
+        submitted = []
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def reply(self, value):
+                body = json.dumps(value).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def do_GET(self):
+                if self.path == '/':
+                    self.reply({'chain_id': 1, 'ledger_version': '1'})
+                elif self.path == '/estimate_gas_price':
+                    self.reply({'gas_estimate': live['gas_price']})
+                elif self.path.startswith('/accounts/'):
+                    self.reply({'sequence_number': '7'})
+                else:
+                    raise AssertionError(self.path)
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                if self.path == '/view':
+                    assert body['function'] == '0x1::coin::balance', body
+                    self.reply([str(live['balance'])])
+                elif self.path == '/transactions':
+                    submitted.append(body)
+                    self.reply({'hash': '0x' + 'ab' * 32})
+                else:
+                    raise AssertionError(self.path)
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-aptos-gas-budget-') as directory:
+                env = {**os.environ,
+                       'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl'),
+                       'SPECTRA_SEED': 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'}
+                def run(*args, success=True):
+                    result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                            capture_output=True, text=True, timeout=60, env=env)
+                    assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
+                    return json.loads(result.stdout)
+                endpoint = f'http://127.0.0.1:{server.server_port}'
+                run('wallet', 'import', '--chain', 'aptos', '--name', 'APT', '--no-password')
+                run('endpoints', '--chain', 'aptos', '--api', 'aptos-rest',
+                    '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
+                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                    wid, payload = db.execute('SELECT id,payload FROM wallets').fetchone()
+                    wallet = json.loads(payload)
+                    wallet['holdings'] = [dict(name='Aptos', symbol='APT', coingeckoId='aptos',
+                        chainId='aptos', tokenStandard='Native', contractAddress=None, amount='1')]
+                    db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
+                destination = '0x' + '22' * 32
+                owned = ('--wallet', 'APT', '--holding', 'aptos:native', '--destination', destination)
+                preview = run('send', 'preview', *owned, '--amount', '0.99')['preview']
+                assert preview['network_fee'] == '0.01', preview
+                assert preview['details']['maxSendable'] == '0.99', preview
+                quote = run('send', 'quote', *owned, '--amount', '0.99')['quote']
+                assert quote['request']['fee_amount'] == '0.01', quote
+                run('send', 'build-owned', *owned, '--amount', '0.99000001', success=False)
+                direct = ('send', 'build', '--from', 'APT', '--to', destination, '--endpoint', endpoint)
+                run(*direct, '--amount', '1', success=False)
+                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                    assert db.execute('SELECT COUNT(*) FROM send_artifacts').fetchone()[0] == 0
+                prepared = run(*direct, '--amount', '0.99')['artifact']
+                body = json.loads(prepared['prepared_details'])['Aptos']['body']
+                assert body['max_gas_amount'] == '10000' and body['gas_unit_price'] == '100', body
+                # Signing uses the reviewed transaction even after the provider raises its price.
+                live['gas_price'] = 500
+                signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
+                             '--endpoint', endpoint)['artifact']
+                signed_body = json.loads(json.loads(signed['signed_payload'])['signed_body_json'])
+                assert signed_body['max_gas_amount'] == '10000' and signed_body['gas_unit_price'] == '100', signed_body
+                assert signed_body['payload']['arguments'][1] == '99000000', signed_body
+                assert run('send', 'inspect', signed['id'])['artifact'] == signed
+                assert submitted == [], submitted
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
     def test_password_protected_broadcast(self):
         """Wrong passwords never broadcast; the right password sends exactly once."""
         seen = []

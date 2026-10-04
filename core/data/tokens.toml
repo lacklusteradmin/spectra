@@ -284,12 +284,12 @@ decimals = 8
 
 [[tokens]]
 id = "the-open-network"
-symbol = "TON"
-name = "Toncoin"
+symbol = "GRAM"
+name = "Gram"
 coingecko_id = "the-open-network"
 coinpaprika_id = "ton-tontoken"
 color = "blue"
-artwork_name = "ton"
+artwork_name = "gram"
 tags = []
 
 [[deployments]]
@@ -817,7 +817,7 @@ id = "honey-3"
 symbol = "BUSD"
 name = "Bera USD"
 coingecko_id = "honey-3"
-coinpaprika_id = ""
+coinpaprika_id = "honey-honey1"
 color = "orange"
 artwork_name = "berausd"
 tags = ["stablecoin"]
@@ -903,14 +903,6 @@ kind = "token"
 standard = "ERC-20"
 contract = "0x3a287a06c66f9e95a56327185ca2bdf5f031cecd"
 decimals = 18
-
-[[deployments]]
-token_id = "pancakeswap-token"
-chain_id = "aptos"
-kind = "token"
-standard = "AIP-21"
-contract = "0x159df6b7689437016108a019fd5bef736bac692b6d4a1f10c941f6fbb9a74ca6::oft::CakeOFT"
-decimals = 8
 
 [[tokens]]
 id = "coinbase-wrapped-btc"
@@ -1250,14 +1242,6 @@ decimals = 18
 
 [[deployments]]
 token_id = "ethena"
-chain_id = "berachain"
-kind = "token"
-standard = "ERC-20"
-contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
-decimals = 18
-
-[[deployments]]
-token_id = "ethena"
 chain_id = "linea"
 kind = "token"
 standard = "ERC-20"
@@ -1438,7 +1422,7 @@ chain_id = "sui"
 kind = "token"
 standard = "Sui Coin"
 contract = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
-decimals = 9
+decimals = 6
 
 [[deployments]]
 token_id = "first-digital-usd"
@@ -1686,7 +1670,7 @@ chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
-decimals = 8
+decimals = 9
 
 [[deployments]]
 token_id = "chainlink"
@@ -2037,7 +2021,7 @@ token_id = "ripple-usd"
 chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
-contract = "0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
+contract = "0x8292bb45bf1ee4d140127049757c2e0ff06317ed"
 decimals = 18
 
 [[tokens]]
@@ -3061,7 +3045,7 @@ name = "Wrapped Ether"
 coingecko_id = "weth"
 coinpaprika_id = "weth-weth"
 color = "gray"
-artwork_name = "ethereum"
+artwork_name = "weth"
 tags = []
 
 [[deployments]]

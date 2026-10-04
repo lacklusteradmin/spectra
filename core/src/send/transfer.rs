@@ -4,6 +4,7 @@ use crate::store::wallet_domain::{AssetHolding, CoreTokenPreferenceEntry};
 /// A token's contract and its own decimals.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendTokenIdentity {
+    pub standard: String,
     pub contract: String,
     pub decimals: u32,
 }
@@ -41,6 +42,7 @@ impl SendAsset {
                 .find(|entry| entry.token.matches_holding(holding))
                 .map_or(SendAssetKind::UntrackedToken, |entry| {
                     SendAssetKind::Token(SendTokenIdentity {
+                        standard: entry.token.token_standard.clone(),
                         contract: entry.token.contract.clone(),
                         decimals: entry.token.decimals,
                     })
@@ -63,9 +65,9 @@ impl SendAsset {
     /// Every chain sends its own asset; a token only where the chain has a
     /// token transfer and the user tracks it.
     pub fn is_sendable(&self) -> bool {
-        match self.kind {
+        match &self.kind {
             SendAssetKind::Native => true,
-            SendAssetKind::Token(_) => self.chain.sends_tokens(),
+            SendAssetKind::Token(token) => self.chain.sends_token_standard(&token.standard),
             SendAssetKind::UntrackedToken => false,
         }
     }

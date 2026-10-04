@@ -4,19 +4,32 @@ mod token_decimals_come_from_the_contract {
     use crate::registry::Chain;
     use crate::service::WalletService;
 
-    /// A family without a metadata reader returns None without a network call.
+    /// A missing execution metadata reader does not bypass identity validation.
     #[tokio::test]
-    async fn a_family_core_cannot_ask_falls_back_to_the_caller() {
+    async fn valid_tokens_without_execution_metadata_return_none() {
         let service = WalletService::new(Vec::new()).expect("service");
-        for chain in [Chain::Ton, Chain::Sui, Chain::Aptos] {
+        for (chain, identifier) in [
+            (
+                Chain::Ton,
+                "0:0000000000000000000000000000000000000000000000000000000000000001",
+            ),
+            (Chain::Sui, "0x1::coin::TEST"),
+            (Chain::Aptos, "0x1"),
+        ] {
             assert_eq!(
                 service
-                    .token_contract_decimals(chain, "whatever")
+                    .token_contract_decimals(chain, identifier)
                     .await
                     .unwrap(),
                 None,
-                "{} has no metadata client, so the caller's value must stand",
+                "{} has no execution metadata reader",
                 chain.str_id()
+            );
+            assert!(
+                service
+                    .token_contract_decimals(chain, "whatever")
+                    .await
+                    .is_err()
             );
         }
     }
@@ -28,6 +41,7 @@ pub(super) mod request_fixture {
         chain_id: crate::registry::Chain,
     ) -> SendExecutionRequest {
         SendExecutionRequest {
+            token_standard: None,
             chain_id,
             wallet_id: "w".into(),
             password: None,
@@ -165,8 +179,8 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
             sender: String::new(),
             recipient: "to".into(),
             amount: "1.5".into(),
-            asset: "TON".into(),
-            symbol: "TON".into(),
+            asset: "GRAM".into(),
+            symbol: "GRAM".into(),
             created_at: 0.0,
             review_digest: String::new(),
             review: SendArtifactReview::default(),

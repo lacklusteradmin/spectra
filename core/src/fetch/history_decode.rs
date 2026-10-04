@@ -29,6 +29,8 @@ pub struct NormalizedHistoryItem {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmTokenTransferItem {
+    #[uniffi(default = "")]
+    pub standard: String,
     pub contract_address: String,
     pub token_name: String,
     pub symbol: String,
@@ -69,8 +71,8 @@ pub struct EvmHistoryPageDecoded {
 // The history service merges these records into core-owned transaction state.
 // ────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct EvmHistoryTransactionRecord {
+#[derive(Debug, Clone)]
+pub(crate) struct EvmHistoryTransactionRecord {
     pub status: String,
     pub deployment_id: Option<String>,
     pub wallet_id: String,
@@ -88,25 +90,23 @@ pub struct EvmHistoryTransactionRecord {
     pub created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct EvmTransactionRecordWalletInput {
+#[derive(Debug, Clone)]
+pub(crate) struct EvmTransactionRecordWalletInput {
     pub wallet_id: String,
     pub wallet_name: String,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct EvmTransactionRecordRequest {
+#[derive(Debug, Clone)]
+pub(crate) struct EvmTransactionRecordRequest {
     pub decoded_page: EvmHistoryPageDecoded,
     pub normalized_address: String,
     pub chain_id: crate::registry::Chain,
     pub token_source_used: Option<String>,
-    pub native_asset_display_name: String,
-    pub native_asset_symbol: String,
     pub wallets: Vec<EvmTransactionRecordWalletInput>,
     pub unknown_timestamp_sentinel_unix: f64,
 }
 
-pub fn build_evm_transaction_records(
+pub(crate) fn build_evm_transaction_records(
     request: EvmTransactionRecordRequest,
 ) -> Vec<EvmHistoryTransactionRecord> {
     let normalized = request.normalized_address;
@@ -135,10 +135,18 @@ pub fn build_evm_transaction_records(
             };
             out.push(EvmHistoryTransactionRecord {
                 status: "confirmed".into(),
-                deployment_id: crate::tokens::deployment_id_for(
-                    request.chain_id,
-                    Some(&transfer.contract_address),
-                ),
+                deployment_id: if transfer.standard.is_empty() {
+                    crate::tokens::deployment_id_for(
+                        request.chain_id,
+                        Some(&transfer.contract_address),
+                    )
+                } else {
+                    crate::tokens::protocol_deployment_id(
+                        request.chain_id,
+                        &transfer.standard,
+                        &transfer.contract_address,
+                    )
+                },
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
@@ -176,8 +184,8 @@ pub fn build_evm_transaction_records(
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
-                asset_display_name: request.native_asset_display_name.clone(),
-                symbol: request.native_asset_symbol.clone(),
+                asset_display_name: request.chain_id.coin_name().to_string(),
+                symbol: request.chain_id.coin_symbol().to_string(),
                 chain_id: request.chain_id,
                 amount_decimal: transfer.amount_decimal.clone(),
                 counterparty,
@@ -311,26 +319,6 @@ pub fn history_aggregate_by_transaction(
     out
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct EvmNativeAsset {
-    pub asset_display_name: String,
-    pub symbol: String,
-}
-
-/// Native asset name/symbol for an EVM `chain_id`. Returns `None` when
-/// the chain name is not a known EVM chain.
-pub fn history_evm_native_asset(chain: crate::registry::Chain) -> Option<EvmNativeAsset> {
-    // Both halves are catalog columns, so every EVM network has an asset to
-    // name.
-    if !chain.is_evm() {
-        return None;
-    }
-    Some(EvmNativeAsset {
-        asset_display_name: chain.entry().native_asset_display_name.clone(),
-        symbol: chain.entry().gas_token_symbol.clone(),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,6 +327,7 @@ mod tests {
     fn plans_evm_transaction_records_for_matching_transfers() {
         let page = EvmHistoryPageDecoded {
             tokens: vec![EvmTokenTransferItem {
+                standard: String::new(),
                 contract_address: "0xabc".into(),
                 token_name: "USD Coin".into(),
                 symbol: "USDC".into(),
@@ -366,8 +355,6 @@ mod tests {
             normalized_address: "0xself".into(),
             chain_id: crate::registry::Chain::Ethereum,
             token_source_used: Some("rust/etherscan".into()),
-            native_asset_display_name: "Ether".into(),
-            native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
                 wallet_name: "Primary".into(),
@@ -390,6 +377,7 @@ mod tests {
     fn plans_evm_transaction_records_skips_unrelated_transfers() {
         let page = EvmHistoryPageDecoded {
             tokens: vec![EvmTokenTransferItem {
+                standard: String::new(),
                 contract_address: "0xabc".into(),
                 token_name: "USD Coin".into(),
                 symbol: "USDC".into(),
@@ -409,8 +397,6 @@ mod tests {
             normalized_address: "0xself".into(),
             chain_id: crate::registry::Chain::Ethereum,
             token_source_used: None,
-            native_asset_display_name: "Ether".into(),
-            native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
                 wallet_name: "Primary".into(),
@@ -454,15 +440,6 @@ mod tests {
         assert_eq!(out[0].amount, "7");
         assert_eq!(out[0].counterparty, "External");
         assert_eq!(out[0].created_at_unix, 1700000000.0);
-    }
-
-    #[test]
-    fn evm_native_asset_lookup() {
-        let eth = history_evm_native_asset(crate::registry::Chain::Ethereum).unwrap();
-        assert_eq!(eth.symbol, "ETH");
-        let bnb = history_evm_native_asset(crate::registry::Chain::BnbChain).unwrap();
-        assert_eq!(bnb.asset_display_name, "BNB");
-        assert!(history_evm_native_asset(crate::registry::Chain::Bitcoin).is_none());
     }
 
     /// Every chain the registry knows can be paged, and iOS's "load more"

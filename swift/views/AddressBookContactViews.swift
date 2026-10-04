@@ -11,7 +11,7 @@ struct NewAddressBookContactView: View {
     @Bindable var store: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
-    @State private var chain: Chain = Chain.mainnets.first ?? .bitcoin
+    @State private var chain: Chain? = Chain.mainnets.first
     @State private var address: String = ""
     @State private var note: String = ""
     @State private var isChoosingChain = false
@@ -19,7 +19,8 @@ struct NewAddressBookContactView: View {
 
     private var trimmedAddress: String { address.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSave: Bool {
-        store.canSaveAddressBookEntry(name: name, address: address, chain: chain)
+        guard let chain else { return false }
+        return store.canSaveAddressBookEntry(name: name, address: address, chain: chain)
     }
 
     var body: some View {
@@ -43,6 +44,7 @@ struct NewAddressBookContactView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             SpectraBottomActionBar {
                 Button {
+                    guard let chain else { return }
                     spectraNotificationHaptic(.success)
                     store.addAddressBookEntry(name: name, address: address, chain: chain, note: note)
                     dismiss()
@@ -62,7 +64,7 @@ struct NewAddressBookContactView: View {
             AllChainsSelectionView(
                 chainSearchText: $chainSearchText,
                 descriptors: addressBookChainDescriptors,
-                selectedChains: [chain],
+                selectedChains: chain.map { Set([$0]) } ?? [],
                 toggleSelection: { picked in
                     chain = picked
                     isChoosingChain = false
@@ -116,6 +118,7 @@ struct NewAddressBookContactView: View {
 
     private var chainRow: some View {
         let badge = Coin.nativeChainBadge(for: chain) ?? (nil, Color.mint)
+        let chainName = chain?.displayName ?? AppLocalization.string("Select a chain")
 
         return Button {
             spectraHaptic(.light)
@@ -124,7 +127,7 @@ struct NewAddressBookContactView: View {
             HStack(spacing: SpectraLayout.Space.m) {
                 CoinBadge(
                     artworkName: badge.artworkName,
-                    fallbackText: chain.displayName,
+                    fallbackText: chainName,
                     color: badge.color,
                     size: 34
                 )
@@ -132,7 +135,7 @@ struct NewAddressBookContactView: View {
                     Text(AppLocalization.string("Chain"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(chain.displayName)
+                    Text(chainName)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
@@ -151,12 +154,13 @@ struct NewAddressBookContactView: View {
 
     /// A terse example of what an address on this chain looks like.
     private var addressPrompt: String {
-        let hint = chain.addressPrefixHint
+        let hint = chain?.addressPrefixHint ?? ""
         return hint.isEmpty ? AppLocalization.string("Address") : hint
     }
 
     private var addressValidationMessage: String {
-        store.addressBookAddressValidationMessage(for: address, chain: chain)
+        guard let chain else { return AppLocalization.string("Select a chain first.") }
+        return store.addressBookAddressValidationMessage(for: address, chain: chain)
     }
 
     private var addressValidationColor: Color { canSave ? .green : .secondary }

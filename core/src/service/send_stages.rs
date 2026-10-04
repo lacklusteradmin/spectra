@@ -414,6 +414,39 @@ impl WalletService {
         }
         super::send_execution::validate_execution_amount(chain, &request)?;
         let state = self.app_state().await;
+        if let Some(contract) = &request.contract_address {
+            let normalized =
+                crate::tokens::normalize_token_identifier(Some(contract.clone()), chain);
+            let tracked = state.token_preferences.iter().find(|p| {
+                p.token.chain_id == chain
+                    && crate::tokens::normalize_token_identifier(
+                        Some(p.token.contract.clone()),
+                        chain,
+                    ) == normalized
+            });
+            let standard = tracked
+                .map(|p| p.token.token_standard.as_str())
+                .or(request.token_standard.as_deref())
+                .unwrap_or_else(|| chain.token_standard_for_identifier(contract));
+            if request
+                .token_standard
+                .as_deref()
+                .is_some_and(|requested| requested != standard)
+            {
+                return Err(SpectraBridgeError::invalid(
+                    "requested token protocol differs from tracked deployment",
+                ));
+            }
+            request.contract_address = Some(crate::tokens::validate_protocol_identifier(
+                chain, standard, contract,
+            )?);
+            if !chain.sends_token_standard(standard) {
+                return Err(SpectraBridgeError::invalid(format!(
+                    "{standard} transfers are not supported"
+                )));
+            }
+            request.token_standard = Some(standard.to_string());
+        }
         super::send_execution::send_chain_for(&state, &request.wallet_id, chain)?;
         let wallet = state
             .wallets

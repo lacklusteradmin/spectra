@@ -104,8 +104,10 @@ impl WalletService {
         if !known.is_empty() {
             let descriptors = known
                 .iter()
+                .filter(|p| chain.reads_token_standard(&p.token.token_standard))
                 .map(|p| {
                     Ok(TokenDescriptor {
+                        standard: p.token.token_standard.clone(),
                         contract: p.token.contract.clone(),
                         symbol: p.token.symbol.clone(),
                         decimals: u8::try_from(p.token.decimals)
@@ -120,10 +122,10 @@ impl WalletService {
                 .await?;
             for result in balances {
                 let key = contract_key(chain, &result.contract_address);
-                if let Some(p) = known
-                    .iter()
-                    .find(|p| contract_key(chain, &p.token.contract) == key)
-                {
+                if let Some(p) = known.iter().find(|p| {
+                    p.token.token_standard == result.standard
+                        && contract_key(chain, &p.token.contract) == key
+                }) {
                     holdings.push(
                         AssetHolding {
                             amount: balance_amount(&result.balance_display)?,
@@ -192,17 +194,31 @@ fn contract_key(chain: Chain, contract: &str) -> String {
     crate::tokens::normalize_token_identifier(Some(contract.into()), chain)
         .unwrap_or_else(|| contract.into())
 }
-fn balance_key(h: &AssetHolding) -> String {
-    h.deployment_id()
+fn balance_key(h: &AssetHolding) -> (Chain, bool, Option<String>) {
+    (
+        h.chain_id,
+        h.is_native(),
+        crate::tokens::normalize_token_identifier(h.contract_address.clone(), h.chain_id),
+    )
 }
 fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
     for h in incoming {
-        if let Some(old) = stored
-            .iter_mut()
-            .find(|old| balance_key(old) == balance_key(&h))
-        {
-            old.amount = h.amount;
-        } else if !crate::decimal::is_zero(&h.amount) {
+        let key = balance_key(&h);
+        let mut matched = false;
+        stored.retain_mut(|old| {
+            if balance_key(old) != key {
+                return true;
+            }
+            if matched {
+                return false;
+            }
+            // A successful read owns this identity and balance. A changed
+            // protocol label must replace its old alias, never duplicate funds.
+            *old = h.clone();
+            matched = true;
+            true
+        });
+        if !matched && !crate::decimal::is_zero(&h.amount) {
             stored.push(h);
         }
     }
@@ -211,6 +227,183 @@ fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn balance_commit_replaces_protocol_aliases_without_duplicating_funds() {
+        let chain = Chain::BnbChain;
+        let token = crate::tokens::catalog()
+            .iter()
+            .find(|token| token.chain_id == chain && !token.is_native())
+            .unwrap();
+        let mut current = token.holding_template();
+        current.amount = "4".into();
+        let mut old = current.clone();
+        old.token_standard = "ERC-20".into();
+        old.name = "Old custom token".into();
+        old.coingecko_id.clear();
+        old.amount = "9".into();
+        let mut wallet = WalletState::single_address(
+            "aliases",
+            "Aliases",
+            chain,
+            "0x1111111111111111111111111111111111111111",
+            None,
+            true,
+        );
+        wallet.holdings = vec![old.clone(), old, current.clone()];
+        let service = WalletService::new(Vec::new()).unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "spectra-balance-alias-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet })
+            .await
+            .unwrap();
+        let entry = refresh_entries_for(&service.app_state().await).remove(0);
+        current.amount = "2.5".into();
+        current = current.identified();
+        let updated = service
+            .commit_balance_result(entry.clone(), vec![current.clone()])
+            .await
+            .unwrap();
+        assert_eq!(updated.holdings, [current.clone()]);
+        let reopened = WalletService::new(Vec::new()).unwrap();
+        let state = reopened
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        assert_eq!(state.wallets[0].holdings.len(), 1);
+        assert_eq!(state.wallets[0].holdings[0].clone().identified(), current);
+        current.amount = "0".into();
+        let updated = service
+            .commit_balance_result(entry, vec![current.clone()])
+            .await
+            .unwrap();
+        assert_eq!(updated.holdings, [current]);
+    }
+
+    #[tokio::test]
+    async fn refreshing_supported_tokens_preserves_an_unsupported_protocol_balance() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        let owner = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8";
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/wallet/getaccount"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"balance": 1000000})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/accounts/{owner}")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"data": [{"trc20": []}]})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            chain_id: Chain::Tron,
+            endpoints: vec![server.uri()],
+            capabilities: EndpointCapability::ALL.to_vec(),
+        }])
+        .unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "mixed-protocol-balances-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        service
+            .apply_state_command(StateCommand::AddCustomToken {
+                chain_id: Chain::Tron,
+                standard: Some("TRC-10".into()),
+                symbol: "T10".into(),
+                name: "T10".into(),
+                contract: "1002000".into(),
+                decimals: 6,
+                coingecko_id: String::new(),
+                coinpaprika_id: String::new(),
+            })
+            .await
+            .unwrap();
+        let mut wallet =
+            WalletState::single_address("mixed", "Mixed", Chain::Tron, owner, None, true);
+        let state = service.app_state().await;
+        let mut token10 = state
+            .token_preferences
+            .iter()
+            .find(|p| p.token.deployment_id == "tron:trc-10:1002000")
+            .unwrap()
+            .token
+            .holding_template();
+        token10.amount = "7.25".into();
+        let mut token20 = state
+            .token_preferences
+            .iter()
+            .find(|p| p.token.chain_id == Chain::Tron && p.token.token_standard == "TRC-20")
+            .unwrap()
+            .token
+            .holding_template();
+        token20.amount = "9".into();
+        let token20_id = token20.deployment_id();
+        wallet.holdings = vec![token10.clone(), token20];
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet })
+            .await
+            .unwrap();
+        let updated = service
+            .refresh_wallet_balances("mixed".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            updated
+                .holdings
+                .iter()
+                .find(|h| h.token_standard == "TRC-10")
+                .unwrap(),
+            &token10
+        );
+        assert_eq!(
+            updated
+                .holdings
+                .iter()
+                .find(|h| h.deployment_id() == token20_id)
+                .unwrap()
+                .amount,
+            "0"
+        );
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            2,
+            "only native and TRC-20 listing requests"
+        );
+        let reopened = WalletService::new(Vec::new()).unwrap();
+        let state = reopened
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        assert_eq!(
+            state.wallets[0]
+                .holdings
+                .iter()
+                .find(|h| h.token_standard == "TRC-10")
+                .unwrap()
+                .clone()
+                .identified(),
+            token10
+        );
+    }
+
     #[tokio::test]
     async fn balance_commit_preserves_metadata_and_refuses_stale_network() {
         let service = WalletService::new(vec![]).unwrap();

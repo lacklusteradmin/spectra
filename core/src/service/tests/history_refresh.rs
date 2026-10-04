@@ -719,8 +719,6 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             normalized_address: "0x1111111111111111111111111111111111111111".into(),
             chain_id: Chain::EthereumSepolia,
             token_source_used: None,
-            native_asset_display_name: "Ether".into(),
-            native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w".into(),
                 wallet_name: "W".into(),
@@ -730,6 +728,8 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         .remove(0),
     );
     assert_eq!(fetched.status, "failed");
+    assert_eq!(fetched.asset_display_name, "Test Ethereum");
+    assert_eq!(fetched.symbol, "tETH");
     assert_eq!(
         fetched.deployment_id.as_deref(),
         Some("ethereum-sepolia:native")
@@ -806,6 +806,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
     ]
     .into_iter()
     .map(|contract| EvmTokenTransferItem {
+        standard: String::new(),
         contract_address: contract.into(),
         token_name: "Same".into(),
         symbol: "SAME".into(),
@@ -827,8 +828,6 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         normalized_address: "from".into(),
         chain_id: crate::registry::Chain::Ethereum,
         token_source_used: None,
-        native_asset_display_name: "Ether".into(),
-        native_asset_symbol: "ETH".into(),
         wallets: vec![EvmTransactionRecordWalletInput {
             wallet_id: "w".into(),
             wallet_name: "W".into(),

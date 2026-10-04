@@ -148,22 +148,11 @@ impl AssetHolding {
                 .contract_address
                 .as_ref()
                 .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
-            if !network.hosts_tokens() {
-                return Err(E::invalid("network does not support tracked tokens"));
-            }
-            if self.token_standard != network.token_standard() {
-                return Err(E::invalid("token protocol does not match network"));
-            }
-            if !crate::validation::address::validate_address(
-                crate::validation::address::AddressValidationRequest {
-                    kind: network.contract_validation_kind().into(),
-                    value: contract.clone(),
-                },
-            )
-            .is_valid
-            {
-                return Err(E::invalid("invalid token identifier"));
-            }
+            self.contract_address = Some(crate::tokens::validate_protocol_identifier(
+                network,
+                &self.token_standard,
+                contract,
+            )?);
         }
         if let Some(token) = self.catalog_token() {
             self.name = token.name.clone();
@@ -477,7 +466,7 @@ pub struct CoreTokenPreferenceEntry {
 impl CoreTokenPreferenceEntry {
     /// Identity: a token *is* its contract on its chain.
     pub fn id(&self) -> String {
-        format!("{}|{}", self.token.chain_id, self.token.contract)
+        self.token.deployment_id.clone()
     }
 
     /// The category the catalog's tags imply, computed rather than stored.
@@ -559,17 +548,17 @@ mod roundtrip_tests {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
             token: crate::tokens::TokenDeploymentEntry {
-                deployment_id: "fixture:token".into(),
+                deployment_id: "bnb:bep-20:0x1111111111111111111111111111111111111111".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
-                    standard: "fixture".into(),
-                    identifier: "fixture".into(),
+                    standard: "BEP-20".into(),
+                    identifier: "0x1111111111111111111111111111111111111111".into(),
                 },
                 chain_id: crate::registry::Chain::BnbChain,
                 name: "Tether USD".to_string(),
                 symbol: "USDT".to_string(),
                 token_standard: "BEP-20".to_string(),
-                contract: "0x55d39897".to_string(),
+                contract: "0x1111111111111111111111111111111111111111".to_string(),
                 coingecko_id: "tether".to_string(),
                 coinpaprika_id: String::new(),
                 decimals: 18,
@@ -587,7 +576,10 @@ mod roundtrip_tests {
         assert_eq!(decoded, entry);
 
         // Identity is the token's, not a stored string.
-        assert_eq!(entry.id(), "bnb|0x55d39897");
+        assert_eq!(
+            entry.id(),
+            "bnb:bep-20:0x1111111111111111111111111111111111111111"
+        );
         // And the category the tags imply, rather than a second copy of it.
         assert_eq!(
             CoreTokenPreferenceEntry::category_from_tags(&entry.token.tags),

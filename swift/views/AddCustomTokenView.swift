@@ -5,7 +5,7 @@ struct AddCustomTokenView: View {
     let store: AppState
     var editing: TokenPreferenceEntry? = nil
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedChain: Chain = .ethereum
+    @State private var selectedChain: Chain? = Chain.tokenHostingChains.first
     @State private var symbolInput = ""
     @State private var nameInput = ""
     @State private var identifierInput = ""
@@ -20,11 +20,12 @@ struct AddCustomTokenView: View {
         Form {
             Section(AppLocalization.string("Network")) {
                 if let editing {
-                    LabeledContent(AppLocalization.string("Network"), value: selectedChain.displayName)
+                    LabeledContent(AppLocalization.string("Network"), value: editing.token.chainId.displayName)
                     Text(editing.token.contract).font(.caption.monospaced()).textSelection(.enabled)
                 } else {
                     Picker(AppLocalization.string("Network"), selection: $selectedChain) {
-                        ForEach(Chain.tokenHostingChains) { chain in Text(chain.displayName).tag(chain) }
+                        Text(AppLocalization.string("Select a chain")).tag(nil as Chain?)
+                        ForEach(Chain.tokenHostingChains) { chain in Text(chain.displayName).tag(Optional(chain)) }
                     }
                     TextField(AppLocalization.string("Token Identifier"), text: $identifierInput)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -54,6 +55,7 @@ struct AddCustomTokenView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button(AppLocalization.string("Save")) {
+                    guard let selectedChain else { return }
                     isSaving = true
                     Task { @MainActor in
                         formMessage = await store.addCustomTokenPreference(
@@ -63,14 +65,15 @@ struct AddCustomTokenView: View {
                         isSaving = false
                         if formMessage == nil { dismiss() }
                     }
-                }.disabled(isSaving)
+                }.disabled(isSaving || selectedChain == nil)
             }
         }
         .onAppear {
             guard !hasLoaded else { return }
             hasLoaded = true
             guard let editing else { return }
-            selectedChain = editing.hostingChain ?? .ethereum
+            selectedChain = editing.hostingChain
+            if selectedChain == nil { formMessage = AppLocalization.string("That network cannot hold tokens.") }
             symbolInput = editing.token.symbol
             nameInput = editing.token.name
             identifierInput = editing.token.contract

@@ -226,10 +226,14 @@ pub(crate) async fn prepare_transfer(
             .ok_or_else(|| SendError::Invalid("Missing ICP ledger fee".into()))?,
     )
     .map_err(|_| SendError::Invalid("ICP fee overflow".into()))?;
+    let currency = json!({
+        "symbol": Chain::Icp.coin_symbol(),
+        "decimals": Chain::Icp.native_decimals(),
+    });
     let operations = json!([
-        {"operation_identifier":{"index":0},"type":"TRANSACTION","account":{"address":sender},"amount":{"value":format!("-{amount}"),"currency":{"symbol":"ICP","decimals":8}}},
-        {"operation_identifier":{"index":1},"type":"TRANSACTION","account":{"address":recipient},"amount":{"value":amount.to_string(),"currency":{"symbol":"ICP","decimals":8}}},
-        {"operation_identifier":{"index":2},"type":"FEE","account":{"address":sender},"amount":{"value":format!("-{fee}"),"currency":{"symbol":"ICP","decimals":8}}}
+        {"operation_identifier":{"index":0},"type":"TRANSACTION","account":{"address":sender},"amount":{"value":format!("-{amount}"),"currency":currency}},
+        {"operation_identifier":{"index":1},"type":"TRANSACTION","account":{"address":recipient},"amount":{"value":amount.to_string(),"currency":currency}},
+        {"operation_identifier":{"index":2},"type":"FEE","account":{"address":sender},"amount":{"value":format!("-{fee}"),"currency":currency}}
     ]);
     let pre: Value = client
         .rosetta_post(
@@ -254,7 +258,7 @@ pub(crate) async fn prepare_transfer(
             .as_str()
             .and_then(|s| s.parse::<u64>().ok())
             != Some(fee)
-        || fees[0]["currency"] != json!({"symbol":"ICP","decimals":8})
+        || fees[0]["currency"] != currency
     {
         return Err(SendError::Invalid(
             "ICP ledger fee changed or is unsupported".into(),

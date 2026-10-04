@@ -72,6 +72,14 @@ impl WalletService {
 
         // Only EVM chains are supported.
         let chain = evm_network(chain_id)?;
+        for token in &tokens {
+            let standard = if token.standard.is_empty() {
+                chain.token_standard_for_identifier(&token.contract)
+            } else {
+                &token.standard
+            };
+            crate::tokens::validate_protocol_identifier(chain, standard, &token.contract)?;
+        }
 
         // History is served by indexers, independently for native and token transfers.
         let client = crate::api::blockscout::BlockscoutClient::new();
@@ -131,7 +139,7 @@ impl WalletService {
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
-        let token_map: std::collections::HashMap<String, (String, String, u8)> = tokens
+        let token_map: std::collections::HashMap<String, (String, String, u8, String)> = tokens
             .iter()
             .map(|t| {
                 (
@@ -140,6 +148,11 @@ impl WalletService {
                         t.symbol.clone(),
                         t.name.clone().unwrap_or_default(),
                         t.decimals,
+                        if t.standard.is_empty() {
+                            chain.token_standard_for_identifier(&t.contract).into()
+                        } else {
+                            t.standard.clone()
+                        },
                     ),
                 )
             })
@@ -149,7 +162,7 @@ impl WalletService {
             .into_iter()
             .filter_map(|mut entry| {
                 let key = entry.contract.to_lowercase();
-                let (sym, name, dec) = token_map.get(&key)?.clone();
+                let (sym, name, dec, standard) = token_map.get(&key)?.clone();
                 entry.symbol = sym;
                 entry.token_name = name;
                 if dec != entry.decimals {
@@ -161,6 +174,7 @@ impl WalletService {
                     return None;
                 }
                 Some(EvmTokenTransferItem {
+                    standard,
                     contract_address: entry.contract,
                     token_name: entry.token_name,
                     symbol: entry.symbol,

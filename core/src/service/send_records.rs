@@ -19,7 +19,7 @@ pub(super) fn send_asset_names(
         .token_preferences
         .iter()
         .find(|p| {
-            p.hosting_chain() == Some(chain.mainnet_counterpart())
+            p.hosting_chain() == Some(chain)
                 && crate::tokens::normalize_token_identifier(Some(p.token.contract.clone()), chain)
                     == wanted
         })
@@ -43,9 +43,18 @@ impl WalletService {
             .ok_or_else(|| SpectraBridgeError::failure("wallet removed before submission"))?;
         let (symbol, display_name) =
             send_asset_names(&state, chain, request.contract_address.as_deref());
-        let deployment_id =
-            crate::tokens::deployment_id_for(chain, request.contract_address.as_deref())
-                .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
+        let deployment_id = match request.contract_address.as_deref() {
+            None => crate::tokens::deployment_id_for(chain, None),
+            Some(identifier) => crate::tokens::protocol_deployment_id(
+                chain,
+                request
+                    .token_standard
+                    .as_deref()
+                    .unwrap_or_else(|| chain.token_standard_for_identifier(identifier)),
+                identifier,
+            ),
+        }
+        .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",

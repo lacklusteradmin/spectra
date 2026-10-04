@@ -88,7 +88,7 @@ total_circulation_model = "APT circulation changes over time with staking emissi
 [[assets]]
 token_id = "the-open-network"
 comment = "Pays fees on TON and buys its name-service and storage services. Widely distributed through Telegram-linked wallets."
-total_circulation_model = "Toncoin supply is dynamic over time, so this page treats live circulation as non-static."
+total_circulation_model = "Gram supply is dynamic over time, so this page treats live circulation as non-static."
 
 [[assets]]
 token_id = "near"

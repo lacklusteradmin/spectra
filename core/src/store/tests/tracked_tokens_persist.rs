@@ -18,6 +18,7 @@ fn tmp_db() -> String {
 
 fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
     StateCommand::AddCustomToken {
+        standard: None,
         chain_id: crate::registry::Chain::Ethereum,
         symbol: symbol.to_string(),
         name: symbol.to_string(),

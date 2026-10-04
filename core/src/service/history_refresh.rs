@@ -266,6 +266,7 @@ fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::
                 chain,
             )?;
             Some(crate::service::TokenDescriptor {
+                standard: entry.token.token_standard.clone(),
                 contract,
                 symbol: entry.token.symbol.clone(),
                 decimals: u8::try_from(entry.token.decimals).unwrap_or(u8::MAX),
@@ -308,13 +309,6 @@ impl WalletService {
         let page_size = page_size
             .unwrap_or(DEFAULT_EVM_PAGE_SIZE)
             .clamp(MIN_EVM_PAGE_SIZE, MAX_EVM_PAGE_SIZE);
-        let native = crate::fetch::history_decode::history_evm_native_asset(chain).unwrap_or(
-            crate::fetch::history_decode::EvmNativeAsset {
-                asset_display_name: "Ether".to_string(),
-                symbol: "ETH".to_string(),
-            },
-        );
-
         let mut incoming = Vec::new();
         let mut diagnostics = Vec::new();
         let mut wallets_refreshed = 0;
@@ -395,8 +389,6 @@ impl WalletService {
                     normalized_address: normalized_address.clone(),
                     chain_id: network,
                     token_source_used: Some("rust/etherscan".to_string()),
-                    native_asset_display_name: native.asset_display_name.clone(),
-                    native_asset_symbol: native.symbol.clone(),
                     wallets: group_wallet_ids
                         .iter()
                         .map(|wallet_id| {

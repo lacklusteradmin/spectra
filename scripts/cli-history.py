@@ -6,6 +6,7 @@ Uses temporary stores and loopback nodes; no public network is required.
 """
 import http.server
 import json
+import os
 import pathlib
 import sqlite3
 import subprocess
@@ -14,12 +15,77 @@ import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
                           pathlib.Path(__file__).resolve().parents[1] / 'target/debug/spectra').resolve())
 
 
 class HistoryTests(unittest.TestCase):
+    def test_evm_testnet_native_history_labels(self):
+        """Stored native history uses the wallet's concrete network after reopening."""
+        addresses = {}
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                url = urlsplit(self.path)
+                network = url.path.split('/')[1]
+                query = parse_qs(url.query)
+                assert url.path == f'/{network}/api', self.path
+                assert network in addresses and query['module'] == ['account'], self.path
+                assert query['address'] == [addresses[network].lower()], self.path
+                action = query['action'][0]
+                requests.append((network, action))
+                if action == 'txlist':
+                    rows = [{'hash': '0x' + 'ab' * 32, 'blockNumber': '42',
+                             'timeStamp': '1700000000', 'from': '0x' + '22' * 20,
+                             'to': addresses[network], 'value': '1250000000000000000',
+                             'gasPrice': '1000000000', 'gasUsed': '21000',
+                             'isError': '0', 'txreceipt_status': '1'}]
+                elif action == 'tokentx':
+                    rows = []
+                else:
+                    raise AssertionError(self.path)
+                body = json.dumps({'status': '1', 'message': 'OK', 'result': rows}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-evm-testnet-history-') as directory:
+                env = {**os.environ, 'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl')}
+                def run(*args):
+                    result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                            input='abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+                                            capture_output=True, text=True, timeout=60, env=env)
+                    assert result.returncode == 0, (args, result.stdout, result.stderr)
+                    return json.loads(result.stdout)
+                for chain, symbol, name in [('ethereum-sepolia', 'tETH', 'Test Ethereum'),
+                                            ('avalanche-fuji', 'tAVAX', 'Test Avalanche')]:
+                    with self.subTest(chain=chain):
+                        wallet = run('wallet', 'import', '--chain', chain, '--name', chain,
+                                     '--seed-file', '-', '--no-password')['wallet']
+                        assert wallet['chain'] == chain, wallet
+                        addresses[chain] = wallet['address']
+                        endpoint = f'http://127.0.0.1:{server.server_port}/{chain}'
+                        run('endpoints', '--chain', chain, '--api', 'blockscout',
+                            '--capabilities', 'history,token-history', '--add', endpoint)
+                        saved = run('history', chain, '--save', '--endpoint', endpoint)
+                        assert saved['walletsRefreshed'] == 1 and saved['walletsFailed'] == 0, saved
+                        assert saved['added'] == 1, saved
+                        # Both reads start a fresh process and recover the record from SQLite.
+                        rows = run('txs', '--page', '--wallet', chain)['page']['records']
+                        assert len(rows) == 1, rows
+                        row = rows[0]
+                        assert (row['chainId'], row['symbol'], row['assetDisplayName'], row['deploymentId']) == (
+                            chain, symbol, name, f'{chain}:native'), row
+                        assert row['amount'] == '1.25' and row['status'] == 'confirmed', row
+                        assert run('txs', '--record', row['id'])['record'] == row
+                        assert (chain, 'txlist') in requests, requests
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
     def test_solana_token_history_labels(self):
         """RPC mint addresses resolve to tickers before storage and survive reopening."""
         owner = '11111111111111111111111111111111'
