@@ -21,24 +21,10 @@ impl WalletService {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let raw = this.fetch_history(chain_id, address).await?;
-            let entries = crate::fetch::history::normalize_chain_history(chain_id, &raw);
-            Ok(entries
-                .into_iter()
-                .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
-                    deployment_id: e.deployment_id,
-                    kind: e.kind,
-                    status: e.status,
-                    asset_display_name: e.asset_display_name,
-                    symbol: e.symbol,
-                    chain_id: e.chain_id,
-                    amount: e.amount,
-                    counterparty: e.counterparty,
-                    tx_hash: e.tx_hash,
-                    block_height: e.block_height,
-                    timestamp: e.timestamp,
-                })
-                .collect())
+            Ok(this
+                .fetch_normalized_history_page(chain_id, &address, None)
+                .await?
+                .items)
         })
         .await
     }
@@ -46,15 +32,56 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn fetch_history(
         &self,
-        chain: crate::registry::Chain,
+        chain: Chain,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
-        if chain.mainnet_counterpart() == Chain::Monero {
-            return self.monero_history(chain, &address).await;
-        }
-        fetch_history(&address, chain, None, self).await
+        Ok(self.fetch_history_page(chain, &address, None).await?.items)
     }
-
+    pub(crate) async fn fetch_normalized_history_page(
+        &self,
+        chain: Chain,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<
+        crate::api::HistoryPage<crate::fetch::history_decode::NormalizedHistoryItem>,
+        SpectraBridgeError,
+    > {
+        let page = self.fetch_history_page(chain, address, cursor).await?;
+        let items = crate::fetch::history::normalize_chain_history(chain, &page.items)
+            .into_iter()
+            .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
+                deployment_id: e.deployment_id,
+                kind: e.kind,
+                status: e.status,
+                asset_display_name: e.asset_display_name,
+                symbol: e.symbol,
+                chain_id: e.chain_id,
+                amount: e.amount,
+                counterparty: e.counterparty,
+                tx_hash: e.tx_hash,
+                block_height: e.block_height,
+                timestamp: e.timestamp,
+            })
+            .collect();
+        Ok(crate::api::HistoryPage {
+            items,
+            next_cursor: page.next_cursor,
+        })
+    }
+    async fn fetch_history_page(
+        &self,
+        chain: Chain,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<RawHistoryPage, SpectraBridgeError> {
+        if chain.mainnet_counterpart() == Chain::Monero {
+            return Ok(RawHistoryPage {
+                items: self.monero_history(chain, address).await?,
+                next_cursor: None,
+            });
+        }
+        fetch_history_page(address, chain, cursor, self).await
+    }
     /// Fetch one page of EVM transaction history for `address`.
     ///
     /// Runs two requests in parallel against the configured Etherscan-compatible
@@ -231,113 +258,239 @@ impl WalletService {
         })
     }
 }
-async fn fetch_history(
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct AssetCursor {
+    native: Option<String>,
+    token: Option<String>,
+    native_done: bool,
+    token_done: bool,
+}
+impl AssetCursor {
+    fn next(&self) -> Result<Option<String>, SpectraBridgeError> {
+        Ok((!(self.native_done && self.token_done))
+            .then(|| serde_json::to_string(self))
+            .transpose()?)
+    }
+}
+fn page_values<T: serde::Serialize>(
+    items: Vec<T>,
+) -> Result<Vec<serde_json::Value>, SpectraBridgeError> {
+    items
+        .into_iter()
+        .map(|item| serde_json::to_value(item).map_err(SpectraBridgeError::from))
+        .collect()
+}
+struct RawHistoryPage {
+    items: String,
+    next_cursor: Option<String>,
+}
+fn serialized_page<T: serde::Serialize>(
+    page: crate::api::HistoryPage<T>,
+) -> Result<RawHistoryPage, SpectraBridgeError> {
+    Ok(RawHistoryPage {
+        items: json_response(&page.items)?,
+        next_cursor: page.next_cursor,
+    })
+}
+async fn fetch_history_page(
     address: &str,
     chain: Chain,
-    _token: Option<&str>,
+    cursor: Option<&str>,
     service: &WalletService,
-) -> Result<String, SpectraBridgeError> {
-    let requirements: &[EndpointCapability] = if chain.mainnet_counterpart() == Chain::Solana {
-        &[
-            EndpointCapability::History,
-            EndpointCapability::TokenHistory,
-        ]
-    } else {
-        &[EndpointCapability::History]
-    };
+) -> Result<RawHistoryPage, SpectraBridgeError> {
+    use crate::EndpointApi as Api;
+    let requirements = &[EndpointCapability::History];
     if chain.uses_utxo_client() {
-        return json_response(
-            &service
+        return serialized_page(
+            service
                 .utxo_client(chain, requirements)
                 .await
-                .fetch_history(address, None)
+                .fetch_history_page(address, cursor)
                 .await?,
         );
     }
-    let (api, endpoints) = service.fetch_endpoints(chain, requirements).await?;
-    use crate::EndpointApi as Api;
-    match api {
-        Api::EvmJsonRpc => {
-            let sources = service
-                .api_endpoints(chain, Api::Blockscout, &[EndpointCapability::History])
-                .await?;
-            let client = crate::api::blockscout::BlockscoutClient::new();
-            let h = crate::api::http::race(&sources, |base| {
-                let client = &client;
-                async move {
-                    client
-                        .fetch_history(
-                            address,
-                            crate::registry::EvmHistorySource::Open(&base),
-                            1,
-                            50,
-                        )
-                        .await
-                }
-            })
+    if chain.is_evm() {
+        let sources = service
+            .api_endpoints(chain, Api::Blockscout, requirements)
             .await?;
-            json_response(&h)
-        }
-        Api::SolanaJsonRpc => json_response(
-            &SolanaClient::new(endpoints)
-                .fetch_unified_history(address, 50)
+        let client = crate::api::blockscout::BlockscoutClient::new();
+        let page = crate::api::history_page::page_number(cursor)?;
+        let items = crate::api::http::race(&sources, |base| {
+            let client = &client;
+            async move {
+                client
+                    .fetch_history(
+                        address,
+                        crate::registry::EvmHistorySource::Open(&base),
+                        page,
+                        50,
+                    )
+                    .await
+            }
+        })
+        .await?;
+        let next_cursor = (items.len() == 50).then(|| (page + 1).to_string());
+        return serialized_page(crate::api::HistoryPage { items, next_cursor });
+    }
+    if chain.mainnet_counterpart() == Chain::Aptos {
+        let endpoints = service
+            .api_endpoints(chain, Api::AptosIndexer, requirements)
+            .await?;
+        let (_, nodes) = service
+            .fetch_endpoints(chain, &[EndpointCapability::Balance])
+            .await?;
+        let expected = chain
+            .aptos_chain_id()
+            .ok_or_else(|| SpectraBridgeError::failure("missing Aptos chain id"))?;
+        return serialized_page(
+            crate::api::aptos_indexer::AptosIndexerClient::new(Arc::new(endpoints), expected)
+                .fetch_history_page(address, cursor, &AptosClient::new(nodes))
+                .await?,
+        );
+    }
+    if chain.mainnet_counterpart() == Chain::Tron {
+        let node_endpoints = service
+            .endpoints_for(
+                chain,
+                &[
+                    EndpointCapability::TokenBalance,
+                    EndpointCapability::Verification,
+                ],
+            )
+            .await;
+        let accounts = service
+            .tron_account_endpoints(
+                chain,
+                &node_endpoints,
+                &[
+                    EndpointCapability::History,
+                    EndpointCapability::TokenHistory,
+                ],
+            )
+            .await?;
+        return serialized_page(
+            crate::api::trongrid_v1::TrongridClient::with_trc10(
+                Arc::new(accounts),
+                chain,
+                TronHttpClient::new(node_endpoints),
+            )
+            .fetch_history_page(address, 50, cursor)
+            .await?,
+        );
+    }
+    let (api, endpoints) = service.fetch_endpoints(chain, requirements).await?;
+    match api {
+        Api::SolanaJsonRpc => serialized_page(
+            SolanaClient::new(endpoints)
+                .fetch_unified_history_page(address, 50, cursor)
                 .await?,
         ),
-        Api::TronHttp => {
-            let accounts = service
-                .tron_account_endpoints(
-                    chain,
-                    &endpoints,
-                    &[
-                        EndpointCapability::History,
-                        EndpointCapability::TokenHistory,
-                    ],
-                )
-                .await?;
-            json_response(
-                &crate::api::trongrid_v1::TrongridClient::new(Arc::new(accounts))
-                    .fetch_history(address, 50)
-                    .await?,
-            )
-        }
-        Api::Horizon => json_response(&HorizonClient::new(endpoints).fetch_history(address).await?),
-        Api::XrplJsonRpc => {
-            json_response(&XrplClient::new(endpoints).fetch_history(address).await?)
-        }
-        Api::Koios => json_response(&KoiosClient::new(endpoints).fetch_history(address).await?),
+        Api::Horizon => serialized_page(
+            HorizonClient::new(endpoints)
+                .fetch_history_page(address, cursor)
+                .await?,
+        ),
+        Api::XrplJsonRpc => serialized_page(
+            XrplClient::new(endpoints)
+                .fetch_history_page(address, cursor)
+                .await?,
+        ),
+        Api::Koios => serialized_page(
+            KoiosClient::new(endpoints)
+                .fetch_history_page(address, cursor)
+                .await?,
+        ),
         Api::SubstrateJsonRpc => Err(SpectraBridgeError::failure(format!(
             "{}: no keyless history source configured",
             chain.chain_display_name()
         ))),
-        Api::SuiJsonRpc => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
-        Api::AptosRest => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
-        Api::ToncenterV2 => json_response(
-            &ToncenterV2Client::new(endpoints)
-                .fetch_history(address)
+        Api::SuiJsonRpc => serialized_page(
+            SuiClient::new(endpoints)
+                .fetch_history_page(address, cursor)
                 .await?,
         ),
-        Api::NearJsonRpc => {
-            let indexers = service
-                .api_endpoints(chain, Api::Nearblocks, &[EndpointCapability::History])
-                .await?;
-            if indexers.is_empty() {
-                return Err(SpectraBridgeError::failure(
-                    "No NEAR history indexer configured",
-                ));
+        Api::ToncenterV2 => {
+            let mut position: AssetCursor = cursor
+                .map(serde_json::from_str)
+                .transpose()?
+                .unwrap_or_default();
+            let mut items = Vec::new();
+            if !position.native_done {
+                let page = ToncenterV2Client::new(endpoints)
+                    .fetch_history_page(address, position.native.as_deref())
+                    .await?;
+                items.extend(page_values(page.items)?);
+                position.native_done = page.next_cursor.is_none();
+                position.native = page.next_cursor;
             }
-            json_response(
-                &crate::api::nearblocks::NearblocksClient::new(Arc::new(indexers))
-                    .fetch_history(address)
-                    .await?,
-            )
+            if !position.token_done {
+                let sources = service
+                    .api_endpoints(chain, Api::ToncenterV3, &[EndpointCapability::TokenHistory])
+                    .await?;
+                let owner = crate::derivation::ton::parse_ton_address(address)?;
+                let raw = format!("{}:{}", owner.workchain, hex::encode(owner.account_id));
+                let page = crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(sources))
+                    .fetch_jetton_history_page(chain, &raw, position.token.as_deref())
+                    .await?;
+                items.extend(page.items);
+                position.token_done = page.next_cursor.is_none();
+                position.token = page.next_cursor;
+            }
+            serialized_page(crate::api::HistoryPage {
+                items,
+                next_cursor: position.next()?,
+            })
         }
-        Api::IcpRosetta => json_response(&IcpClient::new(endpoints).fetch_history(address).await?),
-
-        Api::Insight => json_response(&InsightClient::new(endpoints).fetch_history(address).await?),
-        Api::KaspaRest => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),
-
+        Api::NearJsonRpc => {
+            let mut position: AssetCursor = cursor
+                .map(serde_json::from_str)
+                .transpose()?
+                .unwrap_or_default();
+            let mut items = Vec::new();
+            if !position.native_done {
+                let indexers = service
+                    .api_endpoints(chain, Api::Nearblocks, requirements)
+                    .await?;
+                let page = crate::api::nearblocks::NearblocksClient::new(Arc::new(indexers))
+                    .fetch_history_page(address, position.native.as_deref())
+                    .await?;
+                items.extend(page_values(page.items)?);
+                position.native_done = page.next_cursor.is_none();
+                position.native = page.next_cursor;
+            }
+            if !position.token_done {
+                let indexers = service
+                    .api_endpoints(chain, Api::Nearblocks, &[EndpointCapability::TokenHistory])
+                    .await?;
+                let page = crate::api::nearblocks::NearblocksClient::new(Arc::new(indexers))
+                    .fetch_ft_history_page(address, position.token.as_deref())
+                    .await?;
+                items.extend(page.items);
+                position.token_done = page.next_cursor.is_none();
+                position.token = page.next_cursor;
+            }
+            serialized_page(crate::api::HistoryPage {
+                items,
+                next_cursor: position.next()?,
+            })
+        }
+        Api::IcpRosetta => serialized_page(
+            IcpClient::new(endpoints)
+                .fetch_history_page(address, cursor)
+                .await?,
+        ),
+        Api::Insight => serialized_page(
+            InsightClient::new(endpoints)
+                .fetch_history_page(address, cursor)
+                .await?,
+        ),
+        Api::KaspaRest => serialized_page(
+            KaspaClient::new(endpoints)
+                .fetch_history_page(address, cursor)
+                .await?,
+        ),
         c => Err(SpectraBridgeError::failure(format!(
-            "unsupported API: {c:?}"
+            "unsupported history API: {c:?}"
         ))),
     }
 }

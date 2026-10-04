@@ -3,6 +3,7 @@
 //! `state_getMetadata`. Unknown versions and extensions are refused.
 
 use super::*;
+mod pools;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, v14::*};
 use parity_scale_codec::{Compact, Decode};
 use scale_info::{PortableRegistry, TypeDef, TypeDefPrimitive, form::PortableForm};
@@ -16,6 +17,7 @@ pub enum PolkadotExtension {
     Mortality,
     Nonce,
     AssetPayment,
+    NativePayment,
     MetadataHash,
 }
 
@@ -34,7 +36,7 @@ pub struct PolkadotRuntime {
 pub(super) struct Metadata(RuntimeMetadataV14);
 
 fn unsupported() -> ApiError {
-    ApiError::Decode("Unsupported Asset Hub runtime metadata contract".into())
+    ApiError::Decode("Unsupported Substrate runtime metadata contract".into())
 }
 
 impl Metadata {
@@ -141,7 +143,7 @@ impl Metadata {
             .ok_or_else(unsupported)
     }
 
-    fn validate_account(&self) -> Result<(), ApiError> {
+    fn validate_account(&self, balance_type: TypeDefPrimitive) -> Result<(), ApiError> {
         let StorageEntryType::Map {
             hashers,
             key,
@@ -175,7 +177,15 @@ impl Metadata {
         let names = ["free", "reserved", "frozen", "flags"];
         if data.fields.len() != 4
             || !data.fields.iter().zip(names).all(|(f, n)| {
-                f.name.as_deref() == Some(n) && self.primitive(f.ty.id, TypeDefPrimitive::U128)
+                f.name.as_deref() == Some(n)
+                    && self.primitive(
+                        f.ty.id,
+                        if n == "flags" {
+                            TypeDefPrimitive::U128
+                        } else {
+                            balance_type.clone()
+                        },
+                    )
             })
         {
             return Err(unsupported());
@@ -183,8 +193,16 @@ impl Metadata {
         Ok(())
     }
 
-    pub(super) fn contract(&self) -> Result<(u8, u8, u128, Vec<PolkadotExtension>), ApiError> {
-        self.validate_account()?;
+    pub(super) fn contract(
+        &self,
+        chain: Chain,
+    ) -> Result<(u8, u8, u128, Vec<PolkadotExtension>), ApiError> {
+        let balance_type = match chain.substrate_balance_bytes() {
+            Some(8) => TypeDefPrimitive::U64,
+            Some(16) => TypeDefPrimitive::U128,
+            _ => return Err(unsupported()),
+        };
+        self.validate_account(balance_type.clone())?;
         let extrinsic = &self.0.extrinsic;
         if extrinsic.version != 4 {
             return Err(unsupported());
@@ -231,7 +249,7 @@ impl Metadata {
             || call.fields[0].name.as_deref() != Some("dest")
             || call.fields[0].ty.id != address
             || call.fields[1].name.as_deref() != Some("value")
-            || !self.compact(call.fields[1].ty.id, TypeDefPrimitive::U128)
+            || !self.compact(call.fields[1].ty.id, balance_type.clone())
         {
             return Err(unsupported());
         }
@@ -240,19 +258,16 @@ impl Metadata {
             .iter()
             .find(|c| c.name == "ExistentialDeposit")
             .ok_or_else(unsupported)?;
-        if !self.primitive(deposit.ty.id, TypeDefPrimitive::U128) {
+        if !self.primitive(deposit.ty.id, balance_type.clone()) {
             return Err(unsupported());
         }
-        let ed = u128::from_le_bytes(
-            deposit
-                .value
-                .as_slice()
-                .try_into()
-                .map_err(|_| unsupported())?,
-        );
-        if ed == 0 {
+        let balance_bytes = chain.substrate_balance_bytes().ok_or_else(unsupported)?;
+        if deposit.value.len() != balance_bytes {
             return Err(unsupported());
         }
+        let mut ed_bytes = [0u8; 16];
+        ed_bytes[..balance_bytes].copy_from_slice(&deposit.value);
+        let ed = u128::from_le_bytes(ed_bytes);
         let mut extensions = Vec::new();
         let mut identifiers = std::collections::HashSet::new();
         for extension in &extrinsic.signed_extensions {
@@ -270,6 +285,14 @@ impl Metadata {
                 | "EthSetOrigin"
                 | "StorageWeightReclaim"
                     if self.unit(ty) && unit_additional =>
+                {
+                    PolkadotExtension::Unit
+                }
+                "SudoTransactionExtension"
+                | "CheckShieldedTxValidity"
+                | "SubtensorTransactionExtension"
+                | "DrandPriority"
+                    if chain == Chain::Bittensor && self.unit(ty) && unit_additional =>
                 {
                     PolkadotExtension::Unit
                 }
@@ -311,6 +334,13 @@ impl Metadata {
                     }
                     PolkadotExtension::AssetPayment
                 }
+                "ChargeTransactionPayment"
+                    if chain == Chain::Bittensor
+                        && self.compact(ty, balance_type.clone())
+                        && unit_additional =>
+                {
+                    PolkadotExtension::NativePayment
+                }
                 "CheckMetadataHash"
                     if self.option(additional, true)
                         && self.variants(ty)?.iter().any(|v| {
@@ -321,7 +351,7 @@ impl Metadata {
                 }
                 _ => {
                     return Err(ApiError::Decode(format!(
-                        "Unsupported Asset Hub signed extension: {}",
+                        "Unsupported Substrate signed extension: {}",
                         extension.identifier
                     )));
                 }
@@ -334,7 +364,11 @@ impl Metadata {
             "CheckGenesis",
             "CheckMortality",
             "CheckNonce",
-            "ChargeAssetTxPayment",
+            if chain == Chain::Bittensor {
+                "ChargeTransactionPayment"
+            } else {
+                "ChargeAssetTxPayment"
+            },
             "CheckMetadataHash",
         ] {
             if !identifiers.contains(required) {
@@ -562,14 +596,14 @@ mod tests {
         metadata.0.extrinsic.signed_extensions[0].identifier = "UnknownAuthorization".into();
         assert!(
             metadata
-                .contract()
+                .contract(Chain::Polkadot)
                 .unwrap_err()
                 .to_string()
                 .contains("UnknownAuthorization")
         );
         let mut metadata = decoded();
         metadata.0.extrinsic.version = 5;
-        assert!(metadata.contract().is_err());
+        assert!(metadata.contract(Chain::Polkadot).is_err());
         let mut metadata = decoded();
         let system = metadata
             .0
@@ -589,7 +623,7 @@ mod tests {
             panic!();
         };
         hashers[0] = StorageHasher::Identity;
-        assert!(metadata.contract().is_err());
+        assert!(metadata.contract(Chain::Polkadot).is_err());
         let mut bytes = crate::api::substrate_json_rpc::tests::fixture(Chain::Polkadot).to_vec();
         bytes.push(0);
         assert!(Metadata::decode(&bytes).is_err());
@@ -619,12 +653,25 @@ mod tests {
         assert!(metadata.dispatch_outcome(&bytes, 2).is_err());
         bytes.pop();
         assert!(metadata.dispatch_outcome(&bytes, 1).is_err());
-        for chain in [Chain::Polkadot, Chain::PolkadotWestend] {
+        for chain in [Chain::Polkadot, Chain::PolkadotWestend, Chain::Bittensor] {
             let metadata =
                 Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(chain)).unwrap();
             let mut success = Compact(1u32).encode();
             success.extend(event(3, true));
             assert!(metadata.dispatch_outcome(&success, 3).unwrap());
         }
+    }
+
+    #[test]
+    fn bittensor_contract_is_derived_from_finney_metadata() {
+        let metadata = Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(
+            Chain::Bittensor,
+        ))
+        .unwrap();
+        let (pallet, call, _, extensions) = metadata.contract(Chain::Bittensor).unwrap();
+        assert_eq!((pallet, call), (5, 3));
+        assert!(extensions.contains(&PolkadotExtension::NativePayment));
+        assert!(extensions.contains(&PolkadotExtension::MetadataHash));
+        assert!(metadata.contract(Chain::Polkadot).is_err());
     }
 }

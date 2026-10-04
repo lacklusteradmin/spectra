@@ -2,38 +2,33 @@ import Foundation
 import SwiftUI
 import VisionKit
 
-private enum SendFlowStep: Int, CaseIterable, Identifiable {
+private enum SendFlowStep: Int, CaseIterable {
     case from
     case recipient
     case amount
     case confirm
 
-    var id: Int { rawValue }
-
     var title: String {
         switch self {
-        case .from: return "From"
-        case .recipient: return "To"
+        case .from: return "Choose an asset"
+        case .recipient: return "Recipient"
         case .amount: return "Amount"
-        case .confirm: return "Review"
+        case .confirm: return "Review transfer"
         }
     }
 
-    var systemImage: String {
+    var progressTitle: String {
         switch self {
-        case .from: return "creditcard.fill"
-        case .recipient: return "person.crop.circle.fill"
-        case .amount: return "number.circle.fill"
-        case .confirm: return "checkmark.shield.fill"
+        case .from: "Asset"
+        case .recipient: "Recipient"
+        case .amount: "Amount"
+        case .confirm: "Review"
         }
     }
-
-    static let composerSteps: [SendFlowStep] = [.from, .recipient, .amount, .confirm]
 }
 
 struct SendView: View {
     @Bindable var store: AppState
-    @State private var selectedAddressBookEntryId: String = ""
     @State private var isShowingQRScanner: Bool = false
     @State private var qrScannerErrorMessage: String?
     @State private var currentStep: SendFlowStep = .from
@@ -48,6 +43,8 @@ struct SendView: View {
     @State private var quotedInputKey: String?
     @State private var recipientValidationAttempt = 0
     @State private var sendWalletPassword = ""
+    @State private var stagedTransaction: TransactionRecord?
+    @State private var transactionError: String?
 
     private var isSendBusy: Bool { store.sendFlow.session.isBusy || store.sendFlow.isPreparingPreview }
 
@@ -62,7 +59,7 @@ struct SendView: View {
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                    stepProgress
+                    if store.sendFlow.session.artifact == nil { stepProgress }
 
                     stepContent
                         .id(currentStep)
@@ -76,7 +73,7 @@ struct SendView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { flowBottomBar(selectedCoin: selectedCoin) }
-        .navigationTitle(AppLocalization.string(currentStep.title))
+        .navigationTitle(AppLocalization.string(navigationTitle))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         // No keyboard toolbar: its floating Done sat on top of the primary
@@ -128,7 +125,6 @@ struct SendView: View {
         .onChange(of: store.sendFlow.isShowingHighRiskConfirmation) { _, showing in
             if !showing { sendWalletPassword = "" }
         }
-        .onChange(of: store.sendFlow.holdingKey) { _, _ in selectedAddressBookEntryId = "" }
         .task(id: previewRefreshKey) {
             let key = previewRefreshKey
             quotedInputKey = nil
@@ -144,7 +140,33 @@ struct SendView: View {
                 quotedInputKey = key
             } catch { return }
         }
-        .alert(AppLocalization.string("Confirm Signing"), isPresented: Bindable(store.sendFlow).isShowingHighRiskConfirmation) {
+        .task(id: "\(store.sendFlow.session.id):\(store.sendFlow.session.artifact?.id ?? ""):\(store.sendFlow.session.artifact?.revision ?? 0):\(store.transactionRevision)") {
+            guard let artifact = store.sendFlow.session.artifact, !artifact.attempts.isEmpty else {
+                stagedTransaction = nil
+                transactionError = nil
+                return
+            }
+            if stagedTransaction?.id != artifact.id {
+                stagedTransaction = nil
+                transactionError = nil
+            }
+            let session = store.sendFlow.session.id
+            let revision = store.transactionRevision
+            do {
+                let record = try await store.bridge.ready().transaction(id: artifact.id)
+                guard store.sendFlow.session.isCurrent(session), store.transactionRevision == revision,
+                      store.sendFlow.session.artifact?.id == artifact.id,
+                      store.sendFlow.session.artifact?.revision == artifact.revision else { return }
+                stagedTransaction = record
+                transactionError = nil
+            } catch {
+                guard store.sendFlow.session.isCurrent(session), store.transactionRevision == revision,
+                      store.sendFlow.session.artifact?.id == artifact.id,
+                      store.sendFlow.session.artifact?.revision == artifact.revision else { return }
+                transactionError = userErrorMessage(error)
+            }
+        }
+        .alert(AppLocalization.string("Sign this transaction?"), isPresented: Bindable(store.sendFlow).isShowingHighRiskConfirmation) {
             if store.stagedSendRequiresPassword {
                 SecureField(AppLocalization.string("Wallet Password"), text: $sendWalletPassword)
             }
@@ -163,11 +185,9 @@ struct SendView: View {
             }
             .disabled(store.stagedSendRequiresPassword && sendWalletPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
-            Text(
-                store.pendingHighRiskSendReasons.joined(separator: "\n• ").isEmpty
-                    ? AppLocalization.string("This transfer has elevated risk.")
-                    : "• " + store.pendingHighRiskSendReasons.joined(separator: "\n• ")
-            )
+            if let artifact = store.sendFlow.session.artifact {
+                Text(verbatim: sendSigningConfirmationMessage(artifact: artifact))
+            }
         }
     }
 
@@ -204,7 +224,6 @@ struct SendView: View {
         case .recipient:
             SendRecipientPage(
                 store: store,
-                selectedAddressBookEntryId: $selectedAddressBookEntryId,
                 isShowingQRScanner: $isShowingQRScanner,
                 qrScannerErrorMessage: $qrScannerErrorMessage,
                 validationError: recipientError,
@@ -216,9 +235,11 @@ struct SendView: View {
             SendAmountPage(store: store, quoteIsCurrent: quotedInputKey == previewRefreshKey)
         case .confirm:
             if let artifact = store.sendFlow.session.artifact {
-                SendStagesView(store: store, artifact: artifact)
+                SendStagesView(store: store, artifact: artifact,
+                    transaction: stagedTransaction, transactionError: transactionError)
             } else {
-                SendConfirmationStep(store: store)
+                SendConfirmationStep(store: store, quoteIsCurrent: quotedInputKey == previewRefreshKey,
+                    recipientAddress: currentRecipientResolution?.address ?? store.sendFlow.address)
             }
         }
     }
@@ -232,16 +253,29 @@ struct SendView: View {
         )
     }
 
-    /// The bar alone: the navigation title already names the step.
     private var stepProgress: some View {
-        ProgressView(value: Double(currentStep.rawValue + 1), total: Double(SendFlowStep.composerSteps.count))
-            .accessibilityLabel(AppLocalization.format("Step %lld of %lld", currentStep.rawValue + 1, SendFlowStep.composerSteps.count))
+        HStack(alignment: .top, spacing: SpectraLayout.Space.s) {
+            ForEach(SendFlowStep.allCases, id: \.rawValue) { step in
+                VStack(spacing: SpectraLayout.Space.xs) {
+                    Image(systemName: step.rawValue < currentStep.rawValue ? "checkmark.circle.fill" : step == currentStep ? "circle.inset.filled" : "circle")
+                    Text(AppLocalization.string(step.progressTitle))
+                        .font(.caption.weight(step == currentStep ? .semibold : .regular))
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(step.rawValue <= currentStep.rawValue ? Color.accentColor : Color.secondary)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, SpectraLayout.Space.s)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AppLocalization.format("Step %lld of %lld", currentStep.rawValue + 1, SendFlowStep.allCases.count))
+        .accessibilityValue(AppLocalization.string(currentStep.progressTitle))
     }
 
     @ViewBuilder
     private func flowBottomBar(selectedCoin: Coin?) -> some View {
         SpectraBottomActionBar {
-            if currentStep != .from {
+            if currentStep != .from && store.sendFlow.session.artifact?.attempts.isEmpty != false {
                 Button {
                     spectraHaptic(.light)
                     goBack()
@@ -254,8 +288,23 @@ struct SendView: View {
                 .accessibilityLabel(AppLocalization.string("Back"))
             }
 
+            if executionAction == .viewTransaction || executionAction == .done,
+               let artifact = store.sendFlow.session.artifact,
+               SendExecutionAction.canRetry(artifact: artifact, transaction: stagedTransaction) {
+                Button {
+                    startBroadcast()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.headline)
+                        .frame(width: 46, height: 46)
+                }
+                .buttonStyle(.glass)
+                .accessibilityLabel(AppLocalization.string("Retry Same Transaction"))
+                .disabled(isSendBusy || store.sendFlow.session.selectedEndpoints.isEmpty)
+            }
+
             Button {
-                handlePrimaryAction(selectedCoin: selectedCoin)
+                handlePrimaryAction()
             } label: {
                 HStack(spacing: SpectraLayout.Space.s) {
                     if primaryShowsProgress {
@@ -283,26 +332,20 @@ struct SendView: View {
             // Three stages, each its own action (docs/ARCHITECTURE.md): what was built
             // is inspectable before signing, and a signed send waits for the
             // user to choose which nodes receive it.
-            guard let artifact = store.sendFlow.session.artifact else { return "Build Transaction" }
-            if artifact.stage == .prepared { return "Sign Transaction" }
-            return artifact.attempts.isEmpty ? "Broadcast Transaction" : "Retry Same Transaction"
+            return executionAction.title
         }
     }
 
     private var primaryActionSystemImage: String {
         guard currentStep == .confirm else { return "chevron.right" }
-        switch store.sendFlow.session.artifact?.stage {
-        case nil: return "hammer.fill"
-        case .prepared: return "signature"
-        default: return "antenna.radiowaves.left.and.right"
-        }
+        return executionAction.systemImage
     }
 
     private var primaryShowsProgress: Bool {
         currentStep == .confirm && isSendBusy
     }
 
-    private func handlePrimaryAction(selectedCoin: Coin?) {
+    private func handlePrimaryAction() {
         switch currentStep {
         case .from:
             go(to: .recipient)
@@ -311,11 +354,28 @@ struct SendView: View {
         case .amount:
             go(to: .confirm)
         case .confirm:
-            spectraHaptic(.heavy)
-            if let artifact = store.sendFlow.session.artifact {
-                if artifact.stage == .prepared { store.sendFlow.isShowingHighRiskConfirmation = true }
-                else { Task { await store.broadcastPreparedSend() } }
-            } else { Task { await store.submitSend() } }
+            spectraHaptic(executionAction == .done || executionAction == .viewTransaction ? .light : .heavy)
+            switch executionAction {
+            case .build:
+                let session = store.sendFlow.session.id
+                Task {
+                    guard store.sendFlow.session.isCurrent(session) else { return }
+                    await store.submitSend()
+                }
+            case .sign: store.sendFlow.isShowingHighRiskConfirmation = true
+            case .broadcast, .retry: startBroadcast()
+            case .viewTransaction:
+                if let url = stagedTransaction?.explorerLink?.url { UIApplication.shared.open(url) }
+            case .done: store.cancelSend()
+            }
+        }
+    }
+
+    private func startBroadcast() {
+        let session = store.sendFlow.session.id
+        Task {
+            guard store.sendFlow.session.isCurrent(session) else { return }
+            await store.broadcastPreparedSend()
         }
     }
 
@@ -328,8 +388,16 @@ struct SendView: View {
         case .amount:
             return store.sendAmountIsValid
         case .confirm:
-            if let artifact = store.sendFlow.session.artifact {
-                return !isSendBusy && (artifact.stage == .prepared || !store.sendFlow.session.selectedEndpoints.isEmpty)
+            if store.sendFlow.session.artifact != nil {
+                guard !isSendBusy else { return false }
+                switch executionAction {
+                case .broadcast: return !store.sendFlow.session.selectedEndpoints.isEmpty
+                case .retry:
+                    guard let artifact = store.sendFlow.session.artifact else { return false }
+                    return !store.sendFlow.session.selectedEndpoints.isEmpty
+                        && SendExecutionAction.canRetry(artifact: artifact, transaction: stagedTransaction)
+                default: return true
+                }
             }
             return !isSendBusy
                 && store.selectedWalletForSend() != nil
@@ -339,6 +407,24 @@ struct SendView: View {
                 && quotedInputKey == previewRefreshKey
                 && store.customEvmFeeValidationError == nil
                 && store.evmNonceValidationError == nil
+        }
+    }
+
+    private var executionAction: SendExecutionAction {
+        SendExecutionAction(artifact: store.sendFlow.session.artifact, transaction: stagedTransaction)
+    }
+
+    private var navigationTitle: String {
+        guard currentStep == .confirm, let artifact = store.sendFlow.session.artifact else { return currentStep.title }
+        switch executionAction {
+        case .build: return "Review transfer"
+        case .sign: return "Check and sign"
+        case .broadcast: return "Submit transaction"
+        case .retry: return "Submission results"
+        case .viewTransaction, .done:
+            if stagedTransaction?.id == artifact.id, stagedTransaction?.status == .confirmed { return "Transfer complete" }
+            if stagedTransaction?.id == artifact.id, stagedTransaction?.status == .failed { return "Transaction failed" }
+            return "Waiting for confirmation"
         }
     }
 

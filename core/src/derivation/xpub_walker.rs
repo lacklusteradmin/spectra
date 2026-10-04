@@ -1,7 +1,7 @@
 //! Bitcoin HD multi-address helpers.
 //!
 //! This module lets Swift pass in a BIP32 extended public key (xpub, ypub,
-//! or zpub) and get back a derived address list plus aggregated UTXO/balance
+//! zpub, tpub, upub or vpub) and get back a derived address list plus aggregated UTXO/balance
 //! info, without the Rust layer ever seeing a private key. It replaces the
 //! Swift-side dependency on `blockchain.info/multiaddr` and the Blockchair
 //! xpub dashboard, which are rate-limited and inconsistent.

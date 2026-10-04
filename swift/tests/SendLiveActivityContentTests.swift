@@ -40,7 +40,7 @@ struct SendLiveActivityContentTests {
 
     /// A failure the chain explained is more use than the generic sentence.
     @Test func aFailureReasonBeatsTheGenericLine() {
-        let explained = record(status: .failed, failureReason: .stuckAfterRetries)
+        let explained = record(status: .failed, failureReason: .executionFailed)
         let generic = record(status: .failed)
         let withReason = sendLiveActivityContentState(
             for: explained, phase: .failed, amountText: "1.5")

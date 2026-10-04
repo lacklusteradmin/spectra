@@ -30,6 +30,7 @@ impl WalletService {
         load_more: bool,
         limit: Option<u32>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
+        let _operation = self.history_pagination.operation_lock.lock().await;
         let chain = Chain::Bitcoin;
         let chain_id = chain;
         let limit = limit
@@ -66,22 +67,11 @@ impl WalletService {
             // Taking them into the guard wipes them at the end of the
             // iteration rather than leaving them in a dropped `WalletState`.
             let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
-            if load_more {
-                if self
-                    .history_cursor(chain_id, wallet.id.clone())
-                    .is_exhausted
-                {
-                    continue;
-                }
-            } else {
-                self.reset_history(
-                    crate::service::history_cursor::HistoryScope::ChainAndWallet {
-                        chain_id,
-                        wallet_id: wallet.id.clone(),
-                    },
-                );
+            let saved = self.history_cursor(chain_id, wallet.id.clone());
+            if load_more && saved.is_exhausted {
+                continue;
             }
-            let cursor = self.history_cursor(chain_id, wallet.id.clone()).next_cursor;
+            let cursor = if load_more { saved.next_cursor } else { None };
 
             let network = if wallet.family() == chain {
                 wallet.chain_id
@@ -133,7 +123,7 @@ impl WalletService {
 
         // A failed database write must not consume fetched history.
         for (wallet_id, next) in cursor_updates {
-            self.advance_history_cursor(chain_id, wallet_id, next);
+            self.advance_history_cursor(chain_id, wallet_id, next)?;
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
@@ -223,7 +213,7 @@ impl WalletService {
             limit as usize,
             |address, after| {
                 let client = client.clone();
-                async move { client.fetch_history(&address, after.as_deref()).await }
+                async move { client.fetch_history_page(&address, after.as_deref()).await }
             },
         )
         .await?;

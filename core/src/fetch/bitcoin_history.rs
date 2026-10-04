@@ -5,18 +5,13 @@
 //! cohorts are merged before being displayed, so an HD transfer split across
 //! addresses or provider pages is counted exactly once.
 
-use crate::api::error::ApiError;
 use crate::api::utxo::UtxoHistoryEntry;
+use crate::api::{HistoryPage, error::ApiError};
 use crate::fetch::history::CoreBitcoinHistorySnapshot;
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::future::Future;
-
-pub(crate) struct HistoryPage<T> {
-    pub items: Vec<T>,
-    pub next_cursor: Option<String>,
-}
 
 #[derive(Serialize, Deserialize)]
 struct AddressCursor {
@@ -42,16 +37,30 @@ fn height(row: &UtxoHistoryEntry) -> u64 {
     }
 }
 
-async fn refill<F, Fut>(source: &mut AddressCursor, fetch: &F) -> Result<(), ApiError>
+async fn refill<F, Fut>(
+    source: &mut AddressCursor,
+    fetch: &F,
+    remaining: &mut usize,
+) -> Result<(), ApiError>
 where
     F: Fn(String, Option<String>) -> Fut,
-    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, ApiError>>,
+    Fut: Future<Output = Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError>>,
 {
+    if *remaining == 0 {
+        return Err(ApiError::Rejected(
+            "history page exceeded 256 provider requests; refresh a smaller address scope".into(),
+        ));
+    }
+    *remaining -= 1;
     let rows = fetch(source.address.clone(), source.after.clone()).await?;
     accept_page(source, rows)
 }
 
-fn accept_page(source: &mut AddressCursor, rows: Vec<UtxoHistoryEntry>) -> Result<(), ApiError> {
+fn accept_page(
+    source: &mut AddressCursor,
+    page: crate::api::HistoryPage<UtxoHistoryEntry>,
+) -> Result<(), ApiError> {
+    let rows = page.items;
     if rows
         .iter()
         .any(|r| r.txid.is_empty() || (r.confirmed && r.block_height.is_none()))
@@ -68,18 +77,15 @@ fn accept_page(source: &mut AddressCursor, rows: Vec<UtxoHistoryEntry>) -> Resul
             "bitcoin history: provider page is not in descending block order".into(),
         ));
     }
-    let confirmed = rows.iter().filter(|r| r.confirmed).count();
-    if let Some(last) = rows.iter().rev().find(|r| r.confirmed) {
-        if !source.visited.insert(last.txid.clone()) {
-            return Err(ApiError::Decode(
-                "bitcoin history: provider repeated a pagination cursor".into(),
-            ));
-        }
-        source.after = Some(last.txid.clone());
+    if let Some(next) = &page.next_cursor
+        && !source.visited.insert(next.clone())
+    {
+        return Err(ApiError::Decode(
+            "history provider repeated a pagination cursor".into(),
+        ));
     }
-    // Esplora returns up to 25 confirmed transactions, plus mempool rows on
-    // the initial request. An exactly full page needs another request.
-    source.exhausted = confirmed < 25;
+    source.exhausted = page.next_cursor.is_none();
+    source.after = page.next_cursor;
     source.rows.extend(rows);
     Ok(())
 }
@@ -93,7 +99,7 @@ pub(crate) async fn page<F, Fut>(
 ) -> Result<HistoryPage<CoreBitcoinHistorySnapshot>, ApiError>
 where
     F: Fn(String, Option<String>) -> Fut,
-    Fut: Future<Output = Result<Vec<UtxoHistoryEntry>, ApiError>>,
+    Fut: Future<Output = Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError>>,
 {
     if addresses.is_empty() || limit == 0 {
         return Err(ApiError::Decode(
@@ -133,6 +139,7 @@ where
         },
     };
     let mut items = Vec::new();
+    let mut remaining_requests = 256usize;
     while items.len() < limit {
         if let Some(item) = cursor.ready.pop_front() {
             items.push(item);
@@ -146,6 +153,12 @@ where
                 requests.push((index, fetch(source.address.clone(), source.after.clone())));
             }
         }
+        if requests.len() > remaining_requests {
+            return Err(ApiError::Rejected(
+                "history page exceeded 256 provider requests".into(),
+            ));
+        }
+        remaining_requests -= requests.len();
         let pages = stream::iter(requests)
             .map(|(index, request)| async move { request.await.map(|rows| (index, rows)) })
             .buffer_unordered(4)
@@ -169,7 +182,7 @@ where
                     cohort.push(source.rows.pop_front().unwrap());
                 }
                 if source.rows.is_empty() && !source.exhausted {
-                    refill(source, &fetch).await?;
+                    refill(source, &fetch, &mut remaining_requests).await?;
                 } else {
                     break;
                 }
@@ -232,11 +245,16 @@ mod tests {
             })
             .collect()
     }
-    fn provider(all: Vec<UtxoHistoryEntry>, after: Option<String>) -> Vec<UtxoHistoryEntry> {
+    fn provider(
+        all: Vec<UtxoHistoryEntry>,
+        after: Option<String>,
+    ) -> crate::api::HistoryPage<UtxoHistoryEntry> {
         let start = after
             .map(|id| all.iter().position(|r| r.txid == id).unwrap() + 1)
             .unwrap_or(0);
-        all.into_iter().skip(start).take(25).collect()
+        let items = all.into_iter().skip(start).take(25).collect::<Vec<_>>();
+        let next_cursor = (items.len() == 25).then(|| items.last().unwrap().txid.clone());
+        crate::api::HistoryPage { items, next_cursor }
     }
     #[tokio::test]
     async fn pages_do_not_repeat_or_drop_rows_at_provider_boundaries() {
@@ -332,7 +350,10 @@ mod tests {
                 &["a".into()],
                 p.next_cursor.as_deref(),
                 10,
-                |_, _| std::future::ready(Ok(vec![]))
+                |_, _| std::future::ready(Ok(crate::api::HistoryPage {
+                    items: vec![],
+                    next_cursor: None
+                }))
             )
             .await
             .is_err()
@@ -350,7 +371,7 @@ mod tests {
         );
         assert!(
             page("bitcoin", &["a".into()], None, 100, |_, _| {
-                std::future::ready(Ok(rows(25)))
+                std::future::ready(Ok(provider(rows(25), None)))
             })
             .await
             .is_err()

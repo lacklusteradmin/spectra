@@ -7,6 +7,8 @@ mod addresses;
 mod connection;
 pub mod error;
 mod history;
+mod history_pagination;
+pub(crate) use history_pagination::*;
 mod history_query;
 pub(crate) use history_query::*;
 mod keypool;

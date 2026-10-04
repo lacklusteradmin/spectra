@@ -43,6 +43,8 @@ struct RestUtxo {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AddressTransactions {
+    #[serde(default)]
+    pages_total: Option<u32>,
     txs: Vec<(RestTx, Value)>,
     legacy_address: String,
     cash_address: String,
@@ -150,9 +152,30 @@ impl BchRestClient {
     /// address received less what its own inputs spent; the fee is the whole
     /// transaction's.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError> {
+        let number = crate::api::history_page::page_number(cursor)?;
         let page: AddressTransactions = self
-            .get(&format!("/address/transactions/{address}"))
+            .get(&format!(
+                "/address/transactions/{address}?page={}",
+                number - 1
+            ))
             .await?;
+        let next_cursor = match page.pages_total {
+            Some(total) if number < total => Some((number + 1).to_string()),
+            Some(_) => None,
+            None => {
+                return Err(ApiError::Decode(
+                    "BCH REST: history omitted pagesTotal".into(),
+                ));
+            }
+        };
         let ours = |candidate: &str| {
             candidate == address
                 || candidate == page.cash_address
@@ -197,7 +220,10 @@ impl BchRestClient {
                 fee_sats: tx.fees.map(satoshis).transpose()?.map(|fee| fee as u64),
             });
         }
-        Ok(entries)
+        Ok(crate::api::HistoryPage {
+            items: entries,
+            next_cursor,
+        })
     }
 
     pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, ApiError> {

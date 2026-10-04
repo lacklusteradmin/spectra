@@ -1,5 +1,5 @@
-//! The display currency is domain state shared with the app: setting it here
-//! changes what the phone shows.
+//! Display currency and portfolio settings live in the selected CLI data store.
+//! Core applies the same rules for each front end.
 
 use clap::Args;
 use colored::Colorize as _;
@@ -12,7 +12,7 @@ use crate::out::{self, Out};
 
 #[derive(Args)]
 pub struct PriceArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     chain: Option<String>,
     /// Refresh prices for stored holdings and dashboard pins.
     #[arg(long)]
@@ -24,7 +24,7 @@ pub struct PriceArgs {
 
 #[derive(Args)]
 pub struct PortfolioArgs {
-    /// Pin exact token IDs (repeat for multiple tokens).
+    /// Replace dashboard pins with these token IDs; repeat to set their order.
     #[arg(long)]
     pin_token: Vec<String>,
     /// Unpin one token ID from the set the dashboard shows (repeatable).
@@ -260,10 +260,6 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
         out.text(|| {
             println!();
             out::field("currency", &current.bold().to_string());
-            println!(
-                "  {}",
-                out::hint("shared with the app — the same setting, the same store")
-            );
         });
         out.emit(serde_json::json!({ "ok": true, "currency": current }));
         return Ok(());

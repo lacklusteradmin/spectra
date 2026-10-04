@@ -36,6 +36,7 @@ if [[ "$check_only" == true ]]; then
   trap 'rm -rf "$tmp"' EXIT
   drift=0
   for dir in "${DIRS[@]}"; do
+    compgen -G "$dir/*.svg" >/dev/null || continue
     out="$tmp/$(basename "$dir")"
     mkdir -p "$out"
     svgo --config "$CONFIG" -f "$dir" -o "$out" -q
@@ -55,6 +56,7 @@ if [[ "$check_only" == true ]]; then
 fi
 
 for dir in "${DIRS[@]}"; do
+  compgen -G "$dir/*.svg" >/dev/null || continue
   svgo --config "$CONFIG" -f "$dir" -o "$dir" -q
   echo "  [$(basename "$dir")] normalized $(ls "$dir"/*.svg | wc -l | tr -d ' ') icons."
 done

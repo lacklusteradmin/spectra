@@ -155,11 +155,13 @@ impl WalletService {
     /// chain. A provider failure for one wallet is counted, not raised: the
     /// wallets that answered are still merged, which is what the front end's
     /// "loaded with partial provider failures" banner was already saying.
-    pub async fn refresh_chain_history(
+    pub(crate) async fn refresh_chain_history_page(
         &self,
-        chain: crate::registry::Chain,
+        chain: Chain,
         wallet_ids: Vec<String>,
+        load_more: bool,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
+        let _operation = self.history_pagination.operation_lock.lock().await;
         let targets = {
             let state = self.app_state().await;
             targets(&state, chain, &wallet_ids)
@@ -167,59 +169,96 @@ impl WalletService {
         if targets.is_empty() {
             return Ok(HistoryRefreshOutcome::nothing());
         }
-
-        // Owned pairs rather than borrows of `targets`: the exported method's
-        // future has to be `'static`, and a closure borrowing from the
-        // enclosing scope is not.
-        let requests: Vec<(usize, Chain, String)> = targets
-            .iter()
-            .enumerate()
-            .map(|(index, target)| (index, target.network, target.address.clone()))
-            .collect();
-        let fetched: Vec<(usize, Option<Vec<_>>)> = stream::iter(requests)
-            .map(|(index, chain, address)| async move {
+        let mut requests = Vec::new();
+        for (index, target) in targets.iter().enumerate() {
+            let saved = self.history_cursor(chain, target.wallet_id.clone());
+            if load_more && saved.is_exhausted {
+                continue;
+            }
+            requests.push((
+                index,
+                target.network,
+                target.address.clone(),
+                if load_more { saved.next_cursor } else { None },
+            ));
+        }
+        let fetched: Vec<_> = stream::iter(requests)
+            .map(|(index, network, address, cursor)| async move {
                 (
                     index,
-                    self.fetch_normalized_history(chain, address).await.ok(),
+                    cursor.clone(),
+                    self.fetch_normalized_history_page(network, &address, cursor.as_deref())
+                        .await,
                 )
             })
             .buffer_unordered(4)
             .collect()
             .await;
-
         let mut incoming = Vec::new();
+        let mut updates = Vec::new();
+        let mut diagnostics = Vec::new();
         let mut wallets_refreshed = 0;
         let mut wallets_failed = 0;
-        let mut completed_wallets = Vec::new();
-        for (index, entries) in fetched {
-            match entries {
-                Some(entries) => {
-                    completed_wallets.push(targets[index].wallet_id.clone());
+        let mut exhausted = true;
+        for (index, previous, fetched) in fetched {
+            let target = &targets[index];
+            match fetched {
+                Ok(page) => {
+                    if page.next_cursor.is_some() && page.next_cursor == previous {
+                        wallets_failed += 1;
+                        exhausted = false;
+                        diagnostics.push(HistoryWalletDiagnostics {
+                            wallet_id: target.wallet_id.clone(),
+                            identifier: target.address.clone(),
+                            source_used: "none".into(),
+                            transaction_count: 0,
+                            next_cursor: previous,
+                            error: Some("provider repeated history cursor".into()),
+                        });
+                        continue;
+                    }
                     wallets_refreshed += 1;
+                    exhausted &= page.next_cursor.is_none();
+                    diagnostics.push(HistoryWalletDiagnostics {
+                        wallet_id: target.wallet_id.clone(),
+                        identifier: target.address.clone(),
+                        source_used: "rust/provider".into(),
+                        transaction_count: page.items.len() as u32,
+                        next_cursor: page.next_cursor.clone(),
+                        error: None,
+                    });
+                    updates.push((target.wallet_id.clone(), page.next_cursor));
                     incoming.extend(
-                        entries
+                        page.items
                             .into_iter()
-                            .map(|entry| record_for(&targets[index], chain, entry)),
+                            .map(|entry| record_for(target, chain, entry)),
                     );
                 }
-                None => wallets_failed += 1,
+                Err(error) => {
+                    wallets_failed += 1;
+                    exhausted = false;
+                    diagnostics.push(HistoryWalletDiagnostics {
+                        wallet_id: target.wallet_id.clone(),
+                        identifier: target.address.clone(),
+                        source_used: "none".into(),
+                        transaction_count: 0,
+                        next_cursor: previous,
+                        error: Some(error.to_string()),
+                    });
+                }
             }
         }
-
         let change = self.merge_fetched_history(incoming).await?;
-
-        for id in completed_wallets {
-            self.set_history_page(chain, id, 1, true);
+        for (id, next) in updates {
+            self.advance_history_cursor(chain, id, next)?;
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
             wallets_failed,
             added: change.added.len() as u32,
             updated: change.updated.len() as u32,
-            // These providers answer with a whole history at once, so the page
-            // just merged is the last one.
-            exhausted: true,
-            diagnostics: Vec::new(),
+            exhausted,
+            diagnostics,
         })
     }
 }
@@ -288,6 +327,7 @@ impl WalletService {
         load_more: bool,
         page_size: Option<u32>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
+        let _operation = self.history_pagination.operation_lock.lock().await;
         let chain = super::evm_network(chain_id)?;
         let (groups, descriptors, wallet_names, networks) = {
             let state = self.app_state().await;
@@ -322,24 +362,11 @@ impl WalletService {
             let Some(first) = group_wallet_ids.first().cloned() else {
                 continue;
             };
-            if !load_more {
-                for wallet_id in &group_wallet_ids {
-                    self.reset_history(
-                        crate::service::history_cursor::HistoryScope::ChainAndWallet {
-                            chain_id,
-                            wallet_id: wallet_id.clone(),
-                        },
-                    );
-                    self.set_history_page(chain_id, wallet_id.clone(), 1, false);
-                }
-            } else if self.history_cursor(chain_id, first.clone()).is_exhausted {
+            if load_more && self.history_cursor(chain_id, first.clone()).is_exhausted {
                 continue;
             }
-            let current = self
-                .history_cursor(chain_id, first.clone())
-                .next_page
-                .max(1);
-            let page = if load_more { current + 1 } else { current };
+            let current = self.history_cursor(chain_id, first.clone()).next_page;
+            let page = if load_more { current + 1 } else { 1 };
 
             let network = networks.get(&first).copied().unwrap_or(chain);
             let fetched = self
@@ -413,7 +440,7 @@ impl WalletService {
         let change = self.merge_fetched_history(incoming).await?;
 
         for (id, page, exhausted) in cursor_updates {
-            self.set_history_page(chain_id, id, page, exhausted);
+            self.set_history_page(chain_id, id, page, exhausted)?;
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
@@ -473,156 +500,120 @@ impl WalletService {
     /// once per address it touched; the records are netted per transaction
     /// before they are stored. The addresses are core's own keypool.
     ///
-    /// These providers return a whole history in one call, so the first page is
-    /// also the last; `load_more` therefore has nothing to fetch for a wallet
-    /// already marked exhausted.
     pub async fn refresh_utxo_chain_history(
         &self,
-        chain: crate::registry::Chain,
+        chain: Chain,
         wallet_ids: Vec<String>,
         load_more: bool,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
-        let wallets: Vec<(String, String, Chain)> = {
+        let _operation = self.history_pagination.operation_lock.lock().await;
+        let targets = {
             let state = self.app_state().await;
             targets(&state, chain, &wallet_ids)
-                .into_iter()
-                .map(|target| (target.wallet_id, target.wallet_name, target.network))
-                .collect()
         };
-
         let mut incoming = Vec::new();
+        let mut updates = Vec::new();
+        let mut diagnostics = Vec::new();
         let mut wallets_refreshed = 0;
         let mut wallets_failed = 0;
-        let mut completed_wallets = Vec::new();
-        for (wallet_id, wallet_name, network) in wallets {
-            let addresses = match self.known_utxo_addresses(wallet_id.clone(), chain).await {
-                Ok(addresses) => addresses,
-                Err(_) => {
+        let mut exhausted = true;
+        for target in targets {
+            let saved = self.history_cursor(chain, target.wallet_id.clone());
+            if load_more && saved.is_exhausted {
+                continue;
+            }
+            let previous = if load_more { saved.next_cursor } else { None };
+            let fetched = async {
+                let addresses = self
+                    .known_utxo_addresses(target.wallet_id.clone(), chain)
+                    .await?;
+                if addresses.is_empty() {
+                    return Err(SpectraBridgeError::failure(
+                        "UTXO wallet has no stored addresses",
+                    ));
+                }
+                let client = self
+                    .utxo_client(target.network, &[crate::EndpointCapability::History])
+                    .await;
+                Ok::<_, SpectraBridgeError>(
+                        crate::fetch::bitcoin_history::page(
+                            target.network.str_id(),
+                            &addresses,
+                            previous.as_deref(),
+                            20,
+                            |address, after| {
+                                let client = &client;
+                                async move {
+                                    client.fetch_history_page(&address, after.as_deref()).await
+                                }
+                            },
+                        )
+                        .await?,
+                    )
+            }
+            .await;
+            match fetched {
+                Ok(page) => {
+                    wallets_refreshed += 1;
+                    exhausted &= page.next_cursor.is_none();
+                    diagnostics.push(HistoryWalletDiagnostics {
+                        wallet_id: target.wallet_id.clone(),
+                        identifier: target.address.clone(),
+                        source_used: "rust/utxo".into(),
+                        transaction_count: page.items.len() as u32,
+                        next_cursor: page.next_cursor.clone(),
+                        error: None,
+                    });
+                    updates.push((target.wallet_id.clone(), page.next_cursor));
+                    incoming.extend(page.items.into_iter().map(|entry| {
+                        record_for(
+                            &target,
+                            chain,
+                            crate::fetch::history_decode::NormalizedHistoryItem {
+                                deployment_id: crate::tokens::deployment_id_for(
+                                    target.network,
+                                    None,
+                                ),
+                                kind: entry.kind,
+                                status: entry.status,
+                                asset_display_name: target.network.coin_name().into(),
+                                symbol: target.network.coin_symbol().into(),
+                                chain_id: target.network,
+                                amount: entry.amount_btc,
+                                counterparty: entry.counterparty_address,
+                                tx_hash: entry.txid,
+                                block_height: entry.block_height,
+                                timestamp: entry.created_at_unix,
+                            },
+                        )
+                    }));
+                }
+                Err(error) => {
                     wallets_failed += 1;
-                    continue;
-                }
-            };
-            if addresses.is_empty() {
-                continue;
-            }
-            if load_more {
-                if self.history_cursor(chain, wallet_id.clone()).is_exhausted {
-                    continue;
-                }
-            } else {
-                self.reset_history(
-                    crate::service::history_cursor::HistoryScope::ChainAndWallet {
-                        chain_id: chain,
-                        wallet_id: wallet_id.clone(),
-                    },
-                );
-            }
-
-            let mut entries = Vec::new();
-            let mut failed = false;
-            for address in &addresses {
-                match self
-                    .fetch_normalized_history(network, address.clone())
-                    .await
-                {
-                    Ok(fetched) => entries.extend(fetched),
-                    Err(_) => failed = true,
+                    exhausted = false;
+                    diagnostics.push(HistoryWalletDiagnostics {
+                        wallet_id: target.wallet_id.clone(),
+                        identifier: target.address.clone(),
+                        source_used: "none".into(),
+                        transaction_count: 0,
+                        next_cursor: previous,
+                        error: Some(error.to_string()),
+                    });
                 }
             }
-            // Netting is over the whole address set, so an address that did not
-            // answer is a wrong amount rather than a missing row: a transaction
-            // whose change went to that address nets to the legs that did
-            // answer, and the figure stored is one no address agrees with.
-            // Merge nothing for the wallet and count it failed — these
-            // providers hand back a whole history at once, so a later refresh
-            // has everything to net again, and the cursor below is not written,
-            // which leaves the wallet loadable rather than exhausted.
-            if failed {
-                wallets_failed += 1;
-                continue;
-            }
-            wallets_refreshed += 1;
-            // A whole history in one call, so the page just fetched is the last.
-            completed_wallets.push(wallet_id.clone());
-
-            let aggregated = crate::fetch::history_decode::history_aggregate_by_transaction(
-                crate::fetch::history_decode::MultiAddressAggregateInput {
-                    own_addresses: addresses,
-                    entries,
-                },
-            );
-            incoming.extend(aggregated.into_iter().map(|aggregate| {
-                aggregated_record(&wallet_id, &wallet_name, network, network, aggregate)
-            }));
         }
-
-        if wallets_refreshed == 0 && wallets_failed == 0 {
-            return Ok(HistoryRefreshOutcome::nothing());
-        }
-
         let change = self.merge_fetched_history(incoming).await?;
-
-        for id in completed_wallets {
-            self.set_history_page(chain, id, 1, true);
+        for (id, next) in updates {
+            self.advance_history_cursor(chain, id, next)?;
         }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
             wallets_failed,
             added: change.added.len() as u32,
             updated: change.updated.len() as u32,
-            // These providers answer with a whole history at once, so the page
-            // just merged is the last one.
-            exhausted: true,
-            diagnostics: Vec::new(),
+            exhausted,
+            diagnostics,
         })
-    }
-}
-
-/// One netted transaction as a stored record.
-fn aggregated_record(
-    wallet_id: &str,
-    wallet_name: &str,
-    chain: Chain,
-    chain_id: crate::registry::Chain,
-    aggregate: crate::fetch::history_decode::AggregatedTransaction,
-) -> crate::fetch::transactions::CoreTransactionRecord {
-    crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: crate::tokens::deployment_id_for(chain, None),
-        id: crate::store::new_transaction_id(),
-        wallet_id: Some(wallet_id.to_string()),
-        kind: aggregate.kind,
-        status: aggregate.status,
-        wallet_name: wallet_name.to_string(),
-        asset_display_name: chain.chain_display_name().to_string(),
-        symbol: chain.coin_symbol().to_string(),
-        chain_id: chain,
-        amount: aggregate.amount,
-        address: aggregate.counterparty,
-        transaction_hash: Some(aggregate.hash).filter(|hash| !hash.is_empty()),
-        nonce: None,
-        receipt_block_number: aggregate.block_number,
-        receipt_gas_used: None,
-        receipt_effective_gas_price_gwei: None,
-        receipt_network_fee: None,
-        fee_rate_description: None,
-        confirmation_count: None,
-        confirmed_network_fee: None,
-        used_change_output: None,
-        source_derivation_path: None,
-        change_derivation_path: None,
-        source_address: None,
-        change_address: None,
-        signed_transaction_payload: None,
-        signed_transaction_payload_format: None,
-        failure_reason: None,
-        transaction_history_source: Some(format!("{chain_id}.providers")),
-        // An aggregate with no known timestamp keeps the sentinel the merge
-        // recognises rather than claiming it happened now.
-        created_at_unix: if aggregate.created_at_unix > 0.0 {
-            aggregate.created_at_unix
-        } else {
-            SENTINEL_CREATED_AT_UNIX
-        },
     }
 }
 

@@ -1,0 +1,224 @@
+{
+  "observed_at": "2026-10-04T17:17:15.781472+00:00",
+  "read_only": true,
+  "results": [
+    {
+      "endpoint": "http://xmr-node.cakewallet.com:18081",
+      "kind": "monero",
+      "network": "mainnet",
+      "synchronized": true,
+      "height": 3776840,
+      "hard_fork_version": 16,
+      "block_hashes": {
+        "error": {
+          "code": -32700,
+          "message": "Parse error"
+        },
+        "id": 0,
+        "jsonrpc": "2.0"
+      },
+      "scan_response_bytes": 48856,
+      "scan_response_sha256": "a9a04d43b7af79822568c9634ac18a49e3067a8455f8b8fe170c3d59ce890455",
+      "scan_epee_header_valid": true,
+      "transport_success": true
+    },
+    {
+      "endpoint": "http://stagenet.xmr-tw.org:38081",
+      "kind": "monero",
+      "network": "stagenet",
+      "synchronized": true,
+      "height": 2222099,
+      "hard_fork_version": 16,
+      "block_hashes": {
+        "error": {
+          "code": -32700,
+          "message": "Parse error"
+        },
+        "id": 0,
+        "jsonrpc": "2.0"
+      },
+      "scan_response_bytes": 334,
+      "scan_response_sha256": "3e36a89fbf04533ec956ceeca626f5e18947e2bd1b9d20eb96e1955d28ef0963",
+      "scan_epee_header_valid": true,
+      "transport_success": true
+    },
+    {
+      "endpoint": "http://node.monerodevs.org:38089",
+      "kind": "monero",
+      "network": "stagenet",
+      "synchronized": true,
+      "height": 2222099,
+      "hard_fork_version": 16,
+      "block_hashes": {
+        "error": {
+          "code": -32700,
+          "message": "Parse error"
+        },
+        "id": 0,
+        "jsonrpc": "2.0"
+      },
+      "scan_response_bytes": 334,
+      "scan_response_sha256": "d92ddf906affce72105b923501cfce0a48bebb6a151002b00fd29306410b0b6d",
+      "scan_epee_header_valid": true,
+      "transport_success": true
+    },
+    {
+      "endpoint": "http://node2.monerodevs.org:38089",
+      "kind": "monero",
+      "network": "stagenet",
+      "synchronized": true,
+      "height": 2222099,
+      "hard_fork_version": 16,
+      "block_hashes": {
+        "error": {
+          "code": -32700,
+          "message": "Parse error"
+        },
+        "id": 0,
+        "jsonrpc": "2.0"
+      },
+      "scan_response_bytes": 334,
+      "scan_response_sha256": "39f1f31f527da415e5df88e241aa8dd46407343cf4e141cb9731d83c7fe9c3ac",
+      "scan_epee_header_valid": true,
+      "transport_success": true
+    },
+    {
+      "endpoint": "http://xmr-lux.boldsuck.org:38081",
+      "kind": "monero",
+      "network": "stagenet",
+      "synchronized": true,
+      "height": 2222099,
+      "hard_fork_version": 16,
+      "block_hashes": {
+        "error": {
+          "code": -32700,
+          "message": "Parse error"
+        },
+        "id": 0,
+        "jsonrpc": "2.0"
+      },
+      "scan_response_bytes": 334,
+      "scan_response_sha256": "39f1f31f527da415e5df88e241aa8dd46407343cf4e141cb9731d83c7fe9c3ac",
+      "scan_epee_header_valid": true,
+      "transport_success": true
+    },
+    {
+      "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+      "kind": "avalanche",
+      "chain_id": {
+        "result": "0xa86a",
+        "id": 1,
+        "jsonrpc": "2.0"
+      },
+      "token_balance": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "transport_success": true
+    },
+    {
+      "endpoint": "https://avalanche-c-chain-rpc.publicnode.com",
+      "kind": "avalanche",
+      "chain_id": {
+        "jsonrpc": "2.0",
+        "result": "0xa86a",
+        "id": 1
+      },
+      "token_balance": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "transport_success": true
+    },
+    {
+      "endpoint": "https://1rpc.io/avax/c",
+      "kind": "avalanche",
+      "chain_id": {
+        "jsonrpc": "2.0",
+        "result": "0xa86a",
+        "id": 1
+      },
+      "token_balance": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "transport_success": true
+    },
+    {
+      "endpoint": "https://api.mainnet.aptoslabs.com/v1/graphql",
+      "kind": "aptos-indexer",
+      "response": {
+        "data": {
+          "ledger_infos": [
+            {
+              "chain_id": 1
+            }
+          ],
+          "current_fungible_asset_balances": [
+            {
+              "storage_id": "0x643f8e8cd41c45f2defe9ee36382f949bc57afa9afb093bdb9582b229c91165e",
+              "asset_type": "0xff5a013a4676f724714aec0082403fad822972c56348ba08e0405d08e533325e",
+              "amount": 0,
+              "metadata": {
+                "decimals": 8
+              }
+            }
+          ],
+          "account_transactions": [
+            {
+              "transaction_version": 215163620,
+              "fungible_asset_activities": []
+            }
+          ]
+        }
+      },
+      "expected_chain_id": 1,
+      "transport_success": true
+    },
+    {
+      "endpoint": "https://api.testnet.aptoslabs.com/v1/graphql",
+      "kind": "aptos-indexer",
+      "response": {
+        "data": {
+          "ledger_infos": [
+            {
+              "chain_id": 2
+            }
+          ],
+          "current_fungible_asset_balances": [
+            {
+              "storage_id": "0x811c1ebacc2de38fbddc605243d76cf27f9f3d17637baa32412d8f8afaf7e83a",
+              "asset_type": "0x1::aptos_coin::AptosCoin",
+              "amount": 17500034,
+              "metadata": {
+                "decimals": 8
+              }
+            }
+          ],
+          "account_transactions": [
+            {
+              "transaction_version": 0,
+              "fungible_asset_activities": [
+                {
+                  "amount": 18446744073709551615,
+                  "asset_type": "0x1::aptos_coin::AptosCoin",
+                  "type": "0x1::coin::DepositEvent",
+                  "is_gas_fee": false,
+                  "is_transaction_success": true,
+                  "metadata": {
+                    "decimals": 8
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_chain_id": 2,
+      "transport_success": true
+    }
+  ]
+}

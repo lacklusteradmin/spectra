@@ -173,15 +173,8 @@ async fn single_api_balance(
             } else {
                 crate::derivation::polkadot::decode_ss58(address)?
             };
-            let width = chain.substrate_balance_bytes().ok_or_else(|| {
-                SpectraBridgeError::failure("no Substrate balance layout for this chain")
-            })?;
             let client = SubstrateClient::new(endpoints);
-            let balance = if chain.mainnet_counterpart() == Chain::Polkadot {
-                client.polkadot_balance(chain, &account).await?
-            } else {
-                client.fetch_balance(&account, width).await?
-            };
+            let balance = client.fetch_balance(chain, &account).await?;
             balance.transferable().to_string()
         }
         Api::SuiJsonRpc => SuiClient::new(endpoints)

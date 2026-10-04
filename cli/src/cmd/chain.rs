@@ -54,7 +54,10 @@ pub struct HistoryArgs {
     /// Merge what is fetched into the stored history, as the app does.
     #[arg(long)]
     save: bool,
-    /// Maximum Bitcoin history pages to merge in this session.
+    /// Continue the saved provider cursor, including after a process restart.
+    #[arg(long, requires = "save")]
+    load_more: bool,
+    /// Maximum history pages to merge in this session.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=1000), requires = "save")]
     pages: u32,
     /// Override the selected network's history endpoint (also useful for local fixtures).
@@ -129,6 +132,7 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 "family": chain.entry().family,
                 "isTestnet": chain.is_testnet(),
                 "isEvm": chain.is_evm(),
+                "tokenStandards": chain.token_standards(),
                 // The import picker's list, as a column rather than a second
                 // array: a chain is offered for private-key import exactly
                 // when a key derives an address on it.
@@ -164,7 +168,7 @@ pub struct EndpointsArgs {
     /// List registered endpoints and capabilities offline, without health probes.
     #[arg(long)]
     catalog: bool,
-    /// Save a custom endpoint offline. Requires --chain and --api.
+    /// Save a custom endpoint offline. Requires --chain, --api and --capabilities.
     #[arg(long, requires_all = ["chain", "api", "capabilities"], conflicts_with = "catalog")]
     add: Option<String>,
     /// API contract, using the api value from endpoints.toml.
@@ -473,8 +477,7 @@ fn save_history(
     service: &Arc<WalletService>,
     chain: Chain,
     wallet_id: &str,
-    pages: u32,
-    limit: usize,
+    args: &HistoryArgs,
 ) -> CliResult<()> {
     ctx.rt
         .block_on(service.open_state(ctx.db_path()))
@@ -489,7 +492,7 @@ fn save_history(
                 wallet_ids: vec![wallet_id.into()],
             },
             load_more,
-            Some(limit.min(100) as u32),
+            Some(args.limit.min(100) as u32),
             0.0,
         ))?;
         let row = results
@@ -500,9 +503,9 @@ fn save_history(
         row.outcome
             .ok_or_else(|| spectra_core::SpectraBridgeError::failure(row.error.unwrap_or_default()))
     };
-    let mut outcome = fetch(false).map_err(CliError::from)?;
+    let mut outcome = fetch(args.load_more).map_err(CliError::from)?;
     let mut fetched_pages = 1;
-    while fetched_pages < pages && !outcome.exhausted && outcome.wallets_failed == 0 {
+    while fetched_pages < args.pages && !outcome.exhausted && outcome.wallets_failed == 0 {
         let next = fetch(true).map_err(CliError::from)?;
         outcome.added += next.added;
         outcome.updated += next.updated;
@@ -540,11 +543,11 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = wallet.chain_id.mainnet_counterpart();
     let network = wallet.chain_id;
-    let service = if let Some(endpoint) = args.endpoint {
+    let service = if let Some(endpoint) = &args.endpoint {
         WalletService::new(vec![ChainEndpoints {
             capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
             chain_id: network,
-            endpoints: vec![endpoint],
+            endpoints: vec![endpoint.clone()],
         }])
         .map_err(CliError::from)?
     } else {
@@ -556,9 +559,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     };
     ctx.prepare_transport(&service)?;
     if args.save {
-        return save_history(
-            ctx, out, &service, chain, &wallet.id, args.pages, args.limit,
-        );
+        return save_history(ctx, out, &service, chain, &wallet.id, &args);
     }
 
     let entries = ctx

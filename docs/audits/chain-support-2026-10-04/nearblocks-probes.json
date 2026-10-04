@@ -1,0 +1,647 @@
+{
+  "observed_at_utc": "2026-10-04T17:27:28.112217+00:00",
+  "authentication": "none",
+  "source": "https://api.nearblocks.io/openapi.json",
+  "health_probe": {
+    "method": "GET",
+    "path": "/stats",
+    "success_pointer": "/data/total_txns"
+  },
+  "probes": [
+    {
+      "url": "https://api.nearblocks.io/v3/stats",
+      "response": {
+        "data": {
+          "avg_block_time": "0.57690000",
+          "change_24h": "4.8154",
+          "circulating_supply": "1308082350120715869570664011315859",
+          "gas_price": "100000000",
+          "market_cap": "6458855673.00000000",
+          "near_btc_price": "0.00005788",
+          "near_price": "4.94000000",
+          "nodes_online": 416,
+          "total_supply": "1308082350120715869570664011315859",
+          "total_txns": "5452616362",
+          "tps": 9,
+          "volume_24h": "562044935.00000000"
+        }
+      }
+    },
+    {
+      "url": "https://api-testnet.nearblocks.io/v3/stats",
+      "response": {
+        "data": {
+          "avg_block_time": "0.59410000",
+          "change_24h": null,
+          "circulating_supply": "2672912549980426469596678248826725",
+          "gas_price": "100000000",
+          "market_cap": null,
+          "near_btc_price": null,
+          "near_price": null,
+          "nodes_online": 28,
+          "total_supply": "2672912549980426469596678248826725",
+          "total_txns": "489064524",
+          "tps": 1,
+          "volume_24h": null
+        }
+      }
+    },
+    {
+      "url": "https://api.nearblocks.io/v3/accounts/root.near/assets/fts",
+      "response": {
+        "data": [
+          {
+            "amount": "200113363269112889747157741",
+            "contract": "jambo-1679.meme-cooking.near",
+            "meta": {
+              "contract": "jambo-1679.meme-cooking.near",
+              "decimals": 18,
+              "name": "JAMBO",
+              "price": "0.000598650000",
+              "symbol": "JAMBO"
+            }
+          },
+          {
+            "amount": "276586000000000000000000",
+            "contract": "nearly-993927.nearlytrade.near",
+            "meta": {
+              "contract": "nearly-993927.nearlytrade.near",
+              "decimals": 18,
+              "name": "NEARLY",
+              "price": "0.004125540000",
+              "symbol": "NEARLY"
+            }
+          },
+          {
+            "amount": "27163326284623574249300983983794577",
+            "contract": "blackdragon.tkn.near",
+            "meta": {
+              "contract": "blackdragon.tkn.near",
+              "decimals": 24,
+              "name": "Black Dragon",
+              "price": "0.000000022311",
+              "symbol": "BLACKDRAGON"
+            }
+          },
+          {
+            "amount": "1546698793122822042219556",
+            "contract": "kat.token0.near",
+            "meta": {
+              "contract": "kat.token0.near",
+              "decimals": 18,
+              "name": "NearKat",
+              "price": "0.000256800000",
+              "symbol": "KAT"
+            }
+          },
+          {
+            "amount": "100423617606839462",
+            "contract": "token.lonkingnearbackto2024.near",
+            "meta": {
+              "contract": "token.lonkingnearbackto2024.near",
+              "decimals": 8,
+              "name": "LONK fungible token",
+              "price": "0.000000267921",
+              "symbol": "LONK"
+            }
+          },
+          {
+            "amount": "36173505534209134634835",
+            "contract": "purge-558.meme-cooking.near",
+            "meta": {
+              "contract": "purge-558.meme-cooking.near",
+              "decimals": 18,
+              "name": "Forgive Me Father",
+              "price": "0.001184430000",
+              "symbol": "PURGE"
+            }
+          },
+          {
+            "amount": "430854710000000004000000000000",
+            "contract": "ftv2.nekotoken.near",
+            "meta": {
+              "contract": "ftv2.nekotoken.near",
+              "decimals": 24,
+              "name": "NEKO",
+              "price": "0.000048760000",
+              "symbol": "NEKO"
+            }
+          },
+          {
+            "amount": "5120000000000000000000",
+            "contract": "token.0xshitzu.near",
+            "meta": {
+              "contract": "token.0xshitzu.near",
+              "decimals": 18,
+              "name": "SHITZU",
+              "price": "0.003710190000",
+              "symbol": "SHITZU"
+            }
+          },
+          {
+            "amount": "1387952532024477011546901",
+            "contract": "meta-pool.near",
+            "meta": {
+              "contract": "meta-pool.near",
+              "decimals": 24,
+              "name": "Staked NEAR",
+              "price": "7.530000000000",
+              "symbol": "STNEAR"
+            }
+          },
+          {
+            "amount": "9578673",
+            "contract": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "meta": {
+              "contract": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+              "decimals": 6,
+              "name": "USDC",
+              "price": "0.999954000000",
+              "symbol": "USDC"
+            }
+          },
+          {
+            "amount": "918000000000000000000",
+            "contract": "token.publicailab.near",
+            "meta": {
+              "contract": "token.publicailab.near",
+              "decimals": 18,
+              "name": "PublicAI",
+              "price": "0.010142890000",
+              "symbol": "PUBLIC"
+            }
+          },
+          {
+            "amount": "156342",
+            "contract": "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near",
+            "meta": {
+              "contract": "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near",
+              "decimals": 6,
+              "name": "Bridged USDC",
+              "price": "0.999954000000",
+              "symbol": "USDC.e"
+            }
+          },
+          {
+            "amount": "9999990000",
+            "contract": "neat.nrc-20.near",
+            "meta": {
+              "contract": "neat.nrc-20.near",
+              "decimals": 8,
+              "name": "NEAT",
+              "price": "0.000835100000",
+              "symbol": "NEAT"
+            }
+          },
+          {
+            "amount": "1000000000000000",
+            "contract": "aaaaaa20d9e0e2461697782ef11675f668207961.factory.bridge.near",
+            "meta": {
+              "contract": "aaaaaa20d9e0e2461697782ef11675f668207961.factory.bridge.near",
+              "decimals": 18,
+              "name": "Aurora",
+              "price": "0.066251000000",
+              "symbol": "AURORA"
+            }
+          },
+          {
+            "amount": "1279688008548782",
+            "contract": "f5cfbc74057c610c8ef151a439252680ac68c6dc.factory.bridge.near",
+            "meta": {
+              "contract": "f5cfbc74057c610c8ef151a439252680ac68c6dc.factory.bridge.near",
+              "decimals": 18,
+              "name": "Octopus Network Token",
+              "price": "0.000235060000",
+              "symbol": "OCT"
+            }
+          },
+          {
+            "amount": "10000000000000000",
+            "contract": "15338008135.tknx.near",
+            "meta": {
+              "contract": "15338008135.tknx.near",
+              "decimals": 8,
+              "name": "I SEE BOOBIES",
+              "price": null,
+              "symbol": "15338008135"
+            }
+          },
+          {
+            "amount": "2",
+            "contract": "1.laboratory.jumpfinance.near",
+            "meta": {
+              "contract": "1.laboratory.jumpfinance.near",
+              "decimals": 0,
+              "name": "1",
+              "price": null,
+              "symbol": "🎉You won 500 NEAR!🎉To claim your gain:👉www.near-lottery.org"
+            }
+          },
+          {
+            "amount": "11365754093622953771008",
+            "contract": "4illia-222.meme-cooking.near",
+            "meta": {
+              "contract": "4illia-222.meme-cooking.near",
+              "decimals": 18,
+              "name": "Illia4Near",
+              "price": null,
+              "symbol": "4illia"
+            }
+          },
+          {
+            "amount": "27777500000000000000000",
+            "contract": "5illia-1725.meme-cooking.near",
+            "meta": {
+              "contract": "5illia-1725.meme-cooking.near",
+              "decimals": 18,
+              "name": "5illianniversary",
+              "price": null,
+              "symbol": "5illia"
+            }
+          },
+          {
+            "amount": "420000000000000000000",
+            "contract": "8bowen-1597.meme-cooking.near",
+            "meta": {
+              "contract": "8bowen-1597.meme-cooking.near",
+              "decimals": 18,
+              "name": "∞bowen",
+              "price": null,
+              "symbol": "8bowen"
+            }
+          },
+          {
+            "amount": "7777777000000000000000000",
+            "contract": "911-364.meme-cooking.near",
+            "meta": {
+              "contract": "911-364.meme-cooking.near",
+              "decimals": 18,
+              "name": "redactedbangkok.ai",
+              "price": null,
+              "symbol": "911"
+            }
+          },
+          {
+            "amount": "125433",
+            "contract": "9aeb50f542050172359a0e1a25a9933bc8c01259.factory.bridge.near",
+            "meta": {
+              "contract": "9aeb50f542050172359a0e1a25a9933bc8c01259.factory.bridge.near",
+              "decimals": 8,
+              "name": "oinfinance",
+              "price": null,
+              "symbol": "OIN"
+            }
+          },
+          {
+            "amount": "11668227346472507844269069",
+            "contract": "abg-966.meme-cooking.near",
+            "meta": {
+              "contract": "abg-966.meme-cooking.near",
+              "decimals": 18,
+              "name": "Asian Girl Boss",
+              "price": null,
+              "symbol": "ABG"
+            }
+          },
+          {
+            "amount": "1000000",
+            "contract": "ad.0xshitzu.near",
+            "meta": {
+              "contract": "ad.0xshitzu.near",
+              "decimals": 0,
+              "name": "app.shitzuapes.xyz - Stake Near & earn meme tokens",
+              "price": null,
+              "symbol": "app.shitzuapes.xyz - Stake Near & earn meme tokens"
+            }
+          },
+          {
+            "amount": "1000000000000000000000000000000000000",
+            "contract": "ad.doubleon.near",
+            "meta": {
+              "contract": "ad.doubleon.near",
+              "decimals": 0,
+              "name": "doubleon.near.page - NEW SHITCOIN",
+              "price": null,
+              "symbol": "doubleon.near.page - NEW SHITCOIN"
+            }
+          }
+        ],
+        "meta": {
+          "next_page": "eyJjb250cmFjdCI6ImFkLmRvdWJsZW9uLm5lYXIiLCJ2YWx1ZSI6IjAifQ=="
+        }
+      }
+    },
+    {
+      "url": "https://api.nearblocks.io/v3/accounts/root.near/ft-txns?limit=2",
+      "response": {
+        "data": [
+          {
+            "affected_account_id": "root.near",
+            "block": {
+              "block_hash": "HggVqT7ZwZn8UcW8s2L2JMD7C3eDPkuTeRW5oXw4KyYj",
+              "block_height": "218520878",
+              "block_timestamp": "1791130826354624207"
+            },
+            "block_timestamp": "1791130826972666500",
+            "cause": "TRANSFER",
+            "contract_account_id": "dragon-3.nearlytrade.near",
+            "delta_amount": "872980468099508727990013",
+            "event_index": 1,
+            "event_type": 1,
+            "involved_account_id": "nearlytrade.near",
+            "meta": {
+              "contract": "dragon-3.nearlytrade.near",
+              "decimals": 18,
+              "name": "The Black Dragon",
+              "symbol": "DRAGON"
+            },
+            "receipt_id": "FP7DLXVhonBF7Lk1XAADNQHGCViUnb8CUdgD2bNUzaL1",
+            "shard_id": 8,
+            "transaction_hash": "EbnTTj3fSvUfoXRTqBDp1erpiTRxRZiYSqgEAh1SG2xj"
+          },
+          {
+            "affected_account_id": "root.near",
+            "block": {
+              "block_hash": "3tMcJ97V2eqW1ZNuuS2hSBhSfTpPaMJ5Ed5ebbRrG6HY",
+              "block_height": "218393583",
+              "block_timestamp": "1791056123253364598"
+            },
+            "block_timestamp": "1791056123743397147",
+            "cause": "TRANSFER",
+            "contract_account_id": "dragon-3.nearlytrade.near",
+            "delta_amount": "98396557451608069762672",
+            "event_index": 1,
+            "event_type": 1,
+            "involved_account_id": "nearlytrade.near",
+            "meta": {
+              "contract": "dragon-3.nearlytrade.near",
+              "decimals": 18,
+              "name": "The Black Dragon",
+              "symbol": "DRAGON"
+            },
+            "receipt_id": "7TVMRW3V53K8NQqiHDVDsoK6XZMkx7gxEBHq8FtHr1v8",
+            "shard_id": 8,
+            "transaction_hash": "EcYWgXbk81AtAsrAkoBCN5fYUPP9YFXnjvt4zAFY3fZG"
+          }
+        ],
+        "meta": {
+          "next_page": "eyJpbmRleCI6MSwic2hhcmQiOjgsInRpbWVzdGFtcCI6IjE3OTEwNTYxMjM3NDMzOTcxNDciLCJ0eXBlIjoxfQ=="
+        }
+      }
+    },
+    {
+      "url": "https://api.nearblocks.io/v3/accounts/root.near/txns?limit=2",
+      "response": {
+        "data": [
+          {
+            "actions": [
+              {
+                "action": "FUNCTION_CALL",
+                "method": "ft_transfer_call"
+              }
+            ],
+            "actions_agg": {
+              "deposit": "1"
+            },
+            "block": {
+              "block_hash": "6pXwQFqTbfreZSS3k2VFu4ZqZhtLZey2LARbdYiXJpbT",
+              "block_height": "213886137",
+              "block_timestamp": "1788298349079373640"
+            },
+            "block_timestamp": "1788298349079373640",
+            "index_in_chunk": 1,
+            "outcomes": {
+              "status": true
+            },
+            "outcomes_agg": {
+              "transaction_fee": "829535885939900000000"
+            },
+            "receiver_account_id": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "shard_id": 4,
+            "signer_account_id": "root.near",
+            "transaction_hash": "5hjE3unnwcEHpwmD8kP6cRMM9FLLKKiJoHbtpCHuAr2M"
+          },
+          {
+            "actions": [
+              {
+                "action": "FUNCTION_CALL",
+                "method": "ft_transfer_call"
+              }
+            ],
+            "actions_agg": {
+              "deposit": "1"
+            },
+            "block": {
+              "block_hash": "BJtuHXnKXXWH8jFQoeuAWTf9p8MWGPmEZ4k26fxxw7wd",
+              "block_height": "213886110",
+              "block_timestamp": "1788298332718699803"
+            },
+            "block_timestamp": "1788298332718699803",
+            "index_in_chunk": 0,
+            "outcomes": {
+              "status": true
+            },
+            "outcomes_agg": {
+              "transaction_fee": "829535885939900000000"
+            },
+            "receiver_account_id": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "shard_id": 4,
+            "signer_account_id": "root.near",
+            "transaction_hash": "G2bRS54TKVpmGctDLvJuboYL1nrGd1wNkerEY9id4JhT"
+          }
+        ],
+        "meta": {
+          "next_page": "eyJpbmRleCI6MCwic2hhcmQiOjQsInRpbWVzdGFtcCI6IjE3ODgyOTgzMzI3MTg2OTk4MDMifQ=="
+        }
+      }
+    },
+    {
+      "url": "https://api.nearblocks.io/v3/accounts/root.near/receipts?limit=2",
+      "response": {
+        "data": [
+          {
+            "actions": [
+              {
+                "action": "TRANSFER",
+                "method": null
+              }
+            ],
+            "actions_agg": {
+              "deposit": "83176234802634240322397"
+            },
+            "block": {
+              "block_hash": "J8ix8qF1vsUyBymX4qqbhpyJvLhmHLXiQuk1xMWBdauL",
+              "block_height": "218527873",
+              "block_timestamp": "1791134931187979378"
+            },
+            "included_in_block_timestamp": "1791134931187979378",
+            "index_in_chunk": 7,
+            "outcome": {
+              "status": true
+            },
+            "predecessor_account_id": "nearlytrade.near",
+            "receipt_id": "Ev2BNuxWyxQNbFsMTqn1EjYtu4pnj91qz78gKauHiC5T",
+            "receiver_account_id": "root.near",
+            "shard_id": 4,
+            "transaction_hash": "2v3gxnc6MpPdRSxYY4psX5PK64vaLtGsK6a41Vtxi31p"
+          },
+          {
+            "actions": [
+              {
+                "action": "TRANSFER",
+                "method": null
+              }
+            ],
+            "actions_agg": {
+              "deposit": "77605180575742542067714"
+            },
+            "block": {
+              "block_hash": "7y7vKb6mnA1XpPqCCF6viTWUfw5bu9ugnj1rTRF2K4Gb",
+              "block_height": "218526174",
+              "block_timestamp": "1791133937753641561"
+            },
+            "included_in_block_timestamp": "1791133937753641561",
+            "index_in_chunk": 7,
+            "outcome": {
+              "status": true
+            },
+            "predecessor_account_id": "nearlytrade.near",
+            "receipt_id": "9LFUrz3cpyuRodrRkt8iF3DxHs14rwnoH4i1taqfvsk5",
+            "receiver_account_id": "root.near",
+            "shard_id": 4,
+            "transaction_hash": "8hjQ7mWuHGQefhKvhsbXasiFbxopmZ95fxwQ7YbvzqKj"
+          }
+        ],
+        "meta": {
+          "next_page": "eyJpbmRleCI6Nywic2hhcmQiOjQsInRpbWVzdGFtcCI6IjE3OTExMzM5Mzc3NTM2NDE1NjEifQ=="
+        }
+      }
+    },
+    {
+      "url": "https://api-testnet.nearblocks.io/v3/accounts/test.near/receipts?limit=2",
+      "response": {
+        "data": [
+          {
+            "actions": [
+              {
+                "action": "TRANSFER",
+                "method": null
+              }
+            ],
+            "actions_agg": {
+              "deposit": "2003764205206896640"
+            },
+            "block": {
+              "block_hash": "FJKgZAV2TAKwXjwDs4vokp8zqJJGDs95qS2a6KLVVPJd",
+              "block_height": "265476772",
+              "block_timestamp": "1787624269207917873"
+            },
+            "included_in_block_timestamp": "1787624269207917873",
+            "index_in_chunk": 0,
+            "outcome": {
+              "status": true
+            },
+            "predecessor_account_id": "lisp4.kampy.testnet",
+            "receipt_id": "GkzMHmQiS6nTuZNf2Kmo2YR7L7Jo6HTWkMfjhDtUDqt6",
+            "receiver_account_id": "test.near",
+            "shard_id": 4,
+            "transaction_hash": "EqpybvzvSGkENdWNM9EbBNWMgTG58UoAtofWpw86pAnB"
+          },
+          {
+            "actions": [
+              {
+                "action": "TRANSFER",
+                "method": null
+              }
+            ],
+            "actions_agg": {
+              "deposit": "8999674260137500000000000"
+            },
+            "block": {
+              "block_hash": "8VtZSMd963MvP45iB96THU2ZrBXzAa2poCAAtFHSoe1s",
+              "block_height": "264947027",
+              "block_timestamp": "1787320200914120934"
+            },
+            "included_in_block_timestamp": "1787320200914120934",
+            "index_in_chunk": 0,
+            "outcome": {
+              "status": true
+            },
+            "predecessor_account_id": "system",
+            "receipt_id": "E6wXFpiU8zqz2uwRfEDrwT2CHkzPM2jA94V3yf1Y2jjc",
+            "receiver_account_id": "test.near",
+            "shard_id": 4,
+            "transaction_hash": "2dwzE4ojiVjoS82DUnTYS582xCvS8qbZj67GhGBLy2wP"
+          }
+        ],
+        "meta": {
+          "next_page": "eyJpbmRleCI6MCwic2hhcmQiOjQsInRpbWVzdGFtcCI6IjE3ODczMjAyMDA5MTQxMjA5MzQifQ=="
+        }
+      }
+    },
+    {
+      "url": "https://api-testnet.nearblocks.io/v3/accounts/test.near/assets/fts?limit=2",
+      "response": {
+        "data": []
+      }
+    },
+    {
+      "url": "https://api-testnet.nearblocks.io/v3/accounts/test.near/ft-txns?limit=2",
+      "response": {
+        "data": [
+          {
+            "affected_account_id": "test.near",
+            "block": {
+              "block_hash": "Bv7HYha6smDnDidJ1ePrLajGAmmVxi4V81XC9KxNRK2N",
+              "block_height": "183736537",
+              "block_timestamp": "1735776452993113421"
+            },
+            "block_timestamp": "1735776452993113421",
+            "cause": "MINT",
+            "contract_account_id": "v6.devswin.testnet",
+            "delta_amount": "10000000000000000000000000000",
+            "event_index": 0,
+            "event_type": 1,
+            "involved_account_id": null,
+            "meta": {
+              "contract": "v6.devswin.testnet",
+              "decimals": 24,
+              "name": "Team Token FT Tutorial",
+              "symbol": "gtNEAR"
+            },
+            "receipt_id": "GsnvF5x8ryivNFRa2VuqvB3qzzm4jsm9E8aWoTVT41cR",
+            "shard_id": 5,
+            "transaction_hash": "9nYqBCeiZe49i656PvWRmhXhNJae6MEGdTmjh4Lj9Vic"
+          },
+          {
+            "affected_account_id": "test.near",
+            "block": {
+              "block_hash": "5DKeTxRhR8adbU1RC9DjcBe2wkmazpqg9VhUTqbouDUP",
+              "block_height": "176558580",
+              "block_timestamp": "1728667074388862434"
+            },
+            "block_timestamp": "1728667078716093527",
+            "cause": "TRANSFER",
+            "contract_account_id": "vfinal.token.sweat.testnet",
+            "delta_amount": "2880360000000000000000",
+            "event_index": 1,
+            "event_type": 1,
+            "involved_account_id": "cf910a96d950418b769aa677eb7c535ef0bb8ae753a7706919980802f846ef54",
+            "meta": {
+              "contract": "vfinal.token.sweat.testnet",
+              "decimals": 18,
+              "name": "SWEAT",
+              "symbol": "SWEAT"
+            },
+            "receipt_id": "5eXr3Wgm8bVKnXmberBUefCemYt3dfVEnxV1GnjQV76v",
+            "shard_id": 5,
+            "transaction_hash": "5YmEX8BhGqzXGB99SMtbP4cK5q9G2G4bMnuVFLn29i52"
+          }
+        ],
+        "meta": {
+          "next_page": "eyJpbmRleCI6MSwic2hhcmQiOjUsInRpbWVzdGFtcCI6IjE3Mjg2NjcwNzg3MTYwOTM1MjciLCJ0eXBlIjoxfQ=="
+        }
+      }
+    }
+  ]
+}

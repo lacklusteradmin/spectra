@@ -64,6 +64,25 @@ impl ToncenterV2Client {
 }
 
 impl ToncenterV2Client {
+    pub async fn verify_network(&self, chain: crate::registry::Chain) -> Result<(), ApiError> {
+        let (root, file) = chain
+            .ton_zero_state()
+            .or_decode("Unsupported TON network")?;
+        let response: Value = self.get("/getMasterchainInfo").await?;
+        let init = &response["result"]["init"];
+        if response["ok"].as_bool() != Some(true)
+            || init["workchain"].as_i64() != Some(-1)
+            || init["seqno"].as_u64() != Some(0)
+            || init["root_hash"].as_str() != Some(root)
+            || init["file_hash"].as_str() != Some(file)
+        {
+            return Err(ApiError::invalid(
+                "TON endpoint has the wrong masterchain zero state",
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<TonBalance, ApiError> {
         #[derive(Deserialize)]
         struct Resp {
@@ -128,16 +147,48 @@ impl ToncenterV2Client {
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<TonHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<TonHistoryEntry>, ApiError> {
         #[derive(Deserialize)]
         struct Resp {
             result: Vec<TonTx>,
         }
+        let continuation = cursor
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map(|lt| format!("&lt={lt}"))
+                    .map_err(ApiError::invalid)
+            })
+            .transpose()?
+            .unwrap_or_default();
         let resp: Resp = self
             .get(&format!(
-                "/getTransactions?address={address}&limit=50&archival=false"
+                "/getTransactions?address={address}&limit=50&archival=true{continuation}"
             ))
             .await?;
-        Ok(ton_history_from_transactions(resp.result))
+        let next_cursor = if resp.result.len() == 50 {
+            Some(
+                resp.result
+                    .last()
+                    .and_then(|row| row.transaction_id.lt.parse::<u64>().ok())
+                    .and_then(|lt| lt.checked_sub(1))
+                    .or_decode("TON: full history page has no valid logical time")?
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+        Ok(crate::api::HistoryPage {
+            items: ton_history_from_transactions(resp.result),
+            next_cursor,
+        })
     }
 }
 
@@ -152,6 +203,8 @@ struct TonTx {
 #[derive(Deserialize)]
 struct TonTxId {
     hash: String,
+    #[serde(default)]
+    lt: String,
 }
 #[derive(Deserialize)]
 struct TonMsg {
@@ -337,5 +390,52 @@ mod submission_tests {
             .mount(&server)
             .await;
         assert_eq!(client.fetch_seqno("address").await.unwrap(), 0);
+    }
+}
+
+#[cfg(test)]
+mod network_identity_tests {
+    use super::*;
+    use crate::registry::Chain;
+    use std::sync::Arc;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+    #[tokio::test]
+    async fn custom_nodes_require_both_official_zero_state_hashes() {
+        for chain in [Chain::Ton, Chain::TonTestnet] {
+            let (root, file) = chain.ton_zero_state().unwrap();
+            let valid = json!({"ok":true,"result":{"init":{"workchain":-1,"seqno":0,"root_hash":root,"file_hash":file}}});
+            let other = if chain == Chain::Ton {
+                Chain::TonTestnet
+            } else {
+                Chain::Ton
+            };
+            let other_root = other.ton_zero_state().unwrap().0;
+            let mut wrong_root = valid.clone();
+            wrong_root["result"]["init"]["root_hash"] = json!(other_root);
+            let mut wrong_file = valid.clone();
+            wrong_file["result"]["init"]["file_hash"] = json!("missing");
+            let mut failed = valid.clone();
+            failed["ok"] = json!(false);
+            let mut nonzero = valid.clone();
+            nonzero["result"]["init"]["seqno"] = json!(1);
+            for (response, accepted) in [
+                (valid, true),
+                (wrong_root, false),
+                (wrong_file, false),
+                (failed, false),
+                (nonzero, false),
+                (json!({}), false),
+            ] {
+                let server = MockServer::start().await;
+                Mock::given(path("/getMasterchainInfo"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(response))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                let client = ToncenterV2Client::new(Arc::new(vec![server.uri()]));
+                assert_eq!(client.verify_network(chain).await.is_ok(), accepted);
+            }
+        }
     }
 }

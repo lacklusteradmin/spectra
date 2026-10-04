@@ -15,6 +15,12 @@ schnorrkel = { version = "0.11", default-features = false, features = ["std"] }
 frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
 parity-scale-codec = "3"
 scale-info = "2"
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+candid = "0.10"
+ic-certification = "3.2.0"
+ic-cbor = "3.2.0"
+ic-certificate-verification = "3.2.0"
+num-bigint = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
 bs58 = { version = "0.5", features = ["check"] }

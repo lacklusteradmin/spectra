@@ -449,19 +449,6 @@ pub(crate) fn derive_from_seed_phrase(
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
 // Validate and decode a 64-character hex private key string into 32 raw bytes.
-fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
-    let trimmed = hex_str.trim();
-    if trimmed.len() != 64 {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Private key hex must be exactly 64 characters.".into(),
-        });
-    }
-    let bytes = hex::decode(trimmed)?;
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&bytes);
-    Ok(out)
-}
-
 // Shared derivation logic for all Bitcoin networks; params selects mainnet/testnet version bytes.
 fn bitcoin_export_internal(
     params: BitcoinNetworkParams,
@@ -580,32 +567,6 @@ pub fn derive_bitcoin_signet(
         want_public_key,
         want_private_key,
     )
-}
-
-/// Derive a Bitcoin mainnet address and public key from a raw private key hex string.
-pub fn derive_bitcoin_from_private_key(
-    private_key_hex: String,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let key_bytes = decode_privkey_hex(&private_key_hex)?;
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
-    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-    let address = if want_address {
-        Some(encode_address_inner(BTC_MAINNET, script_type, &public_key)?)
-    } else {
-        None
-    };
-    Ok(DerivationResult {
-        address,
-        public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
-        private_key_hex: None,
-        account: 0,
-        branch: 0,
-        index: 0,
-    })
 }
 
 // ── Bitcoin address parsing (structural, for the validator) ──────────────

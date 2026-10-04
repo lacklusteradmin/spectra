@@ -4,139 +4,175 @@
 //! Core's history services read and advance this state as they fetch pages.
 //! Provider adapters determine whether pagination uses a cursor or page number.
 
+use crate::registry::Chain;
+use crate::wallet_db::{WalletDatabase, error::DbError};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Default)]
 struct PaginationEntry {
-    /// Opaque cursor returned by the last successful fetch. `None` = not yet
-    /// started (fetch from the beginning).
     cursor: Option<String>,
-    /// Zero-based page index for page-numbered chains (EVM, etc.).
     page: u32,
-    /// Set to `true` when the last fetch returned an empty or terminal page.
     exhausted: bool,
 }
 
-/// Thread-safe in-memory pagination store. The `WalletService` holds one of
-/// these as an `Arc<HistoryPaginationStore>` for the app's lifetime.
+#[derive(Default)]
+struct PaginationState {
+    entries: HashMap<(Chain, String), PaginationEntry>,
+    database: Option<Arc<WalletDatabase>>,
+}
+
+/// Resident pagination is backed by the service's SQLite database after bind.
+/// Disk writes succeed before a cursor becomes visible to subsequent readers.
 pub struct HistoryPaginationStore {
-    inner: RwLock<HashMap<(crate::registry::Chain, String), PaginationEntry>>,
+    inner: RwLock<PaginationState>,
+    pub(crate) operation_lock: tokio::sync::Mutex<()>,
 }
 
 impl HistoryPaginationStore {
     pub fn new() -> Self {
         Self {
-            inner: RwLock::new(HashMap::new()),
+            inner: RwLock::new(PaginationState::default()),
+            operation_lock: tokio::sync::Mutex::new(()),
         }
     }
 
-    // ── Reads
+    pub(crate) fn bind(&self, database: Arc<WalletDatabase>) -> Result<(), DbError> {
+        let mut state = self
+            .inner
+            .write()
+            .map_err(|_| DbError::Invalid("history pagination lock poisoned".into()))?;
+        let rows = crate::wallet_db::history_pagination_load(&database)?;
+        state.entries = rows
+            .into_iter()
+            .map(|(chain, wallet, cursor, page, exhausted)| {
+                (
+                    (chain, wallet),
+                    PaginationEntry {
+                        cursor,
+                        page,
+                        exhausted,
+                    },
+                )
+            })
+            .collect();
+        state.database = Some(database);
+        Ok(())
+    }
 
-    /// Current cursor for the next fetch, or `None` if no fetch has been done.
-    pub fn cursor(&self, chain_id: crate::registry::Chain, wallet_id: &str) -> Option<String> {
+    pub fn cursor(&self, chain: Chain, wallet: &str) -> Option<String> {
         self.inner
             .read()
             .ok()?
-            .get(&(chain_id, wallet_id.to_string()))
-            .and_then(|e| e.cursor.clone())
+            .entries
+            .get(&(chain, wallet.to_string()))
+            .and_then(|entry| entry.cursor.clone())
     }
-
-    /// Current page index (0-based) for page-numbered chains.
-    pub fn page(&self, chain_id: crate::registry::Chain, wallet_id: &str) -> u32 {
+    pub fn page(&self, chain: Chain, wallet: &str) -> u32 {
         self.inner
             .read()
             .ok()
-            .and_then(|m| m.get(&(chain_id, wallet_id.to_string())).map(|e| e.page))
+            .and_then(|state| {
+                state
+                    .entries
+                    .get(&(chain, wallet.to_string()))
+                    .map(|entry| entry.page)
+            })
             .unwrap_or(0)
     }
-
-    /// Whether all history pages have been fetched.
-    pub fn is_exhausted(&self, chain_id: crate::registry::Chain, wallet_id: &str) -> bool {
+    pub fn is_exhausted(&self, chain: Chain, wallet: &str) -> bool {
         self.inner
             .read()
             .ok()
-            .and_then(|m| {
-                m.get(&(chain_id, wallet_id.to_string()))
-                    .map(|e| e.exhausted)
+            .and_then(|state| {
+                state
+                    .entries
+                    .get(&(chain, wallet.to_string()))
+                    .map(|entry| entry.exhausted)
             })
             .unwrap_or(false)
     }
-
-    // ── Writes
-
-    /// Record the cursor returned after a successful fetch. A `None` cursor
-    /// means the chain confirmed there are no more pages — mark as exhausted.
-    pub fn advance_cursor(
+    fn update(
         &self,
-        chain_id: crate::registry::Chain,
-        wallet_id: &str,
-        next_cursor: Option<String>,
-    ) {
-        if let Ok(mut map) = self.inner.write() {
-            let entry = map.entry((chain_id, wallet_id.to_string())).or_default();
-            if let Some(c) = next_cursor {
-                entry.cursor = Some(c);
-                entry.exhausted = false;
-            } else {
-                entry.exhausted = true;
-            }
+        chain: Chain,
+        wallet: &str,
+        modify: impl FnOnce(&mut PaginationEntry),
+    ) -> Result<(), DbError> {
+        let mut state = self
+            .inner
+            .write()
+            .map_err(|_| DbError::Invalid("history pagination lock poisoned".into()))?;
+        let key = (chain, wallet.to_string());
+        let mut entry = state.entries.get(&key).cloned().unwrap_or_default();
+        modify(&mut entry);
+        if let Some(database) = &state.database {
+            crate::wallet_db::history_pagination_save(
+                database,
+                &(
+                    chain,
+                    wallet.to_string(),
+                    entry.cursor.clone(),
+                    entry.page,
+                    entry.exhausted,
+                ),
+            )?;
         }
+        state.entries.insert(key, entry);
+        Ok(())
     }
-
-    /// Directly set the page counter to `page`. Use this for page-based chains
-    /// where Swift tracks the absolute page number (e.g. EVM chains start at
-    /// page 1 for the first request and increment per load-more).
-    pub fn set_page(&self, chain_id: crate::registry::Chain, wallet_id: &str, page: u32) {
-        if let Ok(mut map) = self.inner.write() {
-            map.entry((chain_id, wallet_id.to_string()))
-                .or_default()
-                .page = page;
-        }
-    }
-
-    /// Explicitly mark exhausted (e.g. when an empty page is returned).
-    pub fn set_exhausted(
+    pub(crate) fn advance_cursor_checked(
         &self,
-        chain_id: crate::registry::Chain,
-        wallet_id: &str,
+        chain: Chain,
+        wallet: &str,
+        cursor: Option<String>,
+    ) -> Result<(), DbError> {
+        self.update(chain, wallet, |entry| {
+            entry.exhausted = cursor.is_none();
+            entry.cursor = cursor;
+        })
+    }
+    pub(crate) fn set_page_checked(
+        &self,
+        chain: Chain,
+        wallet: &str,
+        page: u32,
         exhausted: bool,
-    ) {
-        if let Ok(mut map) = self.inner.write() {
-            map.entry((chain_id, wallet_id.to_string()))
-                .or_default()
-                .exhausted = exhausted;
-        }
+    ) -> Result<(), DbError> {
+        self.update(chain, wallet, |entry| {
+            entry.page = page;
+            entry.exhausted = exhausted;
+        })
     }
-
-    /// Reset a single (chain, wallet) pair — clears cursor, page, and
-    /// exhaustion. Call when the user refreshes from the top or after a send.
-    pub fn reset(&self, chain_id: crate::registry::Chain, wallet_id: &str) {
-        if let Ok(mut map) = self.inner.write() {
-            map.remove(&(chain_id, wallet_id.to_string()));
+    fn delete(&self, chain: Option<Chain>, wallet: Option<&str>) -> Result<(), DbError> {
+        let mut state = self
+            .inner
+            .write()
+            .map_err(|_| DbError::Invalid("history pagination lock poisoned".into()))?;
+        if let Some(database) = &state.database {
+            crate::wallet_db::history_pagination_delete(database, chain, wallet)?;
         }
+        state.entries.retain(|(id, owner), _| {
+            !((chain.is_none() || chain == Some(*id))
+                && (wallet.is_none() || wallet == Some(owner.as_str())))
+        });
+        Ok(())
     }
-
-    /// Reset all chains for a wallet (called when a wallet is deleted or
-    /// when the user triggers a global history refresh).
-    pub fn reset_all_for_wallet(&self, wallet_id: &str) {
-        if let Ok(mut map) = self.inner.write() {
-            map.retain(|key, _| key.1 != wallet_id);
-        }
+    pub fn reset(&self, chain: Chain, wallet: &str) {
+        report(self.delete(Some(chain), Some(wallet)));
     }
-
-    /// Reset all pagination state for a specific chain across all wallets.
-    pub fn reset_chain(&self, chain_id: crate::registry::Chain) {
-        if let Ok(mut map) = self.inner.write() {
-            map.retain(|key, _| key.0 != chain_id);
-        }
+    pub fn reset_all_for_wallet(&self, wallet: &str) {
+        report(self.delete(None, Some(wallet)));
     }
-
-    /// Clear everything. Used on full reset / account wipe.
+    pub fn reset_chain(&self, chain: Chain) {
+        report(self.delete(Some(chain), None));
+    }
     pub fn reset_all(&self) {
-        if let Ok(mut map) = self.inner.write() {
-            map.clear();
-        }
+        report(self.delete(None, None));
+    }
+}
+fn report(result: Result<(), DbError>) {
+    if let Err(error) = result {
+        tracing::error!(%error,"history pagination write failed; cursor remains unchanged");
     }
 }
 
@@ -155,6 +191,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn continuation_and_exhaustion_survive_reopen_and_reset() {
+        let path = std::env::temp_dir().join(format!(
+            "spectra-history-pagination-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        let database = WalletDatabase::new(path.to_str().unwrap());
+        let first = HistoryPaginationStore::new();
+        first.bind(database.clone()).unwrap();
+        first
+            .advance_cursor_checked(Chain::Solana, "wallet", Some("older-signature".into()))
+            .unwrap();
+        first
+            .set_page_checked(Chain::Ethereum, "wallet", 2, false)
+            .unwrap();
+        drop(first);
+        drop(database);
+        let second = HistoryPaginationStore::new();
+        second
+            .bind(WalletDatabase::new(path.to_str().unwrap()))
+            .unwrap();
+        assert_eq!(
+            second.cursor(Chain::Solana, "wallet").as_deref(),
+            Some("older-signature")
+        );
+        assert_eq!(second.page(Chain::Ethereum, "wallet"), 2);
+        second
+            .advance_cursor_checked(Chain::Solana, "wallet", None)
+            .unwrap();
+        second.reset_chain(Chain::Ethereum);
+        drop(second);
+        let third = HistoryPaginationStore::new();
+        third
+            .bind(WalletDatabase::new(path.to_str().unwrap()))
+            .unwrap();
+        assert!(third.is_exhausted(Chain::Solana, "wallet"));
+        assert!(third.cursor(Chain::Solana, "wallet").is_none());
+        assert_eq!(third.page(Chain::Ethereum, "wallet"), 0);
+        drop(third);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn cursor_chain_starts_empty() {
         let store = HistoryPaginationStore::new();
         assert!(
@@ -169,11 +247,13 @@ mod tests {
     #[test]
     fn advance_cursor_tracks_state() {
         let store = HistoryPaginationStore::new();
-        store.advance_cursor(
-            crate::registry::Chain::Bitcoin,
-            "wallet-1",
-            Some("abc123".to_string()),
-        );
+        store
+            .advance_cursor_checked(
+                crate::registry::Chain::Bitcoin,
+                "wallet-1",
+                Some("abc123".to_string()),
+            )
+            .unwrap();
         assert_eq!(
             store
                 .cursor(crate::registry::Chain::Bitcoin, "wallet-1")
@@ -183,23 +263,29 @@ mod tests {
         assert!(!store.is_exhausted(crate::registry::Chain::Bitcoin, "wallet-1"));
 
         // Terminal: no next cursor → exhausted.
-        store.advance_cursor(crate::registry::Chain::Bitcoin, "wallet-1", None);
+        store
+            .advance_cursor_checked(crate::registry::Chain::Bitcoin, "wallet-1", None)
+            .unwrap();
         assert!(store.is_exhausted(crate::registry::Chain::Bitcoin, "wallet-1"));
     }
 
     #[test]
     fn reset_clears_single_entry() {
         let store = HistoryPaginationStore::new();
-        store.advance_cursor(
-            crate::registry::Chain::Bitcoin,
-            "wallet-1",
-            Some("tx1".to_string()),
-        );
-        store.advance_cursor(
-            crate::registry::Chain::Bitcoin,
-            "wallet-2",
-            Some("tx2".to_string()),
-        );
+        store
+            .advance_cursor_checked(
+                crate::registry::Chain::Bitcoin,
+                "wallet-1",
+                Some("tx1".to_string()),
+            )
+            .unwrap();
+        store
+            .advance_cursor_checked(
+                crate::registry::Chain::Bitcoin,
+                "wallet-2",
+                Some("tx2".to_string()),
+            )
+            .unwrap();
 
         store.reset(crate::registry::Chain::Bitcoin, "wallet-1");
 
@@ -219,21 +305,27 @@ mod tests {
     #[test]
     fn reset_chain_removes_all_wallets_on_chain() {
         let store = HistoryPaginationStore::new();
-        store.advance_cursor(
-            crate::registry::Chain::Bitcoin,
-            "wallet-1",
-            Some("tx1".to_string()),
-        );
-        store.advance_cursor(
-            crate::registry::Chain::Bitcoin,
-            "wallet-2",
-            Some("tx2".to_string()),
-        );
-        store.advance_cursor(
-            crate::registry::Chain::Ethereum,
-            "wallet-1",
-            Some("eth-tx".to_string()),
-        );
+        store
+            .advance_cursor_checked(
+                crate::registry::Chain::Bitcoin,
+                "wallet-1",
+                Some("tx1".to_string()),
+            )
+            .unwrap();
+        store
+            .advance_cursor_checked(
+                crate::registry::Chain::Bitcoin,
+                "wallet-2",
+                Some("tx2".to_string()),
+            )
+            .unwrap();
+        store
+            .advance_cursor_checked(
+                crate::registry::Chain::Ethereum,
+                "wallet-1",
+                Some("eth-tx".to_string()),
+            )
+            .unwrap();
 
         store.reset_chain(crate::registry::Chain::Bitcoin);
 

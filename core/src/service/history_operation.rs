@@ -100,7 +100,8 @@ impl WalletService {
                             .await
                     }
                     crate::registry::HistoryRefreshKind::Normalized => {
-                        this.refresh_chain_history(chain_id, ids).await
+                        this.refresh_chain_history_page(chain_id, ids, load_more)
+                            .await
                     }
                 };
                 this.record_history_run(chain, &result).await;

@@ -381,6 +381,11 @@ class PortfolioTests(unittest.TestCase):
         owner = '0x' + '6a' * 32
         views = []
 
+        class PortfolioServer(http.server.ThreadingHTTPServer):
+            # Catalog balances and metadata are requested concurrently. Keep
+            # the fixture's accept queue larger than that request batch.
+            request_queue_size = 64
+
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_):
                 pass
@@ -417,7 +422,7 @@ class PortfolioTests(unittest.TestCase):
                 assert result.returncode == 0, (args, result.stdout, result.stderr)
                 return json.loads(result.stdout)
             run('wallet', 'watch', '--chain', 'aptos', '--address', owner, '--name', 'Aptos')
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            server = PortfolioServer(('127.0.0.1', 0), Handler)
             worker = threading.Thread(target=server.serve_forever, daemon=True)
             worker.start()
             try:
@@ -431,7 +436,7 @@ class PortfolioTests(unittest.TestCase):
                 wallet = json.loads(db.execute('SELECT payload FROM wallets').fetchone()[0])
             amounts = {h['contractAddress']: h['amount'] for h in wallet['holdings']}
             assert amounts[None] == '1', amounts
-            assert amounts[usdc] == '2.5', amounts
+            assert amounts.get(usdc) == '2.5', (amounts, views)
             assert any(v['arguments'] == [usdc] for v in views), views
 
     def test_network_token_identity(self):
@@ -451,9 +456,9 @@ class PortfolioTests(unittest.TestCase):
             eth = next(t for t in catalog("ethereum") if t["deployment_id"] == "ethereum:native")
             btc = next(t for t in catalog("bitcoin") if t["deployment_id"] == "bitcoin:native")
             mnt_native = next(t for t in catalog("mantle") if t["deployment_id"] == "mantle:native")
-            mnt_token = next(t for t in catalog("ethereum") if t["symbol"] == "MNT")
+            base_eth = next(t for t in catalog("base") if t["deployment_id"] == "base:native")
             assert eth["kind"] == btc["kind"] == mnt_native["kind"] == "Native"
-            assert mnt_token["token_id"] == mnt_native["token_id"] and mnt_token["deployment_id"] != mnt_native["deployment_id"]
+            assert base_eth["token_id"] == eth["token_id"] and base_eth["deployment_id"] != eth["deployment_id"]
             test_eth = catalog("ethereum-sepolia")[0]
             assert test_eth["coingecko_id"] == "" and test_eth["token_id"] != eth["token_id"]
             run("token", "catalog", "--chain", "ETH", succeeds=False)

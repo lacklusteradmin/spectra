@@ -10,7 +10,7 @@ struct MainTabView: View {
             HistoryView(store: store).tabItem {
                 Label(AppLocalization.string("History"), systemImage: "clock.arrow.circlepath")
             }.tag(MainAppTab.history)
-            StakingView(bridge: store.bridge).tabItem {
+            StakingView(store: store).tabItem {
                 Label(AppLocalization.string("Staking"), systemImage: "link.circle.fill")
             }.tag(MainAppTab.staking)
             SettingsView(store: store).tabItem {

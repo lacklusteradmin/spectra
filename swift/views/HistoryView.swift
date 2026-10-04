@@ -318,12 +318,9 @@ struct HistoryView: View {
     }
     private func signedAmountText(for transaction: TransactionRecord) -> String? {
         let amountText = store.amounts.formattedTransactionAmount(transaction)
-        switch transaction.kind {
-        case .receive: return "+\(amountText)"
-        case .send: return "-\(amountText)"
-        }
+        return transaction.amountSign + amountText
     }
     private func amountColor(for transaction: TransactionRecord) -> Color {
-        Color.spectraTransactionAmountColor(isReceive: transaction.kind == .receive)
+        transaction.amountColor
     }
 }

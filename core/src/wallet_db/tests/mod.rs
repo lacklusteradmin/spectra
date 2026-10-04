@@ -808,7 +808,7 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
             .is_empty()
     );
     with_conn(&db, |conn| {
-        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') = 'send' AND json_extract(payload, '$.status') = 'pending'")
+        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards') AND json_extract(payload, '$.status') = 'pending'")
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
         assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
         Ok::<_, DbError>(())
@@ -976,4 +976,33 @@ fn undated_pending_transactions_sort_as_the_newest() {
         snapshot.earliest[0].earliest_created_at_unix,
         1_700_000_000.0
     );
+}
+
+#[test]
+fn staking_history_roundtrips_and_reserves_all_submitted_pending_operations() {
+    use crate::registry::Chain;
+    use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
+    let db = tmp_db();
+    for (i, kind) in [
+        K::Stake,
+        K::Unstake,
+        K::Withdraw,
+        K::ClaimRewards,
+        K::Receive,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut record = history_record_on(&format!("staking-{i}"), "wallet", Chain::Polkadot);
+        record.payload.kind = kind;
+        record.payload.source_address = Some("owner".into());
+        record.payload.status = S::Pending;
+        record.payload.amount = "0".into();
+        history_upsert_batch(&db, &[record]).unwrap();
+    }
+    let records = history_fetch_all(&db).unwrap();
+    assert_eq!(records.len(), 5);
+    let pending = history_pending_for_sender(&db, Chain::Polkadot, "owner").unwrap();
+    assert_eq!(pending.len(), 4);
+    assert!(pending.iter().all(|r| r.payload.kind.is_staking()));
 }

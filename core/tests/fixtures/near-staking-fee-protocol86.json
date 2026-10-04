@@ -1,0 +1,108 @@
+{
+  "source": "https://rpc.mainnet.near.org EXPERIMENTAL_protocol_config final, read-only 2026-10-04; nearcore runtime/runtime/src/config.rs calculate_tx_cost",
+  "protocol_version": 86,
+  "runtime_config": {
+    "min_gas_purchase_price": "1000000000",
+    "transaction_costs": {
+      "action_creation_config": {
+        "add_key_cost": {
+          "full_access_cost": {
+            "execution": 101765125000,
+            "send_not_sir": 101765125000,
+            "send_sir": 101765125000
+          },
+          "function_call_cost": {
+            "execution": 102217625000,
+            "send_not_sir": 102217625000,
+            "send_sir": 102217625000
+          },
+          "function_call_cost_per_byte": {
+            "execution": 1925331,
+            "send_not_sir": 47683715,
+            "send_sir": 1925331
+          }
+        },
+        "create_account_cost": {
+          "execution": 7200000000000,
+          "send_not_sir": 500000000000,
+          "send_sir": 500000000000
+        },
+        "delegate_cost": {
+          "execution": 200000000000,
+          "send_not_sir": 200000000000,
+          "send_sir": 200000000000
+        },
+        "delete_account_cost": {
+          "execution": 147489000000,
+          "send_not_sir": 147489000000,
+          "send_sir": 147489000000
+        },
+        "delete_key_cost": {
+          "execution": 94946625000,
+          "send_not_sir": 94946625000,
+          "send_sir": 94946625000
+        },
+        "deploy_contract_cost": {
+          "execution": 184765750000,
+          "send_not_sir": 184765750000,
+          "send_sir": 184765750000
+        },
+        "deploy_contract_cost_per_byte": {
+          "execution": 64572944,
+          "send_not_sir": 47683715,
+          "send_sir": 6812999
+        },
+        "function_call_cost": {
+          "execution": 780000000000,
+          "send_not_sir": 200000000000,
+          "send_sir": 200000000000
+        },
+        "function_call_cost_per_byte": {
+          "execution": 2235934,
+          "send_not_sir": 47683715,
+          "send_sir": 2235934
+        },
+        "stake_cost": {
+          "execution": 102217625000,
+          "send_not_sir": 141715687500,
+          "send_sir": 141715687500
+        },
+        "transfer_cost": {
+          "execution": 115123062500,
+          "send_not_sir": 115123062500,
+          "send_sir": 115123062500
+        }
+      },
+      "action_receipt_creation_config": {
+        "execution": 108059500000,
+        "send_not_sir": 108059500000,
+        "send_sir": 108059500000
+      },
+      "burnt_gas_reward": [
+        3,
+        10
+      ],
+      "data_receipt_creation_config": {
+        "base_cost": {
+          "execution": 36486732312,
+          "send_not_sir": 36486732312,
+          "send_sir": 36486732312
+        },
+        "cost_per_byte": {
+          "execution": 17212011,
+          "send_not_sir": 47683715,
+          "send_sir": 17212011
+        }
+      },
+      "ml_dsa_65_verification_cost": 100000000000,
+      "pessimistic_gas_price_inflation_ratio": [
+        1,
+        1
+      ],
+      "storage_usage_config": {
+        "num_bytes_account": 100,
+        "num_extra_bytes_record": 40
+      }
+    }
+  }
+}

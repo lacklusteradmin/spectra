@@ -21,10 +21,14 @@ pub(crate) fn principal(public_key: &[u8; 32]) -> Vec<u8> {
 }
 
 pub(crate) fn account_from_principal(principal: &[u8]) -> [u8; 32] {
+    account_with_subaccount(principal, &[0; 32])
+}
+
+pub(crate) fn account_with_subaccount(principal: &[u8], subaccount: &[u8; 32]) -> [u8; 32] {
     let mut hash = Sha224::new();
     hash.update(b"\x0aaccount-id");
     hash.update(principal);
-    hash.update([0; 32]);
+    hash.update(subaccount);
     let hash = hash.finalize();
     let mut result = [0; 32];
     result[..4].copy_from_slice(

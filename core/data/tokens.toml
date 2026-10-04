@@ -438,13 +438,14 @@ chain_id = "polygon"
 kind = "native"
 decimals = 18
 
-[[deployments]]
-token_id = "polygon-ecosystem-token"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "polygon-ecosystem-token"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6"
+# decimals = 18
 
 [[tokens]]
 id = "mantle"
@@ -462,13 +463,14 @@ chain_id = "mantle"
 kind = "native"
 decimals = 18
 
-[[deployments]]
-token_id = "mantle"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x3c3a81e81dc49a522a592e7622a7e711c06bf354"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "mantle"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x3c3a81e81dc49a522a592e7622a7e711c06bf354"
+# decimals = 18
 
 [[tokens]]
 id = "zcash"
@@ -582,13 +584,14 @@ chain_id = "cronos"
 kind = "native"
 decimals = 18
 
-[[deployments]]
-token_id = "crypto-com-chain"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
-decimals = 8
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "crypto-com-chain"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
+# decimals = 8
 
 [[tokens]]
 id = "sonic-3"
@@ -752,85 +755,94 @@ standard = "ERC-20"
 contract = "0xd6df932a45c0f255f85145f286ea0b292b21c90b"
 decimals = 18
 
-[[tokens]]
-id = "aerodrome-finance"
-symbol = "AERO"
-name = "Aerodrome Finance"
-coingecko_id = "aerodrome-finance"
-coinpaprika_id = "aero-aerodrome-finance"
-color = "blue"
-artwork_name = "aerodrome"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "aerodrome-finance"
+# symbol = "AERO"
+# name = "Aerodrome Finance"
+# coingecko_id = "aerodrome-finance"
+# coinpaprika_id = "aero-aerodrome-finance"
+# color = "blue"
+# artwork_name = "aerodrome"
+# tags = []
 
-[[deployments]]
-token_id = "aerodrome-finance"
-chain_id = "base"
-kind = "token"
-standard = "ERC-20"
-contract = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "aerodrome-finance"
+# chain_id = "base"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
+# decimals = 18
 
-[[tokens]]
-id = "arbitrum"
-symbol = "ARB"
-name = "Arbitrum"
-coingecko_id = "arbitrum"
-coinpaprika_id = "arb-arbitrum"
-color = "cyan"
-artwork_name = "arbitrum"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "arbitrum"
+# symbol = "ARB"
+# name = "Arbitrum"
+# coingecko_id = "arbitrum"
+# coinpaprika_id = "arb-arbitrum"
+# color = "cyan"
+# artwork_name = "arbitrum"
+# tags = []
 
-[[deployments]]
-token_id = "arbitrum"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "arbitrum"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1"
+# decimals = 18
 
-[[deployments]]
-token_id = "arbitrum"
-chain_id = "arbitrum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x912ce59144191c1204e64559fe8253a0e49e6548"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "arbitrum"
+# chain_id = "arbitrum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x912ce59144191c1204e64559fe8253a0e49e6548"
+# decimals = 18
 
-[[tokens]]
-id = "bitget-token"
-symbol = "BGB"
-name = "Bitget Token"
-coingecko_id = "bitget-token"
-coinpaprika_id = "bgb-bitget-token"
-color = "yellow"
-artwork_name = "bgb"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "bitget-token"
+# symbol = "BGB"
+# name = "Bitget Token"
+# coingecko_id = "bitget-token"
+# coinpaprika_id = "bgb-bitget-token"
+# color = "yellow"
+# artwork_name = "bgb"
+# tags = []
 
-[[deployments]]
-token_id = "bitget-token"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x54d2252757e1672eead234d27b1270728ff90581"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "bitget-token"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x54d2252757e1672eead234d27b1270728ff90581"
+# decimals = 18
 
-[[tokens]]
-id = "blast"
-symbol = "BLAST"
-name = "Blast"
-coingecko_id = "blast"
-coinpaprika_id = "blast-blast-token"
-color = "yellow"
-artwork_name = "blast"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "blast"
+# symbol = "BLAST"
+# name = "Blast"
+# coingecko_id = "blast"
+# coinpaprika_id = "blast-blast-token"
+# color = "yellow"
+# artwork_name = "blast"
+# tags = []
 
-[[deployments]]
-token_id = "blast"
-chain_id = "blast"
-kind = "token"
-standard = "ERC-20"
-contract = "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "blast"
+# chain_id = "blast"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
+# decimals = 18
 
 [[tokens]]
 id = "bittorrent"
@@ -849,6 +861,28 @@ kind = "token"
 standard = "TRC-20"
 contract = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
 decimals = 18
+
+# The original TRC-10 deployment remains transferable. It is a distinct asset
+# from redenominated TRC-20 BTT; 1 BTTOLD = 1,000 BTT, so price identities cannot be shared.
+# Issuer proof: https://bttc.zendesk.com/hc/en-us/articles/4409343014937-Launch-of-BTTC-Mainnet-and-BTT-Redenomination-Plan
+# Live ID/precision evidence: docs/audits/chain-support-2026-10-04/trc10-mainnet-metadata.json
+[[tokens]]
+id = "bittorrent-old"
+symbol = "BTTOLD"
+name = "BitTorrent Old"
+coingecko_id = ""
+coinpaprika_id = ""
+color = "red"
+artwork_name = "btt"
+tags = []
+
+[[deployments]]
+token_id = "bittorrent-old"
+chain_id = "tron"
+kind = "token"
+standard = "TRC-10"
+contract = "1002000"
+decimals = 6
 
 [[tokens]]
 id = "honey-3"
@@ -1050,13 +1084,14 @@ standard = "BEP-20"
 contract = "0x9996d0276612d23b35f90c51ee935520b3d7355b"
 decimals = 18
 
-[[deployments]]
-token_id = "curve-dao-token"
-chain_id = "celo"
-kind = "token"
-standard = "ERC-20"
-contract = "0x75184c282e55a7393053f0b8f4f3e7beae067fdc"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "curve-dao-token"
+# chain_id = "celo"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x75184c282e55a7393053f0b8f4f3e7beae067fdc"
+# decimals = 18
 
 [[deployments]]
 token_id = "curve-dao-token"
@@ -1066,13 +1101,14 @@ standard = "ERC-20"
 contract = "0xac73671a1762fe835208fb93b7ae7490d1c2ccb3"
 decimals = 18
 
-[[deployments]]
-token_id = "curve-dao-token"
-chain_id = "mantle"
-kind = "token"
-standard = "ERC-20"
-contract = "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "curve-dao-token"
+# chain_id = "mantle"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75"
+# decimals = 18
 
 [[deployments]]
 token_id = "curve-dao-token"
@@ -1090,13 +1126,14 @@ standard = "ERC-20"
 contract = "0x5af79133999f7908953e94b7a5cf367740ebee35"
 decimals = 18
 
-[[deployments]]
-token_id = "curve-dao-token"
-chain_id = "x-layer"
-kind = "token"
-standard = "ERC-20"
-contract = "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "curve-dao-token"
+# chain_id = "x-layer"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89"
+# decimals = 18
 
 [[tokens]]
 id = "dai"
@@ -1116,21 +1153,23 @@ standard = "ERC-20"
 contract = "0x6b175474e89094c44da98b954eedeac495271d0f"
 decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "base"
-kind = "token"
-standard = "ERC-20"
-contract = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "base"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
+# decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "polygon"
-kind = "token"
-standard = "ERC-20"
-contract = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "polygon"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
+# decimals = 18
 
 [[deployments]]
 token_id = "dai"
@@ -1148,21 +1187,23 @@ standard = "ERC-20"
 contract = "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"
 decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "avalanche"
-kind = "token"
-standard = "ARC-20"
-contract = "0xd586e7f844cea2f87f50152665bcbc2c279d8d70"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "avalanche"
+# kind = "token"
+# standard = "ARC-20"
+# contract = "0xd586e7f844cea2f87f50152665bcbc2c279d8d70"
+# decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "linea"
-kind = "token"
-standard = "ERC-20"
-contract = "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "linea"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5"
+# decimals = 18
 
 [[deployments]]
 token_id = "dai"
@@ -1172,29 +1213,32 @@ standard = "ERC-20"
 contract = "0xca77eb3fefe3725dc33bccb54edefc3d9f764f97"
 decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "zksync-era"
-kind = "token"
-standard = "ERC-20"
-contract = "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "zksync-era"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656"
+# decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "unichain"
-kind = "token"
-standard = "ERC-20"
-contract = "0x20cab320a855b39f724131c69424240519573f81"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "unichain"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x20cab320a855b39f724131c69424240519573f81"
+# decimals = 18
 
-[[deployments]]
-token_id = "dai"
-chain_id = "celo"
-kind = "token"
-standard = "ERC-20"
-contract = "0xac177de2439bd0c7659c61f373dbf247d1f41abe"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "dai"
+# chain_id = "celo"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xac177de2439bd0c7659c61f373dbf247d1f41abe"
+# decimals = 18
 
 [[tokens]]
 id = "ethena"
@@ -1235,7 +1279,7 @@ token_id = "ethena"
 chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
-contract = "EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
+contract = "0:058591596327b4965b25efce4ecce246f504fa3d7c9851d9a20b853de6506e1e"
 decimals = 6
 
 [[deployments]]
@@ -1310,73 +1354,81 @@ standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
 
-[[tokens]]
-id = "ethereum-name-service"
-symbol = "ENS"
-name = "Ethereum Name Service"
-coingecko_id = "ethereum-name-service"
-coinpaprika_id = "ens-ethereum-name-service"
-color = "blue"
-artwork_name = "ens"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "ethereum-name-service"
+# symbol = "ENS"
+# name = "Ethereum Name Service"
+# coingecko_id = "ethereum-name-service"
+# coinpaprika_id = "ens-ethereum-name-service"
+# color = "blue"
+# artwork_name = "ens"
+# tags = []
 
-[[deployments]]
-token_id = "ethereum-name-service"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ethereum-name-service"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
+# decimals = 18
 
-[[tokens]]
-id = "ether-fi"
-symbol = "ETHFI"
-name = "Ether.fi"
-coingecko_id = "ether-fi"
-coinpaprika_id = "ethfi-etherfi"
-color = "purple"
-artwork_name = "ethfi"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "ether-fi"
+# symbol = "ETHFI"
+# name = "Ether.fi"
+# coingecko_id = "ether-fi"
+# coinpaprika_id = "ethfi-etherfi"
+# color = "purple"
+# artwork_name = "ethfi"
+# tags = []
 
-[[deployments]]
-token_id = "ether-fi"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ether-fi"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb"
+# decimals = 18
 
-[[deployments]]
-token_id = "ether-fi"
-chain_id = "arbitrum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ether-fi"
+# chain_id = "arbitrum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27"
+# decimals = 18
 
-[[deployments]]
-token_id = "ether-fi"
-chain_id = "base"
-kind = "token"
-standard = "ERC-20"
-contract = "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ether-fi"
+# chain_id = "base"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2"
+# decimals = 18
 
-[[deployments]]
-token_id = "ether-fi"
-chain_id = "scroll"
-kind = "token"
-standard = "ERC-20"
-contract = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ether-fi"
+# chain_id = "scroll"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
+# decimals = 18
 
-[[deployments]]
-token_id = "ether-fi"
-chain_id = "optimism"
-kind = "token"
-standard = "ERC-20"
-contract = "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ether-fi"
+# chain_id = "optimism"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
+# decimals = 18
 
 [[tokens]]
 id = "euro-coin"
@@ -1483,7 +1535,7 @@ token_id = "first-digital-usd"
 chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
-contract = "EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
+contract = "0:f412fa64e2d8a614e1e6cb84afde5fca1145e533e74dd7f2a1ae84c27c1db090"
 decimals = 6
 
 [[deployments]]
@@ -1554,23 +1606,25 @@ standard = "SPL"
 contract = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
 decimals = 6
 
-[[tokens]]
-id = "kucoin-shares"
-symbol = "KCS"
-name = "KuCoin Token"
-coingecko_id = "kucoin-shares"
-coinpaprika_id = "kcs-kucoin-token"
-color = "yellow"
-artwork_name = "kcs"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "kucoin-shares"
+# symbol = "KCS"
+# name = "KuCoin Token"
+# coingecko_id = "kucoin-shares"
+# coinpaprika_id = "kcs-kucoin-token"
+# color = "yellow"
+# artwork_name = "kcs"
+# tags = []
 
-[[deployments]]
-token_id = "kucoin-shares"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xf34960d9d60be18cc1d5afc1a6f012a723a28811"
-decimals = 6
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "kucoin-shares"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xf34960d9d60be18cc1d5afc1a6f012a723a28811"
+# decimals = 6
 
 [[tokens]]
 id = "lombard-staked-btc"
@@ -1632,73 +1686,81 @@ standard = "ERC-20"
 contract = "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
 decimals = 18
 
-[[deployments]]
-token_id = "lido-dao"
-chain_id = "arbitrum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "lido-dao"
+# chain_id = "arbitrum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60"
+# decimals = 18
 
-[[deployments]]
-token_id = "lido-dao"
-chain_id = "optimism"
-kind = "token"
-standard = "ERC-20"
-contract = "0xfdb794692724153d1488ccdbe0c56c252596735f"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "lido-dao"
+# chain_id = "optimism"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xfdb794692724153d1488ccdbe0c56c252596735f"
+# decimals = 18
 
-[[deployments]]
-token_id = "lido-dao"
-chain_id = "polygon"
-kind = "token"
-standard = "ERC-20"
-contract = "0xc3c7d422809852031b44ab29eec9f1eff2a58756"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "lido-dao"
+# chain_id = "polygon"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xc3c7d422809852031b44ab29eec9f1eff2a58756"
+# decimals = 18
 
-[[tokens]]
-id = "leo-token"
-symbol = "LEO"
-name = "UNUS SED LEO"
-coingecko_id = "leo-token"
-coinpaprika_id = "leo-leo-token"
-color = "orange"
-artwork_name = "leo"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "leo-token"
+# symbol = "LEO"
+# name = "UNUS SED LEO"
+# coingecko_id = "leo-token"
+# coinpaprika_id = "leo-leo-token"
+# color = "orange"
+# artwork_name = "leo"
+# tags = []
 
-[[deployments]]
-token_id = "leo-token"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "leo-token"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
+# decimals = 18
 
-[[tokens]]
-id = "linea"
-symbol = "LINEA"
-name = "Linea"
-coingecko_id = "linea"
-coinpaprika_id = "linea-linea"
-color = "blue"
-artwork_name = "linea"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "linea"
+# symbol = "LINEA"
+# name = "Linea"
+# coingecko_id = "linea"
+# coinpaprika_id = "linea-linea"
+# color = "blue"
+# artwork_name = "linea"
+# tags = []
 
-[[deployments]]
-token_id = "linea"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "linea"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
+# decimals = 18
 
-[[deployments]]
-token_id = "linea"
-chain_id = "linea"
-kind = "token"
-standard = "ERC-20"
-contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "linea"
+# chain_id = "linea"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
+# decimals = 18
 
 [[tokens]]
 id = "chainlink"
@@ -1792,59 +1854,65 @@ standard = "ERC-20"
 contract = "0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842"
 decimals = 18
 
-[[tokens]]
-id = "ondo-finance"
-symbol = "ONDO"
-name = "Ondo"
-coingecko_id = "ondo-finance"
-coinpaprika_id = "ondo-ondo"
-color = "blue"
-artwork_name = "ondo"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "ondo-finance"
+# symbol = "ONDO"
+# name = "Ondo"
+# coingecko_id = "ondo-finance"
+# coinpaprika_id = "ondo-ondo"
+# color = "blue"
+# artwork_name = "ondo"
+# tags = []
 
-[[deployments]]
-token_id = "ondo-finance"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "ondo-finance"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"
+# decimals = 18
 
-[[tokens]]
-id = "optimism"
-symbol = "OP"
-name = "Optimism"
-coingecko_id = "optimism"
-coinpaprika_id = "op-optimism"
-color = "red"
-artwork_name = "optimism"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "optimism"
+# symbol = "OP"
+# name = "Optimism"
+# coingecko_id = "optimism"
+# coinpaprika_id = "op-optimism"
+# color = "red"
+# artwork_name = "optimism"
+# tags = []
 
-[[deployments]]
-token_id = "optimism"
-chain_id = "optimism"
-kind = "token"
-standard = "ERC-20"
-contract = "0x4200000000000000000000000000000000000042"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "optimism"
+# chain_id = "optimism"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x4200000000000000000000000000000000000042"
+# decimals = 18
 
-[[tokens]]
-id = "pax-gold"
-symbol = "PAXG"
-name = "PAX Gold"
-coingecko_id = "pax-gold"
-coinpaprika_id = "paxg-pax-gold"
-color = "yellow"
-artwork_name = "paxg"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "pax-gold"
+# symbol = "PAXG"
+# name = "PAX Gold"
+# coingecko_id = "pax-gold"
+# coinpaprika_id = "paxg-pax-gold"
+# color = "yellow"
+# artwork_name = "paxg"
+# tags = []
 
-[[deployments]]
-token_id = "pax-gold"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x45804880de22913dafe09f4980848ece6ecbaf78"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "pax-gold"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x45804880de22913dafe09f4980848ece6ecbaf78"
+# decimals = 18
 
 [[tokens]]
 id = "pendle"
@@ -1888,47 +1956,52 @@ standard = "BEP-20"
 contract = "0xb3ed0a426155b79b898849803e3b36552f7ed507"
 decimals = 18
 
-[[tokens]]
-id = "pepe"
-symbol = "PEPE"
-name = "Pepe"
-coingecko_id = "pepe"
-coinpaprika_id = "pepe-pepe"
-color = "green"
-artwork_name = "pepe"
-tags = ["meme"]
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "pepe"
+# symbol = "PEPE"
+# name = "Pepe"
+# coingecko_id = "pepe"
+# coinpaprika_id = "pepe-pepe"
+# color = "green"
+# artwork_name = "pepe"
+# tags = ["meme"]
 
-[[deployments]]
-token_id = "pepe"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "pepe"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+# decimals = 18
 
-[[deployments]]
-token_id = "pepe"
-chain_id = "arbitrum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "pepe"
+# chain_id = "arbitrum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
+# decimals = 18
 
-[[deployments]]
-token_id = "pepe"
-chain_id = "avalanche"
-kind = "token"
-standard = "ARC-20"
-contract = "0xa659d083b677d6bffe1cb704e1473b896727be6d"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "pepe"
+# chain_id = "avalanche"
+# kind = "token"
+# standard = "ARC-20"
+# contract = "0xa659d083b677d6bffe1cb704e1473b896727be6d"
+# decimals = 18
 
-[[deployments]]
-token_id = "pepe"
-chain_id = "bnb"
-kind = "token"
-standard = "BEP-20"
-contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "pepe"
+# chain_id = "bnb"
+# kind = "token"
+# standard = "BEP-20"
+# contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
+# decimals = 18
 
 [[tokens]]
 id = "pump-fun"
@@ -2018,47 +2091,52 @@ standard = "SPL"
 contract = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
 decimals = 6
 
-[[tokens]]
-id = "rocket-pool-eth"
-symbol = "RETH"
-name = "Rocket Pool ETH"
-coingecko_id = "rocket-pool-eth"
-coinpaprika_id = "reth-rocket-pool-eth"
-color = "orange"
-artwork_name = "rocketpooleth"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "rocket-pool-eth"
+# symbol = "RETH"
+# name = "Rocket Pool ETH"
+# coingecko_id = "rocket-pool-eth"
+# coinpaprika_id = "reth-rocket-pool-eth"
+# color = "orange"
+# artwork_name = "rocketpooleth"
+# tags = []
 
-[[deployments]]
-token_id = "rocket-pool-eth"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xae78736cd615f374d3085123a210448e74fc6393"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "rocket-pool-eth"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xae78736cd615f374d3085123a210448e74fc6393"
+# decimals = 18
 
-[[deployments]]
-token_id = "rocket-pool-eth"
-chain_id = "arbitrum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "rocket-pool-eth"
+# chain_id = "arbitrum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
+# decimals = 18
 
-[[deployments]]
-token_id = "rocket-pool-eth"
-chain_id = "optimism"
-kind = "token"
-standard = "ERC-20"
-contract = "0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "rocket-pool-eth"
+# chain_id = "optimism"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
+# decimals = 18
 
-[[deployments]]
-token_id = "rocket-pool-eth"
-chain_id = "base"
-kind = "token"
-standard = "ERC-20"
-contract = "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "rocket-pool-eth"
+# chain_id = "base"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
+# decimals = 18
 
 [[tokens]]
 id = "ripple-usd"
@@ -2078,59 +2156,65 @@ standard = "ERC-20"
 contract = "0x8292bb45bf1ee4d140127049757c2e0ff06317ed"
 decimals = 18
 
-[[tokens]]
-id = "scroll"
-symbol = "SCR"
-name = "Scroll"
-coingecko_id = "scroll"
-coinpaprika_id = "scr-scroll"
-color = "orange"
-artwork_name = "scroll"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "scroll"
+# symbol = "SCR"
+# name = "Scroll"
+# coingecko_id = "scroll"
+# coinpaprika_id = "scr-scroll"
+# color = "orange"
+# artwork_name = "scroll"
+# tags = []
 
-[[deployments]]
-token_id = "scroll"
-chain_id = "scroll"
-kind = "token"
-standard = "ERC-20"
-contract = "0xd29687c813d741e2f938f4ac377128810e217b1b"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "scroll"
+# chain_id = "scroll"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xd29687c813d741e2f938f4ac377128810e217b1b"
+# decimals = 18
 
-[[tokens]]
-id = "shiba-inu"
-symbol = "SHIB"
-name = "Shiba Inu"
-coingecko_id = "shiba-inu"
-coinpaprika_id = "shib-shiba-inu"
-color = "orange"
-artwork_name = "shibainu"
-tags = ["meme"]
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "shiba-inu"
+# symbol = "SHIB"
+# name = "Shiba Inu"
+# coingecko_id = "shiba-inu"
+# coinpaprika_id = "shib-shiba-inu"
+# color = "orange"
+# artwork_name = "shibainu"
+# tags = ["meme"]
 
-[[deployments]]
-token_id = "shiba-inu"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "shiba-inu"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
+# decimals = 18
 
-[[tokens]]
-id = "sky"
-symbol = "SKY"
-name = "Sky"
-coingecko_id = "sky"
-coinpaprika_id = "sky-sky"
-color = "blue"
-artwork_name = "sky"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "sky"
+# symbol = "SKY"
+# name = "Sky"
+# coingecko_id = "sky"
+# coinpaprika_id = "sky-sky"
+# color = "blue"
+# artwork_name = "sky"
+# tags = []
 
-[[deployments]]
-token_id = "sky"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x56072c95faa701256059aa122697b133aded9279"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "sky"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x56072c95faa701256059aa122697b133aded9279"
+# decimals = 18
 
 [[tokens]]
 id = "staked-ether"
@@ -2306,13 +2390,14 @@ standard = "ERC-20"
 contract = "0x5875eee11cf8398102fdad704c9e96607675467a"
 decimals = 18
 
-[[deployments]]
-token_id = "susds"
-chain_id = "avalanche"
-kind = "token"
-standard = "ARC-20"
-contract = "0xb94d9613c7aab11e548a327154cc80eca911b5c1"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "susds"
+# chain_id = "avalanche"
+# kind = "token"
+# standard = "ARC-20"
+# contract = "0xb94d9613c7aab11e548a327154cc80eca911b5c1"
+# decimals = 18
 
 [[deployments]]
 token_id = "susds"
@@ -2767,7 +2852,7 @@ token_id = "ethena-usde"
 chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
-contract = "EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
+contract = "0:086fa2a675f74347b08dd4606a549b8fdb98829cb282bc1949d3b12fbaed9dcc"
 decimals = 6
 
 [[deployments]]
@@ -2918,13 +3003,14 @@ standard = "ERC-20"
 contract = "0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3"
 decimals = 18
 
-[[deployments]]
-token_id = "usds"
-chain_id = "avalanche"
-kind = "token"
-standard = "ARC-20"
-contract = "0x86ff09db814ac346a7c6fe2cd648f27706d1d470"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "usds"
+# chain_id = "avalanche"
+# kind = "token"
+# standard = "ARC-20"
+# contract = "0x86ff09db814ac346a7c6fe2cd648f27706d1d470"
+# decimals = 18
 
 [[deployments]]
 token_id = "usds"
@@ -2997,7 +3083,7 @@ token_id = "tether"
 chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
-contract = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+contract = "0:b113a994b5024a16719f69139328eb759596c38a25f59028b146fecdc3621dfe"
 decimals = 6
 
 [[deployments]]
@@ -3098,41 +3184,45 @@ standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
 
-[[tokens]]
-id = "wrapped-bitcoin"
-symbol = "WBTC"
-name = "Wrapped Bitcoin"
-coingecko_id = "wrapped-bitcoin"
-coinpaprika_id = "wbtc-wrapped-bitcoin"
-color = "orange"
-artwork_name = "wrappedbitcoin"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "wrapped-bitcoin"
+# symbol = "WBTC"
+# name = "Wrapped Bitcoin"
+# coingecko_id = "wrapped-bitcoin"
+# coinpaprika_id = "wbtc-wrapped-bitcoin"
+# color = "orange"
+# artwork_name = "wrappedbitcoin"
+# tags = []
 
-[[deployments]]
-token_id = "wrapped-bitcoin"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
-decimals = 8
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "wrapped-bitcoin"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
+# decimals = 8
 
-[[tokens]]
-id = "weth"
-symbol = "WETH"
-name = "Wrapped Ether"
-coingecko_id = "weth"
-coinpaprika_id = "weth-weth"
-color = "gray"
-artwork_name = "weth"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "weth"
+# symbol = "WETH"
+# name = "Wrapped Ether"
+# coingecko_id = "weth"
+# coinpaprika_id = "weth-weth"
+# color = "gray"
+# artwork_name = "weth"
+# tags = []
 
-[[deployments]]
-token_id = "weth"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "weth"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+# decimals = 18
 
 [[tokens]]
 id = "worldcoin-wld"
@@ -3144,21 +3234,23 @@ color = "gray"
 artwork_name = "worldcoin"
 tags = []
 
-[[deployments]]
-token_id = "worldcoin-wld"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x163f8c2467924be0ae7b5347228cabf260318753"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "worldcoin-wld"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x163f8c2467924be0ae7b5347228cabf260318753"
+# decimals = 18
 
-[[deployments]]
-token_id = "worldcoin-wld"
-chain_id = "optimism"
-kind = "token"
-standard = "ERC-20"
-contract = "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "worldcoin-wld"
+# chain_id = "optimism"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
+# decimals = 18
 
 [[deployments]]
 token_id = "worldcoin-wld"
@@ -3178,13 +3270,14 @@ color = "gray"
 artwork_name = "wlfi"
 tags = []
 
-[[deployments]]
-token_id = "world-liberty-financial"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "world-liberty-financial"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6"
+# decimals = 18
 
 [[deployments]]
 token_id = "world-liberty-financial"
@@ -3194,13 +3287,14 @@ standard = "SPL"
 contract = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
 decimals = 6
 
-[[deployments]]
-token_id = "world-liberty-financial"
-chain_id = "bnb"
-kind = "token"
-standard = "BEP-20"
-contract = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "world-liberty-financial"
+# chain_id = "bnb"
+# kind = "token"
+# standard = "BEP-20"
+# contract = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
+# decimals = 18
 
 [[tokens]]
 id = "wrapped-steth"
@@ -3285,7 +3379,7 @@ token_id = "tether-gold-tokens"
 chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
-contract = "EQA1R_LuQCLHlMgOo1S4G7Y7W1cd0FrAkbA10Zq7rddKxi9k"
+contract = "0:3547f2ee4022c794c80ea354b81bb63b5b571dd05ac091b035d19abbadd74ac6"
 decimals = 6
 
 [[deployments]]
@@ -3328,70 +3422,78 @@ standard = "ERC-20"
 contract = "0xf50258d3c1dd88946c567920b986a12e65b50dac"
 decimals = 6
 
-[[tokens]]
-id = "zksync"
-symbol = "ZK"
-name = "ZKsync"
-coingecko_id = "zksync"
-coinpaprika_id = "zk-zksync"
-color = "gray"
-artwork_name = "zksyncera"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "zksync"
+# symbol = "ZK"
+# name = "ZKsync"
+# coingecko_id = "zksync"
+# coinpaprika_id = "zk-zksync"
+# color = "gray"
+# artwork_name = "zksyncera"
+# tags = []
 
-[[deployments]]
-token_id = "zksync"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "zksync"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
+# decimals = 18
 
-[[deployments]]
-token_id = "zksync"
-chain_id = "zksync-era"
-kind = "token"
-standard = "ERC-20"
-contract = "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "zksync"
+# chain_id = "zksync-era"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
+# decimals = 18
 
-[[tokens]]
-id = "layerzero"
-symbol = "ZRO"
-name = "LayerZero"
-coingecko_id = "layerzero"
-coinpaprika_id = "zro-layerzero"
-color = "gray"
-artwork_name = "layerzero"
-tags = []
+# TODO(verify-token): Retain this token identity while its deployments await verification.
+# [[tokens]]
+# id = "layerzero"
+# symbol = "ZRO"
+# name = "LayerZero"
+# coingecko_id = "layerzero"
+# coinpaprika_id = "zro-layerzero"
+# color = "gray"
+# artwork_name = "layerzero"
+# tags = []
 
-[[deployments]]
-token_id = "layerzero"
-chain_id = "ethereum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "layerzero"
+# chain_id = "ethereum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
+# decimals = 18
 
-[[deployments]]
-token_id = "layerzero"
-chain_id = "arbitrum"
-kind = "token"
-standard = "ERC-20"
-contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "layerzero"
+# chain_id = "arbitrum"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
+# decimals = 18
 
-[[deployments]]
-token_id = "layerzero"
-chain_id = "base"
-kind = "token"
-standard = "ERC-20"
-contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "layerzero"
+# chain_id = "base"
+# kind = "token"
+# standard = "ERC-20"
+# contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
+# decimals = 18
 
-[[deployments]]
-token_id = "layerzero"
-chain_id = "bnb"
-kind = "token"
-standard = "BEP-20"
-contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
-decimals = 18
+# TODO(verify-token): Verify issuer or official bridge identity before enabling this catalog record.
+# [[deployments]]
+# token_id = "layerzero"
+# chain_id = "bnb"
+# kind = "token"
+# standard = "BEP-20"
+# contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
+# decimals = 18

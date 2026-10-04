@@ -160,7 +160,7 @@ struct WalletSecretStep: View {
     /// feedback below say whether the input fits.
     private var privateKeyMetadataRow: some View {
         HStack(spacing: SpectraLayout.Space.s) {
-            Text(AppLocalization.string("32-byte hex (64 chars)")).font(.caption2).foregroundStyle(.secondary)
+            Text(AppLocalization.string("Private key hex (64 or 128 characters)")).font(.caption2).foregroundStyle(.secondary)
             Spacer()
             if !draft.privateKeyInput.isEmpty {
                 Button(role: .destructive) { draft.privateKeyInput = "" } label: {
@@ -174,7 +174,7 @@ struct WalletSecretStep: View {
         guard !trimmed.isEmpty else { return nil }
         if !isPrivateKeyHex(rawValue: draft.privateKeyInput) {
             return (
-                AppLocalization.string("Enter a valid 32-byte hex private key."), "exclamationmark.triangle.fill",
+                AppLocalization.string("Enter a valid private key for the selected network."), "exclamationmark.triangle.fill",
                 .red.opacity(0.92)
             )
         }

@@ -64,6 +64,44 @@ impl XrplClient {
 // XRP fetch paths: balance, sequence, fee, history.
 
 impl XrplClient {
+    pub(crate) async fn verify_network(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        let expected = chain
+            .xrp_network_id()
+            .or_decode("Missing XRP network identity")?;
+        let result = self.call("server_info", json!({})).await?;
+        if result.pointer("/info/network_id").and_then(Value::as_u64) != Some(expected) {
+            return Err(ApiError::invalid("XRP endpoint is on the wrong network"));
+        }
+        Ok(())
+    }
+
+    /// A provisional result is not final. Validated `tec` results are committed failures.
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        hash: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        use crate::api::http::{RetryProfile, race};
+        if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(ApiError::invalid("Invalid XRP transaction hash"));
+        }
+        // Inspect the machine-readable error before generic RPC decoding loses it.
+        let body = json!({"method":"tx","params":[{"transaction":hash,"binary":false}]});
+        race(&self.endpoints, |endpoint| {
+            let body = &body;
+            async move {
+                let response: Value = self
+                    .client
+                    .post_json(&endpoint, body, RetryProfile::ChainRead)
+                    .await?;
+                xrp_transaction_status(response, hash)
+            }
+        })
+        .await
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<XrpBalance, ApiError> {
         let result = self
             .call(
@@ -103,20 +141,87 @@ impl XrplClient {
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<XrpHistoryEntry>, ApiError> {
-        let result = self
-            .call(
-                "account_tx",
-                json!({"account": address, "limit": 50, "ledger_index_min": -1, "ledger_index_max": -1}),
-            )
-            .await?;
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<XrpHistoryEntry>, ApiError> {
+        let mut params = json!({"account": address, "limit": 50, "ledger_index_min": -1, "ledger_index_max": -1, "forward": false});
+        if let Some(cursor) = cursor {
+            params["marker"] = serde_json::from_str(cursor)?;
+        }
+        let result = self.call("account_tx", params).await?;
         let txs = result
             .get("transactions")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
 
-        xrp_history_from_transactions(&txs, address)
+        let next_cursor = result
+            .get("marker")
+            .filter(|value| !value.is_null())
+            .map(Value::to_string);
+        Ok(crate::api::HistoryPage {
+            items: xrp_history_from_transactions(&txs, address)?,
+            next_cursor,
+        })
     }
+}
+
+fn xrp_transaction_status(
+    response: Value,
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    if let Some(error) = response.get("error").filter(|error| !error.is_null()) {
+        return Err(ApiError::rejected(format!("XRP transaction: {error}")));
+    }
+    let result = response
+        .get("result")
+        .or_decode("XRP transaction: missing result")?;
+    if result.get("status").and_then(Value::as_str) == Some("error") {
+        return match result.get("error").and_then(Value::as_str) {
+            Some("txnNotFound") => Ok(TransactionStatus::Pending),
+            _ => Err(ApiError::rejected(format!("XRP transaction: {result}"))),
+        };
+    }
+    if result.get("validated").and_then(Value::as_bool) != Some(true) {
+        return Ok(TransactionStatus::Pending);
+    }
+    let actual = result
+        .get("hash")
+        .or_else(|| result.pointer("/tx_json/hash"))
+        .and_then(Value::as_str)
+        .or_decode("XRP transaction: missing hash")?;
+    if !actual.eq_ignore_ascii_case(hash) {
+        return Err(ApiError::decode("XRP returned a different transaction"));
+    }
+    let ledger = result
+        .get("ledger_index")
+        .or_else(|| result.pointer("/tx_json/ledger_index"))
+        .and_then(Value::as_u64)
+        .filter(|number| *number > 0)
+        .or_decode("XRP transaction: missing validated ledger")?;
+    let outcome = result
+        .pointer("/meta/TransactionResult")
+        .and_then(Value::as_str)
+        .or_decode("XRP transaction: missing execution result")?;
+    let succeeded = if outcome == "tesSUCCESS" {
+        true
+    } else if outcome.starts_with("tec") {
+        false
+    } else {
+        return Err(ApiError::decode(
+            "XRP transaction: invalid validated result code",
+        ));
+    };
+    Ok(TransactionStatus::Confirmed {
+        succeeded,
+        block: Some(ledger),
+    })
 }
 
 /// The XRP each successful payment moved in or out of `address`, fee excluded.
@@ -261,6 +366,101 @@ impl XrplClient {
 #[cfg(test)]
 #[path = "tests/xrpl_json_rpc.rs"]
 mod tests;
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+    use std::sync::Arc;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_json, method},
+    };
+
+    #[tokio::test]
+    async fn hash_lookup_requires_validation_and_retains_committed_failure() {
+        let hash = "AB".repeat(32);
+        for (result, expected) in [
+            (
+                json!({"status":"error","error":"txnNotFound"}),
+                TransactionStatus::Pending,
+            ),
+            (
+                json!({"validated":false,"hash":hash,"meta":{"TransactionResult":"tesSUCCESS"}}),
+                TransactionStatus::Pending,
+            ),
+            (
+                json!({"validated":true,"hash":hash,"ledger_index":120,"meta":{"TransactionResult":"tesSUCCESS"}}),
+                TransactionStatus::Confirmed {
+                    succeeded: true,
+                    block: Some(120),
+                },
+            ),
+            (
+                json!({"validated":true,"hash":hash.to_lowercase(),"ledger_index":121,"meta":{"TransactionResult":"tecUNFUNDED_PAYMENT"}}),
+                TransactionStatus::Confirmed {
+                    succeeded: false,
+                    block: Some(121),
+                },
+            ),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(body_json(
+                    json!({"method":"tx","params":[{"transaction":hash,"binary":false}]}),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"result":result})))
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert_eq!(
+                XrplClient::new(Arc::new(vec![server.uri()]))
+                    .fetch_transaction_status(&hash)
+                    .await
+                    .unwrap(),
+                expected
+            );
+        }
+        for result in [
+            json!({"validated":true,"hash":"CD".repeat(32),"ledger_index":120,"meta":{"TransactionResult":"tesSUCCESS"}}),
+            json!({"validated":true,"hash":hash,"ledger_index":120}),
+            json!({"validated":true,"hash":hash,"meta":{"TransactionResult":"tesSUCCESS"}}),
+            json!({"validated":true,"hash":hash,"ledger_index":120,"meta":{"TransactionResult":"tefPAST_SEQ"}}),
+            json!({"status":"error","error":"invalidParams"}),
+        ] {
+            assert!(xrp_transaction_status(json!({"result":result}), &hash).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn server_network_identity_refuses_wrong_and_unknown_networks() {
+        use crate::registry::Chain;
+        for (actual, selected, expected_ok) in [
+            (json!(0), Chain::Xrp, true),
+            (json!(1), Chain::XrpTestnet, true),
+            (json!(1), Chain::Xrp, false),
+            (Value::Null, Chain::Xrp, false),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(body_json(json!({"method":"server_info","params":[{}]})))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"result":{"info":{"network_id":actual}}})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert_eq!(
+                XrplClient::new(Arc::new(vec![server.uri()]))
+                    .verify_network(selected)
+                    .await
+                    .is_ok(),
+                expected_ok
+            );
+        }
+    }
+}
 
 #[cfg(test)]
 mod history_tests {

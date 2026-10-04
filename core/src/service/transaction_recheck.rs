@@ -14,7 +14,7 @@ pub(super) fn recheck_chain(
             "Status recheck is not available for this transaction.",
         ));
     };
-    if require_send_kind && record.kind != crate::store::wallet_domain::CoreTransactionKind::Send {
+    if require_send_kind && !record.kind.is_submitted() {
         return Err(SpectraBridgeError::invalid(
             "Status recheck is not available for this transaction.",
         ));
@@ -145,11 +145,7 @@ impl WalletService {
                     vec![crate::store::ResolvedPendingTransactionInput {
                         id: current.id.clone(),
                         old_status: old_status.clone(),
-                        old_failure_reason: current.failure_reason.clone(),
-                        resolution: Some(crate::store::ResolvedPendingStatusInput {
-                            status: new_status.as_raw().to_string(),
-                        }),
-                        is_stale_failure: false,
+                        new_status: new_status.as_raw().to_string(),
                     }],
                     &mut trackers,
                     now,

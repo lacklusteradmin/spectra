@@ -9,6 +9,7 @@
 #   - Creates a new .imageset for every SVG not yet in the catalog.
 #   - Updates the SVG inside an existing .imageset when the source has changed.
 #   - Removes .imageset folders that no longer have a matching source SVG.
+#   - Removes an asset group when its source directory has no SVGs.
 #
 # Rules (appicon):
 #   - Converts each SVG to a 1024×1024 PNG using ImageMagick.
@@ -96,6 +97,14 @@ sync_svg_group() {
   local src="$1" dest="$2" namespace="$3" label="$4"
   local added=0 updated=0 removed=0
 
+  if ! compgen -G "$src/*.svg" >/dev/null; then
+    if [[ -d "$dest" ]]; then
+      rm -rf "$dest"
+      echo "  [$label] removed empty group"
+    fi
+    return
+  fi
+
   ensure_group_contents "$dest" "$namespace"
 
   for svg_path in "$src"/*.svg; do
@@ -112,11 +121,11 @@ sync_svg_group() {
     if [[ ! -f "$dest_svg" ]]; then
       cp "$svg_path" "$dest_svg"
       echo "  [$label] added   $name"
-      ((added++))
+      ((added += 1))
     elif ! cmp -s "$svg_path" "$dest_svg"; then
       cp "$svg_path" "$dest_svg"
       echo "  [$label] updated $name"
-      ((updated++))
+      ((updated += 1))
     fi
   done
 
@@ -127,7 +136,7 @@ sync_svg_group() {
     if [[ ! -f "$src/${name}.svg" ]]; then
       rm -rf "$imageset"
       echo "  [$label] removed $name"
-      ((removed++))
+      ((removed += 1))
     fi
   done
 
@@ -149,7 +158,7 @@ sync_appicon() {
     png_path="$dest/${name}.png"
 
     if [[ -f "$png_path" && ! "$svg_path" -nt "$png_path" ]]; then
-      ((skipped++))
+      ((skipped += 1))
       continue
     fi
 
@@ -157,7 +166,7 @@ sync_appicon() {
     # by output size, so sources need a 1024-unit viewBox to render smoothly.
     $MAGICK_BIN -density 144 -background none "$svg_path" -resize 1024x1024 -depth 8 "$png_path"
     echo "  [appicon] converted $name → ${name}.png"
-    ((converted++))
+    ((converted += 1))
   done
 
   echo "  [appicon] done: $converted converted, $skipped up-to-date."

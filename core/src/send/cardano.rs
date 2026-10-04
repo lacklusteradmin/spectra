@@ -18,8 +18,6 @@ pub fn build_signed_ada_tx(
     ttl: u64,
     min_change_lovelace: Option<u64>,
 ) -> Result<String, SendError> {
-    use ed25519_dalek::{Signer, SigningKey};
-
     let change = super::accounting::checked_change(
         utxos.iter().map(|(_, _, v)| *v),
         amount_lovelace,
@@ -41,20 +39,46 @@ pub fn build_signed_ada_tx(
 
     let body_hash = blake2b_256(&tx_body);
 
-    let signing_key = SigningKey::from_bytes(
-        &signing_key_bytes[..32]
-            .try_into()
-            .map_err(|_| SendError::Invalid("key too short".into()))?,
-    );
-    let signature = signing_key.sign(&body_hash);
-
-    // Witness set: [{0: [[vkey, sig]]}]
-    let witness_set = encode_witness_set(verification_key_bytes, signature.to_bytes().as_ref());
+    let signature = sign_extended(signing_key_bytes, verification_key_bytes, &body_hash)?;
+    let witness_set = encode_witness_set(verification_key_bytes, &signature);
 
     // Transaction: [tx_body, witness_set, true, null]
     let tx = cbor_array(&[tx_body.clone(), witness_set, cbor_bool(true), cbor_null()]);
 
     Ok(hex::encode(&tx))
+}
+
+/// Cardano's extended Ed25519 key is kL || kR, not a seed. kL is the
+/// derived scalar and kR is the nonce prefix; hashing kL as a seed changes
+/// the public key and produces an invalid payment witness.
+fn sign_extended(key: &[u8; 64], public: &[u8; 32], message: &[u8]) -> Result<[u8; 64], SendError> {
+    use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT, scalar::Scalar};
+    use sha2::{Digest, Sha512};
+    use zeroize::Zeroizing;
+    let scalar_bytes =
+        Zeroizing::new(<[u8; 32]>::try_from(&key[..32]).expect("fixed extended key"));
+    if crate::derivation::cardano::public_from_extended_key(key)? != *public {
+        return Err(SendError::invalid(
+            "Cardano extended key does not match the witness public key",
+        ));
+    }
+    let scalar = Zeroizing::new(Scalar::from_bytes_mod_order(*scalar_bytes));
+    let mut nonce_hash = Sha512::new();
+    nonce_hash.update(&key[32..]);
+    nonce_hash.update(message);
+    let nonce_digest = Zeroizing::new(<[u8; 64]>::from(nonce_hash.finalize()));
+    let nonce = Zeroizing::new(Scalar::from_bytes_mod_order_wide(&nonce_digest));
+    let r = (*nonce * ED25519_BASEPOINT_POINT).compress().to_bytes();
+    let mut challenge = Sha512::new();
+    challenge.update(r);
+    challenge.update(public);
+    challenge.update(message);
+    let h = Scalar::from_bytes_mod_order_wide(&challenge.finalize().into());
+    let s = Zeroizing::new(*nonce + h * *scalar);
+    let mut signature = [0u8; 64];
+    signature[..32].copy_from_slice(&r);
+    signature[32..].copy_from_slice(&s.to_bytes());
+    Ok(signature)
 }
 
 fn encode_tx_body(
@@ -104,7 +128,7 @@ fn encode_tx_body(
 fn encode_witness_set(vkey: &[u8], sig: &[u8]) -> Vec<u8> {
     // {0: [[vkey_bytes, sig_bytes]]}
     let vkey_sig = cbor_array(&[cbor_bytes(vkey), cbor_bytes(sig)]);
-    cbor_map(&[(cbor_uint(0), cbor_array_of(&[vkey_sig]))])
+    cbor_map(&[(cbor_uint(0), cbor_tagged_set(&[vkey_sig]))])
 }
 
 // ── Minimal CBOR encoder
@@ -199,6 +223,12 @@ fn blake2b_256(data: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
+    fn test_key() -> ([u8; 64], [u8; 32]) {
+        crate::derivation::cardano::derive_cardano_icarus_material(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "", None, 0, Some("m/1852'/1815'/0'/0/0"),
+        ).unwrap()
+    }
     fn build(values: &[u64], amount: u64, fee: u64) -> Result<String, SendError> {
         let inputs: Vec<_> = values
             .iter()
@@ -211,11 +241,42 @@ mod accounting_tests {
             amount,
             fee,
             &[0x62; 29],
-            &[1; 64],
-            &[2; 32],
+            &test_key().0,
+            &test_key().1,
             100,
             Some(1000000),
         )
+    }
+    #[test]
+    fn extended_witness_matches_independent_emurgo_transaction() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/cardano-emurgo-witness.json"
+        ))
+        .unwrap();
+        let (key, public) = test_key();
+        assert_eq!(hex::encode(key), vector["privateKey"]);
+        assert_eq!(hex::encode(public), vector["publicKey"]);
+        let address = hex::decode(vector["addressBytes"].as_str().unwrap()).unwrap();
+        let inputs = vec![("00".repeat(32), 0, 1_170_000)];
+        let body = encode_tx_body(&inputs, &[(&address, 1_000_000)], 170_000, 100).unwrap();
+        assert_eq!(hex::encode(&body), vector["body"]);
+        let hash = blake2b_256(&body);
+        assert_eq!(hex::encode(hash), vector["hash"]);
+        let signature = sign_extended(&key, &public, &hash).unwrap();
+        assert_eq!(hex::encode(signature), vector["signature"]);
+        ed25519_dalek::VerifyingKey::from_bytes(&public)
+            .unwrap()
+            .verify_strict(&hash, &ed25519_dalek::Signature::from_bytes(&signature))
+            .unwrap();
+        let raw = build_signed_ada_tx(
+            &inputs, &address, 1_000_000, 170_000, &address, &key, &public, 100, None,
+        )
+        .unwrap();
+        assert_eq!(raw, vector["transaction"]);
+        assert!(sign_extended(&key, &[0; 32], &hash).is_err());
+        let mut altered = key;
+        altered[0] |= 1;
+        assert!(sign_extended(&altered, &public, &hash).is_err());
     }
     #[test]
     fn cardano_refuses_malformed_input_hashes() {

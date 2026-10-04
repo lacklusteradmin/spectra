@@ -16,6 +16,11 @@ fn record(chain: Chain, api: EndpointApi, endpoint: String) -> EndpointRecord {
 fn every_builtin_api_has_a_probe_on_its_own_origin() {
     for record in &crate::endpoints::catalog().records {
         let chain = record.chain_id;
+        if record.api == EndpointApi::AptosIndexer {
+            // This request is owned by the Indexer API adapter; its configured
+            // path and network refusal are exercised below through `probe`.
+            continue;
+        }
         let checks = checks(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
         assert!(!checks.is_empty());
         for check in checks {
@@ -27,6 +32,141 @@ fn every_builtin_api_has_a_probe_on_its_own_origin() {
             );
         }
     }
+}
+
+fn replica_status_bytes(status: ciborium::Value) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    ciborium::into_writer(
+        &ciborium::Value::Tag(
+            55799,
+            Box::new(ciborium::Value::Map(vec![(
+                ciborium::Value::Text("replica_health_status".into()),
+                status,
+            )])),
+        ),
+        &mut bytes,
+    )
+    .unwrap();
+    bytes
+}
+
+#[tokio::test]
+async fn icp_replica_health_reads_cbor_status_on_the_configured_origin() {
+    let server = MockServer::start().await;
+    let record = record(
+        Chain::Icp,
+        EndpointApi::IcpReplica,
+        format!("{}/replica/", server.uri()),
+    );
+    // Tagged CBOR and an untagged map both occur in IC agent transports.
+    let tagged = replica_status_bytes(ciborium::Value::Text("healthy".into()));
+    for bytes in [tagged.clone(), tagged[3..].to_vec()] {
+        Mock::given(method("GET"))
+            .and(path("/replica/api/v2/status"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(bytes, "application/cbor"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (checked, healthy, detail) = probe(Chain::Icp, &record).await;
+        assert!(checked && healthy, "{detail}");
+        server.verify().await;
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests.iter().all(|request| request.body.is_empty()));
+        server.reset().await;
+    }
+}
+
+#[tokio::test]
+async fn icp_replica_health_refuses_unhealthy_and_malformed_statuses() {
+    use ciborium::Value as Cbor;
+    let server = MockServer::start().await;
+    let record = record(Chain::Icp, EndpointApi::IcpReplica, server.uri());
+    let healthy = replica_status_bytes(Cbor::Text("healthy".into()));
+    let mut trailing = healthy.clone();
+    trailing.push(0);
+    let mut duplicate = Vec::new();
+    ciborium::into_writer(
+        &Cbor::Map(vec![
+            (
+                Cbor::Text("replica_health_status".into()),
+                Cbor::Text("healthy".into()),
+            ),
+            (
+                Cbor::Text("replica_health_status".into()),
+                Cbor::Text("starting".into()),
+            ),
+        ]),
+        &mut duplicate,
+    )
+    .unwrap();
+    let mut cases = [
+        "starting",
+        "waiting_for_certified_state",
+        "waiting_for_root_delegation",
+        "certified_state_behind",
+        "unknown",
+        "Healthy",
+    ]
+    .into_iter()
+    .map(|status| replica_status_bytes(Cbor::Text(status.into())))
+    .collect::<Vec<_>>();
+    cases.extend([
+        replica_status_bytes(Cbor::Bool(true)),
+        vec![0xa0], // A valid map without the required health field.
+        vec![0x80], // An array instead of a status record.
+        healthy[..healthy.len() - 1].to_vec(),
+        trailing,
+        duplicate,
+        b"<html>Unavailable</html>".to_vec(),
+        br#"{"replica_health_status":"healthy"}"#.to_vec(),
+    ]);
+    for bytes in cases {
+        Mock::given(method("GET"))
+            .and(path("/api/v2/status"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(bytes, "application/cbor"))
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (checked, healthy, detail) = probe(Chain::Icp, &record).await;
+        assert!(checked && !healthy, "{detail}");
+        server.verify().await;
+        server.reset().await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/api/v2/status"))
+        .respond_with(ResponseTemplate::new(503).set_body_raw(healthy, "application/cbor"))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let (checked, healthy, detail) = probe(Chain::Icp, &record).await;
+    assert!(checked && !healthy && detail.contains("503"), "{detail}");
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn aptos_indexer_health_uses_the_configured_api_and_proves_network_identity() {
+    let server = MockServer::start().await;
+    let record = record(
+        Chain::Aptos,
+        EndpointApi::AptosIndexer,
+        format!("{}/api/graphql", server.uri()),
+    );
+    Mock::given(method("POST"))
+        .and(path("/api/graphql"))
+        .and(body_partial_json(
+            json!({"query":"query { ledger_infos { chain_id } }"}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data":{"ledger_infos":[{"chain_id":1}]}
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+    assert!(probe(Chain::Aptos, &record).await.1);
+    let (checked, reachable, detail) = probe(Chain::AptosTestnet, &record).await;
+    assert!(checked && !reachable);
+    assert!(detail.contains("chain id 1, expected 2"), "{detail}");
+    server.verify().await;
 }
 
 #[tokio::test]
@@ -81,7 +221,7 @@ async fn polkadot_health_refuses_a_relay_node_before_other_reads() {
         &record(Chain::Polkadot, EndpointApi::SubstrateJsonRpc, server.uri()),
     )
     .await;
-    assert!(!healthy && detail.contains("wrong Asset Hub"));
+    assert!(!healthy && detail.contains("wrong Substrate"));
 }
 
 #[test]

@@ -127,20 +127,10 @@ fn owned_preview(
             ))
         })
         .collect();
-    let mut details = crate::send::flow::compute_send_preview_details(
+    let details = crate::send::flow::compute_send_preview_details(
         Some(preview.clone()),
         Some(&holding.amount),
     );
-    if !is_native
-        && !matches!(
-            preview,
-            SendPreview::Ethereum { .. } | SendPreview::Tron { .. }
-        )
-        && let Some(details) = &mut details
-    {
-        details.spendableBalance = None;
-        details.maxSendable = None;
-    }
     let asset_decimals = decimals.unwrap_or(gas_decimals);
     OwnedSendPreview {
         wallet_id,
@@ -295,7 +285,101 @@ impl WalletService {
                 .await?
                 .address
         };
+        if let Some(token) = token.as_ref()
+            && matches!(
+                chain.mainnet_counterpart(),
+                Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Ton | Chain::Near
+            )
+        {
+            let real_decimals = self
+                .token_contract_decimals(chain, &token.contract)
+                .await?
+                .ok_or_else(|| SpectraBridgeError::failure("Token precision unavailable"))?;
+            if real_decimals != u32::from(token.decimals) {
+                return Err(SpectraBridgeError::invalid(
+                    "Token precision differs from the stored deployment",
+                ));
+            }
+            let reads = self
+                .fetch_token_balances(
+                    chain,
+                    address.clone(),
+                    vec![TokenDescriptor {
+                        standard: chain.token_standard_for_identifier(&token.contract).into(),
+                        contract: token.contract.clone(),
+                        symbol: holding.symbol.clone(),
+                        decimals: token.decimals,
+                        name: None,
+                    }],
+                )
+                .await?;
+            let balance = reads
+                .into_iter()
+                .next()
+                .ok_or_else(|| SpectraBridgeError::failure("Token balance unavailable"))?;
+            if u32::from(balance.decimals) != real_decimals {
+                return Err(SpectraBridgeError::invalid(
+                    "Token balance precision changed",
+                ));
+            }
+            let mut preview = if chain.mainnet_counterpart() == Chain::Near {
+                SendPreview::Near {
+                    preview: self
+                        .preview_near_send(
+                            chain,
+                            &address,
+                            &destination,
+                            crate::send::amount_input::parse_raw_amount(&amount, real_decimals)?,
+                            Some(&token.contract),
+                        )
+                        .await?,
+                }
+            } else {
+                let Some(preview) = self
+                    .fetch_simple_chain_send_preview(chain, address)
+                    .await?
+                    .map(SendPreview::from)
+                else {
+                    return Ok(None);
+                };
+                preview
+            };
+            macro_rules! asset_balance {
+                ($p:expr) => {{
+                    $p.spendableBalance = balance.balance_display.clone();
+                    $p.maxSendable = balance.balance_display.clone();
+                }};
+            }
+            match &mut preview {
+                SendPreview::Solana { preview } => asset_balance!(preview),
+                SendPreview::Sui { preview } => asset_balance!(preview),
+                SendPreview::Aptos { preview } => asset_balance!(preview),
+                SendPreview::Near { preview } => asset_balance!(preview),
+                SendPreview::Ton { preview } => {
+                    asset_balance!(preview);
+                    preview.estimatedNetworkFee =
+                        crate::decimal::add(&preview.estimatedNetworkFee, "0.1").ok_or_else(
+                            || SpectraBridgeError::failure("Invalid jetton gas budget"),
+                        )?;
+                    preview.feeRateDescription =
+                        Some("Network estimate and 0.1 TON attached to the jetton wallet".into());
+                }
+                _ => return Err(SpectraBridgeError::failure("Token preview route mismatch")),
+            }
+            return Ok(Some(wrap(preview)));
+        }
         let preview = match chain.mainnet_counterpart() {
+            Chain::Near => Some(SendPreview::Near {
+                preview: self
+                    .preview_near_send(
+                        chain,
+                        &address,
+                        &destination,
+                        crate::send::amount_input::parse_raw_amount(&amount, decimals)?,
+                        None,
+                    )
+                    .await?,
+            }),
             Chain::Bitcoin => {
                 if let Some(xpub) = wallet.xpub.as_ref().filter(|x| !x.trim().is_empty()) {
                     self.fetch_bitcoin_hd_send_preview(chain, xpub.clone(), 20, 20)
@@ -320,14 +404,16 @@ impl WalletService {
                     .await?
                     .map(|preview| SendPreview::Dogecoin { preview })
             }
-            Chain::Tron => self
-                .fetch_tron_send_preview(
+            Chain::Tron => crate::send::preview_decode::build_tron_send_preview_record(
+                self.fetch_tron_send_preview_json_on_chain(
+                    chain,
                     address,
                     holding.symbol.clone(),
                     token.map(|t| t.contract).unwrap_or_default(),
                 )
-                .await?
-                .map(|preview| SendPreview::Tron { preview }),
+                .await?,
+            )
+            .map(|preview| SendPreview::Tron { preview }),
             _ => self
                 .fetch_simple_chain_send_preview(chain, address)
                 .await?
@@ -380,7 +466,7 @@ impl SendPreview {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct OwnedSendQuote {
     pub request: crate::send::SendExecutionRequest,
     pub preview: Option<SendPreview>,
@@ -439,7 +525,6 @@ impl WalletService {
         let fee = preview
             .as_ref()
             .map(|preview| preview.network_fee().to_string())
-            .or(preflight.token_send_gas_reserve)
             .or_else(|| shape.fee_fallback.map(str::to_string))
             .or_else(|| {
                 (shape.fee_field == crate::registry::SendFeeField::None).then(|| "0".into())
@@ -739,40 +824,5 @@ mod shortcut_amount_tests {
         // Dust has no display form; it stays exact rather than become zero.
         let dust = "0.000000000000000001".to_string();
         assert_eq!(shortcut_amount(dust.clone(), 25, 18), dust);
-    }
-}
-
-#[cfg(test)]
-mod quote_projection_tests {
-    use super::*;
-    #[test]
-    fn a_native_fee_quote_does_not_claim_a_token_balance_or_maximum() {
-        let preview = SendPreview::Solana {
-            preview: crate::send::preview_types::SolanaSendPreview {
-                spendableBalance: "10".into(),
-                maxSendable: "9".into(),
-                ..Default::default()
-            },
-        };
-        let token = crate::store::wallet_domain::AssetHolding {
-            token_standard: Chain::Solana.token_standard().into(),
-            contract_address: Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into()),
-            amount: "100".into(),
-            ..Chain::Solana.native_holding_template()
-        }
-        .identified();
-        let quote = owned_preview(
-            &CoreAppState::default(),
-            "w".into(),
-            &token,
-            "1",
-            Chain::Solana,
-            Some(6),
-            preview,
-        );
-        assert!(quote.shortcuts.is_empty());
-        let details = quote.details.unwrap();
-        assert_eq!(details.spendable_balance, None);
-        assert_eq!(details.max_sendable, None);
     }
 }

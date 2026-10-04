@@ -8,6 +8,7 @@ const { WalletContractV4 } = require('@ton/ton');
 const { keyPairFromSeed } = require('@ton/crypto');
 const near = require('@near-js/transactions');
 const { PublicKey } = require('@near-js/crypto');
+const { baseEncode } = require('@near-js/utils');
 const key = keyPairFromSeed(Buffer.alloc(32, 1));
 const wallet = WalletContractV4.create({ workchain: 0, publicKey: key.publicKey });
 const destination = new ton.Address(0, Buffer.alloc(32, 0x22));
@@ -25,7 +26,7 @@ for (const [name, action] of [['transfer', near.actionCreators.transfer(12345678
   const hash = crypto.createHash('sha256').update(near.encodeTransaction(tx)).digest();
   const sig = crypto.sign(null, hash, secret);
   const signed = new near.SignedTransaction({transaction:tx, signature:new near.Signature({keyType:0, data:sig})});
-  fixtures.near.push({name, signed_hex:Buffer.from(signed.encode()).toString('hex')});
+  fixtures.near.push({name, signed_hex:Buffer.from(signed.encode()).toString('hex'), hash:baseEncode(hash)});
 }
 fs.writeFileSync('core/tests/fixtures/protocol-transactions.json', JSON.stringify(fixtures, null, 2) + '\n');
 

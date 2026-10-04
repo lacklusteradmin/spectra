@@ -173,7 +173,11 @@ impl AppStateChanges {
                 )
                 .map_err(DbError::from)?;
 
-                for table in ["wallet_keypool", "wallet_owned_addresses"] {
+                for table in [
+                    "wallet_keypool",
+                    "wallet_owned_addresses",
+                    "history_pagination",
+                ] {
                     tx.execute(
                         &format!("DELETE FROM {table} WHERE wallet_id = ?1"),
                         params![id],

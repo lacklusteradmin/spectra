@@ -1,0 +1,22 @@
+{
+  "verified_at": "2026-10-04",
+  "endpoint": "https://api.trongrid.io/wallet/getchainparameters",
+  "request": {},
+  "required_trc10_fee_parameters": [
+    {
+      "key": "getCreateAccountFee",
+      "value": 100000
+    },
+    {
+      "key": "getTransactionFee",
+      "value": 1000
+    },
+    {
+      "key": "getCreateNewAccountFeeInSystemContract",
+      "value": 1000000
+    },
+    {
+      "key": "getForbidTransferToContract"
+    }
+  ]
+}

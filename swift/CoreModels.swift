@@ -156,6 +156,10 @@ extension TransactionRecord: Identifiable {
         switch kind {
         case .send: return String(format: copy.transactionSentTitleFormat, symbol)
         case .receive: return String(format: copy.transactionReceivedTitleFormat, symbol)
+        case .stake: return AppLocalization.string("staking.stake") + " " + symbol
+        case .unstake: return AppLocalization.string("staking.unstake") + " " + symbol
+        case .withdraw: return AppLocalization.string("staking.withdraw") + " " + symbol
+        case .claimRewards: return AppLocalization.string("staking.claim_rewards") + " " + symbol
         }
     }
     /// Name the network and wallet, prefixing the asset name for token transfers.
@@ -169,12 +173,26 @@ extension TransactionRecord: Identifiable {
     var statusText: String { status.localizedTitle }
     var badgeColor: Color {
         switch kind {
-        case .send: return .red
-        case .receive: return .green
+        case .send, .stake: return .red
+        case .receive, .withdraw, .claimRewards: return .green
+        case .unstake: return .secondary
         }
     }
-    var statusColor: Color {
-        Color.spectraTransactionStatusColor(status)
+    var isSubmittedOperation: Bool { transactionKindIsSubmitted(kind: kind) }
+    var amountDirection: CoreTransactionDirection { transactionKindDirection(kind: kind) }
+    var amountSign: String {
+        switch amountDirection {
+        case .incoming: return "+"
+        case .outgoing: return "-"
+        case .neutral: return ""
+        }
+    }
+    var amountColor: Color {
+        switch amountDirection {
+        case .incoming: return .spectraTransactionAmountColor(isReceive: true)
+        case .outgoing: return .spectraTransactionAmountColor(isReceive: false)
+        case .neutral: return .secondary
+        }
     }
     var receiptBlockNumberText: String? {
         guard let receiptBlockNumber else { return nil }
@@ -231,10 +249,6 @@ extension TransactionRecord: Identifiable {
         switch failureReason {
         case .executionFailed:
             return AppLocalization.string("The transaction failed during on-chain execution.")
-        case .stuckAfterRetries:
-            return AppLocalization.format(
-                "%@ transaction appears stuck and could not be confirmed after extended retries.",
-                chainName)
         case .submissionOutcomeUnknown:
             return AppLocalization.string("Submission outcome unknown; check network status before sending again.")
         case .rebroadcastOutcomeUnknown:

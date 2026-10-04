@@ -72,6 +72,8 @@ pub(crate) struct HorizonPaymentsEmbedded {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct HorizonPaymentRecord {
+    #[serde(default)]
+    pub(crate) paging_token: String,
     #[serde(rename = "type")]
     pub(crate) op_type: String,
     #[serde(default)]
@@ -120,6 +122,63 @@ impl HorizonClient {
 // base fee, and payments history.
 
 impl HorizonClient {
+    pub(crate) async fn verify_network(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        let root: serde_json::Value = self.get("/").await?;
+        if root
+            .get("network_passphrase")
+            .and_then(serde_json::Value::as_str)
+            != Some(
+                chain
+                    .stellar_network_passphrase()
+                    .map_err(ApiError::invalid)?,
+            )
+        {
+            return Err(ApiError::invalid(
+                "Horizon endpoint is on the wrong network",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Horizon's hash resource includes failed transactions, unlike payments history.
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        hash: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        use crate::api::transaction_status::TransactionStatus;
+        if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(ApiError::invalid("Invalid Stellar transaction hash"));
+        }
+        let result: serde_json::Value = match self.get(&format!("/transactions/{hash}")).await {
+            Ok(result) => result,
+            Err(ApiError::Status { status: 404, .. }) => return Ok(TransactionStatus::Pending),
+            Err(error) => return Err(error),
+        };
+        let actual = result
+            .get("hash")
+            .and_then(serde_json::Value::as_str)
+            .or_decode("Horizon transaction: missing hash")?;
+        if !actual.eq_ignore_ascii_case(hash) {
+            return Err(ApiError::decode("Horizon returned a different transaction"));
+        }
+        let ledger = result
+            .get("ledger")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|number| *number > 0)
+            .or_decode("Horizon transaction: missing ledger")?;
+        let succeeded = result
+            .get("successful")
+            .and_then(serde_json::Value::as_bool)
+            .or_decode("Horizon transaction: missing execution result")?;
+        Ok(TransactionStatus::Confirmed {
+            succeeded,
+            block: Some(ledger),
+        })
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<StellarBalance, ApiError> {
         let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
         let native = account
@@ -149,12 +208,38 @@ impl HorizonClient {
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<StellarHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<StellarHistoryEntry>, ApiError> {
+        let continuation = cursor
+            .map(|value| format!("&cursor={}", crate::api::history_page::query_value(value)))
+            .unwrap_or_default();
         let payments: HorizonPayments = self
             .get(&format!(
-                "/accounts/{address}/payments?limit=50&order=desc&include_failed=false"
+                "/accounts/{address}/payments?limit=50&order=desc&include_failed=false{continuation}"
             ))
             .await?;
-        stellar_history_from_payments(payments.embedded.records, address)
+        let records = payments.embedded.records;
+        let next_cursor = if records.len() == 50 {
+            Some(
+                records
+                    .last()
+                    .map(|row| row.paging_token.clone())
+                    .filter(|token| !token.is_empty())
+                    .or_decode("Horizon: full history page has no paging token")?,
+            )
+        } else {
+            None
+        };
+        Ok(crate::api::HistoryPage {
+            items: stellar_history_from_payments(records, address)?,
+            next_cursor,
+        })
     }
 }
 
@@ -275,5 +360,101 @@ mod history_tests {
         assert_eq!(entries[1].txid, "xlm");
         assert!(!entries[1].is_incoming);
         assert_eq!(entries[1].amount_stroops, 821_781_600);
+    }
+}
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::{api::transaction_status::TransactionStatus, registry::Chain};
+    use serde_json::json;
+    use std::sync::Arc;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
+    #[tokio::test]
+    async fn hash_resource_closes_success_and_failed_transactions_without_payment_history() {
+        let hash = "ab".repeat(32);
+        for succeeded in [true, false] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path(format!("/transactions/{hash}")))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"hash":hash,"ledger":450,"successful":succeeded})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert_eq!(
+                HorizonClient::new(Arc::new(vec![server.uri()]))
+                    .fetch_transaction_status(&hash)
+                    .await
+                    .unwrap(),
+                TransactionStatus::Confirmed {
+                    succeeded,
+                    block: Some(450)
+                }
+            );
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!("/transactions/{hash}")))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert_eq!(
+            HorizonClient::new(Arc::new(vec![server.uri()]))
+                .fetch_transaction_status(&hash)
+                .await
+                .unwrap(),
+            TransactionStatus::Pending
+        );
+        for bad in [
+            json!({"hash":hash,"successful":true}),
+            json!({"hash":hash,"ledger":450}),
+            json!({"hash":"cd".repeat(32),"ledger":450,"successful":true}),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(bad))
+                .mount(&server)
+                .await;
+            assert!(
+                HorizonClient::new(Arc::new(vec![server.uri()]))
+                    .fetch_transaction_status(&hash)
+                    .await
+                    .is_err()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn horizon_identity_matches_the_signing_network_passphrase() {
+        for selected in [Chain::Stellar, Chain::StellarTestnet] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(
+                    json!({"network_passphrase":selected.stellar_network_passphrase().unwrap()}),
+                ))
+                .mount(&server)
+                .await;
+            let client = HorizonClient::new(Arc::new(vec![server.uri()]));
+            client.verify_network(selected).await.unwrap();
+            assert!(
+                client
+                    .verify_network(if selected == Chain::Stellar {
+                        Chain::StellarTestnet
+                    } else {
+                        Chain::Stellar
+                    })
+                    .await
+                    .is_err()
+            );
+        }
     }
 }

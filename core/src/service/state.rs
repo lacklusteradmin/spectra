@@ -121,6 +121,7 @@ impl WalletService {
                             SpectraBridgeError::failure(format!("spawn_blocking: {e}"))
                         })??;
                 }
+                service.history_pagination.bind(database.clone())?;
                 // Publish only after every fallible initialization step succeeds.
                 service.keypool.write().await.load(keypool, by_chain);
                 let state = service.publish_state(state).await;

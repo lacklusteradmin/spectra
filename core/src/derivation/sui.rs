@@ -6,6 +6,16 @@ use crate::derivation::error::DerivationError;
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
+pub(crate) fn address_from_public_key(public_key: &[u8; 32]) -> String {
+    let digest = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&[0x00])
+        .update(public_key)
+        .finalize();
+    format!("0x{}", hex::encode(digest.as_bytes()))
+}
+
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
 // Derive Sui address, public key, and private key from a mnemonic via BIP-39 + SLIP-10 ed25519.
@@ -23,13 +33,7 @@ pub(crate) fn derive_from_seed_phrase(
     let public_key = signing_key.verifying_key().to_bytes();
 
     let address = if want_address {
-        let digest = blake2b_simd::Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(&[0x00])
-            .update(&public_key)
-            .finalize();
-        Some(format!("0x{}", hex::encode(digest.as_bytes())))
+        Some(address_from_public_key(&public_key))
     } else {
         None
     };

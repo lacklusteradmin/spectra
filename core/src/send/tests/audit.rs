@@ -53,7 +53,9 @@ fn audit_aptos_mnemonic_address_and_signed_message_match_official_sdk() {
         1,
     )
     .unwrap();
-    let signed: Value = serde_json::from_str(&prepared.sign(&key(&d)).unwrap()).unwrap();
+    let (body, hash) = prepared.sign(&key(&d)).unwrap();
+    assert_eq!(hash, expected["transaction_hash"].as_str().unwrap());
+    let signed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(
         signed["signature"]["signature"],
         format!("0x{}", expected["signature"].as_str().unwrap())
@@ -109,10 +111,12 @@ fn audit_sui_local_ptb_and_intent_signature_match_official_sdk() {
             &coins,
         )
     };
-    let (bytes, signature) = prepare(d.address.as_deref().unwrap(), 123456789, 10_000_000)
-        .unwrap()
-        .sign(&key(&d))
-        .unwrap();
+    let prepared = prepare(d.address.as_deref().unwrap(), 123456789, 10_000_000).unwrap();
+    assert_eq!(
+        prepared.transaction_digest(),
+        expected["transaction_digest"]
+    );
+    let (bytes, signature) = prepared.sign(&key(&d)).unwrap();
     assert_eq!(
         hex::encode(STANDARD.decode(bytes).unwrap()),
         expected["raw"]

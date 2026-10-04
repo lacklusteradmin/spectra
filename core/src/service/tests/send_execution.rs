@@ -197,6 +197,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
             amount: "1.5".into(),
             asset: "GRAM".into(),
             symbol: "GRAM".into(),
+            staking: None,
             created_at: 0.0,
             review_digest: String::new(),
             review: SendArtifactReview::default(),
@@ -211,10 +212,12 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
             seqno: 1,
             amount: 1,
             valid_until: 0,
+            jetton: None,
         },
         submission: None,
         signed_digest: None,
         substrate_verified_through: None,
+        icp_staking_receipts: vec![],
     };
     assert!(
         service
@@ -228,6 +231,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         seqno: 1,
         amount: 1,
         valid_until: (crate::store::now_unix() as u32) + 60,
+        jetton: None,
     };
     service
         .validate_signed_expiry(Chain::Ton, &stored)
@@ -239,13 +243,62 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         block_hash: [2; 32],
         amount: 1,
         token_contract: None,
+        fee_budget: "0".into(),
     };
-    assert!(
+    let server = wiremock::MockServer::start().await;
+    let head = Arc::new(std::sync::atomic::AtomicU64::new(102));
+    let mock_head = head.clone();
+    wiremock::Mock::given(wiremock::matchers::any())
+        .respond_with(move |request: &wiremock::Request| {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            let hash = bs58::encode([2; 32]).into_string();
+            let result = match body["method"].as_str().unwrap() {
+                "status" => serde_json::json!({"chain_id":"mainnet"}),
+                "block" if body["params"]["finality"] == "optimistic" => {
+                    serde_json::json!({"header":{"hash":hash,"height":mock_head.load(std::sync::atomic::Ordering::SeqCst)}})
+                }
+                "block" => serde_json::json!({"header":{"hash":hash,"height":1}}),
+                "EXPERIMENTAL_protocol_config" => {
+                    serde_json::json!({"transaction_validity_period":100})
+                }
+                other => panic!("Unexpected NEAR expiry read: {other}"),
+            };
+            wiremock::ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"jsonrpc":"2.0","id":"1","result":result}))
+        })
+        .mount(&server)
+        .await;
+    let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        chain_id: Chain::Near,
+        capabilities: vec![crate::EndpointCapability::Verification],
+        endpoints: vec![server.uri()],
+    }])
+    .unwrap();
+    // Both native and NEP-141 use the exact referenced block. A brand new
+    // artifact can be expired; an old artifact can still be protocol-valid.
+    for token_contract in [None, Some("token.near".to_string())] {
+        if let PreparedPayload::Near {
+            token_contract: contract,
+            ..
+        } = &mut stored.prepared
+        {
+            *contract = token_contract;
+        }
+        stored.view.created_at = crate::store::now_unix();
+        head.store(102, std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            service
+                .validate_signed_expiry(Chain::Near, &stored)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("expired")
+        );
+        stored.view.created_at = 0.0;
+        head.store(101, std::sync::atomic::Ordering::SeqCst);
         service
             .validate_signed_expiry(Chain::Near, &stored)
             .await
-            .unwrap_err()
-            .to_string()
-            .contains("expired")
-    );
+            .unwrap();
+    }
 }

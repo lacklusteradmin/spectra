@@ -2,7 +2,7 @@
 //! opened.
 //!
 //! The CLI holds no wallet model of its own — `WalletState` and
-//! `CoreAppState` are core's, in the same SQLite store the app uses.
+//! `CoreAppState` are core's, using the same SQLite schema as the app.
 
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ impl SecretSource {
     /// Errors rather than prompting when stdin is not a terminal: a CLI
     /// blocked on a hidden prompt in CI is indistinguishable from one that
     /// hung.
-    pub fn resolve(&self, prompt: &str) -> CliResult<String> {
+    pub fn resolve(&self, prompt: &str, file_flag: &str) -> CliResult<String> {
         if let Some(path) = &self.file {
             return read_secret_file(path);
         }
@@ -43,9 +43,8 @@ impl SecretSource {
                 .map_err(|e| CliError::failure(format!("could not read {prompt}: {e}")));
         }
         Err(CliError::usage(format!(
-            "no {prompt} available — pass --{}-file <path> (or `-` for stdin), \
-             or set the matching environment variable",
-            prompt.replace(' ', "-")
+            "no {prompt} available — pass --{file_flag} <path> (or `-` for stdin), \
+             or set the matching environment variable"
         )))
     }
 }

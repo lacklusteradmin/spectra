@@ -23,10 +23,13 @@ pub enum EndpointApi {
     Koios,
     Horizon,
     AptosRest,
+    AptosIndexer,
     IcpRosetta,
+    IcpReplica,
     TronHttp,
     TrongridV1,
     Nearblocks,
+    Fastnear,
     Insight,
     KaspaRest,
     BchRestV2,
@@ -52,10 +55,13 @@ impl EndpointApi {
             Self::Koios => "koios",
             Self::Horizon => "horizon",
             Self::AptosRest => "aptos-rest",
+            Self::AptosIndexer => "aptos-indexer",
             Self::IcpRosetta => "icp-rosetta",
+            Self::IcpReplica => "icp-replica",
             Self::TronHttp => "tron-http",
             Self::TrongridV1 => "trongrid-v1",
             Self::Nearblocks => "nearblocks",
+            Self::Fastnear => "fastnear",
             Self::Insight => "insight",
             Self::KaspaRest => "kaspa-rest",
             Self::BchRestV2 => "bch-rest-v2",
@@ -239,6 +245,9 @@ pub fn endpoint_capability_options(
     chain: crate::registry::Chain,
     api: EndpointApi,
 ) -> Vec<EndpointCapability> {
+    if !chain.compatible_endpoint_apis().contains(&api) {
+        return Vec::new();
+    }
     use EndpointApi::*;
     use EndpointCapability::{
         Balance, Broadcast, Fee, History, Staking, TokenBalance, TokenDiscovery, TokenHistory,
@@ -265,19 +274,13 @@ pub fn endpoint_capability_options(
             Verification,
             TokenBalance,
             TokenDiscovery,
+            TokenHistory,
             Staking,
         ],
         // An Aptos node lists the legacy coins an account stores, but not its
         // fungible-asset stores, which hold the tokens that matter now.
-        AptosRest => &[
-            Balance,
-            History,
-            Fee,
-            Broadcast,
-            Verification,
-            TokenBalance,
-            Staking,
-        ],
+        AptosRest => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
+        AptosIndexer => &[History, TokenHistory, TokenDiscovery],
         NearJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
         XrplJsonRpc => &[Balance, History, Fee, Broadcast, Verification],
         TronHttp => &[Balance, Fee, Broadcast, Verification, TokenBalance],
@@ -289,12 +292,14 @@ pub fn endpoint_capability_options(
         BchRestV2 => &[Balance, History, Utxo, Broadcast, Verification],
         Blockscout => &[History, TokenHistory, TokenDiscovery],
         ToncenterV2 => &[Balance, History, Fee, Broadcast, Verification, TokenBalance],
-        ToncenterV3 => &[TokenBalance, TokenDiscovery],
+        ToncenterV3 => &[Verification, TokenBalance, TokenDiscovery, TokenHistory],
         Koios => &[Balance, History, Utxo, Fee, Broadcast, Verification],
         Horizon => &[Balance, History, Fee, Broadcast, Verification],
         IcpRosetta => &[Balance, History, Fee, Broadcast, Verification],
+        IcpReplica => &[Broadcast, Verification, Staking],
         TrongridV1 => &[History, TokenHistory, TokenDiscovery],
-        Nearblocks => &[History],
+        Nearblocks => &[History, TokenHistory, TokenDiscovery],
+        Fastnear => &[Staking],
         SubstrateJsonRpc => &[Balance, Fee, Broadcast, Verification, Staking],
     };
     values

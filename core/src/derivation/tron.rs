@@ -50,6 +50,13 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     Keccak256::digest(data).into()
 }
 
+pub(crate) fn address_from_public_key(key: &PublicKey) -> String {
+    let hash = keccak256(&key.serialize_uncompressed()[1..]);
+    let mut payload = vec![0x41];
+    payload.extend_from_slice(&hash[12..]);
+    bs58::encode(&payload).with_check().into_string()
+}
+
 // Derive Tron address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
@@ -68,11 +75,7 @@ pub(crate) fn derive_from_seed_phrase(
     let private_bytes = xpriv.private_key.secret_bytes();
 
     let address = if want_address {
-        let uncompressed = public_key.serialize_uncompressed();
-        let hash = keccak256(&uncompressed[1..]);
-        let mut payload = vec![0x41u8];
-        payload.extend_from_slice(&hash[12..]);
-        Some(bs58::encode(&payload).with_check().into_string())
+        Some(address_from_public_key(&public_key))
     } else {
         None
     };

@@ -99,17 +99,6 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
     assert_eq!(tx.confirmation_count, Some(6));
     assert_eq!(tx.receipt_block_number, Some(900_000));
 
-    // A transaction given up on stores a reason, not a sentence: the text a
-    // user reads is localized at render, so changing language does not
-    // leave old records in the old one.
-    assert_eq!(
-        serde_json::to_value(
-            crate::store::persistence_models::TransactionFailure::StuckAfterRetries
-        )
-        .unwrap(),
-        serde_json::json!({"kind": "stuckAfterRetries"})
-    );
-
     // Applying the same resolution again is not a change.
     let again = service
         .apply_resolved_pending_statuses(
@@ -125,62 +114,6 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
         .await
         .expect("apply");
     assert!(!again[0].status_changed);
-}
-
-/// Age alone is not failure. A transaction is given up on only after it is
-/// both old and has failed to resolve repeatedly.
-///
-/// Goes through the store: the service reads its own transactions to find
-/// the candidates, which is the path the app takes.
-#[tokio::test]
-async fn stale_pending_needs_both_age_and_repeated_failures() {
-    let service = WalletService::new(Vec::new()).expect("service");
-    service
-        .open_state(tmp_db("stale-pending"))
-        .await
-        .expect("open");
-    service
-        .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
-            id: "tx1".into(),
-            wallet_id: Some("w1".into()),
-            chain_id: crate::registry::Chain::Bitcoin,
-            tx_hash: Some("hash-tx1".into()),
-            created_at: 0.0,
-            payload: pending_send("tx1", crate::registry::Chain::Bitcoin),
-        }])
-        .await
-        .expect("store");
-
-    assert!(
-        service
-            .stale_pending_failure_ids(crate::registry::Chain::Bitcoin)
-            .await
-            .expect("read")
-            .is_empty(),
-        "old enough, but it has never failed a poll"
-    );
-
-    for _ in 0..6 {
-        service
-            .record_status_poll("tx1".into(), crate::service::StatusPollOutcome::Failed)
-            .await;
-    }
-    assert_eq!(
-        service
-            .stale_pending_failure_ids(crate::registry::Chain::Bitcoin)
-            .await
-            .expect("read"),
-        vec!["tx1".to_string()]
-    );
-
-    // Another chain's sweep must not pick it up.
-    assert!(
-        service
-            .stale_pending_failure_ids(crate::registry::Chain::Litecoin)
-            .await
-            .expect("read")
-            .is_empty()
-    );
 }
 
 /// Pruning drops trackers for transactions core does not hold, judged from

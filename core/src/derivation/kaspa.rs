@@ -102,7 +102,11 @@ fn convert_bits(data: &[u8], from: u32, to: u32, pad: bool) -> Result<Vec<u8>, D
     Ok(out)
 }
 
-fn encode_kaspa_address(version: u8, payload: &[u8], hrp: &str) -> Result<String, DerivationError> {
+pub(crate) fn encode_kaspa_address(
+    version: u8,
+    payload: &[u8],
+    hrp: &str,
+) -> Result<String, DerivationError> {
     let mut data = Vec::with_capacity(1 + payload.len());
     data.push(version);
     data.extend_from_slice(payload);

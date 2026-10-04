@@ -44,7 +44,7 @@ pub enum WalletCommand {
     Derived,
     /// Generate a new wallet and its seed phrase.
     New(NewArgs),
-    /// Import a wallet from an existing seed phrase.
+    /// Import a wallet from a seed phrase or raw private key.
     Import(ImportArgs),
     /// Track addresses or a Bitcoin account xpub without its keys.
     Watch(WatchArgs),
@@ -64,13 +64,13 @@ pub enum WalletCommand {
     },
     /// Delete a wallet, its history and its secrets.
     Delete(DeleteArgs),
-    /// Decrypt and print a wallet's seed phrase.
+    /// Decrypt and print a wallet's seed phrase or private key.
     Export(ExportArgs),
 }
 
 #[derive(Args)]
 pub struct CreationArgs {
-    /// Chain display name, registry id or symbol. Repeat it to import one
+    /// Chain display name or registry id. Repeat it to import one
     /// seed across several chains; `new` takes exactly one.
     #[arg(long, required = true)]
     chain: Vec<String>,
@@ -89,8 +89,7 @@ pub struct CreationArgs {
     /// Read the wallet password from this environment variable.
     #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
     password_env: Option<String>,
-    /// Store the seed without a password. The material is not encrypted, so
-    /// anything that can read the secret store can read the phrase.
+    /// Encrypt the seed with a local key stored in this data directory, without a wallet password.
     #[arg(long, conflicts_with_all = ["password_file"])]
     no_password: bool,
 }
@@ -118,7 +117,7 @@ impl CreationArgs {
             file: self.password_file.clone(),
             env,
         }
-        .resolve("password")
+        .resolve("password", "password-file")
     }
 }
 
@@ -152,14 +151,14 @@ pub struct ImportArgs {
 
 #[derive(Args)]
 pub struct WatchArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long)]
     chain: String,
     /// Address to track. Repeat it to watch several: an import creates one
     /// wallet per address, which is what the app's multi-line input does.
     #[arg(long, required_unless_present = "xpub", conflicts_with = "xpub")]
     address: Vec<String>,
-    /// Bitcoin mainnet account xpub, ypub or zpub.
+    /// Bitcoin account public key: xpub/ypub/zpub or testnet tpub/upub/vpub.
     #[arg(long, required_unless_present = "address", conflicts_with = "address")]
     xpub: Option<String>,
     /// Wallet name (default: core assigns an available "Wallet N").
@@ -194,7 +193,7 @@ pub struct DeleteArgs {
 pub struct ExportArgs {
     /// Wallet id, name or address.
     wallet: String,
-    /// Print the phrase without asking for confirmation.
+    /// Confirm printing the wallet's secret in plain text.
     #[arg(long)]
     yes: bool,
     /// Read the wallet password from this file; `-` means stdin.
@@ -342,7 +341,7 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
         file: args.seed_file.clone(),
         env,
     }
-    .resolve("seed phrase")?;
+    .resolve("seed phrase", "seed-file")?;
 
     crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
 
@@ -380,9 +379,9 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -
         file: args.private_key_file.clone(),
         env,
     }
-    .resolve("private key")?;
+    .resolve("private key", "private-key-file")?;
     let private_key = private_key.trim().trim_start_matches("0x").to_string();
-    let password = args.creation.password()?;
+    let password = args.creation.optional_password()?;
 
     // Every chain named goes to core, which takes one for a private key and
     // derives its address before sealing anything.
@@ -393,7 +392,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -
     );
     commit.request.is_private_key_import = true;
     commit.private_key = Some(private_key.clone());
-    commit.password = Some(password);
+    commit.password = password;
 
     let service = ctx.service()?;
     let outcome = ctx.rt.block_on(service.import_wallets(commit))?;
@@ -658,8 +657,13 @@ fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
 fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     if !args.yes {
+        let secrets = if wallet.is_watch_only() {
+            ""
+        } else {
+            " and its stored signing material"
+        };
         return Err(CliError::usage(format!(
-            "this deletes \"{}\" ({}), its history and its seed — re-run with --yes",
+            "this deletes \"{}\" ({}), its history{secrets} — re-run with --yes",
             wallet.name,
             super::chain_name(wallet.chain_id)
         )));
@@ -677,7 +681,9 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
 fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     if wallet.is_watch_only() {
-        return Err(CliError::rejected("a watch-only wallet has no seed phrase"));
+        return Err(CliError::rejected(
+            "a watch-only wallet has no signing material to export",
+        ));
     }
     // A wallet imported from a raw key has no phrase; the wallet records which
     // it signs with.
@@ -700,15 +706,14 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         .password_env
         .clone()
         .filter(|name| std::env::var_os(name).is_some());
-    // Asked for only when there is something to unlock: a wallet stored
-    // without a password has nothing for it to decrypt.
+    // Ask for a password only when the wallet has password protection.
     let password = if wallet.signing.requires_password() {
         Some(
             SecretSource {
                 file: args.password_file.clone(),
                 env,
             }
-            .resolve("password")?,
+            .resolve("password", "password-file")?,
         )
     } else {
         None

@@ -1,0 +1,169 @@
+{
+  "observed_at_utc": "2026-10-04",
+  "scope": "Read-only official sources/public RPCs; no live signing or broadcast",
+  "user_agent": "spectra-core/0.1.0",
+  "sources": [
+    {
+      "url": "https://github.com/solana-program/stake/blob/main/interface/src/instruction.rs",
+      "sha256": "a237332c984a9eb3e67b4269f7201469178660d65a6bbfa6c7cb996f2ba2f29f"
+    },
+    {
+      "url": "https://github.com/aptos-labs/aptos-core/blob/main/aptos-move/framework/aptos-framework/sources/delegation_pool.move",
+      "sha256": "611403cc5cd4eca3cf5d5e841f4dccc411881a5758229ebb7dabf1b932c073d1"
+    },
+    {
+      "url": "https://github.com/near/core-contracts/blob/master/staking-pool/src/lib.rs",
+      "sha256": "468b7f504272730d8a219436db4a251b76bd6f1a03e1bc16b668dbd723495024"
+    },
+    {
+      "url": "https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/packages/sui-system/sources/sui_system.move",
+      "sha256": "e57a67e4fd32e6998cab2f3e766c594b03a83acd64f2a741af9d1be6cdc39fa8"
+    },
+    {
+      "url": "https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/packages/sui-system/sources/validator_set.move",
+      "sha256": "5e4980aba7182772b38b417b3b64e8ddb4e370b52060aba5958c4d7765e64498"
+    }
+  ],
+  "documentation": [
+    "https://solana.com/docs/references/staking/stake-accounts",
+    "https://solana.com/docs/rpc/http/getstakeminimumdelegation",
+    "https://aptos.dev/network/blockchain/gas-txn-fee",
+    "https://docs.fastnear.com/api/v1/account-staking",
+    "https://github.com/near/core-contracts/blob/master/whitelist/src/lib.rs"
+  ],
+  "facts": {
+    "solana": "Independent wallet-owned createWithSeed account, wallet staker and withdrawer; current instruction interface omits sysvar accounts; live minimum/rent and simulation; rewards remain inside stake balance.",
+    "aptos": "Only DelegationPool exists; add_stake/unlock/withdraw. Minimum shares balance 1000000000 octas; add-stake fee reduces credited shares and unlock/withdraw can adjust amounts to avoid dust. Zero-signature simulation must emit exact reviewed amount; gas budget derives from simulation with 20%+100 units headroom.",
+    "near": "Approved pool whitelist is required for new deposit_and_stake; existing position unstake/withdraw remains possible after delisting. get_account owns exact balances and can_withdraw; no inferred 4-epoch deadline. Fastnear discovers all known pool IDs, selected-network contracts prove wallet ownership and amount; full-access key required. Native storage reserve derives from protocol config.",
+    "sui": "0x5 shared SuiSystemState initial_shared_version 1; request_add_stake takes Coin<SUI>/validator, creates wallet-owned StakedSui; request_withdraw_stake consumes entire StakedSui object and returns principal+rewards. Minimum 1000000000 MIST. Exact object owner/type/version/digest and dry-run before signing/first broadcast."
+  },
+  "live_reads": [
+    {
+      "name": "solana-stake-minimum.json",
+      "sha256": "aaa1bc8badc1f0d3e34183c37c5ab3f8f152622e5ecc068113855313a38c7af1",
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.3.0",
+            "slot": 453376570
+          },
+          "value": 1000000000
+        },
+        "id": 1
+      }
+    },
+    {
+      "name": "near-fastnear.json",
+      "sha256": "68aa14de30748260078ca00796e483cb4f5257d799172ddf688c1708f84d22ac",
+      "response": {
+        "account_id": "figment.poolv1.near",
+        "pools": [
+          {
+            "pool_id": "figment.poolv1.near",
+            "last_update_block_height": 218520359
+          }
+        ]
+      }
+    },
+    {
+      "name": "near-protocol-config.json",
+      "sha256": "94b069321d9375dcdab9cfc9844bedf586abf04abe81022266ae76389ea24f58",
+      "response": {
+        "protocol_version": 86,
+        "runtime_config": {
+          "storage_amount_per_byte": "10000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "sui-system-object.json",
+      "sha256": "7d95970e9447d6767c5a6ee5a9e011f2e999e0637be721516a228699478b0b8b",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "data": {
+            "objectId": "0x0000000000000000000000000000000000000000000000000000000000000005",
+            "version": "1035517497",
+            "digest": "5nijb3W63AY9zipLPKsWu97zS7oxbhUbfmWwikeuu4a7",
+            "type": "0x3::sui_system::SuiSystemState",
+            "owner": {
+              "Shared": {
+                "initial_shared_version": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "aptos-get-stake.json",
+      "sha256": "40bf24f304b62f2b801223dbae03f994987db1ff95fa940087c86c1d2928acc1",
+      "response": [
+        "0",
+        "2679760560",
+        "0"
+      ]
+    },
+    {
+      "name": "aptos-delegation-allowlist.json",
+      "sha256": "1c28f2eb0958c3d15db1f0f0e7f2b8998ca2b8f67ab426a1fbb3d561fe76fad9",
+      "response": [
+        true
+      ]
+    },
+    {
+      "name": "aptos-pending-withdrawal.json",
+      "sha256": "7ea1cfcecb6ec169fb19444ea5c3ba38dcd58b3853f46b14dce69bbd05b6aa18",
+      "response": [
+        true,
+        "2679760560"
+      ]
+    },
+    {
+      "name": "aptos-add-stake-fee.json",
+      "sha256": "111ac750eb2a8835488136214f605fa66a42d3456d09dfea2b68cb642be903dc",
+      "response": [
+        "10684"
+      ]
+    },
+    {
+      "name": "aptos-pool-resource.json",
+      "sha256": "121d948557492c2ad4763e71106ff6f7a057a7095586d7fc0208106aac729abe",
+      "response": {
+        "locked_until_secs": "1791411854"
+      }
+    }
+  ],
+  "independent_fixtures": {
+    "generator": "scripts/generate-account-staking-vectors.cjs",
+    "fixture": "core/tests/fixtures/account-staking-vectors.json",
+    "sdks": [
+      "@solana/web3.js@1.98.4",
+      "@near-js/transactions@2.5.1",
+      "@near-js/crypto@2.5.1",
+      "@aptos-labs/ts-sdk@1.39.0",
+      "@mysten/sui@1.45.2"
+    ]
+  },
+  "deployed_program_proof": {
+    "file": "docs/audits/solana-staking-simulation-2026-10-04.json",
+    "sha256": "b7ea5bb499b61d912edcf5432661e1aff1486d9bd3d856a29bbf5bc0257c9f8a",
+    "network": "Solana mainnet",
+    "api_version": "4.3.0",
+    "slot_range": [
+      453383262,
+      453383263
+    ],
+    "all_signatures_zero": true,
+    "private_key_unknown": true,
+    "no_broadcast": true,
+    "results": {
+      "modern-no-sysvars": null,
+      "legacy-with-sysvars": null,
+      "modern-deactivate": null,
+      "modern-withdraw": null
+    }
+  }
+}

@@ -54,14 +54,14 @@ struct TransactionDetailView: View {
                 TransactionStatusBadge(status: tx.status)
             }
             Text(signedAmountText).font(.title.weight(.bold))
-                .foregroundStyle(Color.spectraTransactionAmountColor(isReceive: tx.kind == .receive))
+                .foregroundStyle(tx.amountColor)
                 .spectraNumericTextLayout(minimumScaleFactor: 0.5)
         }.padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading)
             .spectraElevatedFill()
     }
     private var signedAmountText: String {
         let amount = store.amounts.formattedTransactionDetailAmount(displayedTransaction)
-        return displayedTransaction.kind == .receive ? "+\(amount)" : "-\(amount)"
+        return displayedTransaction.amountSign + amount
     }
     // Core says which rows can still be replaced; this row is one of them or
     // it is not. Second on the page because it is the only thing here a
@@ -260,9 +260,9 @@ struct TransactionDetailView: View {
         var items: [TransactionTimelineItem] = [
             TransactionTimelineItem(
                 id: "recorded",
-                title: displayedTransaction.kind == .send ? "Created" : "Recorded",
+                title: displayedTransaction.isSubmittedOperation ? "Created" : "Recorded",
                 detail: displayedTransaction.fullTimestampText,
-                systemImage: displayedTransaction.kind == .send ? "paperplane.fill" : "arrow.down.circle.fill",
+                systemImage: displayedTransaction.isSubmittedOperation ? "paperplane.fill" : "arrow.down.circle.fill",
                 tint: .accentColor,
                 isComplete: true,
                 isCurrent: false
@@ -273,7 +273,7 @@ struct TransactionDetailView: View {
             items.append(
                 TransactionTimelineItem(
                     id: "network-hash",
-                    title: displayedTransaction.kind == .send ? "Broadcast" : "Detected",
+                    title: displayedTransaction.isSubmittedOperation ? "Broadcast" : "Detected",
                     detail: AppLocalization.format("Hash %@", shortTransactionHash(transactionHash)),
                     systemImage: "link",
                     tint: .accentColor,

@@ -50,7 +50,7 @@ private func fiatRateRefreshMessage(_ failure: QuoteRefreshFailure) -> String {
     }
 }
 
-/// Core's currencies, with what a picker needs: an order, a name and an icon.
+/// Core's currencies, with the order and name a picker needs.
 /// The code comes from core's formatting rules, which carry it.
 extension FiatCurrency: CaseIterable, Identifiable {
     private static let catalog = fiatCurrencyCatalog()
@@ -60,15 +60,6 @@ extension FiatCurrency: CaseIterable, Identifiable {
     public var id: String { code }
     /// The ISO 4217 code.
     var code: String { displayRules.code }
-    var iconName: String? {
-        switch self {
-        case .usd: return "fiat/usd"
-        case .eur: return "fiat/eur"
-        case .gbp: return "fiat/gbp"
-        case .cny: return "fiat/cny"
-        case .jpy, .inr, .cad, .aud, .chf, .brl, .sgd, .aed: return nil
-        }
-    }
     /// The currency's name and code, in the display language. The system
     /// names every ISO 4217 currency, so no table here has to.
     var displayName: String {

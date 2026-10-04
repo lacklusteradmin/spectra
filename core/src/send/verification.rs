@@ -82,11 +82,11 @@ impl From<&crate::store::persistence_models::CorePersistedTransactionRecord>
 pub fn verification_notice_for_last_sent(
     snapshot: Option<LastSentTransactionSnapshot>,
 ) -> SendVerificationNotice {
-    use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+    use crate::store::wallet_domain::CoreTransactionStatus;
     let Some(tx) = snapshot else {
         return SendVerificationNotice::default();
     };
-    if tx.kind != CoreTransactionKind::Send {
+    if !tx.kind.is_submitted() {
         return SendVerificationNotice::default();
     }
     let hash_trimmed = tx

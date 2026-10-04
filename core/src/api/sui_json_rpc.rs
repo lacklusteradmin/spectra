@@ -22,7 +22,9 @@ pub struct SuiHistoryEntry {
     /// `None` until the transaction is in a checkpoint, which is what dates it.
     pub timestamp_ms: Option<u64>,
     pub is_incoming: bool,
-    pub amount_mist: u64,
+    pub amount_mist: String,
+    pub contract: Option<String>,
+    pub amount_display: Option<String>,
     /// The sender when incoming; the largest other recipient when outgoing.
     pub from: String,
     pub to: String,
@@ -45,6 +47,20 @@ pub struct SuiClient {
 }
 
 impl SuiClient {
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        digest: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        crate::api::transaction_status::validate_base58_hash(digest, 32)?;
+        let response = self
+            .call(
+                "sui_getTransactionBlock",
+                json!([digest, {"showEffects":true}]),
+            )
+            .await?;
+        sui_transaction_status(&response, digest)
+    }
+
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
@@ -64,9 +80,57 @@ impl SuiClient {
     }
 }
 
+fn sui_transaction_status(
+    response: &Value,
+    digest: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    if response["digest"].as_str() != Some(digest) {
+        return Err(ApiError::decode("Sui status: transaction digest mismatch"));
+    }
+    let Some(checkpoint) = response.get("checkpoint").filter(|value| !value.is_null()) else {
+        return Ok(TransactionStatus::Pending);
+    };
+    let checkpoint = checkpoint
+        .as_str()
+        .and_then(|value| value.parse::<u64>().ok())
+        .or_decode("Sui status: invalid checkpoint")?;
+    let succeeded = match response
+        .pointer("/effects/status/status")
+        .and_then(Value::as_str)
+    {
+        Some("success") => true,
+        Some("failure") => false,
+        _ => return Err(ApiError::decode("Sui status: missing execution result")),
+    };
+    Ok(TransactionStatus::Confirmed {
+        succeeded,
+        block: Some(checkpoint),
+    })
+}
+
 // Sui fetch paths: native balance, per-coin balance, history.
 
 impl SuiClient {
+    pub async fn verify_network(&self, chain: crate::registry::Chain) -> Result<(), ApiError> {
+        let (identifier, genesis) = chain
+            .sui_network_identity()
+            .or_decode("Unsupported Sui network")?;
+        let actual = self.call("sui_getChainIdentifier", json!([])).await?;
+        if actual.as_str() != Some(identifier) {
+            return Err(ApiError::invalid("Sui endpoint is on the wrong network"));
+        }
+        let checkpoint = self.call("sui_getCheckpoint", json!(["0"])).await?;
+        if checkpoint["sequenceNumber"].as_str() != Some("0")
+            || checkpoint["digest"].as_str() != Some(genesis)
+        {
+            return Err(ApiError::invalid(
+                "Sui endpoint has the wrong genesis checkpoint",
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<SuiBalance, ApiError> {
         let result = self
             .call("suix_getBalance", json!([address, "0x2::sui::SUI"]))
@@ -84,8 +148,35 @@ impl SuiClient {
     /// Queried as sender and as recipient, since neither filter alone sees
     /// both directions, and read from each transaction's balance changes.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<SuiHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<SuiHistoryEntry>, ApiError> {
+        #[derive(Default, serde::Serialize, serde::Deserialize)]
+        struct Cursor {
+            from: Option<Value>,
+            to: Option<Value>,
+            from_done: bool,
+            to_done: bool,
+        }
+        let mut position: Cursor = cursor
+            .map(serde_json::from_str)
+            .transpose()?
+            .unwrap_or_default();
         let mut blocks = Vec::new();
         for filter in ["FromAddress", "ToAddress"] {
+            let (after, done) = if filter == "FromAddress" {
+                (&mut position.from, &mut position.from_done)
+            } else {
+                (&mut position.to, &mut position.to_done)
+            };
+            if *done {
+                continue;
+            }
             let result = self
                 .call(
                     "suix_queryTransactionBlocks",
@@ -98,12 +189,31 @@ impl SuiClient {
                                 "showBalanceChanges": true
                             }
                         },
-                        null,
+                        after.clone(),
                         25,
                         true
                     ]),
                 )
                 .await?;
+            let count = result
+                .get("data")
+                .and_then(Value::as_array)
+                .or_decode("Sui history: missing page rows")?
+                .len();
+            *done = result
+                .get("hasNextPage")
+                .and_then(Value::as_bool)
+                .map(|more| !more)
+                .unwrap_or(count < 25);
+            if !*done {
+                *after = Some(
+                    result
+                        .get("nextCursor")
+                        .filter(|value| !value.is_null())
+                        .or_decode("Sui history: missing next cursor")?
+                        .clone(),
+                );
+            }
             blocks.extend(
                 result
                     .get("data")
@@ -112,20 +222,57 @@ impl SuiClient {
                     .unwrap_or_default(),
             );
         }
-        sui_history_from_blocks(&blocks, address)
+        let next_cursor = (!(position.from_done && position.to_done))
+            .then(|| serde_json::to_string(&position))
+            .transpose()?;
+        let mut items = sui_history_from_blocks(&blocks, address)?;
+        if items
+            .iter()
+            .filter_map(|entry| entry.contract.as_ref())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            > 100
+        {
+            return Err(ApiError::Rejected(
+                "Sui history page exceeds 100 token types".into(),
+            ));
+        }
+        let mut decimals = std::collections::HashMap::new();
+        for entry in &mut items {
+            if let Some(contract) = &entry.contract {
+                let precision = if let Some(precision) = decimals.get(contract) {
+                    *precision
+                } else {
+                    let metadata = self.call("suix_getCoinMetadata", json!([contract])).await?;
+                    let precision = crate::api::checked_token_decimals(
+                        metadata["decimals"]
+                            .as_u64()
+                            .map(u128::from)
+                            .or_decode("Sui token history: missing precision")?,
+                    )?;
+                    decimals.insert(contract.clone(), precision);
+                    precision
+                };
+                entry.amount_display =
+                    crate::decimal::from_unit_digits(&entry.amount_mist, u32::from(precision));
+                if entry.amount_display.is_none() {
+                    return Err(ApiError::Decode("Sui token history: invalid amount".into()));
+                }
+            }
+        }
+        Ok(crate::api::HistoryPage { items, next_cursor })
     }
 
     /// A coin type's own decimals, as the node reports them.
     ///
-    /// `None` when the type has no metadata — a caller then falls back to what
-    /// it was told, which is the only case where a catalog number is used.
+    /// `None` when metadata is absent or exceeds core's supported precision.
     pub async fn fetch_coin_decimals(&self, coin_type: &str) -> Option<u8> {
         self.call("suix_getCoinMetadata", json!([coin_type]))
             .await
             .ok()?
             .get("decimals")?
             .as_u64()
-            .map(|d| d as u8)
+            .and_then(|d| crate::api::checked_token_decimals(u128::from(d)).ok())
     }
 
     /// Every coin type the address holds, as the node reports it.
@@ -208,89 +355,118 @@ fn sui_history_from_blocks(
             .and_then(Value::as_str)
             .map(str::to_lowercase)
     };
-    let int = |value: Option<&Value>| -> i128 {
+    let int = |value: Option<&Value>| -> Result<i128, ApiError> {
         value
             .and_then(Value::as_str)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0)
+            .and_then(|amount| amount.parse().ok())
+            .or_decode("Sui history: malformed integer amount")
     };
     let mut seen = std::collections::HashSet::new();
     let mut entries = Vec::new();
     for block in blocks {
-        let Some(digest) = block.get("digest").and_then(Value::as_str) else {
-            continue;
-        };
+        let digest = block
+            .get("digest")
+            .and_then(Value::as_str)
+            .filter(|digest| !digest.is_empty())
+            .or_decode("Sui history: missing digest")?;
         if !seen.insert(digest.to_string()) {
             continue;
         }
-        let sui_changes: Vec<(String, i128)> = block
-            .get("balanceChanges")
-            .and_then(Value::as_array)
-            .map(|changes| {
-                changes
-                    .iter()
-                    .filter(|c| c.get("coinType").and_then(Value::as_str) == Some(SUI_COIN_TYPE))
-                    .filter_map(|c| Some((owner_of(c)?, int(c.get("amount")))))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let net: i128 = sui_changes
+        let coin_types: std::collections::BTreeSet<_> = block["balanceChanges"]
+            .as_array()
+            .or_decode("Sui history: missing balance changes")?
             .iter()
-            .filter(|(owner, _)| *owner == address)
-            .map(|(_, amount)| amount)
-            .sum();
-        let gas_owner = block
-            .pointer("/transaction/data/gasData/owner")
-            .and_then(Value::as_str)
-            .map(str::to_lowercase);
-        let gas = if gas_owner.as_deref() == Some(address.as_str()) {
-            let used = block.pointer("/effects/gasUsed");
-            int(used.and_then(|u| u.get("computationCost")))
-                + int(used.and_then(|u| u.get("storageCost")))
-                - int(used.and_then(|u| u.get("storageRebate")))
-        } else {
-            0
-        };
-        let transfer = net + gas;
-        if transfer == 0 {
-            continue;
-        }
-        let Ok(amount_mist) = u64::try_from(transfer.unsigned_abs()) else {
-            continue;
-        };
-        let sender = block
-            .pointer("/transaction/data/sender")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let is_incoming = transfer > 0;
-        let (from, to) = if is_incoming {
-            (sender, address.clone())
-        } else {
-            let recipient = sui_changes
+            .filter(|change| owner_of(change).as_deref() == Some(address.as_str()))
+            .map(|change| {
+                change["coinType"]
+                    .as_str()
+                    .or_decode("Sui history: missing coin type")
+            })
+            .collect::<Result<_, _>>()?;
+        for coin_type in coin_types {
+            let mut sui_changes = Vec::new();
+            for change in block["balanceChanges"]
+                .as_array()
+                .or_decode("Sui history: missing balance changes")?
+            {
+                if change["coinType"].as_str() != Some(coin_type) {
+                    continue;
+                }
+                if let Some(owner) = owner_of(change) {
+                    sui_changes.push((owner, int(change.get("amount"))?));
+                }
+            }
+            let net = sui_changes
                 .iter()
-                .filter(|(owner, amount)| *owner != address && *amount > 0)
-                .max_by_key(|(_, amount)| *amount)
-                .map(|(owner, _)| owner.clone())
-                .unwrap_or_default();
-            (address.clone(), recipient)
-        };
-        let timestamp_ms = crate::api::time::history_time(
-            block.get("checkpoint").is_some_and(|c| !c.is_null()),
-            block
-                .get("timestampMs")
+                .filter(|(owner, _)| owner == &address)
+                .try_fold(0i128, |total, (_, amount)| {
+                    total
+                        .checked_add(*amount)
+                        .or_decode("Sui history amount overflow")
+                })?;
+            let gas_owner = block
+                .pointer("/transaction/data/gasData/owner")
                 .and_then(Value::as_str)
-                .and_then(|s| s.parse().ok()),
-            digest,
-        )?;
-        entries.push(SuiHistoryEntry {
-            digest: digest.to_string(),
-            timestamp_ms,
-            is_incoming,
-            amount_mist,
-            from,
-            to,
-        });
+                .map(str::to_lowercase);
+            let gas =
+                if coin_type == SUI_COIN_TYPE && gas_owner.as_deref() == Some(address.as_str()) {
+                    let used = block.pointer("/effects/gasUsed");
+                    int(used.and_then(|u| u.get("computationCost")))?
+                        .checked_add(int(used.and_then(|u| u.get("storageCost")))?)
+                        .and_then(|cost| {
+                            cost.checked_sub(int(used.and_then(|u| u.get("storageRebate"))).ok()?)
+                        })
+                        .or_decode("Sui history gas amount overflow")?
+                } else {
+                    0
+                };
+            let transfer = net
+                .checked_add(gas)
+                .or_decode("Sui history net amount overflow")?;
+            if transfer == 0 {
+                continue;
+            }
+            let amount_mist = transfer.unsigned_abs().to_string();
+            let sender = block
+                .pointer("/transaction/data/sender")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let is_incoming = transfer > 0;
+            let (from, to) = if is_incoming {
+                (sender, address.clone())
+            } else {
+                let recipient = sui_changes
+                    .iter()
+                    .filter(|(owner, amount)| *owner != address && *amount > 0)
+                    .max_by_key(|(_, amount)| *amount)
+                    .map(|(owner, _)| owner.clone())
+                    .unwrap_or_default();
+                (address.clone(), recipient)
+            };
+            let timestamp_ms = crate::api::time::history_time(
+                block.get("checkpoint").is_some_and(|c| !c.is_null()),
+                block
+                    .get("timestampMs")
+                    .and_then(Value::as_str)
+                    .and_then(|s| s.parse().ok()),
+                digest,
+            )?;
+            entries.push(SuiHistoryEntry {
+                digest: digest.to_string(),
+                timestamp_ms,
+                is_incoming,
+                amount_display: if coin_type == SUI_COIN_TYPE {
+                    crate::decimal::from_unit_digits(&amount_mist, 9)
+                } else {
+                    None
+                },
+                amount_mist,
+                contract: (coin_type != SUI_COIN_TYPE).then(|| coin_type.to_string()),
+                from,
+                to,
+            });
+        }
     }
     // Undated transactions are the newest.
     entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms.unwrap_or(u64::MAX)));
@@ -360,8 +536,17 @@ impl SuiClient {
         owner: &str,
         cursor: Option<&str>,
     ) -> Result<SuiCoinPage, ApiError> {
+        self.fetch_coins_page(owner, "0x2::sui::SUI", cursor).await
+    }
+
+    pub async fn fetch_coins_page(
+        &self,
+        owner: &str,
+        coin_type: &str,
+        cursor: Option<&str>,
+    ) -> Result<SuiCoinPage, ApiError> {
         let page = self
-            .call("suix_getCoins", json!([owner, "0x2::sui::SUI", cursor, 50]))
+            .call("suix_getCoins", json!([owner, coin_type, cursor, 50]))
             .await?;
         let coins = page["data"]
             .as_array()
@@ -460,12 +645,12 @@ mod history_tests {
         );
         let incoming = entries.iter().find(|e| e.digest == "in").unwrap();
         assert!(incoming.is_incoming);
-        assert_eq!(incoming.amount_mist, 4_770_000_000_000);
+        assert_eq!(incoming.amount_mist, "4770000000000");
         assert_eq!(incoming.from, THEM);
         let outgoing = entries.iter().find(|e| e.digest == "out").unwrap();
         assert!(!outgoing.is_incoming);
         assert_eq!(
-            outgoing.amount_mist, 2_500_100_000_000_000,
+            outgoing.amount_mist, "2500100000000000",
             "gas is not part of it"
         );
         assert_eq!(outgoing.to, THEM);
@@ -493,7 +678,7 @@ mod history_tests {
     /// A transaction whose only SUI effect is gas — here a net storage rebate
     /// while another coin moved — transfers no SUI.
     #[test]
-    fn gas_only_and_other_coin_transactions_yield_nothing() {
+    fn gas_rebate_is_excluded_but_other_coin_transfers_are_kept() {
         let rebate_only = block(
             "swap",
             ME,
@@ -504,10 +689,283 @@ mod history_tests {
                 change(THEM, "0x6::cetus::CETUS", "2699970876000000"),
             ]),
         );
-        assert!(
-            sui_history_from_blocks(&[rebate_only], ME)
-                .unwrap()
-                .is_empty()
-        );
+        let entries = sui_history_from_blocks(&[rebate_only], ME).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].contract.as_deref(), Some("0x6::cetus::CETUS"));
+        assert_eq!(entries[0].amount_mist, "2699970876000000");
+        assert!(!entries[0].is_incoming);
+    }
+}
+
+// Validator-directory response data; staking owns the projection.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiSystemStateSummary {
+    pub active_validators: Vec<SuiValidatorSummary>,
+}
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiValidatorSummary {
+    pub sui_address: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub project_url: String,
+    pub commission_rate: String,          // basis points, "500" = 5%
+    pub staking_pool_sui_balance: String, // MIST string
+}
+
+impl SuiClient {
+    pub async fn fetch_staking_validators(&self) -> Result<SuiSystemStateSummary, ApiError> {
+        let value = self
+            .call("suix_getLatestSuiSystemState", serde_json::json!([]))
+            .await?;
+        serde_json::from_value(value).map_err(ApiError::from)
+    }
+
+    pub(crate) async fn validate_staking_system(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        let (_, id, version) = chain.sui_staking_system()?;
+        let value = self
+            .call(
+                "sui_getObject",
+                json!([id,{"showOwner":true,"showType":true}]),
+            )
+            .await?;
+        if value["data"]["owner"]["Shared"]["initial_shared_version"]
+            .as_u64()
+            .or_else(|| {
+                value["data"]["owner"]["Shared"]["initial_shared_version"]
+                    .as_str()
+                    .and_then(|s| s.parse().ok())
+            })
+            != Some(version)
+            || value["data"]["type"].as_str() != Some("0x3::sui_system::SuiSystemState")
+        {
+            return Err(ApiError::invalid("Unexpected Sui staking system identity"));
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn simulate_staking(&self, bytes: &[u8]) -> Result<(), ApiError> {
+        use base64::Engine;
+        let result = self
+            .call(
+                "sui_dryRunTransactionBlock",
+                json!([base64::engine::general_purpose::STANDARD.encode(bytes)]),
+            )
+            .await?;
+        if result["effects"]["status"]["status"].as_str() != Some("success") {
+            return Err(ApiError::invalid(format!(
+                "Sui staking simulation refused: {}",
+                result["effects"]["status"]
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn fetch_delegated_stakes(
+        &self,
+        owner: &str,
+    ) -> Result<Vec<SuiDelegatedStake>, ApiError> {
+        let result = self.call("suix_getStakes", json!([owner])).await?;
+        let groups: Vec<SuiDelegatedStake> = serde_json::from_value(result)?;
+        let mut ids = std::collections::HashSet::new();
+        for group in &groups {
+            for stake in &group.stakes {
+                if !ids.insert(&stake.staked_sui_id)
+                    || stake.principal.parse::<u64>().is_err()
+                    || !matches!(stake.status.as_str(), "Active" | "Pending")
+                    || stake
+                        .estimated_reward
+                        .as_ref()
+                        .is_some_and(|r| r.parse::<u64>().is_err())
+                {
+                    return Err(ApiError::decode(
+                        "Sui stake: malformed or duplicate position",
+                    ));
+                }
+            }
+        }
+        Ok(groups)
+    }
+
+    pub(crate) async fn fetch_staked_object(
+        &self,
+        id: &str,
+        owner: &str,
+    ) -> Result<SuiStakedObject, ApiError> {
+        let result = self
+            .call(
+                "sui_getObject",
+                json!([id,{"showType":true,"showOwner":true,"showContent":true}]),
+            )
+            .await?;
+        let data = &result["data"];
+        let fields = &data["content"]["fields"];
+        if data["owner"]["AddressOwner"].as_str() != Some(owner)
+            || data["type"].as_str() != Some("0x3::staking_pool::StakedSui")
+            || data["objectId"].as_str() != Some(id)
+        {
+            return Err(ApiError::invalid(
+                "Sui stake object identity or owner differs from wallet",
+            ));
+        }
+        let version = data["version"]
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_decode("Sui stake: missing version")?;
+        let digest: [u8; 32] = bs58::decode(
+            data["digest"]
+                .as_str()
+                .or_decode("Sui stake: missing digest")?,
+        )
+        .into_vec()
+        .map_err(ApiError::decode)?
+        .try_into()
+        .map_err(|_| ApiError::decode("Sui stake: invalid digest"))?;
+        let principal = fields["principal"]
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_decode("Sui stake: missing principal")?;
+        let pool_id = fields["pool_id"]
+            .as_str()
+            .or_decode("Sui stake: missing pool")?
+            .to_string();
+        let activation_epoch = fields["stake_activation_epoch"]
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_decode("Sui stake: missing activation epoch")?;
+        Ok(SuiStakedObject {
+            version,
+            digest,
+            principal,
+            pool_id,
+            activation_epoch,
+        })
+    }
+
+    pub(crate) async fn validate_owned_sui_coin(
+        &self,
+        id: &str,
+        owner: &str,
+        version: u64,
+        digest: &[u8; 32],
+        balance: u64,
+    ) -> Result<(), ApiError> {
+        let result = self
+            .call(
+                "sui_getObject",
+                json!([id,{"showOwner":true,"showType":true,"showContent":true}]),
+            )
+            .await?;
+        let data = &result["data"];
+        if data["objectId"].as_str() != Some(id)
+            || data["owner"]["AddressOwner"].as_str() != Some(owner)
+            || data["type"].as_str() != Some("0x2::coin::Coin<0x2::sui::SUI>")
+            || data["version"].as_str().and_then(|s| s.parse::<u64>().ok()) != Some(version)
+            || data["digest"].as_str() != Some(bs58::encode(digest).into_string().as_str())
+            || data["content"]["fields"]["balance"]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                != Some(balance)
+        {
+            return Err(ApiError::invalid(
+                "Reviewed Sui gas object changed or is not owned by this wallet",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SuiDelegatedStake {
+    pub validator_address: String,
+    pub staking_pool: String,
+    pub stakes: Vec<SuiStake>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SuiStake {
+    pub staked_sui_id: String,
+    pub stake_active_epoch: String,
+    pub principal: String,
+    pub status: String,
+    pub estimated_reward: Option<String>,
+}
+#[derive(Debug, Clone)]
+pub(crate) struct SuiStakedObject {
+    pub version: u64,
+    pub digest: [u8; 32],
+    pub principal: u64,
+    pub pool_id: String,
+    pub activation_epoch: u64,
+}
+
+#[cfg(test)]
+mod network_identity_tests {
+    use super::*;
+    use crate::registry::Chain;
+    use std::sync::Arc;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
+
+    #[tokio::test]
+    async fn custom_nodes_require_the_selected_network_and_complete_genesis_checkpoint() {
+        for chain in [Chain::Sui, Chain::SuiTestnet] {
+            let (identifier, genesis) = chain.sui_network_identity().unwrap();
+            for valid in [true, false] {
+                let server = MockServer::start().await;
+                Mock::given(body_partial_json(
+                    json!({"method":"sui_getChainIdentifier"}),
+                ))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":identifier})),
+                )
+                .mount(&server)
+                .await;
+                Mock::given(body_partial_json(
+                    json!({"method":"sui_getCheckpoint","params":["0"]}),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(
+                    json!({"jsonrpc":"2.0","id":1,"result":{
+                        "sequenceNumber":"0","digest":if valid {genesis} else {"wrong genesis"}
+                    }}),
+                ))
+                .mount(&server)
+                .await;
+                let client = SuiClient::new(Arc::new(vec![server.uri()]));
+                assert_eq!(client.verify_network(chain).await.is_ok(), valid);
+            }
+            let server = MockServer::start().await;
+            let other = if chain == Chain::Sui {
+                Chain::SuiTestnet
+            } else {
+                Chain::Sui
+            };
+            Mock::given(body_partial_json(
+                json!({"method":"sui_getChainIdentifier"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"jsonrpc":"2.0","id":1,"result":other.sui_network_identity().unwrap().0}),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+            let client = SuiClient::new(Arc::new(vec![server.uri()]));
+            assert!(
+                client
+                    .verify_network(chain)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("wrong network")
+            );
+            assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        }
     }
 }

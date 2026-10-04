@@ -22,6 +22,8 @@ struct BlockcypherBalance {
 /// Response from GET /addrs/{address}?unspentOnly=true
 #[derive(Debug, Deserialize)]
 struct BlockcypherAddress {
+    #[serde(default, rename = "hasMore")]
+    has_more: Option<bool>,
     #[serde(default)]
     txrefs: Vec<BlockcypherTxref>,
     /// Refs of transactions still in the mempool: no block and no time.
@@ -122,8 +124,61 @@ impl BlockcypherClient {
 
     /// The most recent 50 transactions touching `address`, newest first.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        let info: BlockcypherAddress = self.get(&format!("/addrs/{address}?limit=50")).await?;
-        history_from_txrefs(info.unconfirmed_txrefs.into_iter().chain(info.txrefs))
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError> {
+        let before = cursor
+            .map(|value| value.parse::<u64>().map_err(ApiError::invalid))
+            .transpose()?;
+        let continuation = before
+            .map(|height| format!("&before={height}"))
+            .unwrap_or_default();
+        let mut info: BlockcypherAddress = self
+            .get(&format!("/addrs/{address}?limit=50{continuation}"))
+            .await?;
+        let more = info.has_more.unwrap_or(info.txrefs.len() >= 50);
+        let next_cursor = if more {
+            let height = info
+                .txrefs
+                .iter()
+                .filter(|row| row.block_height > 0)
+                .map(|row| row.block_height)
+                .min()
+                .ok_or_else(|| {
+                    ApiError::Decode("BlockCypher full history page has no block height".into())
+                })?;
+            // Height pagination must not split an address's transaction legs
+            // within a block. Fetch that final block whole before advancing.
+            let cohort: BlockcypherAddress = self
+                .get(&format!(
+                    "/addrs/{address}?limit=2000&before={}&after={}",
+                    height + 1,
+                    height - 1
+                ))
+                .await?;
+            if cohort.has_more.unwrap_or(cohort.txrefs.len() >= 2000) {
+                return Err(ApiError::Rejected(
+                    "BlockCypher history block exceeds the 2000-reference limit".into(),
+                ));
+            }
+            info.txrefs.retain(|row| row.block_height != height);
+            info.txrefs.extend(cohort.txrefs);
+            Some(height.to_string())
+        } else {
+            None
+        };
+        if before.is_some() {
+            info.unconfirmed_txrefs.clear();
+        }
+        Ok(crate::api::HistoryPage {
+            items: history_from_txrefs(info.unconfirmed_txrefs.into_iter().chain(info.txrefs))?,
+            next_cursor,
+        })
     }
 
     /// The fee rate for a `confirmation_target`, in sat/vB: BlockCypher's

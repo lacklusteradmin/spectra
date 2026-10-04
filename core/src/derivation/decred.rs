@@ -7,13 +7,13 @@
 //!   * Base58Check checksum = first 4 bytes of `BLAKE-256(BLAKE-256(payload))`
 //!
 //! Mainnet P2PKH addresses use the 2-byte version prefix `0x073F` (the
-//! `Ds…` family). Testnet (`Ts…`) and simnet are out of scope.
+//! `Ds…` family); testnet uses `Ts…`. Simnet is out of scope.
 
 use crate::derivation::error::DerivationError;
 
 use crate::derivation::primitives::derive_bip39_seed;
 use ripemd::{Digest as RipemdDigest, Ripemd160};
-use secp256k1::{PublicKey, Secp256k1, SecretKey};
+use secp256k1::{PublicKey, Secp256k1};
 
 pub(crate) const DCR_P2PKH_VERSION: [u8; 2] = [0x07, 0x3F];
 pub(crate) const DCR_P2SH_VERSION: [u8; 2] = [0x07, 0x1A];
@@ -417,35 +417,6 @@ pub fn derive_decred_testnet(
         account,
         branch,
         index,
-    })
-}
-
-/// Derive a Decred mainnet address and public key from a raw private key hex string.
-pub fn derive_decred_from_private_key(
-    private_key_hex: String,
-    want_address: bool,
-    want_public_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let trimmed = private_key_hex.trim();
-    if trimmed.len() != 64 {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Private key hex must be exactly 64 characters.".into(),
-        });
-    }
-    let bytes = hex::decode(trimmed)?;
-    let mut key_bytes = [0u8; 32];
-    key_bytes.copy_from_slice(&bytes);
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(&key_bytes).map_err(SpectraBridgeError::failure)?;
-    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-    let hash = dcr_hash160(&public_key.serialize());
-    Ok(DerivationResult {
-        address: want_address.then(|| encode_dcr_p2pkh(&hash)),
-        public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
-        private_key_hex: None,
-        account: 0,
-        branch: 0,
-        index: 0,
     })
 }
 

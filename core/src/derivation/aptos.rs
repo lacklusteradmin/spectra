@@ -6,6 +6,15 @@ use crate::derivation::error::DerivationError;
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
+pub(crate) fn address_from_public_key(public_key: &[u8; 32]) -> String {
+    use sha3::{Digest, Sha3_256};
+    let digest = Sha3_256::new()
+        .chain_update(public_key)
+        .chain_update([0x00])
+        .finalize();
+    format!("0x{}", hex::encode(digest))
+}
+
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
 /// Full pipeline: BIP-39 seed → SLIP-10 ed25519 key → Aptos address (Sha3_256 with 0x00 auth tag).
@@ -23,13 +32,7 @@ pub(crate) fn derive_from_seed_phrase(
     let public_key = signing_key.verifying_key().to_bytes();
 
     let address = if want_address {
-        use sha3::{Digest, Sha3_256};
-        let digest: [u8; 32] = Sha3_256::new()
-            .chain_update(public_key)
-            .chain_update([0x00])
-            .finalize()
-            .into();
-        Some(format!("0x{}", hex::encode(digest)))
+        Some(address_from_public_key(&public_key))
     } else {
         None
     };

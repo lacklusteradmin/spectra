@@ -61,9 +61,18 @@ impl Cell {
             .bytes(account)
     }
     pub fn coins(&mut self, amount: u64) -> Result<&mut Self, DerivationError> {
-        let size = (64 - amount.leading_zeros() as usize).div_ceil(8);
+        self.coins_u128(u128::from(amount))
+    }
+    /// VarUInteger 16 carries at most 15 bytes, including TEP-74 amounts.
+    pub fn coins_u128(&mut self, amount: u128) -> Result<&mut Self, DerivationError> {
+        let size = (128 - amount.leading_zeros() as usize).div_ceil(8);
+        if size > 15 {
+            return Err(DerivationError::Invalid(
+                "TON: amount exceeds 120-bit protocol range".into(),
+            ));
+        }
         self.uint(size as u64, 4)?;
-        self.bytes(&amount.to_be_bytes()[8 - size..])
+        self.bytes(&amount.to_be_bytes()[16 - size..])
     }
     pub fn body(&mut self, body: Cell) -> Result<&mut Self, DerivationError> {
         if self.bits + 1 + body.bits <= 1023 && self.refs.len() + body.refs.len() <= 4 {

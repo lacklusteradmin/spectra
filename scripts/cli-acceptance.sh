@@ -51,10 +51,20 @@ source "$(dirname "$0")/cli-assertions.sh"
 
 check "transparent transaction stages" 0 python3 "$(dirname "$0")/cli-send-stages.py" "$BIN"
 check "Polkadot Asset Hub transfers and finalized outcomes" 0 python3 "$(dirname "$0")/cli-send-polkadot.py" "$BIN"
+check "Bittensor Finney transfers and finalized outcomes" 0 python3 "$(dirname "$0")/cli-send-polkadot.py" "$BIN" bittensor
+check "Cardano extended witnesses and safe ADA inputs" 0 python3 "$(dirname "$0")/cli-send-cardano.py" "$BIN"
+check "account execution outcomes survive reopening" 0 python3 "$(dirname "$0")/cli-finality-account-chains.py" "$BIN"
+check "locally derived transaction hashes survive uncertain submission" 0 python3 "$(dirname "$0")/cli-send-local-digests.py" "$BIN"
+check "network-correct raw keys and watch imports" 0 python3 "$(dirname "$0")/cli-chain-coverage.py" "$BIN"
 check "UTXO recipients preserve output script types" 0 python3 "$(dirname "$0")/cli-send-utxo.py" "$BIN"
+check "complete mined OP Stack fees and durable outcomes" 0 python3 "$(dirname "$0")/cli-receipt-fees.py" "$BIN"
 check "Litecoin SegWit recovery and durable signing" 0 python3 "$(dirname "$0")/cli-litecoin.py" "$BIN"
 check "XRP signing and protocol validation" 0 python3 "$(dirname "$0")/cli-send-xrp.py" "$BIN"
 check "wallet deletion preserves keys and retries cleanup" 0 python3 "$(dirname "$0")/cli-wallet-deletion.py" "$BIN"
+check "TRC-10 discovery, signing and execution receipts" 0 python3 -B "$(dirname "$0")/cli-trc10.py" "$BIN"
+check "owned staking preparation, execution and durable recovery" 0 python3 -B "$(dirname "$0")/cli-staking.py" "$BIN"
+check "ICP neuron ownership, explicit review and certified refusal" 0 python3 -B "$(dirname "$0")/cli-icp-staking.py" "$BIN"
+check "NEAR protocol fees, storage reserve and reviewed retry budgets" 0 python3 -B "$(dirname "$0")/cli-send-near.py" "$BIN"
 
 
 # Shortcuts are floored in core over the exact balance, never through a float.
@@ -453,7 +463,7 @@ contains "Solana nodes enumerate tokens and expose token transfers" '"capabiliti
     spectra --json endpoints --catalog --chain Solana
 contains "TON v2 only claims native history" '"capabilities":["balance","history","fee","broadcast","verification","token-balance"]' \
     spectra --json endpoints --catalog --chain TON
-contains "TON v3 claims only what its adapter reads: jetton balances and discovery" '"capabilities":["token-balance","token-discovery"]' \
+contains "TON v3 offers verified jetton reads and history" '"capabilities":["token-balance","token-discovery","token-history","verification"]' \
     spectra --json endpoints --catalog --chain TON
 
 section "transaction explorers"
@@ -521,7 +531,7 @@ for chain in Polkadot Bittensor; do
     check "$chain fixture wallet cleanup" $OK spectra wallet delete "Keyless $chain" --yes
 done
 contains_exit 3 "Cardano staking refuses without network access" "Staking queries are unavailable for Cardano" spectra staking validators --chain Cardano
-contains "Cardano has no staking query implementation" '"staking":false' spectra --json chains --filter Cardano
+contains "Cardano has no staking query implementation" '"staking":false' spectra --json chains --filter Monero
 
 section "evm history source"
 # No API-key provider is configured; missing history is explicit.
@@ -991,13 +1001,13 @@ contains "counts the fee against a native balance" '"verdict":"amountPlusFeeExce
     spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
 contains "and states the exact total required" '"required":"1.5"' \
     spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
-# Arbitrum charges gas in ETH, not ARB. A caller that took the governance token
+# Ethereum charges gas in ETH, not AAVE. A caller that took the governance token
 # for the native asset would check the fee against the wrong balance.
 contains "a governance token is not the gas asset" '"verdict":"feeExceedsGasBalance"' \
-    spectra --json send affordability --chain Arbitrum --symbol ARB --deployment arbitrum:erc-20:0x912ce59144191c1204e64559fe8253a0e49e6548 --amount 1 --fee 0.5 \
+    spectra --json send affordability --chain Ethereum --symbol AAVE --deployment ethereum:erc-20:0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9 --amount 1 --fee 0.5 \
         --balance 1.2 --gas-balance 0.1
 contains "and the fee is named in what gas is paid in" '"gasSymbol":"ETH"' \
-    spectra --json send affordability --chain Arbitrum --symbol ARB --deployment arbitrum:erc-20:0x912ce59144191c1204e64559fe8253a0e49e6548 --amount 1 --fee 0.5 \
+    spectra --json send affordability --chain Ethereum --symbol AAVE --deployment ethereum:erc-20:0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9 --amount 1 --fee 0.5 \
         --balance 1.2 --gas-balance 0.1
 contains "a token over its own balance is refused first" '"verdict":"amountExceedsBalance"' \
     spectra --json send affordability --chain Ethereum --symbol USDC --deployment ethereum:erc-20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 --amount 5 --fee 0.5 \
@@ -1086,6 +1096,8 @@ contains_exit 1 "and says so rather than reporting an empty wallet" "cannot enum
 # reads it.
 
 section "dead weight"
+check "source scans exclude test fixtures" $OK \
+    python3 -B "$(cd "$(dirname "$0")" && pwd)/test-source-scan.py"
 check "no export is unreachable from both front ends" $OK \
     "$(cd "$(dirname "$0")" && pwd)/unreachable-exports.sh"
 check "no public core function is uncalled" $OK \
@@ -1224,7 +1236,7 @@ check "and on the fifth UTXO chain"           $OK \
 contains "a chain that derives says so in the catalog" '"name":"Polygon PoS"' \
     spectra --json chains --filter Polygon
 contains "and one that does not says that"    '"privateKeyImport":false' \
-    spectra --json chains --filter Solana
+    spectra --json chains --filter Monero
 check "private-key sender resolves without a seed or derivation path" $OK \
     with_password "correct horse" spectra send identity --from "PK Wallet"
 check "cleans up the extra key wallets"       $OK spectra wallet delete "PK Polygon" --yes
@@ -1252,15 +1264,15 @@ check "refuses staking on an unknown chain"            $USAGE \
     spectra staking validators --chain Nope
 # Which chains stake is one registry column, and this is the column.
 contains "the catalog says which chains stake" '"staking":true' \
-    spectra --json chains --filter Polkadot
+    spectra --json chains --filter Solana
 contains "and which do not"                   '"staking":false' \
     spectra --json chains --filter Dogecoin
 check "a testnet does not stake where its mainnet does" $REJECTED \
     spectra staking validators --chain solana-devnet
 # The staking tab's per-chain facts are core's table, one row per staking chain.
-contains "the staking table lists each staking chain" '"chain":"polkadot"' \
+contains "the staking table lists each staking chain" '"chain":"solana"' \
     spectra --json staking chains
-contains "with its minimum stake and unbonding period" '"unbondingPeriod":"28 days"' \
+contains "with its minimum stake and unbonding period" '"unbondingPeriod":"2–3 days deactivation"' \
     spectra --json staking chains
 
 # ── Deletion ────────────────────────────────────────────────────────────────
@@ -1328,7 +1340,7 @@ lacks "no pins return after reopening" '"is_pinned":true' closure_spectra --json
 check "dashboard reset restores defaults explicitly" $OK closure_spectra settings reset --scope dashboardCustomization --yes
 contains "reset pins bitcoin again" '"is_pinned":true' closure_spectra --json portfolio --pin-options
 contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
-check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
+check "reset rejects an unknown scope" $USAGE closure_spectra settings reset --scope typo --yes
 check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111
 contains "receive falls back to the stored address on an account chain" \
     '0x1111111111111111111111111111111111111111' closure_spectra --json wallet receive "Closure Watch"
@@ -1347,7 +1359,7 @@ contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not fou
     spectra --json send rebroadcast missing --yes
 
 section "Offline integration suites"
-for domain in wallets portfolio history send send-icp-zcash send-monero diagnostics endpoints; do
+for domain in wallets portfolio history send send-tokens send-icp-zcash send-monero diagnostics endpoints; do
     check "$domain integration checks" $OK \
         python3 "$(dirname "$0")/cli-$domain.py" "$BIN"
 done

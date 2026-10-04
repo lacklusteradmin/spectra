@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refreshing_supported_tokens_preserves_an_unsupported_protocol_balance() {
+    async fn trc10_and_trc20_refresh_as_distinct_assets_and_survive_reopen() {
         use wiremock::{
             Mock, MockServer, ResponseTemplate,
             matchers::{method, path},
@@ -301,10 +301,25 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/wallet/getaccount"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"balance": 1000000})))
-            .expect(1)
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"address":owner,"balance":1000000,"assetV2":[{"key":"1002000","value":2500000}]})))
             .mount(&server)
             .await;
+        for (route, value) in [
+            (
+                "/wallet/getblockbynum",
+                json!({"blockID":Chain::Tron.tron_genesis_block_id().unwrap()}),
+            ),
+            (
+                "/wallet/getassetissuebyid",
+                json!({"id":"1002000","name":hex::encode("T10"),"precision":6}),
+            ),
+        ] {
+            Mock::given(method("POST"))
+                .and(path(route))
+                .respond_with(ResponseTemplate::new(200).set_body_json(value))
+                .mount(&server)
+                .await;
+        }
         Mock::given(method("GET"))
             .and(path(format!("/v1/accounts/{owner}")))
             .respond_with(
@@ -343,14 +358,6 @@ mod tests {
         let mut wallet =
             WalletState::single_address("mixed", "Mixed", Chain::Tron, owner, None, true);
         let state = service.app_state().await;
-        let mut token10 = state
-            .token_preferences
-            .iter()
-            .find(|p| p.token.deployment_id == "tron:trc-10:1002000")
-            .unwrap()
-            .token
-            .holding_template();
-        token10.amount = "7.25".into();
         let mut token20 = state
             .token_preferences
             .iter()
@@ -360,7 +367,15 @@ mod tests {
             .holding_template();
         token20.amount = "9".into();
         let token20_id = token20.deployment_id();
-        wallet.holdings = vec![token10.clone(), token20];
+        let mut token10 = state
+            .token_preferences
+            .iter()
+            .find(|p| p.token.token_standard == "TRC-10")
+            .unwrap()
+            .token
+            .holding_template();
+        token10.amount = "9".into();
+        wallet.holdings = vec![token20, token10];
         service
             .apply_state_command(StateCommand::UpsertWallet { wallet })
             .await
@@ -373,23 +388,19 @@ mod tests {
             updated
                 .holdings
                 .iter()
-                .find(|h| h.token_standard == "TRC-10")
-                .unwrap(),
-            &token10
-        );
-        assert_eq!(
-            updated
-                .holdings
-                .iter()
                 .find(|h| h.deployment_id() == token20_id)
                 .unwrap()
                 .amount,
             "0"
         );
         assert_eq!(
-            server.received_requests().await.unwrap().len(),
-            2,
-            "only native and TRC-20 listing requests"
+            updated
+                .holdings
+                .iter()
+                .find(|h| h.token_standard == "TRC-10")
+                .unwrap()
+                .amount,
+            "2.5"
         );
         let reopened = WalletService::new(Vec::new()).unwrap();
         let state = reopened
@@ -402,9 +413,14 @@ mod tests {
                 .iter()
                 .find(|h| h.token_standard == "TRC-10")
                 .unwrap()
-                .clone()
-                .identified(),
-            token10
+                .amount,
+            "2.5"
+        );
+        assert!(
+            state
+                .token_preferences
+                .iter()
+                .any(|p| p.token.token_standard == "TRC-10")
         );
     }
 

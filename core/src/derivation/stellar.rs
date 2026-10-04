@@ -14,6 +14,11 @@ use ed25519_dalek::SigningKey;
 
 // Decode a Stellar G-account strkey and return the inner 32-byte ed25519 public key.
 pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], DerivationError> {
+    if address.len() != 56 || address != address.to_ascii_uppercase() {
+        return Err(DerivationError::Invalid(
+            "stellar address is not a canonical G-account StrKey".into(),
+        ));
+    }
     let decoded = base32_decode_rfc4648(address.trim()).ok_or_else(|| {
         DerivationError::Invalid(format!("stellar base32 decode failed: {address}").into())
     })?;
@@ -47,7 +52,6 @@ pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], Derivati
 // Decode a no-padding RFC 4648 base32 string into bytes; returns None on invalid characters.
 fn base32_decode_rfc4648(s: &str) -> Option<Vec<u8>> {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    let s = s.to_uppercase();
     let mut bits: u32 = 0;
     let mut bit_count: u8 = 0;
     let mut out = Vec::new();
@@ -75,6 +79,15 @@ fn base32_no_pad(input: &[u8]) -> String {
     data_encoding::BASE32_NOPAD.encode(input)
 }
 
+pub(crate) fn address_from_public_key(public_key: &[u8; 32]) -> String {
+    let mut payload = [0u8; 35];
+    payload[0] = 0x30;
+    payload[1..33].copy_from_slice(public_key);
+    let checksum = crc16_xmodem(&payload[..33]);
+    payload[33..].copy_from_slice(&checksum.to_le_bytes());
+    base32_no_pad(&payload)
+}
+
 // Derive Stellar address, public key, and private key from a mnemonic via BIP-39 + SLIP-10 ed25519.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
@@ -91,13 +104,7 @@ pub(crate) fn derive_from_seed_phrase(
     let public_key = signing_key.verifying_key().to_bytes();
 
     let address = if want_address {
-        let mut payload = [0u8; 35];
-        payload[0] = 0x30;
-        payload[1..33].copy_from_slice(&public_key);
-        let checksum = crc16_xmodem(&payload[..33]);
-        payload[33] = (checksum & 0xff) as u8;
-        payload[34] = (checksum >> 8) as u8;
-        Some(base32_no_pad(&payload))
+        Some(address_from_public_key(&public_key))
     } else {
         None
     };

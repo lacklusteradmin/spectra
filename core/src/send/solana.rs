@@ -141,8 +141,114 @@ fn compile_and_sign(
         payer: *payer,
         blockhash: blockhash.into(),
         message: compile_message(payer, account_metas, instructions, blockhash)?,
+        account_seed: None,
+        network_fee: None,
+        stake_rent: None,
     }
     .sign(key)
+}
+
+pub(crate) fn prepare_staking_data(
+    owner: &str,
+    target: &str,
+    amount: u64,
+    rent: u64,
+    blockhash: &str,
+    seed: Option<&str>,
+    action: crate::staking::StakingAction,
+) -> Result<PreparedSolanaTransaction, SendError> {
+    use sha2::{Digest, Sha256};
+    let payer = decode_b58_32(owner)?;
+    let target = decode_b58_32(target)?;
+    let program = decode_b58_32(
+        crate::registry::Chain::Solana
+            .solana_stake_program()
+            .map_err(SendError::invalid)?,
+    )?;
+    let (metas, instructions) = match action {
+        crate::staking::StakingAction::Stake => {
+            let seed = seed
+                .filter(|s| !s.is_empty() && s.len() <= 32)
+                .ok_or_else(|| SendError::invalid("Missing Solana stake-account seed"))?;
+            let account: [u8; 32] = Sha256::new()
+                .chain_update(payer)
+                .chain_update(seed.as_bytes())
+                .chain_update(program)
+                .finalize()
+                .into();
+            let mut create = 3u32.to_le_bytes().to_vec();
+            create.extend(payer);
+            create.extend((seed.len() as u64).to_le_bytes());
+            create.extend(seed.as_bytes());
+            create.extend(
+                amount
+                    .checked_add(rent)
+                    .ok_or_else(|| SendError::invalid("Solana stake plus rent overflow"))?
+                    .to_le_bytes(),
+            );
+            create.extend(200u64.to_le_bytes());
+            create.extend(program);
+            let mut initialize = 0u32.to_le_bytes().to_vec();
+            initialize.extend(payer);
+            initialize.extend(payer);
+            initialize.extend([0; 48]);
+            (
+                vec![
+                    (payer, true),
+                    (account, true),
+                    ([0; 32], false),
+                    (program, false),
+                    (target, false),
+                ],
+                vec![
+                    (2, vec![0, 1], create),
+                    (3, vec![1], initialize),
+                    (3, vec![1, 4, 0], 2u32.to_le_bytes().to_vec()),
+                ],
+            )
+        }
+        crate::staking::StakingAction::Unstake => (
+            vec![(payer, true), (target, true), (program, false)],
+            vec![(2, vec![1, 0], 5u32.to_le_bytes().to_vec())],
+        ),
+        crate::staking::StakingAction::Withdraw => {
+            if amount == 0 {
+                return Err(SendError::invalid("Solana withdrawal must be positive"));
+            }
+            let mut data = 4u32.to_le_bytes().to_vec();
+            data.extend(amount.to_le_bytes());
+            (
+                vec![(payer, true), (target, true), (program, false)],
+                vec![(2, vec![1, 0, 0], data)],
+            )
+        }
+        _ => return Err(SendError::invalid("Solana rewards compound into stake")),
+    };
+    Ok(PreparedSolanaTransaction {
+        payer,
+        blockhash: blockhash.into(),
+        message: compile_message(&payer, &metas, &instructions, blockhash)?,
+        account_seed: seed.map(str::to_string),
+        network_fee: None,
+        stake_rent: Some(rent),
+    })
+}
+
+pub(crate) fn stake_account_address(owner: &str, seed: &str) -> Result<String, SendError> {
+    use sha2::{Digest, Sha256};
+    let program = decode_b58_32(
+        crate::registry::Chain::Solana
+            .solana_stake_program()
+            .map_err(SendError::invalid)?,
+    )?;
+    Ok(bs58::encode(
+        Sha256::new()
+            .chain_update(decode_b58_32(owner)?)
+            .chain_update(seed.as_bytes())
+            .chain_update(program)
+            .finalize(),
+    )
+    .into_string())
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -150,6 +256,9 @@ pub(crate) struct PreparedSolanaTransaction {
     pub payer: [u8; 32],
     pub blockhash: String,
     pub message: Vec<u8>,
+    pub account_seed: Option<String>,
+    pub network_fee: Option<u64>,
+    pub stake_rent: Option<u64>,
 }
 impl PreparedSolanaTransaction {
     pub fn sign(&self, key: &Ed25519Seed) -> Result<Vec<u8>, SendError> {
@@ -215,6 +324,9 @@ pub(crate) async fn prepare_transfer(
         payer,
         blockhash,
         message,
+        account_seed: None,
+        network_fee: None,
+        stake_rent: None,
     })
 }
 
@@ -242,7 +354,7 @@ fn token_transfer_data(amount: u64, decimals: u8, transfer_fee_extension: bool) 
     data
 }
 
-fn compile_message(
+pub(crate) fn compile_message(
     payer: &[u8; 32],
     account_metas: &[([u8; 32], bool)],
     instructions: &[(usize, Vec<usize>, Vec<u8>)],

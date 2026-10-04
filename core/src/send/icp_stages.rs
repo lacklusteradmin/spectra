@@ -52,7 +52,7 @@ fn integer(n: u64) -> Vec<u8> {
 }
 /// A text-keyed map in canonical CBOR key order (RFC 7049 §3.9): shorter keys
 /// first, then bytewise.
-fn map(mut entries: Vec<(&str, Cbor)>) -> Cbor {
+pub(super) fn map(mut entries: Vec<(&str, Cbor)>) -> Cbor {
     entries.sort_by(|(a, _), (b, _)| (a.len(), a).cmp(&(b.len(), b)));
     Cbor::Map(
         entries
@@ -61,20 +61,20 @@ fn map(mut entries: Vec<(&str, Cbor)>) -> Cbor {
             .collect(),
     )
 }
-fn encode(value: &Cbor) -> Result<Vec<u8>, SendError> {
+pub(super) fn encode(value: &Cbor) -> Result<Vec<u8>, SendError> {
     let mut out = Vec::new();
     ciborium::into_writer(value, &mut out).map_err(SendError::invalid)?;
     Ok(out)
 }
-fn text(s: &str) -> Cbor {
+pub(super) fn text(s: &str) -> Cbor {
     Cbor::Text(s.into())
 }
-fn bytes(b: &[u8]) -> Cbor {
+pub(super) fn bytes(b: &[u8]) -> Cbor {
     Cbor::Bytes(b.to_vec())
 }
 
 /// IC representation-independent request identifier, independent of CBOR key order.
-fn request_hash(value: &Cbor) -> Result<[u8; 32], SendError> {
+pub(super) fn request_hash(value: &Cbor) -> Result<[u8; 32], SendError> {
     let data = match value {
         Cbor::Text(s) => s.as_bytes().to_vec(),
         Cbor::Bytes(b) => b.clone(),
@@ -100,7 +100,7 @@ fn request_hash(value: &Cbor) -> Result<[u8; 32], SendError> {
     };
     Ok(Sha256::digest(data).into())
 }
-fn envelope(content: Cbor, key: &Ed25519Seed) -> Result<Cbor, SendError> {
+pub(super) fn envelope(content: Cbor, key: &Ed25519Seed) -> Result<Cbor, SendError> {
     let mut signing = b"\x0aic-request".to_vec();
     signing.extend(request_hash(&content)?);
     let sig = key.sign(&signing);
@@ -141,7 +141,7 @@ impl PreparedIcpTransaction {
         Ok(hex::encode(Sha256::digest(encode(&transaction)?)))
     }
 
-    fn argument(&self) -> Result<Vec<u8>, SendError> {
+    pub(crate) fn argument(&self) -> Result<Vec<u8>, SendError> {
         let to = validate_account(&self.recipient)?;
         let mut arg = message(1, &integer(self.memo));
         arg.extend(message(2, &message(1, &integer(self.amount))));

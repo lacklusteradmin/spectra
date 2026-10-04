@@ -1,4 +1,4 @@
-//! TRX/TRC-20: construct and sign locally against a block reference that
+//! TRX/TRC-10/TRC-20: construct and sign locally against a block reference that
 //! `api::tron_http` reads.
 //! Wire schema: tronprotocol/protocol core/Tron.proto and contract/*.proto.
 
@@ -13,12 +13,81 @@ pub(crate) enum Transfer<'a> {
         to: &'a str,
         amount: u64,
     },
+    Trc10 {
+        asset_id: &'a str,
+        to: &'a str,
+        amount: u64,
+    },
     Token {
         contract: &'a str,
         to: &'a str,
         amount: u128,
         fee_limit: u64,
     },
+}
+
+#[cfg(test)]
+mod trc10_vectors {
+    use super::*;
+
+    #[test]
+    fn trc10_raw_hash_and_signature_match_official_tronweb() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/trc10-send-vectors.json"))
+                .unwrap();
+        let owner = fixture["owner"].as_str().unwrap();
+        let to = fixture["receiver"].as_str().unwrap();
+        let key = hex::decode(fixture["key"].as_str().unwrap()).unwrap();
+        let block = || BlockReference {
+            number: fixture["block"]["number"].as_u64().unwrap(),
+            id: hex::decode(fixture["block"]["id"].as_str().unwrap())
+                .unwrap()
+                .try_into()
+                .unwrap(),
+            timestamp_ms: fixture["block"]["timestamp_ms"].as_u64().unwrap(),
+        };
+        for vector in fixture["vectors"].as_array().unwrap() {
+            let prepared = prepare_transfer(
+                owner,
+                Transfer::Trc10 {
+                    asset_id: vector["asset_id"].as_str().unwrap(),
+                    to,
+                    amount: vector["amount"].as_str().unwrap().parse().unwrap(),
+                },
+                block(),
+            )
+            .unwrap();
+            assert!(prepared.bandwidth_bytes().unwrap() < 512);
+            assert!(prepared.body["raw_data"].get("fee_limit").is_none());
+            let signed: Value = serde_json::from_str(&prepared.sign(&key).unwrap()).unwrap();
+            assert_eq!(signed["raw_data_hex"], vector["raw"]);
+            assert_eq!(signed["txID"], vector["txid"]);
+            assert_eq!(
+                hex::decode(signed["signature"][0].as_str().unwrap()).unwrap(),
+                hex::decode(vector["signature"].as_str().unwrap()).unwrap()
+            );
+        }
+        for (asset_id, amount, receiver) in [
+            ("1002000", 0, to),
+            ("1002000", i64::MAX as u64 + 1, to),
+            ("1002000", 1, owner),
+            ("001002000", 1, to),
+            ("a1002000", 1, to),
+        ] {
+            assert!(
+                prepare_transfer(
+                    owner,
+                    Transfer::Trc10 {
+                        asset_id,
+                        to: receiver,
+                        amount
+                    },
+                    block()
+                )
+                .is_err()
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -100,6 +169,33 @@ pub(crate) fn prepare_transfer(
                 0,
             )
         }
+        Transfer::Trc10 {
+            asset_id,
+            to,
+            amount,
+        } => {
+            crate::api::tron_http::validate_asset_id(asset_id)
+                .map_err(|error| SendError::Invalid(error.to_string().into()))?;
+            positive_i64(amount)?;
+            let to = address(to)?;
+            if owner == to {
+                return Err(SendError::Invalid(
+                    "TRC-10 cannot transfer to its sender".into(),
+                ));
+            }
+            // TransferAssetContract's field layout differs from TransferContract.
+            value.clear();
+            bytes(1, asset_id.as_bytes(), &mut value);
+            bytes(2, &owner, &mut value);
+            bytes(3, &to, &mut value);
+            integer(4, amount, &mut value);
+            (
+                2,
+                "TransferAssetContract",
+                json!({"asset_name":hex::encode(asset_id),"owner_address":hex::encode(owner),"to_address":hex::encode(to),"amount":amount}),
+                0,
+            )
+        }
         Transfer::Token {
             contract,
             to,
@@ -154,6 +250,16 @@ pub(crate) fn prepare_transfer(
 }
 
 impl PreparedTronTransfer {
+    /// Protobuf Transaction with one 65-byte signature, plus java-tron's
+    /// MAX_RESULT_SIZE_IN_TX bandwidth reservation. No TRC-10 VM energy.
+    pub(crate) fn bandwidth_bytes(&self) -> Result<u64, SendError> {
+        let mut encoded = Vec::new();
+        bytes(1, &self.raw, &mut encoded);
+        bytes(2, &[0; 65], &mut encoded);
+        u64::try_from(encoded.len() + 64)
+            .map_err(|_| SendError::Invalid("Tron transaction size overflow".into()))
+    }
+
     pub(crate) fn sign(mut self, key: &[u8]) -> Result<String, SendError> {
         use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
         use sha3::Keccak256;

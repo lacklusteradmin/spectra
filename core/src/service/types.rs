@@ -159,8 +159,9 @@ pub struct TransactionChange {
     pub removed: Vec<String>,
 }
 
+#[cfg(test)]
 impl TransactionChange {
-    /// True when the store is unchanged, so a caller can skip re-reading.
+    /// Whether the observed command left the transaction store unchanged.
     pub fn is_empty(&self) -> bool {
         self.added.is_empty() && self.updated.is_empty() && self.removed.is_empty()
     }

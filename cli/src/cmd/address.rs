@@ -35,7 +35,7 @@ pub struct HolderArgs {
 
 #[derive(Args)]
 pub struct ValidateArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long)]
     chain: String,
     /// The address to check.
@@ -54,7 +54,7 @@ pub enum BookCommand {
 
 #[derive(Args)]
 pub struct BookAddArgs {
-    /// Chain display name, registry id or symbol.
+    /// Chain display name or registry id.
     #[arg(long)]
     chain: String,
     /// Contact name.

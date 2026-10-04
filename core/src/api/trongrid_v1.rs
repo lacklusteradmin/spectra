@@ -1,5 +1,6 @@
 //! The TronGrid v1 account API adapter (`…/v1/accounts`): an account's
 //! transfers and TRC-20 holdings, which the node HTTP API does not index.
+//! Native transactions also carry TRC-10 TransferAssetContract transfers.
 
 use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,7 @@ use serde_json::Value;
 
 use crate::api::http::{HttpClient, RetryProfile, race};
 
-/// Unified history entry covering both native TRX and TRC-20 token transfers.
+/// Unified history entry covering native TRX, TRC-10 and TRC-20 transfers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TronTransfer {
     pub contract: Option<String>,
@@ -25,6 +26,10 @@ pub struct TronTransfer {
 pub struct TrongridClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
+    trc10_node: Option<(
+        crate::registry::Chain,
+        std::sync::Arc<crate::api::tron_http::TronHttpClient>,
+    )>,
 }
 
 impl TrongridClient {
@@ -32,41 +37,189 @@ impl TrongridClient {
         Self {
             endpoints,
             client: HttpClient::shared(),
+            trc10_node: None,
         }
     }
 
-    /// Up to `limit` recent confirmed transfers, native TRX and TRC-20,
+    pub(crate) fn with_trc10(
+        endpoints: std::sync::Arc<Vec<String>>,
+        chain: crate::registry::Chain,
+        node: crate::api::tron_http::TronHttpClient,
+    ) -> Self {
+        Self {
+            trc10_node: Some((chain, std::sync::Arc::new(node))),
+            ..Self::new(endpoints)
+        }
+    }
+
+    /// Up to `limit` recent confirmed transfers, native TRX, TRC-10 and TRC-20,
     /// newest first. One endpoint answers both reads.
     pub async fn fetch_history(
         &self,
         address: &str,
         limit: usize,
     ) -> Result<Vec<TronTransfer>, ApiError> {
-        let limit = limit.min(50);
-        let (native, tokens): (Value, Value) = race(&self.endpoints, |base| async move {
-            let base = format!("{}/{address}", base.trim_end_matches('/'));
-            let query = format!("limit={limit}&only_confirmed=true");
-            let native = self
-                .client
-                .get_json(
-                    &format!("{base}/transactions?{query}"),
-                    RetryProfile::ChainRead,
-                )
-                .await?;
-            let tokens = self
-                .client
-                .get_json(
-                    &format!("{base}/transactions/trc20?{query}"),
-                    RetryProfile::ChainRead,
-                )
-                .await?;
-            Ok::<_, ApiError>((native, tokens))
-        })
-        .await?;
+        Ok(self.fetch_history_page(address, limit, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        limit: usize,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<TronTransfer>, ApiError> {
+        #[derive(Default, serde::Serialize, serde::Deserialize)]
+        struct Cursor {
+            native: Option<String>,
+            tokens: Option<String>,
+            native_done: bool,
+            tokens_done: bool,
+        }
+        let mut position: Cursor = cursor
+            .map(serde_json::from_str)
+            .transpose()?
+            .unwrap_or_default();
+        let limit = limit.clamp(1, 50);
+        let (native, tokens): (Value, Value) = race(&self.endpoints, |base_url| {
+            let position = &position;
+            async move {
+                let base = format!("/{address}");
+                let fetch = |token: bool| {
+                    let path = if token { "/transactions/trc20" } else { "/transactions" };
+                    let (fingerprint, done) = if token { (&position.tokens, position.tokens_done) } else { (&position.native, position.native_done) };
+                    let continuation = fingerprint.as_ref().map(|value| format!("&fingerprint={}", crate::api::history_page::query_value(value))).unwrap_or_default();
+                    let url = format!("{}{base}{path}?limit={limit}&only_confirmed=true&order_by=block_timestamp,desc{continuation}", base_url.trim_end_matches('/'));
+                    async move { if done { Ok(serde_json::json!({"data": []})) } else { self.client.get_json(&url, RetryProfile::ChainRead).await } }
+                };
+                let (native, tokens) = tokio::try_join!(fetch(false), fetch(true))?;
+                Ok::<_, ApiError>((native, tokens))
+            }
+        }).await?;
+        for (response, fingerprint, done) in [
+            (&native, &mut position.native, &mut position.native_done),
+            (&tokens, &mut position.tokens, &mut position.tokens_done),
+        ] {
+            let count = data(response)?.len();
+            *fingerprint = response
+                .pointer("/meta/fingerprint")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            *done = fingerprint.is_none();
+            if count >= limit && *done {
+                return Err(ApiError::Decode(
+                    "TronGrid: full page has no continuation fingerprint".into(),
+                ));
+            }
+        }
         let mut entries = native_transfers(&native, address)?;
+        entries.extend(self.trc10_transfers(&native, address).await?);
         entries.extend(token_transfers(&tokens, address)?);
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms));
-        entries.truncate(limit);
+        let next_cursor = (!(position.native_done && position.tokens_done))
+            .then(|| serde_json::to_string(&position))
+            .transpose()?;
+        Ok(crate::api::HistoryPage {
+            items: entries,
+            next_cursor,
+        })
+    }
+
+    async fn trc10_transfers(
+        &self,
+        response: &Value,
+        address: &str,
+    ) -> Result<Vec<TronTransfer>, ApiError> {
+        let mut entries = Vec::new();
+        let mut metadata = std::collections::HashMap::new();
+        for tx in data(response)? {
+            if tx
+                .pointer("/raw_data/contract/0/type")
+                .and_then(Value::as_str)
+                != Some("TransferAssetContract")
+                || tx.pointer("/ret/0/contractRet").and_then(Value::as_str) != Some("SUCCESS")
+            {
+                continue;
+            }
+            let (chain, node) = self
+                .trc10_node
+                .as_ref()
+                .or_decode("TRC-10 history requires a network-bound node metadata reader")?;
+            let txid = tx
+                .get("txID")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .or_decode("TRC-10 transfer has no transaction hash")?;
+            let value = tx
+                .pointer("/raw_data/contract/0/parameter/value")
+                .or_decode("TRC-10 transfer has no contract value")?;
+            let timestamp_ms = crate::api::time::confirmed_history_time(
+                tx.get("block_timestamp").and_then(Value::as_u64),
+                txid,
+            )?;
+            let name_end = chain
+                .tron_trc10_name_end_ms()
+                .or_decode("TRC-10 history token identity activation boundary is unverified")?;
+            let uses_name = timestamp_ms <= name_end;
+            let token = String::from_utf8(
+                hex::decode(
+                    value
+                        .get("asset_name")
+                        .and_then(Value::as_str)
+                        .or_decode("TRC-10 transfer has no asset ID")?,
+                )
+                .map_err(ApiError::decode)?,
+            )
+            .map_err(ApiError::decode)?;
+            let asset = match metadata.entry((uses_name, token.clone())) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    let asset = if uses_name {
+                        node.fetch_legacy_trc10_metadata(*chain, &token).await
+                    } else {
+                        node.fetch_trc10_metadata(*chain, &token).await
+                    }
+                    .map_err(|error| {
+                        ApiError::decode(format!(
+                            "TRC-10 history transaction {txid} has unverifiable asset identity: {error}"
+                        ))
+                    })?;
+                    entry.insert(asset)
+                }
+            };
+            let party = |field: &str| {
+                value
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .or_decode("TRC-10 transfer party missing")
+                    .and_then(|hex| {
+                        crate::derivation::tron::tron_hex_to_base58(hex).map_err(ApiError::decode)
+                    })
+            };
+            let (from, to) = (party("owner_address")?, party("to_address")?);
+            if from != address && to != address {
+                return Err(ApiError::decode(
+                    "TRC-10 transfer is unrelated to the requested owner",
+                ));
+            }
+            let raw = value
+                .get("amount")
+                .and_then(Value::as_u64)
+                .filter(|n| *n > 0 && *n <= i64::MAX as u64)
+                .or_decode("TRC-10 transfer amount is invalid")?;
+            entries.push(TronTransfer {
+                contract: Some(asset.asset_id.clone()),
+                txid: txid.into(),
+                timestamp_ms,
+                is_incoming: to == address,
+                from,
+                to,
+                amount_display: crate::decimal::from_units(
+                    u128::from(raw),
+                    u32::from(asset.decimals),
+                ),
+            });
+        }
         Ok(entries)
     }
 
@@ -225,6 +378,131 @@ mod history_tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     const ME: &str = "TKHuVq1oKVruCGLvqVexFs6dawKv6fQgFs";
+
+    #[tokio::test]
+    async fn legacy_trc10_numeric_names_follow_each_networks_verified_activation() {
+        use wiremock::matchers::body_json;
+        for chain in [
+            crate::registry::Chain::Tron,
+            crate::registry::Chain::TronNile,
+        ] {
+            let server = MockServer::start().await;
+            let end = chain.tron_trc10_name_end_ms().unwrap();
+            let row = |hash: &str, asset: &str, time: u64| {
+                serde_json::json!({
+                    "txID":hash,"block_timestamp":time,"ret":[{"contractRet":"SUCCESS"}],
+                    "raw_data":{"contract":[{"type":"TransferAssetContract","parameter":{"value":{
+                        "asset_name":hex::encode(asset),"owner_address":"41add5246bd889365714a57579fc070ef81a8b6d81",
+                        "to_address":"4166426c7ac3d98b29191063833345b6bc540d7278","amount":123,
+                    }}}]},
+                })
+            };
+            Mock::given(method("POST"))
+                .and(path("/wallet/getblockbynum"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"blockID":chain.tron_genesis_block_id().unwrap()}),
+                ))
+                .expect(3)
+                .mount(&server)
+                .await;
+            for (name, id) in [("Legacy", "1000002"), ("1009999", "1000001")] {
+                let asset = serde_json::json!({"id":id,"name":hex::encode(name)});
+                Mock::given(method("POST"))
+                    .and(path("/wallet/getassetissuebyname"))
+                    .and(body_json(serde_json::json!({"value":hex::encode(name)})))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(asset.clone()))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                Mock::given(method("POST"))
+                    .and(path("/wallet/getassetissuebyid"))
+                    .and(body_json(serde_json::json!({"value":id})))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(asset))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+            }
+            Mock::given(method("POST"))
+                .and(path("/wallet/getassetissuebyid"))
+                .and(body_json(serde_json::json!({"value":"1009999"})))
+                .respond_with(ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"id":"1009999","name":hex::encode("Modern"),"precision":2}),
+                ))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let client = TrongridClient::with_trc10(
+                std::sync::Arc::new(vec![]),
+                chain,
+                crate::api::tron_http::TronHttpClient::new(std::sync::Arc::new(vec![server.uri()])),
+            );
+            let rows=client.trc10_transfers(&serde_json::json!({"data":[
+                row("old-name","Legacy",end-3000),row("numeric-name","1009999",end),row("modern-id","1009999",end+9000),
+            ]}),ME).await.unwrap();
+            assert_eq!(
+                rows.iter()
+                    .map(|r| r.contract.as_deref().unwrap())
+                    .collect::<Vec<_>>(),
+                ["1000002", "1000001", "1009999"]
+            );
+            assert_eq!(
+                rows.iter()
+                    .map(|r| r.amount_display.as_str())
+                    .collect::<Vec<_>>(),
+                ["123", "123", "1.23"]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn native_feed_trc10_rows_use_node_precision_and_one_metadata_read_per_id() {
+        let server = MockServer::start().await;
+        let row = |id: &str, amount: u64| {
+            serde_json::json!({
+                "txID":id,"block_timestamp":1700000000000u64,"ret":[{"contractRet":"SUCCESS"}],
+                "raw_data":{"contract":[{"type":"TransferAssetContract","parameter":{"value":{
+                    "asset_name":hex::encode("1002000"),"owner_address":"41add5246bd889365714a57579fc070ef81a8b6d81",
+                    "to_address":"4166426c7ac3d98b29191063833345b6bc540d7278","amount":amount,
+                }}}]},
+            })
+        };
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/accounts/{ME}/transactions")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"data":[row("a",123),row("b",250)]})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/accounts/{ME}/transactions/trc20")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[]})))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST")).and(path("/wallet/getblockbynum"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"blockID":crate::registry::Chain::Tron.tron_genesis_block_id().unwrap()})))
+            .expect(1).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/wallet/getassetissuebyid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"id":"1002000","name":hex::encode("Legacy"),"precision":2}),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = TrongridClient::with_trc10(
+            std::sync::Arc::new(vec![format!("{}/v1/accounts", server.uri())]),
+            crate::registry::Chain::Tron,
+            crate::api::tron_http::TronHttpClient::new(std::sync::Arc::new(vec![server.uri()])),
+        );
+        let page = client.fetch_history_page(ME, 50, None).await.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert!(page.next_cursor.is_none());
+        assert_eq!(page.items[0].contract.as_deref(), Some("1002000"));
+        assert_eq!(page.items[0].amount_display, "1.23");
+        assert_eq!(page.items[1].amount_display, "2.5");
+        assert!(page.items.iter().all(|row| row.is_incoming));
+    }
 
     #[tokio::test]
     async fn trongrid_history_merges_trx_and_trc20_transfers_newest_first() {

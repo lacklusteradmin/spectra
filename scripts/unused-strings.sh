@@ -8,9 +8,10 @@
 #
 # A key is reachable when its text, with `%@`/`%lld`/… treated as a wildcard,
 # appears anywhere that can produce it: Swift, Rust (core's error templates),
-# another resource file, or the chain catalog. A dotted key is reachable when
-# a screen copy struct spells it out or its namespace is interpolated
-# with an id (`"addressHint.\(chain.id).empty"`). The reverse holds too: a
+# another resource file, or the chain catalog. Test fixtures do not count.
+# A dotted key is reachable when a screen copy struct spells it out or its
+# namespace is interpolated with an id (`"addressHint.\(chain.id).empty"`).
+# The reverse holds too: a
 # dotted key Swift spells out must be in the source table.
 #
 # Locales are checked against each other as well: a key set that drifts means
@@ -22,42 +23,30 @@
 # Exits non-zero when any are found, so it can gate.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-python3 - <<'PY'
-import json, pathlib, re, subprocess, sys
-
-def hand_written(root, suffix):
-    """Files under `root` a person wrote: tracked or new, never ignored.
-
-    Walking the directory reads the bindings too — `swift/generated/` and the
-    Kotlin `uniffi/` package, both ignored and both present once bindgen has
-    run. Generated code calls every export and quotes every doc comment, so
-    it made each check pass on a machine that had built for that platform.
-    """
-    listed = subprocess.run(
-        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', root],
-        check=True, capture_output=True, text=True).stdout.split('\0')
-    return [pathlib.Path(p) for p in sorted(listed) if p.endswith(suffix) and pathlib.Path(p).exists()]
+python3 -B - <<'PY'
+import json, pathlib, re, sys
+from scripts.source_scan import hand_written, production_text, test_modules
 
 STRINGS = pathlib.Path('resources/strings')
 FORMAT = re.compile(r'%(?:@|%|lld|llu|ld|lu|d|u|f|s|\d*\.\d+f|\.\d+f)')
 # Catalog IDs can contain hyphens, e.g. endpointCapability.token-history.
 DOTTED = re.compile(r'^[a-zA-Z_]+[._][a-zA-Z0-9_.-]+$')
 
-def corpus():
-    """Every file that could name a string, with continuations flattened.
+# Fixtures cannot keep shipped translations reachable. Use the same Rust item
+# splitting as the public-function scan, so `mod tests;` in the middle of a
+# source file does not hide the production items that follow it.
+paths = [p for suffix, roots in (
+             ('.swift', ('swift',)), ('.rs', ('core', 'cli', 'ffi')),
+             ('.json', ('resources',)), ('.toml', ('core/data',)),
+             ('.kt', ('kotlin',)), ('.xml', ('kotlin',)))
+         for root in roots for p in hand_written(root, suffix)
+         if not p.name.startswith('RuntimeStrings.')]
+declared_tests = test_modules(p for p in paths if p.suffix == '.rs')
+production = [(p, production_text(p, declared_tests)) for p in paths]
 
-    A Rust or Swift literal may be split across lines with a trailing `\\`,
-    and the whitespace that follows is indentation rather than part of the
-    string. Squeezing both means a wrapped literal still matches the one-line
-    key it produces.
-    """
-    paths = [p for suffix, roots in (
-                 ('.swift', ('swift',)), ('.rs', ('core', 'cli', 'ffi')),
-                 ('.json', ('resources',)), ('.toml', ('core/data',)),
-                 ('.kt', ('kotlin',)), ('.xml', ('kotlin',)))
-             for root in roots for p in hand_written(root, suffix)
-             if not p.name.startswith('RuntimeStrings.')]
-    text = '\n'.join(p.read_text(errors='replace') for p in paths)
+def corpus():
+    """Production strings with wrapped literals and indentation flattened."""
+    text = '\n'.join(text for _, text in production)
     return re.sub(r'\s+', ' ', re.sub(r'\\\s*\n\s*', '', text))
 
 def reachable(key, haystack):
@@ -108,7 +97,7 @@ for base in bases:
 # The reverse: a dotted key spelled out in Swift must be in the source table,
 # or the screen shows the key itself.
 source_keys = set(json.loads((STRINGS / 'RuntimeStrings.en.json').read_text()))
-swift = '\n'.join(p.read_text() for p in hand_written('swift', '.swift'))
+swift = '\n'.join(text for p, text in production if p.suffix == '.swift')
 for key in sorted(set(re.findall(r'AppLocalization\.(?:string|format)\("([A-Za-z_]+\.[A-Za-z0-9_.-]+)"', swift))):
     if key not in source_keys:
         failures.append(f"  {'RuntimeStrings.en.json':<36} Swift names a missing key {key!r}")
@@ -117,8 +106,8 @@ for key in sorted(set(re.findall(r'AppLocalization\.(?:string|format)\("([A-Za-z
 # the ones a front end can only translate by table: an untranslated one reads
 # in English with its values in, which is the gap this closes. Test modules
 # are out of scope; they make up sentences of their own.
-rust = '\n'.join(re.sub(r'\\\s*\n\s*', '', p.read_text()).split('#[cfg(test)]')[0]
-                 for p in hand_written('core/src', '.rs'))
+rust = '\n'.join(re.sub(r'\\\s*\n\s*', '', text)
+                 for p, text in production if p.suffix == '.rs' and p.parts[:2] == ('core', 'src'))
 for key in sorted(set(re.findall(r'(?:\brefused|\bfailed|CoreMessage::new)\(\s*"((?:[^"\\]|\\.)*)"', rust))):
     if key not in source_keys:
         failures.append(f"  {'RuntimeStrings.en.json':<36} core names an untranslated sentence {key!r}")

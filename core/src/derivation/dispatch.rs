@@ -137,39 +137,17 @@ pub fn derive_from_private_key(
     want_address: bool,
     want_public_key: bool,
 ) -> Result<Option<DerivationResult>, SpectraBridgeError> {
-    use crate::derivation::{
-        bitcoin as btc, bitcoin_cash as bch, decred, dogecoin as doge, evm, litecoin as ltc,
-    };
-    use crate::registry::Chain;
-
-    let result = match chain.mainnet_counterpart() {
-        c if c.is_evm() => {
-            evm::derive_evm_from_private_key(private_key_hex, want_address, want_public_key)?
-        }
-        Chain::Bitcoin => btc::derive_bitcoin_from_private_key(
-            private_key_hex,
-            BitcoinScriptType::P2wpkh,
-            want_address,
-            want_public_key,
-        )?,
-        Chain::BitcoinCash => bch::derive_bitcoin_cash_from_private_key(
+    if !chain.derives_from_private_key() {
+        return Ok(None);
+    }
+    let result = if chain.is_evm() {
+        crate::derivation::evm::derive_evm_from_private_key(
             private_key_hex,
             want_address,
             want_public_key,
-        )?,
-        Chain::Litecoin => ltc::derive_litecoin_from_private_key_on_network(
-            chain,
-            private_key_hex,
-            want_address,
-            want_public_key,
-        )?,
-        Chain::Dogecoin => {
-            doge::derive_dogecoin_from_private_key(private_key_hex, want_address, want_public_key)?
-        }
-        Chain::Decred => {
-            decred::derive_decred_from_private_key(private_key_hex, want_address, want_public_key)?
-        }
-        _ => return Ok(None),
+        )?
+    } else {
+        super::private_key::derive(chain, &private_key_hex, want_address, want_public_key)?
     };
     Ok(Some(result))
 }
@@ -177,6 +155,31 @@ pub fn derive_from_private_key(
 #[cfg(test)]
 mod dispatch_export_tests {
     use super::*;
+
+    #[test]
+    fn raw_keys_derive_the_same_network_address_as_their_mnemonic_keys() {
+        use crate::registry::Chain;
+        const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        for chain in Chain::all().filter(|c| c.derives_from_private_key()) {
+            let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
+            let expected =
+                derive_for_chain(chain, PHRASE, &path, None, None, None, true, true, true).unwrap();
+            let actual =
+                derive_from_private_key(chain, expected.private_key_hex.unwrap(), true, true)
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(actual.address, expected.address, "{chain}");
+            assert_eq!(actual.public_key_hex, expected.public_key_hex, "{chain}");
+            assert!(
+                crate::send::flow::is_valid_send_address(chain, actual.address.unwrap()),
+                "{chain}"
+            );
+            assert!(
+                derive_from_private_key(chain, "00".repeat(31), true, true).is_err(),
+                "{chain}"
+            );
+        }
+    }
 
     /// The dispatcher and `Chain::derives_from_private_key` are one answer.
     ///
@@ -188,9 +191,22 @@ mod dispatch_export_tests {
     fn the_registry_flag_and_the_dispatcher_agree_on_every_chain() {
         const KEY: &str = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
         let derives = |chain| {
-            derive_from_private_key(chain, KEY.to_string(), true, false)
-                .expect("a valid key never errors")
-                .and_then(|r| r.address)
+            derive_from_private_key(
+                chain,
+                if chain.mainnet_counterpart() == crate::registry::Chain::Cardano {
+                    let vector: serde_json::Value = serde_json::from_str(include_str!(
+                        "../../tests/fixtures/cardano-emurgo-witness.json"
+                    ))
+                    .unwrap();
+                    vector["privateKey"].as_str().unwrap().into()
+                } else {
+                    KEY.to_string()
+                },
+                true,
+                false,
+            )
+            .expect("a valid key never errors")
+            .and_then(|r| r.address)
         };
 
         for chain in crate::registry::Chain::all() {
@@ -213,28 +229,8 @@ mod dispatch_export_tests {
     /// day one of them can, it appears there without anyone editing a list.
     #[test]
     fn a_key_alone_is_not_enough_on_these_chains() {
-        for name in [
-            "bitcoin-sv",
-            "xrp",
-            "solana",
-            "stellar",
-            "cardano",
-            "sui",
-            "aptos",
-            "ton",
-            "internet-computer",
-            "near",
-            "polkadot",
-            "monero",
-        ] {
-            let chain =
-                crate::registry::Chain::from_str_id(name).expect("a chain the registry knows");
-            assert!(
-                !chain.derives_from_private_key(),
-                "{name} now derives from a private key — that is a widening, so record it \
-                 in BEHAVIOUR-CHANGES.md and take it off this list"
-            );
-        }
+        assert!(!crate::registry::Chain::Monero.derives_from_private_key());
+        assert!(!crate::registry::Chain::MoneroStagenet.derives_from_private_key());
     }
 
     /// Every chain the registry lists derives through the one dispatcher.

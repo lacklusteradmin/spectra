@@ -1,10 +1,7 @@
-//! Near staking validator and position queries.
+//! Near staking validator queries.
 
-use serde::Deserialize;
-use serde_json::json;
-
-use crate::api::http::{HttpClient, RetryProfile, race};
-use crate::staking::{StakingError, StakingPosition, StakingValidator};
+use crate::api::near_json_rpc::NearClient;
+use crate::staking::{StakingError, StakingValidator};
 
 pub struct NearStakingClient {
     rpc_endpoints: Vec<String>,
@@ -12,89 +9,60 @@ pub struct NearStakingClient {
 
 // ── RPC response types ────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
-struct ValidatorsResp {
-    result: ValidatorsResult,
-}
-#[derive(Deserialize)]
-struct ValidatorsResult {
-    current_validators: Vec<NearCurrentValidator>,
-}
-#[derive(Deserialize, Clone)]
-struct NearCurrentValidator {
-    account_id: String,
-    stake: String, // yoctoNEAR string
-    is_slashed: bool,
-    num_produced_blocks: u64,
-    num_expected_blocks: u64,
-}
-
 impl NearStakingClient {
     pub fn new(rpc_endpoints: Vec<String>) -> Self {
         Self { rpc_endpoints }
     }
 
-    /// JSON-RPC: `validators` for the active set; supplement with view calls
-    /// to each pool's `get_reward_fee_fraction` and `get_total_staked_balance`.
+    /// Active validators with their stake and observed block production.
     pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
-        if self.rpc_endpoints.is_empty() {
-            return Ok(vec![]);
-        }
-        let client = HttpClient::shared();
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": "1",
-            "method": "validators",
-            "params": [null]
-        });
-        let resp: ValidatorsResp = match race(&self.rpc_endpoints, |url| {
+        use futures::{StreamExt, TryStreamExt, stream};
+        let client = std::sync::Arc::new(NearClient::new(std::sync::Arc::new(
+            self.rpc_endpoints.clone(),
+        )));
+        let resp = client.fetch_staking_validators().await?;
+        let validators = stream::iter(
+            resp.current_validators
+                .into_iter()
+                .filter(|v| !v.is_slashed),
+        )
+        .map(|v| {
             let client = client.clone();
-            let body = body.clone();
-            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
-        })
-        .await
-        {
-            Ok(r) => r,
-            Err(_) => return Ok(vec![]),
-        };
-
-        let validators = resp
-            .result
-            .current_validators
-            .into_iter()
-            .filter(|v| !v.is_slashed)
-            .map(|v| {
-                let uptime = if v.num_expected_blocks > 0 {
-                    Some(v.num_produced_blocks as f64 / v.num_expected_blocks as f64 * 100.0)
-                } else {
-                    None
+            async move {
+                if !client
+                    .staking_pool_approved(crate::registry::Chain::Near, &v.account_id)
+                    .await?
+                {
+                    return Ok::<_, crate::api::error::ApiError>(None);
                 };
-                StakingValidator {
+                let pool = client
+                    .fetch_staking_pool(crate::registry::Chain::Near, &v.account_id, &v.account_id)
+                    .await?;
+                let uptime = (v.num_expected_blocks > 0)
+                    .then(|| v.num_produced_blocks as f64 / v.num_expected_blocks as f64 * 100.0);
+                Ok(Some(StakingValidator {
                     identifier: v.account_id.clone(),
-                    display_name: v.account_id.clone(),
-                    apy: 0.09, // ~9% baseline; actual depends on pool fee
-                    commission: None,
-                    total_stake_smallest_unit: Some(v.stake.clone()),
-                    is_active: true,
+                    display_name: v.account_id,
+                    apy: None,
+                    commission: Some(pool.commission),
+                    total_stake_smallest_unit: Some(v.stake),
+                    is_active: !pool.paused,
                     tags: vec![],
                     min_delegation_smallest_unit: None,
                     uptime_pct: uptime,
                     website: None,
-                    description: None,
+                    description: Some(format!("Pool owner: {}", pool.owner_id)),
                     next_epoch_active: None,
-                }
-            })
-            .collect();
+                }))
+            }
+        })
+        .buffer_unordered(8)
+        .try_collect::<Vec<_>>()
+        .await?
+        .into_iter()
+        .flatten()
+        .collect();
 
         Ok(validators)
-    }
-
-    /// View call: `get_account(account_id)` on each pool the wallet has
-    /// interacted with. Returns staked / unstaked / can_withdraw.
-    pub async fn fetch_positions(
-        &self,
-        _wallet_address: &str,
-    ) -> Result<Vec<StakingPosition>, StakingError> {
-        Ok(vec![])
     }
 }

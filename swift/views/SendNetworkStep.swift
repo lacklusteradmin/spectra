@@ -79,7 +79,7 @@ struct SendNetworkStep: View {
         if let selectedCoin {
             let chain = selectedCoin.chain
             if chain.isEVM {
-                evmNetworkContent(selectedCoin: selectedCoin, chain: chain)
+                evmNetworkContent(selectedCoin: selectedCoin)
             } else {
                 simpleFeeContent(selectedCoin: selectedCoin, chain: chain)
             }
@@ -90,7 +90,7 @@ struct SendNetworkStep: View {
     // MARK: — Network sub-sections
 
     @ViewBuilder
-    private func evmNetworkContent(selectedCoin: Coin, chain: Chain) -> some View {
+    private func evmNetworkContent(selectedCoin: Coin) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
             networkSectionHeader(AppLocalization.format("%@ Network", selectedCoin.chainName))
             Toggle(AppLocalization.string("Use Custom Fees"), isOn: Bindable(store.sendFlow).useCustomEvmFees)

@@ -321,7 +321,7 @@ pub(crate) fn crc16_xmodem(bytes: &[u8]) -> u16 {
 }
 
 // Build the TON v4R2 bounceable user-friendly address from a public key via state_init cell hash.
-fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, DerivationError> {
+pub(crate) fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, DerivationError> {
     let account_id = v4r2_state_init_account_id(public_key)?;
     // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
     let mut buf = [0u8; 36];
@@ -426,7 +426,8 @@ pub fn derive_ton_testnet(
     )
 }
 
-#[cfg(test)]
+/// Root representation hash of a locally built external-message BOC. This
+/// identity is persisted before broadcast so uncertain submission can be polled.
 pub(crate) fn boc_root_hash(bytes: &[u8]) -> Result<[u8; 32], DerivationError> {
     let (cells, root) = parse_boc(bytes)?;
     Ok(cell_from_rows(&cells, root)?.hash_depth().0)

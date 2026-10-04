@@ -177,6 +177,7 @@ fn private_key_editor_normalizes_only_a_complete_hex_key() {
         assert!(private_key_hex(invalid).is_none());
     }
     assert!(is_private_key_hex(format!("0x{}", "ab".repeat(32))));
+    assert!(is_private_key_hex(format!("0x{}", "ab".repeat(64))));
 }
 
 #[tokio::test]

@@ -139,7 +139,7 @@ extension AppState {
 
     /// A broadcast was accepted and the transaction is waiting on the chain.
     func startSendLiveActivity(for transaction: TransactionRecord) {
-        guard transaction.kind == .send, transaction.status == .pending else { return }
+        guard transaction.isSubmittedOperation, transaction.status == .pending else { return }
         SendLiveActivityStore.start(
             transactionId: transaction.id,
             state: sendLiveActivityState(for: transaction, phase: .sending))

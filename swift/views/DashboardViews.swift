@@ -297,7 +297,6 @@ typealias DashboardAssetGroup = CoreDashboardAssetGroup
 extension CoreDashboardAssetGroup: Identifiable {
     /// Core supplies the asset's display identity from its primary holding,
     /// or from the catalog when a pinned asset is not held.
-    var representative: Coin { identity }
     var name: String { identity.name }
     var symbol: String { identity.symbol }
     var artworkName: String { identity.artworkName }

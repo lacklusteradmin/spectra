@@ -242,9 +242,7 @@ pub enum SimpleChainPreview {
     Polkadot {
         preview: crate::send::preview_types::PolkadotSendPreview,
     },
-    /// Substrate, like Polkadot, so the same record shape. Its fee is the
-    /// catalog's static 125,000 rao rather than an on-chain quote — the same
-    /// arrangement Polkadot's preview has had.
+    /// Substrate's runtime quote and spendable balance use the same record.
     Bittensor {
         preview: crate::send::preview_types::PolkadotSendPreview,
     },
@@ -390,9 +388,9 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
         SimpleChain::Near => SimpleChainPreview::Near {
             preview: NearSendPreview {
                 estimatedNetworkFee: fee,
-                gasPriceYoctoNear: raw.clone(),
+                feeBudgetYoctoNear: raw,
                 spendableBalance: bal,
-                feeRateDescription: Some(raw),
+                feeRateDescription: Some(desc),
                 estimatedTransactionBytes: None,
                 selectedInputCount: None,
                 usesChangeOutput: None,
@@ -404,7 +402,9 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 estimatedNetworkFee: fee,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
+                estimatedTransactionBytes: o
+                    .get("estimated_transaction_bytes")
+                    .and_then(serde_json::Value::as_i64),
                 selectedInputCount: None,
                 usesChangeOutput: None,
                 maxSendable: max,

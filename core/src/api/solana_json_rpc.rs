@@ -9,7 +9,7 @@ use crate::api::http::HttpClient;
 
 // ── Public result types
 
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolanaBalance {
     /// Lamports (1 SOL = 1_000_000_000 lamports).
     pub lamports: u64,
@@ -77,10 +77,218 @@ impl SolanaClient {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct SolanaStakeAccount {
+    pub address: String,
+    pub lamports: u64,
+    pub rent_reserve: u64,
+    pub staker: String,
+    pub withdrawer: String,
+    pub vote: Option<String>,
+    pub delegated: u64,
+    pub activation_epoch: Option<u64>,
+    pub deactivation_epoch: Option<u64>,
+    pub lockup_epoch: u64,
+    pub lockup_time: i64,
+}
+
+fn parse_stake_account(address: &str, account: &Value) -> Result<SolanaStakeAccount, ApiError> {
+    if account["owner"].as_str() != Some(crate::registry::Chain::Solana.solana_stake_program()?)
+        || !matches!(
+            account["data"]["parsed"]["type"].as_str(),
+            Some("initialized" | "delegated")
+        )
+    {
+        return Err(ApiError::decode(
+            "Solana position is not an initialized stake account",
+        ));
+    }
+    let info = &account["data"]["parsed"]["info"];
+    let meta = &info["meta"];
+    let unit = |v: &Value| {
+        v.as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_else(|| v.as_u64())
+            .or_decode("Solana stake: invalid integer")
+    };
+    let delegation = &info["stake"]["delegation"];
+    let delegated = account["data"]["parsed"]["type"] == "delegated";
+    Ok(SolanaStakeAccount {
+        address: address.into(),
+        lamports: unit(&account["lamports"])?,
+        rent_reserve: unit(&meta["rentExemptReserve"])?,
+        staker: meta["authorized"]["staker"]
+            .as_str()
+            .or_decode("Solana stake: missing staker")?
+            .into(),
+        withdrawer: meta["authorized"]["withdrawer"]
+            .as_str()
+            .or_decode("Solana stake: missing withdrawer")?
+            .into(),
+        vote: if delegated {
+            Some(
+                delegation["voter"]
+                    .as_str()
+                    .or_decode("Solana stake: missing voter")?
+                    .into(),
+            )
+        } else {
+            None
+        },
+        delegated: if delegated {
+            unit(&delegation["stake"])?
+        } else {
+            0
+        },
+        activation_epoch: if delegated {
+            Some(unit(&delegation["activationEpoch"])?)
+        } else {
+            None
+        },
+        deactivation_epoch: if delegated {
+            Some(unit(&delegation["deactivationEpoch"])?)
+        } else {
+            None
+        },
+        lockup_epoch: unit(&meta["lockup"]["epoch"])?,
+        lockup_time: meta["lockup"]["unixTimestamp"]
+            .as_i64()
+            .or_decode("Solana stake: missing lockup time")?,
+    })
+}
+
+impl SolanaClient {
+    pub(crate) async fn fetch_stake_accounts(
+        &self,
+        owner: &str,
+    ) -> Result<Vec<SolanaStakeAccount>, ApiError> {
+        let mut accounts = std::collections::BTreeMap::new();
+        // Bincode enum(4), rent reserve(8), then the two authority pubkeys.
+        for offset in [12, 44] {
+            let result=self.call("getProgramAccounts",json!([crate::registry::Chain::Solana.solana_stake_program()?,{"encoding":"jsonParsed","commitment":"confirmed","filters":[{"dataSize":200},{"memcmp":{"offset":offset,"bytes":owner}}]}])).await?;
+            for row in result
+                .as_array()
+                .or_decode("Solana stake: missing accounts")?
+            {
+                let address = row["pubkey"]
+                    .as_str()
+                    .or_decode("Solana stake: missing account address")?;
+                let account = parse_stake_account(address, &row["account"])?;
+                if account.staker != owner && account.withdrawer != owner {
+                    return Err(ApiError::decode("Solana stake: account authority mismatch"));
+                }
+                accounts.insert(address.to_string(), account);
+            }
+        }
+        Ok(accounts.into_values().collect())
+    }
+
+    pub(crate) async fn fetch_stake_account(
+        &self,
+        address: &str,
+    ) -> Result<SolanaStakeAccount, ApiError> {
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([address,{"encoding":"jsonParsed","commitment":"confirmed"}]),
+            )
+            .await?;
+        parse_stake_account(address, &result["value"])
+    }
+
+    pub(crate) async fn fetch_staking_epoch(&self) -> Result<u64, ApiError> {
+        let result = self
+            .call("getEpochInfo", json!([{"commitment":"confirmed"}]))
+            .await?;
+        result["epoch"]
+            .as_u64()
+            .or_decode("Solana stake: missing current epoch")
+    }
+
+    pub(crate) async fn fetch_stake_minimum(&self) -> Result<u64, ApiError> {
+        let result = self
+            .call(
+                "getStakeMinimumDelegation",
+                json!([{"commitment":"confirmed"}]),
+            )
+            .await?;
+        result["value"]
+            .as_u64()
+            .or_decode("Solana stake: missing minimum delegation")
+    }
+
+    pub(crate) async fn fetch_stake_rent(&self) -> Result<u64, ApiError> {
+        let result = self
+            .call(
+                "getMinimumBalanceForRentExemption",
+                json!([200,{"commitment":"confirmed"}]),
+            )
+            .await?;
+        result
+            .as_u64()
+            .or_decode("Solana stake: missing account rent")
+    }
+
+    pub(crate) async fn fetch_staking_message_fee(&self, message: &[u8]) -> Result<u64, ApiError> {
+        use base64::Engine;
+        let result=self.call("getFeeForMessage",json!([base64::engine::general_purpose::STANDARD.encode(message),{"commitment":"confirmed"}])).await?;
+        result["value"]
+            .as_u64()
+            .or_decode("Solana stake: missing transaction fee or expired blockhash")
+    }
+
+    pub(crate) async fn simulate_staking_message(&self, message: &[u8]) -> Result<bool, ApiError> {
+        use base64::Engine;
+        let mut bytes = vec![1];
+        bytes.extend([0; 64]);
+        bytes.extend(message);
+        let result=self.call("simulateTransaction",json!([base64::engine::general_purpose::STANDARD.encode(bytes),{"encoding":"base64","sigVerify":false,"commitment":"confirmed"}])).await?;
+        let error = result["value"]
+            .get("err")
+            .or_decode("Solana staking simulation: missing result")?;
+        if error.is_null() {
+            return Ok(true);
+        }
+        if error.get("InstructionError").is_some() {
+            return Ok(false);
+        }
+        // Fee-payer exhaustion, a stale blockhash or a node problem cannot
+        // establish that an owned stake is locked. Preserve the read failure.
+        Err(ApiError::invalid(format!(
+            "Unable to determine Solana staking execution: {error}"
+        )))
+    }
+}
+
 // Solana fetch paths: native balance, SPL balances, recent blockhash,
 // unified history, account existence.
 
 impl SolanaClient {
+    pub(crate) async fn verify_network(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        let result = self.call("getGenesisHash", json!([])).await?;
+        if result.as_str() != Some(chain.solana_genesis_hash()?) {
+            return Err(ApiError::decode("Solana endpoint is on the wrong network"));
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        signature: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        crate::api::transaction_status::validate_base58_hash(signature, 64)?;
+        let result = self
+            .call(
+                "getSignatureStatuses",
+                json!([[signature], {"searchTransactionHistory": true}]),
+            )
+            .await?;
+        solana_transaction_status(&result)
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<SolanaBalance, ApiError> {
         let result = self
             .call("getBalance", json!([address, {"commitment": "confirmed"}]))
@@ -282,33 +490,46 @@ impl SolanaClient {
 
     /// Fetch up to `limit` recent transfers as unified entries covering both
     /// native SOL and SPL token transfers.
-    pub async fn fetch_unified_history(
+    pub async fn fetch_unified_history_page(
         &self,
         address: &str,
         limit: usize,
-    ) -> Result<Vec<SolanaTransfer>, ApiError> {
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<SolanaTransfer>, ApiError> {
+        let limit = limit.clamp(1, 50);
+        let mut options = json!({"limit": limit, "commitment": "confirmed"});
+        if let Some(cursor) = cursor {
+            options["before"] = json!(cursor);
+        }
         // 1. Get signatures.
         let sigs_result = self
-            .call(
-                "getSignaturesForAddress",
-                json!([address, {"limit": limit, "commitment": "confirmed"}]),
-            )
+            .call("getSignaturesForAddress", json!([address, options]))
             .await?;
         let sig_array = sigs_result
             .as_array()
             .or_decode("getSignaturesForAddress: expected array")?;
 
+        if sig_array.len() > limit {
+            return Err(ApiError::Decode(
+                "Solana history exceeds requested page size".into(),
+            ));
+        }
         let signatures: Vec<String> = sig_array
             .iter()
-            .filter_map(|s| {
-                s.get("signature")
-                    .and_then(|v| v.as_str())
+            .map(|row| {
+                row["signature"]
+                    .as_str()
+                    .filter(|signature| !signature.is_empty())
                     .map(str::to_string)
+                    .or_decode("Solana history: missing signature")
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
 
         if signatures.is_empty() {
-            return Ok(vec![]);
+            return Ok(crate::api::HistoryPage {
+                items: vec![],
+                next_cursor: None,
+            });
         }
 
         // 2. Fetch each transaction and build unified entries.
@@ -319,14 +540,52 @@ impl SolanaClient {
                     "getTransaction",
                     json!([sig, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}]),
                 )
-                .await
-                .unwrap_or(Value::Null);
-            if !tx.is_null() {
-                result.extend(solana_transfers_in_transaction(&tx, sig, address));
+                .await?;
+            if tx.is_null() {
+                return Err(ApiError::Rejected(format!(
+                    "Solana transaction {sig} is unavailable; history page cannot be consumed"
+                )));
             }
+            result.extend(solana_transfers_in_transaction(&tx, sig, address));
         }
-        Ok(result)
+        let next_cursor = (sig_array.len() == limit)
+            .then(|| signatures.last().cloned())
+            .flatten();
+        Ok(crate::api::HistoryPage {
+            items: result,
+            next_cursor,
+        })
     }
+}
+
+fn solana_transaction_status(
+    result: &Value,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    let rows = result["value"]
+        .as_array()
+        .filter(|rows| rows.len() == 1)
+        .or_decode("Solana status: expected one signature result")?;
+    let row = &rows[0];
+    if row.is_null() {
+        return Ok(TransactionStatus::Pending);
+    }
+    match row["confirmationStatus"].as_str() {
+        Some("processed" | "confirmed") => return Ok(TransactionStatus::Pending),
+        Some("finalized") => {}
+        _ => return Err(ApiError::decode("Solana status: invalid finality")),
+    }
+    let error = row
+        .get("err")
+        .or_decode("Solana status: missing execution result")?;
+    Ok(TransactionStatus::Confirmed {
+        succeeded: error.is_null(),
+        block: Some(
+            row["slot"]
+                .as_u64()
+                .or_decode("Solana status: missing slot")?,
+        ),
+    })
 }
 
 /// What one transaction moved into or out of `address`: an entry per SPL
@@ -839,5 +1098,31 @@ mod history_tests {
         assert_eq!(entries[0].mint, MINT);
         assert!(!entries[0].is_incoming);
         assert_eq!(entries[0].amount_display, "2.5");
+    }
+}
+
+// Validator-directory response data; staking owns the projection.
+#[derive(Deserialize)]
+pub struct VoteAccountsResult {
+    pub current: Vec<VoteAccount>,
+    pub delinquent: Vec<VoteAccount>,
+}
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct VoteAccount {
+    pub vote_pubkey: String,
+    pub activated_stake: u64,
+    pub commission: u8,
+}
+
+impl SolanaClient {
+    pub async fn fetch_staking_validators(&self) -> Result<VoteAccountsResult, ApiError> {
+        let value = self
+            .call(
+                "getVoteAccounts",
+                serde_json::json!([{"commitment":"confirmed","keepUnstakedDelinquents":false}]),
+            )
+            .await?;
+        serde_json::from_value(value).map_err(ApiError::from)
     }
 }

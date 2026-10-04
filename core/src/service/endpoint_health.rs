@@ -17,6 +17,7 @@ enum Response {
     Rosetta,
     Monero,
     Xrpl,
+    IcpReplica,
     Field(&'static str),
 }
 
@@ -51,6 +52,13 @@ impl Check {
     }
 
     async fn run(&self, chain: Chain) -> Result<(), ApiError> {
+        if matches!(&self.response, Response::IcpReplica) {
+            return crate::api::icp_replica::IcpReplicaClient::new(std::sync::Arc::new(vec![
+                self.url.clone(),
+            ]))
+            .health()
+            .await;
+        }
         let client = HttpClient::shared();
         let value: Value = match &self.body {
             Some(body) => {
@@ -114,6 +122,7 @@ impl Check {
                         .and_then(Value::as_u64)
                         .is_some()
             }
+            Response::IcpReplica => return Err("ICP replica health requires CBOR decoding"),
             Response::Field(pointer) => value.pointer(pointer).is_some_and(|v| !v.is_null()),
         };
         if valid {
@@ -153,6 +162,12 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
         IcpRosetta => vec![Check {
             url: format!("{base}/network/list"), body: Some(json!({"metadata":{}})), response: Response::Rosetta,
         }],
+        IcpReplica => {
+            if chain != Chain::Icp {
+                return Err(ApiError::invalid("ICP replica is not supported on this network"));
+            }
+            vec![Check::get(base.into(), Response::IcpReplica)]
+        },
         TronHttp => vec![Check {
             url: format!("{base}/wallet/getnowblock"), body: Some(json!({})), response: Response::Field("/blockID"),
         }],
@@ -160,12 +175,14 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
         Blockbook => vec![get("/api/v2", "/blockbook/bestHeight")],
         Blockcypher => vec![get("", "/height")],
         AptosRest => vec![get("", "/ledger_version")],
+        AptosIndexer => vec![],
         Whatsonchain => vec![get("/chain/info", "/blocks")],
         Koios => vec![get("/tip", "/0/block_no")],
         ToncenterV2 => vec![get("/getMasterchainInfo", "/result/last/seqno")],
         ToncenterV3 => vec![get("/masterchainInfo", "/last/seqno")],
         Horizon => vec![get("/fee_stats", "/last_ledger")],
-        Nearblocks => vec![get("/stats", "/stats/0")],
+        Nearblocks => vec![get("/stats", "/data/total_txns")],
+        Fastnear => vec![get("/v1/account/0000000000000000000000000000000000000000000000000000000000000000/staking", "/pools")],
         Insight => vec![get("/status", "/blocks")],
         KaspaRest => vec![get("/info/network", "/networkName")],
         BchRestV2 => vec![get("/blockchain/getBlockchainInfo", "/blocks")],
@@ -179,6 +196,25 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
 }
 
 pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool, String) {
+    if record.api == EndpointApi::AptosIndexer {
+        let Some(expected) = chain.aptos_chain_id() else {
+            return (
+                false,
+                false,
+                "Aptos indexer is not supported on this network".into(),
+            );
+        };
+        return match crate::api::aptos_indexer::AptosIndexerClient::new(
+            std::sync::Arc::new(vec![record.endpoint.clone()]),
+            expected,
+        )
+        .verify_network()
+        .await
+        {
+            Ok(()) => (true, true, "Aptos indexer network verified".into()),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
     if record.api == EndpointApi::SubstrateJsonRpc && chain.mainnet_counterpart() == Chain::Polkadot
     {
         return match crate::api::substrate_json_rpc::SubstrateClient::new(std::sync::Arc::new(

@@ -1,0 +1,246 @@
+{
+  "observed_at": "2026-10-04",
+  "endpoint": "https://api.mainnet-beta.solana.com",
+  "no_private_key": true,
+  "no_broadcast": true,
+  "proofs": [
+    {
+      "name": "modern-no-sysvars",
+      "payer": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+      "vote": "CcaHc2L43ZWjwCHART3oZoJvHLAe9hzT2DJNUpBzoTN1",
+      "stake": "25LL8qeudWDyewLRVtfPBRPhiVWrE4Q6E2PnXsJxig7u",
+      "rent": 1666240,
+      "blockhash": "FjkBPtopRMkKEW1bGYQqJWNR3oZ8GqV9SSjKUGtSWtNR",
+      "unsigned_transaction_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAMF2UP9koloEO6CcIRPHA3Zih60RjQc4XY/25u96bp8isUP993XdIHJvokZGhaIL3cdkp3ekIJO+7j6JyNJz1+pBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABqHYF5E3VCqYNDe9/ip6slV/U1yKeHIraKSdwAAAAACsjYV7jhs84vxY/Vt2UplT7Dzd+js56nZGiUlxWL9Wqtr21Xcd73KQpD6y0ghPTdOegBJzredd9t7yrfedj4o+AwICAAF1AwAAANlD/ZKJaBDugnCETxwN2YoetEY0HOF2P9ubvem6fIrFGQAAAAAAAABzcGVjdHJhLXNpbS1vbmx5LTIwMjYxMDA0wABPdwAAAADIAAAAAAAAAAah2BeRN1QqmDQ3vf4qerJVf1NcinhyK2ikncAAAAAAAwEBdAAAAADZQ/2SiWgQ7oJwhE8cDdmKHrRGNBzhdj/bm73punyKxdlD/ZKJaBDugnCETxwN2YoetEY0HOF2P9ubvem6fIrFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwMBBAAEAgAAAA==",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 453383262
+        },
+        "value": {
+          "accounts": null,
+          "err": null,
+          "fee": 5000,
+          "innerInstructions": null,
+          "loadedAccountsDataSize": 216240,
+          "loadedAddresses": {
+            "readonly": [],
+            "writable": []
+          },
+          "logs": [
+            "Program 11111111111111111111111111111111 invoke [1]",
+            "Program 11111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: Initialize",
+            "Program Stake11111111111111111111111111111111111111 consumed 7551 of 402850 compute units",
+            "Program Stake11111111111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: DelegateStake",
+            "Program Stake11111111111111111111111111111111111111 consumed 17148 of 395299 compute units",
+            "Program Stake11111111111111111111111111111111111111 success"
+          ],
+          "postBalances": [
+            104209953992,
+            2001666240,
+            1,
+            1141440,
+            25019761200
+          ],
+          "postTokenBalances": [],
+          "preBalances": [
+            106211625232,
+            0,
+            1,
+            1141440,
+            25019761200
+          ],
+          "preTokenBalances": [],
+          "replacementBlockhash": null,
+          "returnData": null,
+          "unitsConsumed": 24849
+        }
+      }
+    },
+    {
+      "name": "legacy-with-sysvars",
+      "payer": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+      "vote": "CcaHc2L43ZWjwCHART3oZoJvHLAe9hzT2DJNUpBzoTN1",
+      "stake": "25LL8qeudWDyewLRVtfPBRPhiVWrE4Q6E2PnXsJxig7u",
+      "rent": 1666240,
+      "blockhash": "FjkBPtopRMkKEW1bGYQqJWNR3oZ8GqV9SSjKUGtSWtNR",
+      "unsigned_transaction_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAcJ2UP9koloEO6CcIRPHA3Zih60RjQc4XY/25u96bp8isUP993XdIHJvokZGhaIL3cdkp3ekIJO+7j6JyNJz1+pBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABqHYF5E3VCqYNDe9/ip6slV/U1yKeHIraKSdwAAAAAAGp9UXGSxcUSGMyUw9SvF/WNruCJuh/UTj29mKAAAAAKyNhXuOGzzi/Fj9W3ZSmVPsPN36OznqdkaJSXFYv1aqBqfVFxjHdMkoVmOYaR1etoteuKObS21cc1VbIQAAAAAGp9UXGTWE0P7tm7NDHRMga+VEKBtXuFZsxTdf9AAAAAah2BelAgULaAeR5s5tuI4eW3FQ9h/GeQpOtNEAAAAA2vbVdx3vcpCkPrLSCE9N056AEnOt51323vKt952Pij4DAgIAAXUDAAAA2UP9koloEO6CcIRPHA3Zih60RjQc4XY/25u96bp8isUZAAAAAAAAAHNwZWN0cmEtc2ltLW9ubHktMjAyNjEwMDTAAE93AAAAAMgAAAAAAAAABqHYF5E3VCqYNDe9/ip6slV/U1yKeHIraKSdwAAAAAADAgEEdAAAAADZQ/2SiWgQ7oJwhE8cDdmKHrRGNBzhdj/bm73punyKxdlD/ZKJaBDugnCETxwN2YoetEY0HOF2P9ubvem6fIrFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwYBBQYHCAAEAgAAAA==",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 453383262
+        },
+        "value": {
+          "accounts": null,
+          "err": null,
+          "fee": 5000,
+          "innerInstructions": null,
+          "loadedAccountsDataSize": 232955,
+          "loadedAddresses": {
+            "readonly": [],
+            "writable": []
+          },
+          "logs": [
+            "Program 11111111111111111111111111111111 invoke [1]",
+            "Program 11111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: Initialize",
+            "Program Stake11111111111111111111111111111111111111 consumed 7758 of 402850 compute units",
+            "Program Stake11111111111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: DelegateStake",
+            "Program Stake11111111111111111111111111111111111111 consumed 17794 of 395092 compute units",
+            "Program Stake11111111111111111111111111111111111111 success"
+          ],
+          "postBalances": [
+            104209953992,
+            2001666240,
+            1,
+            1141440,
+            1009200,
+            25019761200,
+            1169280,
+            114979200,
+            960480
+          ],
+          "postTokenBalances": [],
+          "preBalances": [
+            106211625232,
+            0,
+            1,
+            1141440,
+            1009200,
+            25019761200,
+            1169280,
+            114979200,
+            960480
+          ],
+          "preTokenBalances": [],
+          "replacementBlockhash": null,
+          "returnData": null,
+          "unitsConsumed": 25702
+        }
+      }
+    },
+    {
+      "name": "modern-deactivate",
+      "payer": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+      "vote": "CcaHc2L43ZWjwCHART3oZoJvHLAe9hzT2DJNUpBzoTN1",
+      "stake": "25LL8qeudWDyewLRVtfPBRPhiVWrE4Q6E2PnXsJxig7u",
+      "rent": 1666240,
+      "blockhash": "FjkBPtopRMkKEW1bGYQqJWNR3oZ8GqV9SSjKUGtSWtNR",
+      "unsigned_transaction_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAMF2UP9koloEO6CcIRPHA3Zih60RjQc4XY/25u96bp8isUP993XdIHJvokZGhaIL3cdkp3ekIJO+7j6JyNJz1+pBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABqHYF5E3VCqYNDe9/ip6slV/U1yKeHIraKSdwAAAAACsjYV7jhs84vxY/Vt2UplT7Dzd+js56nZGiUlxWL9Wqtr21Xcd73KQpD6y0ghPTdOegBJzredd9t7yrfedj4o+BAICAAF1AwAAANlD/ZKJaBDugnCETxwN2YoetEY0HOF2P9ubvem6fIrFGQAAAAAAAABzcGVjdHJhLXNpbS1vbmx5LTIwMjYxMDA0wABPdwAAAADIAAAAAAAAAAah2BeRN1QqmDQ3vf4qerJVf1NcinhyK2ikncAAAAAAAwEBdAAAAADZQ/2SiWgQ7oJwhE8cDdmKHrRGNBzhdj/bm73punyKxdlD/ZKJaBDugnCETxwN2YoetEY0HOF2P9ubvem6fIrFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwMBBAAEAgAAAAMCAQAEBQAAAA==",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 453383262
+        },
+        "value": {
+          "accounts": null,
+          "err": null,
+          "fee": 5000,
+          "innerInstructions": null,
+          "loadedAccountsDataSize": 216240,
+          "loadedAddresses": {
+            "readonly": [],
+            "writable": []
+          },
+          "logs": [
+            "Program 11111111111111111111111111111111 invoke [1]",
+            "Program 11111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: Initialize",
+            "Program Stake11111111111111111111111111111111111111 consumed 7551 of 602850 compute units",
+            "Program Stake11111111111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: DelegateStake",
+            "Program Stake11111111111111111111111111111111111111 consumed 17148 of 595299 compute units",
+            "Program Stake11111111111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: Deactivate",
+            "Program Stake11111111111111111111111111111111111111 consumed 10971 of 578151 compute units",
+            "Program Stake11111111111111111111111111111111111111 success"
+          ],
+          "postBalances": [
+            104209953992,
+            2001666240,
+            1,
+            1141440,
+            25019761200
+          ],
+          "postTokenBalances": [],
+          "preBalances": [
+            106211625232,
+            0,
+            1,
+            1141440,
+            25019761200
+          ],
+          "preTokenBalances": [],
+          "replacementBlockhash": null,
+          "returnData": null,
+          "unitsConsumed": 35820
+        }
+      }
+    },
+    {
+      "name": "modern-withdraw",
+      "payer": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+      "vote": "CcaHc2L43ZWjwCHART3oZoJvHLAe9hzT2DJNUpBzoTN1",
+      "stake": "25LL8qeudWDyewLRVtfPBRPhiVWrE4Q6E2PnXsJxig7u",
+      "rent": 1666240,
+      "blockhash": "FjkBPtopRMkKEW1bGYQqJWNR3oZ8GqV9SSjKUGtSWtNR",
+      "unsigned_transaction_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAIE2UP9koloEO6CcIRPHA3Zih60RjQc4XY/25u96bp8isUP993XdIHJvokZGhaIL3cdkp3ekIJO+7j6JyNJz1+pBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABqHYF5E3VCqYNDe9/ip6slV/U1yKeHIraKSdwAAAAADa9tV3He9ykKQ+stIIT03TnoASc63nXfbe8q33nY+KPgMCAgABdQMAAADZQ/2SiWgQ7oJwhE8cDdmKHrRGNBzhdj/bm73punyKxRkAAAAAAAAAc3BlY3RyYS1zaW0tb25seS0yMDI2MTAwNMAAT3cAAAAAyAAAAAAAAAAGodgXkTdUKpg0N73+KnqyVX9TXIp4citopJ3AAAAAAAMBAXQAAAAA2UP9koloEO6CcIRPHA3Zih60RjQc4XY/25u96bp8isXZQ/2SiWgQ7oJwhE8cDdmKHrRGNBzhdj/bm73punyKxQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDAQAADAQAAADAAE93AAAAAA==",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 453383263
+        },
+        "value": {
+          "accounts": null,
+          "err": null,
+          "fee": 5000,
+          "innerInstructions": null,
+          "loadedAccountsDataSize": 212414,
+          "loadedAddresses": {
+            "readonly": [],
+            "writable": []
+          },
+          "logs": [
+            "Program 11111111111111111111111111111111 invoke [1]",
+            "Program 11111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: Initialize",
+            "Program Stake11111111111111111111111111111111111111 consumed 7551 of 402850 compute units",
+            "Program Stake11111111111111111111111111111111111111 success",
+            "Program Stake11111111111111111111111111111111111111 invoke [1]",
+            "Program log: Instruction: Withdraw",
+            "Program Stake11111111111111111111111111111111111111 consumed 5822 of 395299 compute units",
+            "Program Stake11111111111111111111111111111111111111 success"
+          ],
+          "postBalances": [
+            106211615232,
+            0,
+            1,
+            1141440
+          ],
+          "postTokenBalances": [],
+          "preBalances": [
+            106211620232,
+            0,
+            1,
+            1141440
+          ],
+          "preTokenBalances": [],
+          "replacementBlockhash": null,
+          "returnData": null,
+          "unitsConsumed": 13523
+        }
+      }
+    }
+  ]
+}

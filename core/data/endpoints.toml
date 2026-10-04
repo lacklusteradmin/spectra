@@ -378,21 +378,21 @@ id = "aptos.rpc.aptoslabs"
 api = "aptos-rest"
 chain_id = "aptos"
 endpoint = "https://api.mainnet.aptoslabs.com/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification", "staking"]
 
 [[endpoints]]
 id = "aptos.rpc.mainnet"
 api = "aptos-rest"
 chain_id = "aptos"
 endpoint = "https://mainnet.aptoslabs.com/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification", "staking"]
 
 [[endpoints]]
 id = "aptos.testnet.aptoslabs"
 api = "aptos-rest"
 chain_id = "aptos-testnet"
 endpoint = "https://api.testnet.aptoslabs.com/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "verification"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
 id = "ton.api.v2"
@@ -406,7 +406,7 @@ id = "ton.api.v3"
 api = "toncenter-v3"
 chain_id = "ton"
 endpoint = "https://toncenter.com/api/v3"
-capabilities = ["token-balance", "token-discovery"]
+capabilities = ["token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "ton.testnet.v2"
@@ -420,49 +420,49 @@ id = "ton.testnet.v3"
 api = "toncenter-v3"
 chain_id = "ton-testnet"
 endpoint = "https://testnet.toncenter.com/api/v3"
-capabilities = ["token-balance", "token-discovery"]
+capabilities = ["token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "sui.rpc.publicnode"
 api = "sui-json-rpc"
 chain_id = "sui"
 endpoint = "https://sui-rpc.publicnode.com"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
 id = "sui.rpc.blockvision"
 api = "sui-json-rpc"
 chain_id = "sui"
 endpoint = "https://sui-mainnet-endpoint.blockvision.org"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
 id = "sui.rpc.blockpi"
 api = "sui-json-rpc"
 chain_id = "sui"
 endpoint = "https://sui.blockpi.network/v1/rpc/public"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
 id = "sui.rpc.suiscan"
 api = "sui-json-rpc"
 chain_id = "sui"
 endpoint = "https://rpc-mainnet.suiscan.xyz"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
 id = "sui.rpc.1rpc"
 api = "sui-json-rpc"
 chain_id = "sui"
 endpoint = "https://1rpc.io/sui"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
 id = "sui.testnet.rpc.publicnode"
 api = "sui-json-rpc"
 chain_id = "sui-testnet"
 endpoint = "https://sui-testnet-rpc.publicnode.com"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
 
 [[endpoints]]
 id = "near.rpc.mainnet"
@@ -482,8 +482,15 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification", 
 id = "near.history.nearblocks"
 api = "nearblocks"
 chain_id = "near"
-endpoint = "https://api.nearblocks.io/v1"
-capabilities = ["history"]
+endpoint = "https://api.nearblocks.io/v3"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "near.staking.fastnear"
+api = "fastnear"
+chain_id = "near"
+endpoint = "https://api.fastnear.com"
+capabilities = ["staking"]
 
 [[endpoints]]
 id = "near.testnet.rpc"
@@ -503,8 +510,8 @@ capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 id = "near.testnet.nearblocks"
 api = "nearblocks"
 chain_id = "near-testnet"
-endpoint = "https://api-testnet.nearblocks.io/v1"
-capabilities = ["history"]
+endpoint = "https://api-testnet.nearblocks.io/v3"
+capabilities = ["history", "token-history", "token-discovery"]
 
 [[endpoints]]
 id = "polkadot.asset-hub.rpc.dwellir"
@@ -560,35 +567,42 @@ id = "monero.daemon.cake"
 api = "monero-daemon-rpc"
 chain_id = "monero"
 endpoint = "http://xmr-node.cakewallet.com:18081"
-capabilities = ["fee", "broadcast"]
+capabilities = ["fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "monero.stagenet.xmrtw"
 api = "monero-daemon-rpc"
 chain_id = "monero-stagenet"
 endpoint = "http://stagenet.xmr-tw.org:38081"
-capabilities = ["fee", "broadcast"]
+capabilities = ["fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "monero.stagenet.monerodevs"
 api = "monero-daemon-rpc"
 chain_id = "monero-stagenet"
 endpoint = "http://node.monerodevs.org:38089"
-capabilities = ["fee", "broadcast"]
+capabilities = ["fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "monero.stagenet.monerodevs2"
 api = "monero-daemon-rpc"
 chain_id = "monero-stagenet"
 endpoint = "http://node2.monerodevs.org:38089"
-capabilities = ["fee", "broadcast"]
+capabilities = ["fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "monero.stagenet.boldsuck"
 api = "monero-daemon-rpc"
 chain_id = "monero-stagenet"
 endpoint = "http://xmr-lux.boldsuck.org:38081"
-capabilities = ["fee", "broadcast"]
+capabilities = ["fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "icp.replica.official"
+api = "icp-replica"
+chain_id = "internet-computer"
+endpoint = "https://icp-api.io"
+capabilities = ["broadcast", "verification", "staking"]
 
 [[endpoints]]
 id = "icp.rosetta"
@@ -794,21 +808,21 @@ id = "avalanche.rpc.primary"
 api = "evm-json-rpc"
 chain_id = "avalanche"
 endpoint = "https://api.avax.network/ext/bc/C/rpc"
-capabilities = ["balance", "fee", "broadcast", "verification"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
 id = "avalanche.rpc.publicnode"
 api = "evm-json-rpc"
 chain_id = "avalanche"
 endpoint = "https://avalanche-c-chain-rpc.publicnode.com"
-capabilities = ["balance", "fee", "broadcast", "verification"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
 id = "avalanche.rpc.1rpc"
 api = "evm-json-rpc"
 chain_id = "avalanche"
 endpoint = "https://1rpc.io/avax/c"
-capabilities = ["balance", "fee", "broadcast", "verification"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
 id = "avalanche.fuji.rpc.publicnode"
@@ -1385,3 +1399,19 @@ api = "blockscout"
 chain_id = "ink-sepolia"
 endpoint = "https://explorer-sepolia.inkonchain.com"
 capabilities = ["history", "token-discovery", "token-history"]
+
+# Public Aptos Indexer: address activities include received and orderless
+# transactions. Fullnode account sequence history cannot provide that contract.
+[[endpoints]]
+id = "aptos.indexer.aptoslabs"
+api = "aptos-indexer"
+chain_id = "aptos"
+endpoint = "https://api.mainnet.aptoslabs.com/v1/graphql"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "aptos.testnet.indexer.aptoslabs"
+api = "aptos-indexer"
+chain_id = "aptos-testnet"
+endpoint = "https://api.testnet.aptoslabs.com/v1/graphql"
+capabilities = ["history", "token-history", "token-discovery"]

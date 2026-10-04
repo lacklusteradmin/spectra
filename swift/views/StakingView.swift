@@ -1,273 +1,266 @@
 import SwiftUI
 
 struct StakingView: View {
-    let bridge: WalletServiceBridge
+    @Bindable var store: AppState
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                SpectraBackdrop().ignoresSafeArea()
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                        introCard
-                        chainPickerCard
-                        philosophyCard
-                    }.spectraScreenPadding()
-                }
-            }.navigationTitle(AppLocalization.string("Staking")).navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-        }
-    }
-    @ViewBuilder
-    private var introCard: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
-            HStack(spacing: SpectraLayout.Space.s) {
-                Image(systemName: "link.circle.fill").font(.title3).foregroundStyle(.tint)
-                Text(AppLocalization.string("Earn While Securing Networks")).font(.title3.weight(.bold))
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                    VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                        Label(AppLocalization.string("Staking"), systemImage: "link.circle.fill")
+                            .font(.title3.weight(.bold))
+                        Text(AppLocalization.string("staking.intro"))
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading)
+                    .spectraElevatedFill()
+                    SpectraRowGroup(
+                        title: AppLocalization.string("Supported Chains"),
+                        trailing: "\(CoreReferenceTables.stakingChains.count)",
+                        data: CoreReferenceTables.stakingChains
+                    ) { entry in
+                        NavigationLink(value: entry.chain) {
+                            HStack(spacing: SpectraLayout.Space.m) {
+                                CoinBadge(
+                                    artworkName: AssetPresentationCatalog.artwork(
+                                        deploymentId: entry.chain.entry?.nativeDeploymentId),
+                                    fallbackText: entry.chain.gasTokenSymbol,
+                                    color: entry.chain.entry?.color.color ?? .accentColor, size: 36)
+                                Text(entry.chain.displayName).font(.headline).foregroundStyle(.primary)
+                                Spacer(minLength: SpectraLayout.Space.s)
+                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                            }.spectraRowPadding()
+                        }.buttonStyle(.plain)
+                    }
+                }.spectraScreenPadding()
             }
-            Text(AppLocalization.string("Explore staking networks and their validators. Transaction actions are not available in this app yet."))
-                .font(.subheadline).foregroundStyle(.secondary)
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraElevatedFill()
-    }
-    private var chainPickerCard: some View {
-        let entries = CoreReferenceTables.stakingChains
-        return SpectraRowGroup(
-            title: AppLocalization.string("Supported Chains"), trailing: "\(entries.count)", data: entries
-        ) { entry in
-            NavigationLink(value: entry.chain) { chainRow(entry) }.buttonStyle(.plain)
-        }
-        .navigationDestination(for: Chain.self) { chain in
-            ChainStakingDetailView(chain: chain, bridge: bridge)
-        }
-    }
-    /// The mechanic is left to the chain's page, whose header shows it: here
-    /// it wrapped every row to three lines.
-    private func chainRow(_ entry: StakingChainEntry) -> some View {
-        let chain = entry.chain
-        return HStack(spacing: SpectraLayout.Space.m) {
-            CoinBadge(
-                artworkName: AssetPresentationCatalog.artwork(deploymentId: chain.entry?.nativeDeploymentId),
-                fallbackText: chain.gasTokenSymbol, color: chain.stakingTint, size: 36)
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                Text(chain.displayName).font(.headline).foregroundStyle(Color.primary).lineLimit(1)
-                Text(AppLocalization.string(entry.apyEstimate)).font(.caption.weight(.semibold)).foregroundStyle(.green)
-            }
-            Spacer(minLength: SpectraLayout.Space.s)
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-        }.spectraRowPadding()
-    }
-    @ViewBuilder
-    private var philosophyCard: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(AppLocalization.string("Why non-custodial staking")).font(.headline)
-            Text(
-                AppLocalization.string(
-                    "Staking helps secure proof-of-stake networks by distributing validator power across many independent participants instead of relying on a centralized operator."
-                )
-            ).font(.subheadline).foregroundStyle(.secondary)
-            Text(
-                AppLocalization.string(
-                    "This page provides staking information and validator queries. It does not sign or submit staking transactions."
-                )
-            ).font(.subheadline).foregroundStyle(.secondary)
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraCardFill()
-    }
-}
-
-private enum StakingDetailSection: String, CaseIterable, Identifiable {
-    case overview
-    case validators
-    case learn
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .overview: return "Overview"
-        case .validators: return "Validators"
-        case .learn: return "Learn"
+            .background(SpectraBackdrop().ignoresSafeArea())
+            .navigationTitle(AppLocalization.string("Staking"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .navigationDestination(for: Chain.self) { ChainStakingDetailView(chain: $0, store: store) }
         }
     }
 }
 
-extension StakingChainEntry: Identifiable {
-    public var id: Chain { chain }
-}
-
-extension Chain {
-    /// The chain's catalog colour, which every other badge of it uses.
-    fileprivate var stakingTint: Color { entry?.color.color ?? .accentColor }
-}
+extension StakingChainEntry: Identifiable { public var id: Chain { chain } }
 
 struct ChainStakingDetailView: View {
     let chain: Chain
+    @Bindable var store: AppState
     @State private var vm: StakingViewModel
-    @State private var selectedSection: StakingDetailSection = .overview
+    @State private var showsValidators = false
+    @State private var confirmsSigning = false
+    @State private var confirmsBroadcast = false
 
-    init(chain: Chain, bridge: WalletServiceBridge) {
+    init(chain: Chain, store: AppState) {
         self.chain = chain
-        self._vm = State(wrappedValue: StakingViewModel(chain: chain, bridge: bridge))
+        self.store = store
+        _vm = State(wrappedValue: StakingViewModel(chain: chain, bridge: store.bridge))
     }
 
-    @ViewBuilder
+    private var wallets: [WalletView] { store.wallets.filter { $0.address(on: chain) != nil } }
+    private var wallet: WalletView? { store.wallet(for: vm.walletId) }
+    private var requiresPassword: Bool { wallet?.signing.requiresPassword ?? true }
+
     var body: some View {
-        // Core's table is the only way in, and core refuses to load one that
-        // misses a staking chain, so every chain reached here has a row.
-        if let entry = CoreReferenceTables.stakingEntry(for: chain) {
-            content(entry: entry)
-        }
-    }
-
-    private func content(entry: StakingChainEntry) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                heroCard(entry: entry)
-                detailSectionPicker
-                selectedDetailSection(entry: entry)
-                    .id(selectedSection)
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    .animation(.snappy(duration: 0.24), value: selectedSection)
+                if let entry = CoreReferenceTables.stakingEntry(for: chain) { mechanics(entry) }
+                walletPicker
+                if !vm.walletId.isEmpty {
+                    if let artifact = vm.session.artifact {
+                        StakingTransactionView(
+                            store: store, vm: vm, artifact: artifact,
+                            confirmsSigning: $confirmsSigning, confirmsBroadcast: $confirmsBroadcast)
+                    } else {
+                        StakingPositionsView(
+                            vm: vm, canSign: wallet?.signing.isWatchOnly == false,
+                            requiresPassword: requiresPassword)
+                        preparation
+                        savedTransactions
+                    }
+                }
+                if let error = vm.error ?? vm.session.error {
+                    Text(verbatim: error).font(.subheadline).foregroundStyle(.red)
+                        .accessibilityIdentifier("staking.error")
+                }
             }.spectraScreenPadding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(SpectraBackdrop().ignoresSafeArea())
-        .navigationTitle(chain.displayName)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(chain.displayName).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .task { await vm.loadValidators() }
-        .alert(AppLocalization.string("Error"), isPresented: .isPresent($vm.error)) {
-            Button(AppLocalization.string("OK")) { vm.dismissError() }
+        .task {
+            if vm.walletId.isEmpty, let first = wallets.first { vm.selectWallet(first.id) }
+            await vm.loadValidators()
+        }
+        .task(id: vm.walletId) { await vm.loadWalletData() }
+        .task(id: "saved:\(vm.session.id):\(vm.session.artifact?.revision ?? 0)") {
+            await vm.loadSavedArtifacts()
+        }
+        .task(id: vm.request?.id) {
+            if let id = vm.request?.id { await vm.perform(id, store: store) }
+        }
+        .task(id: "\(vm.session.artifact?.id ?? ""):\(store.transactionRevision)") {
+            await vm.loadTransaction()
+        }
+        .onDisappear { vm.cancel() }
+        .sheet(isPresented: $showsValidators) {
+            StakingValidatorPicker(
+                validators: vm.validators, isLoading: vm.isLoading,
+                selected: $vm.validatorId)
+        }
+        .alert(AppLocalization.string("Sign this transaction?"), isPresented: $confirmsSigning) {
+            if requiresPassword {
+                SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) { vm.password = "" }
+            Button(AppLocalization.string("Sign Transaction"), role: .destructive) { vm.begin(.sign) }
+                .disabled(requiresPassword && vm.password.isEmpty)
         } message: {
-            Text(vm.error.map(userErrorMessage) ?? "")
-        }
-
-    }
-
-    @ViewBuilder
-    private var detailSectionPicker: some View {
-        Picker(AppLocalization.string("Staking Section"), selection: $selectedSection) {
-            ForEach(StakingDetailSection.allCases) { section in
-                Text(AppLocalization.string(section.title)).tag(section)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-
-    @ViewBuilder
-    private func selectedDetailSection(entry: StakingChainEntry) -> some View {
-        switch selectedSection {
-        case .overview:
-            statsCard(entry: entry)
-        case .validators:
-            if vm.validators.isEmpty {
-                loadingValidatorsCard
-            } else {
-                validatorsCard
-            }
-        case .learn:
-            explanationCard(entry: entry)
-        }
-    }
-
-    @ViewBuilder
-    private func heroCard(entry: StakingChainEntry) -> some View {
-        HStack(spacing: SpectraLayout.Space.m) {
-            CoinBadge(
-                artworkName: AssetPresentationCatalog.artwork(deploymentId: chain.entry?.nativeDeploymentId),
-                fallbackText: chain.gasTokenSymbol, color: chain.stakingTint, size: 56)
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
-                Text(chain.displayName).font(.title3.weight(.bold)).foregroundStyle(Color.primary)
-                Text(AppLocalization.string(entry.apyEstimate)).font(.subheadline.weight(.semibold)).foregroundStyle(.green)
-                Text(AppLocalization.string(entry.shortMechanic)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-            Spacer()
-            if vm.isLoading {
-                SpectraLoadingGlyph(size: 30, tint: .accentColor)
-            }
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraElevatedFill()
-    }
-
-    @ViewBuilder
-    private func statsCard(entry: StakingChainEntry) -> some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            statRow(label: AppLocalization.string("Estimated APY"), value: AppLocalization.string(entry.apyEstimate), icon: "percent")
-            Divider().opacity(0.5)
-            statRow(label: AppLocalization.string("Minimum Stake"), value: AppLocalization.string(entry.minimumStake), icon: "scalemass.fill")
-            Divider().opacity(0.5)
-            statRow(label: AppLocalization.string("Unbonding"), value: AppLocalization.string(entry.unbondingPeriod), icon: "hourglass")
-            if !vm.validators.isEmpty {
-                Divider().opacity(0.5)
-                statRow(
-                    label: AppLocalization.string("Validators"),
-                    value: "\(vm.validators.count)",
-                    icon: "server.rack"
+            if let artifact = vm.session.artifact, let intent = artifact.staking {
+                Text(
+                    verbatim:
+                        "\(intent.action.localizedTitle) · \(chain.displayName)\n\(artifact.amount) \(artifact.symbol)\n\(artifact.recipient)\n\n\(AppLocalization.string("Signing authorizes this transaction. You will choose nodes and broadcast it separately."))"
                 )
             }
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraCardFill()
-    }
-
-    @ViewBuilder
-    private func statRow(label: String, value: String, icon: String) -> some View {
-        HStack(spacing: SpectraLayout.Space.s) {
-            Image(systemName: icon).font(.subheadline.weight(.semibold)).foregroundStyle(.tint).frame(width: 20)
-            Text(label).font(.subheadline).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary).multilineTextAlignment(.trailing)
+        }
+        .confirmationDialog(
+            AppLocalization.string("Broadcast Transaction"), isPresented: $confirmsBroadcast,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Broadcast Transaction"), role: .destructive) {
+                vm.begin(.broadcast)
+            }
+        } message: {
+            Text(AppLocalization.string("staking.broadcast_confirmation"))
+        }
+        .onChange(of: confirmsSigning) { _, showing in
+            if !showing && vm.request?.id == nil { vm.password = "" }
         }
     }
 
-    @ViewBuilder
-    private var validatorsCard: some View {
+    private func mechanics(_ entry: StakingChainEntry) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            Text(AppLocalization.string("Validators")).font(.headline)
-            ForEach(vm.validators.prefix(5), id: \.identifier) { v in
-                HStack(spacing: SpectraLayout.Space.s) {
-                    VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                        Text(v.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        if let commission = v.commission {
-                            Text(AppLocalization.format("%.0f%% commission", commission * 100))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Text(AppLocalization.format("%.1f%% APY", v.apy * 100))
-                        .font(.caption.weight(.bold)).foregroundStyle(.green)
-                }
-                .padding(.vertical, SpectraLayout.Space.xs)
+            Text(AppLocalization.string(entry.shortMechanic)).font(.headline)
+            HStack(alignment: .top, spacing: SpectraLayout.Space.m) {
+                Text(AppLocalization.string("Minimum Stake")).foregroundStyle(.secondary)
+                Spacer()
+                Text(AppLocalization.string(entry.minimumStake)).multilineTextAlignment(.trailing)
+            }.font(.subheadline)
+            HStack(alignment: .top, spacing: SpectraLayout.Space.m) {
+                Text(AppLocalization.string("Unbonding")).foregroundStyle(.secondary)
+                Spacer()
+                Text(AppLocalization.string(entry.unbondingPeriod)).multilineTextAlignment(.trailing)
+            }.font(.subheadline)
+            DisclosureGroup(AppLocalization.string("How it works")) {
+                Text(AppLocalization.string(entry.explanation)).font(.subheadline).foregroundStyle(
+                    .secondary
+                )
+                .padding(.top, SpectraLayout.Space.s)
             }
-            if vm.validators.count > 5 {
-                Text(AppLocalization.format("+%d more", vm.validators.count - 5))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraCardFill()
+        }.padding(SpectraLayout.cardPadding).spectraElevatedFill()
     }
 
-    @ViewBuilder
-    private var loadingValidatorsCard: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(AppLocalization.string("Validators")).font(.headline)
-            if vm.isLoading {
-                SpectraLoadingRow(title: "Loading validators...")
+    private var walletPicker: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+            if wallets.isEmpty {
+                Text(AppLocalization.string("staking.no_wallet")).font(.subheadline).foregroundStyle(
+                    .secondary)
             } else {
-                Text(AppLocalization.string("Validator data will appear here once it is available for this chain."))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Picker(
+                    AppLocalization.string("Wallet"),
+                    selection: Binding(get: { vm.walletId }, set: { vm.selectWallet($0) })
+                ) {
+                    ForEach(wallets) { wallet in Text(wallet.name).tag(wallet.id) }
+                }.disabled(vm.isBusy)
+                if let wallet, let address = wallet.address(on: chain) {
+                    Text(verbatim: address).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    if wallet.signing.isWatchOnly {
+                        Text(AppLocalization.string("staking.watch_only")).font(.caption).foregroundStyle(
+                            .secondary)
+                    }
+                }
             }
-        }
-        .padding(SpectraLayout.Space.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .spectraCardFill()
+        }.padding(SpectraLayout.cardPadding).spectraCardFill()
     }
 
-    @ViewBuilder
-    private func explanationCard(entry: StakingChainEntry) -> some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            Text(AppLocalization.string("How it works")).font(.headline)
-            Text(AppLocalization.string(entry.explanation)).font(.subheadline).foregroundStyle(.secondary)
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraCardFill()
+    private var preparation: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+            HStack {
+                Text(vm.action.localizedTitle).font(.headline)
+                Spacer()
+                if vm.positionId != nil {
+                    Button(AppLocalization.string("staking.new_stake")) { vm.startStake() }.buttonStyle(
+                        .glass)
+                }
+            }
+            if let position = vm.positionId {
+                Text(verbatim: position).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if vm.rules.validatorRequired {
+                TextField(AppLocalization.string("staking.validator_identifier"), text: $vm.validatorId)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().spectraInputFieldStyle()
+                Button(AppLocalization.string("staking.choose_validator")) { showsValidators = true }
+                    .buttonStyle(.glass)
+            }
+            if vm.rules.amountAllowed {
+                TextField(
+                    AppLocalization.string(vm.rules.amountRequired ? "Amount" : "staking.optional_amount"),
+                    text: $vm.amount
+                )
+                .keyboardType(.decimalPad).spectraInputFieldStyle()
+                Text(verbatim: chain.gasTokenSymbol).font(.caption).foregroundStyle(.secondary)
+                if !vm.rules.amountRequired {
+                    Text(AppLocalization.string("staking.full_withdrawal")).font(.caption).foregroundStyle(
+                        .secondary)
+                }
+            }
+            if vm.rules.lockupRequired {
+                TextField(AppLocalization.string("staking.dissolve_delay"), text: $vm.lockupSeconds)
+                    .keyboardType(.numberPad).spectraInputFieldStyle()
+                Text(AppLocalization.string("staking.dissolve_delay_help")).font(.caption).foregroundStyle(
+                    .secondary)
+            }
+            if requiresPassword {
+                SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
+                    .spectraInputFieldStyle()
+            }
+            Text(AppLocalization.string("staking.build_explanation")).font(.caption).foregroundStyle(
+                .secondary)
+            Button {
+                vm.begin(.build)
+            } label: {
+                Label(AppLocalization.string("Build Transaction"), systemImage: "hammer.fill")
+            }.buttonStyle(.glassProminent)
+                .disabled(wallet?.signing.isWatchOnly != false || (requiresPassword && vm.password.isEmpty))
+                .accessibilityIdentifier("staking.build")
+            if vm.isBusy { ProgressView() }
+        }.padding(SpectraLayout.cardPadding).spectraCardFill().disabled(vm.isBusy)
+    }
+
+    @ViewBuilder private var savedTransactions: some View {
+        if !vm.savedArtifacts.isEmpty {
+            SpectraRowGroup(
+                title: AppLocalization.string("staking.saved_transactions"), data: vm.savedArtifacts
+            ) { saved in
+                Button {
+                    vm.begin(.resume(saved.id))
+                } label: {
+                    VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+                        Text(saved.staking?.action.localizedTitle ?? AppLocalization.string("Staking")).font(
+                            .subheadline.weight(.semibold))
+                        Text(verbatim: "\(saved.amount) \(saved.symbol)").font(.caption).foregroundStyle(
+                            .secondary)
+                        Text(AppLocalization.string(saved.stage == .prepared ? "Awaiting signing" : "Signed"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading).spectraRowPadding()
+                }.buttonStyle(.plain).disabled(vm.isBusy)
+            }
+        }
     }
 }

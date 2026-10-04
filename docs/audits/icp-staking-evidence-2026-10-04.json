@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-10-04",
+  "scope": "Read-only protocol research and independent SDK vectors; no live funding or governance broadcast.",
+  "sources": [
+    {
+      "url": "https://github.com/dfinity/ic/blob/master/rs/nns/governance/canister/governance.did",
+      "sha256": "9ea3b404bcdd4e04ad870be83b031d2338fa9d596cf22f5b85647c7dac23837b"
+    },
+    {
+      "url": "https://github.com/dfinity/ic/blob/master/rs/nns/governance/src/governance.rs",
+      "sha256": "719bcb76ee77132eac4dee2ff151cbbe54b03aea9ae4785922c4057aa868bfbe"
+    },
+    {
+      "url": "https://docs.rs/ic-certificate-verification/3.2.0/ic_certificate_verification/",
+      "sha256": "95211abc5ec2ba3852f12734d25ed271ddc62971ca416a35085ac0b399453585"
+    },
+    {
+      "url": "https://github.com/dfinity/ic/blob/master/rs/nns/governance/src/governance/disburse_maturity.rs",
+      "sha256": "4f68494d7087d23b27ee8ef782445000de6e30e300f0ab31dfcfe3823d1acd9b"
+    }
+  ],
+  "independent_sdk": {
+    "DFINITY_agent_identity_candid_principal": "3.4.3",
+    "generator": "scripts/generate-icp-staking-vectors.cjs",
+    "fixture": "core/tests/fixtures/icp-staking-vectors.json"
+  },
+  "facts": {
+    "governance_canister": "rrkah-fqaaa-aaaaa-aaaaq-cai",
+    "follow_topics": [
+      0,
+      4,
+      14
+    ],
+    "new_dissolve_delay_application_limit_seconds": 63115200,
+    "recovery_funding": "original certified Fund reply or exact original ledger hash; no new Fund call",
+    "maturity": "delayed, modulated governance disbursement; queued amount and finalize time are distinct from liquid balances",
+    "maturity_minimum_e8s": 100000000,
+    "maturity_maximum_pending_payouts": 10,
+    "maturity_delay_seconds": 604800,
+    "maturity_ledger_fee_e8s": 0,
+    "maturity_requires_non_spawning_neuron": true,
+    "full_principal_disbursement": "Candid Disburse.amount = None; ledger fee deducted from net stake without subtracting already-accounted neuron fees again"
+  },
+  "read_only_mainnet_certificate": {
+    "endpoint": "https://icp-api.io",
+    "route": "/api/v2/canister/rrkah-fqaaa-aaaaa-aaaaq-cai/read_state",
+    "canister": "rrkah-fqaaa-aaaaa-aaaaq-cai",
+    "request_id": "231dcf5739b91235eef6193dc67c008ce1b8d2a7d2221552510832a82483c2dd",
+    "fixture": "core/tests/fixtures/icp-absent-ingress-certificate.hex",
+    "sha256": "72e19321907479bbf0984f686665340ad0c9a868ccbf670bccd44a6b227a6bf1",
+    "bytes": 899,
+    "meaning": "Certificate for an absent request. It proves pinned-root BLS/range verification, not successful governance execution. No update call was sent."
+  }
+}

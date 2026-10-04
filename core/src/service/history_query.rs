@@ -143,14 +143,18 @@ pub(crate) fn transaction_endpoints_for(
         .filter(|a| is_mine(a))
         .or_else(|| counterparty.clone().filter(|a| is_mine(a)));
     let (from, to) = match record.kind {
-        crate::store::wallet_domain::CoreTransactionKind::Send => {
+        crate::store::wallet_domain::CoreTransactionKind::Send
+        | crate::store::wallet_domain::CoreTransactionKind::Stake => {
             let to = counterparty.filter(|c| !same(&Some(c.clone()), &source));
             (source, to)
         }
-        crate::store::wallet_domain::CoreTransactionKind::Receive => {
+        crate::store::wallet_domain::CoreTransactionKind::Receive
+        | crate::store::wallet_domain::CoreTransactionKind::Withdraw
+        | crate::store::wallet_domain::CoreTransactionKind::ClaimRewards => {
             let from = counterparty.filter(|c| !same(&Some(c.clone()), &wallet_side));
             (from, wallet_side)
         }
+        crate::store::wallet_domain::CoreTransactionKind::Unstake => (source, None),
     };
     let endpoint = |address: String| TransactionEndpoint {
         is_mine: is_mine(&address),

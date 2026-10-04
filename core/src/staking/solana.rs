@@ -1,10 +1,7 @@
-//! Solana staking validator and position queries.
+//! Solana staking validator queries.
 
-use serde::Deserialize;
-use serde_json::json;
-
-use crate::api::http::{HttpClient, RetryProfile, race};
-use crate::staking::{StakingError, StakingPosition, StakingValidator};
+use crate::api::solana_json_rpc::{SolanaClient, VoteAccount};
+use crate::staking::{StakingError, StakingValidator};
 
 pub struct SolanaStakingClient {
     rpc_endpoints: Vec<String>,
@@ -12,35 +9,17 @@ pub struct SolanaStakingClient {
 
 // ── RPC response types ────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
-struct VoteAccountsResp {
-    result: VoteAccountsResult,
-}
-#[derive(Deserialize)]
-struct VoteAccountsResult {
-    current: Vec<VoteAccount>,
-    delinquent: Vec<VoteAccount>,
-}
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct VoteAccount {
-    vote_pubkey: String,
-    activated_stake: u64,
-    commission: u8,
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn short_id(id: &str) -> &str {
     if id.len() >= 8 { &id[..8] } else { id }
 }
 
-fn vote_account_to_validator(v: VoteAccount, is_active: bool) -> StakingValidator {
-    let apy = 0.065 * (1.0 - v.commission as f64 / 100.0);
+fn vote_account_to_validator(v: VoteAccount, is_active: bool, minimum: u64) -> StakingValidator {
     StakingValidator {
         identifier: v.vote_pubkey.clone(),
         display_name: format!("Validator {}", short_id(&v.vote_pubkey)),
-        apy,
+        apy: None,
         commission: Some(v.commission as f64 / 100.0),
         total_stake_smallest_unit: Some(v.activated_stake.to_string()),
         is_active,
@@ -49,7 +28,7 @@ fn vote_account_to_validator(v: VoteAccount, is_active: bool) -> StakingValidato
         } else {
             vec!["delinquent".to_string()]
         },
-        min_delegation_smallest_unit: Some("1000000".to_string()), // 0.001 SOL
+        min_delegation_smallest_unit: Some(minimum.to_string()),
         uptime_pct: None,
         website: None,
         description: None,
@@ -62,40 +41,20 @@ impl SolanaStakingClient {
         Self { rpc_endpoints }
     }
 
-    /// Snapshot of the active validator set with vote-account identifier and
-    /// computed APY. RPC: `getVoteAccounts` + epoch reward history.
+    /// Vote-account directory and commission; reward APY is unavailable.
     pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
-        if self.rpc_endpoints.is_empty() {
-            return Ok(vec![]);
-        }
-        let client = HttpClient::shared();
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getVoteAccounts",
-            "params": [{"commitment": "confirmed", "keepUnstakedDelinquents": false}]
-        });
-        let resp: VoteAccountsResp = match race(&self.rpc_endpoints, |url| {
-            let client = client.clone();
-            let body = body.clone();
-            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
-        })
-        .await
-        {
-            Ok(r) => r,
-            Err(_) => return Ok(vec![]),
-        };
+        let client = SolanaClient::new(std::sync::Arc::new(self.rpc_endpoints.clone()));
+        let resp = client.fetch_staking_validators().await?;
+        let minimum = client.fetch_stake_minimum().await?;
 
         let mut validators: Vec<StakingValidator> = resp
-            .result
             .current
             .into_iter()
-            .map(|v| vote_account_to_validator(v, true))
+            .map(|v| vote_account_to_validator(v, true, minimum))
             .chain(
-                resp.result
-                    .delinquent
+                resp.delinquent
                     .into_iter()
-                    .map(|v| vote_account_to_validator(v, false)),
+                    .map(|v| vote_account_to_validator(v, false, minimum)),
             )
             .collect();
 
@@ -116,14 +75,5 @@ impl SolanaStakingClient {
         validators.truncate(100);
 
         Ok(validators)
-    }
-
-    /// Stake accounts owned by this wallet. Not yet implemented — returns
-    /// empty until wallet-specific position indexing is added.
-    pub async fn fetch_positions(
-        &self,
-        _wallet_address: &str,
-    ) -> Result<Vec<StakingPosition>, StakingError> {
-        Ok(vec![])
     }
 }

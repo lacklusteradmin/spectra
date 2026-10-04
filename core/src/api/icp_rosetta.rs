@@ -86,6 +86,23 @@ pub(crate) fn network_identifier() -> Value {
 }
 
 impl IcpClient {
+    pub(crate) async fn fetch_transaction_status(
+        &self,
+        hash: &str,
+    ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+        crate::api::transaction_status::validate_hex_hash(hash)?;
+        let response: Value = self
+            .rosetta_post(
+                "/search/transactions",
+                &json!({
+                    "network_identifier":network_identifier(),
+                    "transaction_identifier":{"hash":hash},"limit":2
+                }),
+            )
+            .await?;
+        icp_transaction_status(&response, hash)
+    }
+
     pub async fn fetch_balance(&self, account_address: &str) -> Result<IcpBalance, ApiError> {
         let resp: Value = self
             .rosetta_post(
@@ -108,13 +125,25 @@ impl IcpClient {
         &self,
         account_address: &str,
     ) -> Result<Vec<IcpHistoryEntry>, ApiError> {
+        Ok(self.fetch_history_page(account_address, None).await?.items)
+    }
+
+    pub async fn fetch_history_page(
+        &self,
+        account_address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<IcpHistoryEntry>, ApiError> {
+        let offset = cursor
+            .map(|value| value.parse::<u64>().map_err(ApiError::invalid))
+            .transpose()?
+            .unwrap_or(0);
         let resp: Value = self
             .rosetta_post(
                 "/search/transactions",
                 &json!({
                     "network_identifier": {"blockchain": "Internet Computer", "network": "00000000000000020101"},
                     "account_identifier": {"address": account_address},
-                    "limit": 50
+                    "limit": 50, "offset": offset
                 }),
             )
             .await?;
@@ -125,8 +154,71 @@ impl IcpClient {
             .cloned()
             .unwrap_or_default();
 
-        icp_history_from_transactions(&txs, account_address)
+        let next_cursor = resp
+            .get("next_offset")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string());
+        if next_cursor.as_deref() == cursor {
+            return Err(ApiError::Decode("Rosetta repeated a history cursor".into()));
+        }
+        if txs.len() == 50 && next_cursor.is_none() {
+            let total = resp
+                .get("total_count")
+                .and_then(Value::as_u64)
+                .or_decode("Rosetta: full page has no completeness metadata")?;
+            if total > offset + txs.len() as u64 {
+                return Err(ApiError::Decode(
+                    "Rosetta omitted a history continuation".into(),
+                ));
+            }
+        }
+        Ok(crate::api::HistoryPage {
+            items: icp_history_from_transactions(&txs, account_address)?,
+            next_cursor,
+        })
     }
+}
+
+fn icp_transaction_status(
+    response: &Value,
+    hash: &str,
+) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
+    use crate::api::transaction_status::TransactionStatus;
+    let rows = response["transactions"]
+        .as_array()
+        .or_decode("ICP status: missing transaction results")?;
+    let Some(row) = rows.first() else {
+        return Ok(TransactionStatus::Pending);
+    };
+    if rows.len() != 1
+        || !row
+            .pointer("/transaction/transaction_identifier/hash")
+            .and_then(Value::as_str)
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(hash))
+    {
+        return Err(ApiError::decode("ICP status: transaction hash mismatch"));
+    }
+    let operations = row
+        .pointer("/transaction/operations")
+        .and_then(Value::as_array)
+        .filter(|rows| !rows.is_empty())
+        .or_decode("ICP status: missing completed ledger operations")?;
+    if operations
+        .iter()
+        .any(|op| op["status"].as_str() != Some("COMPLETED"))
+    {
+        return Err(ApiError::decode(
+            "ICP status: ledger operation is not completed",
+        ));
+    }
+    Ok(TransactionStatus::Confirmed {
+        succeeded: true,
+        block: Some(
+            row.pointer("/block_identifier/index")
+                .and_then(Value::as_u64)
+                .or_decode("ICP status: missing block index")?,
+        ),
+    })
 }
 
 /// What each ledger transaction moved into or out of `account_address`,
@@ -298,5 +390,31 @@ mod history_tests {
                 (3, true, 700, "")
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+    use serde_json::json;
+
+    #[test]
+    fn committed_membership_requires_the_exact_hash_and_completed_operations() {
+        assert_eq!(
+            icp_transaction_status(&json!({"transactions":[]}), "h").unwrap(),
+            TransactionStatus::Pending
+        );
+        let mut response = json!({"transactions":[{"block_identifier":{"index":123},"transaction":{"transaction_identifier":{"hash":"h"},"operations":[{"status":"COMPLETED"}]}}]});
+        assert_eq!(
+            icp_transaction_status(&response, "h").unwrap(),
+            TransactionStatus::Confirmed {
+                succeeded: true,
+                block: Some(123)
+            }
+        );
+        assert!(icp_transaction_status(&response, "other").is_err());
+        response["transactions"][0]["transaction"]["operations"][0]["status"] = json!("FAILED");
+        assert!(icp_transaction_status(&response, "h").is_err());
     }
 }

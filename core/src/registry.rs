@@ -4,6 +4,8 @@
 //! text input use its stable string ids (e.g. `"bitcoin"`, `"ethereum"`),
 //! written by `Chain::str_id()` and parsed by `Chain::from_str_id()`.
 
+use crate::EndpointApi;
+
 /// Every chain Spectra knows about.
 ///
 /// This crosses the FFI boundary as the one chain type every front end uses.
@@ -346,16 +348,7 @@ impl Chain {
     /// Shared by derivation and import eligibility. Testnets follow their
     /// mainnet; derivation handles network-specific address encoding.
     pub fn derives_from_private_key(self) -> bool {
-        let chain = self.mainnet_counterpart();
-        chain.is_evm()
-            || matches!(
-                chain,
-                Chain::Bitcoin
-                    | Chain::BitcoinCash
-                    | Chain::Litecoin
-                    | Chain::Dogecoin
-                    | Chain::Decred
-            )
+        self.mainnet_counterpart() != Self::Monero
     }
 
     /// The decode shape this chain's send preview comes back in, for the
@@ -425,6 +418,25 @@ impl Chain {
         }
     }
 
+    /// Primary transports and implemented auxiliary indexers this network accepts.
+    pub fn compatible_endpoint_apis(self) -> Vec<crate::EndpointApi> {
+        use crate::EndpointApi as Api;
+        let auxiliary: &[Api] = match self.mainnet_counterpart() {
+            chain if chain.is_evm() => &[Api::Blockscout],
+            Chain::Aptos => &[Api::AptosIndexer],
+            Chain::Icp => &[Api::IcpReplica],
+            Chain::Near => &[Api::Nearblocks, Api::Fastnear],
+            Chain::Tron => &[Api::TrongridV1],
+            Chain::Ton => &[Api::ToncenterV3],
+            _ => &[],
+        };
+        self.endpoint_apis()
+            .iter()
+            .chain(auxiliary)
+            .copied()
+            .collect()
+    }
+
     /// The byte width of a Substrate chain's `Balance` type, which sizes its
     /// `System.Account` record: Polkadot's is `u128`, subtensor's `u64`.
     pub fn substrate_balance_bytes(self) -> Option<usize> {
@@ -466,54 +478,48 @@ impl Chain {
         self.has_send_preview() && self.transparent_send_unavailable_reason().is_none()
     }
 
-    /// ICP currently presents a static neuron directory; it performs no endpoint query.
+    /// Staking reads live state through the network's declared transport.
     pub fn staking_uses_endpoint(self) -> bool {
-        self.supports_staking() && self != Self::Icp
+        self.supports_staking()
     }
 
-    /// The network has a default protocol for adding tokens. Individual
-    /// deployments own their actual protocol, which is validated separately.
+    /// Whether this network supports any token protocols.
     pub fn hosts_tokens(self) -> bool {
-        !self.token_standard().is_empty()
+        !self.token_standards().is_empty()
     }
 
-    /// The default token standard for this network, or empty.
-    pub fn token_standard(self) -> &'static str {
-        &crate::chains::declared(self).token_standard
+    /// Protocols supported by this concrete network. A deployment carries its
+    /// own standard, and no member of this list is a network-wide default.
+    pub fn token_standards(self) -> &'static [String] {
+        &crate::chains::declared(self).token_standards
     }
 
-    /// Protocols this network can represent. This is deliberately independent
-    /// of its default and of the protocols implemented by readers and senders.
     pub fn allows_token_standard(self, standard: &str) -> bool {
-        match standard {
-            "ERC-20" => self.is_evm(),
-            "BEP-20" => matches!(self, Self::BnbChain | Self::BnbChainTestnet | Self::OpBnb),
-            "ARC-20" => matches!(self, Self::Avalanche | Self::AvalancheFuji),
-            "SPL" => matches!(self, Self::Solana | Self::SolanaDevnet),
-            "TRC-20" | "TRC-10" => matches!(self, Self::Tron | Self::TronNile),
-            "TEP-74" => matches!(self, Self::Ton | Self::TonTestnet),
-            "NEP-141" => matches!(self, Self::Near | Self::NearTestnet),
-            "Sui Coin" => matches!(self, Self::Sui | Self::SuiTestnet),
-            "AIP-21" | "Aptos Coin" => matches!(self, Self::Aptos | Self::AptosTestnet),
-            _ => false,
-        }
+        self.token_standards().iter().any(|s| s == standard)
     }
 
-    /// Resolve an omitted standard from identifier shape where protocols have
-    /// distinct identities; otherwise use the network's default.
+    /// Infer a protocol only where identifier shapes distinguish it. Explicit
+    /// deployments keep their recorded standard, including EVM aliases.
     pub fn token_standard_for_identifier(self, identifier: &str) -> &'static str {
         match self {
+            chain if chain.is_evm() => "ERC-20",
+            Self::Solana | Self::SolanaDevnet => "SPL",
             Self::Tron | Self::TronNile if identifier.bytes().all(|b| b.is_ascii_digit()) => {
                 "TRC-10"
             }
+            Self::Tron | Self::TronNile => "TRC-20",
+            Self::Ton | Self::TonTestnet => "TEP-74",
+            Self::Near | Self::NearTestnet => "NEP-141",
+            Self::Sui | Self::SuiTestnet => "Sui Coin",
             Self::Aptos | Self::AptosTestnet if identifier.contains("::") => "Aptos Coin",
-            _ => self.token_standard(),
+            Self::Aptos | Self::AptosTestnet => "AIP-21",
+            _ => "",
         }
     }
 
     /// Whether core has a balance/metadata reader for this actual protocol.
     pub fn reads_token_standard(self, standard: &str) -> bool {
-        self.allows_token_standard(standard) && standard != "TRC-10"
+        self.allows_token_standard(standard)
     }
 
     /// Whether core has a transfer builder for this actual protocol.
@@ -526,6 +532,38 @@ impl Chain {
             self,
             Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near | Chain::Polkadot | Chain::Icp
         )
+    }
+
+    pub(crate) fn solana_stake_program(self) -> Result<&'static str, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Solana => Ok("Stake11111111111111111111111111111111111111"),
+            _ => Err(RegistryError::NotIn {
+                chain: self,
+                family: "Solana",
+            }),
+        }
+    }
+
+    pub(crate) fn sui_staking_system(
+        self,
+    ) -> Result<(&'static str, &'static str, u64), RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Sui => Ok(("0x3", "0x5", 1)),
+            _ => Err(RegistryError::NotIn {
+                chain: self,
+                family: "Sui",
+            }),
+        }
+    }
+
+    pub(crate) fn near_staking_whitelist(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Near => Ok("lockup-whitelist.near"),
+            _ => Err(RegistryError::NotIn {
+                chain: self,
+                family: "NEAR mainnet",
+            }),
+        }
     }
 
     /// Whether this chain's derivation reads a BIP-32 path.
@@ -544,7 +582,7 @@ impl Chain {
 
     /// Returns `true` for chains that are testnets.
     pub fn is_testnet(self) -> bool {
-        self.entry().is_testnet
+        crate::chains::declared(self).environment == "testnet"
     }
 
     /// Maps a testnet variant to its mainnet counterpart. Returns `self` for mainnets.
@@ -703,6 +741,31 @@ impl Chain {
         }
     }
 
+    pub(crate) fn icp_governance_id(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Icp => Ok("rrkah-fqaaa-aaaaa-aaaaq-cai"),
+            _ => Err(self.not_in("ICP governance")),
+        }
+    }
+
+    /// NNS governance/disburse_maturity.rs MINIMUM_DISBURSEMENT_E8S and
+    /// MAX_NUM_DISBURSEMENTS. Maturity is minted without a ledger transfer fee.
+    pub(crate) fn icp_maturity_disbursement_limits(self) -> Result<(u64, usize), RegistryError> {
+        match self {
+            Self::Icp => Ok((100_000_000, 10)),
+            _ => Err(self.not_in("ICP maturity disbursement")),
+        }
+    }
+
+    /// Mainnet root of trust, from DFINITY agent-rs IC_ROOT_KEY. Never fetched
+    /// from a configurable provider, which could otherwise replace the network.
+    pub(crate) fn icp_root_key(self) -> Result<Vec<u8>, RegistryError> {
+        match self {
+            Self::Icp => Ok(hex::decode("308182301d060d2b0601040182dc7c0503010201060c2b0601040182dc7c05030201036100814c0e6ec71fab583b08bd81373c255c3c371b2e84863c98a4f1e08b74235d14fb5d9c0cd546d9685f913a0c0b2cc5341583bf4b4392e467db96d65b9bb4cb717112f8472e0d5a4d14505ffd7484b01291091c5f87b98883463f98091a0baaae").expect("IC mainnet root key")),
+            _ => Err(self.not_in("ICP root key")),
+        }
+    }
+
     /// Source: zcash/zcash src/chainparams.cpp and consensus/upgrades.cpp.
     pub(crate) fn zcash_consensus_branch(self, height: u32) -> Result<u32, RegistryError> {
         let activations = match self {
@@ -738,6 +801,24 @@ impl Chain {
         }
     }
 
+    /// Official cluster identities returned by getGenesisHash; see the saved
+    /// official-node responses in the chain support audit.
+    pub(crate) fn solana_genesis_hash(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Solana => Ok("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"),
+            Self::SolanaDevnet => Ok("EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"),
+            _ => Err(self.not_in("Solana")),
+        }
+    }
+
+    pub(crate) fn near_network_name(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Near => Ok("mainnet"),
+            Self::NearTestnet => Ok("testnet"),
+            _ => Err(self.not_in("NEAR")),
+        }
+    }
+
     /// Aptos network identity bound into each locally constructed transaction.
     pub fn aptos_chain_id(self) -> Option<u8> {
         match self {
@@ -750,6 +831,35 @@ impl Chain {
     /// Gas units reserved by Aptos previews and committed into its builders.
     pub fn aptos_max_gas_amount(self) -> Option<u64> {
         matches!(self, Self::Aptos | Self::AptosTestnet).then_some(10_000)
+    }
+
+    /// Delegation-pool shares must retain at least 10 APT (framework constant).
+    pub fn aptos_delegation_minimum(self) -> Option<u64> {
+        (self == Self::Aptos).then_some(1_000_000_000)
+    }
+
+    /// Validator-set minimum stake, expressed in MIST.
+    pub fn sui_staking_minimum(self) -> Option<u64> {
+        (self == Self::Sui).then_some(1_000_000_000)
+    }
+
+    /// Maximum native payment reviewed for the staking PTB; dry-run must fit it.
+    pub fn sui_staking_gas_budget(self) -> Option<u64> {
+        (self == Self::Sui).then_some(10_000_000)
+    }
+
+    /// Attached gas budget for the standard staking-pool entry points.
+    pub fn near_staking_gas_limit(self) -> Option<u64> {
+        (self == Self::Near).then_some(100_000_000_000_000)
+    }
+
+    pub(crate) fn near_token_gas_limit(self) -> Option<u64> {
+        (self.mainnet_counterpart() == Self::Near).then_some(30_000_000_000_000)
+    }
+
+    /// NEP-448: accounts with no more than 770 storage bytes need no storage stake.
+    pub(crate) fn near_zero_balance_storage_limit(self) -> Option<u64> {
+        (self.mainnet_counterpart() == Self::Near).then_some(770)
     }
 
     /// EIP-155 chain id. Refuses chains outside the EVM family.
@@ -811,6 +921,9 @@ impl Chain {
     /// Additional rollup fees use the oracle methods deployed on the
     /// concrete network; a missing method must never become a zero fee.
     pub(crate) fn evm_rollup_fee_model(self) -> Option<OpStackFeeModel> {
+        if self == Self::CeloSepolia {
+            return Some(OpStackFeeModel::Fjord);
+        }
         match self.mainnet_counterpart() {
             Self::Optimism
             | Self::Base
@@ -824,6 +937,96 @@ impl Chain {
         }
     }
 
+    /// Historical operator-fee activation, pinned to the official chain
+    /// configurations in docs/audits/chain-support-2026-10-04. Other deployments
+    /// require an authoritative historical oracle answer; absence is unknown.
+    pub(crate) fn evm_operator_fee_activation(self) -> Option<u64> {
+        match self {
+            Self::Optimism | Self::Base | Self::Unichain | Self::Ink => Some(1_746_806_401),
+            Self::OptimismSepolia | Self::BaseSepolia | Self::InkSepolia => Some(1_744_905_600),
+            Self::Celo => Some(1_752_073_200),
+            Self::WorldChain => Some(1_764_072_000),
+            _ => None,
+        }
+    }
+
+    /// Ripple's public Mainnet/Testnet IDs, checked against official RPCs.
+    pub(crate) fn xrp_network_id(self) -> Option<u64> {
+        match self {
+            Self::Xrp => Some(0),
+            Self::XrpTestnet => Some(1),
+            _ => None,
+        }
+    }
+
+    /// Cross-checked at block zero on TronGrid, PublicNode and Nile's official
+    /// endpoint on 2026-10-04; evidence is in the chain-support audit directory.
+    pub(crate) fn tron_genesis_block_id(self) -> Option<&'static str> {
+        match self {
+            Self::Tron => Some("00000000000000001ebf88508a03865c71d452e25f4d51194196a1d22b6653dc"),
+            Self::TronNile => {
+                Some("0000000000000000d698d4192c56cb6be724a558448e2684802de4d6cd8690dc")
+            }
+            _ => None,
+        }
+    }
+
+    /// Last name-mode block timestamp. Proposal 14 on mainnet and proposal 2
+    /// on Nile enable parameter 15 after processing the maintenance block's
+    /// transactions. The following block uses canonical token IDs. Official
+    /// proposal/header evidence: audits/chain-support-2026-10-04/trc10-name-activation.json.
+    pub(crate) fn tron_trc10_name_end_ms(self) -> Option<u64> {
+        match self {
+            Self::Tron => Some(1_546_668_000_000),
+            Self::TronNile => Some(1_572_597_600_000),
+            _ => None,
+        }
+    }
+
+    /// Official checkpoint-zero identifiers, cross-checked with public JSON-RPC
+    /// and Mysten's GraphQL deployments on 2026-10-04.
+    pub(crate) fn sui_network_identity(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Sui => Some(("35834a8a", "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S")),
+            Self::SuiTestnet => Some(("4c78adac", "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD")),
+            _ => None,
+        }
+    }
+
+    /// TON masterchain zero-state root/file hashes from the official global
+    /// configurations, cross-checked with TON Center on 2026-10-04.
+    pub(crate) fn ton_zero_state(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Ton => Some((
+                "F6OpKZKqvqeFp6CQmFomXNMfMj2EnaUSOXN+Mh+wVWk=",
+                "XplPz01CXAps5qeSWUtxcyBfdAo5zVb1N979KLSKD24=",
+            )),
+            Self::TonTestnet => Some((
+                "gj+B8wb/AmlPk1z1AhVI484rhrUpgSr2oSFIh56VoSg=",
+                "Z+IKwYS54DmmJmesw/nAD5DzWadnOCMzee+kdgSYDOg=",
+            )),
+            _ => None,
+        }
+    }
+
+    /// The first indexed masterchain block pins v3 indexers that omit the
+    /// zero state. Cross-checked with official main/testnet on 2026-10-04.
+    pub(crate) fn ton_first_block(self) -> Option<(i64, &'static str, &'static str)> {
+        match self {
+            Self::Ton => Some((
+                -239,
+                "8GYhhrigd8CwZGrRT59iulLDcgiTYuvOAzFJxugc0Ts=",
+                "V+XzykEwun4yePZhAEPZk77RbMfMOgS/S4GiJkSKY6s=",
+            )),
+            Self::TonTestnet => Some((
+                -3,
+                "HBZqdwFA3MSjq0O8ntk6gX1Sibnw7cbWwEjKZt3JJpQ=",
+                "eocxdO1VHjKnalajy5t+bM/X7A+rdMMX3Lj2VRRNtFs=",
+            )),
+            _ => None,
+        }
+    }
+
     /// Expected genesis for a Substrate deployment. DOT balances and
     /// transfers live on Asset Hub, rather than the relay chain.
     pub fn substrate_genesis_hash(self) -> Option<&'static str> {
@@ -833,6 +1036,10 @@ impl Chain {
             }
             Self::PolkadotWestend => {
                 Some("0x67f9723393ef76214df0118c34bbbd3dbebc8ed46a10973a8c969d48fe7598c9")
+            }
+            // Cross-checked on both official Finney RPCs on 2026-10-04.
+            Self::Bittensor => {
+                Some("0x2f0555cc76fc2840a25a6ea3b9637146806f1f44b090c175ffde2a7e5ab36c03")
             }
             _ => None,
         }
@@ -962,10 +1169,12 @@ impl Chain {
                 fee_field: SendFeeField::GasBudget,
                 fee_fallback: None,
             },
-            Chain::Cardano | Chain::Aptos | Chain::Polkadot => SendExecutionShape {
-                fee_field: SendFeeField::FeeAmount,
-                fee_fallback: None,
-            },
+            Chain::Cardano | Chain::Aptos | Chain::Polkadot | Chain::Bittensor | Chain::Near => {
+                SendExecutionShape {
+                    fee_field: SendFeeField::FeeAmount,
+                    fee_fallback: None,
+                }
+            }
             Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: Some("0.00001"),
@@ -1006,11 +1215,18 @@ impl Chain {
             Chain::Litecoin => PendingStatusPoll::Utxo {
                 require_send_kind: false,
             },
-            Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV | Chain::Dogecoin => {
-                PendingStatusPoll::Utxo {
-                    require_send_kind: true,
-                }
-            }
+            Chain::Bitcoin
+            | Chain::BitcoinCash
+            | Chain::BitcoinSV
+            | Chain::Dogecoin
+            | Chain::Zcash
+            | Chain::BitcoinGold
+            | Chain::Decred
+            | Chain::Kaspa
+            | Chain::Dash => PendingStatusPoll::Utxo {
+                require_send_kind: true,
+            },
+            Chain::Ton => PendingStatusPoll::TransactionStatus(EndpointApi::ToncenterV3),
             Chain::Tron
             | Chain::Solana
             | Chain::Cardano
@@ -1019,10 +1235,11 @@ impl Chain {
             | Chain::Monero
             | Chain::Sui
             | Chain::Aptos
-            | Chain::Ton
             | Chain::Icp
-            | Chain::Near => PendingStatusPoll::HistoryTxids,
-            Chain::Polkadot => PendingStatusPoll::SubstrateFinality,
+            | Chain::Near => PendingStatusPoll::TransactionStatus(
+                chain.default_api().expect("Account transaction status API"),
+            ),
+            Chain::Polkadot | Chain::Bittensor => PendingStatusPoll::SubstrateFinality,
             other if other.is_evm() => PendingStatusPoll::EvmReceipt,
             _ => PendingStatusPoll::None,
         }
@@ -1031,14 +1248,13 @@ impl Chain {
     /// Whether a tracked token on this chain can be sent. Every chain sends
     /// its own asset.
     ///
-    /// The chains whose send builder has a token transfer. Sui, Aptos and TON
-    /// host tokens and have none; Ethereum Classic and Hyperliquid stay
-    /// native-only, the stricter side for funds.
+    /// Every representable fungible-token standard has a transfer builder.
     pub fn sends_tokens(self) -> bool {
         let chain = self.mainnet_counterpart();
         match chain {
-            Chain::EthereumClassic | Chain::Hyperliquid => false,
-            Chain::Solana | Chain::Tron | Chain::Near => true,
+            Chain::Solana | Chain::Tron | Chain::Near | Chain::Sui | Chain::Aptos | Chain::Ton => {
+                true
+            }
             _ => chain.is_evm(),
         }
     }
@@ -1099,6 +1315,41 @@ impl Chain {
             Self::Litecoin | Self::LitecoinTestnet => {
                 return ltc::encode_litecoin_address(self, script, key);
             }
+            Self::BitcoinGold | Self::Dash | Self::DashTestnet => {
+                btc::encode_p2pkh(self.fixed_utxo_address_versions()?.0, &key.serialize())
+            }
+            Self::Zcash | Self::ZcashTestnet => {
+                let version = if self.is_testnet() {
+                    [0x1d, 0x25]
+                } else {
+                    [0x1c, 0xb8]
+                };
+                let mut payload = version.to_vec();
+                payload.extend(btc::hash160(&key.serialize()));
+                btc::base58check_encode(&payload)
+            }
+            Self::Decred | Self::DecredTestnet => {
+                let hash = crate::derivation::decred::dcr_hash160(&key.serialize());
+                if self.is_testnet() {
+                    let mut payload = crate::derivation::decred::DCR_TESTNET_P2PKH_VERSION.to_vec();
+                    payload.extend(hash);
+                    crate::derivation::decred::dcr_base58check_encode(&payload)
+                } else {
+                    crate::derivation::decred::encode_dcr_p2pkh(&hash)
+                }
+            }
+            Self::Kaspa | Self::KaspaTestnet => {
+                let hrp = if self.is_testnet() {
+                    crate::derivation::kaspa::KASPA_TESTNET_HRP
+                } else {
+                    crate::derivation::kaspa::KASPA_HRP
+                };
+                return crate::derivation::kaspa::encode_kaspa_address(
+                    0,
+                    &key.x_only_public_key().0.serialize(),
+                    hrp,
+                );
+            }
             _ => {
                 return Err(DerivationError::invalid(
                     "chain does not support UTXO discovery",
@@ -1107,34 +1358,14 @@ impl Chain {
         })
     }
 
-    /// What a token send on this chain needs in the gas asset before it can
-    /// land, when no preview estimates the fee for that path.
-    ///
-    /// NEAR is the one chain that routes a token send with no fee estimate to
-    /// check against, so the floor is the whole check.
-    pub fn token_send_gas_reserve(self) -> Option<String> {
-        if self.mainnet_counterpart() != Chain::Near {
-            return None;
-        }
-        self.static_fee_units()
-            .map(|units| crate::decimal::from_units(units, u32::from(self.native_decimals())))
-    }
-
     pub fn supports_deep_utxo_discovery(self) -> bool {
         matches!(
-            self,
+            self.mainnet_counterpart(),
             Chain::Bitcoin
                 | Chain::BitcoinCash
                 | Chain::BitcoinSV
                 | Chain::Litecoin
                 | Chain::Dogecoin
-                | Chain::BitcoinTestnet
-                | Chain::BitcoinTestnet4
-                | Chain::BitcoinSignet
-                | Chain::BitcoinCashTestnet
-                | Chain::BitcoinSVTestnet
-                | Chain::LitecoinTestnet
-                | Chain::DogecoinTestnet
         )
     }
 
@@ -1157,6 +1388,7 @@ impl Chain {
             return AddressNormalization::Lowercase;
         }
         match self.mainnet_counterpart() {
+            Chain::Stellar => AddressNormalization::Uppercase,
             Chain::Sui | Chain::Aptos => AddressNormalization::LowercaseHexPrefixed,
             Chain::Icp | Chain::Near => AddressNormalization::Lowercase,
             _ => AddressNormalization::None,
@@ -1262,27 +1494,24 @@ impl Chain {
 
     /// `true` when a watch-only or seed import can carry an account extended
     /// public key for this chain, which stands in for the whole account and
-    /// makes one wallet rather than one per address. Bitcoin only: the xpub
-    /// prefixes and HD discovery behind it are Bitcoin's.
+    /// makes one wallet rather than one per address. Bitcoin's mainnet and
+    /// test networks use their own BIP32 serialization prefixes.
     pub fn accepts_account_xpub(self) -> bool {
-        self == Chain::Bitcoin
+        self.mainnet_counterpart() == Chain::Bitcoin
     }
 
     /// `true` when a wallet on this chain can be imported watch-only from an
     /// address alone.
     ///
     /// Monero is the notable exclusion: watching a Monero account needs the
-    /// private view key, which an address does not carry. Testnets are excluded
-    /// because import only populates mainnet slots — see [`Chain::address_slot`].
+    /// private view key, which an address does not carry. Addresses are
+    /// validated and stored against their concrete mainnet or testnet.
     pub fn supports_watch_only_import(self) -> bool {
-        if self.is_testnet() {
-            return false;
-        }
         if self.is_evm() {
             return true;
         }
         matches!(
-            self,
+            self.mainnet_counterpart(),
             Chain::Bitcoin
                 | Chain::BitcoinCash
                 | Chain::BitcoinSV
@@ -1340,7 +1569,6 @@ impl Chain {
             Chain::Dogecoin => Some(1_000_000),
             Chain::Litecoin | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Kaspa => Some(1_000),
             Chain::BitcoinCash | Chain::Decred | Chain::Dash => Some(2_000),
-            Chain::Near => Some(1_000_000_000_000_000_000_000),
             _ => None,
         }
     }
@@ -1398,8 +1626,8 @@ pub enum PendingStatusPoll {
         /// Only sends are tracked; receives confirm on their own.
         require_send_kind: bool,
     },
-    /// Fetch the address's history and treat any txid in it as confirmed.
-    HistoryTxids,
+    /// Read this exact transaction's committed execution result from the API.
+    TransactionStatus(EndpointApi),
     /// Scan finalized Substrate blocks and their System.Events for an exact
     /// extrinsic hash, since the node has no address-history index.
     SubstrateFinality,
@@ -1495,7 +1723,7 @@ mod tests {
             assert!(chain.derives_from_private_key());
             assert!(chain.supports_watch_only_import());
             assert!(chain.sends_tokens());
-            assert_eq!(chain.token_standard(), "ERC-20");
+            assert!(chain.allows_token_standard("ERC-20"));
             assert_eq!(chain.coin_symbol(), symbol);
             assert_eq!(chain.native_decimals(), 18);
             assert_eq!(chain.entry().artwork_name, artwork);
@@ -1614,7 +1842,6 @@ mod tests {
             Chain::Base,
             Chain::BaseSepolia,
             Chain::Celo,
-            Chain::CeloSepolia,
             Chain::Unichain,
             Chain::Ink,
             Chain::InkSepolia,
@@ -1626,6 +1853,10 @@ mod tests {
                 "{chain}"
             );
         }
+        assert_eq!(
+            Chain::CeloSepolia.evm_rollup_fee_model(),
+            Some(OpStackFeeModel::Fjord)
+        );
         assert_eq!(
             Chain::OpBnb.evm_rollup_fee_model(),
             Some(OpStackFeeModel::Fjord)
@@ -1713,24 +1944,27 @@ mod tests {
         }
     }
 
-    /// Watch-only support must never be claimed for a testnet, and Monero is
-    /// the only mainnet excluded. One piece of iOS copy depends on that: the
-    /// watch-only footer note names Monero while its condition reads the flag.
-    /// A second excluded chain means generalising the string, which is a
-    /// localisation edit rather than something to discover from a screenshot.
+    /// Both networks can watch their validated addresses. Monero additionally
+    /// requires a private view key, so an address is insufficient on either.
     #[test]
-    fn watch_only_support_excludes_monero_and_testnets() {
+    fn watch_only_support_excludes_only_the_monero_family() {
         assert_eq!(
             Chain::all()
                 .filter(|c| c.accepts_account_xpub())
                 .collect::<Vec<_>>(),
-            vec![Chain::Bitcoin],
-            "only Bitcoin's import carries an account xpub"
+            vec![
+                Chain::Bitcoin,
+                Chain::BitcoinTestnet,
+                Chain::BitcoinTestnet4,
+                Chain::BitcoinSignet
+            ],
+            "only Bitcoin networks carry an account xpub"
         );
-        for chain in Chain::all().filter(|c| c.is_testnet()) {
+        for chain in Chain::all() {
             assert!(
-                !chain.supports_watch_only_import(),
-                "{} is a testnet",
+                chain.supports_watch_only_import()
+                    == (chain.mainnet_counterpart() != Chain::Monero),
+                "{} has inconsistent watch support",
                 chain.str_id()
             );
         }
@@ -1741,35 +1975,48 @@ mod tests {
         assert_eq!(excluded, vec!["monero"]);
     }
 
-    /// Hosting and the input default follow the registry; each configured
-    /// default is also a protocol that the network can represent.
+    /// Hosting follows each network’s protocol set, with no default protocol.
     #[test]
-    fn token_hosting_follows_the_token_standard_column() {
+    fn token_hosting_follows_the_token_protocol_set() {
         let hosting: Vec<&str> = Chain::all()
             .filter(|c| c.hosts_tokens())
             .map(Chain::str_id)
             .collect();
         let with_standard: Vec<&str> = crate::chains::catalog()
             .iter()
-            .filter(|c| !c.token_standard.is_empty())
+            .filter(|c| !c.token_standards.is_empty())
             .map(|c| c.id.as_str())
             .collect();
         assert_eq!(hosting, with_standard);
         for chain in Chain::all().filter(|c| c.is_testnet()) {
             assert_eq!(
-                chain.token_standard(),
-                chain.mainnet_counterpart().token_standard(),
+                chain.token_standards(),
+                chain.mainnet_counterpart().token_standards(),
                 "{}",
                 chain.str_id()
             );
         }
         assert!(!Chain::Bitcoin.hosts_tokens() && !Chain::Monero.hosts_tokens());
         for chain in Chain::all().filter(|c| c.hosts_tokens()) {
-            assert!(
-                chain.allows_token_standard(chain.token_standard()),
-                "{}",
-                chain.str_id()
+            for standard in chain.token_standards() {
+                assert!(chain.allows_token_standard(standard), "{}", chain.str_id());
+            }
+        }
+    }
+
+    #[test]
+    fn protocol_sets_keep_legacy_and_current_protocols_on_one_network() {
+        for chain in [Chain::Tron, Chain::TronNile] {
+            assert_eq!(chain.token_standards(), ["TRC-10", "TRC-20"]);
+            assert_eq!(chain.entry().token_standards, ["TRC-10", "TRC-20"]);
+        }
+        for chain in [Chain::Aptos, Chain::AptosTestnet] {
+            assert_eq!(chain.token_standards(), ["Aptos Coin", "AIP-21"]);
+            assert_eq!(
+                chain.token_standard_for_identifier("0x1::coin::T"),
+                "Aptos Coin"
             );
+            assert_eq!(chain.token_standard_for_identifier("0x123"), "AIP-21");
         }
     }
 
@@ -1877,6 +2124,8 @@ pub enum AddressNormalization {
     /// exactly as the user typed it.
     None,
     Lowercase,
+    /// Stellar StrKey uses canonical uppercase RFC 4648 base32.
+    Uppercase,
     /// Lowercase, and prefixed with `0x` when the input omitted it.
     LowercaseHexPrefixed,
 }
@@ -1901,7 +2150,7 @@ pub struct ChainIdentity {
     pub accepts_account_xpub: bool,
     /// A private key alone yields an address on this chain.
     pub derives_from_private_key: bool,
-    /// The chain has protocol-native staking the staking tab can drive.
+    /// The staking tab can query this chain's live validator directory.
     pub supports_staking: bool,
     /// The send screen has a network card to show for this chain — a fee, a
     /// preview, or both. False only where core routes no send at all.
@@ -2053,6 +2302,11 @@ mod the_post_send_refresh_set_is_the_registrys {
             (Chain::BitcoinCash, vec![Chain::BitcoinCashTestnet]),
             (Chain::BitcoinSV, vec![Chain::BitcoinSVTestnet]),
             (Chain::Dogecoin, vec![Chain::DogecoinTestnet]),
+            (Chain::Zcash, vec![Chain::ZcashTestnet]),
+            (Chain::Decred, vec![Chain::DecredTestnet]),
+            (Chain::Kaspa, vec![Chain::KaspaTestnet]),
+            (Chain::Dash, vec![Chain::DashTestnet]),
+            (Chain::BitcoinGold, vec![]),
         ] {
             assert!(utxo(mainnet), "{mainnet:?}");
             for testnet in testnets {
@@ -2061,8 +2315,8 @@ mod the_post_send_refresh_set_is_the_registrys {
         }
         assert_eq!(
             Chain::all().filter(|c| utxo(*c)).count(),
-            12,
-            "five mainnets and seven testnets"
+            21,
+            "ten mainnets and eleven testnets"
         );
     }
 }

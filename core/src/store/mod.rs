@@ -371,7 +371,7 @@ impl TransactionStatusTrackerState {
     }
 }
 
-/// How often a pending send is re-polled, and when it is given up on.
+/// How often a pending send is re-polled, with bounded provider-error backoff.
 ///
 /// Policy, so it lives with the tracker table it schedules rather than crossing
 /// the boundary.
@@ -380,8 +380,6 @@ impl TransactionStatusTrackerState {
 pub struct TransactionStatusPollConfig {
     pub pending_poll_seconds: f64,
     pub backoff_max_seconds: f64,
-    pub pending_failure_timeout_seconds: f64,
-    pub pending_failure_min_failures: u32,
 }
 
 impl Default for TransactionStatusPollConfig {
@@ -389,8 +387,6 @@ impl Default for TransactionStatusPollConfig {
         Self {
             pending_poll_seconds: 20.0,
             backoff_max_seconds: 600.0,
-            pending_failure_timeout_seconds: 60.0 * 60.0,
-            pending_failure_min_failures: 6,
         }
     }
 }
@@ -439,65 +435,12 @@ pub fn transaction_status_after_failed_poll(
     tracker
 }
 
-/// Core reads its own transactions to build these; the caller hands over
-/// nothing.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct StalePendingFailureTransactionInput {
-    pub id: String,
-    pub created_at_unix: f64,
-    pub status_is_pending: bool,
-}
-
-/// Pending transactions that have been pending too long *and* have failed to
-/// resolve often enough to call it. `failures` is the caller's tracker table;
-/// a transaction missing from it has never failed a poll.
-pub(crate) fn stale_pending_failure_ids(
-    transactions: Vec<StalePendingFailureTransactionInput>,
-    failures: &std::collections::HashMap<String, u32>,
-    now_unix: f64,
-    config: TransactionStatusPollConfig,
-) -> Vec<String> {
-    transactions
-        .into_iter()
-        .filter(|transaction| {
-            if !transaction.status_is_pending {
-                return false;
-            }
-            let age = now_unix - transaction.created_at_unix;
-            if age < config.pending_failure_timeout_seconds {
-                return false;
-            }
-            failures.get(&transaction.id).copied().unwrap_or(0)
-                >= config.pending_failure_min_failures
-        })
-        .map(|transaction| transaction.id)
-        .collect()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ResolvedPendingStatusInput {
-    pub status: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedPendingTransactionInput {
     pub id: String,
     pub old_status: String,
-    pub old_failure_reason: Option<persistence_models::TransactionFailure>,
-    pub resolution: Option<ResolvedPendingStatusInput>,
-    pub is_stale_failure: bool,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum FailureReasonDisposition {
-    None,
-    ExecutionFailed,
-    Preserve,
-    LocalizedFallback,
+    pub new_status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -506,7 +449,6 @@ pub struct ResolvedPendingTransactionDecision {
     pub id: String,
     pub new_status: String,
     pub status_changed: bool,
-    pub failure_reason_disposition: FailureReasonDisposition,
 }
 
 /// One chain's resolved statuses, as the network reported them.
@@ -535,9 +477,11 @@ pub struct EvmReceiptCost {
     pub gas_used: String,
     /// Exact decimal gwei.
     pub effective_gas_price_gwei: String,
-    /// `gas_used × effective_gas_price`, as an exact decimal in the chain's
-    /// gas token.
+    /// The complete actual network fee, in the chain's gas token.
     pub network_fee: String,
+    /// OP Stack charges, in native units. Both must be known to publish a total.
+    pub l1_data_fee: Option<String>,
+    pub operator_fee: Option<String>,
 }
 
 impl EvmReceiptCost {
@@ -558,7 +502,62 @@ impl EvmReceiptCost {
                 gas.checked_mul(price)?,
                 u32::from(native_decimals),
             ),
+            l1_data_fee: None,
+            operator_fee: None,
         })
+    }
+
+    pub fn from_rollup_receipt(
+        gas_used: Option<&str>,
+        effective_gas_price_wei: Option<&str>,
+        l1_fee_wei: Option<&str>,
+        operator_fee_wei: Option<&str>,
+        native_decimals: u8,
+    ) -> Option<Self> {
+        let mut cost = Self::from_receipt(gas_used, effective_gas_price_wei, native_decimals)?;
+        let execution = crate::decimal::to_units(&cost.network_fee, u32::from(native_decimals))?;
+        let l1 = l1_fee_wei?.parse::<u128>().ok()?;
+        let operator = operator_fee_wei?.parse::<u128>().ok()?;
+        cost.network_fee = crate::decimal::from_units(
+            execution.checked_add(l1)?.checked_add(operator)?,
+            u32::from(native_decimals),
+        );
+        cost.l1_data_fee = Some(crate::decimal::from_units(l1, u32::from(native_decimals)));
+        cost.operator_fee = Some(crate::decimal::from_units(
+            operator,
+            u32::from(native_decimals),
+        ));
+        Some(cost)
+    }
+
+    /// Recompute a supplied projection's total from exact components.
+    pub(crate) fn validated_for_chain(&self, chain: crate::registry::Chain) -> Option<Self> {
+        let price = crate::decimal::to_units(&self.effective_gas_price_gwei, 9)?.to_string();
+        let expected = if chain.evm_rollup_fee_model().is_some() {
+            let l1 = crate::decimal::to_units(
+                self.l1_data_fee.as_deref()?,
+                u32::from(chain.native_decimals()),
+            )?
+            .to_string();
+            let operator = crate::decimal::to_units(
+                self.operator_fee.as_deref()?,
+                u32::from(chain.native_decimals()),
+            )?
+            .to_string();
+            Self::from_rollup_receipt(
+                Some(&self.gas_used),
+                Some(&price),
+                Some(&l1),
+                Some(&operator),
+                chain.native_decimals(),
+            )?
+        } else {
+            if self.l1_data_fee.is_some() || self.operator_fee.is_some() {
+                return None;
+            }
+            Self::from_receipt(Some(&self.gas_used), Some(&price), chain.native_decimals())?
+        };
+        (expected == *self).then_some(expected)
     }
 }
 
@@ -586,10 +585,10 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
     now_unix: f64,
     config: TransactionStatusPollConfig,
 ) -> Vec<ResolvedPendingTransactionDecision> {
-    let mut decisions = Vec::new();
-    for input in inputs {
-        let decision = if let Some(resolution) = input.resolution {
-            let new_status = resolution.status.clone();
+    inputs
+        .into_iter()
+        .map(|input| {
+            let new_status = input.new_status;
             let status_changed = input.old_status != new_status;
             if new_status != "pending" {
                 let tracker = trackers
@@ -598,37 +597,13 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
                 tracker.polling_complete = true;
                 tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
             }
-            let failure_reason_disposition = if new_status == "failed" {
-                FailureReasonDisposition::ExecutionFailed
-            } else {
-                FailureReasonDisposition::None
-            };
-            Some(ResolvedPendingTransactionDecision {
+            ResolvedPendingTransactionDecision {
                 id: input.id,
                 new_status,
                 status_changed,
-                failure_reason_disposition,
-            })
-        } else if input.is_stale_failure {
-            let new_status = "failed".to_string();
-            let status_changed = input.old_status != new_status;
-            let failure_reason_disposition = if input.old_failure_reason.is_some() {
-                FailureReasonDisposition::Preserve
-            } else {
-                FailureReasonDisposition::LocalizedFallback
-            };
-            Some(ResolvedPendingTransactionDecision {
-                id: input.id,
-                new_status,
-                status_changed,
-                failure_reason_disposition,
-            })
-        } else {
-            None
-        };
-        decisions.extend(decision);
-    }
-    decisions
+            }
+        })
+        .collect()
 }
 
 // ─── N: Chain keypool state (baseline + merge with existing) ──────────────────

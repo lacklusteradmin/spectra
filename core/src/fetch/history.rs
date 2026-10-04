@@ -276,7 +276,8 @@ pub fn normalize_chain_history(
             // Signed while direction is still being decided; the entry itself
             // reports a magnitude and says which way it went in `kind`. A row
             // whose amount cannot be read is refused, not stored as 0.
-            let signed_amount = json_number(&entry[shape.amount])?;
+            let signed_amount =
+                json_number(entry.get("amount_display").unwrap_or(&entry[shape.amount]))?;
             let is_incoming =
                 entry["is_incoming"]
                     .as_bool()
@@ -354,7 +355,10 @@ pub fn normalize_chain_history(
                 asset_display_name: entry_asset.to_string(),
                 symbol: entry_symbol.to_string(),
                 chain_id: chain,
-                amount: magnitude(&entry[shape.amount], shape.amount_in_base_units, chain)?,
+                amount: match entry.get("amount_display") {
+                    Some(display) => magnitude(display, false, chain)?,
+                    None => magnitude(&entry[shape.amount], shape.amount_in_base_units, chain)?,
+                },
                 counterparty: shape
                     .counterparty
                     .map(|(incoming, outgoing)| {

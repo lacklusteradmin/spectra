@@ -33,7 +33,7 @@ pub(crate) struct WocUtxo {
     pub(crate) height: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WocHistoryItem {
     pub(crate) tx_hash: String,
     #[serde(default)]
@@ -63,13 +63,15 @@ pub(crate) struct WocTxDetail {
 /// its value.
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct WocTxVin {
+    #[serde(skip)]
+    pub(crate) resolved_output: Option<WocTxVout>,
     #[serde(default)]
     pub(crate) txid: String,
     #[serde(default)]
     pub(crate) vout: u32,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct WocTxVout {
     /// BSV amount as a float (WoC convention). Convert ×1e8 for sats.
     #[serde(default)]
@@ -81,7 +83,7 @@ pub(crate) struct WocTxVout {
     pub(crate) script_pub_key: Option<WocTxVoutScriptPubKey>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct WocTxVoutScriptPubKey {
     #[serde(default)]
     pub(crate) addresses: Option<Vec<String>>,
@@ -164,17 +166,112 @@ impl WhatsonchainClient {
     /// `{tx_hash, height}` entries. To populate amounts and timestamps we
     /// issue a sequential `/tx/hash/{hash}` fetch per entry.
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        let list: Vec<WocHistoryItem> = self.get(&format!("/address/{address}/history")).await?;
+        Ok(self.fetch_history_page(address, None).await?.items)
+    }
 
+    pub async fn fetch_history_page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError> {
+        #[derive(Default, Serialize, Deserialize)]
+        struct Cursor {
+            pending: Vec<WocHistoryItem>,
+            confirmed_started: bool,
+            token: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Index {
+            result: Vec<WocHistoryItem>,
+            #[serde(default, rename = "nextPageToken")]
+            next: Option<String>,
+            #[serde(default)]
+            error: String,
+        }
+        let mut position: Cursor = cursor
+            .map(serde_json::from_str)
+            .transpose()?
+            .unwrap_or_default();
+        if cursor.is_none() {
+            let index: Index = self
+                .get(&format!("/address/{address}/unconfirmed/history"))
+                .await?;
+            if !index.error.is_empty() {
+                return Err(ApiError::Rejected(index.error));
+            }
+            position.pending = index.result;
+        }
+        let (list, more) = if !position.pending.is_empty() {
+            let count = position.pending.len().min(50);
+            (position.pending.drain(..count).collect::<Vec<_>>(), true)
+        } else {
+            let continuation = position
+                .token
+                .as_ref()
+                .map(|token| format!("&token={}", crate::api::history_page::query_value(token)))
+                .unwrap_or_default();
+            let (index, headers): (Index, _) = race(&self.endpoints, |base| {
+                let continuation = &continuation;
+                async move { self.client.get_json_with_response_headers(&format!("{}/address/{address}/confirmed/history?limit=50&order=desc{continuation}", base.trim_end_matches('/')), RetryProfile::ChainRead).await }
+            }).await?;
+            if !index.error.is_empty() {
+                return Err(ApiError::Rejected(index.error));
+            }
+            let next = index.next.or_else(|| {
+                headers
+                    .get("next-page")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string)
+            });
+            if next.is_some() && next == position.token {
+                return Err(ApiError::Decode(
+                    "WhatsOnChain repeated its history cursor".into(),
+                ));
+            }
+            if index.result.len() == 50 && next.is_none() {
+                return Err(ApiError::Decode(
+                    "WhatsOnChain full history page omitted its continuation".into(),
+                ));
+            }
+            let more = next.is_some();
+            position.confirmed_started = true;
+            position.token = next;
+            (index.result, more)
+        };
         let mut details = Vec::with_capacity(list.len());
+        let mut previous = std::collections::HashMap::<String, WocTxDetail>::new();
         for item in list {
-            // Every transaction is needed to know which outputs are the
-            // address's, so one that cannot be read fails the whole history
-            // rather than turning a later spend of its outputs into a receipt.
-            let tx: WocTxDetail = self.get(&format!("/tx/hash/{}", item.tx_hash)).await?;
+            let mut tx: WocTxDetail = self.get(&format!("/tx/hash/{}", item.tx_hash)).await?;
+            for input in &mut tx.vin {
+                if input.txid.is_empty() {
+                    continue;
+                } // coinbase
+                if !previous.contains_key(&input.txid) {
+                    if previous.len() >= 256 {
+                        return Err(ApiError::Rejected(
+                            "WhatsOnChain history page exceeds 256 previous transactions".into(),
+                        ));
+                    }
+                    let parent = self.get(&format!("/tx/hash/{}", input.txid)).await?;
+                    previous.insert(input.txid.clone(), parent);
+                }
+                let parent = &previous[&input.txid];
+                let output = parent
+                    .vout
+                    .iter()
+                    .find(|output| output.n == input.vout)
+                    .ok_or_else(|| {
+                        ApiError::Decode("WhatsOnChain previous outpoint missing".into())
+                    })?;
+                input.resolved_output = Some(output.clone());
+            }
             details.push((item, tx));
         }
-        bsv_history_from_details(details, address)
+        let next_cursor = more.then(|| serde_json::to_string(&position)).transpose()?;
+        Ok(crate::api::HistoryPage {
+            items: bsv_history_from_details(details, address)?,
+            next_cursor,
+        })
     }
 
     /// Fetch confirmation status for a single txid via WoC `/tx/hash/{txid}`.
@@ -253,7 +350,10 @@ fn bsv_history_from_details(
             let spent: i64 = tx
                 .vin
                 .iter()
-                .filter_map(|vin| owned.get(&(vin.txid.clone(), vin.vout)))
+                .filter_map(|vin| match &vin.resolved_output {
+                    Some(output) => pays_address(output).then(|| sats(output.value)),
+                    None => owned.get(&(vin.txid.clone(), vin.vout)).copied(),
+                })
                 .sum();
             let net_sats = received - spent;
             let block_height = Some(tx.blockheight.unwrap_or(item.height))
