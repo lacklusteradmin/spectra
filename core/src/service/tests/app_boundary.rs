@@ -329,11 +329,54 @@ async fn substrate_history_is_an_error_not_an_empty_list() {
     }
 }
 
-/// A Polkadot balance is the `System.Account` record read from the node; a
-/// record read from `rpc.polkadot.io` for the treasury.
+/// Storage is decoded only after Asset Hub identity and its layout are verified.
 #[tokio::test]
 async fn a_polkadot_balance_is_read_from_system_account_storage() {
     let server = MockServer::start().await;
+    for (request, result) in [
+        (
+            json!({"method":"chain_getBlockHash","params":[0]}),
+            json!(
+                crate::registry::Chain::Polkadot
+                    .substrate_genesis_hash()
+                    .unwrap()
+            ),
+        ),
+        (
+            json!({"method":"chain_getBlockHash","params":[]}),
+            json!(format!("0x{}", "11".repeat(32))),
+        ),
+        (
+            json!({"method":"chain_getFinalizedHead"}),
+            json!(format!("0x{}", "11".repeat(32))),
+        ),
+        (
+            json!({"method":"chain_getHeader"}),
+            json!({"number":"0x64"}),
+        ),
+        (
+            json!({"method":"state_getRuntimeVersion"}),
+            json!({"specVersion":2_005_000,"transactionVersion":15}),
+        ),
+        (
+            json!({"method":"state_getMetadata"}),
+            json!(format!(
+                "0x{}",
+                hex::encode(crate::api::substrate_json_rpc::tests::fixture(
+                    crate::registry::Chain::Polkadot
+                ))
+            )),
+        ),
+    ] {
+        Mock::given(method("POST"))
+            .and(body_partial_json(request))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":result})),
+            )
+            .mount(&server)
+            .await;
+    }
     Mock::given(method("POST"))
         .and(body_partial_json(json!({"method": "state_getStorage"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({

@@ -3,6 +3,29 @@
 use crate::send::error::SendError;
 use serde::{Deserialize, Serialize};
 
+/// Wallet-owned Litecoin source, kept with each reviewed input so signing
+/// derives the exact key and checks ownership again after a restart.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct LitecoinSendSource {
+    pub address: String,
+    pub derivation_path: Option<String>,
+    pub script_pubkey: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct LitecoinPreparedInput {
+    pub source: LitecoinSendSource,
+    pub utxo: (String, u32, u64, Vec<u8>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PreparedLitecoinTransaction {
+    pub inputs: Vec<LitecoinPreparedInput>,
+    pub amount: u64,
+    pub fee: u64,
+    pub recipient_script: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum PreparedPayload {
     Evm(super::evm::PreparedEvmTransaction),
@@ -11,6 +34,7 @@ pub(crate) enum PreparedPayload {
     Monero(super::monero_local::PreparedMoneroTransaction),
     Decred(super::decred::PreparedDecredTransaction),
     Kaspa(super::kaspa::PreparedKaspaTransaction),
+    Litecoin(PreparedLitecoinTransaction),
     Near {
         public_key: [u8; 32],
         nonce: u64,
@@ -28,7 +52,6 @@ pub(crate) enum PreparedPayload {
         amount: u64,
         fee: u64,
         recipient_script: Vec<u8>,
-        extension: Vec<u8>,
     },
     Xrp {
         sequence: u32,
@@ -40,6 +63,7 @@ pub(crate) enum PreparedPayload {
         fee_stroops: u64,
         amount_stroops: i64,
     },
+    Polkadot(super::polkadot::PreparedPolkadotTransaction),
     Substrate {
         nonce: u32,
         spec_version: u32,
@@ -125,6 +149,7 @@ pub(crate) struct StoredSend {
     pub prepared: PreparedPayload,
     pub submission: Option<super::payload::PreparedSubmission>,
     pub signed_digest: Option<String>,
+    pub substrate_verified_through: Option<u64>,
 }
 
 impl StoredSend {

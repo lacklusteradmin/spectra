@@ -4,6 +4,23 @@ import Testing
 @testable import Spectra
 
 struct PresentationCatalogTests {
+    @Test func newEvmNetworksReachTheChainPickerWithTheirOwnIdentity() throws {
+        let rows = ChainSelectionDescriptor.popularOrder(Chain.mainnets)
+            .picked(filter: .tag(.evm), query: "", order: .name, selected: [])
+        for (chain, id, symbol, artwork) in [
+            (Chain.plasma, "plasma", "XPL", "plasma"),
+            (.monad, "monad", "MON", "monad"),
+            (.worldChain, "world-chain", "ETH", "worldcoin")
+        ] {
+            let row = try #require(rows.first { $0.id == chain }, "\(id)")
+            #expect(chain.id == id)
+            #expect(row.symbol == symbol)
+            #expect(row.artworkName == artwork)
+            #expect(row.matches(chain.displayName))
+            #expect(!row.isTestnet)
+        }
+    }
+
     /// Colour follows deployment identity, never the ticker: a custom token
     /// that calls itself `ETH` is grey, not Ether's colour.
     @Test func coinColorsFollowDeploymentIdentity() throws {

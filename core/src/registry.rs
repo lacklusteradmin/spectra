@@ -56,6 +56,9 @@ pub enum Chain {
     Dash,
     XLayer,
     Bittensor,
+    Plasma,
+    Monad,
+    WorldChain,
 
     // ── Testnets ─────────────────────────────────────────────────────────────
     BitcoinTestnet,
@@ -142,6 +145,14 @@ pub enum RegistryError {
     ZcashV5Inactive(u32),
 }
 
+/// The fee-oracle methods deployed by each supported OP Stack network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OpStackFeeModel {
+    FjordWithOperator,
+    Fjord,
+    Bedrock,
+}
+
 impl From<RegistryError> for crate::SpectraBridgeError {
     fn from(error: RegistryError) -> Self {
         Self::InvalidInput {
@@ -212,6 +223,9 @@ const ALL_CHAINS: &[Chain] = &[
     Chain::Dash,
     Chain::XLayer,
     Chain::Bittensor,
+    Chain::Plasma,
+    Chain::Monad,
+    Chain::WorldChain,
     // Testnets
     Chain::BitcoinTestnet,
     Chain::BitcoinTestnet4,
@@ -317,17 +331,13 @@ impl Chain {
     /// Ethereum, Arbitrum, Base and the rest, so they all share the
     /// `"ethereum"` slot rather than each carrying a copy.
     ///
-    /// Ethereum Classic is EVM but keeps a slot of its own, because the import
-    /// flow lets the user supply a distinct ETC address. A wallet on that chain
-    /// is written into *both* slots — see `derivation::import::addresses_for_chain`.
-    ///
-    /// Testnets fall through to their own `str_id`. Import only ever populates
-    /// mainnet slots, so a testnet lookup misses and yields no address — which
-    /// is correct: a Bitcoin testnet address is not a Bitcoin address.
+    /// The slot describes address encoding, not network or derivation identity.
+    /// Every EVM network, including Ethereum Classic and testnets, uses it;
+    /// each wallet separately records its concrete network and derivation path.
+    /// Other networks keep separate slots when their address encoding differs.
     pub fn address_slot(self) -> &'static str {
         match self {
-            Chain::EthereumClassic => Chain::EthereumClassic.str_id(),
-            _ if self.is_evm() && !self.is_testnet() => Chain::Ethereum.str_id(),
+            _ if self.is_evm() => Chain::Ethereum.str_id(),
             _ => self.str_id(),
         }
     }
@@ -375,26 +385,6 @@ impl Chain {
             Chain::Bittensor => SimpleChain::Bittensor,
             _ => return None,
         })
-    }
-
-    /// Extra transaction bytes beyond a plain output.
-    /// Litecoin MWEB extension-block outputs add about a kilobyte, which must
-    /// be included in fee and maximum-send calculations.
-    pub fn extra_output_overhead_bytes(self, destination: &str) -> u64 {
-        if self.is_extension_block_destination(destination) {
-            1017
-        } else {
-            0
-        }
-    }
-
-    /// Whether a destination on this chain is an extension-block output:
-    /// Litecoin's MWEB, the only chain with one. The fee rule above and the
-    /// composer's privacy badge both ask this, so it is asked one way.
-    pub fn is_extension_block_destination(self, destination: &str) -> bool {
-        let lowered = destination.trim().to_lowercase();
-        self.mainnet_counterpart() == Chain::Litecoin
-            && (lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1"))
     }
 
     /// The APIs the chain's own clients speak: what its balance, fee and
@@ -591,6 +581,9 @@ impl Chain {
                 | Chain::Unichain
                 | Chain::Ink
                 | Chain::XLayer
+                | Chain::Plasma
+                | Chain::Monad
+                | Chain::WorldChain
                 | Chain::EthereumSepolia
                 | Chain::EthereumHoodi
                 | Chain::ArbitrumSepolia
@@ -639,6 +632,21 @@ impl Chain {
         }
     }
 
+    pub(crate) fn litecoin_max_money(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Litecoin | Self::LitecoinTestnet => Ok(84_000_000 * 100_000_000),
+            _ => Err(self.not_in("Litecoin")),
+        }
+    }
+
+    /// Litecoin Core's default dust relay fee, in litoshis per virtual kilobyte.
+    pub(crate) fn litecoin_dust_relay_fee_per_kvb(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Litecoin | Self::LitecoinTestnet => Ok(30_000),
+            _ => Err(self.not_in("Litecoin")),
+        }
+    }
+
     pub(crate) fn fixed_utxo_segwit_hrp(self) -> Option<&'static str> {
         match self {
             Self::Litecoin => Some("ltc"),
@@ -675,7 +683,6 @@ impl Chain {
             | Self::BitcoinSV
             | Self::BitcoinGold
             | Self::Dogecoin
-            | Self::Litecoin
             | Self::Dash => Ok(546),
             _ => Err(self.not_in("fixed-fee P2PKH")),
         }
@@ -771,6 +778,9 @@ impl Chain {
             Chain::Unichain => 130,
             Chain::Ink => 57073,
             Chain::XLayer => 196,
+            Chain::Plasma => 9745,
+            Chain::Monad => 143,
+            Chain::WorldChain => 480,
             Chain::EthereumSepolia => 11155111,
             Chain::EthereumHoodi => 560048,
             Chain::ArbitrumSepolia => 421614,
@@ -790,6 +800,42 @@ impl Chain {
             Chain::EthereumClassicMordor => 63,
             _ => return Err(self.not_in("EVM")),
         })
+    }
+
+    /// Gas-estimate headroom in basis points. Monad charges the entire gas
+    /// limit, so its default buffer is smaller than other EVM networks'.
+    pub fn evm_gas_buffer_bps(self) -> u32 {
+        if self == Self::Monad { 750 } else { 2000 }
+    }
+
+    /// Additional rollup fees use the oracle methods deployed on the
+    /// concrete network; a missing method must never become a zero fee.
+    pub(crate) fn evm_rollup_fee_model(self) -> Option<OpStackFeeModel> {
+        match self.mainnet_counterpart() {
+            Self::Optimism
+            | Self::Base
+            | Self::Celo
+            | Self::Unichain
+            | Self::Ink
+            | Self::WorldChain => Some(OpStackFeeModel::FjordWithOperator),
+            Self::OpBnb => Some(OpStackFeeModel::Fjord),
+            Self::Blast => Some(OpStackFeeModel::Bedrock),
+            _ => None,
+        }
+    }
+
+    /// Expected genesis for a Substrate deployment. DOT balances and
+    /// transfers live on Asset Hub, rather than the relay chain.
+    pub fn substrate_genesis_hash(self) -> Option<&'static str> {
+        match self {
+            Self::Polkadot => {
+                Some("0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f")
+            }
+            Self::PolkadotWestend => {
+                Some("0x67f9723393ef76214df0118c34bbbd3dbebc8ed46a10973a8c969d48fe7598c9")
+            }
+            _ => None,
+        }
     }
 
     /// The keyless explorer source for this EVM chain, if configured.
@@ -916,7 +962,7 @@ impl Chain {
                 fee_field: SendFeeField::GasBudget,
                 fee_fallback: None,
             },
-            Chain::Cardano | Chain::Aptos => SendExecutionShape {
+            Chain::Cardano | Chain::Aptos | Chain::Polkadot => SendExecutionShape {
                 fee_field: SendFeeField::FeeAmount,
                 fee_fallback: None,
             },
@@ -975,8 +1021,8 @@ impl Chain {
             | Chain::Aptos
             | Chain::Ton
             | Chain::Icp
-            | Chain::Near
-            | Chain::Polkadot => PendingStatusPoll::HistoryTxids,
+            | Chain::Near => PendingStatusPoll::HistoryTxids,
+            Chain::Polkadot => PendingStatusPoll::SubstrateFinality,
             other if other.is_evm() => PendingStatusPoll::EvmReceipt,
             _ => PendingStatusPoll::None,
         }
@@ -1031,7 +1077,6 @@ impl Chain {
         script: crate::derivation::types::BitcoinScriptType,
     ) -> Result<String, crate::derivation::error::DerivationError> {
         use crate::derivation::error::DerivationError;
-        use crate::derivation::types::BitcoinScriptType;
         use crate::derivation::{
             bitcoin as btc, bitcoin_cash as bch, dogecoin as doge, litecoin as ltc,
         };
@@ -1052,19 +1097,7 @@ impl Chain {
                 btc::encode_p2pkh(doge::DOGE_TESTNET_VERSION, &key.serialize())
             }
             Self::Litecoin | Self::LitecoinTestnet => {
-                if !matches!(script, BitcoinScriptType::P2pkh) {
-                    return Err(DerivationError::invalid(
-                        "Litecoin discovery only supports P2PKH paths",
-                    ));
-                }
-                btc::encode_p2pkh(
-                    if self == Self::Litecoin {
-                        ltc::LTC_MAINNET_VERSION
-                    } else {
-                        ltc::LTC_TESTNET_VERSION
-                    },
-                    &key.serialize(),
-                )
+                return ltc::encode_litecoin_address(self, script, key);
             }
             _ => {
                 return Err(DerivationError::invalid(
@@ -1157,7 +1190,10 @@ impl Chain {
             | Chain::Berachain
             | Chain::Unichain
             | Chain::Ink
-            | Chain::XLayer => "evm",
+            | Chain::XLayer
+            | Chain::Plasma
+            | Chain::Monad
+            | Chain::WorldChain => "evm",
             Chain::EthereumSepolia
             | Chain::EthereumHoodi
             | Chain::ArbitrumSepolia
@@ -1295,7 +1331,6 @@ impl Chain {
             Chain::Solana => Some(5_000),
             Chain::Tron => Some(1_000_000),
             Chain::Cardano => Some(170_000),
-            Chain::Polkadot => Some(160_000_000),
             Chain::Bittensor => Some(125_000),
             Chain::Sui => Some(1_000),
             Chain::Ton => Some(7_000_000),
@@ -1365,6 +1400,9 @@ pub enum PendingStatusPoll {
     },
     /// Fetch the address's history and treat any txid in it as confirmed.
     HistoryTxids,
+    /// Scan finalized Substrate blocks and their System.Events for an exact
+    /// extrinsic hash, since the node has no address-history index.
+    SubstrateFinality,
     /// Receipt-based, through the EVM history path.
     EvmReceipt,
     /// Not polled.
@@ -1422,6 +1460,9 @@ mod tests {
         assert_eq!(Chain::Unichain.evm_chain_id().unwrap(), 130);
         assert_eq!(Chain::Ink.evm_chain_id().unwrap(), 57073);
         assert_eq!(Chain::XLayer.evm_chain_id().unwrap(), 196);
+        assert_eq!(Chain::Plasma.evm_chain_id().unwrap(), 9745);
+        assert_eq!(Chain::Monad.evm_chain_id().unwrap(), 143);
+        assert_eq!(Chain::WorldChain.evm_chain_id().unwrap(), 480);
     }
 
     #[test]
@@ -1429,6 +1470,174 @@ mod tests {
         for chain in Chain::all().filter(|chain| !chain.is_evm()) {
             assert!(chain.evm_chain_id().is_err(), "{}", chain.str_id());
         }
+    }
+
+    #[test]
+    fn new_evm_mainnets_have_native_assets_and_shared_wallet_rules() {
+        for (chain, id, chain_id, symbol, token_id, artwork) in [
+            (Chain::Plasma, "plasma", 9745, "XPL", "plasma", "plasma"),
+            (Chain::Monad, "monad", 143, "MON", "monad", "monad"),
+            (
+                Chain::WorldChain,
+                "world-chain",
+                480,
+                "ETH",
+                "ethereum",
+                "worldcoin",
+            ),
+        ] {
+            assert_eq!(Chain::parse(id).unwrap(), chain);
+            assert!(!chain.is_testnet());
+            assert_eq!(chain.mainnet_counterpart(), chain);
+            assert_eq!(chain.evm_chain_id().unwrap(), chain_id);
+            assert_eq!(chain.address_slot(), "ethereum");
+            assert_eq!(chain.address_validation_kind(), "evm");
+            assert!(chain.derives_from_private_key());
+            assert!(chain.supports_watch_only_import());
+            assert!(chain.sends_tokens());
+            assert_eq!(chain.token_standard(), "ERC-20");
+            assert_eq!(chain.coin_symbol(), symbol);
+            assert_eq!(chain.native_decimals(), 18);
+            assert_eq!(chain.entry().artwork_name, artwork);
+            assert_eq!(
+                chain.entry().derivation_path[0].path,
+                "m/44'/60'/{account}'/0/0"
+            );
+            let deployment = crate::tokens::deployment(&format!("{id}:native")).unwrap();
+            assert!(deployment.is_native());
+            assert_eq!(deployment.token_id, token_id);
+            assert_eq!(deployment.chain_id, chain);
+            assert_eq!(deployment.symbol, symbol);
+            assert_eq!(deployment.decimals, 18);
+            assert!(deployment.contract.is_empty());
+            assert!(crate::endpoints::catalog().records.iter().any(|record| {
+                record.chain_id == chain
+                    && record.api == crate::EndpointApi::EvmJsonRpc
+                    && record
+                        .capabilities
+                        .contains(&crate::EndpointCapability::Balance)
+                    && record
+                        .capabilities
+                        .contains(&crate::EndpointCapability::Fee)
+                    && record
+                        .capabilities
+                        .contains(&crate::EndpointCapability::Broadcast)
+            }));
+        }
+    }
+
+    #[test]
+    fn verified_new_chain_tokens_have_exact_deployment_identity() {
+        for (chain, token_id, contract, decimals) in [
+            (
+                Chain::Plasma,
+                "usd-coin",
+                "0x2d661c89d812261039af9764eceaaee884f5f67f",
+                6,
+            ),
+            (
+                Chain::Plasma,
+                "euro-coin",
+                "0x3ee196e78d4d4248b849b8e1c7f44c5457fafd2c",
+                6,
+            ),
+            (
+                Chain::Monad,
+                "pancakeswap-token",
+                "0xf59d81cd43f620e722e07f9cb3f6e41b031017a3",
+                18,
+            ),
+            (
+                Chain::Monad,
+                "usd-coin",
+                "0x754704bc059f8c67012fed69bc8a327a5aafb603",
+                6,
+            ),
+            (
+                Chain::WorldChain,
+                "usd-coin",
+                "0x79a02482a880bce3f13e09da970dc34db4cd24d1",
+                6,
+            ),
+            (
+                Chain::WorldChain,
+                "worldcoin-wld",
+                "0x2cfc85d8e48f8eab294be644d9e25c3030863003",
+                18,
+            ),
+        ] {
+            let id = crate::tokens::deployment_id_for(chain, Some(contract)).unwrap();
+            let deployment = crate::tokens::deployment(&id).unwrap();
+            assert_eq!(deployment.token_id, token_id);
+            assert_eq!(deployment.chain_id, chain);
+            assert_eq!(deployment.contract, contract);
+            assert_eq!(deployment.decimals, decimals);
+            assert_eq!(deployment.token_standard, "ERC-20");
+            assert!(!deployment.is_native());
+        }
+    }
+
+    #[test]
+    fn new_mainnet_indexers_declare_their_verified_account_methods() {
+        for (chain, endpoint) in [
+            (
+                Chain::Plasma,
+                "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan",
+            ),
+            (
+                Chain::WorldChain,
+                "https://worldchain-mainnet.explorer.alchemy.com",
+            ),
+        ] {
+            assert_eq!(chain.evm_history_source(), EvmHistorySource::Open(endpoint));
+            let record = crate::endpoints::catalog()
+                .records
+                .iter()
+                .find(|record| record.chain_id == chain && record.endpoint == endpoint)
+                .unwrap();
+            assert_eq!(record.api, crate::EndpointApi::Blockscout);
+            for capability in [
+                crate::EndpointCapability::History,
+                crate::EndpointCapability::TokenHistory,
+                crate::EndpointCapability::TokenDiscovery,
+            ] {
+                assert!(record.capabilities.contains(&capability));
+            }
+        }
+    }
+
+    #[test]
+    fn rollup_fees_follow_deployed_oracle_methods() {
+        for chain in [
+            Chain::Optimism,
+            Chain::OptimismSepolia,
+            Chain::Base,
+            Chain::BaseSepolia,
+            Chain::Celo,
+            Chain::CeloSepolia,
+            Chain::Unichain,
+            Chain::Ink,
+            Chain::InkSepolia,
+            Chain::WorldChain,
+        ] {
+            assert_eq!(
+                chain.evm_rollup_fee_model(),
+                Some(OpStackFeeModel::FjordWithOperator),
+                "{chain}"
+            );
+        }
+        assert_eq!(
+            Chain::OpBnb.evm_rollup_fee_model(),
+            Some(OpStackFeeModel::Fjord)
+        );
+        assert_eq!(
+            Chain::Blast.evm_rollup_fee_model(),
+            Some(OpStackFeeModel::Bedrock)
+        );
+        assert_eq!(Chain::Plasma.evm_rollup_fee_model(), None);
+        assert_eq!(Chain::Monad.evm_rollup_fee_model(), None);
+        assert_eq!(Chain::Monad.evm_gas_buffer_bps(), 750);
+        assert_eq!(Chain::WorldChain.evm_gas_buffer_bps(), 2000);
     }
 
     /// Exhaustive address validators independently check registry EVM membership.
@@ -1486,7 +1695,7 @@ mod tests {
         for chain in Chain::all() {
             let slot = chain.address_slot();
             assert!(!slot.is_empty(), "{} has no slot", chain.str_id());
-            if chain.is_evm() && !chain.is_testnet() && chain != Chain::EthereumClassic {
+            if chain.is_evm() {
                 assert_eq!(
                     slot,
                     Chain::Ethereum.str_id(),
@@ -1610,6 +1819,9 @@ mod tests {
             "unichain",
             "ink",
             "x-layer",
+            "plasma",
+            "monad",
+            "world-chain",
         ];
         let testnet_ids: Vec<&str> = vec![
             "ethereum-sepolia",

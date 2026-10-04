@@ -284,6 +284,27 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
     assert!(token_descriptors(&state, Chain::EthereumClassic).is_empty());
 }
 
+#[test]
+fn descriptors_use_each_concrete_networks_token_deployments() {
+    let state = CoreAppState {
+        token_preferences: crate::store::built_in_token_preferences(),
+        ..Default::default()
+    };
+    for network in Chain::all().filter(|chain| chain.is_evm()) {
+        let expected: std::collections::BTreeSet<_> = state
+            .token_preferences
+            .iter()
+            .filter(|entry| entry.hosting_chain() == Some(network))
+            .map(|entry| entry.token.contract.clone())
+            .collect();
+        let actual: std::collections::BTreeSet<_> = token_descriptors(&state, network)
+            .into_iter()
+            .map(|descriptor| descriptor.contract)
+            .collect();
+        assert_eq!(actual, expected, "{network} history deployment identities");
+    }
+}
+
 /// A chain no explorer serves fails per wallet and says so, rather than
 /// raising and losing the wallets that did answer.
 ///

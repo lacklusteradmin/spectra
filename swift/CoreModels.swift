@@ -229,6 +229,8 @@ extension TransactionRecord: Identifiable {
     var localizedFailureReason: String? {
         guard let failureReason else { return nil }
         switch failureReason {
+        case .executionFailed:
+            return AppLocalization.string("The transaction failed during on-chain execution.")
         case .stuckAfterRetries:
             return AppLocalization.format(
                 "%@ transaction appears stuck and could not be confirmed after extended retries.",

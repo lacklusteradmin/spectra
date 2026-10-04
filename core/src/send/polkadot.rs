@@ -1,99 +1,261 @@
-//! Polkadot send: SCALE-encoded Balances.transfer_keep_alive builder,
-//! and sr25519 (schnorrkel) signer using the canonical substrate signing
-//! context. Submission is `api::substrate_json_rpc`.
-//!
-//! `private_key_bytes` is the 32-byte sr25519 mini-secret produced by
-//! `derive_polkadot` (substrate-bip39 expansion). It is *not* a 64-byte
-//! ed25519 secret — the historical signer that took 64 bytes never matched
-//! the sr25519 public key encoded in the SS58 address, so the signature
-//! never verified on-chain. This implementation expands the mini-secret to
-//! a schnorrkel `Keypair`, signs with `signing_context(b"substrate")`, and
-//! emits the result under `MultiSignature::Sr25519` (variant `0x01`).
+//! Asset Hub native transfers, bound to a validated runtime contract.
 
-use crate::send::error::SendError;
-
-use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u32, scale_compact_u128};
-
+use super::substrate::{blake2b_256, decode_hash_hex};
+use crate::api::substrate_json_rpc::{PolkadotExtension, PolkadotRuntime, SubstrateClient};
 use crate::derivation::polkadot::decode_ss58;
-use crate::send::substrate::POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE;
+use crate::registry::Chain;
+use crate::send::error::SendError;
+use parity_scale_codec::{Compact, Encode};
+use serde::{Deserialize, Serialize};
 
-/// Substrate's transaction signing context — fixed across chains that use
-/// the standard sr25519 multi-signature envelope.
-const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedPolkadotTransaction {
+    pub runtime: PolkadotRuntime,
+    pub sender: [u8; 32],
+    pub recipient: [u8; 32],
+    pub nonce: u32,
+    pub amount: u128,
+    pub fee: u128,
+    /// Polling starts after this finalized head, then persists progress.
+    pub finalized_number: u64,
+}
 
-// ── SCALE-encoded Polkadot extrinsic builder
+impl PreparedPolkadotTransaction {
+    fn call(&self) -> Vec<u8> {
+        let mut call = vec![self.runtime.transfer_pallet, self.runtime.transfer_call, 0];
+        call.extend(self.recipient);
+        call.extend(Compact(self.amount).encode());
+        call
+    }
 
-/// Build a signed Balances.transfer_keep_alive extrinsic.
-#[allow(clippy::too_many_arguments)]
-pub fn build_signed_transfer(
-    to_address: &str,
+    /// SignedPayload encodes call, all Extra, then all AdditionalSigned in
+    /// metadata order. Immortal mortality uses genesis for its checkpoint.
+    /// Fees are paid in native DOT/WND, without a tip.
+    fn extensions(&self) -> Result<(Vec<u8>, Vec<u8>), SendError> {
+        let mut extra = Vec::new();
+        let mut additional = Vec::new();
+        let genesis = decode_hash_hex(&self.runtime.genesis_hash)?;
+        for extension in &self.runtime.extensions {
+            match extension {
+                PolkadotExtension::Unit => {}
+                PolkadotExtension::SpecVersion => {
+                    additional.extend(self.runtime.spec_version.to_le_bytes())
+                }
+                PolkadotExtension::TransactionVersion => {
+                    additional.extend(self.runtime.transaction_version.to_le_bytes())
+                }
+                PolkadotExtension::Genesis => additional.extend(genesis),
+                PolkadotExtension::Mortality => {
+                    extra.push(0);
+                    additional.extend(genesis);
+                }
+                PolkadotExtension::Nonce => extra.extend(Compact(self.nonce).encode()),
+                PolkadotExtension::AssetPayment => extra.extend([0, 0]), // zero tip, None asset_id
+                PolkadotExtension::MetadataHash => {
+                    extra.push(0);
+                    additional.push(0);
+                } // Disabled, None
+            }
+        }
+        Ok((extra, additional))
+    }
+
+    pub fn signing_payload(&self) -> Result<Vec<u8>, SendError> {
+        let (extra, additional) = self.extensions()?;
+        let mut payload = self.call();
+        payload.extend(extra);
+        payload.extend(additional);
+        Ok(payload)
+    }
+
+    fn extrinsic(&self, signature: [u8; 64]) -> Result<Vec<u8>, SendError> {
+        let mut body = vec![0x84, 0]; // signed v4, MultiAddress::Id
+        body.extend(self.sender);
+        body.push(1); // MultiSignature::Sr25519
+        body.extend(signature);
+        body.extend(self.extensions()?.0);
+        body.extend(self.call());
+        let mut bytes = Compact(u32::try_from(body.len()).map_err(SendError::invalid)?).encode();
+        bytes.extend(body);
+        Ok(bytes)
+    }
+
+    /// QueryInfo decodes a signed envelope without verifying its signature.
+    /// Its length, call and extension bytes match the real send.
+    pub fn fee_extrinsic(&self) -> Result<Vec<u8>, SendError> {
+        self.extrinsic([0; 64])
+    }
+
+    pub fn sign(
+        &self,
+        private_key: &[u8; 32],
+        public_key: &[u8; 32],
+    ) -> Result<Vec<u8>, SendError> {
+        let mini =
+            schnorrkel::MiniSecretKey::from_bytes(private_key).map_err(SendError::invalid)?;
+        let pair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+        let pair = if pair.public.to_bytes() == self.sender {
+            pair
+        } else {
+            // The derivation API also offers Uniform expansion. Select it
+            // only when its derived public key equals the reviewed account.
+            mini.expand_to_keypair(schnorrkel::ExpansionMode::Uniform)
+        };
+        if pair.public.to_bytes() != self.sender || *public_key != self.sender {
+            return Err(SendError::invalid(
+                "sr25519 key does not match the reviewed sender",
+            ));
+        }
+        let payload = self.signing_payload()?;
+        let input = if payload.len() > 256 {
+            blake2b_256(&payload).to_vec()
+        } else {
+            payload
+        };
+        self.extrinsic(pair.sign_simple(b"substrate", &input).to_bytes())
+    }
+
+    fn validate_funds(
+        &self,
+        balance: crate::api::substrate_json_rpc::SubstrateBalance,
+    ) -> Result<(), SendError> {
+        let required = self
+            .amount
+            .checked_add(self.fee)
+            .ok_or_else(|| SendError::invalid("Amount and fee overflow"))?;
+        if required > balance.keep_alive_spendable(self.runtime.existential_deposit) {
+            return Err(SendError::invalid(
+                "Insufficient Asset Hub funds after freezes, fee and existential deposit",
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn validate_for_signing(
+        &self,
+        client: &SubstrateClient,
+        chain: Chain,
+        address: &str,
+    ) -> Result<(), SendError> {
+        let context = client.polkadot_context(chain).await?;
+        if context.runtime != self.runtime || client.fetch_nonce(address).await? != self.nonce {
+            return Err(SendError::invalid(
+                "Asset Hub runtime, network or nonce changed; build and review again",
+            ));
+        }
+        if client
+            .query_fee(&self.fee_extrinsic()?, &context.block_hash)
+            .await?
+            > self.fee
+        {
+            return Err(SendError::invalid(
+                "Asset Hub fee increased; build and review again",
+            ));
+        }
+        self.validate_funds(
+            client
+                .fetch_balance_at(&self.sender, &context.block_hash)
+                .await?,
+        )
+    }
+    /// A Substrate signature has no fee cap: check the reviewed budget on
+    /// every selected broadcast node, without requiring an unused nonce.
+    pub async fn validate_for_submission(
+        &self,
+        client: &SubstrateClient,
+        chain: Chain,
+    ) -> Result<(), SendError> {
+        let context = client.polkadot_context(chain).await?;
+        if context.runtime != self.runtime {
+            return Err(SendError::invalid(
+                "Asset Hub runtime changed; build and review again",
+            ));
+        }
+        if client
+            .query_fee(&self.fee_extrinsic()?, &context.block_hash)
+            .await?
+            > self.fee
+        {
+            return Err(SendError::invalid(
+                "Asset Hub fee increased; build and review again",
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub async fn prepare_transfer(
+    client: &SubstrateClient,
+    chain: Chain,
+    sender: &str,
+    recipient: &str,
     amount: u128,
-    nonce: u32,
-    spec_version: u32,
-    tx_version: u32,
-    genesis_hash: &str,
-    block_hash: &str,
-    private_key: &[u8; 32],
-    public_key: &[u8; 32],
-    era: Option<Vec<u8>>,
-    tip: Option<u128>,
-) -> Result<Vec<u8>, SendError> {
-    let dest_pubkey = decode_ss58(to_address)?;
-
-    let call = {
-        let mut c = Vec::new();
-        c.push(POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE.pallet);
-        c.push(POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE.call);
-        c.push(0x00); // dest: MultiAddress::Id
-        c.extend_from_slice(&dest_pubkey);
-        c.extend_from_slice(&scale_compact_u128(amount));
-        c
+) -> Result<PreparedPolkadotTransaction, SendError> {
+    if amount == 0 {
+        return Err(SendError::invalid(
+            "Asset Hub transfer amount must be positive",
+        ));
+    }
+    let sender_key = decode_ss58(sender)?;
+    let recipient_key = decode_ss58(recipient)?;
+    let context = client.polkadot_context(chain).await?;
+    let mut prepared = PreparedPolkadotTransaction {
+        runtime: context.runtime,
+        sender: sender_key,
+        recipient: recipient_key,
+        nonce: client.fetch_nonce(sender).await?,
+        amount,
+        fee: 0,
+        finalized_number: context.finalized_number,
     };
+    prepared.fee = client
+        .query_fee(&prepared.fee_extrinsic()?, &context.block_hash)
+        .await?;
+    prepared.validate_funds(
+        client
+            .fetch_balance_at(&sender_key, &context.block_hash)
+            .await?,
+    )?;
+    let destination = client
+        .fetch_balance_at(&recipient_key, &context.block_hash)
+        .await?;
+    if destination
+        .free
+        .checked_add(amount)
+        .is_none_or(|v| v < prepared.runtime.existential_deposit)
+    {
+        return Err(SendError::invalid(
+            "Recipient balance would be below the Asset Hub existential deposit or overflow",
+        ));
+    }
+    Ok(prepared)
+}
 
-    let era = era.unwrap_or_else(|| vec![0x00u8]); // immortal
-    let nonce_enc = scale_compact_u32(nonce);
-    let tip = scale_compact_u128(tip.unwrap_or(0));
-
-    let genesis_bytes = decode_hash_hex(genesis_hash)?;
-    let block_bytes = decode_hash_hex(block_hash)?;
-
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&call);
-    payload.extend_from_slice(&era);
-    payload.extend_from_slice(&nonce_enc);
-    payload.extend_from_slice(&tip);
-    payload.extend_from_slice(&spec_version.to_le_bytes());
-    payload.extend_from_slice(&tx_version.to_le_bytes());
-    payload.extend_from_slice(&genesis_bytes);
-    payload.extend_from_slice(&block_bytes);
-
-    // Substrate signs the Blake2-256 hash when the payload exceeds 256 bytes;
-    // for short payloads it signs the bytes directly. Both branches produce
-    // signatures the runtime accepts — the cutoff is purely a size optimization.
-    let signing_input: Vec<u8> = if payload.len() > 256 {
-        blake2b_256(&payload).to_vec()
-    } else {
-        payload.clone()
+/// Largest compact amount and actual nonce bound the preview's encoded fee.
+pub async fn preview_transfer(
+    client: &SubstrateClient,
+    chain: Chain,
+    address: &str,
+) -> Result<(u128, u128, usize), SendError> {
+    let context = client.polkadot_context(chain).await?;
+    let sender = decode_ss58(address)?;
+    let prepared = PreparedPolkadotTransaction {
+        runtime: context.runtime,
+        sender,
+        recipient: sender,
+        nonce: client.fetch_nonce(address).await?,
+        amount: u128::MAX,
+        fee: 0,
+        finalized_number: context.finalized_number,
     };
-
-    // ExpansionMode::Ed25519 — matches the public key encoded in the SS58 address.
-    let mini = schnorrkel::MiniSecretKey::from_bytes(private_key)
-        .map_err(|e| SendError::Invalid(format!("invalid sr25519 mini-secret: {e}").into()))?;
-    let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
-    let signature = keypair.sign_simple(SR25519_SIGNING_CONTEXT, &signing_input);
-
-    let mut extrinsic_body = Vec::new();
-    extrinsic_body.push(0x84); // signed, version 4
-    extrinsic_body.push(0x00); // signer: MultiAddress::Id
-    extrinsic_body.extend_from_slice(public_key);
-    extrinsic_body.push(0x01); // signature: MultiSignature::Sr25519
-    extrinsic_body.extend_from_slice(&signature.to_bytes());
-    extrinsic_body.extend_from_slice(&era);
-    extrinsic_body.extend_from_slice(&nonce_enc);
-    extrinsic_body.extend_from_slice(&tip);
-    extrinsic_body.extend_from_slice(&call);
-
-    let mut out = scale_compact_u32(extrinsic_body.len() as u32);
-    out.extend_from_slice(&extrinsic_body);
-    Ok(out)
+    let extrinsic = prepared.fee_extrinsic()?;
+    let fee = client.query_fee(&extrinsic, &context.block_hash).await?;
+    let balance = client
+        .fetch_balance_at(&sender, &context.block_hash)
+        .await?;
+    Ok((
+        fee,
+        balance.keep_alive_spendable(prepared.runtime.existential_deposit),
+        extrinsic.len(),
+    ))
 }

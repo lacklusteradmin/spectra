@@ -384,6 +384,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
             let body: Value = r.body_json().unwrap();
             let result = match body["method"].as_str().unwrap() {
                 "eth_chainId" => json!("0x1"),
+                "eth_getBalance" => json!("0x56bc75e2d63100000"),
                 "eth_getTransactionCount" => {
                     assert_eq!(body["params"][1], "pending");
                     json!("0x7") // A stale provider never advances: the journal must reserve nonces.
@@ -439,6 +440,10 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         "no placeholder for signing failures"
     );
     assert!(service.execute_send(request.clone()).await.is_err());
+    assert!(
+        !lose_response.load(Ordering::SeqCst),
+        "the failed send must reach the simulated lost broadcast response"
+    );
     let first = service.transactions().await.unwrap().remove(0);
     assert_eq!(first.nonce, Some(7));
     assert!(first.failure_reason.is_some());
@@ -525,4 +530,336 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         after, broadcasts,
         "a failed journal write must prevent submission"
     );
+}
+
+#[cfg(test)]
+mod signed_world_chain_fee_budget {
+    use super::*;
+    use crate::send::ethereum::{EvmCustomFeeConfiguration, EvmSendOverridesInput};
+    use crate::send::stages::{SendStage, SubmissionOutcome};
+    use sha3::Digest;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    async fn broadcasts(server: &MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| {
+                let body: Value = request.body_json().unwrap();
+                body["method"] == "eth_sendRawTransaction"
+            })
+            .count()
+    }
+
+    async fn snapshot(service: &WalletService, id: &str) -> (Value, Value) {
+        (
+            serde_json::to_value(service.load_send_artifact(id.into()).await.unwrap()).unwrap(),
+            serde_json::to_value(service.transactions().await.unwrap()).unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn increased_oracle_budget_refuses_first_broadcast_and_rebroadcast_without_mutation() {
+        let chain = Chain::WorldChain;
+        let server = MockServer::start().await;
+        let l1_fee = Arc::new(AtomicU64::new(100_000));
+        let operator_fee = Arc::new(AtomicU64::new(200_000));
+        let l1_quote = l1_fee.clone();
+        let operator_quote = operator_fee.clone();
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let body: Value = request.body_json().unwrap();
+                let result = match body["method"].as_str().unwrap() {
+                    "eth_chainId" => json!("0x1e0"),
+                    "eth_getTransactionCount" => json!("0x7"),
+                    "eth_getBalance" => json!(format!("0x{:x}", 100_000_000_000_000_000_000_u128)),
+                    "eth_getCode" => json!("0x"),
+                    "eth_call" => {
+                        assert_eq!(
+                            body["params"][0]["to"].as_str().unwrap().to_lowercase(),
+                            "0x420000000000000000000000000000000000000f"
+                        );
+                        let data = body["params"][0]["data"].as_str().unwrap();
+                        let amount = match &data[2..10] {
+                            "f1c7a58b" => l1_quote.load(Ordering::SeqCst),
+                            "275aedd2" => operator_quote.load(Ordering::SeqCst),
+                            other => panic!("unexpected oracle selector {other}"),
+                        };
+                        json!(format!("0x{amount:064x}"))
+                    }
+                    "eth_sendRawTransaction" => {
+                        let raw = body["params"][0].as_str().unwrap();
+                        json!(format!(
+                            "0x{}",
+                            hex::encode(sha3::Keccak256::digest(hex::decode(&raw[2..]).unwrap()))
+                        ))
+                    }
+                    other => panic!("unexpected RPC {other}"),
+                };
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc":"2.0", "id":body["id"], "result":result}))
+            })
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            capabilities: EndpointCapability::ALL.to_vec(),
+            chain_id: chain,
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "world-signed-fee-budget-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        let secrets = Arc::new(InMemorySecretStore::new());
+        service.set_secret_store(secrets.clone());
+        service
+            .apply_state_command(StateCommand::UpsertWallet {
+                wallet: WalletState::single_address(
+                    "w",
+                    "World Chain",
+                    chain,
+                    "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
+                    Some("m/44'/60'/0'/0/0".into()),
+                    false,
+                ),
+            })
+            .await
+            .unwrap();
+        store_seed_phrase(
+            &*secrets,
+            "w",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            None,
+        )
+        .unwrap();
+        let mut request = super::super::tests::request_fixture::req(chain);
+        request.to_address = "0x1111111111111111111111111111111111111111".into();
+        request.evm_overrides = Some(EvmSendOverridesInput {
+            nonce: Some(7),
+            gas_limit: Some(21_000),
+            custom_fees: Some(EvmCustomFeeConfiguration {
+                max_fee_per_gas_gwei: "2".into(),
+                max_priority_fee_per_gas_gwei: "1".into(),
+            }),
+            ..Default::default()
+        });
+        let prepared = service.build_send(request).await.unwrap();
+        let signed = service
+            .sign_send(prepared.id, prepared.review_digest, None)
+            .await
+            .unwrap();
+        assert_eq!(signed.stage, SendStage::Signed);
+        assert!(signed.attempts.is_empty());
+        assert!(service.transactions().await.unwrap().is_empty());
+        let signed_snapshot = snapshot(&service, &signed.id).await;
+
+        l1_fee.store(100_001, Ordering::SeqCst);
+        let error = service
+            .broadcast_send(signed.id.clone(), vec![server.uri()])
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("Network fee changed"), "{error}");
+        assert_eq!(snapshot(&service, &signed.id).await, signed_snapshot);
+        assert_eq!(broadcasts(&server).await, 0);
+
+        l1_fee.store(100_000, Ordering::SeqCst);
+        let submitted = service
+            .broadcast_send(signed.id.clone(), vec![server.uri()])
+            .await
+            .unwrap();
+        assert_eq!(submitted.attempts.len(), 1);
+        assert_eq!(submitted.attempts[0].outcome, SubmissionOutcome::Accepted);
+        assert_eq!(service.transactions().await.unwrap().len(), 1);
+        assert_eq!(broadcasts(&server).await, 1);
+        let submitted_snapshot = snapshot(&service, &signed.id).await;
+
+        operator_fee.store(200_001, Ordering::SeqCst);
+        let error = service
+            .rebroadcast_transaction(signed.id.clone())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("Network fee changed"), "{error}");
+        assert_eq!(snapshot(&service, &signed.id).await, submitted_snapshot);
+        assert_eq!(broadcasts(&server).await, 1);
+    }
+}
+
+#[cfg(test)]
+mod owned_world_chain_nonce_rollover {
+    use super::*;
+    use crate::send::ethereum::EvmSendOverridesInput;
+    use crate::send::stages::SendStage;
+    use crate::store::wallet_domain::AssetHolding;
+
+    #[tokio::test]
+    async fn signed_nonce_127_is_reserved_before_preview_prices_nonce_128_rlp() {
+        let chain = Chain::WorldChain;
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|request: &Request| {
+                let body: Value = request.body_json().unwrap();
+                let answer = |call: &Value| {
+                    let result = match call["method"].as_str().unwrap() {
+                        "eth_chainId" => json!("0x1e0"),
+                        "eth_getTransactionCount" => json!("0x7f"),
+                        "eth_getBalance" => json!("0xde0b6b3a7640000"),
+                        "eth_estimateGas" => json!("0x5208"),
+                        "eth_getCode" => json!("0x"),
+                        "eth_feeHistory" => json!({
+                            "baseFeePerGas": ["0x3b9aca00"],
+                            "reward": [["0x77359400"]]
+                        }),
+                        "eth_call" => {
+                            assert_eq!(
+                                call["params"][0]["to"].as_str().unwrap().to_lowercase(),
+                                "0x420000000000000000000000000000000000000f"
+                            );
+                            assert_eq!(call["params"][1], "latest");
+                            let data = call["params"][0]["data"].as_str().unwrap();
+                            let argument = u64::from_str_radix(&data[10..], 16).unwrap();
+                            let fee = match &data[2..10] {
+                                "f1c7a58b" => argument * 1_000,
+                                "275aedd2" => {
+                                    assert_eq!(argument, 21_000);
+                                    1_000
+                                }
+                                selector => panic!("unexpected oracle selector {selector}"),
+                            };
+                            json!(format!("0x{fee:064x}"))
+                        }
+                        method => panic!("unexpected RPC {method}"),
+                    };
+                    json!({"jsonrpc":"2.0", "id":call["id"], "result":result})
+                };
+                ResponseTemplate::new(200).set_body_json(match body.as_array() {
+                    Some(batch) => json!(batch.iter().map(answer).collect::<Vec<_>>()),
+                    None => answer(&body),
+                })
+            })
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            capabilities: EndpointCapability::ALL.to_vec(),
+            chain_id: chain,
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "owned-preview-rollover-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        let secrets = Arc::new(InMemorySecretStore::new());
+        service.set_secret_store(secrets.clone());
+        let mut wallet = WalletState::single_address(
+            "w",
+            "World",
+            chain,
+            "0x9858effd232b4033e47d90003d41ec34ecaeda94",
+            Some("m/44'/60'/0'/0/0".into()),
+            false,
+        );
+        wallet.holdings.push(AssetHolding {
+            id: String::new(),
+            name: "Ether".into(),
+            symbol: "ETH".into(),
+            coingecko_id: "ethereum".into(),
+            chain_id: chain,
+            token_standard: "Native".into(),
+            contract_address: None,
+            amount: "1".into(),
+        });
+        let holding_key = wallet.holdings[0].deployment_id();
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet })
+            .await
+            .unwrap();
+        store_seed_phrase(
+            &*secrets, "w",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            None,
+        ).unwrap();
+        let destination = format!("0x{}", "22".repeat(20));
+        let mut request = super::super::tests::request_fixture::req(chain);
+        request.to_address = destination.clone();
+        request.amount_str = "0.001".into();
+        request.evm_overrides = Some(EvmSendOverridesInput {
+            nonce: Some(127),
+            ..Default::default()
+        });
+        let prepared = service.build_send(request.clone()).await.unwrap();
+        let size_at_127 = hex::decode(&prepared.signing_payload_hex).unwrap().len();
+        let signed = service
+            .sign_send(prepared.id, prepared.review_digest, None)
+            .await
+            .unwrap();
+        assert_eq!(signed.stage, SendStage::Signed);
+        assert!(service.transactions().await.unwrap().is_empty());
+
+        let preview = service
+            .preview_owned_evm_send(
+                "w".into(),
+                holding_key,
+                "0.001".into(),
+                destination,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(preview.nonce, 128);
+        assert_eq!(preview.gasLimit, 21_000);
+        let preview_requests = server.received_requests().await.unwrap();
+        let oracle_sizes = preview_requests
+            .iter()
+            .flat_map(|request| {
+                let body: Value = request.body_json().unwrap();
+                body.as_array().cloned().unwrap_or_else(|| vec![body])
+            })
+            .filter_map(|call| {
+                let data = call["params"][0]["data"].as_str()?;
+                data.strip_prefix("0xf1c7a58b")
+                    .map(|argument| usize::from_str_radix(argument, 16).unwrap())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(oracle_sizes.last().copied(), Some(size_at_127 + 1));
+        assert_eq!(
+            preview.estimatedNetworkFee,
+            crate::decimal::from_units(
+                21_000 * 4_000_000_000_u128 + (size_at_127 as u128 + 1) * 1_000 + 1_000,
+                18,
+            )
+        );
+
+        request.evm_overrides = None;
+        let next_prepared = service.build_send(request).await.unwrap();
+        assert_eq!(
+            hex::decode(&next_prepared.signing_payload_hex)
+                .unwrap()
+                .len(),
+            size_at_127 + 1
+        );
+        let unsigned = hex::decode(&next_prepared.signing_payload_hex).unwrap();
+        let mut fields = &unsigned[1..];
+        assert!(alloy_rlp::Header::decode(&mut fields).unwrap().list);
+        assert_eq!(
+            <u64 as alloy_rlp::Decodable>::decode(&mut fields).unwrap(),
+            480
+        );
+        assert_eq!(
+            <u64 as alloy_rlp::Decodable>::decode(&mut fields).unwrap(),
+            128
+        );
+    }
 }

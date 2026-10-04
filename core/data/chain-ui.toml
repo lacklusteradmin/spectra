@@ -402,6 +402,32 @@ color = "gray"
 artwork_name = "bittensor"
 
 [[chains]]
+chain_id = "plasma"
+search_keywords = ["Plasma", "XPL", "stablecoin"]
+popular_rank = 47
+tags = ["payments"]
+color = "green"
+artwork_name = "plasma"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "monad"
+search_keywords = ["Monad", "MON"]
+popular_rank = 48
+color = "purple"
+artwork_name = "monad"
+address_prefix_hint = "0x…"
+
+[[chains]]
+chain_id = "world-chain"
+search_keywords = ["World Chain", "Worldcoin", "WLD", "ETH"]
+popular_rank = 49
+tags = ["layer-2"]
+color = "gray"
+artwork_name = "worldcoin"
+address_prefix_hint = "0x…"
+
+[[chains]]
 chain_id = "bitcoin-testnet"
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
 color = "orange"

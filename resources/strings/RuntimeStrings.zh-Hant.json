@@ -293,7 +293,6 @@
   "Logs": "日誌",
   "Looks like a valid private key.": "看起来是有效的私鑰。",
   "Low": "低",
-  "MWEB · Privacy Send": "MWEB · 隱私傳送",
   "Manual Nonce": "手動 Nonce",
   "Manual refresh completed.": "手動重新整理已完成。",
   "Max Fee (gwei)": "最高手續費（gwei）",
@@ -1249,5 +1248,6 @@
   "This transaction has no hash to recheck.": "此交易沒有可重新檢查的雜湊。",
   "This transaction has no valid hash to recheck.": "此交易沒有有效的雜湊可重新檢查。",
   "Transaction changed during status recheck; check it again.": "重新檢查狀態期間交易已變更；請再檢查一次。",
-  "Transaction was deleted during status recheck.": "重新檢查狀態期間交易已被刪除。"
+  "Transaction was deleted during status recheck.": "重新檢查狀態期間交易已被刪除。",
+  "The transaction failed during on-chain execution.": "交易在鏈上執行時失敗。"
 }

@@ -196,6 +196,14 @@ comment = "Pays for and rewards machine-learning work contributed to Bittensor's
 total_circulation_model = "Capped at 21,000,000 TAO with 4-year halvings, mirroring Bitcoin emission economics."
 
 [[assets]]
+token_id = "plasma"
+comment = "Pays ordinary transaction fees on Plasma, the network built for stablecoin payments and settlement."
+
+[[assets]]
+token_id = "monad"
+comment = "Pays gas on Monad and can secure its validators through staking. Monad fees charge the chosen transaction gas limit."
+
+[[assets]]
 token_id = "aave"
 comment = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
 

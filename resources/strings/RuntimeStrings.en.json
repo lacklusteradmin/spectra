@@ -293,7 +293,6 @@
   "Logs": "Logs",
   "Looks like a valid private key.": "Looks like a valid private key.",
   "Low": "Low",
-  "MWEB · Privacy Send": "MWEB · Privacy Send",
   "Manual Nonce": "Manual Nonce",
   "Manual refresh completed.": "Manual refresh completed.",
   "Max Fee (gwei)": "Max Fee (gwei)",
@@ -1249,5 +1248,6 @@
   "This transaction has no hash to recheck.": "This transaction has no hash to recheck.",
   "This transaction has no valid hash to recheck.": "This transaction has no valid hash to recheck.",
   "Transaction changed during status recheck; check it again.": "Transaction changed during status recheck; check it again.",
-  "Transaction was deleted during status recheck.": "Transaction was deleted during status recheck."
+  "Transaction was deleted during status recheck.": "Transaction was deleted during status recheck.",
+  "The transaction failed during on-chain execution.": "The transaction failed during on-chain execution."
 }

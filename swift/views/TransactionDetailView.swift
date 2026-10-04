@@ -394,8 +394,13 @@ struct TransactionDetailView: View {
         return trimmed
     }
     private func rebuildDisplayedTransactionState() async {
-        liveTransaction = (try? await store.bridge.ready().transaction(id: transaction.id)) ?? transaction
-        endpoints = try? await store.bridge.ready().transactionEndpoints(transactionId: transaction.id)
+        guard let projection = try? await loadTransactionDetailProjection(
+            fallback: transaction,
+            transaction: { try await store.bridge.ready().transaction(id: transaction.id) },
+            endpoints: { try await store.bridge.ready().transactionEndpoints(transactionId: transaction.id) }
+        ) else { return }
+        liveTransaction = projection.transaction
+        endpoints = projection.endpoints
     }
     private struct TransactionTimelineItem: Identifiable {
         let id: String
@@ -406,6 +411,22 @@ struct TransactionDetailView: View {
         let isComplete: Bool
         let isCurrent: Bool
     }
+}
+
+/// Read one detail projection before adopting either field. UniFFI reads can
+/// finish after SwiftUI has cancelled the task for a newer revision.
+@MainActor
+func loadTransactionDetailProjection(
+    fallback: TransactionRecord,
+    transaction: () async throws -> TransactionRecord?,
+    endpoints: () async throws -> TransactionEndpoints?
+) async throws -> (transaction: TransactionRecord, endpoints: TransactionEndpoints?) {
+    try Task.checkCancellation()
+    let record = (try? await transaction()) ?? fallback
+    try Task.checkCancellation()
+    let parties = try? await endpoints()
+    try Task.checkCancellation()
+    return (record, parties)
 }
 
 /// A key/value row: an accent symbol, a secondary label and a primary value.

@@ -155,7 +155,7 @@ impl WalletService {
         .await
     }
 
-    /// Walk a wallet's external addresses and record the ones that have been
+    /// Walk a wallet's receive and change addresses and record the ones that have been
     /// used, returning every address the wallet is known to hold on `chain_id`.
     ///
     /// Core reads the seed, the derivation path, the keypool bound, the
@@ -169,55 +169,75 @@ impl WalletService {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            const GAP_LIMIT: u32 = 3;
-            const MAX_INDEX: u32 = 40;
+            const GAP_LIMIT: u32 = 20;
+            const MAX_INDEX: u32 = 999;
             if !chain.supports_deep_utxo_discovery() {
                 return Ok(Vec::new());
             }
-            let chain = chain;
-
             let mut ordered = this.known_utxo_addresses(wallet_id.clone(), chain).await?;
-            let mut seen: std::collections::HashSet<String> =
-                ordered.iter().map(|a| a.to_lowercase()).collect();
+            let mut seen: std::collections::HashSet<String> = ordered.iter().cloned().collect();
 
-            // No readable phrase means no scan, which is what a sealed wallet
-            // looks like from here: its material needs a password this path does
-            // not have. The addresses gathered above are still returned.
-            let Some(context) = this.utxo_derivation_context(&wallet_id, chain).await else {
+            // Litecoin scans from its persisted public account, even while
+            // sealed. Other chains can return known addresses when their seed
+            // is not readable here or the wallet has no HD signing material.
+            let Some(context) = this.utxo_derivation_context(&wallet_id, chain).await? else {
                 return Ok(ordered);
             };
 
             let state = this.keypool_state(wallet_id.clone(), chain).await?;
-            let reserved = state.reserved_receive_index.unwrap_or(0).max(0) as u32;
-            let upper = MAX_INDEX
-                .min((state.next_external_index.max(0) as u32).max(reserved + 1) + GAP_LIMIT);
-
             use futures::stream::{self, StreamExt};
-            let candidates: Vec<_> = (0..=upper)
-                .filter_map(|index| {
-                    context
-                        .derive(index)
-                        .map(|(address, path)| (index, address, path))
-                })
-                .collect();
-            let mut probes = stream::iter(candidates)
-                .map(|(index, address, path)| async move {
-                    let active = this.utxo_address_has_activity(chain, &address).await;
-                    (index, address, path, active)
-                })
-                .buffered(4);
-            while let Some((index, address, path, active)) = probes.next().await {
-                push_utxo_address(chain, &address, &mut ordered, &mut seen);
-                if active? {
-                    this.register_owned_address(
-                        wallet_id.clone(),
-                        chain,
-                        address,
-                        Some(path),
-                        Some("external".to_string()),
-                        Some(index as i64),
-                    )
-                    .await?;
+            let receive_floor = state
+                .next_external_index
+                .max(state.reserved_receive_index.map_or(0, |index| index + 1));
+            for (branch, name, floor) in [
+                (0, "external", receive_floor),
+                (1, "change", state.next_change_index),
+            ] {
+                let minimum_end = u32::try_from(floor.max(0))
+                    .ok()
+                    .and_then(|floor| floor.checked_add(GAP_LIMIT - 1))
+                    .ok_or_else(|| SpectraBridgeError::failure("UTXO discovery floor is out of range"))?;
+                if minimum_end > MAX_INDEX {
+                    return Err(SpectraBridgeError::failure(format!(
+                        "UTXO discovery ceiling {MAX_INDEX} is below the {name} keypool floor"
+                    )));
+                }
+                let context = &context;
+                let mut probes = stream::iter(0..=MAX_INDEX)
+                    .map(|index| async move {
+                        let (address, path) = context.derive_on_branch(branch, index)?;
+                        let active = this.utxo_address_has_activity(chain, &address).await?;
+                        Ok::<_, SpectraBridgeError>((index, address, path, active))
+                    })
+                    .buffered(4);
+                let mut unused = 0;
+                let mut complete = false;
+                while let Some(probe) = probes.next().await {
+                    let (index, address, path, active) = probe?;
+                    if active {
+                        unused = 0;
+                        this.register_owned_address(
+                            wallet_id.clone(),
+                            chain,
+                            address.clone(),
+                            Some(path),
+                            Some(name.to_string()),
+                            Some(i64::from(index)),
+                        )
+                        .await?;
+                        push_utxo_address(chain, &address, &mut ordered, &mut seen);
+                    } else {
+                        unused += 1;
+                    }
+                    if index >= minimum_end && unused >= GAP_LIMIT {
+                        complete = true;
+                        break;
+                    }
+                }
+                if !complete {
+                    return Err(SpectraBridgeError::failure(format!(
+                        "UTXO {name} discovery reached index {MAX_INDEX} before finding {GAP_LIMIT} unused addresses"
+                    )));
                 }
             }
             Ok(ordered)
@@ -353,27 +373,26 @@ impl WalletService {
             .await?)
     }
 
-    /// The seed and base derivation path this wallet derives UTXO addresses
-    /// from, resolved once so a scan does not redo it per index.
+    /// The public branches and base path used to derive UTXO addresses,
+    /// resolved once so a scan does not redo it per index.
     ///
-    /// `None` when the phrase is not readable without a password — a sealed
-    /// wallet, or one with no signing material at all.
+    /// Litecoin requires its persisted account public key for mnemonic wallets.
+    /// Other chains return `None` when the phrase is unreadable without a password.
     pub(crate) async fn utxo_derivation_context(
         &self,
         wallet_id: &str,
         chain: crate::registry::Chain,
-    ) -> Option<UtxoDerivation> {
+    ) -> Result<Option<UtxoDerivation>, SpectraBridgeError> {
         let mut wallet = {
             let state = self.wallet_state.read().await;
-            state.wallets.iter().find(|w| w.id == wallet_id).cloned()?
+            let Some(wallet) = state.wallets.iter().find(|w| w.id == wallet_id).cloned() else {
+                return Ok(None);
+            };
+            wallet
         };
         let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
-        let store = self.secrets().ok()?;
-        let seed_phrase =
-            crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None).ok()?;
-
         let defaults =
-            crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset).ok()?;
+            crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
         let imported = wallet.to_wallet_view(&defaults);
         let raw_path = wallet
             .addresses
@@ -389,21 +408,51 @@ impl WalletService {
             })
             .unwrap_or_default();
         let chain_id = chain;
-        let resolved = crate::derivation::path::resolve_derivation_path(chain_id, raw_path).ok()?;
+        let resolved = crate::derivation::path::resolve_derivation_path(chain_id, raw_path)?;
+
+        if chain.mainnet_counterpart() == Chain::Litecoin {
+            if !matches!(
+                wallet.signing,
+                crate::store::state::WalletSigning::SeedPhrase { .. }
+            ) {
+                return Ok(None);
+            }
+            let xpub = wallet
+                .xpub
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    SpectraBridgeError::invalid(
+                        "Litecoin mnemonic wallet is missing its account public key",
+                    )
+                })?;
+            let root = wallet.address_on(chain).ok_or_else(|| {
+                SpectraBridgeError::invalid("Litecoin mnemonic wallet is missing its root address")
+            })?;
+            return UtxoDerivation::from_account_xpub(chain, xpub, resolved, root).map(Some);
+        }
+        let Ok(store) = self.secrets() else {
+            return Ok(None);
+        };
+        let Ok(seed_phrase) =
+            crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None)
+        else {
+            return Ok(None);
+        };
 
         tokio::task::spawn_blocking(move || {
             UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
         })
         .await
-        .ok()?
-        .ok()
+        .map_err(|error| SpectraBridgeError::failure(format!("UTXO derivation task: {error}")))?
+        .map(Some)
     }
 }
 
-/// Scan-local external xpub. No mnemonic or private key is kept while probing.
+/// Scan-local receive/change xpubs. No mnemonic or private key is kept while probing.
 pub(crate) struct UtxoDerivation {
     chain: crate::registry::Chain,
-    branch: crate::derivation::bitcoin::ExtendedPublicKey,
+    branches: [crate::derivation::bitcoin::ExtendedPublicKey; 2],
     secp: secp256k1::Secp256k1<secp256k1::All>,
     base_path: String,
 }
@@ -424,19 +473,59 @@ impl UtxoDerivation {
         base_path: String,
         overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
     ) -> Result<Self, SpectraBridgeError> {
-        overrides.validate_for_chain(chain)?;
-        use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed, parse_bip32_path};
-        let path = crate::derivation::path::derivation_path_replacing_last_two(
-            base_path.clone(),
-            0,
-            0,
-            base_path.clone(),
-        );
-        let mut indices = parse_bip32_path(&path)?;
-        indices
-            .pop()
-            .ok_or_else(|| SpectraBridgeError::failure("missing address index"))?;
         let secp = secp256k1::Secp256k1::new();
+        let account = Self::account_private_key(chain, phrase, &base_path, overrides)?;
+        let branches = [
+            account.derive_child(&secp, 0)?.to_neutered(&secp),
+            account.derive_child(&secp, 1)?.to_neutered(&secp),
+        ];
+        let context = Self {
+            chain,
+            branches,
+            secp,
+            base_path,
+        };
+        context.derive_on_branch(0, 0)?;
+        Ok(context)
+    }
+
+    fn path_indices(chain: Chain, base_path: &str) -> Result<Vec<u32>, SpectraBridgeError> {
+        let indices = crate::derivation::bitcoin::parse_bip32_path(base_path)?;
+        if indices.len() < 2 {
+            return Err(SpectraBridgeError::failure(
+                "missing UTXO branch and address index",
+            ));
+        }
+        let suffix = &indices[indices.len() - 2..];
+        if suffix[0] > 1 || suffix[1] >= crate::derivation::primitives::HARDENED_OFFSET {
+            return Err(SpectraBridgeError::InvalidInput {
+                message:
+                    "UTXO discovery requires a non-hardened receive/change branch and address index"
+                        .into(),
+            });
+        }
+        if crate::derivation::path::utxo_discovery_index(base_path, chain, suffix[0])
+            != Some(suffix[1])
+        {
+            return Err(SpectraBridgeError::InvalidInput {
+                message:
+                    "UTXO discovery requires a catalog-supported purpose, coin and account path"
+                        .into(),
+            });
+        }
+        Ok(indices)
+    }
+
+    fn account_private_key(
+        chain: Chain,
+        phrase: &str,
+        base_path: &str,
+        overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    ) -> Result<crate::derivation::bitcoin::ExtendedPrivateKey, SpectraBridgeError> {
+        overrides.validate_for_chain(chain)?;
+        let mut indices = Self::path_indices(chain, base_path)?;
+        indices.truncate(indices.len() - 2);
+        use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed};
         let seed = derive_bip39_seed(
             phrase,
             overrides.passphrase.as_deref().unwrap_or_default(),
@@ -452,31 +541,96 @@ impl UtxoDerivation {
                 .as_bytes(),
             seed.as_ref(),
         )?;
-        let branch = master.derive_path(&secp, &indices)?.to_neutered(&secp);
-        Ok(Self {
-            chain,
-            branch,
-            secp,
-            base_path,
-        })
+        Ok(master.derive_path(&secp256k1::Secp256k1::new(), &indices)?)
     }
 
-    pub(crate) fn derive(&self, index: u32) -> Option<(String, String)> {
+    pub(crate) fn account_xpub(
+        chain: Chain,
+        phrase: &str,
+        base_path: &str,
+        overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    ) -> Result<String, SpectraBridgeError> {
+        let account = Self::account_private_key(chain, phrase, base_path, overrides)?;
+        let version = if chain.is_testnet() {
+            crate::derivation::bitcoin::XPUB_VERSION_TESTNET
+        } else {
+            crate::derivation::bitcoin::XPUB_VERSION_MAINNET
+        };
+        Ok(account
+            .to_neutered(&secp256k1::Secp256k1::new())
+            .to_xpub_string(version))
+    }
+
+    pub(crate) fn from_account_xpub(
+        chain: Chain,
+        xpub: &str,
+        base_path: String,
+        root_address: &str,
+    ) -> Result<Self, SpectraBridgeError> {
+        if chain.mainnet_counterpart() != Chain::Litecoin {
+            return Err(SpectraBridgeError::invalid(
+                "expected a Litecoin public account",
+            ));
+        }
+        let indices = Self::path_indices(chain, &base_path)?;
+        let (account, version) =
+            crate::derivation::bitcoin::ExtendedPublicKey::from_xpub_string(xpub)?;
+        let expected_version = if chain.is_testnet() {
+            crate::derivation::bitcoin::XPUB_VERSION_TESTNET
+        } else {
+            crate::derivation::bitcoin::XPUB_VERSION_MAINNET
+        };
+        if version != expected_version || account.depth != 3 || account.child_number != indices[2] {
+            return Err(SpectraBridgeError::invalid(
+                "Litecoin account public key has the wrong network, depth or account",
+            ));
+        }
+        let secp = secp256k1::Secp256k1::new();
+        let branches = [
+            account.derive_child(&secp, 0)?,
+            account.derive_child(&secp, 1)?,
+        ];
+        let context = Self {
+            chain,
+            branches,
+            secp,
+            base_path,
+        };
+        let (root, _) = context.derive_on_branch(indices[3], indices[4])?;
+        if crate::derivation::utxo_address::parse_utxo_address(chain, &root)?
+            != crate::derivation::utxo_address::parse_utxo_address(chain, root_address)?
+        {
+            return Err(SpectraBridgeError::invalid(
+                "Litecoin account public key does not derive the stored root address",
+            ));
+        }
+        Ok(context)
+    }
+
+    pub(crate) fn derive(&self, index: u32) -> Result<(String, String), SpectraBridgeError> {
+        self.derive_on_branch(0, index)
+    }
+
+    pub(crate) fn derive_on_branch(
+        &self,
+        branch: u32,
+        index: u32,
+    ) -> Result<(String, String), SpectraBridgeError> {
+        let branch_key = self.branches.get(branch as usize).ok_or_else(|| {
+            SpectraBridgeError::failure("UTXO discovery branch must be receive or change")
+        })?;
         let path = crate::derivation::path::derivation_path_replacing_last_two(
             self.base_path.clone(),
-            0,
+            branch,
             index,
             self.base_path.clone(),
         );
-        let child = self.branch.derive_child(&self.secp, index).ok()?;
-        let address = self
-            .chain
-            .encode_discovery_address(
-                &child.public_key,
-                crate::derivation::dispatch::script_type_for_path(&path),
-            )
-            .ok()?;
-        Some((address, path))
+        let child = branch_key.derive_child(&self.secp, index)?;
+        let address = self.chain.encode_discovery_address(
+            &child.public_key,
+            crate::derivation::dispatch::script_type_for_path(&path),
+        )?;
+        Ok((address, path))
     }
 }
 
@@ -489,12 +643,17 @@ fn push_utxo_address(
     ordered: &mut Vec<String>,
     seen: &mut std::collections::HashSet<String>,
 ) {
-    let trimmed = address.trim();
-    if trimmed.is_empty() || !crate::send::flow::is_valid_send_address(chain, trimmed.to_string()) {
+    let validated = crate::validation::address::validate_address(
+        crate::validation::address::AddressValidationRequest {
+            kind: chain.address_validation_kind().to_string(),
+            value: address.to_string(),
+        },
+    );
+    let Some(normalized) = validated.normalized_value.filter(|_| validated.is_valid) else {
         return;
-    }
-    if seen.insert(trimmed.to_lowercase()) {
-        ordered.push(trimmed.to_string());
+    };
+    if seen.insert(normalized.clone()) {
+        ordered.push(normalized);
     }
 }
 
@@ -505,9 +664,9 @@ impl WalletService {
     /// reads. Deep-UTXO chains never hand out index 0 as a receive address,
     /// which is why the reservation floor is 1.
     ///
-    /// `None` for a chain without the walk, or a wallet whose phrase this path
-    /// cannot read — the caller falls back to the wallet's stored address, as
-    /// the Swift original did.
+    /// `None` for a chain without the walk or a wallet without readable HD
+    /// material. Litecoin mnemonic wallets use their stored public account;
+    /// missing or mismatched public keys fail before reserving any index.
     pub async fn utxo_receive_address(
         &self,
         wallet_id: String,
@@ -518,7 +677,7 @@ impl WalletService {
             return Ok(None);
         }
 
-        let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
+        let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await? else {
             return Ok(None);
         };
         let index = if reserve {
@@ -535,9 +694,9 @@ impl WalletService {
             return Ok(None);
         };
 
-        let Some((address, path)) = context.derive(index as u32) else {
-            return Ok(None);
-        };
+        let index = u32::try_from(index)
+            .map_err(|_| SpectraBridgeError::failure("receive index is out of range"))?;
+        let (address, path) = context.derive(index)?;
         if reserve {
             self.register_owned_address(
                 wallet_id,
@@ -545,7 +704,7 @@ impl WalletService {
                 address.clone(),
                 Some(path),
                 Some("external".to_string()),
-                Some(index),
+                Some(i64::from(index)),
             )
             .await?;
         }

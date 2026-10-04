@@ -76,8 +76,15 @@ struct EndpointCatalogSettingsView: View {
             }
         }
         .task(id: store.appSettings.customEndpoints) {
-            do { entries = try await store.bridge.ready().endpointDirectory(); loadError = nil }
-            catch { loadError = userErrorMessage(error) }
+            do {
+                let directory = try await store.bridge.ready().endpointDirectory()
+                guard !Task.isCancelled else { return }
+                entries = directory
+                loadError = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                loadError = userErrorMessage(error)
+            }
         }
     }
 }

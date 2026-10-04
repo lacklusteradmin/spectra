@@ -287,14 +287,13 @@ pub struct WalletView {
     /// `Chain::address_slot()` → address for this wallet.
     ///
     /// A wallet belongs to one chain (`chain_id`), so in practice this
-    /// holds a single entry — two for Ethereum Classic, which occupies both the
-    /// shared EVM slot and its own. It is a map rather than one `Option<String>`
+    /// holds a single entry. It is a map rather than one `Option<String>`
     /// per chain so that adding a chain is a registry edit and not a schema
     /// change here, in the Swift record, in its `Codable`, and at every
     /// construction site.
     pub addresses: HashMap<String, String>,
-    /// Bitcoin account xpub/ypub/zpub. Not an address, so it keeps its own field.
-    pub bitcoin_xpub: Option<String>,
+    /// Account public key for receiving and recovery without unlocking a seed.
+    pub account_xpub: Option<String>,
     pub seed_derivation_preset: CoreSeedDerivationPreset,
     pub seed_derivation_paths: CoreSeedDerivationPaths,
     pub derivation_overrides: CoreWalletDerivationOverrides,
@@ -347,14 +346,11 @@ impl WalletView {
             signing: self.signing,
             chain_id: chain,
             include_in_portfolio_total: self.include_in_portfolio_total,
-            xpub: self.bitcoin_xpub.clone(),
+            xpub: self.account_xpub.clone(),
             derivation_preset: self.seed_derivation_preset,
             derivation_path: derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
             holdings: self.holdings.clone(),
-            // Every slot this wallet holds, not only its own chain's: an EVM
-            // wallet holds both Ethereum's and Ethereum Classic's.
-            //
             // The wallet's own slot comes first and the rest follow by slot id:
             // `primary_address` takes the first `receive` entry, and a
             // `HashMap`'s order would make that whichever network the iterator
@@ -370,8 +366,11 @@ impl WalletView {
                 slots
                     .into_iter()
                     .filter_map(|(slot, address)| {
-                        let owner =
-                            Chain::all().find(|candidate| candidate.address_slot() == slot)?;
+                        let owner = if slot == own_slot {
+                            chain
+                        } else {
+                            Chain::all().find(|candidate| candidate.address_slot() == slot)?
+                        };
                         Some(WalletAddress {
                             chain_id: owner,
                             address: address.clone(),
@@ -421,7 +420,7 @@ impl crate::store::state::WalletState {
                     )
                 })
                 .collect(),
-            bitcoin_xpub: self.xpub.clone(),
+            account_xpub: self.xpub.clone(),
             seed_derivation_preset: self.derivation_preset,
             seed_derivation_paths,
             derivation_overrides: self.derivation_overrides.clone(),

@@ -23,7 +23,7 @@ pub struct WalletImportAddresses {
 
 impl WalletImportAddresses {
     /// One address in one chain's slot.
-    fn single(chain: Chain, address: impl Into<String>) -> Self {
+    pub(crate) fn single(chain: Chain, address: impl Into<String>) -> Self {
         Self {
             by_slot: HashMap::from([(chain.address_slot().to_string(), address.into())]),
             bitcoin_xpub: None,
@@ -84,14 +84,16 @@ pub struct WalletImportPlanRequest {
     pub is_watch_only_import: bool,
     pub is_private_key_import: bool,
     pub has_wallet_password: bool,
-    pub resolved_addresses: WalletImportAddresses,
+    /// Concrete network → that network's derived addresses. Shared display
+    /// slots do not imply that different configured paths derive the same key.
+    pub resolved_addresses: HashMap<Chain, WalletImportAddresses>,
     pub watch_only_entries: WalletImportWatchOnlyEntries,
 }
 
 impl WalletImportPlanRequest {
     pub fn new(
         request: WalletImportRequest,
-        resolved_addresses: WalletImportAddresses,
+        resolved_addresses: HashMap<Chain, WalletImportAddresses>,
         has_wallet_password: bool,
     ) -> Self {
         Self {
@@ -212,14 +214,7 @@ pub fn derive_import_addresses(
     overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
 ) -> std::collections::HashMap<Chain, String> {
     let mut by_chain_id = std::collections::HashMap::new();
-    // Every EVM chain's address is derived under Ethereum's entry, because the
-    // family shares one address slot. Including Ethereum when only an L2 was
-    // selected is what makes that slot get filled.
-    let mut chains = selected_chain_ids.to_vec();
-    if chains.iter().any(|c| c.is_evm()) && !chains.contains(&Chain::Ethereum) {
-        chains.push(Chain::Ethereum);
-    }
-    for chain in chains {
+    for &chain in selected_chain_ids {
         let path = match paths.path_for(chain) {
             Some(path) => path,
             None if !chain.uses_derivation_path() => "",
@@ -261,18 +256,23 @@ pub struct WalletImportOutcome {
 
 /// Keep a Bitcoin account xpub only if it carries a mainnet serialization
 /// prefix: one per BIP, 44 → `xpub`, 49 → `ypub`, 84 → `zpub`. Only Bitcoin
-/// mainnet takes an account xpub (`Chain::accepts_account_xpub`). An xpub is
-/// not an address, so `validate_address` has nothing to say about it — but
-/// storing an arbitrary string as one means a watch wallet that derives
-/// nothing and shows no address. `None` in, `None` out.
+/// mainnet takes an account xpub (`Chain::accepts_account_xpub`). Validate the
+/// checksum, full BIP32 payload and public key before storage; its textual
+/// prefix alone does not establish that any addresses can be derived.
 fn validated_bitcoin_xpub(xpub: Option<&String>) -> (Option<String>, Option<String>) {
     let Some(trimmed) = xpub.map(|value| value.trim()).filter(|v| !v.is_empty()) else {
         return (None, None);
     };
-    if ["xpub", "ypub", "zpub"]
-        .iter()
-        .any(|prefix| trimmed.starts_with(prefix))
-    {
+    let version = match trimmed.get(..4) {
+        Some("xpub") => Some(super::bitcoin::XPUB_VERSION_MAINNET),
+        Some("ypub") => Some([0x04, 0x9d, 0x7c, 0xb2]),
+        Some("zpub") => Some([0x04, 0xb2, 0x47, 0x46]),
+        _ => None,
+    };
+    if version.is_some_and(|expected| {
+        super::bitcoin::ExtendedPublicKey::from_xpub_string(trimmed)
+            .is_ok_and(|(_, observed)| observed == expected)
+    }) {
         (Some(trimmed.to_string()), None)
     } else {
         (None, Some(trimmed.to_string()))
@@ -397,7 +397,7 @@ pub(crate) fn wallets_for_import(
                 name: planned.name.clone(),
                 chain_id: network,
                 addresses: planned.addresses.by_slot.clone(),
-                bitcoin_xpub: if planned.chain_id.accepts_account_xpub() {
+                account_xpub: if planned.chain_id.accepts_account_xpub() {
                     planned.addresses.bitcoin_xpub.clone()
                 } else {
                     None
@@ -478,6 +478,11 @@ fn check_import_shape(
             [chain.chain_display_name()],
         ));
     }
+    if entries.bitcoin_xpub.is_some() && !entries.addresses_for(chain).is_empty() {
+        return Err(DerivationError::invalid(
+            "Import either an account xpub or watched addresses, not both.",
+        ));
+    }
     Ok(())
 }
 
@@ -531,7 +536,11 @@ fn plan_signing_import(
         // Every wallet a secret is sealed under answers on its own chain. A
         // chain the secret derived nothing for refuses the import rather than
         // storing a wallet with no address beside a key it cannot use.
-        let addresses = addresses_for_chain(*chain_id, &request.resolved_addresses);
+        let addresses = request
+            .resolved_addresses
+            .get(chain_id)
+            .map(|addresses| addresses_for_chain(*chain_id, addresses))
+            .unwrap_or_default();
         if addresses.address_for(*chain_id).is_none() {
             return Err(DerivationError::refused(
                 "Could not derive a %@ address from this secret.",
@@ -668,26 +677,6 @@ fn addresses_for_chain(chain: Chain, addresses: &WalletImportAddresses) -> Walle
     if let Some(address) = addresses.address_for(chain) {
         by_slot.insert(chain.address_slot().to_string(), address.to_string());
     }
-    // Ethereum Classic is EVM-shaped but has its own slot, while every other
-    // EVM chain shares Ethereum's. A derived EVM wallet holds one key, and its
-    // address is that key's on either side, so both slots are filled in both
-    // directions. Filling only the ETC→Ethereum direction meant an Ethereum
-    // wallet answered for twenty-two EVM mainnets and not for the
-    // twenty-third.
-    if chain.is_evm() {
-        let sibling = if chain == Chain::EthereumClassic {
-            Chain::Ethereum
-        } else {
-            Chain::EthereumClassic
-        };
-        // This wallet's own address, in both EVM slots — not the other slot's,
-        // which belongs to a different wallet. An ETC wallet must not show the
-        // plain Ethereum address, and an Ethereum wallet must not show ETC's.
-        if let Some(address) = addresses.address_for(chain) {
-            by_slot.insert(sibling.address_slot().to_string(), address.to_string());
-        }
-    }
-
     WalletImportAddresses {
         by_slot,
         bitcoin_xpub: if chain.accepts_account_xpub() {
@@ -729,6 +718,14 @@ fn trim_optional(value: Option<&str>) -> Option<&str> {
 // ── Import draft validation ──
 
 #[cfg(test)]
+fn resolved_by_chain(addresses: WalletImportAddresses) -> HashMap<Chain, WalletImportAddresses> {
+    Chain::all()
+        .filter(|chain| addresses.address_for(*chain).is_some())
+        .map(|chain| (chain, addresses_for_chain(chain, &addresses)))
+        .collect()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -767,14 +764,14 @@ mod tests {
             is_watch_only_import: false,
             is_private_key_import: false,
             has_wallet_password: true,
-            resolved_addresses: WalletImportAddresses {
+            resolved_addresses: resolved_by_chain(WalletImportAddresses {
                 by_slot: HashMap::from([
                     ("bitcoin".to_string(), "bc1qexample".to_string()),
                     ("ethereum".to_string(), "0x1234".to_string()),
                     ("ethereum-classic".to_string(), "0x5678".to_string()),
                 ]),
                 bitcoin_xpub: None,
-            },
+            }),
             watch_only_entries: WalletImportWatchOnlyEntries::default(),
         })
         .expect("plan");
@@ -782,21 +779,14 @@ mod tests {
         assert_eq!(plan.wallets.len(), 2);
         assert_eq!(plan.wallets[0].name, "Main 1");
         assert_eq!(plan.secret_instructions[0].secret_kind, "seedPhrase");
-        // A wallet carries its own family's slots and no others — the Bitcoin
-        // wallet must not receive the Ethereum address. The EVM wallet carries
-        // both EVM slots with *its own* address, because one key answers on
-        // Ethereum and on Ethereum Classic; the `0x5678` supplied for the ETC
-        // slot belongs to an ETC wallet, and this import created none.
+        // A wallet stores only its own network's address.
         assert_eq!(
             slots(&plan.wallets[0].addresses),
             vec![("bitcoin".to_string(), "bc1qexample".to_string())]
         );
         assert_eq!(
             slots(&plan.wallets[1].addresses),
-            vec![
-                ("ethereum".to_string(), "0x1234".to_string()),
-                ("ethereum-classic".to_string(), "0x1234".to_string()),
-            ]
+            vec![("ethereum".to_string(), "0x1234".to_string())]
         );
     }
 
@@ -809,10 +799,10 @@ mod tests {
             is_watch_only_import: false,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses {
+            resolved_addresses: resolved_by_chain(WalletImportAddresses {
                 by_slot: HashMap::from([("ethereum".to_string(), "0xabc".to_string())]),
                 bitcoin_xpub: None,
-            },
+            }),
             watch_only_entries: WalletImportWatchOnlyEntries::default(),
         };
 
@@ -839,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn ethereum_classic_fills_both_its_own_slot_and_the_evm_slot() {
+    fn ethereum_classic_stores_one_address_in_the_evm_slot() {
         let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "W".to_string(),
             selected_chain_ids: vec![crate::registry::Chain::EthereumClassic],
@@ -847,25 +837,18 @@ mod tests {
             is_watch_only_import: false,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses {
-                by_slot: HashMap::from([
-                    ("ethereum".to_string(), "0xmainnet".to_string()),
-                    ("ethereum-classic".to_string(), "0xclassic".to_string()),
-                ]),
-                bitcoin_xpub: None,
-            },
+            resolved_addresses: HashMap::from([(
+                Chain::EthereumClassic,
+                WalletImportAddresses::single(Chain::EthereumClassic, "0xclassic"),
+            )]),
             watch_only_entries: WalletImportWatchOnlyEntries::default(),
         })
         .expect("plan");
 
-        // Both slots carry the *ETC* address; the plain Ethereum address must
-        // not leak into an ETC wallet.
+        // The Ethereum address belongs to a separate imported wallet.
         assert_eq!(
             slots(&plan.wallets[0].addresses),
-            vec![
-                ("ethereum".to_string(), "0xclassic".to_string()),
-                ("ethereum-classic".to_string(), "0xclassic".to_string()),
-            ]
+            vec![("ethereum".to_string(), "0xclassic".to_string())]
         );
     }
 
@@ -881,13 +864,13 @@ mod tests {
             is_watch_only_import: false,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses {
+            resolved_addresses: resolved_by_chain(WalletImportAddresses {
                 by_slot: HashMap::from([
                     ("bitcoin".to_string(), "bc1qexample".to_string()),
                     ("solana".to_string(), "SoLaNa".to_string()),
                 ]),
                 bitcoin_xpub: Some("zpub999".to_string()),
-            },
+            }),
             watch_only_entries: WalletImportWatchOnlyEntries::default(),
         })
         .expect("plan");
@@ -908,7 +891,7 @@ mod tests {
             is_watch_only_import: true,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses::default(),
+            resolved_addresses: HashMap::new(),
             watch_only_entries: WalletImportWatchOnlyEntries {
                 by_chain_id: HashMap::new(),
                 bitcoin_xpub: Some("xpub123".to_string()),
@@ -934,7 +917,7 @@ mod tests {
             is_watch_only_import: true,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses::default(),
+            resolved_addresses: HashMap::new(),
             watch_only_entries: WalletImportWatchOnlyEntries {
                 by_chain_id: HashMap::from([(
                     Chain::Solana,
@@ -973,7 +956,7 @@ mod tests {
             is_watch_only_import: true,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses::default(),
+            resolved_addresses: HashMap::new(),
             watch_only_entries: WalletImportWatchOnlyEntries {
                 by_chain_id: HashMap::from([(Chain::Monero, vec!["4addr".to_string()])]),
                 bitcoin_xpub: None,
@@ -1002,10 +985,10 @@ mod tests {
             is_watch_only_import: watch_only,
             is_private_key_import: private_key,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses {
+            resolved_addresses: resolved_by_chain(WalletImportAddresses {
                 by_slot: HashMap::from([("ethereum".to_string(), "0xabc".to_string())]),
                 bitcoin_xpub: None,
-            },
+            }),
             watch_only_entries: entries,
         })
     }
@@ -1129,7 +1112,7 @@ mod minted_wallet_id_tests {
             is_watch_only_import: false,
             is_private_key_import: false,
             has_wallet_password: false,
-            resolved_addresses: WalletImportAddresses {
+            resolved_addresses: resolved_by_chain(WalletImportAddresses {
                 by_slot: [(
                     "bitcoin".to_string(),
                     "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu".to_string(),
@@ -1137,7 +1120,7 @@ mod minted_wallet_id_tests {
                 .into_iter()
                 .collect(),
                 bitcoin_xpub: None,
-            },
+            }),
             watch_only_entries: WalletImportWatchOnlyEntries::default(),
         }
     }

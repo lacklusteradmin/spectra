@@ -101,9 +101,9 @@ state_model = "eUTXO"
 
 [[chains]]
 chain = "polkadot"
-tags = ["Relay Chain", "PoS", "Smart Contracts"]
-comment = "Native DOT transfers, staking, governance, and relay-chain security participation. substrate-bip39 ignores BIP-32 nodes, so the derivation path shown is the canonical display form."
-family = "Relay-chain / nominated proof-of-stake network"
+tags = ["Asset Hub", "PoS", "Substrate"]
+comment = "DOT balances and transfers use Polkadot Asset Hub. The relay chain secures the network; substrate-bip39 ignores BIP-32 nodes, so the derivation path shown is the canonical display form."
+family = "Polkadot Asset Hub (system parachain)"
 consensus = "Nominated Proof of Stake"
 state_model = "Account state + runtime pallets"
 
@@ -386,3 +386,27 @@ comment = "Decentralized machine-learning marketplace where subnets stake TAO an
 family = "Substrate (subtensor; Polkadot-style runtime)"
 consensus = "Proof-of-Work + subnet validator scoring (Yuma consensus)"
 state_model = "Substrate account/balances; subnets and neurons modeled as on-chain state"
+
+[[chains]]
+chain = "plasma"
+tags = ["EVM", "L1", "Payments"]
+comment = "A stablecoin-focused EVM network for payments and settlement, with XPL paying ordinary transaction fees."
+family = "Plasma L1 (Reth-based EVM)"
+consensus = "PlasmaBFT (pipelined Fast HotStuff)"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "monad"
+tags = ["EVM", "L1", "Parallel Execution"]
+comment = "An EVM-compatible L1 with parallel execution. Its transaction fee charges the chosen gas limit rather than only the gas consumed."
+family = "Monad L1"
+consensus = "MonadBFT"
+state_model = "EVM account state with asynchronous parallel execution"
+
+[[chains]]
+chain = "world-chain"
+tags = ["EVM", "L2", "Optimistic Rollup"]
+comment = "An Ethereum rollup for World applications. ETH pays ordinary transaction fees; WLD is an ERC-20 token."
+family = "Ethereum L2 (OP Stack)"
+consensus = "Optimistic rollup on Ethereum"
+state_model = "EVM account state"

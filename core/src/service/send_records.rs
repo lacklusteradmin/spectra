@@ -156,6 +156,11 @@ impl WalletService {
             .ok_or_else(|| SpectraBridgeError::failure("transaction not found"))?
             .payload;
         let (chain, payload, field) = rebroadcast_input(&record)?;
+        if chain.evm_rollup_fee_model().is_some() {
+            return Err(SpectraBridgeError::failure(
+                "Rollup rebroadcast requires the prepared transaction and its reviewed fee budget",
+            ));
+        }
         // Store an uncertain outcome before network I/O; errors never pretend a send happened.
         record.failure_reason =
             Some(crate::store::persistence_models::TransactionFailure::RebroadcastOutcomeUnknown);

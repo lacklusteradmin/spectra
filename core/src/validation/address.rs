@@ -152,7 +152,12 @@ fn validate_bitcoin_address(
     if !is_valid {
         return invalid_result();
     }
-    make_result(value.to_string())
+    make_result(match parsed {
+        crate::derivation::bitcoin::ParsedBitcoinAddress::SegWit { .. } => {
+            value.to_ascii_lowercase()
+        }
+        crate::derivation::bitcoin::ParsedBitcoinAddress::Legacy { .. } => value.to_string(),
+    })
 }
 
 fn validate_fixed_utxo_address(
@@ -170,18 +175,6 @@ fn validate_fixed_utxo_address(
         } else {
             value.to_string()
         });
-    }
-    if chain.mainnet_counterpart() == crate::registry::Chain::Litecoin
-        && crate::derivation::litecoin::parse_mweb_address(value).is_ok()
-        && value
-            .to_ascii_lowercase()
-            .starts_with(if chain.is_testnet() {
-                "tmweb1"
-            } else {
-                "ltcmweb1"
-            })
-    {
-        return make_result(value.to_ascii_lowercase());
     }
     invalid_result()
 }
@@ -717,6 +710,30 @@ mod tests {
         .unwrap();
         assert!(validate("litecoin", ltc.clone()).is_valid);
         assert!(!validate("litecoinTestnet", ltc).is_valid);
+    }
+
+    #[test]
+    fn litecoin_refuses_mweb_addresses_without_a_complete_protocol_adapter() {
+        let key = secp256k1::PublicKey::from_secret_key(
+            &secp256k1::Secp256k1::new(),
+            &secp256k1::SecretKey::from_slice(&[1; 32]).unwrap(),
+        );
+        let payload = [key.serialize(), key.serialize()].concat();
+        for prefix in ["ltcmweb", "tmweb"] {
+            let address =
+                bech32::encode::<bech32::Bech32m>(bech32::Hrp::parse(prefix).unwrap(), &payload)
+                    .unwrap();
+            for chain in [
+                crate::registry::Chain::Litecoin,
+                crate::registry::Chain::LitecoinTestnet,
+            ] {
+                assert!(!validate(chain.address_validation_kind(), address.clone()).is_valid);
+                assert!(!crate::send::flow::is_valid_send_address(
+                    chain,
+                    address.clone()
+                ));
+            }
+        }
     }
 }
 

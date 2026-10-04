@@ -1159,16 +1159,6 @@ mod flow_helpers_tests {
     }
 }
 
-/// Whether a send is addressed to a private extension-block output, which the
-/// composer badges.
-#[uniffi::export]
-pub fn is_extension_block_send_destination(
-    chain_id: crate::registry::Chain,
-    destination: String,
-) -> bool {
-    chain_id.is_extension_block_destination(&destination)
-}
-
 #[cfg(test)]
 mod validating_and_normalising_cannot_disagree {
     use super::{

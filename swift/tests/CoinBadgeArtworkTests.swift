@@ -64,6 +64,16 @@ struct CoinBadgeArtworkTests {
             fallbackText: "ETH", color: .orange)
         #expect(base.artworkName == "base")
         #expect(etherOnBase.artworkName == "ethereum")
+        let worldChain = CoinBadge(
+            artworkName: Chain.worldChain.entry?.artworkName,
+            fallbackText: "ETH", color: .orange)
+        let etherOnWorldChain = CoinBadge(
+            artworkName: Coin.fixture(name: "", symbol: "ETH", chainId: Chain.worldChain, amount: "0").artworkName,
+            fallbackText: "ETH", color: .orange)
+        #expect(worldChain.artworkName == "worldcoin")
+        #expect(etherOnWorldChain.artworkName == "ethereum")
+        assertDrawsItsMark(worldChain, "World Chain")
+        assertDrawsItsMark(etherOnWorldChain, "Ether on World Chain")
     }
 
     /// A custom contract cannot borrow USDC artwork by copying its symbol.

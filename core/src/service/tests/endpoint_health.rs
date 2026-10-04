@@ -64,6 +64,26 @@ async fn evm_checks_reads_after_chain_identity_and_rejects_wrong_network() {
     );
 }
 
+#[tokio::test]
+async fn polkadot_health_refuses_a_relay_node_before_other_reads() {
+    let server = MockServer::start().await;
+    Mock::given(body_partial_json(
+        json!({"method":"chain_getBlockHash","params":[0]}),
+    ))
+    .respond_with(ResponseTemplate::new(200).set_body_json(
+        json!({"result":"0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3"}),
+    ))
+    .expect(1)
+    .mount(&server)
+    .await;
+    let (_, healthy, detail) = probe(
+        Chain::Polkadot,
+        &record(Chain::Polkadot, EndpointApi::SubstrateJsonRpc, server.uri()),
+    )
+    .await;
+    assert!(!healthy && detail.contains("wrong Asset Hub"));
+}
+
 #[test]
 fn rpc_requires_a_result_and_accepts_large_hex_balances() {
     let check = Check::rpc(

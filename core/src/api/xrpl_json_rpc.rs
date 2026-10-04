@@ -89,8 +89,8 @@ impl XrplClient {
         result
             .pointer("/account_data/Sequence")
             .and_then(|v| v.as_u64())
-            .map(|n| n as u32)
-            .or_decode("account_info: missing Sequence")
+            .and_then(|n| u32::try_from(n).ok())
+            .or_decode("account_info: missing or invalid Sequence")
     }
 
     pub async fn fetch_fee(&self) -> Result<u64, ApiError> {
@@ -227,11 +227,29 @@ impl XrplClient {
     /// Submit a pre-signed transaction blob (for rebroadcast).
     pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, ApiError> {
         let result = self.call("submit", json!({"tx_blob": tx_blob_hex})).await?;
+        let engine_result = result
+            .get("engine_result")
+            .and_then(Value::as_str)
+            .or_decode("submit: missing engine_result")?;
+        let accepted = result
+            .get("accepted")
+            .and_then(Value::as_bool)
+            .or_decode("submit: missing accepted")?;
+        if !accepted || !matches!(engine_result, "tesSUCCESS" | "terQUEUED") {
+            let message = result
+                .get("engine_result_message")
+                .and_then(Value::as_str)
+                .unwrap_or("transaction was not accepted");
+            return Err(ApiError::rejected(format!(
+                "submit: {engine_result}: {message}"
+            )));
+        }
         let txid = result
             .get("tx_json")
             .and_then(|t| t.get("hash"))
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .filter(|hash| !hash.is_empty())
+            .or_decode("submit: missing transaction hash")?
             .to_string();
         Ok(XrpSendResult {
             txid,
@@ -239,6 +257,10 @@ impl XrplClient {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "tests/xrpl_json_rpc.rs"]
+mod tests;
 
 #[cfg(test)]
 mod history_tests {

@@ -97,6 +97,34 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
     );
 }
 
+#[test]
+fn litecoin_keypool_history_counts_all_catalog_scripts_and_accounts() {
+    let db = tmp_db();
+    with_conn(&db, |conn| {
+        for (chain, coin) in [(crate::registry::Chain::Litecoin, 2), (crate::registry::Chain::LitecoinTestnet, 1)] {
+            for (purpose, account, external, change) in [(44, 0, 4, 2), (49, 2, 8, 3), (84, 1, 12, 5)] {
+                let id = format!("{chain}-{purpose}");
+                let payload = serde_json::json!({
+                    "id": id, "kind": "receive", "status": "confirmed",
+                    "sourceDerivationPath": format!("m/{purpose}'/{coin}'/{account}'/0/{external}"),
+                    "changeDerivationPath": format!("m/{purpose}'/{coin}'/{account}'/1/{change}"),
+                }).to_string();
+                conn.execute("INSERT INTO history_records (id,wallet_id,chain_id,created_at,payload) VALUES (?1,'w',?2,0,?3)", params![id,chain,payload]).unwrap();
+            }
+        }
+        Ok::<_, DbError>(())
+    }).unwrap();
+    for chain in [
+        crate::registry::Chain::Litecoin,
+        crate::registry::Chain::LitecoinTestnet,
+    ] {
+        assert_eq!(
+            history_keypool_indices(&db, "w", chain).unwrap(),
+            (Some(12), Some(5))
+        );
+    }
+}
+
 /// Malformed metadata refuses loading without rewriting stored bytes.
 #[test]
 fn unreadable_metadata_refuses_loading() {

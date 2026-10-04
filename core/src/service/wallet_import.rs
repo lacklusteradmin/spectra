@@ -100,12 +100,10 @@ impl WalletService {
                 .by_chain
                 .extend(std::mem::take(&mut commit.seed_derivation_paths.by_chain));
             commit.seed_derivation_paths = paths;
-            let mut resolved_addresses =
-                crate::derivation::import::WalletImportAddresses::default();
+            let mut resolved_addresses = std::collections::HashMap::new();
             // Derive here when the caller did not — from a seed phrase or from a
-            // private key, whichever this import carries — so the multi-chain
-            // rule (every EVM chain derives from Ethereum's derivation path)
-            // holds for every front end.
+            // private key, whichever this import carries. Keep concrete networks
+            // distinct even when their addresses share a presentation slot.
             if !commit.request.is_watch_only_import {
                 let key = commit
                     .private_key
@@ -138,16 +136,23 @@ impl WalletService {
                     }
                 };
                 if let Some(derived) = derived {
-                    resolved_addresses.by_slot = derived
+                    resolved_addresses = derived
                         .into_iter()
-                        .map(|(chain, address)| (chain.address_slot().to_string(), address))
+                        .map(|(chain, address)| {
+                            (
+                                chain,
+                                crate::derivation::import::WalletImportAddresses::single(
+                                    chain, address,
+                                ),
+                            )
+                        })
                         .collect();
                     // Deriving nothing is a refusal, not an import. A secret the
                     // deriver cannot read — the wrong wordlist, an override that
                     // does not apply — produced a stored wallet with an empty
                     // address that read to the user as "imported", which is the
                     // mistake watch-only imports already refuse to make.
-                    if resolved_addresses.by_slot.is_empty() {
+                    if resolved_addresses.is_empty() {
                         return Err(SpectraBridgeError::invalid(
                             "Could not derive an address from this secret for any selected chain.",
                         ));
@@ -156,8 +161,16 @@ impl WalletService {
             }
             // Core-derived addresses are judged by the network that owns their
             // slot; typed watch-only addresses by the chain they were typed for.
-            let (validated, mut rejected_addresses) =
-                crate::derivation::import::validated_addresses(&resolved_addresses);
+            let mut rejected_addresses = Vec::new();
+            let validated = resolved_addresses
+                .into_iter()
+                .map(|(chain, addresses)| {
+                    let (validated, rejected) =
+                        crate::derivation::import::validated_addresses(&addresses);
+                    rejected_addresses.extend(rejected);
+                    (chain, validated)
+                })
+                .collect();
             let (validated_watch_only, rejected_watch_only) =
                 crate::derivation::import::validated_watch_only_entries(
                     &commit.request.watch_only_entries,
@@ -185,6 +198,29 @@ impl WalletService {
                 Err(message) => return Err(SpectraBridgeError::from(message)),
             };
             let mut wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
+            if let Some(seed) = commit.seed_phrase.as_deref().filter(|_| {
+                !commit.request.is_watch_only_import && !commit.request.is_private_key_import
+            }) {
+                for wallet in &mut wallets {
+                    if wallet.chain_id.mainnet_counterpart() == Chain::Litecoin {
+                        let path = wallet
+                            .seed_derivation_paths
+                            .path_for(wallet.chain_id)
+                            .ok_or_else(|| {
+                                SpectraBridgeError::invalid(
+                                    "Litecoin wallet has no derivation path",
+                                )
+                            })?;
+                        wallet.account_xpub =
+                            Some(super::address_discovery::UtxoDerivation::account_xpub(
+                                wallet.chain_id,
+                                seed,
+                                path,
+                                &commit.derivation_overrides,
+                            )?);
+                    }
+                }
+            }
             let is_watch_only = commit.request.is_watch_only_import;
             let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
             let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);

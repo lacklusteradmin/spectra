@@ -23,11 +23,6 @@ impl RuntimeCallIndex {
     }
 }
 
-/// Polkadot mainnet (relay chain), `Balances.transfer_keep_alive`.
-/// Verified against runtime spec_version 1_002_000 (April 2026).
-pub const POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex =
-    RuntimeCallIndex::new(0x05, 0x03);
-
 /// Bittensor mainnet (subtensor), `Balances.transfer_keep_alive`.
 /// Verified against subtensor runtime as of April 2026.
 pub const BITTENSOR_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex =
@@ -65,7 +60,7 @@ pub(super) fn decode_hash_hex(hex_str: &str) -> Result<[u8; 32], SendError> {
         .map_err(|_| SendError::Invalid(format!("hash wrong length: {}", hex_str).into()))
 }
 
-pub(super) fn blake2b_256(data: &[u8]) -> [u8; 32] {
+pub(crate) fn blake2b_256(data: &[u8]) -> [u8; 32] {
     use blake2::digest::consts::U32;
     use blake2::{Blake2b, Digest};
     let mut h = Blake2b::<U32>::new();

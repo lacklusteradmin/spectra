@@ -70,7 +70,7 @@ impl WalletService {
             u32::from(chain.native_decimals())
         };
         let amount = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
-        let amount_u64 = if chain.mainnet_counterpart() == Chain::Near {
+        let amount_u64 = if matches!(chain.mainnet_counterpart(), Chain::Near | Chain::Polkadot) {
             0
         } else {
             u64::try_from(amount)
@@ -82,9 +82,12 @@ impl WalletService {
             | Chain::BitcoinSV
             | Chain::BitcoinCash
             | Chain::BitcoinGold
-            | Chain::Litecoin
             | Chain::Dash => {
                 self.prepare_fixed_utxo(chain, request, sender, amount_u64)
+                    .await?
+            }
+            Chain::Litecoin => {
+                self.prepare_litecoin(chain, request, sender, amount_u64)
                     .await?
             }
             Chain::Monero => {
@@ -212,13 +215,14 @@ impl WalletService {
             },
             Chain::Xrp => {
                 let client = XrplClient::new(eps);
+                let fee_drops =
+                    XrplClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
+                        .fetch_fee()
+                        .await?;
+                crate::send::xrp::validate_drops(u128::from(fee_drops))?;
                 PreparedPayload::Xrp {
                     sequence: client.fetch_sequence(sender).await?,
-                    fee_drops: XrplClient::new(
-                        self.endpoints_for(chain, &[EndpointCapability::Fee]).await,
-                    )
-                    .fetch_fee()
-                    .await?,
+                    fee_drops,
                     amount_drops: amount_u64,
                 }
             }
@@ -239,7 +243,36 @@ impl WalletService {
                         .map_err(|_| SpectraBridgeError::failure("Amount too large"))?,
                 }
             }
-            Chain::Polkadot | Chain::Bittensor => {
+            Chain::Polkadot => {
+                let prepared = crate::api::http::race(&eps, |endpoint| async move {
+                    crate::send::polkadot::prepare_transfer(
+                        &SubstrateClient::new(Arc::new(vec![endpoint])),
+                        chain,
+                        sender,
+                        to,
+                        amount,
+                    )
+                    .await
+                })
+                .await?;
+                if let Some(reviewed) = &request.fee_amount {
+                    let budget = crate::send::amount_input::parse_raw_amount(
+                        reviewed,
+                        u32::from(chain.native_decimals()),
+                    )?;
+                    if prepared.fee > budget {
+                        return Err(SpectraBridgeError::failure(
+                            "Asset Hub fee increased; refresh the preview and review again",
+                        ));
+                    }
+                }
+                request.fee_amount = Some(crate::decimal::from_units(
+                    prepared.fee,
+                    u32::from(chain.native_decimals()),
+                ));
+                PreparedPayload::Polkadot(prepared)
+            }
+            Chain::Bittensor => {
                 let client = SubstrateClient::new(eps);
                 let (nonce, version, genesis_hash, block_hash) = (
                     client.fetch_nonce(sender).await?,
@@ -688,6 +721,9 @@ impl WalletService {
             PreparedPayload::FixedUtxo { .. } => {
                 return self.sign_fixed_utxo(chain, stored, signer).await;
             }
+            PreparedPayload::Litecoin(_) => {
+                return self.sign_litecoin(chain, stored, signer).await;
+            }
             PreparedPayload::Xrp {
                 sequence,
                 fee_drops,
@@ -772,6 +808,47 @@ impl WalletService {
                     None,
                 )
             }
+            PreparedPayload::Polkadot(prepared) => {
+                crate::api::http::race(&eps, |endpoint| async move {
+                    prepared
+                        .validate_for_signing(
+                            &SubstrateClient::new(Arc::new(vec![endpoint])),
+                            chain,
+                            &stored.view.sender,
+                        )
+                        .await
+                })
+                .await?;
+                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
+                let key: &[u8; 32] = bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| SpectraBridgeError::failure("Invalid sr25519 seed"))?;
+                let public =
+                    hex::decode(signer.public_key_hex.as_deref().ok_or_else(|| {
+                        SpectraBridgeError::failure("Missing sr25519 public key")
+                    })?)?;
+                let public: &[u8; 32] = public
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| SpectraBridgeError::failure("Invalid sr25519 public key"))?;
+                let raw = prepared.sign(key, public)?;
+                let hash = format!(
+                    "0x{}",
+                    hex::encode(crate::send::substrate::blake2b_256(&raw))
+                );
+                resources.push(format!(
+                    "{}:{}:nonce:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    prepared.nonce
+                ));
+                (
+                    json!({"extrinsic_hex":format!("0x{}",hex::encode(raw))}).to_string(),
+                    "txid",
+                    Some(hash),
+                )
+            }
             PreparedPayload::Substrate {
                 nonce,
                 spec_version,
@@ -807,33 +884,22 @@ impl WalletService {
                     .as_slice()
                     .try_into()
                     .map_err(|_| SpectraBridgeError::failure("Invalid Substrate public key"))?;
-                let raw = if chain.mainnet_counterpart() == Chain::Polkadot {
-                    crate::send::polkadot::build_signed_transfer(
-                        &stored.view.recipient,
-                        *amount,
-                        *nonce,
-                        *spec_version,
-                        *transaction_version,
-                        genesis_hash,
-                        block_hash,
-                        key,
-                        public,
-                        None,
-                        None,
-                    )?
-                } else {
-                    crate::send::bittensor::build_signed_transfer(
-                        &stored.view.recipient,
-                        *amount,
-                        *nonce,
-                        *spec_version,
-                        *transaction_version,
-                        genesis_hash,
-                        block_hash,
-                        key,
-                        public,
-                    )?
-                };
+                if chain.mainnet_counterpart() != Chain::Bittensor {
+                    return Err(SpectraBridgeError::failure(
+                        "Legacy Substrate payload is unsupported on Asset Hub; build and review again",
+                    ));
+                }
+                let raw = crate::send::bittensor::build_signed_transfer(
+                    &stored.view.recipient,
+                    *amount,
+                    *nonce,
+                    *spec_version,
+                    *transaction_version,
+                    genesis_hash,
+                    block_hash,
+                    key,
+                    public,
+                )?;
                 resources.push(format!(
                     "{}:{}:nonce:{nonce}",
                     chain.str_id(),
@@ -1099,6 +1165,8 @@ impl WalletService {
             {
                 return Err(wrong_network());
             }
+        } else if chain.mainnet_counterpart() == Chain::Polkadot {
+            SubstrateClient::new(eps).polkadot_context(chain).await?;
         } else if chain.mainnet_counterpart() == Chain::Aptos {
             let expected = chain
                 .aptos_chain_id()
@@ -1134,6 +1202,18 @@ impl WalletService {
             .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let expired = match &stored.prepared {
+            PreparedPayload::Polkadot(prepared) => {
+                crate::api::http::race(&endpoints, |endpoint| async move {
+                    prepared
+                        .validate_for_submission(
+                            &SubstrateClient::new(Arc::new(vec![endpoint])),
+                            chain,
+                        )
+                        .await
+                })
+                .await?;
+                false
+            }
             PreparedPayload::Zcash(p) => {
                 let (height, branch) = BlockbookClient::new(endpoints, chain)
                     .zcash_context()

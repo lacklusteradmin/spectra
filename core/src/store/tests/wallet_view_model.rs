@@ -45,7 +45,7 @@ fn the_view_model_carries_what_the_app_shows() {
     let view = summary().to_wallet_view(&defaults());
     assert_eq!(view.id, "w1");
     assert_eq!(view.chain_id, crate::registry::Chain::BitcoinTestnet4);
-    assert_eq!(view.bitcoin_xpub.as_deref(), Some("zpub123"));
+    assert_eq!(view.account_xpub.as_deref(), Some("zpub123"));
     assert_eq!(view.address_for(Chain::Bitcoin), Some("bc1qexample"));
     assert_eq!(view.holdings.len(), 1);
     assert_eq!(view.holdings[0].amount, "1.5");

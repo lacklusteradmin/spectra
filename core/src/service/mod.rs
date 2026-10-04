@@ -435,6 +435,7 @@ impl WalletService {
 pub mod app_refresh;
 mod owned_send;
 pub mod send_review;
+mod send_stage_litecoin;
 mod send_stage_protocols;
 mod send_stage_utxo;
 mod send_stages;

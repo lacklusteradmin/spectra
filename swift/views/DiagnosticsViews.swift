@@ -235,18 +235,28 @@ struct StandardChainDiagnosticsView: View {
         }.navigationTitle(AppLocalization.format("%@ Diagnostics", displayChainTitle))
         .task(id: chain) {
             do {
-                cachedKeypoolDiagnostics = try await store.chainKeypoolDiagnostics(for: chain)
+                let diagnostics = try await store.chainKeypoolDiagnostics(for: chain)
+                guard !Task.isCancelled else { return }
+                cachedKeypoolDiagnostics = diagnostics
                 keypoolError = nil
             } catch {
+                guard !Task.isCancelled else { return }
                 cachedKeypoolDiagnostics = []
                 keypoolError = error.localizedDescription
             }
         }.task(id: runs.diagnosticsRevision) {
             do {
-                recorded = try await store.chainDiagnostics(for: chain)
+                let diagnostics = try await store.chainDiagnostics(for: chain)
+                guard !Task.isCancelled else { return }
+                recorded = diagnostics
                 recordedError = nil
-            } catch { recordedError = error.localizedDescription }
-            cachedOperationalEvents = await store.operationalEvents(for: chain)
+            } catch {
+                guard !Task.isCancelled else { return }
+                recordedError = error.localizedDescription
+            }
+            let events = await store.operationalEvents(for: chain)
+            guard !Task.isCancelled else { return }
+            cachedOperationalEvents = events
         }.spectraTransientNotice($copiedDiagnosticsNotice)
     }
     private var isRunningHistory: Bool { runs.runningHistory.contains(chain) }

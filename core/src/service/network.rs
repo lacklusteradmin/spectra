@@ -180,11 +180,18 @@ impl WalletService {
                 is_confirmed: receipt.is_confirmed,
                 is_failed: receipt.is_failed,
                 block_number: receipt.block_number.map(|n| n as i64),
-                cost: crate::store::EvmReceiptCost::from_receipt(
-                    receipt.gas_used.as_deref(),
-                    receipt.effective_gas_price_wei.as_deref(),
-                    chain.native_decimals(),
-                ),
+                // Execution gas alone is not the complete actual fee on OP
+                // Stack. Omit cost until historical L1/operator charges are
+                // decoded, rather than display this subtotal as Network Fee.
+                cost: if chain.evm_rollup_fee_model().is_none() {
+                    crate::store::EvmReceiptCost::from_receipt(
+                        receipt.gas_used.as_deref(),
+                        receipt.effective_gas_price_wei.as_deref(),
+                        chain.native_decimals(),
+                    )
+                } else {
+                    None
+                },
             }),
         )
     }
@@ -240,5 +247,119 @@ mod history_page_failures {
             .fetch_evm_history_page(Chain::BnbChain, "from".into(), vec![], 2, 7)
             .await;
         assert!(result.unwrap_err().to_string().contains("no explorer"));
+    }
+}
+
+#[cfg(test)]
+mod receipt_cost_completeness {
+    use super::*;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
+
+    #[tokio::test]
+    async fn world_chain_receipt_omits_partial_cost_without_losing_outcome() {
+        for chain in [Chain::WorldChain, Chain::Ethereum] {
+            for (status, is_failed) in [("0x1", false), ("0x0", true)] {
+                let server = MockServer::start().await;
+                Mock::given(body_partial_json(
+                    json!({"method": "eth_getTransactionReceipt"}),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "jsonrpc": "2.0", "id": 1,
+                    "result": {
+                        "status": status, "blockNumber": "0x7",
+                        "gasUsed": "0x5208", "effectiveGasPrice": "0x1"
+                    }
+                })))
+                .expect(if chain == Chain::WorldChain { 2 } else { 1 })
+                .mount(&server)
+                .await;
+                let service = WalletService::new(vec![ChainEndpoints {
+                    chain_id: chain,
+                    capabilities: vec![EndpointCapability::Verification],
+                    endpoints: vec![server.uri()],
+                }])
+                .unwrap();
+                let receipt = service
+                    .evm_transaction_status(chain, format!("0x{}", "11".repeat(32)))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(receipt.is_confirmed);
+                assert_eq!(receipt.is_failed, is_failed);
+                assert_eq!(receipt.block_number, Some(7));
+                if chain == Chain::WorldChain {
+                    assert!(receipt.cost.is_none());
+                    let database = std::env::temp_dir()
+                        .join(format!(
+                            "op-receipt-{}.sqlite",
+                            crate::store::new_event_id()
+                        ))
+                        .to_string_lossy()
+                        .into_owned();
+                    service.open_state(database).await.unwrap();
+                    let old: crate::store::persistence_models::CorePersistedTransactionRecord =
+                        serde_json::from_value(json!({
+                            "id": "pending", "walletId": "w", "walletName": "Wallet",
+                            "kind": "send", "status": "pending", "chainId": chain,
+                            "symbol": "ETH", "assetDisplayName": "Ethereum", "amount": "1",
+                            "address": "recipient", "createdAtUnix": 0.0,
+                            "transactionHash": format!("0x{}", "11".repeat(32)),
+                            "receiptGasUsed": "21000", "receiptEffectiveGasPriceGwei": "0.000000001",
+                            "receiptNetworkFee": "0.000000000000021",
+                            "confirmedNetworkFee": "0.000000000000021"
+                        }))
+                        .unwrap();
+                    service
+                        .upsert_history_records(vec![
+                            crate::wallet_db::history_record_from_payload(old),
+                        ])
+                        .await
+                        .unwrap();
+                    let changes = service.poll_pending_transactions(chain).await.unwrap();
+                    assert_eq!(changes.len(), 1);
+                    let polled = service.transactions().await.unwrap().remove(0);
+                    service
+                        .apply_resolved_pending_statuses(
+                            chain,
+                            vec![crate::store::ResolvedPendingStatus {
+                                id: "pending".into(),
+                                status: if is_failed { "failed" } else { "confirmed" }.into(),
+                                confirmations: None,
+                                receipt_block_number: Some(7),
+                                evm_receipt_cost: crate::store::EvmReceiptCost::from_receipt(
+                                    Some("21000"),
+                                    Some("1"),
+                                    18,
+                                ),
+                            }],
+                        )
+                        .await
+                        .unwrap();
+                    let supplied = service.transactions().await.unwrap().remove(0);
+                    use crate::store::wallet_domain::CoreTransactionStatus;
+                    for stored in [polled, supplied] {
+                        assert_eq!(
+                            stored.status,
+                            if is_failed {
+                                CoreTransactionStatus::Failed
+                            } else {
+                                CoreTransactionStatus::Confirmed
+                            }
+                        );
+                        assert_eq!(stored.receipt_block_number, Some(7));
+                        assert!(stored.receipt_gas_used.is_none());
+                        assert!(stored.receipt_effective_gas_price_gwei.is_none());
+                        assert!(stored.receipt_network_fee.is_none());
+                        assert!(stored.confirmed_network_fee.is_none());
+                    }
+                } else {
+                    let cost = receipt.cost.unwrap();
+                    assert_eq!(cost.gas_used, "21000");
+                    assert_eq!(cost.effective_gas_price_gwei, "0.000000001");
+                    assert_eq!(cost.network_fee, "0.000000000000021");
+                }
+                server.verify().await;
+            }
+        }
     }
 }

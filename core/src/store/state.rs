@@ -34,7 +34,7 @@ impl WalletSigning {
         self == Self::WatchOnly
     }
 
-    /// Signing, revealing or scanning needs the wallet's password.
+    /// Secret operations such as signing and revealing need the wallet's password.
     pub fn requires_password(self) -> bool {
         matches!(
             self,
@@ -143,14 +143,20 @@ impl WalletState {
         self.address_on(self.chain_id)
     }
 
-    /// Resolve by address slot, allowing chains with a shared derivation
-    /// (such as EVM chains) to use the same stored address.
+    /// EVM networks can use this wallet's same key and address. Other networks
+    /// require their own address slot.
     pub fn address_on(&self, chain: crate::registry::Chain) -> Option<&str> {
+        self.address_record_on(chain).map(|a| a.address.as_str())
+    }
+
+    pub(crate) fn address_record_on(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Option<&WalletAddress> {
         let slot = chain.address_slot();
         self.addresses
             .iter()
             .find(|a| a.chain_id.address_slot() == slot)
-            .map(|a| a.address.as_str())
     }
 }
 

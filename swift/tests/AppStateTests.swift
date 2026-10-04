@@ -50,7 +50,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
 
     /// A wallet answers for the chains it was imported for and for no
     /// others. It reads what core stored: the EVM family shares one slot,
-    /// so an Ethereum wallet still answers for all 23 EVM mainnets, and a
+    /// so an Ethereum wallet answers for every EVM mainnet, and a
     /// Solana wallet is not asked to produce a Bitcoin address.
     @Test func aWalletAnswersForItsOwnChainsAndNoOthers() async throws {
         let store = makeState()
@@ -116,6 +116,24 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         #expect(store.wallets.count == 1)
         #expect(store.wallets.first?.chainId == Chain.bitcoin)
         #expect(store.wallets.first?.address(on: .bitcoin)?.isEmpty == false)
+    }
+    @Test func importingNewEvmNetworksRetainsTheSelectedNetworkAcrossTheBridge() async throws {
+        let store = makeState()
+        for chain in [Chain.plasma, .monad, .worldChain] {
+            try await store.clearWalletsForTesting()
+            store.walletImport.draft.walletName = "Import \(chain.id)"
+            store.walletImport.draft.seedEntry.paste("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+            store.walletImport.draft.selectedChainsStorage = [chain]
+            await store.importWallet()
+            #expect(store.walletImport.error == nil, "\(chain.id)")
+            let wallet = try #require(store.wallets.first, "\(chain.id)")
+            #expect(wallet.chainId == chain)
+            #expect(wallet.address(on: chain)?.lowercased() == "0x9858effd232b4033e47d90003d41ec34ecaeda94")
+            #expect(wallet.address(on: .ethereum) == wallet.address(on: chain))
+            let reopened = try await bridge.ready().portfolioSnapshot().wallets
+            #expect(reopened.first?.chainId == chain)
+            #expect(reopened.first?.address(on: chain) == wallet.address(on: chain))
+        }
     }
     /// A wallet carries its own network.
     @Test func bitcoinWalletDisplayTitleUsesWalletSpecificNetwork() {

@@ -9,6 +9,8 @@ use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum TransactionFailure {
+    /// The chain confirmed that execution failed.
+    ExecutionFailed,
     /// Confirmation polling gave up on a pending transaction.
     StuckAfterRetries,
     /// A broadcast began and its outcome was not recorded.
@@ -23,6 +25,7 @@ impl TransactionFailure {
     /// English, for logs and core-worded notices.
     pub fn english(&self) -> String {
         match self {
+            Self::ExecutionFailed => "The transaction failed during on-chain execution.".into(),
             Self::StuckAfterRetries => {
                 "The transaction could not be confirmed after extended retries.".into()
             }

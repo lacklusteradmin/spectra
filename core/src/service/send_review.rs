@@ -70,22 +70,6 @@ impl WalletService {
                 )
                 .await?;
             if let Some(crate::send::flow::SendPreview::Ethereum { preview }) = &mut quote.preview {
-                if input.overrides.as_ref().and_then(|o| o.nonce).is_none() {
-                    let state = this.app_state().await;
-                    let chain = quote.request.chain_id;
-                    let wallet = state
-                        .wallets
-                        .iter()
-                        .find(|w| w.id == input.wallet_id)
-                        .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
-                    let sender = wallet.address_on(chain).ok_or_else(|| {
-                        SpectraBridgeError::failure("Wallet has no sending address")
-                    })?;
-                    preview.nonce = i64::try_from(this.next_send_nonce(chain, sender).await?)
-                        .map_err(|_| {
-                            SpectraBridgeError::failure("Nonce exceeds supported range")
-                        })?;
-                }
                 let fees = quote
                     .request
                     .evm_overrides
@@ -96,6 +80,7 @@ impl WalletService {
                     max_fee_per_gas_gwei: preview.maxFeePerGasGwei.clone(),
                     max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei.clone(),
                 });
+                quote.request.fee_amount = Some(preview.estimatedNetworkFee.clone());
             }
             let chain = quote.request.chain_id;
             let resolved = this

@@ -292,15 +292,18 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
     let value: serde_json::Value = serde_json::from_str(&input.raw_json).ok()?;
     let obj = value.as_object()?;
 
-    let rpc_nonce = obj.get("nonce").and_then(|v| v.as_i64()).unwrap_or(0);
+    let rpc_nonce = obj.get("nonce")?.as_i64()?;
+    if rpc_nonce < 0 {
+        return None;
+    }
     let nonce = input.explicit_nonce.unwrap_or(rpc_nonce);
     if nonce < 0 {
         return None;
     }
-    let gas_limit = obj
-        .get("gas_limit")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(21_000);
+    let gas_limit = obj.get("gas_limit")?.as_i64()?;
+    if gas_limit <= 0 {
+        return None;
+    }
     // Everything below is whole wei; gwei and ether exist only as the exact
     // decimals the record carries.
     let wei = |key: &str| -> Option<u128> { obj.get(key)?.as_str()?.parse().ok() };
@@ -325,7 +328,10 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
             )
         }
     };
-    let fee_wei = u128::try_from(gas_limit).ok()?.checked_mul(max_fee_wei)?;
+    let fee_wei = u128::try_from(gas_limit)
+        .ok()?
+        .checked_mul(max_fee_wei)?
+        .checked_add(wei("additional_fee_wei")?)?;
     let spendable = if obj.get("is_token").and_then(|v| v.as_bool()) == Some(false) {
         // Recomputed from the balance rather than adjusted from the quoted
         // spendable, which may already be clamped to zero: adding an old fee
@@ -689,7 +695,7 @@ mod tests {
 
     #[test]
     fn preview_decode_with_custom_fees() {
-        let json = r#"{"nonce":7,"gas_limit":21000,"max_fee_per_gas_wei":"30000000000","max_priority_fee_per_gas_wei":"2000000000","fee_rate_description":"live desc","spendable_balance":"4.2"}"#;
+        let json = r#"{"additional_fee_wei":"0","nonce":7,"gas_limit":21000,"max_fee_per_gas_wei":"30000000000","max_priority_fee_per_gas_wei":"2000000000","fee_rate_description":"live desc","spendable_balance":"4.2"}"#;
         let decoded = decode_evm_send_preview(EvmPreviewDecodeInput {
             raw_json: json.into(),
             explicit_nonce: Some(12),
@@ -715,7 +721,7 @@ mod tests {
 
     #[test]
     fn preview_decode_without_overrides_uses_rpc() {
-        let json = r#"{"nonce":3,"gas_limit":21000,"max_fee_per_gas_wei":"20000000000","max_priority_fee_per_gas_wei":"1500000000","fee_rate_description":"rpc desc","spendable_balance":"2"}"#;
+        let json = r#"{"additional_fee_wei":"0","nonce":3,"gas_limit":21000,"max_fee_per_gas_wei":"20000000000","max_priority_fee_per_gas_wei":"1500000000","fee_rate_description":"rpc desc","spendable_balance":"2"}"#;
         let decoded = decode_evm_send_preview(EvmPreviewDecodeInput {
             raw_json: json.into(),
             explicit_nonce: None,
@@ -776,7 +782,7 @@ mod custom_fee_tests {
     #[test]
     fn preview_refuses_invalid_typed_fees() {
         let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
-            raw_json: r#"{"gas_limit":21000}"#.into(),
+            raw_json: r#"{"nonce":0,"gas_limit":21000,"additional_fee_wei":"0"}"#.into(),
             explicit_nonce: None,
             custom_fees: Some(EvmCustomFeeConfiguration {
                 max_fee_per_gas_gwei: "inf".into(),
@@ -805,10 +811,13 @@ mod nonce_tests {
 
     #[test]
     fn preview_refuses_negative_nonce_from_caller_or_rpc() {
-        for (raw, explicit) in [(r#"{"nonce":1}"#, Some(-1)), (r#"{"nonce":-1}"#, None)] {
+        for (rpc_nonce, explicit) in [(1, Some(-1)), (-1, None), (-1, Some(1))] {
             assert!(
                 decode_evm_send_preview(EvmPreviewDecodeInput {
-                    raw_json: raw.into(),
+                    raw_json: serde_json::json!({"nonce":rpc_nonce,"gas_limit":21000,
+                        "additional_fee_wei":"0","max_fee_per_gas_wei":"1",
+                        "max_priority_fee_per_gas_wei":"0"})
+                    .to_string(),
                     explicit_nonce: explicit,
                     custom_fees: None,
                 })
@@ -838,7 +847,7 @@ mod shortcut_fee_tests {
     #[test]
     fn lowering_fees_does_not_reconstruct_balance_from_a_clamped_quote() {
         let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
-            raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":"0",
+            raw_json: serde_json::json!({"nonce":0,"gas_limit":21000,"additional_fee_wei":"0","spendable_balance":"0",
                 "is_token":false,"native_balance_wei":"1000000000000"})
             .to_string(),
             explicit_nonce: None,
@@ -854,7 +863,7 @@ mod shortcut_fee_tests {
     fn custom_fees_reduce_native_maximum_but_not_token_units() {
         for is_token in [false, true] {
             let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
-                raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":"1",
+                raw_json: serde_json::json!({"nonce":0,"gas_limit":21000,"additional_fee_wei":"0","spendable_balance":"1",
                     "is_token":is_token,
                     "native_balance_wei":"1000210000000000000"})
                 .to_string(),
@@ -868,6 +877,96 @@ mod shortcut_fee_tests {
             // 1.00021 ETH less 21000 × 20 gwei (0.00042), exactly.
             let expected = if is_token { "1" } else { "0.99979" };
             assert_eq!(preview.max_sendable.as_deref(), Some(expected));
+        }
+    }
+}
+
+#[cfg(test)]
+mod preview_field_tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn valid_preview() -> Value {
+        json!({
+            "nonce": 0,
+            "gas_limit": 21_000,
+            "max_fee_per_gas_wei": "1",
+            "max_priority_fee_per_gas_wei": "0",
+            "additional_fee_wei": "0",
+            "is_token": false,
+            "native_balance_wei": "1000000000000000000"
+        })
+    }
+
+    fn decode(raw: Value, explicit_nonce: Option<i64>) -> Option<EvmPreviewDecoded> {
+        decode_evm_send_preview(EvmPreviewDecodeInput {
+            raw_json: raw.to_string(),
+            explicit_nonce,
+            custom_fees: None,
+        })
+    }
+
+    #[test]
+    fn missing_out_of_range_or_nonpositive_gas_refuses_the_preview() {
+        for gas in [
+            None,
+            Some(json!(i64::MAX as u64 + 1)),
+            Some(json!(0)),
+            Some(json!(-1)),
+            Some(Value::Null),
+            Some(json!("21000")),
+            Some(json!(1.5)),
+        ] {
+            let mut raw = valid_preview();
+            match gas {
+                Some(value) => raw["gas_limit"] = value,
+                None => {
+                    raw.as_object_mut().unwrap().remove("gas_limit");
+                }
+            }
+            assert!(decode(raw.clone(), None).is_none(), "{raw}");
+        }
+    }
+
+    #[test]
+    fn missing_out_of_range_or_negative_rpc_nonce_cannot_be_overridden() {
+        for nonce in [
+            None,
+            Some(json!(i64::MAX as u64 + 1)),
+            Some(json!(-1)),
+            Some(Value::Null),
+            Some(json!("0")),
+            Some(json!(0.5)),
+        ] {
+            let mut raw = valid_preview();
+            match nonce {
+                Some(value) => raw["nonce"] = value,
+                None => {
+                    raw.as_object_mut().unwrap().remove("nonce");
+                }
+            }
+            for explicit in [None, Some(7)] {
+                assert!(
+                    decode(raw.clone(), explicit).is_none(),
+                    "{raw}, override {explicit:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn valid_ffi_bounds_and_zero_nonce_are_kept_without_defaults() {
+        let mut raw = valid_preview();
+        for (nonce, gas) in [(0, 1), (i64::MAX, i64::MAX)] {
+            raw["nonce"] = json!(nonce);
+            raw["gas_limit"] = json!(gas);
+            let preview = decode(raw.clone(), None).unwrap();
+            assert_eq!(preview.nonce, nonce);
+            assert_eq!(preview.gas_limit, gas);
+            assert_eq!(
+                preview.estimated_network_fee_eth,
+                crate::decimal::from_units(gas as u128, 18)
+            );
         }
     }
 }

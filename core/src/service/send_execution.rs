@@ -61,6 +61,9 @@ pub(super) fn validate_execution_amount(
             .map_or(0, |(_, f)| f.len() as u32)
     };
     let raw = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+    if chain.mainnet_counterpart() == Chain::Xrp {
+        crate::send::xrp::validate_drops(raw)?;
+    }
     if raw == 0 && (!chain.is_evm() || request.contract_address.is_some()) {
         return Err(SpectraBridgeError::InvalidInput {
             message: "amount must be positive".into(),

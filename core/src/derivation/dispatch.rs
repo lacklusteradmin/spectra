@@ -157,9 +157,12 @@ pub fn derive_from_private_key(
             want_address,
             want_public_key,
         )?,
-        Chain::Litecoin => {
-            ltc::derive_litecoin_from_private_key(private_key_hex, want_address, want_public_key)?
-        }
+        Chain::Litecoin => ltc::derive_litecoin_from_private_key_on_network(
+            chain,
+            private_key_hex,
+            want_address,
+            want_public_key,
+        )?,
         Chain::Dogecoin => {
             doge::derive_dogecoin_from_private_key(private_key_hex, want_address, want_public_key)?
         }

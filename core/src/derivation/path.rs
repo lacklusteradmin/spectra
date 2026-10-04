@@ -138,33 +138,25 @@ pub(crate) fn default_path_from_catalog(chain: Chain) -> Result<String, Derivati
     }
 }
 
-/// Extract a UTXO discovery index only when the path prefix matches the
-/// chain's default path and the penultimate segment is the requested branch.
+/// Extract a UTXO discovery index from a catalog-supported path and account.
+/// Receive/change indices must be non-hardened and belong to the requested branch.
 pub(crate) fn utxo_discovery_index(raw_path: &str, chain: Chain, branch: u32) -> Option<u32> {
-    let default_path = default_path_from_catalog(chain).ok()?;
     let path = parse_derivation_path_str(raw_path)?;
-    let mut candidate = parse_derivation_path_str(&default_path)?;
-    if path.len() != candidate.len() || path.len() < 5 {
+    if path.len() < 5 || branch > 1 {
         return None;
     }
     let last = path.len() - 1;
-    candidate[last - 1] = DerivationPathSegment {
-        value: branch,
-        is_hardened: false,
-    };
-    candidate[last] = DerivationPathSegment {
-        value: path[last].value,
-        is_hardened: false,
-    };
-    if format_derivation_path_segments(&candidate[..last])
-        != format_derivation_path_segments(&path[..last])
-    {
+    if path[last - 1].is_hardened || path[last].is_hardened || path[last - 1].value != branch {
         return None;
     }
-    if path[last - 1].value != branch {
-        return None;
-    }
-    Some(path[last].value)
+    chain.entry().derivation_path.iter().find_map(|template| {
+        let candidate = parse_derivation_path_str(&render_derivation_path_template(
+            &template.path,
+            path[2].value,
+        ))?;
+        (path.len() == candidate.len() && candidate[..last - 1] == path[..last - 1])
+            .then_some(path[last].value)
+    })
 }
 
 /// A discovery path: the chain's default path with its last two segments
@@ -277,5 +269,38 @@ mod tests {
         let mainnet = resolve_derivation_path(Chain::Bitcoin, String::new()).expect("bitcoin");
         assert_eq!(testnet, "m/84'/1'/0'/0/0");
         assert_eq!(mainnet, "m/84'/0'/0'/0/0");
+    }
+
+    #[test]
+    fn utxo_indices_cover_catalog_script_paths_and_accounts() {
+        for (chain, coin) in [(Chain::Litecoin, 2), (Chain::LitecoinTestnet, 1)] {
+            for purpose in [44, 49, 84] {
+                for account in [0, 2] {
+                    for branch in [0, 1] {
+                        assert_eq!(
+                            utxo_discovery_index(
+                                &format!("m/{purpose}'/{coin}'/{account}'/{branch}/17"),
+                                chain,
+                                branch
+                            ),
+                            Some(17)
+                        );
+                    }
+                }
+            }
+        }
+        for path in [
+            "m/84'/0'/0'/0/17",
+            "m/86'/2'/0'/0/17",
+            "m/84'/2'/0'/0'/17",
+            "m/84'/2'/0'/0/17'",
+            "m/84'/2'/0'/1/17",
+        ] {
+            assert_eq!(
+                utxo_discovery_index(path, Chain::Litecoin, 0),
+                None,
+                "{path}"
+            );
+        }
     }
 }

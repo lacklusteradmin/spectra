@@ -165,6 +165,22 @@ async fn invalid_exact_amount_and_fee_refuse_before_storage_or_keys() {
 }
 
 #[tokio::test]
+async fn xrp_amounts_outside_protocol_range_refuse_before_wallet_or_network_reads() {
+    let service = WalletService::new(vec![]).unwrap();
+    for chain in [
+        crate::registry::Chain::Xrp,
+        crate::registry::Chain::XrpTestnet,
+    ] {
+        for amount in ["0", "100000000000.000001", "18446744073709.551615"] {
+            let mut request = request_fixture::req(chain);
+            request.amount_str = amount.into();
+            let error = service.build_send(request).await.unwrap_err().to_string();
+            assert!(error.contains("XRP amount and fee"), "{amount}: {error}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn saved_signature_expiry_is_checked_again_before_submission() {
     use crate::send::stages::*;
     let service = WalletService::new(vec![]).unwrap();
@@ -198,6 +214,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         },
         submission: None,
         signed_digest: None,
+        substrate_verified_through: None,
     };
     assert!(
         service

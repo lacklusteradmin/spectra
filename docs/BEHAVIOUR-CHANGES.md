@@ -17,6 +17,399 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-04 — World Chain reuses Worldcoin artwork
+
+- **Before:** World Chain referenced a separate square-ring `worldchain` icon.
+- **After:** World Chain uses the existing `worldcoin` artwork throughout the
+  network picker and wiki. The incorrect separate SVG and generated asset are
+  removed. Native ETH on World Chain continues to use Ethereum artwork.
+- **Why:** The network uses the Worldcoin mark specified by the user; a second
+  invented identity adds incorrect artwork and a redundant asset.
+- **CLI check:** `spectra --json token artwork --chain-id world-chain` returns
+  `{"artworkName":"worldcoin"}`. The targeted core registry test checks the
+  same identity; the iOS artwork/catalog tests check the picker and bundled image.
+- **Verification:** The targeted registry test passed. The rebuilt CLI returned
+  `worldcoin` using a throwaway data directory. All 10 tests in
+  `CoinBadgeArtworkTests` and `PresentationCatalogTests` passed on iPhone 17 Pro.
+  Icon normalization/export, source/export equality and whitespace checks passed.
+  The export removed `worldchain.imageset`; no full suite rerun for this artwork
+  correction.
+
+## 2026-10-04 — Omit incomplete OP Stack confirmed receipt costs
+
+- **Before:** OP Stack receipts, including World Chain, displayed execution
+  gas cost as the total "Network Fee", omitting actual L1 and operator charges.
+- **After:** Registry-marked OP Stack networks omit confirmed receipt cost
+  details until the full actual fee is decoded. Applying a finalized receipt
+  clears any earlier partial cost details from the pending record; an explicitly
+  supplied execution-only cost cannot restore them. Confirmation, execution
+  failure and inclusion block remain available. Ethereum retains its complete
+  execution receipt cost. Reviewed fee budgets still include all applicable
+  components.
+- **Why:** A known execution subtotal must not be presented as the complete
+  network charge. The future receipt decoding work is explicit in `OPEN-ITEMS.md`.
+- **CLI check:** After `spectra --json txs --poll-chain world-chain`,
+  `spectra --json txs --record <id>` retains the resolved status and block but
+  omits receipt cost fields. The offline service regression supplies identical
+  success/revert gas receipts to World Chain and Ethereum without broadcasts.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy with warnings denied, 983 core tests plus the transport-runtime test,
+  464 offline CLI acceptance checks and 108 iOS tests in 24 suites. The Rust
+  run covers success/revert classification and clearing stored partial costs.
+
+## 2026-10-04 — On-chain execution failure replaces submission uncertainty
+
+- **Before:** A finalized failed extrinsic or reverted EVM receipt could retain
+  "submission outcome unknown" or be labeled as exhausted confirmation retries.
+- **After:** Every resolved on-chain failure stores `ExecutionFailed`, overriding
+  an earlier uncertain submission or rebroadcast reason. English and both
+  Chinese locales render the execution failure. A timeout without a resolved
+  outcome retains its uncertainty reason, or uses the polling exhaustion reason
+  when no earlier reason exists.
+- **Why:** Confirmed execution failure and an unknown submission outcome describe
+  different facts. The shared status path must use the chain's known result.
+- **CLI check:** `spectra --json txs --record <id>` exposes the persisted
+  `failureReason.kind` as `executionFailed` after an on-chain failed resolution.
+  Offline service regressions apply failed Ethereum and Polkadot resolutions,
+  and contrast them with unresolved Bitcoin timeouts without broadcasting.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy with warnings denied, 983 core tests plus the transport-runtime test,
+  464 offline CLI acceptance checks and 108 iOS tests in 24 suites. Persistence
+  regressions and runtime JSON/localization consistency checks passed.
+
+## 2026-10-04 — DOT transfers and balances use Polkadot Asset Hub
+
+- **Before:** Polkadot used Relay Chain RPCs, a fixed transfer call, a fixed DOT
+  fee and legacy signed extensions. Pending sends relied on unavailable address
+  history, so balance and transaction behavior no longer matched migrated DOT.
+  CLI `txs --poll-chain` constructed a partial catalog transport and ignored
+  persisted custom nodes.
+- **After:** Polkadot and Westend use their own Asset Hub endpoints and verified
+  genesis hashes. Core decodes current runtime metadata before interpreting
+  account storage or preparing `Balances.transfer_keep_alive`. The call indexes,
+  extension order, account layout and existential deposit come from validated
+  metadata; unsupported contracts fail before persistence or signing. Fees use
+  `payment_queryInfo` for the exact signed envelope. Funds checks retain the
+  existential deposit and account for freezes/reserves; runtime, nonce, funds
+  and fees are rechecked before signing. Broadcast rechecks runtime and fees
+  on every selected node. Substrate broadcasts, including Bittensor, require
+  the returned hash to equal the hash of the submitted extrinsic.
+  Pending sends scan finalized blocks and decode the matching extrinsic's
+  `System` dispatch event, distinguishing inclusion with execution failure from
+  a successful transfer. A persisted scan cursor avoids rescanning completed
+  ranges; finding an outcome never advances the cursor before status is saved.
+  `txs --poll-chain` keeps the full catalog transport so custom nodes remain
+  available while polling only the explicitly chosen stored network. Saved
+  artifacts use the typed Asset Hub runtime and cursor shape; older artifact
+  shapes require rebuilding.
+- **Why:** DOT moved to Asset Hub. Network identity and the node's current SCALE
+  contract must govern balances and signed bytes. See [Polkadot's migration
+  guide](https://wiki.polkadot.com/learn/how-to/asset-hub-migration/).
+- **CLI check:** `python3 scripts/cli-send-polkadot.py target/debug/spectra`
+  uses current metadata fixtures and loopback RPCs for build/sign, wrong Relay Chain
+  refusal, runtime/fee/nonce changes, keep-alive funds and finalized outcomes
+  through `txs --poll-chain` with a persisted custom node.
+  Address-wide historical imports remain unavailable without a keyless indexer.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy with warnings denied, 983 core tests plus the transport-runtime test,
+  464 offline CLI acceptance checks and 108 iOS tests in 24 suites. Asset Hub
+  acceptance covers exact signing, runtime/fee/funds refusal, broadcasts,
+  finalized success/failure and cursor recovery through loopback RPCs.
+
+## 2026-10-04 — Litecoin transparent sends use the wallet's recovered account
+
+- **Before:** Litecoin derivation rejected BIP49/BIP84 despite advertising those
+  paths. Sending assumed one P2PKH address/key; balance and fee previews read
+  only the import address, leaving recovered receive/change funds unavailable.
+- **After:** Mainnet and testnet derive BIP44 P2PKH, BIP49 P2SH-P2WPKH and BIP84
+  P2WPKH with their own address versions. Balances include all known addresses;
+  fee previews and durable builds share confirmed inputs and script-aware
+  virtual sizes. Each reviewed input retains its account path. Signing derives
+  and verifies every source key, rechecks outpoints and amounts, and hashes the
+  stripped transaction for its txid. Private-key wallets retain one validated
+  source and derive on their actual network; the unused mainnet-only private-key
+  wrapper is removed. Mnemonic imports store a validated account public key;
+  receiving, recovery and builders work without unlocking password-protected wallets, even
+  after restarting. The UI projection names this field `account_xpub` rather
+  than `bitcoin_xpub`; the persisted wallet continues to own one account key.
+  A Litecoin mnemonic record without its account public key is refused by
+  receiving/recovery and requires reimport; there is no storage migration.
+  Null or duplicate outpoints, zero values, unsupported scripts, conflicting accounts
+  and amounts beyond Litecoin's MAX_MONEY fail before signing.
+- **Why:** One wallet account owns multiple receive/change keys. Derivation,
+  balance, fees and signing must agree on those funds, including witness
+  signatures and testnet identity; a caller's address/path is not proof of key
+  ownership. Source signing supports legacy and witness-v0 key hashes; Taproot
+  remains a recipient format rather than a wallet derivation/signing format.
+- **CLI check:** `python3 scripts/cli-litecoin.py target/debug/spectra` imports
+  all six network/script combinations, checks reservations and recovered funds,
+  quotes and signs across addresses after reopening, checks witness-free txids,
+  and refuses stale inputs and incorrect passwords without broadcasting.
+  `python3 scripts/cli-send-utxo.py target/debug/spectra` covers recipient scripts.
+- **Verification:** `make verify` passed: rustfmt and clippy at `-D warnings`,
+  982 core tests plus the transport-runtime test, 464 CLI acceptance checks,
+  and 108 Swift tests on iPhone 17 Pro. UniFFI bindings were regenerated by the
+  iOS build. Independent BIP143/legacy signatures, mixed-key inputs,
+  CompactSize and money/dust bounds are covered by the Rust run.
+
+## 2026-10-04 — Litecoin outputs use Litecoin's script-specific dust policy
+
+- **Before:** Litecoin retained change above Bitcoin's 546-unit threshold and
+  accepted recipient amounts below Litecoin Core's default dust policy. A
+  fixed 1,000-unit default fee could underprice transactions with many inputs.
+- **After:** The registry owns Litecoin's 30,000-litoshi/kvB dust relay fee.
+  Receive outputs below their script's threshold are refused before provider
+  reads; change below its threshold is included in the reviewed fee instead.
+  P2PKH, P2SH and P2WPKH thresholds are respectively 5,460, 5,400 and 2,940
+  litoshis. Preview, preparation and signing use one calculation. Default
+  fees grow with virtual size to at least one litoshi/vB.
+- **Why:** A locally signed transaction must also satisfy the network's normal
+  relay policy. Litecoin's defaults differ from Bitcoin, and native witness
+  outputs differ from wrapped witness and legacy outputs. See Litecoin Core's
+  [dust rate](https://github.com/litecoin-project/litecoin/blob/master/src/policy/policy.h)
+  and [threshold calculation](https://github.com/litecoin-project/litecoin/blob/master/src/policy/policy.cpp).
+- **CLI check:** `python3 scripts/cli-litecoin.py target/debug/spectra` proves
+  reviewed fees equal the signed input/output difference; Rust tests cover
+  exact dust thresholds, below-dust recipients, and large-input default fees.
+- **Verification:** The full `make verify` run above passed, including the
+  signer/quote and service boundary tests, CLI acceptance and iOS tests.
+
+## 2026-10-04 — UTXO recovery scans both branches to an actual unused gap
+
+- **Before:** Deep recovery scanned only receive addresses, stopped at a fixed
+  window, omitted catalog paths with nonzero account indices, and could derive
+  a different tree from a custom/hardened branch suffix. Base58 deduplication
+  changed case. A high imported address index did not raise the keypool floor.
+- **After:** Deep recovery scans receive and change independently until twenty
+  consecutive unused addresses beyond each known/reserved floor, with an
+  explicit index-999 ceiling failure. Active addresses are stored with exact
+  paths and indices; existing addresses remain known. The catalog purpose/coin
+  and a public branch/index are required, any valid account is accepted, and
+  the imported address raises its branch's reservation floor. Base58 retains
+  case. Derivation/provider errors are surfaced rather than silently skipping
+  addresses. CLI discovery and balance requests use the wallet's actual network.
+  Deep receiving/recovery also refuses short Electrum and other paths without
+  an account, branch and index rather than silently changing their tree.
+- **Why:** A bounded initial receive window cannot restore change funds or
+  addresses beyond a run of earlier activity. The scanner and the keypool must
+  describe the same account tree and avoid reissuing earlier addresses. Only
+  branch public keys remain in memory during provider probes. Litecoin mnemonic
+  imports refuse noncatalog account paths before storing a wallet or its secret.
+- **CLI check:** The Litecoin acceptance above recovers indices 7 and 27 after
+  nineteen unused receive addresses and index 3 on the change branch, then
+  checks receive/change floors and the aggregate balance on both networks.
+  Rust mock-provider checks cover ordering, concurrency, the scan ceiling,
+  imported-index floors, invalid paths, and all discovery networks.
+- **Verification:** The full `make verify` run above passed; public-account
+  derivation, protected receiving after restart, gap/ceiling checks and the
+  generic keypool/identity regressions all passed.
+
+## 2026-10-04 — Remove incomplete Litecoin MWEB sends
+
+- **Before:** Address validation and the composer offered MWEB peg-in sends,
+  but the handmade extension serialization and output did not match Litecoin
+  Core's transaction format, so a local signature did not establish a valid
+  broadcastable transaction.
+- **After:** MWEB destinations are refused, the privacy-send badge and extra
+  fee estimate are removed, and the incomplete extension builder and its crypto
+  dependencies are deleted. Litecoin sending supports transparent destinations.
+- **Why:** An unverified funds protocol is not a supported feature. Correct
+  MWEB requires a complete protocol adapter, not a cosmetic badge or a patched
+  byte layout. See [Litecoin Core transaction serialization](https://github.com/litecoin-project/litecoin/blob/master/src/primitives/transaction.h).
+- **CLI check:** `spectra address validate --chain litecoin ltcmweb1unsupported`
+  refuses the destination. Rust checks also reject checksum-valid stealth
+  addresses and refuse builds before provider reads.
+- **Verification:** The full `make verify` run above passed, including
+  regenerated UniFFI bindings, unreachable/uncalled-function and shipped-string
+  checks, and iOS tests after deleting the exported badge helper.
+
+## 2026-10-04 — Plasma, Monad and World Chain are concrete wallet networks
+
+- **Before:** These three mainnets were absent from the registry and could not
+  be selected, imported, refreshed or used for a send. Plasma EURC/USDC and
+  Monad CAKE remained pending catalog work.
+- **After:** Plasma (9745/XPL), Monad (143/MON) and World Chain (480/ETH)
+  share the EVM derivation and local EIP-1559 signing paths while retaining
+  their own endpoints, deployments, history sources and artwork. The catalog
+  includes issuer-verified Plasma EURC/USDC, Monad CAKE/USDC, and World Chain
+  USDC/WLD. Native Ether on World Chain retains the ETH artwork; the network
+  uses the existing Worldcoin artwork. Mainnet additions do not imply new testnets.
+- **Why:** Concrete network identity belongs in the core registry. Sharing
+  cryptography must not reuse another network's chain ID, token contract or
+  API endpoint. Official network/issuer metadata and live read-only RPC checks
+  establish the catalog facts, including the [official CAKE deployment
+  table](https://developer.pancakeswap.finance/contracts/cake).
+- **CLI check:** `spectra --json chains --filter Plasma`, `spectra --json
+  chains --filter Monad`, and `spectra --json chains --filter 'World Chain'`;
+  `python3 scripts/cli-wallets.py target/debug/spectra
+  WalletsTests.test_new_evm_networks_derive_and_sign_their_own_chain_ids`
+  imports all three against loopback nodes and verifies signed chain IDs,
+  wrong-node refusal, and insufficient complete-fee budgets without broadcasts.
+  Plasma and World Chain have verified keyless history/discovery APIs. Monad
+  history and automatic token discovery remain open; see `OPEN-ITEMS.md`.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy with warnings denied, 983 core tests plus the transport-runtime test,
+  464 offline CLI acceptance checks and 108 iOS tests in 24 suites. New-chain
+  derivation, signed chain IDs, selector/import persistence and artwork checks
+  passed. Icon normalization/export, design-token and whitespace checks passed.
+
+## 2026-10-04 — EVM previews and signing reserve the same complete fee budget
+
+- **Before:** Previews used unbuffered gas estimates, while construction added
+  20 percent. OP Stack previews omitted L1 data and operator charges. Staged
+  EVM construction/signing did not recheck live funds against the complete
+  transaction budget.
+- **After:** Preview and construction share gas estimation and registry-owned
+  margins: Monad uses 7.5 percent; an exact 21,000-gas plain transfer needs no
+  padding. OP Stack networks query their deployed GasPriceOracle contract for
+  L1 data fees and, where deployed, operator fees. The budget is stored with
+  the reviewed transaction; fee growth at construction, signing or broadcast
+  requires another review. Missing, malformed, out-of-range or negative RPC
+  nonces and missing, malformed, out-of-range or nonpositive gas limits refuse
+  previews instead of defaulting to zero or 21,000; an explicit nonce cannot
+  conceal invalid RPC fields. The locally reserved nonce is selected before
+  pricing the unsigned payload. Construction and signing check the live native
+  balance against value plus the full fee,
+  and standard ERC-20 transfers check the amount encoded in the actual calldata
+  against the contract's live balance. Failed checks do not sign or broadcast.
+  A rollup history record without its prepared fee budget cannot be rebroadcast.
+- **Why:** Monad charges the gas limit rather than gas used, and World Chain
+  charges for publishing data to L1 in addition to execution. One reviewed
+  budget must govern the preview, the persisted payload and the funds check.
+  See [Monad wallet integration](https://docs.monad.xyz/developer-essentials/wallet-developers),
+  [World Chain fees](https://docs.world.org/world-chain/developers/fees), and
+  [OP Stack GasPriceOracle](https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/src/L2/GasPriceOracle.sol).
+- **CLI check:** The new-network case above and `python3 scripts/cli-send-stages.py
+  target/debug/spectra` cover durable budget binding and insufficient-funds
+  refusal. Core mock-node tests cover Monad gas margins, custom World Chain
+  fees, oracle failures and malformed oracle responses.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy with warnings denied, 983 core tests plus the transport-runtime test,
+  464 offline CLI acceptance checks and 108 iOS tests in 24 suites. The run
+  covers nonce-length rollover, complete native/token budgets, oracle failures,
+  fee growth refusal and unchanged durable state after refused signing or
+  broadcasts. Obsolete gas-estimation APIs were removed; the uncalled-function
+  gate passed.
+
+## 2026-10-04 — Imported EVM addresses keep their network's derivation path
+
+- **Before:** import derived concrete EVM networks into one shared address
+  slot. Different custom paths could therefore choose one network's address
+  nondeterministically; stored L2 addresses were labeled Ethereum and recorded
+  Ethereum's derivation path rather than the requested network's path.
+  Copied Ethereum/ETC sibling addresses were paired with the sibling network's
+  default path, so alternate-network identity reads could disagree with the key.
+- **After:** import derives only the selected networks, retains each concrete
+  network's address through planning, and persists its own address, network and
+  derivation path. The signing identity agrees with that address after reopening.
+  Redundant Ethereum/ETC sibling address records are removed; compatible EVM
+  requests reuse the wallet's actual address record and path, instead of pairing
+  its copied address with another network's default derivation path.
+  Every EVM network now uses the `ethereum` address-map slot, including Ethereum
+  Classic and EVM testnets, so native projections and stored identity lookup
+  agree. Their previous map keys are changed directly without migration; typed
+  address records retain the concrete network and actual derivation path.
+- **Why:** an address slot does not define a key identity; the concrete network
+  and its configured derivation path do.
+- **CLI check:** `python3 scripts/cli-wallets.py target/debug/spectra
+  WalletsTests.test_evm_custom_paths_match_signing_identity` checks custom paths
+  on Arbitrum, Base and Ethereum Sepolia against independent account addresses.
+  `WalletsTests.test_evm_alias_identity_uses_wallets_own_path` checks ETH/ETC
+  source keys on Ethereum, Ethereum Classic, Arbitrum and Sepolia after reopen.
+- **Verification:** all `make verify` gates passed on an isolated `2273fd28`
+  snapshot plus this audit's fixes: rustfmt, clippy at `-D warnings`, 928 core
+  tests plus the transport integration test, 462 offline CLI checks and 106
+  native tests on iPhone 18 Pro Max / iOS 27. Native tests ran separately after
+  removing snapshot-only Git inventory environment variables. Xcode reported
+  `TEST SUCCEEDED` despite a simulator diagnostic-collection timeout.
+  Concurrent workspace changes were excluded from this verification.
+
+## 2026-10-04 — Bitcoin watch imports validate complete account public keys
+
+- **Before:** any text starting with `xpub`, `ypub` or `zpub` passed import,
+  including bad checksums and invalid public-key payloads. Supplying both an
+  account key and explicit watched addresses silently discarded the addresses.
+- **After:** core validates Base58Check, BIP32 payload length, mainnet public
+  version and the encoded public key before persistence, and refuses mixed
+  account-key/address input. `spectra wallet watch --xpub` exposes the same
+  core operation, mutually exclusive with `--address`.
+- **Why:** a persisted watch wallet must contain usable derivation material,
+  and import must not silently drop requested addresses.
+- **CLI check:** `python3 scripts/cli-wallets.py target/debug/spectra
+  WalletsTests.test_bitcoin_account_xpub_validation` checks a valid xpub import
+  and malformed, wrong-network and conflicting inputs. Rust regressions also
+  cover valid ypub/zpub payloads and invalid encoded public keys.
+- **Verification:** checksum/payload/key validation regressions passed within
+  the isolated audit verification above: rustfmt, clippy, 928 core tests plus
+  transport integration, 462 offline CLI checks and 106 native tests.
+
+## 2026-10-04 — XRP payments use canonical encoding and explicit acceptance
+
+- **Before:** signed payments appended `TxnSignature` after Account/Destination,
+  violating XRPL field order. Unbounded amount/fee inputs could corrupt native
+  amount flags, a provider sequence above `u32::MAX` wrapped during narrowing,
+  and any submission hash was treated as success even when the node refused it.
+- **After:** a single encoder places the signature before AccountID fields and
+  matches the pinned official SDK signing vector. Amount and fee must be
+  positive and at most `10^17` drops; an invalid amount is refused before wallet,
+  key or network access and invalid node data before storing prepared content.
+  Sequence overflow is a decode error. Submission requires `accepted: true`,
+  `tesSUCCESS` or `terQUEUED`, and a nonempty hash; refused and malformed replies
+  return errors while retaining the signed payload for an explicit retry.
+- **Why:** signing must encode the reviewed payment exactly, and a node refusal
+  must never be presented as an accepted transfer.
+- **CLI check:** `python3 scripts/cli-send-xrp.py target/debug/spectra` exercises
+  mainnet/testnet build, sign and inspect against an independent official codec
+  fixture, plus amount/fee/sequence refusals with no stored send artifact.
+- **Verification:** pinned SDK fixture generation, byte-for-byte signing
+  regressions and both-network offline CLI checks passed. All verification
+  gates passed in the isolated audit snapshot: rustfmt, clippy, 928 core tests
+  plus transport integration, 462 offline CLI checks and 106 native tests.
+
+## 2026-10-04 — EVM history uses network-local tokens and complete provider pages
+
+- **Before:** a testnet decoded transfers with its mainnet's known contracts,
+  names and precision, omitting its own test tokens and sometimes storing a
+  mainnet asset label on a testnet. Pagination tested the number of transfers
+  left after filtering unknown contracts; a full provider page containing
+  unknown tokens could therefore hide all older known-token transfers.
+- **After:** each concrete network supplies its own token descriptors, even
+  when several wallets from one family refresh together. A page is exhausted
+  only when both raw provider lists are shorter than the requested page size;
+  token filtering cannot end pagination.
+- **Why:** deployment identity includes its network, and filtering a page is
+  independent of whether another provider page exists.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_evm_testnet_token_history_and_filtered_pages` serves a full
+  first page of unknown/mainnet contracts and a second-page Sepolia tPYUSD
+  transfer. Only the test token is stored, at its exact catalog precision,
+  and its identity survives reopening.
+- **Verification:** the registry-wide concrete-network descriptor regression
+  and both targeted CLI history checks passed. All verification gates passed
+  in the isolated audit snapshot: rustfmt, clippy, 928 core tests plus transport
+  integration, 462 offline CLI checks and 106 native tests.
+
+## 2026-10-04 — Cancelled native reads cannot overwrite newer projections
+
+- **Before:** a cancelled transaction-detail read could finish after a newer
+  read and revert confirmation status or recipient identity. Endpoint settings
+  and chain diagnostics likewise adopted obsolete results or errors after
+  SwiftUI replaced their tasks.
+- **After:** native reads check cancellation after each asynchronous result.
+  Transaction details adopt the record and address endpoints together; a
+  cancelled record read also skips its endpoint lookup. Endpoint and diagnostic
+  views reject obsolete results and errors.
+- **Why:** cancelling a Swift task does not stop a UniFFI operation already
+  in progress, so completion must be checked before publishing view state.
+- **CLI check:** none applies to cancellation of native view reads. Existing
+  `spectra txs --record ID` and `spectra txs --endpoints ID` exercise the
+  unchanged core lookups; delayed Swift completions cover view adoption.
+- **Verification:** Swift 6 compilation and both delayed-completion
+  `TransactionDetailProjectionTests` cases passed. The isolated audit snapshot
+  passed all verification gates, including 106 native tests and
+  `ethereumTestNetworksExposeExpectedContextsAndEndpoints`; Xcode reported
+  `TEST SUCCEEDED` despite a simulator diagnostic-collection timeout.
+
 ## 2026-10-04 — Aptos reserves and signs the reviewed gas budget
 
 - **Before:** Aptos treated the node's gas unit price as the entire transaction

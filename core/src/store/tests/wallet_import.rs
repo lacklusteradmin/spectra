@@ -4,6 +4,122 @@ use crate::store::wallet_domain::{CoreSeedDerivationPreset, CoreWalletDerivation
 
 const MNEMONIC: &str = "test test test test test test test test test test test junk";
 
+#[tokio::test]
+async fn evm_imports_keep_each_networks_address_and_derivation_path() {
+    use crate::registry::Chain;
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
+    let path = temp.join("state.db").to_string_lossy().into_owned();
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(secrets.clone());
+    service.open_state(path.clone()).await.unwrap();
+    let mut input = commit(&[Chain::Ethereum, Chain::Arbitrum, Chain::Base]);
+    let paths = [
+        (Chain::Ethereum, "m/44'/60'/0'/0/0"),
+        (Chain::Arbitrum, "m/44'/60'/1'/0/0"),
+        (Chain::Base, "m/44'/60'/2'/0/0"),
+    ];
+    for (chain, path) in paths {
+        input.seed_derivation_paths.set_path_for(chain, path);
+    }
+    service.import_wallets(input).await.unwrap();
+    let reopened = WalletService::new(vec![]).unwrap();
+    reopened.set_secret_store(secrets);
+    let state = reopened.open_state(path).await.unwrap();
+    for (chain, path) in paths {
+        let wallet = state.wallets.iter().find(|w| w.chain_id == chain).unwrap();
+        let expected = crate::derivation::dispatch::derive_for_chain(
+            chain, MNEMONIC, path, None, None, None, true, false, false,
+        )
+        .unwrap()
+        .address
+        .unwrap();
+        let expected = crate::send::flow::normalized_send_address(chain, expected);
+        assert_eq!(wallet.active_address(), Some(expected.as_str()), "{chain}");
+        assert_eq!(wallet.derivation_path.as_deref(), Some(path));
+        let address = wallet
+            .addresses
+            .iter()
+            .find(|a| a.chain_id == chain)
+            .unwrap();
+        assert_eq!(address.derivation_path.as_deref(), Some(path));
+        assert_eq!(
+            reopened
+                .send_identity_address(wallet.id.clone(), chain, None)
+                .await
+                .unwrap(),
+            expected,
+        );
+    }
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[tokio::test]
+async fn evm_identity_reuses_the_wallets_path_without_duplicate_address_records() {
+    use crate::registry::Chain;
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
+    let path = temp.join("state.db").to_string_lossy().into_owned();
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(secrets.clone());
+    service.open_state(path.clone()).await.unwrap();
+    let mut input = commit(&[
+        Chain::Ethereum,
+        Chain::EthereumClassic,
+        Chain::EthereumSepolia,
+        Chain::EthereumClassicMordor,
+    ]);
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::Ethereum, "m/44'/60'/3'/0/0");
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::EthereumClassic, "m/44'/61'/2'/0/0");
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::EthereumSepolia, "m/44'/60'/4'/0/0");
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::EthereumClassicMordor, "m/44'/61'/5'/0/0");
+    service.import_wallets(input).await.unwrap();
+    let reopened = WalletService::new(vec![]).unwrap();
+    reopened.set_secret_store(secrets);
+    let state = reopened.open_state(path).await.unwrap();
+    let defaults =
+        crate::derivation::path::derivation_paths_for_preset(Default::default()).unwrap();
+    for wallet in state.wallets {
+        assert_eq!(wallet.addresses.len(), 1);
+        assert_eq!(wallet.addresses[0].chain_id, wallet.chain_id);
+        let expected = wallet.active_address().unwrap();
+        let view = wallet.to_wallet_view(&defaults);
+        assert_eq!(view.addresses.len(), 1);
+        assert_eq!(
+            view.addresses.get("ethereum").map(String::as_str),
+            Some(expected)
+        );
+        let round_tripped = view.to_wallet_state().unwrap();
+        assert_eq!(round_tripped.chain_id, wallet.chain_id);
+        assert_eq!(round_tripped.derivation_path, wallet.derivation_path);
+        assert_eq!(round_tripped.addresses, wallet.addresses);
+        for chain in Chain::all().filter(|c| c.is_evm()) {
+            assert_eq!(wallet.address_on(chain), Some(expected));
+            assert_eq!(view.address_for(chain), Some(expected));
+            assert_eq!(
+                reopened
+                    .send_identity_address(wallet.id.clone(), chain, None)
+                    .await
+                    .unwrap(),
+                expected,
+                "{} identity on {chain}",
+                wallet.chain_id,
+            );
+        }
+    }
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
 fn commit(chains: &[crate::registry::Chain]) -> WalletImportCommit {
     WalletImportCommit {
         password: None,

@@ -46,7 +46,7 @@ pub enum WalletCommand {
     New(NewArgs),
     /// Import a wallet from an existing seed phrase.
     Import(ImportArgs),
-    /// Track an address without its keys.
+    /// Track addresses or a Bitcoin account xpub without its keys.
     Watch(WatchArgs),
     /// List stored wallets.
     List,
@@ -157,8 +157,11 @@ pub struct WatchArgs {
     chain: String,
     /// Address to track. Repeat it to watch several: an import creates one
     /// wallet per address, which is what the app's multi-line input does.
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "xpub", conflicts_with = "xpub")]
     address: Vec<String>,
+    /// Bitcoin mainnet account xpub, ypub or zpub.
+    #[arg(long, required_unless_present = "address", conflicts_with = "address")]
+    xpub: Option<String>,
     /// Wallet name (default: core assigns an available "Wallet N").
     #[arg(long)]
     name: Option<String>,
@@ -477,8 +480,12 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     let mut request = request_for(&[chain], &name);
     request.is_watch_only_import = true;
     request.watch_only_entries = WalletImportWatchOnlyEntries {
-        by_chain_id: [(chain, args.address.clone())].into_iter().collect(),
-        bitcoin_xpub: None,
+        by_chain_id: if args.address.is_empty() {
+            Default::default()
+        } else {
+            [(chain, args.address)].into_iter().collect()
+        },
+        bitcoin_xpub: args.xpub,
     };
 
     let service = ctx.service()?;

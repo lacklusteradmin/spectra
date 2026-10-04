@@ -148,6 +148,14 @@ async fn passwords_unlock_stored_material_and_wrong_passwords_fail() {
 #[tokio::test]
 async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data() {
     let service = WalletService::new(vec![]).unwrap();
+    let database = std::env::temp_dir()
+        .join(format!(
+            "send-identity-{}.sqlite",
+            crate::store::new_event_id()
+        ))
+        .to_string_lossy()
+        .into_owned();
+    service.open_state(database).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let defaults =

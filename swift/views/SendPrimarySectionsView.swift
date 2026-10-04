@@ -230,20 +230,6 @@ struct SendRecipientPage: View {
                 .font(.caption).foregroundStyle(.spectraWarning)
         }
 
-        if let coin = presentation.selectedCoin,
-           isExtensionBlockSendDestination(chainId: coin.chainId, destination: store.sendFlow.address) {
-            HStack(spacing: SpectraLayout.Space.xs) {
-                Image(systemName: "lock.shield.fill").font(.caption2.weight(.semibold))
-                Text(AppLocalization.string("MWEB · Privacy Send")).font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.xs)
-            .background(
-                LinearGradient(colors: [Color.indigo, Color.purple], startPoint: .leading, endPoint: .trailing).opacity(0.9)
-            )
-            .clipShape(.capsule)
-        }
-
         if store.sendFlow.isCheckingDestination {
             SpectraLoadingRow(title: "Checking destination on-chain balance...")
         }

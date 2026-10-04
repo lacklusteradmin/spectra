@@ -30,7 +30,7 @@ extension WalletView {
             addresses: Dictionary(
                 addresses.map { chain, address in (chain.addressSlot, address) },
                 uniquingKeysWith: { first, _ in first }),
-            bitcoinXpub: bitcoinXpub,
+            accountXpub: bitcoinXpub,
             seedDerivationPreset: seedDerivationPreset,
             seedDerivationPaths: seedDerivationPaths ?? .forPreset(seedDerivationPreset),
             derivationOverrides: derivationOverrides,
@@ -67,11 +67,18 @@ extension WalletView {
         let slots = addresses.keys.sorted { ($0 == ownSlot ? 0 : 1, $0) < ($1 == ownSlot ? 0 : 1, $1) }
         return WalletState(
             id: id, name: name, signing: signing, chainId: chainId,
-            includeInPortfolioTotal: includeInPortfolioTotal, xpub: bitcoinXpub,
+            includeInPortfolioTotal: includeInPortfolioTotal, xpub: accountXpub,
             derivationPreset: seedDerivationPreset, derivationPath: path, derivationOverrides: derivationOverrides,
             holdings: holdings,
             addresses: slots.compactMap { slot in
-                guard let owner = Chain.all.first(where: { $0.addressSlot == slot }), let address = addresses[slot] else { return nil }
+                guard let address = addresses[slot] else { return nil }
+                let owner: Chain
+                if slot == chain.addressSlot {
+                    owner = chain
+                } else {
+                    guard let slotOwner = Chain.all.first(where: { $0.addressSlot == slot }) else { return nil }
+                    owner = slotOwner
+                }
                 let networkPath = seedDerivationPaths.path(for: owner)
                 return WalletAddress(chainId: owner, address: address, kind: "receive", derivationPath: networkPath.isEmpty ? nil : networkPath)
             })

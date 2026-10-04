@@ -6,23 +6,40 @@ Delete an item once it is done; what changed belongs in
 
 ## Tasks
 
+- [ ] **Decode complete actual OP Stack receipt fees.** World Chain and the
+  other registry-marked OP Stack networks reserve reviewed execution, L1 data
+  and applicable operator fees before signing and broadcasting. Their receipts
+  currently expose only execution gas to the service, so confirmed receipt cost
+  details are intentionally omitted rather than label a subtotal as the total
+  network fee. Extend the existing `evm_json_rpc` receipt decoder using verified
+  historical L1/operator fields and the network's deployed fee model; require
+  all applicable components before publishing a total. Missing components must
+  remain unknown, not become zero. Cover success and revert receipts, older
+  fee models and absent/malformed data through the service and CLI. The reviewed
+  maximum budget is an estimate and cannot stand in for actual confirmed cost.
 - [ ] **Certify the 59 token contract identities still missing primary evidence.**
   The [exact deployment list](#token-contract-provenance-59-deployments)
   contains nine stablecoin and 50 other EVM deployments from the token audit.
   Prove each network/address pair from the issuer or official bridge, including
   proxy and issuance identity; retain pinned source evidence and a dated RPC
   cross-check. Code, symbol and decimals alone cannot certify an issuer.
-- [ ] **Support Plasma and add EURC and USDC deployments.** Plasma is not
-  yet in the chain registry. Once supported, add `euro-coin` (EURC) at
-  `0x3EE196E78d4d4248b849B8E1C7F44C5457FAFD2C` and `usd-coin` (USDC)
-  at `0x2d661C89D812261039AF9764eceaAee884f5F67F`, both ERC-20 with
-  6 decimals. [Circle's launch announcement](https://www.circle.com/blog/now-available-usdc-eurc-cctp-and-bridge-kit-on-plasma)
-  identifies both as native Circle-issued tokens, and live Plasma RPC
-  reads confirmed their precision. The user requested recording these
-  addresses here before adding Plasma chain support.
-- [ ] **Support Monad and add its CAKE deployment.** Monad is not yet in the
-  chain registry. Once supported, add a deployment of `pancakeswap-token`
-  (CAKE) at `0xF59D81cd43f620E722E07f9Cb3f6E41B031017a3`.
+- [ ] **Add Monad address history and automatic token discovery.** Monad
+  mainnet, native MON, CAKE and USDC are supported, but its catalog does not
+  claim an address indexer. On 2026-10-04, Routescan's chain-143 account
+  `txlist` returned `chain not supported`; the public Etherscan v2 account
+  API returned `Missing/Invalid API Key`. The
+  [official provider directory](https://docs.monad.xyz/tooling-and-infra/indexers/common-data)
+  lists SQD's public Portal. Its Monad dataset at
+  `https://portal.sqd.dev/datasets/monad-mainnet` answered `/metadata`,
+  `/head` and a bounded two-block `/stream` read without a key. See
+  [the dataset](https://docs.sqd.dev/en/data/evm/monad-mainnet) and
+  [stream schema](https://docs.sqd.dev/en/api/evm/stream). Integrating this
+  JSONL block-range API needs its own core API adapter and explicit scan,
+  pagination and history-completeness rules; it cannot be configured as an
+  Etherscan-style account indexer. Design token discovery from indexed
+  transfers plus current on-chain balances, and only declare capabilities
+  after adapter and CLI coverage. The present RPCs still read tracked token
+  balances and verify submitted transaction receipts.
 - [ ] **Canonicalize TON token master account identity.** The same jetton
   master can be supplied as raw, bounceable-friendly or non-bounceable-friendly
   addresses. Token identity currently preserves those spellings, while the
