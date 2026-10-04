@@ -50,7 +50,10 @@ with_journal() { local journal="$1"; shift; SPECTRA_LOOPBACK_ONLY="$journal" "$@
 source "$(dirname "$0")/cli-assertions.sh"
 
 check "transparent transaction stages" 0 python3 "$(dirname "$0")/cli-send-stages.py" "$BIN"
+check "Polkadot Asset Hub transfers and finalized outcomes" 0 python3 "$(dirname "$0")/cli-send-polkadot.py" "$BIN"
 check "UTXO recipients preserve output script types" 0 python3 "$(dirname "$0")/cli-send-utxo.py" "$BIN"
+check "Litecoin SegWit recovery and durable signing" 0 python3 "$(dirname "$0")/cli-litecoin.py" "$BIN"
+check "XRP signing and protocol validation" 0 python3 "$(dirname "$0")/cli-send-xrp.py" "$BIN"
 check "wallet deletion preserves keys and retries cleanup" 0 python3 "$(dirname "$0")/cli-wallet-deletion.py" "$BIN"
 
 
@@ -603,10 +606,12 @@ lacks "a Bitcoin wallet stores no testnet4 address" '"bitcoin-testnet-4"' \
     spectra --json wallet show "Multi 1"
 lacks "and no signet one" '"bitcoin-signet"' spectra --json wallet show "Multi 1"
 contains "the mainnet address is the primary" 'bc1q' spectra --json wallet show "Multi 1"
-# The EVM family shares one address, and Ethereum Classic has a slot of its own
-# holding the same key — so an Ethereum wallet answers on both.
-contains "an EVM wallet fills the Ethereum Classic slot too" '"ethereum-classic"' \
+# Alternate EVM signing uses the wallet's actual address and path; there is no
+# second persisted address carrying another network's default path.
+lacks "an EVM wallet stores no duplicate Ethereum Classic slot" '"ethereum-classic"' \
     spectra --json wallet show "Multi 2"
+check "its own signing key also resolves on Ethereum Classic" $OK \
+    spectra send identity --from "Multi 2" --chain "Ethereum Classic"
 # A chain the wallet was never imported for has no address, and no seed is read
 # to invent one.
 check "a Solana wallet holds no Bitcoin address" $OK \

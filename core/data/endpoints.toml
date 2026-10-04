@@ -31,6 +31,52 @@
 # (`Chain::endpoint_apis`) and uses all of them. A dead endpoint costs no
 # time, only a wasted request per call. Run `spectra endpoints` to find them.
 
+# Mainnet read methods verified 2026-10-04: identity, balances, pending
+# nonce, fee history, type-2 gas estimation, receipts and ERC-20 metadata.
+[[endpoints]]
+id = "plasma.rpc.official"
+api = "evm-json-rpc"
+chain_id = "plasma"
+endpoint = "https://rpc.plasma.to"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+# Keyless account methods answer; native history agrees with RPC receipts.
+[[endpoints]]
+id = "plasma.history.routescan"
+api = "blockscout"
+chain_id = "plasma"
+endpoint = "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "monad.rpc.quicknode"
+api = "evm-json-rpc"
+chain_id = "monad"
+endpoint = "https://rpc.monad.xyz"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "monad.rpc.alchemy"
+api = "evm-json-rpc"
+chain_id = "monad"
+endpoint = "https://rpc1.monad.xyz"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "world-chain.rpc.alchemy"
+api = "evm-json-rpc"
+chain_id = "world-chain"
+endpoint = "https://worldchain-mainnet.g.alchemy.com/public"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+# The keyless account txlist, tokentx and tokenlist methods all answer.
+[[endpoints]]
+id = "world-chain.history.blockscout"
+api = "blockscout"
+chain_id = "world-chain"
+endpoint = "https://worldchain-mainnet.explorer.alchemy.com"
+capabilities = ["history", "token-history", "token-discovery"]
+
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
 api = "esplora"
@@ -461,33 +507,31 @@ endpoint = "https://api-testnet.nearblocks.io/v1"
 capabilities = ["history"]
 
 [[endpoints]]
-id = "polkadot.rpc.onfinality"
+id = "polkadot.asset-hub.rpc.dwellir"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
-endpoint = "https://polkadot.api.onfinality.io/public"
+endpoint = "https://asset-hub-polkadot-rpc.n.dwellir.com"
 capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
-id = "polkadot.rpc.official"
+id = "polkadot.asset-hub.rpc.official"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
-endpoint = "https://rpc.polkadot.io"
-# The official node, which was not in this file while two of the three
-# listed for Polkadot were dead.
+endpoint = "https://polkadot-asset-hub-rpc.polkadot.io"
 capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
-id = "polkadot.rpc.publicnode"
+id = "polkadot.asset-hub.rpc.onfinality"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
-endpoint = "https://polkadot-rpc.publicnode.com"
+endpoint = "https://statemint.api.onfinality.io/public"
 capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
 
 [[endpoints]]
 id = "polkadot.westend.rpc.official"
 api = "substrate-json-rpc"
 chain_id = "polkadot-westend"
-endpoint = "https://westend-rpc.polkadot.io"
+endpoint = "https://westend-asset-hub-rpc.polkadot.io"
 capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]

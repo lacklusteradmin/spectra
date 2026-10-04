@@ -132,6 +132,9 @@ impl WalletService {
                             "Prepared nonce or network is stale; build and review again",
                         ));
                     }
+                    this.validate_evm_fee_budget(chain, p).await?;
+                    this.validate_evm_funds(chain, &signer.from_address, p)
+                        .await?;
                     let key = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                     let raw = p.sign(&key)?;
                     use sha3::Digest;
@@ -253,8 +256,21 @@ impl WalletService {
                 ));
             }
             self.validate_broadcast_endpoint(chain, endpoint).await?;
+            if let PreparedPayload::Polkadot(transaction) = &stored.prepared {
+                transaction
+                    .validate_for_submission(
+                        &SubstrateClient::new(Arc::new(vec![endpoint.clone()])),
+                        chain,
+                    )
+                    .await?;
+            }
         }
-        self.validate_signed_expiry(chain, &stored).await?;
+        if !matches!(&stored.prepared, PreparedPayload::Polkadot(_)) {
+            self.validate_signed_expiry(chain, &stored).await?;
+        }
+        if let PreparedPayload::Evm(transaction) = &stored.prepared {
+            self.validate_evm_fee_budget(chain, transaction).await?;
+        }
         stored.view.selected_endpoints = endpoints.clone();
         stored.view.revision += 1;
         self.save_send_artifact(&stored, Vec::new()).await?;
@@ -501,7 +517,10 @@ impl WalletService {
             } else {
                 (
                     request.to_address.clone(),
-                    crate::send::amount_input::parse_raw_amount(&request.amount_str, 18)?,
+                    crate::send::amount_input::parse_raw_amount(
+                        &request.amount_str,
+                        u32::from(chain.native_decimals()),
+                    )?,
                     Vec::new(),
                 )
             };
@@ -530,10 +549,25 @@ impl WalletService {
             self.prepare_staged_protocol(chain, &mut request, &sender)
                 .await?
         };
+        if let PreparedPayload::Evm(transaction) = &prepared {
+            let budget = transaction.maximum_fee_wei()?;
+            if let Some(reviewed) = &request.fee_amount {
+                let reviewed =
+                    crate::send::payload::fee_units(reviewed, u32::from(chain.native_decimals()))?;
+                if budget > u128::from(reviewed) {
+                    return Err(crate::send::error::SendError::invalid(
+                        "Network fee changed; build and review again",
+                    )
+                    .into());
+                }
+            }
+            self.validate_evm_funds(chain, &sender, transaction).await?;
+        }
         let signing_payload_hex = hex::encode(match &prepared {
             PreparedPayload::Evm(p) => p.signing_payload()?,
             PreparedPayload::Bitcoin(p) => hex::decode(&p.unsigned_hex)?,
             PreparedPayload::Icp(p) => hex::decode(&p.argument_hex)?,
+            PreparedPayload::Polkadot(p) => p.signing_payload()?,
             PreparedPayload::Solana(p) => p.message.clone(),
             PreparedPayload::Tron(p) => p.raw.clone(),
             PreparedPayload::Aptos(p) => p.message.clone(),
@@ -582,9 +616,90 @@ impl WalletService {
             prepared,
             submission: None,
             signed_digest: None,
+            substrate_verified_through: None,
         };
         stored.view.review_digest = stored.digest()?;
         self.save_send_artifact(&stored, Vec::new()).await?;
         Ok(stored.view)
+    }
+}
+
+impl WalletService {
+    async fn validate_evm_fee_budget(
+        &self,
+        chain: Chain,
+        transaction: &crate::send::evm::PreparedEvmTransaction,
+    ) -> Result<(), SpectraBridgeError> {
+        let fees = EvmClient::new(
+            self.endpoints_for(chain, &[EndpointCapability::Fee]).await,
+            chain.evm_chain_id()?,
+        );
+        let fresh_extra = fees
+            .fetch_rollup_fee(&transaction.signing_payload()?, transaction.gas_limit)
+            .await?;
+        if fresh_extra > transaction.additional_fee_wei {
+            return Err(crate::send::error::SendError::invalid(
+                "Network fee changed; build and review again",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    async fn validate_evm_funds(
+        &self,
+        chain: Chain,
+        sender: &str,
+        transaction: &crate::send::evm::PreparedEvmTransaction,
+    ) -> Result<(), SpectraBridgeError> {
+        use crate::send::error::SendError;
+        let client = EvmClient::new(
+            self.endpoints_for(chain, &[EndpointCapability::Balance])
+                .await,
+            chain.evm_chain_id()?,
+        );
+        let balance: u128 = client
+            .fetch_balance(sender)
+            .await?
+            .balance_wei
+            .parse()
+            .map_err(|_| SendError::invalid("invalid EVM balance"))?;
+        let needed = transaction
+            .value_wei
+            .checked_add(transaction.maximum_fee_wei()?)
+            .ok_or_else(|| SendError::invalid("EVM amount plus fee overflow"))?;
+        if balance < needed {
+            return Err(SendError::insufficient_funds().into());
+        }
+        // Inspect the transaction's actual transfer, including a calldata override.
+        // Other contract calls are simulated by eth_estimateGas and still need native gas.
+        if transaction
+            .data
+            .starts_with(&crate::api::evm_json_rpc::SEL_TRANSFER)
+        {
+            if transaction.data.len() != 68
+                || transaction.data[36..52].iter().any(|byte| *byte != 0)
+            {
+                return Err(SendError::invalid(
+                    "ERC-20 transfer amount exceeds u128 or calldata is malformed",
+                )
+                .into());
+            }
+            let amount =
+                u128::from_be_bytes(transaction.data[52..68].try_into().expect("ERC-20 amount"));
+            let client = EvmClient::new(
+                self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
+                    .await,
+                chain.evm_chain_id()?,
+            );
+            if client
+                .fetch_erc20_balance_of(&transaction.to, sender)
+                .await?
+                < amount
+            {
+                return Err(SendError::insufficient_funds().into());
+            }
+        }
+        Ok(())
     }
 }

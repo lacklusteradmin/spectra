@@ -306,7 +306,11 @@ impl WalletService {
                 }
                 .map(|preview| SendPreview::Utxo { preview })
             }
-            Chain::BitcoinCash | Chain::BitcoinSV | Chain::Litecoin => self
+            Chain::Litecoin => self
+                .preview_litecoin_owned_send(chain, &wallet_id, &amount, &destination)
+                .await?
+                .map(|preview| SendPreview::Utxo { preview }),
+            Chain::BitcoinCash | Chain::BitcoinSV => self
                 .fetch_utxo_fee_preview(chain, address, 0, destination)
                 .await?
                 .map(|preview| SendPreview::Utxo { preview }),
@@ -507,7 +511,10 @@ impl WalletService {
         }
         let fee_rate_svb = match &preview {
             Some(SendPreview::Utxo { preview })
-                if chain.mainnet_counterpart() == Chain::Bitcoin =>
+                if matches!(
+                    chain.mainnet_counterpart(),
+                    Chain::Bitcoin | Chain::Litecoin
+                ) =>
             {
                 Some(preview.estimatedFeeRateSatVb.to_string())
             }

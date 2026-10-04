@@ -413,13 +413,32 @@ pub fn donations(out: Out) -> CliResult<()> {
 
 pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = wallet.chain_id.mainnet_counterpart();
+    let chain = wallet.chain_id;
     let service = service_for_chain(ctx, chain, &[EndpointCapability::Balance])?;
 
-    let summary = ctx
-        .rt
-        .block_on(service.fetch_native_balance_summary(chain, wallet_address(&wallet).to_string()))
-        .map_err(CliError::from)?;
+    let summary = if chain.mainnet_counterpart() == Chain::Litecoin {
+        let updated = ctx
+            .rt
+            .block_on(service.refresh_wallet_balances(wallet.id.clone()))?;
+        let native = updated
+            .holdings
+            .iter()
+            .find(|holding| holding.chain_id == chain && holding.is_native())
+            .ok_or_else(|| CliError::failure("wallet has no native balance"))?;
+        spectra_core::service::NativeBalanceSummary {
+            amount_display: native.amount.clone(),
+            smallest_unit: spectra_core::decimal::to_units(
+                &native.amount,
+                u32::from(chain.native_decimals()),
+            )
+            .ok_or_else(|| CliError::failure("invalid native balance"))?
+            .to_string(),
+        }
+    } else {
+        ctx.rt.block_on(
+            service.fetch_native_balance_summary(chain, wallet_address(&wallet).to_string()),
+        )?
+    };
 
     out.text(|| {
         println!();

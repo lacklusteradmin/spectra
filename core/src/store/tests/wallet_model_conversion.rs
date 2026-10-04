@@ -17,7 +17,7 @@ fn bitcoin_wallet() -> WalletView {
         name: "Cold".to_string(),
         chain_id: crate::registry::Chain::BitcoinTestnet4,
         addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
-        bitcoin_xpub: Some("zpub123".to_string()),
+        account_xpub: Some("zpub123".to_string()),
         seed_derivation_preset: CoreSeedDerivationPreset::Account2,
         seed_derivation_paths: paths,
         derivation_overrides: CoreWalletDerivationOverrides {

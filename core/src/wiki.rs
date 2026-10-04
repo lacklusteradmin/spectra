@@ -211,14 +211,19 @@ mod the_wiki_is_one_asset_table {
         }
     }
 
-    /// ETH is one row over ten chains, not ten rows.
+    /// ETH is one row across Ethereum and its rollups.
     ///
     /// This is the whole point: the chain wiki had ten pages that were really
     /// about the networks, and no page about the coin.
     #[test]
-    fn a_coin_native_to_ten_chains_is_one_row() {
+    fn a_coin_native_to_many_chains_is_one_row() {
         let eth = asset("ethereum");
-        assert_eq!(eth.lives_on.len(), 10);
+        assert_eq!(eth.lives_on.len(), 11);
+        assert!(
+            eth.lives_on
+                .iter()
+                .any(|p| p.chain_id == crate::registry::Chain::WorldChain)
+        );
         assert!(eth.lives_on.iter().all(|p| p.is_native));
         assert!(eth.lives_on.iter().all(|p| p.contract.is_empty()));
         // Presented as its home chain, because native places sort first and

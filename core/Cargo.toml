@@ -12,6 +12,9 @@ secp256k1 = { version = "0.29", features = ["alloc", "global-context", "hashes",
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "digest", "fast", "pkcs8", "rand_core", "zeroize"] }
 curve25519-dalek = { version = "4", default-features = false, features = ["alloc", "precomputed-tables", "zeroize"] }
 schnorrkel = { version = "0.11", default-features = false, features = ["std"] }
+frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
+parity-scale-codec = "3"
+scale-info = "2"
 hmac = "0.12"
 sha2 = "0.10"
 bs58 = { version = "0.5", features = ["check"] }
@@ -24,10 +27,8 @@ data-encoding = "2"
 crc = "3"
 alloy-rlp = { version = "0.3", features = ["derive"] }
 bitcoin = { version = "0.32", features = ["rand-std"] }
-blake3 = "1"
 monero-wallet = "0.2"
 monero-daemon-rpc = "0.2"
-secp256k1zkp = { package = "grin_secp256k1zkp", version = "0.7" }
 aes-gcm = "0.10"
 zeroize = { version = "1", features = ["alloc", "derive"] }
 uniffi = { version = "0.31.2", features = ["tokio"] }

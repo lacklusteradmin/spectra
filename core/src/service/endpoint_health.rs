@@ -179,6 +179,22 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
 }
 
 pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool, String) {
+    if record.api == EndpointApi::SubstrateJsonRpc && chain.mainnet_counterpart() == Chain::Polkadot
+    {
+        return match crate::api::substrate_json_rpc::SubstrateClient::new(std::sync::Arc::new(
+            vec![record.endpoint.clone()],
+        ))
+        .polkadot_context(chain)
+        .await
+        {
+            Ok(_) => (
+                true,
+                true,
+                "Asset Hub genesis and runtime metadata verified".into(),
+            ),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
     let checks = match checks(chain, record) {
         Ok(checks) => checks,
         Err(error) => return (false, false, error.to_string()),

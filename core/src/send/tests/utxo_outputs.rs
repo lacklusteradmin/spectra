@@ -11,14 +11,15 @@ fn address(version: u8, hash: &[u8; 20]) -> String {
 
 fn signed_transaction(chain: Chain, to: &str) -> ::bitcoin::Transaction {
     let (version, _) = chain.fixed_utxo_address_versions().unwrap();
-    let sender = address(version, &[0x22; 20]);
+    let key = [1; 32];
+    let hash = sender_hash(&key);
+    let sender = address(version, &hash);
     let inputs = vec![(
         "11".repeat(32),
         0,
         100_000,
-        bitcoin_wire::p2pkh_script(&[0x22; 20]),
+        bitcoin_wire::p2pkh_script(&hash),
     )];
-    let key = [1; 32];
     let result = match chain.mainnet_counterpart() {
         Chain::BitcoinCash => {
             bitcoin_cash::sign_bch_tx(chain, &inputs, to, 50_000, 1_000, &sender, &key, None)
@@ -43,11 +44,19 @@ fn signed_transaction(chain: Chain, to: &str) -> ::bitcoin::Transaction {
             1_000,
             &sender,
             &key,
-            None,
         ),
         _ => panic!("unexpected chain"),
     };
     ::bitcoin::consensus::deserialize(&result.unwrap()).unwrap()
+}
+
+fn sender_hash(key: &[u8; 32]) -> [u8; 20] {
+    let secp = secp256k1::Secp256k1::new();
+    let public = secp256k1::PublicKey::from_secret_key(
+        &secp,
+        &secp256k1::SecretKey::from_slice(key).unwrap(),
+    );
+    ::bitcoin::hashes::hash160::Hash::hash(&public.serialize()).to_byte_array()
 }
 
 #[test]
@@ -74,7 +83,7 @@ fn every_fixed_utxo_signer_pays_the_recipient_script_type() {
             assert_eq!(tx.output[1].value.to_sat(), 49_000);
             assert_eq!(
                 tx.output[1].script_pubkey.as_bytes(),
-                bitcoin_wire::p2pkh_script(&[0x22; 20])
+                bitcoin_wire::p2pkh_script(&sender_hash(&[1; 32]))
             );
         }
     }

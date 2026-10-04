@@ -34,8 +34,8 @@ pub mod evm;
 pub(crate) mod icp_stages;
 pub mod kaspa;
 pub mod litecoin;
+pub(crate) mod litecoin_quote;
 pub(crate) mod monero_local;
-pub mod mweb;
 pub mod near;
 pub mod polkadot;
 pub mod solana;
@@ -421,45 +421,6 @@ mod tests {
                 raised.contains(&"ens_off_ethereum".to_string()),
                 expected,
                 "{} handled an ENS name wrongly",
-                chain.str_id()
-            );
-        }
-    }
-
-    /// The MWEB overhead belongs to Litecoin and to MWEB destinations only.
-    #[test]
-    fn only_litecoin_mweb_destinations_cost_extra_bytes() {
-        use crate::registry::Chain;
-
-        let mweb = "ltcmweb1qq0000000000000000000000000000000000000000000000000000000";
-        assert_eq!(Chain::Litecoin.extra_output_overhead_bytes(mweb), 1017);
-        // A testnet MWEB address on the same chain family, and the mainnet
-        // prefix on the testnet chain.
-        assert_eq!(
-            Chain::LitecoinTestnet.extra_output_overhead_bytes("tmweb1qq"),
-            1017
-        );
-        // A plain Litecoin address costs nothing extra.
-        assert_eq!(
-            Chain::Litecoin
-                .extra_output_overhead_bytes("ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
-            0
-        );
-        // The composer's badge asks the same rule.
-        assert!(crate::send::flow::is_extension_block_send_destination(
-            crate::registry::Chain::Litecoin,
-            mweb.into()
-        ));
-        assert!(!crate::send::flow::is_extension_block_send_destination(
-            crate::registry::Chain::Bitcoin,
-            mweb.into()
-        ));
-        // And no other chain charges it, whatever the destination looks like.
-        for chain in Chain::all().filter(|c| c.mainnet_counterpart() != Chain::Litecoin) {
-            assert_eq!(
-                chain.extra_output_overhead_bytes(mweb),
-                0,
-                "{} charged Litecoin's MWEB overhead",
                 chain.str_id()
             );
         }

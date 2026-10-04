@@ -768,6 +768,7 @@ mod tests {
                 format!("0x{}", "22".repeat(20)),
                 "1".into(),
                 "0x".into(),
+                Default::default(),
             )
             .await
             .unwrap();

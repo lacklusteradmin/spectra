@@ -4,6 +4,17 @@ use crate::send::error::SendError;
 
 use crate::derivation::xrp::decode_xrp_address;
 
+/// XRP's native amount encoding reserves its high bits for asset/sign flags.
+/// The protocol also caps XRP amounts to the original supply, 10^17 drops.
+pub(crate) fn validate_drops(drops: u128) -> Result<(), SendError> {
+    if !(1..=100_000_000_000_000_000).contains(&drops) {
+        return Err(SendError::Invalid(
+            "XRP amount and fee must be positive and at most 100000000000 XRP".into(),
+        ));
+    }
+    Ok(())
+}
+
 // ── XRP binary codec (minimal — Payment only)
 
 /// Build and sign an XRP Payment transaction.
@@ -22,8 +33,15 @@ pub fn build_signed_payment(
     // Build signing payload (canonical field order per XRPL spec).
     let signing_prefix = hex::decode("53545800").unwrap(); // "STX\x00"
 
-    let unsigned_fields =
-        encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
+    let unsigned_fields = encode_payment_fields(
+        from,
+        to,
+        amount_drops,
+        fee_drops,
+        sequence,
+        public_key_hex,
+        None,
+    )?;
 
     let mut signing_payload = signing_prefix.clone();
     signing_payload.extend_from_slice(&unsigned_fields);
@@ -36,23 +54,21 @@ pub fn build_signed_payment(
         .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let sig = secp.sign_ecdsa(&msg, &secret_key);
     let der_sig = sig.serialize_der();
-    let sig_hex = hex::encode_upper(der_sig.as_ref());
-
-    // Rebuild with TxnSignature field inserted (field 16, type 7 = VL).
-    let signed_fields = encode_payment_fields_signed(
+    // TxnSignature is a Blob (type 7, field 4), before AccountID fields.
+    let signed_fields = encode_payment_fields(
         from,
         to,
         amount_drops,
         fee_drops,
         sequence,
         public_key_hex,
-        &sig_hex,
+        Some(der_sig.as_ref()),
     )?;
 
     Ok(hex::encode_upper(&signed_fields))
 }
 
-/// Encode the canonical Payment STObject fields (without TxnSignature).
+/// Encode the canonical Payment STObject, optionally including its signature.
 fn encode_payment_fields(
     from: &str,
     to: &str,
@@ -60,7 +76,10 @@ fn encode_payment_fields(
     fee_drops: u64,
     sequence: u32,
     public_key_hex: &str,
+    signature: Option<&[u8]>,
 ) -> Result<Vec<u8>, SendError> {
+    validate_drops(u128::from(amount_drops))?;
+    validate_drops(u128::from(fee_drops))?;
     let mut out = Vec::new();
     // TransactionType = 0 (Payment), field 2, type 1 (UInt16)
     out.extend_from_slice(&[0x12, 0x00, 0x00]);
@@ -83,6 +102,11 @@ fn encode_payment_fields(
     let pk_bytes = hex::decode(public_key_hex)
         .map_err(|e| SendError::Invalid(format!("pubkey hex: {e}").into()))?;
     push_vl(&mut out, &pk_bytes);
+    if let Some(signature) = signature {
+        // TxnSignature, field 4, type 7 (VL)
+        out.push(0x74);
+        push_vl(&mut out, signature);
+    }
     // Account (from), field 1, type 8 (AccountID)
     out.push(0x81);
     let from_bytes = decode_xrp_address(from)?;
@@ -91,25 +115,6 @@ fn encode_payment_fields(
     out.push(0x83);
     let to_bytes = decode_xrp_address(to)?;
     push_vl(&mut out, &to_bytes);
-    Ok(out)
-}
-
-fn encode_payment_fields_signed(
-    from: &str,
-    to: &str,
-    amount_drops: u64,
-    fee_drops: u64,
-    sequence: u32,
-    public_key_hex: &str,
-    sig_hex: &str,
-) -> Result<Vec<u8>, SendError> {
-    let mut out =
-        encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
-    // TxnSignature, field 4, type 7
-    out.push(0x74);
-    let sig_bytes =
-        hex::decode(sig_hex).map_err(|e| SendError::Invalid(format!("sig hex: {e}").into()))?;
-    push_vl(&mut out, &sig_bytes);
     Ok(out)
 }
 
@@ -133,3 +138,7 @@ fn sha512_half(data: &[u8]) -> [u8; 32] {
     out.copy_from_slice(&hash[..32]);
     out
 }
+
+#[cfg(test)]
+#[path = "tests/xrp.rs"]
+mod tests;

@@ -73,7 +73,7 @@ tx_url = "https://nearblocks.io/txns/{hash}"
 [[explorers]]
 chain_id = "polkadot"
 name = "Subscan"
-tx_url = "https://polkadot.subscan.io/extrinsic/{hash}"
+tx_url = "https://assethub-polkadot.subscan.io/extrinsic/{hash}"
 
 [[explorers]]
 chain_id = "stellar"
@@ -234,6 +234,21 @@ tx_url = "https://www.okx.com/web3/explorer/xlayer/tx/{hash}"
 chain_id = "bittensor"
 name = "Taostats"
 tx_url = "https://taostats.io/extrinsic/{hash}"
+
+[[explorers]]
+chain_id = "plasma"
+name = "PlasmaScan"
+tx_url = "https://plasmascan.to/tx/{hash}"
+
+[[explorers]]
+chain_id = "monad"
+name = "Monadscan"
+tx_url = "https://monadscan.com/tx/{hash}"
+
+[[explorers]]
+chain_id = "world-chain"
+name = "Worldscan"
+tx_url = "https://worldscan.org/tx/{hash}"
 
 # Testnets
 
@@ -420,7 +435,7 @@ tx_url = "https://testnet.nearblocks.io/txns/{hash}"
 [[explorers]]
 chain_id = "polkadot-westend"
 name = "Subscan"
-tx_url = "https://westend.subscan.io/extrinsic/{hash}"
+tx_url = "https://assethub-westend.subscan.io/extrinsic/{hash}"
 
 [[explorers]]
 chain_id = "monero-stagenet"

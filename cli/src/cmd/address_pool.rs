@@ -57,7 +57,7 @@ pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
 /// so the loop is here and the phrase does not leave the crate.
 fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = wallet.chain_id.mainnet_counterpart();
+    let chain = wallet.chain_id;
     let service = super::chain::service_for_chain(
         ctx,
         chain,

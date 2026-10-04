@@ -252,14 +252,13 @@ const MAX_EVM_PAGE_SIZE: u32 = 500;
 
 /// The tokens this chain's history should decode, as the user has them.
 fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::TokenDescriptor> {
-    let hosting = chain.mainnet_counterpart();
-    if !hosting.hosts_tokens() {
+    if !chain.hosts_tokens() {
         return Vec::new();
     }
     state
         .token_preferences
         .iter()
-        .filter(|entry| entry.hosting_chain() == Some(hosting))
+        .filter(|entry| entry.hosting_chain() == Some(chain))
         .filter_map(|entry| {
             let contract = crate::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),
@@ -294,13 +293,17 @@ impl WalletService {
             let state = self.app_state().await;
             let targets = targets(&state, chain, &wallet_ids);
             let groups = evm_history_groups(&targets, load_more);
+            let mut descriptors = std::collections::HashMap::new();
             let mut names = std::collections::HashMap::new();
             let mut networks = std::collections::HashMap::new();
             for target in targets {
+                descriptors
+                    .entry(target.network)
+                    .or_insert_with(|| token_descriptors(&state, target.network));
                 networks.insert(target.wallet_id.clone(), target.network);
                 names.insert(target.wallet_id, target.wallet_name);
             }
-            (groups, token_descriptors(&state, chain), names, networks)
+            (groups, descriptors, names, networks)
         };
         if groups.is_empty() {
             return Ok(HistoryRefreshOutcome::nothing());
@@ -343,13 +346,13 @@ impl WalletService {
                 .fetch_evm_history_page(
                     network,
                     normalized_address.clone(),
-                    descriptors.clone(),
+                    descriptors.get(&network).cloned().unwrap_or_default(),
                     page,
                     page_size,
                 )
                 .await;
-            let decoded = match fetched {
-                Ok(decoded) => decoded,
+            let fetched = match fetched {
+                Ok(fetched) => fetched,
                 Err(error) => {
                     wallets_failed += group_wallet_ids.len() as u32;
                     exhausted = false;
@@ -366,10 +369,10 @@ impl WalletService {
                     continue;
                 }
             };
+            let decoded = fetched.decoded;
             wallets_refreshed += group_wallet_ids.len() as u32;
             let token_count = decoded.tokens.len() as u32;
-            let is_last_page = decoded.tokens.len() < page_size as usize
-                && decoded.native.len() < page_size as usize;
+            let is_last_page = fetched.exhausted;
             exhausted = exhausted && is_last_page;
             for wallet_id in &group_wallet_ids {
                 cursor_updates.push((wallet_id.clone(), page, is_last_page));

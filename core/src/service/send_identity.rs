@@ -8,6 +8,7 @@ pub(super) struct ResolvedSendIdentity {
     pub from_address: String,
     pub private_key_hex: Zeroizing<String>,
     pub public_key_hex: Option<String>,
+    pub litecoin_sources: Vec<super::send_stage_litecoin::LitecoinSigningSource>,
 }
 
 fn invalid(message: &str) -> SpectraBridgeError {
@@ -65,21 +66,31 @@ impl WalletService {
         let secrets = self.secrets()?;
         let material = load_signing_material(&*secrets, wallet_id, password)
             .map_err(|error| invalid(&error.to_string()))?;
+        let litecoin_sources = if chain.mainnet_counterpart() == Chain::Litecoin {
+            sensitive_overrides.0.validate_for_chain(chain)?;
+            self.resolve_litecoin_signing_sources(&wallet, chain, &material, &sensitive_overrides)
+                .await?
+        } else {
+            Vec::new()
+        };
         let (derived, private_key_hex) = match material {
             SigningMaterial::Mnemonic(seed) => {
                 let defaults =
                     crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
+                let owner = if wallet.chain_id.is_evm() && chain.is_evm() {
+                    wallet.chain_id
+                } else {
+                    chain
+                };
                 let path = wallet
-                    .addresses
-                    .iter()
-                    .find(|a| a.chain_id.address_slot() == chain.address_slot())
+                    .address_record_on(chain)
                     .and_then(|a| a.derivation_path.as_deref())
                     .or_else(|| {
-                        (wallet.chain_id == chain)
+                        (wallet.chain_id == owner)
                             .then_some(wallet.derivation_path.as_deref())
                             .flatten()
                     })
-                    .or_else(|| defaults.path_for(chain))
+                    .or_else(|| defaults.path_for(owner))
                     .unwrap_or_default();
                 let path = crate::derivation::path::resolve_derivation_path(id, path.into())?;
                 let overrides = &sensitive_overrides.0;
@@ -143,6 +154,7 @@ impl WalletService {
             from_address,
             private_key_hex,
             public_key_hex: derived.public_key_hex,
+            litecoin_sources,
         })
     }
 }

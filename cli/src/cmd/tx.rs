@@ -1242,14 +1242,9 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
     if let Some(name) = &args.poll_chain {
         let chain = resolve_chain(name)?;
         // A maintenance request names the stored transaction network.
-        let network = chain;
-        let service = WalletService::new(
-            spectra_core::service::catalog_endpoints()?
-                .into_iter()
-                .filter(|row| row.chain_id == network)
-                .collect(),
-        )
-        .map_err(CliError::from)?;
+        // Keep catalog transport mode so persisted custom nodes are
+        // available. The poll itself still targets only this stored network.
+        let service = WalletService::new_catalog().map_err(CliError::from)?;
         ctx.rt
             .block_on(service.open_state(ctx.db_path()))
             .map_err(CliError::from)?;

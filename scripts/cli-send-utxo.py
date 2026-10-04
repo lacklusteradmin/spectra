@@ -135,7 +135,8 @@ try:
                 counter += 1
                 fixture['txid'] = f'{counter:064x}'
                 artifact = run('send', 'build', '--from', chain, '--to', recipient, '--amount', '0.001', '--endpoint', endpoint)['artifact']
-                prepared = json.loads(artifact['prepared_details'])['FixedUtxo']
+                kind = 'Litecoin' if chain.startswith('litecoin') else 'FixedUtxo'
+                prepared = json.loads(artifact['prepared_details'])[kind]
                 assert bytes(prepared['recipient_script']).hex() == script, (chain, recipient, prepared)
                 signed = run('send', 'sign', artifact['id'], '--review-digest', artifact['review_digest'], '--endpoint', endpoint)['artifact']
                 assert outputs(signed['signed_payload'])[0] == (100000, script), (chain, recipient, signed)

@@ -1,6 +1,43 @@
 //! Network balance: service adapters and dispatch.
 use super::*;
 
+impl WalletService {
+    /// Recovery and receive reservations add addresses to the same wallet.
+    /// Its native balance includes every owned transparent Litecoin address.
+    pub(super) async fn litecoin_wallet_balance(
+        &self,
+        wallet_id: &str,
+        chain: Chain,
+    ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
+        use futures::stream::{self, StreamExt, TryStreamExt};
+        let addresses = self.known_utxo_addresses(wallet_id.into(), chain).await?;
+        let client = self
+            .utxo_client(chain, &[EndpointCapability::Balance])
+            .await;
+        let total = stream::iter(addresses)
+            .map(|address| {
+                let client = &client;
+                async move { client.fetch_balance(&address).await }
+            })
+            .buffered(4)
+            .try_fold(0u64, |sum, balance| async move {
+                sum.checked_add(balance.confirmed_sats).ok_or_else(|| {
+                    crate::api::error::ApiError::InvalidInput("Litecoin balance overflow".into())
+                })
+            })
+            .await?;
+        if total > chain.litecoin_max_money()? {
+            return Err(SpectraBridgeError::invalid(
+                "Litecoin balance exceeds MAX_MONEY",
+            ));
+        }
+        Ok(NativeBalanceSummary {
+            smallest_unit: total.to_string(),
+            amount_display: crate::decimal::from_units(u128::from(total), 8),
+        })
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Unified per-chain native balance summary, replacing chain-specific JSON
@@ -139,11 +176,13 @@ async fn single_api_balance(
             let width = chain.substrate_balance_bytes().ok_or_else(|| {
                 SpectraBridgeError::failure("no Substrate balance layout for this chain")
             })?;
-            SubstrateClient::new(endpoints)
-                .fetch_balance(&account, width)
-                .await?
-                .transferable()
-                .to_string()
+            let client = SubstrateClient::new(endpoints);
+            let balance = if chain.mainnet_counterpart() == Chain::Polkadot {
+                client.polkadot_balance(chain, &account).await?
+            } else {
+                client.fetch_balance(&account, width).await?
+            };
+            balance.transferable().to_string()
         }
         Api::SuiJsonRpc => SuiClient::new(endpoints)
             .fetch_balance(address)

@@ -7,6 +7,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::api::http::HttpClient;
+use crate::registry::Chain;
+
+mod metadata;
+pub use metadata::{PolkadotExtension, PolkadotRuntime};
+
+const SYSTEM_EVENTS_KEY: &str =
+    "0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
+
+pub struct PolkadotContext {
+    pub runtime: PolkadotRuntime,
+    pub block_hash: String,
+    pub finalized_number: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SubstrateFinalizedOutcome {
+    pub succeeded: bool,
+    pub block_number: u64,
+}
 
 /// `twox128("System") ++ twox128("Account")`: the storage prefix of every
 /// account record, fixed by the pallet and item names.
@@ -29,6 +48,13 @@ impl SubstrateBalance {
     pub fn transferable(self) -> u128 {
         self.free
             .saturating_sub(self.frozen.saturating_sub(self.reserved))
+    }
+
+    /// `Balances::reducible_balance(Preserve, Polite)`: retain the larger
+    /// of the existential deposit and the freeze not covered by reserves.
+    pub fn keep_alive_spendable(self, existential_deposit: u128) -> u128 {
+        self.free
+            .saturating_sub(existential_deposit.max(self.frozen.saturating_sub(self.reserved)))
     }
 }
 
@@ -128,23 +154,15 @@ impl SubstrateClient {
         let result = self
             .rpc_call("system_accountNextIndex", json!([address]))
             .await?;
-        result
+        let value = result
             .as_u64()
-            .map(|n| n as u32)
-            .or_decode("system_accountNextIndex: expected number")
+            .or_decode("system_accountNextIndex: expected number")?;
+        u32::try_from(value).map_err(ApiError::decode)
     }
 
     pub async fn fetch_runtime_version(&self) -> Result<(u32, u32), ApiError> {
         let result = self.rpc_call("state_getRuntimeVersion", json!([])).await?;
-        let spec_version = result
-            .get("specVersion")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
-        let tx_version = result
-            .get("transactionVersion")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
-        Ok((spec_version, tx_version))
+        decode_runtime_version(&result)
     }
 
     pub async fn fetch_genesis_hash(&self) -> Result<String, ApiError> {
@@ -168,12 +186,238 @@ impl SubstrateClient {
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;
-        let txid = result.as_str().unwrap_or("").to_string();
+        let txid = decode_hash(&result)?;
+        let expected = blake2_hash(&decode_hex(hex)?);
+        if txid != expected {
+            return Err(ApiError::Decode(
+                "Node returned a different extrinsic hash".into(),
+            ));
+        }
         Ok(SubstrateSendResult {
             txid,
             extrinsic_hex: hex.to_string(),
         })
     }
+
+    pub async fn verify_polkadot_genesis(&self, chain: Chain) -> Result<String, ApiError> {
+        let expected = chain
+            .substrate_genesis_hash()
+            .or_decode("Missing Asset Hub network identity")?;
+        let actual = decode_hash(&self.rpc_call("chain_getBlockHash", json!([0])).await?)?;
+        if actual != expected {
+            return Err(ApiError::invalid(
+                "Endpoint is on the wrong Asset Hub network",
+            ));
+        }
+        Ok(actual)
+    }
+
+    /// Call on a single endpoint so the metadata, storage and quote share one
+    /// network and one explicitly pinned state, even while a runtime upgrades.
+    pub async fn polkadot_context(&self, chain: Chain) -> Result<PolkadotContext, ApiError> {
+        let genesis_hash = self.verify_polkadot_genesis(chain).await?;
+        let block_hash = decode_hash(&self.rpc_call("chain_getBlockHash", json!([])).await?)?;
+        let version = self
+            .rpc_call("state_getRuntimeVersion", json!([block_hash]))
+            .await?;
+        let (spec_version, transaction_version) = decode_runtime_version(&version)?;
+        let raw = self
+            .rpc_call("state_getMetadata", json!([block_hash]))
+            .await?;
+        let bytes = decode_hex(raw.as_str().or_decode("Missing runtime metadata")?)?;
+        let metadata = metadata::Metadata::decode(&bytes)?;
+        let (transfer_pallet, transfer_call, existential_deposit, extensions) =
+            metadata.contract()?;
+        let (_, finalized_number) = self.finalized_head().await?;
+        Ok(PolkadotContext {
+            runtime: PolkadotRuntime {
+                spec_version,
+                transaction_version,
+                genesis_hash,
+                metadata_hash: blake2_hash(&bytes),
+                transfer_pallet,
+                transfer_call,
+                existential_deposit,
+                extensions,
+            },
+            block_hash,
+            finalized_number,
+        })
+    }
+
+    pub async fn fetch_balance_at(
+        &self,
+        account: &[u8; 32],
+        block_hash: &str,
+    ) -> Result<SubstrateBalance, ApiError> {
+        let value = self
+            .rpc_call(
+                "state_getStorage",
+                json!([system_account_key(account), block_hash]),
+            )
+            .await?;
+        match value {
+            Value::Null => Ok(SubstrateBalance {
+                free: 0,
+                reserved: 0,
+                frozen: 0,
+            }),
+            Value::String(hex) => decode_account_info(&decode_hex(&hex)?, 16),
+            _ => Err(ApiError::Decode("Invalid System.Account storage".into())),
+        }
+    }
+
+    pub async fn polkadot_balance(
+        &self,
+        chain: Chain,
+        account: &[u8; 32],
+    ) -> Result<SubstrateBalance, ApiError> {
+        crate::api::http::race(&self.rpc_endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            let context = node.polkadot_context(chain).await?;
+            node.fetch_balance_at(account, &context.block_hash).await
+        })
+        .await
+    }
+
+    pub async fn query_fee(&self, extrinsic: &[u8], block_hash: &str) -> Result<u128, ApiError> {
+        let value = self
+            .rpc_call(
+                "payment_queryInfo",
+                json!([format!("0x{}", hex::encode(extrinsic)), block_hash]),
+            )
+            .await?;
+        let fee = value["partialFee"]
+            .as_str()
+            .or_decode("Missing Asset Hub fee quote")?
+            .parse::<u128>()
+            .map_err(ApiError::decode)?;
+        if fee == 0 {
+            return Err(ApiError::Decode("Invalid zero Asset Hub fee quote".into()));
+        }
+        Ok(fee)
+    }
+
+    pub async fn finalized_head(&self) -> Result<(String, u64), ApiError> {
+        let hash = decode_hash(&self.rpc_call("chain_getFinalizedHead", json!([])).await?)?;
+        let header = self.rpc_call("chain_getHeader", json!([hash])).await?;
+        let number = parse_block_number(&header["number"])?;
+        Ok((hash, number))
+    }
+
+    /// Scan a bounded contiguous range of finalized blocks. The returned
+    /// cursor is safe to persist; an error never skips unverified blocks.
+    pub async fn finalized_outcome(
+        &self,
+        chain: Chain,
+        transaction_hash: &str,
+        after: u64,
+        limit: u64,
+    ) -> Result<(Option<SubstrateFinalizedOutcome>, u64), ApiError> {
+        self.verify_polkadot_genesis(chain).await?;
+        let expected = decode_hash(&Value::String(transaction_hash.to_string()))?;
+        let (_, finalized) = self.finalized_head().await?;
+        let end = finalized.min(after.saturating_add(limit));
+        if end <= after {
+            return Ok((None, after));
+        }
+        for number in after + 1..=end {
+            let hash = decode_hash(&self.rpc_call("chain_getBlockHash", json!([number])).await?)?;
+            let block = self.rpc_call("chain_getBlock", json!([hash])).await?;
+            if parse_block_number(&block["block"]["header"]["number"])? != number {
+                return Err(ApiError::Decode(
+                    "Finalized block number does not match request".into(),
+                ));
+            }
+            let extrinsics = block["block"]["extrinsics"]
+                .as_array()
+                .or_decode("Missing finalized extrinsics")?;
+            let mut found = None;
+            for (index, extrinsic) in extrinsics.iter().enumerate() {
+                if blake2_hash(&decode_hex(
+                    extrinsic
+                        .as_str()
+                        .or_decode("Invalid finalized extrinsic")?,
+                )?) == expected
+                {
+                    found = Some(u32::try_from(index).map_err(ApiError::decode)?);
+                    break;
+                }
+            }
+            if let Some(index) = found {
+                // The parent state contains the runtime which executed this
+                // block, including a block that installs a runtime upgrade.
+                let parent = decode_hash(&block["block"]["header"]["parentHash"])?;
+                let raw = self.rpc_call("state_getMetadata", json!([parent])).await?;
+                let metadata = metadata::Metadata::decode(&decode_hex(
+                    raw.as_str().or_decode("Missing block runtime metadata")?,
+                )?)?;
+                let events = self
+                    .rpc_call("state_getStorage", json!([SYSTEM_EVENTS_KEY, hash]))
+                    .await?;
+                let succeeded = metadata.dispatch_outcome(
+                    &decode_hex(
+                        events
+                            .as_str()
+                            .or_decode("Missing finalized dispatch events")?,
+                    )?,
+                    index,
+                )?;
+                return Ok((
+                    Some(SubstrateFinalizedOutcome {
+                        succeeded,
+                        block_number: number,
+                    }),
+                    number,
+                ));
+            }
+        }
+        Ok((None, end))
+    }
+}
+
+fn decode_runtime_version(value: &Value) -> Result<(u32, u32), ApiError> {
+    let number = |field| {
+        let value = value[field]
+            .as_u64()
+            .filter(|v| *v != 0)
+            .or_decode("Invalid Substrate runtime version")?;
+        u32::try_from(value).map_err(ApiError::decode)
+    };
+    Ok((number("specVersion")?, number("transactionVersion")?))
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, ApiError> {
+    Ok(hex::decode(
+        value
+            .strip_prefix("0x")
+            .or_decode("Missing SCALE hex prefix")?,
+    )?)
+}
+
+fn decode_hash(value: &Value) -> Result<String, ApiError> {
+    let bytes = decode_hex(
+        value
+            .as_str()
+            .or_decode("Missing Substrate block/transaction hash")?,
+    )?;
+    if bytes.len() != 32 {
+        return Err(ApiError::Decode("Invalid Substrate hash length".into()));
+    }
+    Ok(format!("0x{}", hex::encode(bytes)))
+}
+
+fn parse_block_number(value: &Value) -> Result<u64, ApiError> {
+    let text = value
+        .as_str()
+        .and_then(|s| s.strip_prefix("0x"))
+        .or_decode("Invalid Substrate block number")?;
+    u64::from_str_radix(text, 16).map_err(ApiError::decode)
+}
+
+fn blake2_hash(bytes: &[u8]) -> String {
+    use blake2::{Blake2b, Digest, digest::consts::U32};
+    format!("0x{}", hex::encode(Blake2b::<U32>::digest(bytes)))
 }
 
 #[cfg(test)]
@@ -232,3 +476,6 @@ mod account_tests {
         assert_eq!(covered.transferable(), 100);
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests;

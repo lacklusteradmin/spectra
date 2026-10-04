@@ -1,6 +1,13 @@
 //! Network history: service adapters and dispatch.
 use super::*;
 
+/// Pagination describes the provider page before unknown tokens are filtered.
+#[derive(Debug)]
+pub(crate) struct EvmHistoryPage {
+    pub decoded: crate::fetch::history_decode::EvmHistoryPageDecoded,
+    pub exhausted: bool,
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch history for `address` on `chain_id` and normalize the raw
@@ -58,14 +65,14 @@ impl WalletService {
     /// `tokens` lists the known tokens to include. Only transfers whose
     /// contract matches a known token are returned; pass an empty list to
     /// skip token transfers entirely.
-    pub async fn fetch_evm_history_page(
+    pub(crate) async fn fetch_evm_history_page(
         &self,
         chain_id: crate::registry::Chain,
         address: String,
         tokens: Vec<TokenDescriptor>,
         page: u32,
         page_size: u32,
-    ) -> Result<crate::fetch::history_decode::EvmHistoryPageDecoded, SpectraBridgeError> {
+    ) -> Result<EvmHistoryPage, SpectraBridgeError> {
         use crate::fetch::history_decode::{
             EvmHistoryPageDecoded, EvmNativeTransferItem, EvmTokenTransferItem,
         };
@@ -136,6 +143,9 @@ impl WalletService {
             })
             .await?
         };
+
+        let page_size = page_size.clamp(1, 500) as usize;
+        let exhausted = native_entries.len() < page_size && raw_tokens.len() < page_size;
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
@@ -212,9 +222,12 @@ impl WalletService {
             })
             .collect::<Result<Vec<_>, SpectraBridgeError>>()?;
 
-        Ok(EvmHistoryPageDecoded {
-            tokens: tokens_decoded,
-            native: native_decoded,
+        Ok(EvmHistoryPage {
+            decoded: EvmHistoryPageDecoded {
+                tokens: tokens_decoded,
+                native: native_decoded,
+            },
+            exhausted,
         })
     }
 }

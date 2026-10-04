@@ -12,11 +12,10 @@ mod fee_estimates_are_typed {
         let service = WalletService::new(Vec::new()).expect("service");
         // (chain, raw units, display)
         for (chain, raw, display) in [
-            (Chain::Solana, "5000", "0.000005"),     // 9 decimals
-            (Chain::Cardano, "170000", "0.17"),      // 6 decimals
-            (Chain::Sui, "1000", "0.000001"),        // 9 decimals
-            (Chain::Icp, "10000", "0.0001"),         // 8 decimals
-            (Chain::Polkadot, "160000000", "0.016"), // 10 decimals
+            (Chain::Solana, "5000", "0.000005"), // 9 decimals
+            (Chain::Cardano, "170000", "0.17"),  // 6 decimals
+            (Chain::Sui, "1000", "0.000001"),    // 9 decimals
+            (Chain::Icp, "10000", "0.0001"),     // 8 decimals
         ] {
             let fee = service.native_fee_estimate(chain).await.expect("fee");
             assert_eq!(fee.raw, raw, "{}", chain.str_id());
@@ -493,16 +492,17 @@ mod failed_reads {
             let preview = service
                 .fetch_evm_send_preview_json(
                     crate::registry::Chain::Ethereum,
-                    "from".into(),
-                    "to".into(),
+                    format!("0x{}", "11".repeat(20)),
+                    format!("0x{}", "22".repeat(20)),
                     "1".into(),
                     "0x".into(),
+                    Default::default(),
                 )
                 .await;
             if failed.is_empty() {
                 let value: serde_json::Value = serde_json::from_str(&preview.unwrap()).unwrap();
                 assert_eq!(value["nonce"], 7);
-                assert_eq!(value["gas_limit"], 30000);
+                assert_eq!(value["gas_limit"], 36000);
             } else {
                 assert!(preview.is_err(), "{failed}");
             }
@@ -512,10 +512,11 @@ mod failed_reads {
                     service
                         .fetch_evm_send_preview_json(
                             crate::registry::Chain::Ethereum,
-                            "from".into(),
-                            "to".into(),
+                            format!("0x{}", "11".repeat(20)),
+                            format!("0x{}", "22".repeat(20)),
                             value.into(),
-                            "0x".into()
+                            "0x".into(),
+                            Default::default(),
                         )
                         .await
                         .is_err()
@@ -647,6 +648,14 @@ mod a_preview_quotes_the_asset_it_moves {
             endpoints: vec![server.uri()],
         }])
         .unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "evm-owned-preview-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
         let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "tETH", None).await;
         {
             let mut state = service.wallet_state.write().await;
@@ -712,6 +721,7 @@ mod a_preview_quotes_the_asset_it_moves {
                 to,
                 value_wei.into(),
                 data_hex,
+                Default::default(),
             )
             .await
             .expect("preview");
@@ -1007,5 +1017,214 @@ mod fresh_destination_tests {
         .await
         .unwrap();
         assert!(verify_reviewed_destination(Chain::Ethereum, third, &new).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod evm_network_fee_budgets {
+    use super::*;
+    use crate::send::ethereum::EvmCustomFeeConfiguration;
+    use serde_json::Value;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+
+    const BALANCE: u128 = 1_000_000_000_000_000_000;
+    const L1_FEE: u128 = 100_000;
+    const OPERATOR_FEE: u128 = 200_000;
+
+    async fn node(gas: u64, failed_oracle: Option<&'static str>) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let body: Value = request.body_json().unwrap();
+                let answer = |call: &Value| {
+                    let result = match call["method"].as_str().unwrap() {
+                        "eth_getTransactionCount" => json!("0x7"),
+                        "eth_getBalance" => json!(format!("0x{BALANCE:x}")),
+                        "eth_estimateGas" => json!(format!("0x{gas:x}")),
+                        "eth_feeHistory" => json!({
+                            "baseFeePerGas": ["0x3b9aca00"], "reward": [["0x77359400"]]
+                        }),
+                        "eth_call" => {
+                            let data = call["params"][0]["data"].as_str().unwrap();
+                            let selector = &data[2..10];
+                            if failed_oracle == Some(selector) {
+                                return json!({"jsonrpc":"2.0", "id":call["id"],
+                                    "error":{"code":-32000, "message":"oracle unavailable"}});
+                            }
+                            if failed_oracle == Some("short-word") {
+                                json!("0x3e8")
+                            } else {
+                                let amount = match selector {
+                                    "f1c7a58b" => L1_FEE,
+                                    "275aedd2" => OPERATOR_FEE,
+                                    other => panic!("unexpected oracle selector {other}"),
+                                };
+                                json!(format!("0x{amount:064x}"))
+                            }
+                        }
+                        other => panic!("unexpected RPC {other}"),
+                    };
+                    json!({"jsonrpc":"2.0", "id":call["id"], "result":result})
+                };
+                ResponseTemplate::new(200).set_body_json(match body.as_array() {
+                    Some(batch) => json!(batch.iter().map(answer).collect::<Vec<_>>()),
+                    None => answer(&body),
+                })
+            })
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn service(server: &MockServer, chain: Chain) -> std::sync::Arc<WalletService> {
+        WalletService::new(vec![ChainEndpoints {
+            chain_id: chain,
+            capabilities: EndpointCapability::ALL.to_vec(),
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap()
+    }
+
+    async fn calls(server: &MockServer) -> Vec<Value> {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .flat_map(|request| {
+                let body: Value = request.body_json().unwrap();
+                match body {
+                    Value::Array(batch) => batch,
+                    call => vec![call],
+                }
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn monad_plain_transfers_and_contract_calls_reserve_their_actual_gas_policy() {
+        for (estimated_gas, expected_limit) in [(21_000, 21_000), (30_000, 32_250)] {
+            let server = node(estimated_gas, None).await;
+            let preview: Value = serde_json::from_str(
+                &service(&server, Chain::Monad)
+                    .fetch_evm_send_preview_json(
+                        Chain::Monad,
+                        format!("0x{}", "11".repeat(20)),
+                        format!("0x{}", "22".repeat(20)),
+                        "1000000000000000".into(),
+                        "0x".into(),
+                        Default::default(),
+                    )
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(preview["gas_limit"], expected_limit);
+            assert_eq!(
+                preview["estimated_fee_wei"],
+                (expected_limit * 4_000_000_000_u64).to_string()
+            );
+            assert_eq!(preview["additional_fee_wei"], "0");
+            assert!(
+                calls(&server)
+                    .await
+                    .iter()
+                    .all(|call| call["method"] != "eth_call")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn world_chain_custom_fee_preview_reserves_execution_l1_and_operator_fees() {
+        let server = node(30_000, None).await;
+        let preview = service(&server, Chain::WorldChain)
+            .fetch_evm_send_preview(
+                Chain::WorldChain,
+                format!("0x{}", "11".repeat(20)),
+                format!("0x{}", "22".repeat(20)),
+                "1000000000000000".into(),
+                "0x".into(),
+                None,
+                Some(EvmCustomFeeConfiguration {
+                    max_fee_per_gas_gwei: "5".into(),
+                    max_priority_fee_per_gas_gwei: "1".into(),
+                }),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let total = 36_000 * 5_000_000_000_u128 + L1_FEE + OPERATOR_FEE;
+        assert_eq!(preview.gasLimit, 36_000);
+        assert_eq!(preview.maxFeePerGasGwei, "5");
+        assert_eq!(preview.maxPriorityFeePerGasGwei, "1");
+        assert_eq!(
+            preview.estimatedNetworkFee,
+            crate::decimal::from_units(total, 18)
+        );
+        assert_eq!(
+            preview.maxSendable,
+            Some(crate::decimal::from_units(BALANCE - total, 18))
+        );
+
+        let calls = calls(&server).await;
+        let estimate = calls
+            .iter()
+            .find(|call| call["method"] == "eth_estimateGas")
+            .unwrap();
+        assert_eq!(estimate["params"][0]["maxFeePerGas"], "0x12a05f200");
+        assert_eq!(estimate["params"][0]["maxPriorityFeePerGas"], "0x3b9aca00");
+        let oracle_calls: Vec<_> = calls
+            .iter()
+            .filter(|call| call["method"] == "eth_call")
+            .collect();
+        assert_eq!(oracle_calls.len(), 2);
+        for call in &oracle_calls {
+            assert_eq!(
+                call["params"][0]["to"],
+                "0x420000000000000000000000000000000000000F"
+            );
+            assert_eq!(call["params"][1], "latest");
+        }
+        // This unsigned EIP-1559 native transfer is 51 bytes; the oracle adds
+        // signature overhead itself. Operator fees reserve the full gas limit.
+        for data in [
+            format!("0xf1c7a58b{:064x}", 51),
+            format!("0x275aedd2{:064x}", 36_000),
+        ] {
+            assert!(
+                oracle_calls
+                    .iter()
+                    .any(|call| call["params"][0]["data"] == data),
+                "missing oracle call {data}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unreadable_world_chain_oracle_fees_refuse_the_quote() {
+        for failed in ["f1c7a58b", "275aedd2", "short-word"] {
+            let server = node(21_000, Some(failed)).await;
+            let result = service(&server, Chain::WorldChain)
+                .fetch_evm_send_preview(
+                    Chain::WorldChain,
+                    format!("0x{}", "11".repeat(20)),
+                    format!("0x{}", "22".repeat(20)),
+                    "1000000000000000".into(),
+                    "0x".into(),
+                    None,
+                    None,
+                )
+                .await;
+            assert!(
+                result.is_err(),
+                "{failed} must not become an incomplete fee quote"
+            );
+            assert!(
+                calls(&server)
+                    .await
+                    .iter()
+                    .any(|call| call["method"] == "eth_call")
+            );
+        }
     }
 }

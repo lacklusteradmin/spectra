@@ -315,8 +315,8 @@ impl WalletService {
     /// The floor a wallet's keypool must respect on a chain, from what core
     /// already knows was handed out.
     ///
-    /// Deep-UTXO chains take the highest index seen in a transaction's source
-    /// or change path and the highest recorded owned-address index; everything
+    /// Deep-UTXO chains take the highest index in stored wallet addresses,
+    /// transaction paths and recorded owned addresses; everything
     /// else has one address, so the only question is whether the wallet has it
     /// yet.
     pub(crate) async fn chain_keypool_baseline(
@@ -357,13 +357,37 @@ impl WalletService {
             input.max_transaction_change_index = change;
         }
 
+        let mut wallet_indices = [None, None];
+        {
+            let state = self.wallet_state.read().await;
+            if let Some(wallet) = state.wallets.iter().find(|wallet| wallet.id == wallet_id) {
+                for path in wallet
+                    .addresses
+                    .iter()
+                    .filter(|address| address.chain_id == chain)
+                    .filter_map(|address| address.derivation_path.as_deref())
+                {
+                    for (branch, maximum) in wallet_indices.iter_mut().enumerate() {
+                        if let Some(index) = crate::derivation::path::utxo_discovery_index(
+                            path,
+                            chain,
+                            branch as u32,
+                        ) {
+                            let index = i64::from(index);
+                            *maximum = Some(maximum.map_or(index, |old: i64| old.max(index)));
+                        }
+                    }
+                }
+            }
+        }
+
         let tables = self.keypool.read().await;
         {
             let for_wallet = tables
                 .owned_on(chain)
                 .iter()
                 .filter(|r| r.wallet_id == wallet_id);
-            let (mut external, mut change): (Option<i64>, Option<i64>) = (None, None);
+            let [mut external, mut change] = wallet_indices;
             for row in for_wallet {
                 let Some(index) = row.branch_index else {
                     continue;

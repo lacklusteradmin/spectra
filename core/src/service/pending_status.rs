@@ -38,7 +38,9 @@ pub(super) fn needs_status_poll(
     use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
     let sends_only = match poll {
         PendingStatusPoll::Utxo { require_send_kind } => require_send_kind,
-        PendingStatusPoll::EvmReceipt | PendingStatusPoll::HistoryTxids => true,
+        PendingStatusPoll::EvmReceipt
+        | PendingStatusPoll::HistoryTxids
+        | PendingStatusPoll::SubstrateFinality => true,
         PendingStatusPoll::None => return false,
     };
     hash.is_some_and(|h| !h.trim().is_empty())
@@ -274,6 +276,51 @@ impl WalletService {
                         }
                     }
                 }
+                PendingStatusPoll::SubstrateFinality => {
+                    for record in records.iter().filter(|r| due.contains(&r.id)) {
+                        let Some(hash) = record.transaction_hash.as_deref() else {
+                            continue;
+                        };
+                        match this.poll_substrate_artifact(chain, &record.id, hash).await {
+                            Ok(Some(outcome)) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Confirmed,
+                                )
+                                .await;
+                                resolutions.push(ResolvedPendingStatus {
+                                    id: record.id.clone(),
+                                    status: if outcome.succeeded {
+                                        "confirmed"
+                                    } else {
+                                        "failed"
+                                    }
+                                    .into(),
+                                    confirmations: None,
+                                    receipt_block_number: Some(
+                                        i64::try_from(outcome.block_number)
+                                            .map_err(SpectraBridgeError::failure)?,
+                                    ),
+                                    evm_receipt_cost: None,
+                                });
+                            }
+                            Ok(None) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Pending,
+                                )
+                                .await
+                            }
+                            Err(_) => {
+                                this.record_status_poll(
+                                    record.id.clone(),
+                                    crate::service::StatusPollOutcome::Failed,
+                                )
+                                .await
+                            }
+                        }
+                    }
+                }
                 PendingStatusPoll::HistoryTxids => {
                     // One history read per address, not per transaction: the
                     // records are grouped by the wallet's address first.
@@ -349,6 +396,64 @@ impl WalletService {
                 .await
         })
         .await
+    }
+}
+
+impl WalletService {
+    async fn poll_substrate_artifact(
+        &self,
+        chain: Chain,
+        id: &str,
+        hash: &str,
+    ) -> Result<Option<crate::api::substrate_json_rpc::SubstrateFinalizedOutcome>, SpectraBridgeError>
+    {
+        let mut stored = self.load_send_artifact(id.to_string()).await?;
+        let crate::send::stages::PreparedPayload::Polkadot(prepared) = &stored.prepared else {
+            return Err(SpectraBridgeError::failure(
+                "Missing Asset Hub transaction artifact",
+            ));
+        };
+        if stored.view.chain_id != chain || stored.view.transaction_hash.as_deref() != Some(hash) {
+            return Err(SpectraBridgeError::failure(
+                "Asset Hub transaction identity mismatch",
+            ));
+        }
+        let after = stored
+            .substrate_verified_through
+            .unwrap_or(prepared.finalized_number);
+        if after < prepared.finalized_number {
+            return Err(SpectraBridgeError::failure(
+                "Invalid Asset Hub finality cursor",
+            ));
+        }
+        let endpoints = self
+            .endpoints_for(chain, &[crate::EndpointCapability::Verification])
+            .await;
+        let (outcome, through) = crate::api::http::race(&endpoints, |endpoint| async move {
+            crate::api::substrate_json_rpc::SubstrateClient::new(std::sync::Arc::new(vec![
+                endpoint,
+            ]))
+            .finalized_outcome(chain, hash, after, 64)
+            .await
+        })
+        .await?;
+        // A found outcome and the history status commit in different writes.
+        // Keep its block discoverable until that status is durable.
+        if outcome.is_none() && through > after {
+            stored.substrate_verified_through = Some(through);
+            stored.view.revision = stored
+                .view
+                .revision
+                .checked_add(1)
+                .ok_or_else(|| SpectraBridgeError::failure("Transaction revision overflow"))?;
+            // Status maintenance follows the artifact's stored network even
+            // when the wallet's selected network has changed.
+            let _writer = self.state_writer.lock().await;
+            let db = self.bound_database().await?;
+            tokio::task::spawn_blocking(move || crate::wallet_db::send_save(&db, &stored, &[]))
+                .await??;
+        }
+        Ok(outcome)
     }
 }
 

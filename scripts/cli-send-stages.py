@@ -23,7 +23,13 @@ class Node(http.server.BaseHTTPRequestHandler):
             if method=='eth_call':
                 if state.get('metadata_fail'):
                     return dict(jsonrpc='2.0',id=call['id'],error=dict(code=-32000,message='metadata unavailable'))
-                value = '0x6' if call['params'][0]['data']=='0x313ce567' else '0x'+'TOKEN'.encode().hex().ljust(64,'0')
+                data = call['params'][0]['data']
+                if data.startswith('0x70a08231'):
+                    value = '0x' + f'{10**30:064x}'
+                elif data == '0x313ce567':
+                    value = '0x' + f'{6:064x}'
+                else:
+                    value = '0x' + 'TOKEN'.encode().hex().ljust(64, '0')
                 return dict(jsonrpc='2.0',id=call['id'],result=value)
             if method=='eth_sendRawTransaction':
                 state['submitted'].append((self.server.server_port, call['params'][0]))
@@ -34,7 +40,7 @@ class Node(http.server.BaseHTTPRequestHandler):
                 if self.server.mode=='reject':
                     return dict(jsonrpc='2.0',id=call['id'],error=dict(code=-32000,message='transaction rejected'))
             values={'eth_chainId':self.server.chain_id,'eth_getTransactionCount':state['nonce'],
-                'eth_getBalance':'0x8ac7230489e80000','eth_estimateGas':'0x5208','eth_getCode':'0x',
+                'eth_getBalance':hex(10**37),'eth_estimateGas':'0x5208','eth_getCode':'0x',
                 'eth_feeHistory':{'baseFeePerGas':['0x3b9aca00'],'reward':[['0x77359400']]},
                 'eth_sendRawTransaction':state['expected']}
             assert method in values, method

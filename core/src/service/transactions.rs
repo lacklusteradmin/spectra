@@ -248,9 +248,9 @@ impl WalletService {
     /// Apply one chain's resolved statuses, store the results, and report
     /// what changed.
     ///
-    /// A transaction given up on stores `FAILURE_REASON_STUCK`, a code. The
-    /// text a user reads is localized at render — a localized string written
-    /// into the database keeps its language when the user changes theirs.
+    /// Store the authoritative on-chain execution failure separately from
+    /// polling exhaustion or submission uncertainty. The text a user reads
+    /// is localized at render, so changing language changes the wording.
     ///
     /// The unexpected-record check is what production polls through
     /// `apply_polled_pending_statuses`; this is the same call without it,
@@ -358,6 +358,9 @@ impl WalletService {
                     updated.status = new_status;
                     updated.failure_reason = match decision.failure_reason_disposition {
                         crate::store::FailureReasonDisposition::None => None,
+                        crate::store::FailureReasonDisposition::ExecutionFailed => Some(
+                            crate::store::persistence_models::TransactionFailure::ExecutionFailed,
+                        ),
                         crate::store::FailureReasonDisposition::Preserve => {
                             old.failure_reason.clone()
                         }
@@ -387,7 +390,15 @@ impl WalletService {
                         if let Some(c) = r.confirmations {
                             updated.confirmation_count = Some(i64::from(c));
                         }
-                        if let Some(cost) = &r.evm_receipt_cost {
+                        if updated.chain_id.evm_rollup_fee_model().is_some() {
+                            // An older execution subtotal is no more complete
+                            // than today's cost payload. Until the full fee is
+                            // decoded, no status route can publish it as a total.
+                            updated.receipt_gas_used = None;
+                            updated.receipt_effective_gas_price_gwei = None;
+                            updated.receipt_network_fee = None;
+                            updated.confirmed_network_fee = None;
+                        } else if let Some(cost) = &r.evm_receipt_cost {
                             updated.receipt_gas_used = Some(cost.gas_used.clone());
                             updated.receipt_effective_gas_price_gwei =
                                 Some(cost.effective_gas_price_gwei.clone());
@@ -527,6 +538,92 @@ mod status_commit_regressions {
             .to_string();
         service.open_state(db.clone()).await.unwrap();
         (service, db)
+    }
+
+    #[tokio::test]
+    async fn on_chain_failure_overrides_submission_uncertainty() {
+        use crate::registry::Chain;
+        use crate::store::persistence_models::TransactionFailure;
+        use crate::store::wallet_domain::CoreTransactionStatus;
+
+        let (service, _) = setup().await;
+        for chain in [Chain::Ethereum, Chain::Polkadot] {
+            for (suffix, old_reason) in [
+                (
+                    "submission",
+                    Some(TransactionFailure::SubmissionOutcomeUnknown),
+                ),
+                (
+                    "rebroadcast",
+                    Some(TransactionFailure::RebroadcastOutcomeUnknown),
+                ),
+                ("no-reason", None),
+            ] {
+                let id = format!("{}-{suffix}", chain.str_id());
+                let mut tx = record(&id, 0.0);
+                tx.chain_id = chain;
+                tx.failure_reason = old_reason;
+                service
+                    .apply_transaction_command(TransactionCommand::Upsert { records: vec![tx] })
+                    .await
+                    .unwrap();
+                service
+                    .apply_resolved_pending_statuses(chain, vec![resolution(&id, "failed")])
+                    .await
+                    .unwrap();
+
+                let rows = service.transactions().await.unwrap();
+                let stored = rows.iter().find(|row| row.id == id).unwrap();
+                assert_eq!(stored.status, CoreTransactionStatus::Failed);
+                assert_eq!(
+                    stored.failure_reason,
+                    Some(TransactionFailure::ExecutionFailed)
+                );
+                assert_eq!(
+                    serde_json::to_value(stored.failure_reason.as_ref().unwrap()).unwrap(),
+                    json!({"kind": "executionFailed"})
+                );
+                assert!(service.status_trackers.read().await[&id].polling_complete);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn unresolved_timeout_does_not_claim_on_chain_execution_failed() {
+        use crate::registry::Chain;
+        use crate::store::persistence_models::TransactionFailure;
+        use crate::store::wallet_domain::CoreTransactionStatus;
+
+        let (service, _) = setup().await;
+        let mut uncertain = record("uncertain", 0.0);
+        uncertain.failure_reason = Some(TransactionFailure::SubmissionOutcomeUnknown);
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![uncertain, record("unresolved", 0.0)],
+            })
+            .await
+            .unwrap();
+        for id in ["uncertain", "unresolved"] {
+            for _ in 0..6 {
+                service
+                    .record_status_poll(id.into(), crate::service::StatusPollOutcome::Failed)
+                    .await;
+            }
+        }
+        let changes = service
+            .apply_resolved_pending_statuses(Chain::Bitcoin, vec![])
+            .await
+            .unwrap();
+        assert_eq!(changes.len(), 2);
+        let rows = service.transactions().await.unwrap();
+        for (id, expected) in [
+            ("uncertain", TransactionFailure::SubmissionOutcomeUnknown),
+            ("unresolved", TransactionFailure::StuckAfterRetries),
+        ] {
+            let stored = rows.iter().find(|row| row.id == id).unwrap();
+            assert_eq!(stored.status, CoreTransactionStatus::Failed);
+            assert_eq!(stored.failure_reason.as_ref(), Some(&expected));
+        }
     }
 
     #[tokio::test]

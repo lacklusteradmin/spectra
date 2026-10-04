@@ -20,9 +20,17 @@ pub struct PreparedEvmTransaction {
     pub value_wei: u128,
     pub data: Vec<u8>,
     pub access_list: Vec<AccessListEntry>,
+    /// Budget for network charges outside EIP-1559 execution gas (OP Stack L1/operator fees).
+    pub additional_fee_wei: u128,
 }
 
 impl PreparedEvmTransaction {
+    pub(crate) fn maximum_fee_wei(&self) -> Result<u128, SendError> {
+        u128::from(self.gas_limit)
+            .checked_mul(self.max_fee_per_gas)
+            .and_then(|fee| fee.checked_add(self.additional_fee_wei))
+            .ok_or_else(|| SendError::invalid("EVM fee budget overflow"))
+    }
     /// Inspect the exact bytes whose hash will be signed.
     pub fn signing_payload(&self) -> Result<Vec<u8>, SendError> {
         let to: [u8; 20] = decode_hex(&self.to)?
@@ -94,7 +102,7 @@ pub async fn prepare_transfer(
         overrides,
     )
     .await?;
-    let prepared = PreparedEvmTransaction {
+    let mut prepared = PreparedEvmTransaction {
         chain_id: client.chain_id,
         nonce,
         max_fee_per_gas,
@@ -104,8 +112,11 @@ pub async fn prepare_transfer(
         value_wei,
         data: data.into(),
         access_list: overrides.access_list.clone(),
+        additional_fee_wei: 0,
     };
-    prepared.signing_payload()?;
+    let payload = prepared.signing_payload()?;
+    prepared.additional_fee_wei = client.fetch_rollup_fee(&payload, gas_limit).await?;
+    prepared.maximum_fee_wei()?;
     Ok(prepared)
 }
 
@@ -137,7 +148,7 @@ pub struct EvmSendOverrides {
     pub calldata: Option<Vec<u8>>,
     pub access_list: Vec<AccessListEntry>,
     /// Percentage buffer added to the `eth_estimateGas` result when
-    /// `gas_limit` is not pinned. Default `20` (i.e. +20%).
+    /// `gas_limit` is not pinned. The default is the registry's network-specific margin.
     pub gas_buffer_pct: Option<u32>,
 }
 
@@ -164,27 +175,37 @@ async fn resolve_gas(
         "address": format!("0x{}", hex::encode(entry.address)),
         "storageKeys": entry.storage_keys.iter().map(|key| format!("0x{}", hex::encode(key))).collect::<Vec<_>>(),
     })).collect();
-    let result = client
-        .call(
-            "eth_estimateGas",
-            json!([{
-                "from": from, "to": to, "value": format!("0x{value:x}"),
-                "data": format!("0x{}", hex::encode(data)), "nonce": format!("0x{nonce:x}"),
-                "maxFeePerGas": format!("0x{max_fee:x}"),
-                "maxPriorityFeePerGas": format!("0x{priority:x}"), "accessList": access_list,
-            }]),
-        )
+    let gas = client
+        .estimate_transaction_gas(json!({
+            "from": from, "to": to, "value": format!("0x{value:x}"),
+            "data": format!("0x{}", hex::encode(data)), "nonce": format!("0x{nonce:x}"),
+            "maxFeePerGas": format!("0x{max_fee:x}"),
+            "maxPriorityFeePerGas": format!("0x{priority:x}"), "accessList": access_list,
+        }))
         .await?;
-    let gas = crate::api::evm_json_rpc::parse_hex_u64(
-        result
-            .as_str()
-            .ok_or_else(|| SendError::Invalid("eth_estimateGas: expected string".into()))?,
-    )?;
-    if gas == 0 {
-        return Err(SendError::Invalid("gas estimate must be positive".into()));
+    gas_limit_with_margin(
+        client.chain()?,
+        gas,
+        data.is_empty() && access_list.is_empty(),
+        overrides.gas_buffer_pct,
+    )
+}
+
+pub(crate) fn gas_limit_with_margin(
+    chain: crate::registry::Chain,
+    gas: u64,
+    plain_transfer: bool,
+    override_pct: Option<u32>,
+) -> Result<u64, SendError> {
+    // A plain EOA transfer is exactly 21,000 gas. Padding it on Monad costs real funds.
+    if gas == 21_000 && plain_transfer && override_pct.is_none() {
+        return Ok(gas);
     }
-    let buffered = u128::from(gas) * (100 + u128::from(overrides.gas_buffer_pct.unwrap_or(20)));
-    u64::try_from(buffered.div_ceil(100))
+    let margin = override_pct
+        .map(|pct| u128::from(pct) * 100)
+        .unwrap_or_else(|| u128::from(chain.evm_gas_buffer_bps()));
+    let buffered = u128::from(gas) * (10_000 + margin);
+    u64::try_from(buffered.div_ceil(10_000))
         .map_err(|_| SendError::Invalid("buffered gas limit out of range".into()))
 }
 

@@ -477,6 +477,36 @@ derivation_path = [
 ]
 
 [[chains]]
+id = "plasma"
+name = "Plasma"
+family = "plasma"
+environment = "mainnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "monad"
+name = "Monad"
+family = "monad"
+environment = "mainnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "world-chain"
+name = "World Chain"
+family = "world-chain"
+environment = "mainnet"
+token_standard = "ERC-20"
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
 id = "bitcoin-testnet"
 name = "Bitcoin Testnet 3"
 family = "bitcoin"

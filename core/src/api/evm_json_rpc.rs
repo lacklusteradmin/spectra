@@ -51,8 +51,6 @@ pub struct EvmFeeEstimate {
     pub priority_fee_wei: u128,
     /// Max total fee per gas to set on the transaction.
     pub max_fee_per_gas_wei: u128,
-    /// Estimated total fee for a standard 21,000-gas transfer (wei).
-    pub estimated_fee_wei: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,19 +269,96 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, ApiError> {
 
     // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
     let max_fee_per_gas_wei = base_fee_wei
-        .saturating_mul(2)
-        .saturating_add(priority_fee_wei);
-    let estimated_fee_wei = max_fee_per_gas_wei.saturating_mul(21_000);
+        .checked_mul(2)
+        .and_then(|base| base.checked_add(priority_fee_wei))
+        .or_decode("feeHistory: fee exceeds u128")?;
 
     Ok(EvmFeeEstimate {
         base_fee_wei,
         priority_fee_wei,
         max_fee_per_gas_wei,
-        estimated_fee_wei,
     })
 }
 
 impl EvmClient {
+    pub(crate) fn chain(&self) -> Result<crate::registry::Chain, ApiError> {
+        crate::registry::Chain::all()
+            .find(|chain| chain.evm_chain_id().ok() == Some(self.chain_id))
+            .ok_or_else(|| ApiError::invalid("unknown EVM network"))
+    }
+
+    /// Estimate the complete reviewed transaction, including fee fields and access list.
+    pub(crate) async fn estimate_transaction_gas(
+        &self,
+        transaction: Value,
+    ) -> Result<u64, ApiError> {
+        let result = self.call("eth_estimateGas", json!([transaction])).await?;
+        let gas = parse_hex_u64(
+            result
+                .as_str()
+                .or_decode("eth_estimateGas: expected string")?,
+        )?;
+        if gas == 0 {
+            return Err(ApiError::Decode("gas estimate must be positive".into()));
+        }
+        Ok(gas)
+    }
+
+    /// OP Stack's oracle prices L1 data separately from EIP-1559 execution gas.
+    /// The upper bound includes the signature; operator fees use the reviewed gas limit.
+    pub(crate) async fn fetch_rollup_fee(
+        &self,
+        unsigned_transaction: &[u8],
+        gas: u64,
+    ) -> Result<u128, ApiError> {
+        use crate::registry::OpStackFeeModel;
+        let Some(model) = self.chain()?.evm_rollup_fee_model() else {
+            return Ok(0);
+        };
+        let oracle = "0x420000000000000000000000000000000000000F";
+        let read = async |data: String| {
+            let result = self
+                .call(
+                    "eth_call",
+                    json!([{
+                "to": oracle, "data": data,
+            }, "latest"]),
+                )
+                .await?;
+            let bytes = decode_hex(result.as_str().or_decode("gas oracle: expected hex")?)?;
+            if bytes.len() != 32 || bytes[..16].iter().any(|byte| *byte != 0) {
+                return Err(ApiError::Decode(
+                    "gas oracle fee is not a u128 ABI word".into(),
+                ));
+            }
+            Ok(u128::from_be_bytes(
+                bytes[16..].try_into().expect("ABI word"),
+            ))
+        };
+        let size = unsigned_transaction.len();
+        let upper_bound = format!("0xf1c7a58b{size:064x}");
+        match model {
+            OpStackFeeModel::FjordWithOperator => {
+                let (data, operator) =
+                    tokio::try_join!(read(upper_bound), read(format!("0x275aedd2{gas:064x}")),)?;
+                data.checked_add(operator)
+                    .ok_or_else(|| ApiError::Decode("rollup fee overflow".into()))
+            }
+            OpStackFeeModel::Fjord => read(upper_bound).await,
+            OpStackFeeModel::Bedrock => {
+                use sha3::Digest;
+                let selector = hex::encode(&sha3::Keccak256::digest(b"getL1Fee(bytes)")[..4]);
+                let padded = size.div_ceil(32) * 64;
+                let data = format!(
+                    "0x{selector}{:064x}{size:064x}{:0<padded$}",
+                    32,
+                    hex::encode(unsigned_transaction)
+                );
+                read(data).await
+            }
+        }
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<EvmBalance, ApiError> {
         let result = self
             .call("eth_getBalance", json!([address, "latest"]))
@@ -312,28 +387,6 @@ impl EvmClient {
             .call("eth_feeHistory", json!([4, "latest", [25, 75]]))
             .await?;
         parse_fee_history(&result)
-    }
-
-    pub async fn estimate_gas(
-        &self,
-        from: &str,
-        to: &str,
-        value_wei: u128,
-        data: Option<&str>,
-    ) -> Result<u64, ApiError> {
-        let mut obj = json!({
-            "from": from,
-            "to": to,
-            "value": format!("0x{:x}", value_wei),
-        });
-        if let Some(d) = data {
-            obj["data"] = json!(d);
-        }
-        let result = self.call("eth_estimateGas", json!([obj])).await?;
-        let hex = result
-            .as_str()
-            .or_decode("eth_estimateGas: expected string")?;
-        parse_hex_u64(hex)
     }
 
     /// Fetch an ERC-20 `balanceOf(holder)` and normalize to display form.
@@ -692,7 +745,6 @@ mod fee_history_tests {
         assert_eq!(fees.base_fee_wei, 0x7735_9400);
         assert_eq!(fees.priority_fee_wei, 0x5f5_e100);
         assert_eq!(fees.max_fee_per_gas_wei, 0x7735_9400 * 2 + 0x5f5_e100);
-        assert_eq!(fees.estimated_fee_wei, fees.max_fee_per_gas_wei * 21_000);
     }
 
     /// A block nobody transacted in reports no sample, and the honest priority

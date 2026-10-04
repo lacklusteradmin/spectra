@@ -415,7 +415,9 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 estimatedNetworkFee: fee,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
+                estimatedTransactionBytes: o
+                    .get("estimated_transaction_bytes")
+                    .and_then(serde_json::Value::as_i64),
                 selectedInputCount: None,
                 usesChangeOutput: None,
                 maxSendable: max,
@@ -539,87 +541,6 @@ mod tests {
         assert_eq!(
             extract_json_string_field("{not json".into(), "x".into()),
             ""
-        );
-    }
-}
-
-/// Add an extra output's bytes to a UTXO preview.
-///
-/// A destination that costs more than a standard output — Litecoin's MWEB
-/// peg-in is the one the registry names — pays for those bytes at the same
-/// rate, and both the estimate and what is left sendable move with it. The
-/// arithmetic was on the front end's side, beside a registry fact it fetched
-/// to do it, and had no test.
-pub fn with_extra_output_overhead(
-    preview: crate::send::preview_types::BitcoinSendPreview,
-    overhead_bytes: u64,
-) -> crate::send::preview_types::BitcoinSendPreview {
-    if overhead_bytes == 0 {
-        return preview;
-    }
-    let additional_fee = coins(overhead_bytes.saturating_mul(preview.estimatedFeeRateSatVb));
-    crate::send::preview_types::BitcoinSendPreview {
-        estimatedNetworkFee: crate::decimal::add(&preview.estimatedNetworkFee, &additional_fee)
-            .unwrap_or_else(|| preview.estimatedNetworkFee.clone()),
-        estimatedTransactionBytes: Some(
-            preview.estimatedTransactionBytes.unwrap_or(0) + overhead_bytes as i64,
-        ),
-        maxSendable: preview
-            .maxSendable
-            .as_deref()
-            .and_then(|max| crate::decimal::sub_or_zero(max, &additional_fee)),
-        ..preview
-    }
-}
-
-#[cfg(test)]
-mod extra_output_overhead_tests {
-    use super::with_extra_output_overhead;
-    use crate::send::preview_types::BitcoinSendPreview;
-
-    fn preview() -> BitcoinSendPreview {
-        BitcoinSendPreview {
-            estimatedFeeRateSatVb: 10,
-            estimatedNetworkFee: "0.00002".into(),
-            feeRateDescription: None,
-            spendableBalance: Some("1".into()),
-            estimatedTransactionBytes: Some(200),
-            selectedInputCount: Some(1),
-            usesChangeOutput: Some(true),
-            maxSendable: Some("0.5".into()),
-        }
-    }
-
-    /// The extra bytes are paid for at the preview's own rate, and what is
-    /// left sendable comes down by the same amount.
-    #[test]
-    fn an_extra_output_costs_its_bytes_at_the_previewed_rate() {
-        // Litecoin's MWEB peg-in: 1017 bytes at 10 sat/vB is 10,170 sats.
-        let adjusted = with_extra_output_overhead(preview(), 1017);
-        assert_eq!(adjusted.estimatedTransactionBytes, Some(1217));
-        assert_eq!(adjusted.estimatedNetworkFee, "0.0001217");
-        assert_eq!(adjusted.maxSendable.as_deref(), Some("0.4998983"));
-        // Untouched fields stay put.
-        assert_eq!(adjusted.spendableBalance.as_deref(), Some("1"));
-        assert_eq!(adjusted.selectedInputCount, Some(1));
-    }
-
-    /// No overhead is no change at all, not a recomputation that rounds.
-    #[test]
-    fn no_overhead_leaves_the_preview_alone() {
-        assert_eq!(with_extra_output_overhead(preview(), 0), preview());
-    }
-
-    /// What is left sendable cannot go negative.
-    #[test]
-    fn max_sendable_stops_at_zero() {
-        let mut small = preview();
-        small.maxSendable = Some("0.00001".into());
-        assert_eq!(
-            with_extra_output_overhead(small, 1017)
-                .maxSendable
-                .as_deref(),
-            Some("0")
         );
     }
 }

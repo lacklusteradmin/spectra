@@ -495,6 +495,7 @@ pub struct ResolvedPendingTransactionInput {
 #[serde(rename_all = "camelCase")]
 pub enum FailureReasonDisposition {
     None,
+    ExecutionFailed,
     Preserve,
     LocalizedFallback,
 }
@@ -598,11 +599,7 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
                 tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
             }
             let failure_reason_disposition = if new_status == "failed" {
-                if input.old_failure_reason.is_some() {
-                    FailureReasonDisposition::Preserve
-                } else {
-                    FailureReasonDisposition::LocalizedFallback
-                }
+                FailureReasonDisposition::ExecutionFailed
             } else {
                 FailureReasonDisposition::None
             };

@@ -90,6 +90,12 @@ chain_id = "ink"
 kind = "native"
 decimals = 18
 
+[[deployments]]
+token_id = "ethereum"
+chain_id = "world-chain"
+kind = "native"
+decimals = 18
+
 [[tokens]]
 id = "solana"
 symbol = "SOL"
@@ -665,6 +671,38 @@ kind = "native"
 decimals = 9
 
 [[tokens]]
+id = "plasma"
+symbol = "XPL"
+name = "Plasma"
+coingecko_id = "plasma"
+coinpaprika_id = "xpl-plasma"
+color = "green"
+artwork_name = "plasma"
+tags = []
+
+[[deployments]]
+token_id = "plasma"
+chain_id = "plasma"
+kind = "native"
+decimals = 18
+
+[[tokens]]
+id = "monad"
+symbol = "MON"
+name = "Monad"
+coingecko_id = "monad"
+coinpaprika_id = "mon-monad"
+color = "purple"
+artwork_name = "monad"
+tags = []
+
+[[deployments]]
+token_id = "monad"
+chain_id = "monad"
+kind = "native"
+decimals = 18
+
+[[tokens]]
 id = "aave"
 symbol = "AAVE"
 name = "Aave"
@@ -902,6 +940,14 @@ chain_id = "zksync-era"
 kind = "token"
 standard = "ERC-20"
 contract = "0x3a287a06c66f9e95a56327185ca2bdf5f031cecd"
+decimals = 18
+
+[[deployments]]
+token_id = "pancakeswap-token"
+chain_id = "monad"
+kind = "token"
+standard = "ERC-20"
+contract = "0xf59d81cd43f620e722e07f9cb3f6e41b031017a3"
 decimals = 18
 
 [[tokens]]
@@ -1380,6 +1426,14 @@ chain_id = "cronos"
 kind = "token"
 standard = "ERC-20"
 contract = "0xa6de01a2d62c6b5f3525d768f34d276652c554c8"
+decimals = 6
+
+[[deployments]]
+token_id = "euro-coin"
+chain_id = "plasma"
+kind = "token"
+standard = "ERC-20"
+contract = "0x3ee196e78d4d4248b849b8e1c7f44c5457fafd2c"
 decimals = 6
 
 [[tokens]]
@@ -2608,6 +2662,30 @@ standard = "ERC-20"
 contract = "0x1d17cbcf0d6d143135ae902365d2e5e2a16538d4"
 decimals = 6
 
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "plasma"
+kind = "token"
+standard = "ERC-20"
+contract = "0x2d661c89d812261039af9764eceaaee884f5f67f"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "monad"
+kind = "token"
+standard = "ERC-20"
+contract = "0x754704bc059f8c67012fed69bc8a327a5aafb603"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "world-chain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x79a02482a880bce3f13e09da970dc34db4cd24d1"
+decimals = 6
+
 [[tokens]]
 id = "usdd"
 symbol = "USDD"
@@ -3080,6 +3158,14 @@ chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
+decimals = 18
+
+[[deployments]]
+token_id = "worldcoin-wld"
+chain_id = "world-chain"
+kind = "token"
+standard = "ERC-20"
+contract = "0x2cfc85d8e48f8eab294be644d9e25c3030863003"
 decimals = 18
 
 [[tokens]]
