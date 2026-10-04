@@ -568,12 +568,12 @@ decimals = 8
 
 [[tokens]]
 id = "ton-testnet"
-symbol = "tTON"
-name = "Test Toncoin"
+symbol = "tGRAM"
+name = "Test Gram"
 coingecko_id = ""
 coinpaprika_id = ""
 color = "blue"
-artwork_name = "ton"
+artwork_name = "gram"
 tags = []
 
 [[deployments]]
@@ -612,7 +612,7 @@ tags = []
 token_id = "polkadot-westend"
 chain_id = "polkadot-westend"
 kind = "native"
-decimals = 10
+decimals = 12
 
 [[tokens]]
 id = "monero-stagenet"

@@ -247,21 +247,37 @@ mod the_wiki_is_one_asset_table {
 
     /// A token's places are its deployments, with the per-chain facts intact.
     #[test]
-    fn a_token_lists_a_contract_per_chain() {
-        let usdc = asset("usd-coin");
-        assert_eq!(usdc.lives_on.len(), 13);
-        assert!(usdc.lives_on.iter().all(|p| !p.is_native));
-        assert!(usdc.lives_on.iter().all(|p| !p.contract.is_empty()));
-        // Decimals stay per place — the field the token split refused to fold.
-        let widths: std::collections::BTreeSet<u32> =
-            usdc.lives_on.iter().map(|p| p.decimals).collect();
-        assert!(!widths.is_empty());
-        // Chain names are resolved, not left as ids.
-        assert!(
-            usdc.lives_on
+    fn every_asset_lists_its_catalog_deployments() {
+        for asset in ASSETS.iter() {
+            let expected: std::collections::BTreeSet<_> = tokens::catalog()
                 .iter()
-                .any(|p| p.chain_id == crate::registry::Chain::Ethereum)
-        );
+                .filter(|token| token.token_id == asset.token_id && !token.chain_id.is_testnet())
+                .map(|token| {
+                    (
+                        token.chain_id.str_id(),
+                        token.contract.as_str(),
+                        token.token_standard.as_str(),
+                        token.decimals,
+                        token.is_native(),
+                    )
+                })
+                .collect();
+            let actual: std::collections::BTreeSet<_> = asset
+                .lives_on
+                .iter()
+                .map(|place| {
+                    (
+                        place.chain_id.str_id(),
+                        place.contract.as_str(),
+                        place.token_standard.as_str(),
+                        place.decimals,
+                        place.is_native,
+                    )
+                })
+                .collect();
+            assert_eq!(actual.len(), asset.lives_on.len(), "{}", asset.token_id);
+            assert_eq!(actual, expected, "{}", asset.token_id);
+        }
     }
 
     /// `crypto-wiki.toml` has no row nothing claims.

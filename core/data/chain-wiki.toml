@@ -150,7 +150,7 @@ state_model = "Account state + Move resources"
 [[chains]]
 chain = "ton"
 tags = ["PoS", "Messaging", "Smart Contracts"]
-comment = "Native Toncoin transfers, jettons, and asynchronous contract interactions on The Open Network."
+comment = "Native Gram transfers, jettons, and asynchronous contract interactions on The Open Network."
 family = "Account-based message-driven smart contract network"
 consensus = "Proof of Stake with validator-set finality"
 state_model = "Account state + contracts/messages"

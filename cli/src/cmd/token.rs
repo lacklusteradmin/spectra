@@ -78,6 +78,9 @@ pub struct AddArgs {
     /// Chain that hosts the token.
     #[arg(long)]
     chain: String,
+    /// Actual protocol; omitted values use the network and identifier default.
+    #[arg(long)]
+    standard: Option<String>,
     /// Symbol, as it should be displayed.
     #[arg(long)]
     symbol: String,
@@ -243,6 +246,11 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 /// the contract is judged by the hosting chain's own validator, a duplicate is
 /// refused and the list comes back sorted.
 fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
+    if args.standard.is_some() {
+        return Err(CliError::usage(
+            "token edit cannot change the deployment standard",
+        ));
+    }
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
         chain_id: resolve_chain(&args.chain)?,
         contract: args.contract,
@@ -260,6 +268,7 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let chain_id = resolve_chain(&args.chain)?;
     let transition = ctx.apply(StateCommand::AddCustomToken {
+        standard: args.standard,
         chain_id,
         symbol: args.symbol.clone(),
         name: args.name,
@@ -274,7 +283,17 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .state
         .token_preferences
         .iter()
-        .find(|entry| entry.token.contract.eq_ignore_ascii_case(&args.contract))
+        .find(|entry| {
+            entry.token.chain_id == chain_id
+                && spectra_core::tokens::validate_protocol_identifier(
+                    chain_id,
+                    &entry.token.token_standard,
+                    &args.contract,
+                )
+                .ok()
+                .as_deref()
+                    == Some(entry.token.contract.as_str())
+        })
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
     out.text(|| {
         println!("  {} added {}", out::ok_mark(), stored.token.symbol.bold());
@@ -288,6 +307,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         "symbol": stored.token.symbol,
         "contract": stored.token.contract,
         "decimals": stored.token.decimals,
+        "standard": stored.token.token_standard,
     }));
     Ok(())
 }

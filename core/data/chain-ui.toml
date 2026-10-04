@@ -150,7 +150,7 @@ address_prefix_hint = "0x…"
 
 [[chains]]
 chain_id = "ton"
-search_keywords = ["TON"]
+search_keywords = ["TON", "Gram", "GRAM"]
 popular_rank = 17
 color = "blue"
 artwork_name = "ton"
@@ -648,7 +648,7 @@ address_prefix_hint = ""
 
 [[chains]]
 chain_id = "ton-testnet"
-search_keywords = ["TON Testnet", "tTON"]
+search_keywords = ["TON Testnet", "Test Gram", "tGRAM"]
 color = "blue"
 artwork_name = "ton"
 address_prefix_hint = ""

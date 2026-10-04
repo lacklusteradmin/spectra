@@ -258,6 +258,7 @@ mod tests {
             sender: format!("0x{}", "22".repeat(20)),
             created: std::time::Instant::now(),
             request: crate::send::SendExecutionRequest {
+                token_standard: None,
                 chain_id: crate::registry::Chain::Ethereum,
                 wallet_id: input.wallet_id.clone(),
                 password: None,

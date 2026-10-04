@@ -61,14 +61,28 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
 }
 
 /// Merge the built-in catalog with persisted user preferences: the catalog's
-/// rows replace any persisted copy of them, every custom row is kept, and the
-/// list is sorted by (chain-label, built-in first, symbol).
+/// rows replace persisted copies and custom aliases of them. Each normalized
+/// network/identifier appears once, even when its protocol label differs.
 pub fn merge_built_in_token_preferences(
     built_ins: Vec<wallet_domain::CoreTokenPreferenceEntry>,
     persisted: Vec<wallet_domain::CoreTokenPreferenceEntry>,
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     let mut merged = built_ins;
-    merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
+    let key = |entry: &wallet_domain::CoreTokenPreferenceEntry| {
+        (
+            entry.token.chain_id,
+            crate::tokens::normalize_token_identifier(
+                Some(entry.token.contract.clone()),
+                entry.token.chain_id,
+            ),
+        )
+    };
+    let mut seen: std::collections::HashSet<_> = merged.iter().map(key).collect();
+    merged.extend(
+        persisted
+            .into_iter()
+            .filter(|entry| !entry.is_built_in && seen.insert(key(entry))),
+    );
     sort_token_preferences(&mut merged);
     merged
 }

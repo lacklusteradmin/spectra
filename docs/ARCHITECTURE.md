@@ -94,6 +94,13 @@ without a configurable TOML flag.
 Address formats, derivation paths, address slots, EVM membership and routing
 facts belong there rather than in caller-owned lists.
 
+Token standards belong to individual deployments. A chain's configured
+standard is a default for input, not a restriction to one protocol. `Chain`
+validates the supported chain/standard/identifier combinations; the token
+catalog and persisted holdings use those rules. Read and send capabilities
+are checked separately, so a representable protocol cannot silently be routed
+through another standard's adapter.
+
 A chain crosses every boundary as `Chain`, never as its id string. Records and
 parameters carry the enum (a field may keep the name `chain_id`, which is what
 it serializes as); `Chain` serializes, stores in SQLite and prints as its

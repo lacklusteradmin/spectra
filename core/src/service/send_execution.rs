@@ -7,6 +7,26 @@ pub(super) fn validate_execution_amount(
     chain: Chain,
     request: &crate::send::SendExecutionRequest,
 ) -> Result<(), SpectraBridgeError> {
+    match request.contract_address.as_deref() {
+        Some(identifier) => {
+            let standard = request
+                .token_standard
+                .as_deref()
+                .unwrap_or_else(|| chain.token_standard_for_identifier(identifier));
+            crate::tokens::validate_protocol_identifier(chain, standard, identifier)?;
+            if !chain.sends_token_standard(standard) {
+                return Err(SpectraBridgeError::invalid(format!(
+                    "{standard} transfers are not supported"
+                )));
+            }
+        }
+        None if request.token_standard.is_some() => {
+            return Err(SpectraBridgeError::invalid(
+                "token protocol requires an identifier",
+            ));
+        }
+        None => {}
+    }
     if !chain.is_evm() && request.evm_overrides.is_some() {
         return Err(SpectraBridgeError::failure(
             "EVM overrides require an EVM network",
@@ -236,6 +256,13 @@ impl WalletService {
         chain: Chain,
         contract: &str,
     ) -> Result<Option<u32>, SpectraBridgeError> {
+        let standard = chain.token_standard_for_identifier(contract);
+        crate::tokens::validate_protocol_identifier(chain, standard, contract)?;
+        if !chain.reads_token_standard(standard) {
+            return Err(SpectraBridgeError::invalid(format!(
+                "{standard} metadata reads are not supported"
+            )));
+        }
         let endpoints = self
             .endpoints_for(chain, &[EndpointCapability::TokenBalance])
             .await;
@@ -273,3 +300,7 @@ mod audit_execution_tests;
 #[cfg(test)]
 #[path = "tests/send_execution.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/token_protocol_execution.rs"]
+mod token_protocol_execution_tests;

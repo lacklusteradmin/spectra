@@ -246,9 +246,11 @@ pub fn prepare_evm_send_assembly(
     let Some(token) = input.token else {
         return Err(EvmSendError::UnsupportedAsset);
     };
-    if crate::tokens::deployment_id_for(chain, Some(&token.contract_address)).as_deref()
-        != Some(input.deployment_id.as_str())
-    {
+    let matches = ["ERC-20", "BEP-20", "ARC-20"].iter().any(|standard| {
+        crate::tokens::protocol_deployment_id(chain, standard, &token.contract_address).as_deref()
+            == Some(input.deployment_id.as_str())
+    });
+    if !matches {
         return Err(EvmSendError::UnsupportedAsset);
     }
     let smallest = amount_to_smallest_unit(&input.amount, token.decimals)?;

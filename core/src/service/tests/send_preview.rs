@@ -25,16 +25,152 @@ mod fee_estimates_are_typed {
         }
     }
 
-    /// NEAR's fee does not fit the `u128 -> display` path the others take —
-    /// it is carried as the string it is, which is why it had its own arm
-    /// before and still does.
+    /// NEAR's 24-decimal scale fits u128 and applies to its testnet too.
     #[tokio::test]
-    async fn near_carries_its_fee_as_a_string() {
+    async fn near_networks_quote_the_same_exact_fee_and_gas_floor() {
         let service = WalletService::new(Vec::new()).expect("service");
-        let fee = service.native_fee_estimate(Chain::Near).await.expect("fee");
-        assert_eq!(fee.raw, "1000000000000000000000");
-        assert_eq!(fee.display, "0.001");
-        assert_eq!(fee.source, "static");
+        for chain in [Chain::Near, Chain::NearTestnet] {
+            let fee = service.native_fee_estimate(chain).await.expect("fee");
+            assert_eq!(fee.raw, "1000000000000000000000");
+            assert_eq!(fee.display, "0.001");
+            assert_eq!(fee.source, "static");
+            assert_eq!(chain.token_send_gas_reserve().as_deref(), Some("0.001"));
+        }
+    }
+
+    /// Protocol dispatch must keep the testnet's configured endpoint.
+    #[tokio::test]
+    async fn live_fee_testnets_use_their_own_protocol_endpoints() {
+        use crate::service::{ChainEndpoints, EndpointCapability};
+        use serde_json::json;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        for (chain, verb, route, response, raw, display) in [
+            (
+                Chain::XrpTestnet,
+                "POST",
+                "/",
+                json!({"result":{"drops":{"open_ledger_fee":"13"}}}),
+                "13",
+                "0.000013",
+            ),
+            (
+                Chain::StellarTestnet,
+                "GET",
+                "/fee_stats",
+                json!({"fee_charged":{"mode":"137"}}),
+                "137",
+                "0.0000137",
+            ),
+            (
+                Chain::AptosTestnet,
+                "GET",
+                "/estimate_gas_price",
+                json!({"gas_estimate":173}),
+                "1730000",
+                "0.0173",
+            ),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method(verb))
+                .and(path(route))
+                .respond_with(ResponseTemplate::new(200).set_body_json(response))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let service = WalletService::new(vec![ChainEndpoints {
+                chain_id: chain,
+                capabilities: vec![EndpointCapability::Fee],
+                endpoints: vec![server.uri()],
+            }])
+            .expect("service");
+            let fee = service
+                .native_fee_estimate(chain)
+                .await
+                .expect("live testnet fee");
+            assert_eq!(fee.raw, raw);
+            assert_eq!(fee.display, display);
+            assert_eq!(fee.source, "rpc");
+        }
+    }
+
+    #[tokio::test]
+    async fn aptos_preview_reserves_the_entire_signed_gas_budget() {
+        use crate::service::{ChainEndpoints, EndpointCapability};
+        use serde_json::json;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_json, method, path},
+        };
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/estimate_gas_price"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"gas_estimate":100})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/view"))
+            .and(body_json(json!({
+                "function":"0x1::coin::balance",
+                "type_arguments":["0x1::aptos_coin::AptosCoin"],
+                "arguments":["0x1"]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!(["200000000"])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            chain_id: Chain::AptosTestnet,
+            capabilities: vec![EndpointCapability::Fee, EndpointCapability::Balance],
+            endpoints: vec![server.uri()],
+        }])
+        .expect("service");
+        let Some(crate::send::preview_decode::SimpleChainPreview::Aptos { preview }) = service
+            .fetch_simple_chain_send_preview(Chain::AptosTestnet, "0x1".into())
+            .await
+            .expect("preview")
+        else {
+            panic!("Aptos preview");
+        };
+        assert_eq!(preview.gasUnitPriceOctas, 100);
+        assert_eq!(preview.maxGasAmount, 10_000);
+        assert_eq!(preview.estimatedNetworkFee, "0.01");
+        assert_eq!(preview.spendableBalance, "2");
+        assert_eq!(preview.maxSendable, "1.99");
+    }
+
+    #[tokio::test]
+    async fn aptos_refuses_zero_or_unrepresentable_gas_budgets() {
+        use crate::service::{ChainEndpoints, EndpointCapability};
+        use serde_json::json;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        for price in [0, u64::MAX] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/estimate_gas_price"))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(json!({"gas_estimate":price})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            let service = WalletService::new(vec![ChainEndpoints {
+                chain_id: Chain::Aptos,
+                capabilities: vec![EndpointCapability::Fee],
+                endpoints: vec![server.uri()],
+            }])
+            .expect("service");
+            assert!(service.native_fee_estimate(Chain::Aptos).await.is_err());
+        }
     }
 
     /// A chain with no fee to quote is an error naming it, where the JSON
@@ -95,13 +231,13 @@ async fn seed_probe_holding(
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
-                    standard: "fixture".into(),
-                    identifier: "fixture".into(),
+                    standard: chain.token_standard_for_identifier(contract).into(),
+                    identifier: contract.into(),
                 },
                 chain_id: chain,
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
-                token_standard: String::new(),
+                token_standard: chain.token_standard_for_identifier(contract).into(),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
@@ -113,6 +249,13 @@ async fn seed_probe_holding(
         });
     }
     state.wallets.last().unwrap().holdings[0].deployment_id()
+}
+
+#[cfg(test)]
+fn trc20_contract_fixture() -> String {
+    // A synthetic address with a real TRON prefix and checksum. Its metadata
+    // belongs to the mock responses, independently of any deployed token.
+    bs58::encode([0x41; 21]).with_check().into_string()
 }
 
 #[cfg(test)]
@@ -413,7 +556,8 @@ mod failed_reads {
                     crate::registry::Chain::Tron,
                     "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                     vec![TokenDescriptor {
-                        contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
+                        standard: String::new(),
+                        contract: trc20_contract_fixture(),
                         symbol: "TEST".into(),
                         decimals: 18,
                         name: None,
@@ -664,7 +808,7 @@ mod a_preview_quotes_the_asset_it_moves {
             .fetch_tron_send_preview(
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
-                "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
+                trc20_contract_fixture(),
             )
             .await
             .expect("preview")
@@ -693,12 +837,16 @@ mod a_preview_quotes_the_asset_it_moves {
             .fetch_tron_send_preview(
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
-                "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
+                trc20_contract_fixture(),
             )
             .await;
         assert!(
             result.is_err(),
             "an unread balance must not quote a maximum"
+        );
+        assert!(
+            !server.received_requests().await.unwrap().is_empty(),
+            "a valid protocol identifier must reach the failing provider"
         );
     }
 }

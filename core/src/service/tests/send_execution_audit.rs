@@ -51,6 +51,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                 },
                 "/" => json!({"chain_id":1,"ledger_version":"1"}),
                 "/estimate_gas_price" => json!({"gas_estimate":100}),
+                "/view" => json!(["10000000000"]),
                 "/transactions" => {
                     assert_eq!(body["sender"],v["aptos"]["address"]);
                     assert_eq!(body["signature"]["public_key"],format!("0x{}",v["aptos"]["public_key"].as_str().unwrap()));
@@ -124,6 +125,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             _ => format!("0x{}", "22".repeat(32)),
         };
         let request = crate::send::SendExecutionRequest {
+            token_standard: None,
             wallet_id: "w".into(),
             chain_id: chain,
             password: None,
@@ -213,6 +215,128 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     || r.url.path().contains("triggersmartcontract")
                     || String::from_utf8_lossy(&r.body).contains("unsafe_transferSui"))
         );
+    }
+}
+
+#[tokio::test]
+async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/send-audit-vectors.json"
+    ))
+    .unwrap();
+    let address = fixture["aptos"]["address"].as_str().unwrap();
+    let destination = format!("0x{}", "22".repeat(32));
+    for chain in [Chain::Aptos, Chain::AptosTestnet] {
+        let price = Arc::new(AtomicU64::new(100));
+        let balance = Arc::new(AtomicU64::new(100_000_000));
+        let server = MockServer::start().await;
+        let live_price = price.clone();
+        let live_balance = balance.clone();
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let response = match request.url.path() {
+                    "/" => json!({"chain_id":chain.aptos_chain_id().unwrap(),"ledger_version":"1"}),
+                    "/estimate_gas_price" => {
+                        json!({"gas_estimate":live_price.load(Ordering::Relaxed)})
+                    }
+                    "/view" => json!([live_balance.load(Ordering::Relaxed).to_string()]),
+                    path if path.starts_with("/accounts/") => json!({"sequence_number":"7"}),
+                    other => panic!("unexpected Aptos provider request: {other}"),
+                };
+                ResponseTemplate::new(200).set_body_json(response)
+            })
+            .mount(&server)
+            .await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            capabilities: EndpointCapability::ALL.to_vec(),
+            chain_id: chain,
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "aptos-gas-review-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into())
+            .await
+            .unwrap();
+        let secrets = Arc::new(InMemorySecretStore::new());
+        service.set_secret_store(secrets.clone());
+        let mut wallet = WalletState::single_address(
+            "w",
+            "APT",
+            chain,
+            address,
+            Some("m/44'/637'/0'/0'/0'".into()),
+            false,
+        );
+        let mut holding = chain.native_holding_template();
+        holding.amount = "1".into();
+        wallet.holdings = vec![holding];
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet })
+            .await
+            .unwrap();
+        store_seed_phrase(&*secrets, "w", fixture["mnemonic"].as_str().unwrap(), None).unwrap();
+        let quote = service
+            .quote_owned_send(
+                "w".into(),
+                format!("{}:native", chain.str_id()),
+                "0.99".into(),
+                destination.clone(),
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(quote.request.fee_amount.as_deref(), Some("0.01"));
+
+        // A changed provider quote cannot silently increase a reviewed transaction's fee.
+        price.store(500, Ordering::Relaxed);
+        balance.store(99_999_999, Ordering::Relaxed);
+        assert!(
+            service
+                .build_send(quote.request.clone())
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("Insufficient")
+        );
+        assert!(service.list_sends().await.unwrap().is_empty());
+        balance.store(100_000_000, Ordering::Relaxed);
+        for fee in ["0", "-1", "NaN", "0.01000001"] {
+            let mut invalid = quote.request.clone();
+            invalid.fee_amount = Some(fee.into());
+            assert!(service.build_send(invalid).await.is_err(), "{fee}");
+        }
+        let mut direct = quote.request.clone();
+        direct.fee_amount = None;
+        assert!(
+            service
+                .build_send(direct)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("Insufficient")
+        );
+        assert!(service.list_sends().await.unwrap().is_empty());
+
+        let prepared = service.build_send(quote.request).await.unwrap();
+        let details: Value = serde_json::from_str(&prepared.prepared_details).unwrap();
+        assert_eq!(details["Aptos"]["body"]["max_gas_amount"], "10000");
+        assert_eq!(details["Aptos"]["body"]["gas_unit_price"], "100");
+        let signed = service
+            .sign_send(prepared.id, prepared.review_digest, None)
+            .await
+            .unwrap();
+        let outer: Value = serde_json::from_str(signed.signed_payload.as_deref().unwrap()).unwrap();
+        let body: Value =
+            serde_json::from_str(outer["signed_body_json"].as_str().unwrap()).unwrap();
+        assert_eq!(body["max_gas_amount"], "10000");
+        assert_eq!(body["gas_unit_price"], "100");
+        assert_eq!(body["payload"]["arguments"][1], "99000000");
     }
 }
 

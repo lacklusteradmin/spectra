@@ -679,6 +679,8 @@ pub enum StateCommand {
     /// contract using the chain's rule, and reject duplicates.
     /// Rejection emits `tokenPreferenceRejected` without changing state.
     AddCustomToken {
+        #[uniffi(default = None)]
+        standard: Option<String>,
         chain_id: crate::registry::Chain,
         symbol: String,
         name: String,
@@ -1174,6 +1176,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             events.extend(super::price_alerts::remove(state, id))
         }
         StateCommand::AddCustomToken {
+            standard,
             chain_id,
             symbol,
             name,
@@ -1184,9 +1187,19 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
         } => {
             let symbol = symbol.trim().to_uppercase();
             let name = name.trim().to_string();
-            let contract = crate::tokens::normalize_token_identifier(Some(contract), chain_id)
+            let mut contract = crate::tokens::normalize_token_identifier(Some(contract), chain_id)
                 .unwrap_or_default();
             let hosting = token_hosting_chain(chain_id);
+            let standard = standard.unwrap_or_else(|| {
+                chain_id
+                    .token_standard_for_identifier(&contract)
+                    .to_string()
+            });
+            if let Ok(normalized) =
+                crate::tokens::validate_protocol_identifier(chain_id, &standard, &contract)
+            {
+                contract = normalized;
+            }
 
             let rejection = match hosting {
                 None => Some(TokenPreferenceRejection::UnknownChain),
@@ -1205,13 +1218,10 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     Some(TokenPreferenceRejection::TooManyDecimals)
                 }
                 Some(hosting)
-                    if !crate::validation::address::validate_address(
-                        crate::validation::address::AddressValidationRequest {
-                            kind: hosting.contract_validation_kind().to_string(),
-                            value: contract.clone(),
-                        },
+                    if crate::tokens::validate_protocol_identifier(
+                        hosting, &standard, &contract,
                     )
-                    .is_valid =>
+                    .is_err() =>
                 {
                     Some(TokenPreferenceRejection::InvalidContract)
                 }
@@ -1233,23 +1243,23 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                 deployment_id: format!(
                                     "{}:{}:{}",
                                     hosting.str_id(),
-                                    hosting.token_standard().to_lowercase(),
+                                    standard.to_lowercase(),
                                     contract
                                 ),
                                 token_id: format!(
                                     "custom:{}:{}:{}",
                                     hosting.str_id(),
-                                    hosting.token_standard().to_lowercase(),
+                                    standard.to_lowercase(),
                                     contract
                                 ),
                                 kind: crate::tokens::TokenKind::Protocol {
-                                    standard: hosting.token_standard().to_string(),
+                                    standard: standard.clone(),
                                     identifier: contract.clone(),
                                 },
                                 chain_id: hosting,
                                 name,
                                 symbol: symbol.clone(),
-                                token_standard: hosting.token_standard().to_string(),
+                                token_standard: standard.clone(),
                                 contract,
                                 coingecko_id: coingecko_id.trim().to_lowercase(),
                                 coinpaprika_id: coinpaprika_id.trim().to_lowercase(),
@@ -1436,6 +1446,7 @@ mod tests {
         decimals: u32,
     ) -> StateCommand {
         StateCommand::AddCustomToken {
+            standard: None,
             chain_id: chain,
             symbol: symbol.to_string(),
             name: "A Token".to_string(),
@@ -1451,6 +1462,80 @@ mod tests {
             StateEvent::TokenPreferenceRejected { reason } => Some(*reason),
             _ => None,
         })
+    }
+
+    #[test]
+    fn custom_tokens_accept_multiple_protocols_and_reject_alias_duplicates_and_invalid_pairs() {
+        use crate::registry::Chain;
+        let mut state = CoreAppState::default();
+        let command =
+            |chain_id, standard: Option<&str>, contract: &str| StateCommand::AddCustomToken {
+                chain_id,
+                standard: standard.map(str::to_string),
+                symbol: "CUSTOM".into(),
+                name: "Custom".into(),
+                contract: contract.into(),
+                coingecko_id: String::new(),
+                coinpaprika_id: String::new(),
+                decimals: 6,
+            };
+        let trc20 = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8";
+        let events = reduce_state_in_place(&mut state, command(Chain::Tron, None, trc20));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StateEvent::TokenPreferencesChanged { .. }))
+        );
+        let events =
+            reduce_state_in_place(&mut state, command(Chain::Tron, Some("TRC-10"), "1002000"));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StateEvent::TokenPreferencesChanged { .. }))
+        );
+        assert!(
+            state
+                .token_preferences
+                .iter()
+                .any(|p| p.token.deployment_id == "tron:trc-10:1002000")
+        );
+        let address = "0x1111111111111111111111111111111111111111";
+        reduce_state_in_place(
+            &mut state,
+            command(Chain::BnbChain, Some("ERC-20"), address),
+        );
+        let events = reduce_state_in_place(
+            &mut state,
+            command(Chain::BnbChain, Some("BEP-20"), address),
+        );
+        assert_eq!(
+            events,
+            [StateEvent::TokenPreferenceRejected {
+                reason: TokenPreferenceRejection::DuplicateToken
+            }]
+        );
+        for (chain, standard, identifier) in [
+            (Chain::Solana, "ERC-20", address),
+            (Chain::Tron, "unknown", "1002001"),
+            (Chain::Aptos, "AIP-21", "0x1::coin::T"),
+        ] {
+            let events =
+                reduce_state_in_place(&mut state, command(chain, Some(standard), identifier));
+            assert_eq!(
+                events,
+                [StateEvent::TokenPreferenceRejected {
+                    reason: TokenPreferenceRejection::InvalidContract
+                }]
+            );
+        }
+        reduce_state_in_place(&mut state, command(Chain::Aptos, None, "0x001::coin::T"));
+        assert!(
+            state
+                .token_preferences
+                .iter()
+                .any(|p| p.token.deployment_id == "aptos:aptos coin:0x1::coin::T"
+                    && p.token.token_standard == "Aptos Coin")
+        );
     }
 
     const EVM_CONTRACT: &str = "0x742d35cc6634c0532925a3b844bc454e4438f44e";

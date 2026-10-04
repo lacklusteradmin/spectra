@@ -4,6 +4,18 @@ use crate::send::payload::PreparedSubmission;
 use crate::send::stages::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 
+fn aptos_reviewed_gas_price(
+    chain: Chain,
+    fee: &str,
+    max_gas: u64,
+) -> Result<u64, SpectraBridgeError> {
+    let octas = crate::send::payload::fee_units(fee, u32::from(chain.native_decimals()))?;
+    if max_gas == 0 || !octas.is_multiple_of(max_gas) || octas / max_gas == 0 {
+        return Err(SpectraBridgeError::invalid("Invalid fee"));
+    }
+    Ok(octas / max_gas)
+}
+
 impl WalletService {
     pub(super) async fn prepare_staged_protocol(
         &self,
@@ -349,6 +361,23 @@ impl WalletService {
                 )?)
             }
             Chain::Aptos => {
+                let max_gas = chain
+                    .aptos_max_gas_amount()
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+                let gas_price = match request.fee_amount.as_deref() {
+                    Some(fee) => aptos_reviewed_gas_price(chain, fee, max_gas)?,
+                    None => {
+                        AptosClient::new(
+                            self.endpoints_for(chain, &[EndpointCapability::Fee]).await,
+                        )
+                        .fetch_gas_price()
+                        .await?
+                    }
+                };
+                let gas_budget = gas_price
+                    .checked_mul(max_gas)
+                    .filter(|&budget| budget > 0)
+                    .ok_or_else(|| SpectraBridgeError::invalid("Invalid fee"))?;
                 let client = AptosClient::new(eps);
                 let sequence = client.fetch_account_info(sender).await?.0;
                 let network = chain
@@ -359,15 +388,34 @@ impl WalletService {
                         "Aptos endpoint is on the wrong network",
                     ));
                 }
+                let balance = AptosClient::new(
+                    self.endpoints_for(chain, &[EndpointCapability::Balance])
+                        .await,
+                )
+                .fetch_balance(sender)
+                .await?
+                .octas;
+                let required = u128::from(amount_u64) + u128::from(gas_budget);
+                if u128::from(balance) < required {
+                    let required =
+                        crate::decimal::from_units(required, u32::from(chain.native_decimals()));
+                    let symbol = chain.coin_symbol();
+                    return Err(SpectraBridgeError::failed(
+                        "Insufficient %@ for the amount plus the network fee (requires %@ %@).",
+                        [symbol, required.as_str(), symbol],
+                    ));
+                }
+                request.fee_amount = Some(crate::decimal::from_units(
+                    u128::from(gas_budget),
+                    u32::from(chain.native_decimals()),
+                ));
                 PreparedPayload::Aptos(crate::send::aptos::prepare_transfer(
                     sender,
                     to,
                     amount_u64,
                     sequence,
-                    AptosClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
-                        .fetch_gas_price()
-                        .await?,
-                    10_000,
+                    gas_price,
+                    max_gas,
                     crate::store::now_unix() as u64 + 600,
                     network,
                 )?)
@@ -909,6 +957,22 @@ impl WalletService {
                 )
             }
             PreparedPayload::Aptos(p) => {
+                let max_gas = chain
+                    .aptos_max_gas_amount()
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+                let fee = stored
+                    .request
+                    .fee_amount
+                    .as_deref()
+                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas budget"))?;
+                let gas_price = aptos_reviewed_gas_price(chain, fee, max_gas)?;
+                if p.body["max_gas_amount"].as_str() != Some(max_gas.to_string().as_str())
+                    || p.body["gas_unit_price"].as_str() != Some(gas_price.to_string().as_str())
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "Aptos gas budget changed; build and review again",
+                    ));
+                }
                 let seq: u64 = p.body["sequence_number"]
                     .as_str()
                     .ok_or_else(|| SpectraBridgeError::failure("Missing sequence"))?

@@ -21,15 +21,29 @@ pub struct WalletDerivedState {
 /// Token descriptor passed across UniFFI without JSON-shuttle marshalling.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct TokenDescriptor {
+    /// The actual deployment protocol; empty inputs resolve from identifier shape.
+    #[uniffi(default = "")]
+    pub standard: String,
     pub contract: String,
     pub symbol: String,
     pub decimals: u8,
     pub name: Option<String>,
 }
 
+impl TokenDescriptor {
+    pub(crate) fn standard_on(&self, chain: Chain) -> &str {
+        if self.standard.is_empty() {
+            chain.token_standard_for_identifier(&self.contract)
+        } else {
+            &self.standard
+        }
+    }
+}
+
 /// Typed token-balance result returned via UniFFI.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct TokenBalanceResult {
+    pub standard: String,
     pub contract_address: String,
     /// The catalog's symbol, or empty when the catalog does not know this
     /// contract.

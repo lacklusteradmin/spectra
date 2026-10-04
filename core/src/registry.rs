@@ -481,29 +481,54 @@ impl Chain {
         self.supports_staking() && self != Self::Icp
     }
 
-    /// The chain can hold tracked tokens: the catalog gives it a token
-    /// standard. A testnet carries its mainnet's standard.
+    /// The network has a default protocol for adding tokens. Individual
+    /// deployments own their actual protocol, which is validated separately.
     pub fn hosts_tokens(self) -> bool {
-        !self.entry().token_standard.is_empty()
+        !self.token_standard().is_empty()
     }
 
-    /// The catalog's token standard (`ERC-20`, `SPL`), or empty.
+    /// The default token standard for this network, or empty.
     pub fn token_standard(self) -> &'static str {
-        &self.entry().token_standard
+        &crate::chains::declared(self).token_standard
     }
 
-    /// Which validator a *token contract* on this chain is judged by.
-    ///
-    /// Not [`Chain::address_validation_kind`] for two of them: a Sui or Aptos
-    /// token is named by a coin *type* (`0xADDR::module::NAME`), not by an
-    /// address. Everywhere else the contract is an address in the chain's own
-    /// format.
-    pub fn contract_validation_kind(self) -> &'static str {
-        match self {
-            Chain::Sui => "suiCoinType",
-            Chain::Aptos => "aptosTokenType",
-            other => other.address_validation_kind(),
+    /// Protocols this network can represent. This is deliberately independent
+    /// of its default and of the protocols implemented by readers and senders.
+    pub fn allows_token_standard(self, standard: &str) -> bool {
+        match standard {
+            "ERC-20" => self.is_evm(),
+            "BEP-20" => matches!(self, Self::BnbChain | Self::BnbChainTestnet | Self::OpBnb),
+            "ARC-20" => matches!(self, Self::Avalanche | Self::AvalancheFuji),
+            "SPL" => matches!(self, Self::Solana | Self::SolanaDevnet),
+            "TRC-20" | "TRC-10" => matches!(self, Self::Tron | Self::TronNile),
+            "TEP-74" => matches!(self, Self::Ton | Self::TonTestnet),
+            "NEP-141" => matches!(self, Self::Near | Self::NearTestnet),
+            "Sui Coin" => matches!(self, Self::Sui | Self::SuiTestnet),
+            "AIP-21" | "Aptos Coin" => matches!(self, Self::Aptos | Self::AptosTestnet),
+            _ => false,
         }
+    }
+
+    /// Resolve an omitted standard from identifier shape where protocols have
+    /// distinct identities; otherwise use the network's default.
+    pub fn token_standard_for_identifier(self, identifier: &str) -> &'static str {
+        match self {
+            Self::Tron | Self::TronNile if identifier.bytes().all(|b| b.is_ascii_digit()) => {
+                "TRC-10"
+            }
+            Self::Aptos | Self::AptosTestnet if identifier.contains("::") => "Aptos Coin",
+            _ => self.token_standard(),
+        }
+    }
+
+    /// Whether core has a balance/metadata reader for this actual protocol.
+    pub fn reads_token_standard(self, standard: &str) -> bool {
+        self.allows_token_standard(standard) && standard != "TRC-10"
+    }
+
+    /// Whether core has a transfer builder for this actual protocol.
+    pub fn sends_token_standard(self, standard: &str) -> bool {
+        self.reads_token_standard(standard) && self.sends_tokens()
     }
 
     pub fn supports_staking(self) -> bool {
@@ -715,6 +740,11 @@ impl Chain {
         }
     }
 
+    /// Gas units reserved by Aptos previews and committed into its builders.
+    pub fn aptos_max_gas_amount(self) -> Option<u64> {
+        matches!(self, Self::Aptos | Self::AptosTestnet).then_some(10_000)
+    }
+
     /// EIP-155 chain id. Refuses chains outside the EVM family.
     pub fn evm_chain_id(self) -> Result<u64, RegistryError> {
         Ok(match self {
@@ -886,7 +916,7 @@ impl Chain {
                 fee_field: SendFeeField::GasBudget,
                 fee_fallback: None,
             },
-            Chain::Cardano => SendExecutionShape {
+            Chain::Cardano | Chain::Aptos => SendExecutionShape {
                 fee_field: SendFeeField::FeeAmount,
                 fee_fallback: None,
             },
@@ -1049,11 +1079,12 @@ impl Chain {
     ///
     /// NEAR is the one chain that routes a token send with no fee estimate to
     /// check against, so the floor is the whole check.
-    pub fn token_send_gas_reserve(self) -> Option<&'static str> {
-        match self {
-            Chain::Near => Some("0.001"),
-            _ => None,
+    pub fn token_send_gas_reserve(self) -> Option<String> {
+        if self.mainnet_counterpart() != Chain::Near {
+            return None;
         }
+        self.static_fee_units()
+            .map(|units| crate::decimal::from_units(units, u32::from(self.native_decimals())))
     }
 
     pub fn supports_deep_utxo_discovery(self) -> bool {
@@ -1257,8 +1288,10 @@ impl Chain {
         )
     }
 
+    /// Protocol fee estimates in native smallest units. Testnets share the
+    /// family's estimate; endpoints still belong to the concrete network.
     pub fn static_fee_units(self) -> Option<u128> {
-        match self {
+        match self.mainnet_counterpart() {
             Chain::Solana => Some(5_000),
             Chain::Tron => Some(1_000_000),
             Chain::Cardano => Some(170_000),
@@ -1267,70 +1300,13 @@ impl Chain {
             Chain::Sui => Some(1_000),
             Chain::Ton => Some(7_000_000),
             Chain::Icp => Some(10_000),
-            Chain::Zcash | Chain::ZcashTestnet => Some(10_000),
+            Chain::Zcash => Some(10_000),
             Chain::Monero => Some(500_000_000),
             Chain::Dogecoin => Some(1_000_000),
             Chain::Litecoin | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Kaspa => Some(1_000),
             Chain::BitcoinCash | Chain::Decred | Chain::Dash => Some(2_000),
-            Chain::SolanaDevnet => Some(5_000),
-            Chain::TronNile => Some(1_000_000),
-            Chain::CardanoPreprod => Some(170_000),
-            Chain::PolkadotWestend => Some(160_000_000),
-            Chain::SuiTestnet => Some(1_000),
-            Chain::TonTestnet => Some(7_000_000),
-            Chain::MoneroStagenet => Some(500_000_000),
-            Chain::DogecoinTestnet => Some(1_000_000),
-            Chain::LitecoinTestnet | Chain::BitcoinSVTestnet | Chain::KaspaTestnet => Some(1_000),
-            Chain::BitcoinCashTestnet | Chain::DecredTestnet | Chain::DashTestnet => Some(2_000),
-            Chain::Bitcoin | Chain::Xrp | Chain::Stellar | Chain::Aptos => None,
-            Chain::BitcoinTestnet
-            | Chain::BitcoinTestnet4
-            | Chain::BitcoinSignet
-            | Chain::XrpTestnet
-            | Chain::StellarTestnet
-            | Chain::AptosTestnet => None,
-            Chain::Ethereum
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Avalanche
-            | Chain::Base
-            | Chain::EthereumClassic
-            | Chain::BnbChain
-            | Chain::Hyperliquid
-            | Chain::Polygon
-            | Chain::Linea
-            | Chain::Scroll
-            | Chain::Blast
-            | Chain::Mantle
-            | Chain::Sei
-            | Chain::Celo
-            | Chain::Cronos
-            | Chain::OpBnb
-            | Chain::ZkSyncEra
-            | Chain::Sonic
-            | Chain::Berachain
-            | Chain::Unichain
-            | Chain::Ink
-            | Chain::XLayer => None,
-            Chain::EthereumSepolia
-            | Chain::EthereumHoodi
-            | Chain::ArbitrumSepolia
-            | Chain::OptimismSepolia
-            | Chain::BaseSepolia
-            | Chain::BnbChainTestnet
-            | Chain::AvalancheFuji
-            | Chain::PolygonAmoy
-            | Chain::HyperliquidTestnet
-            | Chain::LineaSepolia
-            | Chain::CeloSepolia
-            | Chain::CronosTestnet
-            | Chain::ZkSyncEraSepolia
-            | Chain::SonicTestnet
-            | Chain::InkSepolia
-            | Chain::XLayerTestnet
-            | Chain::EthereumClassicMordor => None,
-            Chain::Near => None,
-            Chain::NearTestnet => None,
+            Chain::Near => Some(1_000_000_000_000_000_000_000),
+            _ => None,
         }
     }
 
@@ -1359,7 +1335,7 @@ impl Chain {
 pub enum SendFeeField {
     /// Sui: the fee becomes the transaction's gas budget.
     GasBudget,
-    /// Cardano: the fee is passed as an explicit amount.
+    /// The reviewed fee or gas budget is passed as an explicit amount.
     FeeAmount,
     /// UTXO chains: the fee is converted to satoshis.
     FeeSats,
@@ -1556,9 +1532,8 @@ mod tests {
         assert_eq!(excluded, vec!["monero"]);
     }
 
-    /// Tracked tokens live exactly on the networks the catalog gives a token
-    /// standard, a testnet's is its mainnet's, and each validates its
-    /// contracts with a known validator.
+    /// Hosting and the input default follow the registry; each configured
+    /// default is also a protocol that the network can represent.
     #[test]
     fn token_hosting_follows_the_token_standard_column() {
         let hosting: Vec<&str> = Chain::all()
@@ -1582,7 +1557,7 @@ mod tests {
         assert!(!Chain::Bitcoin.hosts_tokens() && !Chain::Monero.hosts_tokens());
         for chain in Chain::all().filter(|c| c.hosts_tokens()) {
             assert!(
-                !chain.contract_validation_kind().is_empty(),
+                chain.allows_token_standard(chain.token_standard()),
                 "{}",
                 chain.str_id()
             );

@@ -17,6 +17,217 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-04 — Aptos reserves and signs the reviewed gas budget
+
+- **Before:** Aptos treated the node's gas unit price as the entire transaction
+  fee. A price of 100 octas displayed 0.000001 APT and overstated the amount
+  available to send, although signing allowed 10,000 gas units. Construction
+  re-fetched the price without binding it to the fee that had been reviewed.
+- **After:** The registry owns the 10,000-unit gas limit. Previews reserve the
+  full maximum budget (`gas unit price × gas limit`), keeping the unit price
+  separate from the total. At 100 octas, the budget is 0.01 APT; a 2 APT balance
+  offers at most 1.99 APT. Owned sends carry that reviewed budget into the
+  transaction instead of re-quoting it; direct CLI builds without a reviewed
+  fee obtain a price and persist the resulting budget. Both paths refuse an
+  invalid budget or insufficient live balance before creating an artifact.
+  Signing verifies that the prepared gas parameters still match the durable
+  budget. Zero prices and budgets outside u64 are refused.
+- **Why:** Funds checks and the signed transaction must agree about the
+  maximum fee. [Aptos's gas documentation](https://aptos.dev/network/blockchain/gas-txn-fee)
+  defines that maximum as the product of gas limit and gas unit price.
+- **CLI check:** The loopback Aptos cases in `python3 scripts/cli-send.py
+  target/debug/spectra` cover exact budget binding and insufficient-balance
+  refusal without an artifact. Service tests exercise the typed testnet
+  preview and reject missing, zero or unrepresentable gas parameters.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy at `-D warnings`, 919 core tests and one transport integration test,
+  460 CLI acceptance checks with zero external requests, and 105 iOS tests in
+  23 suites on iPhone 17 Pro (`TEST SUCCEEDED`). Swift bindings were regenerated
+  by the Xcode Rust build phase and compiled with the app. The Aptos preview,
+  budget-binding, invalid-budget and live-balance regressions passed on core
+  and the offline CLI. `scripts/unused-strings.sh` and `git diff --check` passed.
+
+## 2026-10-04 — Native history metadata comes from its concrete network
+
+- **Before:** EVM history accepted caller-provided native names and tickers;
+  stored refreshes supplied the family's mainnet metadata and had an Ether/ETH
+  fallback. Sepolia and Avalanche Fuji records could therefore display mainnet
+  asset labels. Solana and Tron API results also carried unused native/provider
+  tickers, and ICP construction repeated its currency symbol and precision.
+- **After:** EVM record construction derives the native name and ticker from
+  its concrete network. The redundant input fields, EVM asset helper and four
+  unused FFI records are deleted. Solana/Tron internal transfer JSON no longer
+  carries a ticker; normalized history continues to resolve assets by network
+  and mint/contract. ICP construction and exact suggested-fee validation share
+  one currency value derived from the registry.
+- **Why:** Network and deployment identity already determine asset metadata;
+  a second caller-owned label can disagree and misrepresent a test coin.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_evm_testnet_native_history_labels` uses loopback Blockscout
+  responses and verifies Test Ethereum/tETH and Test Avalanche/tAVAX, concrete
+  network and deployment identity after saving and reopening. Existing Solana/Tron
+  history and ICP build/sign CLI fixtures cover the other simplified paths.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed, including
+  the saved testnet-history CLI fixture, Solana/Tron history, ICP build/sign
+  fixtures and regenerated Swift bindings. See the Aptos entry above for suite
+  counts.
+
+## 2026-10-04 — Fee estimates share registry units across network families
+
+- **Before:** NEAR separately encoded its 0.001 estimate as two strings under
+  an incorrect claim that 10^21 exceeded u128, while its testnet had no estimate
+  or token gas floor. XRP, Stellar and Aptos live fee dispatch matched only
+  mainnets. Static mainnet/testnet estimates and TRX's native estimate repeated
+  the same values in separate branches.
+- **After:** Registry estimates use native smallest units once per family.
+  NEAR's 10^21 units fit u128 and both networks derive the display estimate and
+  token gas floor from that value. Live fee requests dispatch by family while
+  retaining each concrete network's endpoints and precision. TRX's native
+  preview reads the same registry estimate and precision as the other paths.
+- **Why:** Mainnets and testnets share protocol handling, not endpoint identity;
+  exact amount conversion removes duplicated strings and unsupported branches.
+- **CLI check:** `spectra --json send amount --chain near-testnet --amount
+  0.001` returns raw amount `1000000000000000000000`. The internal fee-estimate
+  route has no standalone CLI command; service regressions exercise both NEAR
+  networks and testnet-only XRP/Stellar/Aptos mock endpoints.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed; both NEAR
+  network regressions and XRP/Stellar/Aptos testnet-only endpoint fixtures
+  passed. The offline NEAR amount CLI check returned the exact 10^21 units.
+  See the Aptos entry above for suite counts.
+
+## 2026-10-04 — Native forms do not invent a missing network
+
+- **Before:** Custom-token forms named Ethereum as a default and as a fallback
+  for an edit with no valid hosting chain. An empty address-book chain catalog
+  silently selected Bitcoin.
+- **After:** New forms initialize optional selections from core's eligible
+  catalogs. Token edits display the stored chain; an unsupported edit shows a
+  refusal and cannot save. Missing address-book selections prompt for a chain
+  and cannot save. The current nonempty catalogs still initially select
+  Ethereum and Bitcoin in their existing order.
+- **Why:** Missing chain metadata must not be displayed as another network.
+- **CLI check:** None applies to native form state; core still validates token
+  and recipient writes. The simulator suite covers the token-management views.
+- **Verification:** Both edited views passed Swift parsing. Full
+  `CARGO_INCREMENTAL=0 make verify` passed, including all 105 simulator tests
+  and the token-management screens rendered in a real window. See the Aptos
+  entry above for core and CLI suite counts.
+
+## 2026-10-04 — Allow deployment-owned standards and update Gram and WETH
+
+- **Before:** The catalog and persisted holdings required a token's standard
+  to equal its chain's single standard. Aptos CAKE was consequently labeled
+  AIP-21 despite identifying a legacy Coin. TON's native asset still displayed
+  Toncoin/TON and reused the network icon; its test coin used Test Toncoin/tTON.
+  WETH reused Ethereum's icon.
+- **After:** A chain supplies a default standard; each deployment carries its
+  actual standard and core validates its chain, standard and identifier together.
+  Unsupported operations are refused before making chain requests. Aptos CAKE
+  is removed from the built-in catalog at the user's request; CAKE on other
+  chains remains. The mainnet catalog now has 301 deployments, including 255
+  protocol tokens. The native asset is Gram/GRAM, the test coin Test Gram/tGRAM,
+  and both use the new gram icon. Network names and artwork still identify TON.
+  Asset and network wiki prose and search keywords follow the new names.
+  WETH uses its own gray symbol on a white circular background, centered with
+  a 48-point height matching the Ethereum source. Both new SVGs are normalized
+  to the library's 64-point format and exported through the standard scripts.
+  Preference identity now uses the deployment ID
+  (`chain:standard:identifier`) instead of `chain|identifier`; catalog and
+  custom-token writes still refuse duplicate normalized chain/identifier pairs.
+  Reopening preferences favors the catalog over a custom protocol alias of the
+  same identifier. A successful balance refresh replaces that identifier's
+  previous holding and removes protocol aliases instead of counting it twice;
+  unread or unsupported tokens keep their last balance.
+  Protocol identifiers, reads, previews and send records retain the actual
+  deployment standard. The new FFI fields are generated from Rust; no stored
+  format migration or compatibility identity is introduced.
+  The obsolete chain-default contract-validator method and its unused error
+  translation are deleted; protocol identity now has one validation entry point.
+- **Why:** Token standards belong to deployments; one network can host more
+  than one protocol. Accepting an identifier still requires core validation,
+  and expressing a protocol does not silently enable an unsupported service.
+  The user elected to remove Aptos CAKE while fixing that model.
+  [TON's official media guide](https://ton.org/media/) distinguishes the
+  Gram/GRAM asset from the TON network. Test Gram/tGRAM follows Spectra's
+  existing Test/t-prefixed naming convention, not a claim about an official
+  testnet ticker. Separate asset artwork makes Gram and WETH recognizable.
+- **CLI check:** `spectra --json token catalog --chain aptos` omits CAKE;
+  the TON and TON testnet catalogs show Gram/GRAM and Test Gram/tGRAM.
+  `spectra --json token artwork --token-id the-open-network` returns `gram`,
+  `--token-id weth` returns `weth`, and `--chain-id ton` still returns `ton`.
+  `spectra --json token add --chain tron --standard TRC-10 --contract 1002000
+  --symbol T10 --name T10 --decimals 6` persists alongside a TRC-20 token;
+  reopened `token list` retains both deployment IDs. BNB accepts an ERC-20
+  deployment but rejects adding the same identifier under BEP-20; Solana
+  rejects ERC-20, and Aptos rejects an AIP-21 legacy Coin type. Isolated CLI
+  checks compare all 46 mainnets and 301 deployments with TOML, confirm the
+  catalog removal and asset/network artwork mapping, and reopen mixed-standard
+  preferences with zero external requests.
+- **Verification:** Full `CARGO_INCREMENTAL=0 make verify` passed: rustfmt,
+  clippy at `-D warnings`, 916 core tests and one transport integration test,
+  460 CLI acceptance checks with zero external requests, and 105 iOS tests in
+  23 suites on iPhone 17 Pro (`TEST SUCCEEDED`). Swift bindings were regenerated
+  by the Xcode Rust build phase and compiled with the app. Regression checks
+  cover catalog and custom-token mixed standards, invalid combinations, zero
+  RPC requests for unsupported TRC-10 reads/builds/sends, preserving unread
+  balances, and protocol-alias preference and balance identity after reopening.
+  `scripts/normalize-icons.sh`, `scripts/export-swift-icons.sh` and
+  `scripts/normalize-icons.sh --check` passed; both exported SVGs match their
+  sources byte-for-byte. The icons were rendered and visually checked against
+  Ethereum at 32, 48 and 64 points. Offline catalog/artwork/persistence checks
+  passed for all 46 mainnets and 301 deployments.
+  Initial full runs exposed invalid old test fixtures and an obsolete
+  preference-ID assertion, then an unused validator and translation; those
+  were corrected or deleted. Disk exhaustion was resolved by removing
+  rebuildable incremental and old core-library caches; the successful full
+  run disabled incremental caching. `git diff --check` passed.
+
+## 2026-10-03 — Correct audited token identities and precision
+
+- **Before:** Ethereum RLUSD tracked `0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec`
+  instead of Ripple's proxy. ENA was listed at an undeployed Berachain
+  address. Solana LINK declared 8 decimals, Sui FDUSD declared 9 and
+  Westend's native test coin declared 10. Bera USD had no CoinPaprika ID.
+- **After:** RLUSD uses `0x8292bb45bf1ee4d140127049757c2e0ff06317ed`
+  with 18 decimals. The nonexistent Berachain ENA deployment is removed;
+  the mainnet catalog now has 302 deployments, including 256 protocol
+  tokens. Solana LINK has 9 decimals, Sui FDUSD 6 and Westend 12.
+  Bera USD uses CoinPaprika `honey-honey1`, whose Berachain contract
+  matches the catalog despite the provider still displaying Honey/HONEY.
+  The precision test now checks independent deployment precision with a
+  synthetic fixture rather than repeating token metadata and a wrong LINK
+  comment. Wiki tests compare every deployment's chain, contract, standard
+  and precision to the catalog rather than hardcoding an obsolete USDC
+  deployment count. These corrections replace catalog-owned built-ins on reopen;
+  no migration or compatibility entry retains the wrong identities.
+- **Why:** [Ripple's integration documentation](https://docs.ripple.com/products/stablecoin/developer-resources/rlusd-on-ethereum)
+  requires the proxy; live Ethereum metadata confirms its identity and
+  precision. Two Berachain nodes return empty code for the removed ENA
+  address. [Chainlink](https://docs.chain.link/resources/link-token-contracts),
+  current Solana mint data, Sui coin metadata and the
+  [FDUSD issuer report](https://firstdigitallabs.com/workspace/uploads/fdusd-attestation-2024-12-31-67906c4e1056b.pdf)
+  establish the corrected token precisions. The
+  [Polkadot unit table](https://wiki.polkadot.network/learn/learn-DOT/)
+  distinguishes DOT's 10 decimals from Westend's 12. The
+  [CoinPaprika identity API](https://api.coinpaprika.com/v1/coins/honey-honey1)
+  supplies Bera USD's matching platform and contract.
+- **CLI check:** `spectra --json token catalog --chain ethereum` lists
+  RLUSD only at the proxy; the equivalent commands for Solana, Sui and
+  Westend list precisions 9, 6 and 12. `spectra --json token catalog
+  --chain berachain` omits ENA and lists Bera USD with `honey-honey1`.
+  `spectra --json send amount --chain polkadot-westend --amount
+  0.000000000001` returns raw amount 1.
+- **Verification:** Full `make verify` passed: `cargo fmt --all -- --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, 902 core tests
+  and one transport integration test, 460 CLI acceptance checks with no
+  external network, and 105 iOS tests in 23 suites on iPhone 17 Pro.
+  The first full run found the existing wiki test's obsolete USDC count;
+  after replacing it with complete catalog correspondence, the full rerun
+  passed. Isolated CLI checks compared all 46 mainnets and 302 deployments
+  to the corrected TOML, checked the corrected fields in reopened token
+  preferences and proved Westend's smallest-unit conversion without network.
+  `git diff --check` passed.
+
 ## 2026-10-03 — ETHFI, EURC and USDC cover eleven more deployments
 
 - **Before:** ETHFI listed Ethereum, Arbitrum, Base and Scroll; EURC listed

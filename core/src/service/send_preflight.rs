@@ -336,21 +336,22 @@ mod preflight_tests {
         }
     }
 
-    fn known(chain: Chain, contract: &str) -> CoreTokenPreferenceEntry {
+    fn known(chain: Chain, standard: &str, contract: &str) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             token: crate::tokens::TokenDeploymentEntry {
-                deployment_id: "fixture:token".into(),
+                deployment_id: crate::tokens::protocol_deployment_id(chain, standard, contract)
+                    .expect("valid protocol fixture"),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
-                    standard: "fixture".into(),
-                    identifier: "fixture".into(),
+                    standard: standard.into(),
+                    identifier: contract.into(),
                 },
                 chain_id: chain,
                 name: "Token".into(),
                 symbol: "TOK".into(),
-                token_standard: String::new(),
+                token_standard: standard.into(),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
@@ -401,7 +402,8 @@ mod preflight_tests {
             preflight().await.is_err(),
             "an untracked mint is not sendable"
         );
-        service.wallet_state.write().await.token_preferences = vec![known(Chain::Solana, mint)];
+        service.wallet_state.write().await.token_preferences =
+            vec![known(Chain::Solana, &standard, mint)];
         let known_now = preflight().await.expect("a tracked mint is sendable");
         assert_eq!(known_now.token_contract_address.as_deref(), Some(mint));
     }

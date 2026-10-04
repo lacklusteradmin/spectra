@@ -47,13 +47,7 @@ impl WalletService {
         };
         // The stored holding says what is sent: its token's contract on this
         // network, or the network's own coin.
-        let deployment_id =
-            crate::tokens::deployment_id_for(chain, token.as_ref().map(|t| t.contract.as_str()))
-                .ok_or_else(|| {
-                    SpectraBridgeError::failure(
-                        "the held token's contract is not valid on this network",
-                    )
-                })?;
+        let deployment_id = holding.deployment_id();
         let assembly = crate::send::ethereum::prepare_evm_send_assembly(
             crate::send::ethereum::EvmSendAssemblyInput {
                 chain_id: chain,
@@ -103,8 +97,8 @@ impl WalletService {
     /// A chain's fee quoted in its own native unit, live where the chain has
     /// an RPC that answers and static where the catalog carries the number.
     ///
-    /// Only the eleven chains `simple_preview_chain` covers reach this, which
-    /// is why Bitcoin and EVM have no arm: they have their own preview paths.
+    /// Testnets use the same protocol with their own endpoints and precision.
+    /// Bitcoin and EVM have separate preview paths.
     pub(crate) async fn native_fee_estimate(
         &self,
         chain: Chain,
@@ -114,8 +108,9 @@ impl WalletService {
             raw: raw.to_string(),
             display: crate::decimal::from_units(raw, u32::from(chain.native_decimals())),
             source,
+            gas_unit_price_octas: None,
         };
-        match chain {
+        match chain.mainnet_counterpart() {
             // Chains with live RPC fee fetches.
             Chain::Xrp => {
                 let drops = XrplClient::new(endpoints).fetch_fee().await?;
@@ -127,21 +122,21 @@ impl WalletService {
             }
             Chain::Aptos => {
                 let price = AptosClient::new(endpoints).fetch_gas_price().await?;
-                Ok(native(price as u128, "rpc"))
+                let max_gas = chain.aptos_max_gas_amount().expect("Aptos gas limit");
+                let budget = price
+                    .checked_mul(max_gas)
+                    .filter(|budget| *budget > 0)
+                    .ok_or_else(|| SpectraBridgeError::failure("Invalid fee"))?;
+                let mut fee = native(u128::from(budget), "rpc");
+                fee.gas_unit_price_octas = Some(price);
+                Ok(fee)
             }
-            // NEAR's static fee overflows u128 — carry it as the string it is.
-            Chain::Near => Ok(NativeFeeEstimate {
-                raw: "1000000000000000000000".to_string(),
-                display: "0.001".to_string(),
-                source: "static",
-            }),
-            // Every remaining supported chain returns a flat static fee from
-            // `Chain::static_fee_units`. One arm replaces 18 near-identical ones.
-            other => match other.static_fee_units() {
+            // Every remaining supported chain gets its estimate from the registry.
+            _ => match chain.static_fee_units() {
                 Some(units) => Ok(native(units, "static")),
                 None => Err(SpectraBridgeError::failure(format!(
                     "fee estimation not supported for {}",
-                    other.chain_display_name()
+                    chain.chain_display_name()
                 ))),
             },
         }
@@ -317,6 +312,15 @@ impl WalletService {
         symbol: String,
         contract_address: String,
     ) -> Result<String, SpectraBridgeError> {
+        if !contract_address.is_empty() {
+            let standard = Chain::Tron.token_standard_for_identifier(&contract_address);
+            crate::tokens::validate_protocol_identifier(Chain::Tron, standard, &contract_address)?;
+            if !Chain::Tron.sends_token_standard(standard) {
+                return Err(SpectraBridgeError::invalid(format!(
+                    "{standard} transfers are not supported"
+                )));
+            }
+        }
         let eps = self
             .endpoints_for(
                 crate::registry::Chain::Tron,
@@ -342,11 +346,14 @@ impl WalletService {
                 .await
                 .map(|b| b.sun)
                 .map_err(SpectraBridgeError::from)?;
-            const FEE_SUN: u64 = 1_000_000;
-            let spendable =
-                crate::decimal::from_units(u128::from(balance_sun.saturating_sub(FEE_SUN)), 6);
+            let fee_sun = fee_or_static(Chain::Tron, None)?;
+            let decimals = u32::from(Chain::Tron.native_decimals());
+            let spendable = crate::decimal::from_units(
+                u128::from(balance_sun.saturating_sub(fee_sun)),
+                decimals,
+            );
             return Ok(json!({
-                "estimated_fee_trx": crate::decimal::from_units(u128::from(FEE_SUN), 6),
+                "estimated_fee_trx": crate::decimal::from_units(u128::from(fee_sun), decimals),
                 "fee_limit_sun": 0_i64,
                 "spendable_balance": spendable,
                 "max_sendable": spendable,
@@ -372,7 +379,7 @@ impl WalletService {
 
         let fee_limit_sun: i64 = 15_000_000;
         Ok(json!({
-            "estimated_fee_trx": crate::decimal::from_units(fee_limit_sun as u128, 6),
+            "estimated_fee_trx": crate::decimal::from_units(fee_limit_sun as u128, u32::from(Chain::Tron.native_decimals())),
             "fee_limit_sun": fee_limit_sun,
             "spendable_balance": token_balance,
             "max_sendable": token_balance,
@@ -407,14 +414,18 @@ impl WalletService {
         let max_sendable = crate::decimal::sub_or_zero(&balance_display, &fee_display)
             .ok_or_else(|| unreadable("balance", &balance_display))?;
 
-        Ok(json!({
+        let mut value = json!({
             "fee_display":          fee_display,
             "fee_raw":              fee_raw,
             "fee_rate_description": fee_rate_description,
             "balance_display":      balance_display,
             "max_sendable":         max_sendable,
-        })
-        .to_string())
+        });
+        if let Some(price) = fee.gas_unit_price_octas {
+            value["gas_unit_price_octas"] = json!(price);
+            value["max_gas_amount"] = json!(chain.aptos_max_gas_amount().expect("Aptos gas limit"));
+        }
+        Ok(value.to_string())
     }
 }
 

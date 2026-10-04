@@ -270,6 +270,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             let artifact =
                 ctx.rt.block_on(
                     service.build_send(SendExecutionRequest {
+                        token_standard: None,
                         chain_id: chain,
                         wallet_id: wallet.id,
                         password: None,
@@ -1468,6 +1469,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     service.set_secret_store(ctx.secrets.clone());
     ctx.rt.block_on(service.open_state(ctx.db_path()))?;
     let request = SendExecutionRequest {
+        token_standard: None,
         chain_id: chain,
         wallet_id: wallet.id.clone(),
         password,

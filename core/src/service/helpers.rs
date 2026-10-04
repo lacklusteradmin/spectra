@@ -97,6 +97,8 @@ pub(crate) struct NativeFeeEstimate {
     pub display: String,
     /// `"rpc"` when a node quoted it, `"static"` when the catalog did.
     pub source: &'static str,
+    /// Aptos's quoted unit price, distinct from the total reserved fee.
+    pub gas_unit_price_octas: Option<u64>,
 }
 
 /// Compute a UTXO capacity fee preview using P2PKH sizing (148 B/input,

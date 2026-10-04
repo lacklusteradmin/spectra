@@ -4,7 +4,7 @@ use crate::registry::{Chain, SendFeeField};
 fn protocol_fee_fields_and_fallbacks_match_execution_requirements() {
     let cases: &[(&str, SendFeeField, Option<&str>)] = &[
         ("sui", SendFeeField::GasBudget, None),
-        ("aptos", SendFeeField::None, None),
+        ("aptos", SendFeeField::FeeAmount, None),
         ("ton", SendFeeField::None, None),
         ("xrp", SendFeeField::None, None),
         ("stellar", SendFeeField::None, None),
