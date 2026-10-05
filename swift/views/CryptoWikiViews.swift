@@ -30,7 +30,9 @@ struct CryptoWikiLibraryView: View {
     }
     private var filteredChains: [ChainWikiEntry] {
         CoreReferenceTables.chainWiki.filter { chain in
-            matches(tags: chain.tags, text: [chain.name, chain.comment, chain.family])
+            matches(
+                tags: chain.tags.map(\.title),
+                text: [chain.name, chain.comment, chain.family, chain.consensus, chain.stateModel])
         }
     }
     private func matches(tags: [String], text: [String]) -> Bool {
@@ -39,7 +41,8 @@ struct CryptoWikiLibraryView: View {
         return (text + tags).contains { $0.localizedCaseInsensitiveContains(query) }
     }
     private var availableTags: [String] {
-        let all = CoreReferenceTables.assetWiki.flatMap(\.tags) + CoreReferenceTables.chainWiki.flatMap(\.tags)
+        let all = CoreReferenceTables.assetWiki.flatMap(\.tags)
+            + CoreReferenceTables.chainWiki.flatMap { $0.tags.map(\.title) }
         return Array(Set(all)).sorted()
     }
     var body: some View {

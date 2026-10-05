@@ -37,7 +37,7 @@ struct ChainWikiDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: SpectraLayout.Space.xs) {
                         ForEach(chain.tags, id: \.self) { tag in
-                            Text(tag).font(.caption.weight(.semibold)).foregroundStyle(chain.face.color)
+                            Text(tag.title).font(.caption.weight(.semibold)).foregroundStyle(chain.face.color)
                                 .padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.xs)
                                 .background(chain.face.color.opacity(0.14), in: Capsule())
                         }

@@ -1,9 +1,13 @@
-# Concrete network identities and operational rules. Mainnets and testnets are peers.
+# Concrete network identities, operational rules and presentation. Mainnets and testnets are peers.
 # Each network declares its supported token protocols; deployments own their actual standard.
 # EVM membership is defined by registry::Chain, not configured here.
-# Presentation belongs to chain-ui.toml, joined by chain_id.
 # Native token metadata belongs to tokens.toml (testnet-tokens.toml for testnets);
 # core derives the native deployment ID as "<chain_id>:native".
+#
+# Every network carries its search keywords, color, artwork and address hint.
+# `popular_rank` and authored `tags` belong on mainnets only; testnets inherit both.
+# Ranks order the picker, 1..=n without gaps. Picker and wiki share the same tags.
+# `layer-1`, `evm` and `testnet` are derived from the registry and refused here.
 
 [[chains]]
 id = "bitcoin"
@@ -19,6 +23,12 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0" },
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
+search_keywords = ["Bitcoin", "BTC"]
+popular_rank = 1
+tags = ["utxo", "pow"]
+color = "orange"
+artwork_name = "bitcoin"
+address_prefix_hint = "bc1q…"
 
 [[chains]]
 id = "ethereum"
@@ -29,6 +39,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ethereum", "ETH"]
+popular_rank = 2
+color = "purple"
+artwork_name = "ethereum"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "solana"
@@ -40,6 +55,11 @@ derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
   { tag = "legacy", path = "m/44'/501'/{account}'" },
 ]
+search_keywords = ["Solana", "SOL"]
+popular_rank = 5
+color = "green"
+artwork_name = "solana"
+address_prefix_hint = "So111…"
 
 [[chains]]
 id = "dogecoin"
@@ -50,6 +70,12 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/3'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Dogecoin", "DOGE"]
+popular_rank = 7
+tags = ["utxo", "pow"]
+color = "yellow"
+artwork_name = "dogecoin"
+address_prefix_hint = "D…"
 
 [[chains]]
 id = "xrp"
@@ -61,6 +87,12 @@ derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/144'/{account}'" },
 ]
+search_keywords = ["XRP Ledger", "XRP"]
+popular_rank = 3
+tags = ["payments"]
+color = "cyan"
+artwork_name = "xrp"
+address_prefix_hint = "r…"
 
 [[chains]]
 id = "litecoin"
@@ -73,6 +105,12 @@ derivation_path = [
   { tag = "nativeSegWit", path = "m/84'/2'/{account}'/0/0" },
   { tag = "nestedSegWit", path = "m/49'/2'/{account}'/0/0" },
 ]
+search_keywords = ["Litecoin", "LTC"]
+popular_rank = 12
+tags = ["utxo", "pow"]
+color = "blue"
+artwork_name = "litecoin"
+address_prefix_hint = "ltc1… / L… / M…"
 
 [[chains]]
 id = "bitcoin-cash"
@@ -85,6 +123,11 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/0'/{account}'/0/0" },
   { tag = "electrumLegacy", path = "m/0" },
 ]
+search_keywords = ["Bitcoin Cash", "BCH"]
+popular_rank = 10
+tags = ["utxo", "pow"]
+color = "orange"
+artwork_name = "bitcoincash"
 
 [[chains]]
 id = "tron"
@@ -97,6 +140,12 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/195'/{account}'" },
   { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
+search_keywords = ["Tron", "TRX"]
+popular_rank = 6
+tags = ["payments"]
+color = "red"
+artwork_name = "tron"
+address_prefix_hint = "T…"
 
 [[chains]]
 id = "stellar"
@@ -107,6 +156,12 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
 ]
+search_keywords = ["Stellar", "XLM"]
+popular_rank = 11
+tags = ["payments"]
+color = "teal"
+artwork_name = "stellar"
+address_prefix_hint = "G…"
 
 [[chains]]
 id = "cardano"
@@ -118,6 +173,12 @@ derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
 ]
+search_keywords = ["Cardano", "ADA"]
+popular_rank = 8
+tags = ["eutxo"]
+color = "indigo"
+artwork_name = "cardano"
+address_prefix_hint = "addr1…"
 
 [[chains]]
 id = "polkadot"
@@ -128,6 +189,12 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/354'/{account}'", is_default = true },
 ]
+search_keywords = ["Polkadot", "DOT"]
+popular_rank = 18
+tags = ["substrate"]
+color = "pink"
+artwork_name = "polkadot"
+address_prefix_hint = "1…"
 
 [[chains]]
 id = "arbitrum"
@@ -138,6 +205,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Arbitrum", "ARB"]
+popular_rank = 29
+tags = ["layer-2"]
+color = "cyan"
+artwork_name = "arbitrum"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "optimism"
@@ -148,6 +221,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Optimism", "OP"]
+popular_rank = 31
+tags = ["layer-2"]
+color = "red"
+artwork_name = "optimism"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "avalanche"
@@ -158,6 +237,11 @@ token_standards = ["ERC-20", "ARC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Avalanche", "AVAX"]
+popular_rank = 14
+color = "red"
+artwork_name = "avalanche"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "sui"
@@ -168,6 +252,12 @@ token_standards = ["Sui Coin"]
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
 ]
+search_keywords = ["Sui", "SUI"]
+popular_rank = 15
+tags = ["move"]
+color = "mint"
+artwork_name = "sui"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "aptos"
@@ -178,6 +268,12 @@ token_standards = ["Aptos Coin", "AIP-21"]
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
 ]
+search_keywords = ["Aptos", "APT"]
+popular_rank = 24
+tags = ["move"]
+color = "cyan"
+artwork_name = "aptos"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ton"
@@ -188,6 +284,11 @@ token_standards = ["TEP-74"]
 derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["TON", "Gram", "GRAM"]
+popular_rank = 17
+color = "blue"
+artwork_name = "ton"
+address_prefix_hint = "UQ… / EQ…"
 
 [[chains]]
 id = "near"
@@ -198,6 +299,11 @@ token_standards = ["NEP-141"]
 derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
 ]
+search_keywords = ["NEAR"]
+popular_rank = 21
+color = "indigo"
+artwork_name = "near"
+address_prefix_hint = "alice.near / 64-char hex"
 
 [[chains]]
 id = "internet-computer"
@@ -208,6 +314,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/223'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Internet Computer", "ICP"]
+popular_rank = 22
+color = "indigo"
+artwork_name = "internetcomputer"
+address_prefix_hint = "64-char account identifier"
 
 [[chains]]
 id = "monero"
@@ -216,6 +327,12 @@ family = "monero"
 environment = "mainnet"
 token_standards = []
 derivation_path = []
+search_keywords = ["Monero", "XMR"]
+popular_rank = 16
+tags = ["pow", "privacy"]
+color = "orange"
+artwork_name = "monero"
+address_prefix_hint = "4… / 8…"
 
 [[chains]]
 id = "base"
@@ -226,6 +343,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Base", "ETH"]
+popular_rank = 28
+tags = ["layer-2"]
+color = "blue"
+artwork_name = "base"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ethereum-classic"
@@ -236,6 +359,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ethereum Classic", "ETC"]
+popular_rank = 23
+tags = ["pow"]
+color = "green"
+artwork_name = "ethereumclassic"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "bitcoin-sv"
@@ -246,6 +375,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Bitcoin SV", "BSV"]
+popular_rank = 39
+tags = ["utxo", "pow"]
+color = "orange"
+artwork_name = "bitcoinsv"
 
 [[chains]]
 id = "bnb"
@@ -256,6 +390,11 @@ token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["BNB Chain", "BNB"]
+popular_rank = 4
+color = "yellow"
+artwork_name = "bnb"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "hyperliquid"
@@ -266,6 +405,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Hyperliquid", "HYPE"]
+popular_rank = 9
+color = "mint"
+artwork_name = "hyperliquid"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "polygon"
@@ -276,6 +420,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Polygon", "POL", "MATIC"]
+popular_rank = 27
+color = "purple"
+artwork_name = "polygon"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "linea"
@@ -286,6 +435,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Linea"]
+popular_rank = 42
+tags = ["layer-2"]
+color = "blue"
+artwork_name = "linea"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "scroll"
@@ -296,6 +451,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Scroll"]
+popular_rank = 35
+tags = ["layer-2"]
+color = "orange"
+artwork_name = "scroll"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "blast"
@@ -306,6 +467,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Blast"]
+popular_rank = 36
+tags = ["layer-2"]
+color = "yellow"
+artwork_name = "blast"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "mantle"
@@ -316,6 +483,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Mantle", "MNT"]
+popular_rank = 26
+tags = ["layer-2"]
+color = "green"
+artwork_name = "mantle"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "zcash"
@@ -326,6 +499,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/133'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Zcash", "ZEC"]
+popular_rank = 13
+tags = ["utxo", "pow", "privacy"]
+color = "yellow"
+artwork_name = "zcash"
 
 [[chains]]
 id = "bitcoin-gold"
@@ -336,6 +514,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Bitcoin Gold", "BTG"]
+popular_rank = 46
+tags = ["utxo", "pow"]
+color = "yellow"
+artwork_name = "bitcoingold"
 
 [[chains]]
 id = "decred"
@@ -346,6 +529,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Decred", "DCR"]
+popular_rank = 44
+tags = ["utxo", "pow"]
+color = "indigo"
+artwork_name = "decred"
 
 [[chains]]
 id = "kaspa"
@@ -356,6 +544,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Kaspa", "KAS"]
+popular_rank = 30
+tags = ["utxo", "pow"]
+color = "teal"
+artwork_name = "kaspa"
 
 [[chains]]
 id = "sei"
@@ -366,6 +559,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Sei", "SEI"]
+popular_rank = 38
+color = "red"
+artwork_name = "sei"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "celo"
@@ -376,6 +574,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Celo", "CELO"]
+popular_rank = 45
+tags = ["layer-2"]
+color = "yellow"
+artwork_name = "celo"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "cronos"
@@ -386,6 +590,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Cronos", "CRO"]
+popular_rank = 19
+color = "blue"
+artwork_name = "cronos"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "opbnb"
@@ -396,6 +605,12 @@ token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["opBNB", "BNB L2"]
+popular_rank = 33
+tags = ["layer-2"]
+color = "yellow"
+artwork_name = "bnb"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "zksync-era"
@@ -406,6 +621,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["zkSync Era", "zkSync"]
+popular_rank = 41
+tags = ["layer-2"]
+color = "gray"
+artwork_name = "zksyncera"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "sonic"
@@ -416,6 +637,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Sonic", "S"]
+popular_rank = 40
+color = "gray"
+artwork_name = "sonic"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "berachain"
@@ -426,6 +652,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Berachain", "BERA"]
+popular_rank = 43
+color = "orange"
+artwork_name = "bera"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "unichain"
@@ -436,6 +667,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Unichain"]
+popular_rank = 32
+tags = ["layer-2"]
+color = "pink"
+artwork_name = "uniswap"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ink"
@@ -446,6 +683,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ink"]
+popular_rank = 34
+tags = ["layer-2"]
+color = "purple"
+artwork_name = "ink"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "dash"
@@ -456,6 +699,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Dash", "DASH"]
+popular_rank = 37
+tags = ["utxo", "pow", "privacy"]
+color = "blue"
+artwork_name = "dash"
 
 [[chains]]
 id = "x-layer"
@@ -466,6 +714,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["X Layer", "OKB", "OKX"]
+popular_rank = 25
+tags = ["layer-2"]
+color = "gray"
+artwork_name = "okb"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "bittensor"
@@ -476,6 +730,11 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1005'/{account}'/0'/0'", is_default = true },
 ]
+search_keywords = ["Bittensor", "TAO", "subtensor"]
+popular_rank = 20
+tags = ["substrate"]
+color = "gray"
+artwork_name = "bittensor"
 
 [[chains]]
 id = "plasma"
@@ -486,6 +745,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Plasma", "XPL", "stablecoin"]
+popular_rank = 47
+tags = ["payments"]
+color = "green"
+artwork_name = "plasma"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "monad"
@@ -496,6 +761,11 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Monad", "MON"]
+popular_rank = 48
+color = "purple"
+artwork_name = "monad"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "world-chain"
@@ -506,6 +776,12 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["World Chain", "Worldcoin", "WLD", "ETH"]
+popular_rank = 49
+tags = ["layer-2"]
+color = "gray"
+artwork_name = "worldcoin"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "peercoin"
@@ -519,6 +795,12 @@ derivation_path = [
   { tag = "nestedSegWit", path = "m/49'/6'/{account}'/0/0" },
   { tag = "taproot", path = "m/86'/6'/{account}'/0/0" },
 ]
+search_keywords = ["Peercoin", "PPC", "PPcoin"]
+popular_rank = 50
+tags = ["utxo", "pow", "payments"]
+color = "green"
+artwork_name = "peercoin"
+address_prefix_hint = "P… / p… / pc1q… / pc1p…"
 
 [[chains]]
 id = "bitcoin-testnet"
@@ -534,6 +816,10 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0" },
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
+search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
+color = "orange"
+artwork_name = "bitcointestnet"
+address_prefix_hint = ""
 
 [[chains]]
 id = "bitcoin-testnet-4"
@@ -549,6 +835,10 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0" },
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
+search_keywords = ["Bitcoin Testnet4", "testnet4", "tBTC"]
+color = "orange"
+artwork_name = "bitcointestnet"
+address_prefix_hint = ""
 
 [[chains]]
 id = "bitcoin-signet"
@@ -564,6 +854,10 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0" },
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
+search_keywords = ["Bitcoin Signet", "signet", "sBTC"]
+color = "orange"
+artwork_name = "bitcoinsignet"
+address_prefix_hint = ""
 
 [[chains]]
 id = "litecoin-testnet"
@@ -576,6 +870,10 @@ derivation_path = [
   { tag = "nativeSegWit", path = "m/84'/1'/{account}'/0/0" },
   { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
 ]
+search_keywords = ["Litecoin Testnet", "tLTC"]
+color = "blue"
+artwork_name = "litecoin"
+address_prefix_hint = ""
 
 [[chains]]
 id = "bitcoin-cash-testnet"
@@ -588,6 +886,10 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/1'/{account}'/0/0" },
   { tag = "electrumLegacy", path = "m/0" },
 ]
+search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
+color = "orange"
+artwork_name = "bitcoincash"
+address_prefix_hint = ""
 
 [[chains]]
 id = "bitcoin-sv-testnet"
@@ -598,6 +900,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Bitcoin SV Testnet", "tBSV"]
+color = "orange"
+artwork_name = "bitcoinsv"
+address_prefix_hint = ""
 
 [[chains]]
 id = "dogecoin-testnet"
@@ -608,6 +914,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Dogecoin Testnet", "tDOGE"]
+color = "yellow"
+artwork_name = "dogecoin"
+address_prefix_hint = ""
 
 [[chains]]
 id = "zcash-testnet"
@@ -618,6 +928,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Zcash Testnet", "tZEC"]
+color = "yellow"
+artwork_name = "zcash"
+address_prefix_hint = ""
 
 [[chains]]
 id = "decred-testnet"
@@ -628,6 +942,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Decred Testnet", "tDCR"]
+color = "indigo"
+artwork_name = "decred"
+address_prefix_hint = ""
 
 [[chains]]
 id = "kaspa-testnet"
@@ -638,6 +956,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Kaspa Testnet", "tKAS"]
+color = "teal"
+artwork_name = "kaspa"
+address_prefix_hint = ""
 
 [[chains]]
 id = "dash-testnet"
@@ -648,6 +970,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Dash Testnet", "tDASH"]
+color = "blue"
+artwork_name = "dash"
+address_prefix_hint = ""
 
 [[chains]]
 id = "peercoin-testnet"
@@ -661,6 +987,10 @@ derivation_path = [
   { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
   { tag = "taproot", path = "m/86'/1'/{account}'/0/0" },
 ]
+search_keywords = ["Peercoin Testnet", "tPPC"]
+color = "green"
+artwork_name = "peercoin"
+address_prefix_hint = "m… / n… / 2… / tpc1q… / tpc1p…"
 
 [[chains]]
 id = "ethereum-sepolia"
@@ -671,6 +1001,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ethereum Sepolia", "Sepolia", "ETH", "tETH"]
+color = "purple"
+artwork_name = "ethereum"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ethereum-hoodi"
@@ -681,6 +1015,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ethereum Hoodi", "Hoodi", "tETH"]
+color = "purple"
+artwork_name = "ethereum"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "arbitrum-sepolia"
@@ -691,6 +1029,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Arbitrum Sepolia", "Sepolia", "tETH"]
+color = "cyan"
+artwork_name = "arbitrum"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "optimism-sepolia"
@@ -701,6 +1043,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Optimism Sepolia", "Sepolia", "tETH"]
+color = "red"
+artwork_name = "optimism"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "base-sepolia"
@@ -711,6 +1057,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Base Sepolia", "Sepolia", "tETH"]
+color = "blue"
+artwork_name = "base"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "bnb-testnet"
@@ -721,6 +1071,10 @@ token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["BNB Chain Testnet", "Chapel", "tBNB"]
+color = "yellow"
+artwork_name = "bnb"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "avalanche-fuji"
@@ -731,6 +1085,10 @@ token_standards = ["ERC-20", "ARC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Avalanche Fuji", "Fuji", "tAVAX"]
+color = "red"
+artwork_name = "avalanche"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "polygon-amoy"
@@ -741,6 +1099,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Polygon Amoy", "Amoy", "tPOL"]
+color = "purple"
+artwork_name = "polygon"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "hyperliquid-testnet"
@@ -751,6 +1113,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Hyperliquid Testnet", "tHYPE"]
+color = "mint"
+artwork_name = "hyperliquid"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "linea-sepolia"
@@ -761,6 +1127,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Linea Sepolia", "tETH"]
+color = "blue"
+artwork_name = "linea"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "celo-sepolia"
@@ -771,6 +1141,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Celo Sepolia", "tCELO"]
+color = "yellow"
+artwork_name = "celo"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "cronos-testnet"
@@ -781,6 +1155,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Cronos Testnet", "tCRO"]
+color = "blue"
+artwork_name = "cronos"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "zksync-era-sepolia"
@@ -791,6 +1169,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["zkSync Era Sepolia", "zkSync Sepolia", "tETH"]
+color = "gray"
+artwork_name = "zksyncera"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "sonic-testnet"
@@ -801,6 +1183,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Sonic Testnet", "tS"]
+color = "gray"
+artwork_name = "sonic"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ink-sepolia"
@@ -811,6 +1197,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ink Sepolia", "tETH"]
+color = "purple"
+artwork_name = "ink"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "x-layer-testnet"
@@ -821,6 +1211,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["X Layer Testnet", "tOKB"]
+color = "gray"
+artwork_name = "okb"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ethereum-classic-mordor"
@@ -831,6 +1225,10 @@ token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["Ethereum Classic Mordor", "Mordor", "tETC"]
+color = "green"
+artwork_name = "ethereumclassic"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "tron-nile"
@@ -843,6 +1241,10 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/195'/{account}'" },
   { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
+search_keywords = ["Tron Nile", "Nile", "tTRX"]
+color = "red"
+artwork_name = "tron"
+address_prefix_hint = ""
 
 [[chains]]
 id = "solana-devnet"
@@ -854,6 +1256,10 @@ derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
   { tag = "legacy", path = "m/44'/501'/{account}'" },
 ]
+search_keywords = ["Solana Devnet", "Devnet", "tSOL"]
+color = "green"
+artwork_name = "solana"
+address_prefix_hint = ""
 
 [[chains]]
 id = "xrp-testnet"
@@ -865,6 +1271,10 @@ derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/144'/{account}'" },
 ]
+search_keywords = ["XRP Ledger Testnet", "tXRP"]
+color = "cyan"
+artwork_name = "xrp"
+address_prefix_hint = ""
 
 [[chains]]
 id = "stellar-testnet"
@@ -875,6 +1285,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
 ]
+search_keywords = ["Stellar Testnet", "tXLM"]
+color = "teal"
+artwork_name = "stellar"
+address_prefix_hint = ""
 
 [[chains]]
 id = "cardano-preprod"
@@ -886,6 +1300,10 @@ derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
 ]
+search_keywords = ["Cardano Preprod", "Preprod", "tADA"]
+color = "indigo"
+artwork_name = "cardano"
+address_prefix_hint = ""
 
 [[chains]]
 id = "sui-testnet"
@@ -896,6 +1314,10 @@ token_standards = ["Sui Coin"]
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
 ]
+search_keywords = ["Sui Testnet", "tSUI"]
+color = "mint"
+artwork_name = "sui"
+address_prefix_hint = ""
 
 [[chains]]
 id = "aptos-testnet"
@@ -906,6 +1328,10 @@ token_standards = ["Aptos Coin", "AIP-21"]
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
 ]
+search_keywords = ["Aptos Testnet", "tAPT"]
+color = "cyan"
+artwork_name = "aptos"
+address_prefix_hint = ""
 
 [[chains]]
 id = "ton-testnet"
@@ -916,6 +1342,10 @@ token_standards = ["TEP-74"]
 derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
 ]
+search_keywords = ["TON Testnet", "Test Gram", "tGRAM"]
+color = "blue"
+artwork_name = "ton"
+address_prefix_hint = ""
 
 [[chains]]
 id = "near-testnet"
@@ -926,6 +1356,10 @@ token_standards = ["NEP-141"]
 derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
 ]
+search_keywords = ["NEAR Testnet", "tNEAR"]
+color = "indigo"
+artwork_name = "near"
+address_prefix_hint = ""
 
 [[chains]]
 id = "polkadot-westend"
@@ -936,6 +1370,10 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/354'/{account}'", is_default = true },
 ]
+search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
+color = "pink"
+artwork_name = "polkadot"
+address_prefix_hint = ""
 
 [[chains]]
 id = "monero-stagenet"
@@ -944,3 +1382,7 @@ family = "monero"
 environment = "testnet"
 token_standards = []
 derivation_path = []
+search_keywords = ["Monero Stagenet", "Stagenet", "tXMR"]
+color = "orange"
+artwork_name = "monero"
+address_prefix_hint = ""

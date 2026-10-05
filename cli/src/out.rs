@@ -2,7 +2,7 @@
 //! at the same call site, so one cannot quietly fall behind the other.
 //!
 //! The colour table here maps a *semantic* name to a terminal colour. Which
-//! colour a chain has is a chain fact and comes from `chain-ui.toml`.
+//! colour a chain has is a chain fact and comes from `chains.toml`.
 
 use colored::Colorize;
 use spectra_core::chains::CatalogColor;
@@ -68,7 +68,7 @@ pub fn field(label: &str, value: &str) {
 
 // ─── Chain tint ─────────────────────────────────────────────────────────────
 
-/// Built from `chain-ui.toml`, so a new chain is tinted without a change here.
+/// Built from `chains.toml`, so a new chain is tinted without a change here.
 /// The previous CLI hardcoded 30 of the 78 and rendered the rest grey.
 /// Exhaustive over the catalog's palette, so a colour added there is a compile
 /// error here rather than a grey chain.

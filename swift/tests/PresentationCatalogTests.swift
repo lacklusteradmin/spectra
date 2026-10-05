@@ -4,6 +4,17 @@ import Testing
 @testable import Spectra
 
 struct PresentationCatalogTests {
+    @Test func wikiAndPickerShareTheSameChainTagsAcrossTheBridge() throws {
+        for wiki in CoreReferenceTables.chainWiki {
+            let chain = try #require(Chain(id: wiki.id))
+            let entry = try #require(chain.entry)
+            let picker = ChainSelectionDescriptor(chain: chain, entry: entry)
+            #expect(!chain.isTestnet)
+            #expect(wiki.tags == picker.tags, "\(wiki.id)")
+            #expect(wiki.tags.map(\.title).joined(separator: " · ") == picker.tagLine)
+        }
+    }
+
     @Test func peercoinReachesThePickerAndWikiWithItsNativeIdentity() throws {
         let rows = ChainSelectionDescriptor.popularOrder(Chain.all)
         let mainnetRows = rows.picked(filter: .tag(.utxo), query: "Peercoin", order: .name, selected: [])

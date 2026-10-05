@@ -29,6 +29,9 @@ pub struct ChainsArgs {
     /// Only chains with this picker tag (layer-1, evm, utxo, move, …).
     #[arg(long, value_parser = parse_tag)]
     tag: Option<ChainTag>,
+    /// Show mainnet wiki descriptions with the same catalog tags.
+    #[arg(long, conflicts_with = "testnets")]
+    wiki: bool,
 }
 
 fn parse_tag(value: &str) -> Result<ChainTag, String> {
@@ -101,6 +104,22 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
         })
         .collect();
     listed.sort_by_key(|chain| chain.entry().popular_rank);
+
+    if args.wiki {
+        let wiki: Vec<_> = spectra_core::chains::list_chain_wiki()
+            .into_iter()
+            .filter(|row| listed.iter().any(|chain| chain.str_id() == row.id))
+            .collect();
+        out.text(|| {
+            for row in &wiki {
+                let tags = row.tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>();
+                println!("  {}  {}", out::accent(&row.name).bold(), tags.join(" · "));
+                println!("    {}", row.comment);
+            }
+        });
+        out.emit(serde_json::json!({"ok": true, "chains": wiki}));
+        return Ok(());
+    }
 
     out.text(|| {
         println!();
