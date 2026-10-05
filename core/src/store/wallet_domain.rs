@@ -483,15 +483,6 @@ impl crate::store::state::WalletState {
     }
 }
 
-/// Token preference categories for built-in and user-added tokens.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "lowercase")]
-pub enum CoreTokenPreferenceCategory {
-    Stablecoin,
-    Meme,
-    Custom,
-}
-
 /// A token the app knows about, and what the user has done to it.
 ///
 /// Held seven copies of the catalog's fields under different names —
@@ -504,7 +495,6 @@ pub enum CoreTokenPreferenceCategory {
 #[serde(rename_all = "camelCase")]
 pub struct CoreTokenPreferenceEntry {
     pub token: crate::tokens::TokenDeploymentEntry,
-    pub category: CoreTokenPreferenceCategory,
     /// The catalog ships it; the user cannot edit or delete it.
     pub is_built_in: bool,
 }
@@ -513,17 +503,6 @@ impl CoreTokenPreferenceEntry {
     /// Identity: a token *is* its contract on its chain.
     pub fn id(&self) -> String {
         self.token.deployment_id.clone()
-    }
-
-    /// The category the catalog's tags imply, computed rather than stored.
-    pub fn category_from_tags(tags: &[String]) -> CoreTokenPreferenceCategory {
-        tags.iter()
-            .find_map(|tag| match tag.as_str() {
-                "stablecoin" => Some(CoreTokenPreferenceCategory::Stablecoin),
-                "meme" => Some(CoreTokenPreferenceCategory::Meme),
-                _ => None,
-            })
-            .unwrap_or(CoreTokenPreferenceCategory::Custom)
     }
 
     /// The chain hosting this token.
@@ -591,7 +570,6 @@ mod roundtrip_tests {
     #[test]
     fn token_preference_entry_roundtrip_matches_swift_keys() {
         let entry = CoreTokenPreferenceEntry {
-            category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "bnb:bep-20:0x1111111111111111111111111111111111111111".into(),
@@ -608,14 +586,14 @@ mod roundtrip_tests {
                 coingecko_id: "tether".to_string(),
                 coinpaprika_id: String::new(),
                 decimals: 18,
-                tags: vec!["stablecoin".to_string()],
+                tags: vec![crate::tokens::TokenTag::Stablecoin],
                 color: Some(crate::chains::CatalogColor::Green),
                 artwork_name: "usdt".to_string(),
             },
         };
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("\"chainId\":\"bnb\""));
-        assert!(json.contains("\"category\":\"stablecoin\""));
+        assert!(json.contains("\"tags\":[\"stablecoin\"]"));
         assert!(json.contains("\"coingeckoId\""));
         assert!(json.contains("\"isBuiltIn\":true"));
         let decoded: CoreTokenPreferenceEntry = serde_json::from_str(&json).unwrap();
@@ -625,11 +603,6 @@ mod roundtrip_tests {
         assert_eq!(
             entry.id(),
             "bnb:bep-20:0x1111111111111111111111111111111111111111"
-        );
-        // And the category the tags imply, rather than a second copy of it.
-        assert_eq!(
-            CoreTokenPreferenceEntry::category_from_tags(&entry.token.tags),
-            entry.category
         );
     }
 }

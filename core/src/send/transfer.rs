@@ -93,7 +93,6 @@ pub(crate) fn can_send_coin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::wallet_domain::CoreTokenPreferenceCategory;
 
     fn holding(chain: Chain, symbol: &str, contract: Option<&str>) -> AssetHolding {
         AssetHolding {
@@ -119,7 +118,6 @@ mod tests {
         decimals: u32,
     ) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
-            category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),

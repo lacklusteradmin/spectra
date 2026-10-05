@@ -21,6 +21,12 @@ fn parse_token_file(file: &str) -> Result<TomlFile, String> {
         if token.id.is_empty() || !token_ids.insert(token.id.as_str()) {
             return Err(format!("empty or duplicate token id {:?}", token.id));
         }
+        let mut tags = token.tags.clone();
+        tags.sort_unstable();
+        tags.dedup();
+        if tags.len() != token.tags.len() {
+            return Err(format!("token {} repeats a tag", token.id));
+        }
     }
     let mut deployed = std::collections::HashSet::new();
     for deployment in &parsed.deployments {
@@ -65,7 +71,7 @@ struct TomlToken {
     coinpaprika_id: String,
     color: crate::chains::CatalogColor,
     artwork_name: String,
-    tags: Vec<String>,
+    tags: Vec<TokenTag>,
 }
 
 /// Where it lives, and what is true only there. Its catalog id is those facts
@@ -81,6 +87,37 @@ struct TomlDeployment {
     decimals: u32,
     #[serde(default)]
     standard: String,
+}
+
+/// What kind of coin a token is, from a closed list.
+///
+/// A misspelt tag fails when the file loads instead of becoming a filter of
+/// its own.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, uniffi::Enum,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenTag {
+    Stablecoin,
+    Meme,
+}
+
+impl TokenTag {
+    pub const ALL: [TokenTag; 2] = [TokenTag::Stablecoin, TokenTag::Meme];
+
+    /// The spelling `tokens.toml` and the CLI use.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TokenTag::Stablecoin => "stablecoin",
+            TokenTag::Meme => "meme",
+        }
+    }
+}
+
+/// Every token tag, in the order a filter shows them.
+#[uniffi::export]
+pub fn list_token_tags() -> Vec<TokenTag> {
+    TokenTag::ALL.to_vec()
 }
 
 /// Protocol identity is explicit; a missing contract never implies native.
@@ -107,7 +144,7 @@ pub struct TokenDeploymentEntry {
     pub coingecko_id: String,
     pub coinpaprika_id: String,
     pub decimals: u32,
-    pub tags: Vec<String>,
+    pub tags: Vec<TokenTag>,
     /// `None` for a token the user added: the catalog has no colour for it.
     pub color: Option<crate::chains::CatalogColor>,
     pub artwork_name: String,
@@ -939,6 +976,14 @@ tags = []
             (
                 format!("{SAMPLE}\n[[tokens.deployments]]\nnetwork = \"ethereum\""),
                 "unknown field `deployments`",
+            ),
+            (
+                SAMPLE.replacen("tags = []", "tags = [\"Stablecoin\"]", 1),
+                "unknown variant `Stablecoin`",
+            ),
+            (
+                SAMPLE.replacen("tags = []", "tags = [\"meme\", \"meme\"]", 1),
+                "token usdc repeats a tag",
             ),
         ] {
             let error = parse_token_file(&file).unwrap_err();

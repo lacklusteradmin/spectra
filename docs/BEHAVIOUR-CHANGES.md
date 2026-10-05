@@ -17,6 +17,35 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-05 — Token tags are a closed list, and the stored category is gone
+
+- **Before:** a token's `tags` were free strings from `tokens.toml`, so a
+  misspelt tag loaded as a filter of its own. The Crypto Wiki showed them raw
+  and unlocalized (`meme`, `stablecoin`), mixed them with chain tag titles in
+  one string-typed filter, and sorted that list by code point, which put the
+  lowercase coin tags after every chain tag. Every token preference row also
+  stored a `category` (`stablecoin`, `meme` or `custom`) recomputed from those
+  same tags and read by nothing.
+- **After:** `TokenTag` (`stablecoin`, `meme`) is a core enum; `tokens.toml` is
+  refused at load when a tag is unknown or repeated, and `list_token_tags()`
+  gives the order. Swift titles each tag through `AppLocalization`
+  (`Stablecoin`/`Meme`, translated for zh-Hans and zh-Hant). The wiki filter is
+  typed: coin tags in core's order, then chain tags in the picker's order, only
+  those some row carries. `CoreTokenPreferenceCategory` and the stored
+  `category` field are deleted; `spectra token catalog --json` now lists each
+  deployment's `tags`.
+- **Why:** the category was a second model of the tags with no reader, and a
+  closed list of tags belongs in core where a typo fails the build, as
+  `ChainTag` already does. Typed tags also fix the localization and the order
+  instead of patching labels in the view.
+- **CLI check:** `spectra --json token catalog --chain ethereum` shows
+  `"tags":["stablecoin"]` on DAI and `"tags":["meme"]` on PEPE; the acceptance
+  check "token tags come from one closed list" asserts these and that no other
+  tag value exists. Core tests refuse an unknown and a repeated tag.
+- **Verification:** `make verify` passed: lint (fmt, clippy `-D warnings`),
+  `cargo test --workspace` (1097 passed), `scripts/cli-acceptance.sh`
+  including the new check, and `xcodebuild test` (129 tests in 28 suites).
+
 ## 2026-10-05 — Network rules and presentation share one catalog row
 
 - **Before:** each network needed a `chains.toml` record plus a separate

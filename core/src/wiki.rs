@@ -66,7 +66,7 @@ pub struct AssetWikiEntry {
     /// Empty for a token: a supply model is written for the coins that have
     /// one, and nobody has written one for an ERC-20.
     pub total_circulation_model: String,
-    pub tags: Vec<String>,
+    pub tags: Vec<crate::tokens::TokenTag>,
     /// Native places first, then contracts by chain name. The first is where
     /// the coin is from, which is what a page should lead with.
     pub lives_on: Vec<AssetWikiPlace>,
