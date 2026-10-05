@@ -207,7 +207,7 @@ impl WalletService {
                 .await,
         );
         let page = crate::fetch::bitcoin_history::page(
-            network.str_id(),
+            network,
             &addresses,
             cursor,
             limit as usize,

@@ -207,10 +207,9 @@ comment = "Pays gas on Monad and can secure its validators through staking. Mona
 token_id = "aave"
 comment = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "bitget-token"
-# comment = "Utility token for the Bitget exchange and Bitget Wallet ecosystem, used for platform perks and services."
+[[assets]]
+token_id = "bitget-token"
+comment = "Utility token for the Bitget exchange and Bitget Wallet ecosystem, used for platform perks and services."
 
 [[assets]]
 token_id = "dai"
@@ -228,24 +227,21 @@ comment = "Euro-backed stablecoin issued by Circle and designed to be redeemable
 token_id = "first-digital-usd"
 comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "kucoin-shares"
-# comment = "Native utility token of the KuCoin exchange ecosystem, used for platform rewards, fees, and services."
+[[assets]]
+token_id = "kucoin-shares"
+comment = "Native utility token of the KuCoin exchange ecosystem, used for platform rewards, fees, and services."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "leo-token"
-# comment = "Utility token for the iFinex and Bitfinex ecosystem, built around exchange fee benefits and platform utility."
+[[assets]]
+token_id = "leo-token"
+comment = "Utility token for the iFinex and Bitfinex ecosystem, built around exchange fee benefits and platform utility."
 
 [[assets]]
 token_id = "chainlink"
 comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "pax-gold"
-# comment = "Gold-backed token from Paxos, with each token representing one fine troy ounce of London Good Delivery gold."
+[[assets]]
+token_id = "pax-gold"
+comment = "Gold-backed token from Paxos, with each token representing one fine troy ounce of London Good Delivery gold."
 
 [[assets]]
 token_id = "paypal-usd"
@@ -255,15 +251,13 @@ comment = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S
 token_id = "ripple-usd"
 comment = "Ripple USD stablecoin, a U.S. dollar-backed token designed for payments, trading, and settlement use cases."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "shiba-inu"
-# comment = "Community-driven meme token at the center of the Shiba Inu ecosystem."
+[[assets]]
+token_id = "shiba-inu"
+comment = "Community-driven meme token at the center of the Shiba Inu ecosystem."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "sky"
-# comment = "Governance token of the Sky Protocol, replacing MKR for protocol voting and parameter decisions."
+[[assets]]
+token_id = "sky"
+comment = "Governance token of the Sky Protocol, replacing MKR for protocol voting and parameter decisions."
 
 [[assets]]
 token_id = "true-usd"
@@ -301,10 +295,9 @@ comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol 
 token_id = "tether"
 comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "wrapped-bitcoin"
-# comment = "Wrapped Bitcoin token backed 1:1 by BTC, bringing Bitcoin liquidity into Ethereum-compatible DeFi."
+[[assets]]
+token_id = "wrapped-bitcoin"
+comment = "Wrapped Bitcoin token backed 1:1 by BTC, bringing Bitcoin liquidity into Ethereum-compatible DeFi."
 
 [[assets]]
 token_id = "world-liberty-financial"
@@ -350,35 +343,29 @@ comment = "The omnichain form of USDT: it crosses chains by being burned on one 
 token_id = "tether-gold-tokens"
 comment = "The omnichain form of Tether Gold, each token representing one fine troy ounce of physical gold and moving between chains by burn and mint."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "arbitrum"
-# comment = "Governs Arbitrum through its DAO, which controls the chain's treasury and protocol upgrades. It does not pay gas — Arbitrum charges fees in ETH."
+[[assets]]
+token_id = "arbitrum"
+comment = "Governs Arbitrum through its DAO, which controls the chain's treasury and protocol upgrades. It does not pay gas — Arbitrum charges fees in ETH."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "optimism"
-# comment = "Governs the OP Stack chains through the Optimism Collective's token house. Gas on Optimism is paid in ETH, so holding OP is a vote rather than a fuel."
+[[assets]]
+token_id = "optimism"
+comment = "Governs the OP Stack chains through the Optimism Collective's token house. Gas on Optimism is paid in ETH, so holding OP is a vote rather than a fuel."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "linea"
-# comment = "Linea's ecosystem token, distributed to fund builders and users on the network. It carries no governance rights and does not pay gas; Linea charges fees in ETH."
+[[assets]]
+token_id = "linea"
+comment = "Linea's ecosystem token, distributed to fund builders and users on the network. It carries no governance rights and does not pay gas; Linea charges fees in ETH."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "scroll"
-# comment = "Governs Scroll through its DAO. The chain itself runs on ETH, so SCR is held for votes and ecosystem programs rather than to transact."
+[[assets]]
+token_id = "scroll"
+comment = "Governs Scroll through its DAO. The chain itself runs on ETH, so SCR is held for votes and ecosystem programs rather than to transact."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "blast"
-# comment = "Governs the Blast rollup and directs its incentive programs. Blast charges gas in ETH, and its native yield accrues to ETH and USDB rather than to this token."
+[[assets]]
+token_id = "blast"
+comment = "Governs the Blast rollup and directs its incentive programs. Blast charges gas in ETH, and its native yield accrues to ETH and USDB rather than to this token."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "zksync"
-# comment = "Governs ZKsync through its token assembly, which decides upgrades and treasury spending across the ZK Stack. Fees on ZKsync Era are paid in ETH."
+[[assets]]
+token_id = "zksync"
+comment = "Governs ZKsync through its token assembly, which decides upgrades and treasury spending across the ZK Stack. Fees on ZKsync Era are paid in ETH."
 
 [[assets]]
 token_id = "staked-ether"
@@ -388,10 +375,9 @@ comment = "Lido's liquid staking receipt for ETH. The balance rebases upward as 
 token_id = "wrapped-steth"
 comment = "The non-rebasing form of stETH: the balance stays fixed and each token comes to be worth more ETH instead. Most lending markets accept this shape and not the rebasing one."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "weth"
-# comment = "Ether wrapped as an ERC-20, so contracts that only understand the token interface can hold it. One WETH is redeemable for one ETH at any time, in either direction."
+[[assets]]
+token_id = "weth"
+comment = "Ether wrapped as an ERC-20, so contracts that only understand the token interface can hold it. One WETH is redeemable for one ETH at any time, in either direction."
 
 [[assets]]
 token_id = "coinbase-wrapped-btc"
@@ -401,10 +387,9 @@ comment = "Coinbase's wrapped Bitcoin, backed one-for-one by BTC the exchange cu
 token_id = "lombard-staked-btc"
 comment = "Lombard's receipt for Bitcoin staked through Babylon. It earns staking rewards and can be used as collateral while the BTC behind it stays locked."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "rocket-pool-eth"
-# comment = "Rocket Pool's liquid staking receipt for ETH, issued against validators run by a permissionless operator set. It does not rebase; each token grows in ETH terms."
+[[assets]]
+token_id = "rocket-pool-eth"
+comment = "Rocket Pool's liquid staking receipt for ETH, issued against validators run by a permissionless operator set. It does not rebase; each token grows in ETH terms."
 
 [[assets]]
 token_id = "susds"
@@ -418,19 +403,17 @@ comment = "The staked form of USDe, which collects the funding-rate yield behind
 token_id = "gho"
 comment = "Aave's dollar stablecoin. It is minted by borrowing against collateral already deposited in the protocol and burned when the loan is repaid, so its supply is Aave's loan book."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "ondo-finance"
-# comment = "Governance token for Ondo Finance, which issues tokenized US Treasury and money-market funds on-chain."
+[[assets]]
+token_id = "ondo-finance"
+comment = "Governance token for Ondo Finance, which issues tokenized US Treasury and money-market funds on-chain."
 
 [[assets]]
 token_id = "morpho"
 comment = "Governs Morpho, a lending protocol whose markets are isolated — each pair sets its own collateral and rate curve instead of sharing one pool's risk."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "aerodrome-finance"
-# comment = "The emission and governance token of Aerodrome, Base's largest decentralized exchange. Locking it directs where trading incentives go."
+[[assets]]
+token_id = "aerodrome-finance"
+comment = "The emission and governance token of Aerodrome, Base's largest decentralized exchange. Locking it directs where trading incentives go."
 
 [[assets]]
 token_id = "curve-dao-token"
@@ -444,19 +427,17 @@ comment = "Governs PancakeSwap, the largest decentralized exchange on BNB Chain,
 token_id = "pendle"
 comment = "Governs Pendle, which splits a yield-bearing token into its principal and its future yield so the two can be traded and priced separately."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "ether-fi"
-# comment = "Governs ether.fi, a liquid restaking protocol whose stakers keep control of their own validator withdrawal keys."
+[[assets]]
+token_id = "ether-fi"
+comment = "Governs ether.fi, a liquid restaking protocol whose stakers keep control of their own validator withdrawal keys."
 
 [[assets]]
 token_id = "lido-dao"
 comment = "Governs Lido, the largest ETH staking protocol, including which node operators run its validators and what they are paid."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "ethereum-name-service"
-# comment = "Governs the Ethereum Name Service, the registry behind .eth names. A name is a record that resolves to an address, so it can stand in for one when sending."
+[[assets]]
+token_id = "ethereum-name-service"
+comment = "Governs the Ethereum Name Service, the registry behind .eth names. A name is a record that resolves to an address, so it can stand in for one when sending."
 
 [[assets]]
 token_id = "pyth-network"
@@ -466,16 +447,19 @@ comment = "Governs Pyth, an oracle network whose prices are published by the tra
 token_id = "raydium"
 comment = "Governs Raydium, a Solana automated market maker, and is earned by providing liquidity to its pools."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "layerzero"
-# comment = "Governs LayerZero, the messaging protocol that moves a token across chains by burning it on one and minting it on the next. USDT0 and XAUT0 are built on it."
+[[assets]]
+token_id = "layerzero"
+comment = "Governs LayerZero, the messaging protocol that moves a token across chains by burning it on one and minting it on the next. USDT0 and XAUT0 are built on it."
 
 [[assets]]
 token_id = "worldcoin-wld"
 comment = "Worldcoin's token, distributed to people who verify a unique human identity with its iris-scanning orb. Issuance and eligibility are controlled by the World Foundation."
 
-# TODO(verify-token): Retain this asset description while its token deployments await verification.
-# [[assets]]
-# token_id = "pepe"
-# comment = "A 2023 memecoin with no stated utility, no team allocation and no presale. It is among the most widely held tokens on Ethereum by holder count."
+[[assets]]
+token_id = "pepe"
+comment = "A 2023 memecoin with no stated utility, no team allocation and no presale. It is among the most widely held tokens on Ethereum by holder count."
+
+[[assets]]
+token_id = "peercoin"
+comment = "The coin of an early proof-of-stake network launched in 2012. PPC pays transaction fees, which are burned, and can participate in coin-age-based minting through a compatible wallet."
+total_circulation_model = "No fixed lifetime supply cap. Proof-of-work and proof-of-stake create new PPC while transaction fees are destroyed."

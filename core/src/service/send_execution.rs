@@ -61,6 +61,28 @@ pub(super) fn validate_execution_amount(
             .map_or(0, |(_, f)| f.len() as u32)
     };
     let raw = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+    if chain.mainnet_counterpart() == Chain::Peercoin {
+        if raw < u128::from(chain.peercoin_min_output_units()?)
+            || raw > u128::from(chain.peercoin_max_money()?)
+        {
+            return Err(SpectraBridgeError::invalid(
+                "Peercoin amount must be between 0.01 and 21000000 PPC",
+            ));
+        }
+        if request.fee_rate_svb.is_some() {
+            return Err(SpectraBridgeError::invalid(
+                "Peercoin uses a protocol fee; supply a total fee in atomic units",
+            ));
+        }
+        if request
+            .fee_sat
+            .is_some_and(|fee| fee < chain.peercoin_min_fee_units().unwrap_or(u64::MAX))
+        {
+            return Err(SpectraBridgeError::invalid(
+                "Peercoin fee is below the protocol minimum",
+            ));
+        }
+    }
     if chain.mainnet_counterpart() == Chain::Xrp {
         crate::send::xrp::validate_drops(raw)?;
     }

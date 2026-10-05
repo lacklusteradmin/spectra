@@ -525,7 +525,7 @@ impl WalletService {
             let previous = if load_more { saved.next_cursor } else { None };
             let fetched = async {
                 let addresses = self
-                    .known_utxo_addresses(target.wallet_id.clone(), chain)
+                    .known_utxo_addresses(target.wallet_id.clone(), target.network)
                     .await?;
                 if addresses.is_empty() {
                     return Err(SpectraBridgeError::failure(
@@ -537,7 +537,7 @@ impl WalletService {
                     .await;
                 Ok::<_, SpectraBridgeError>(
                         crate::fetch::bitcoin_history::page(
-                            target.network.str_id(),
+                            target.network,
                             &addresses,
                             previous.as_deref(),
                             20,

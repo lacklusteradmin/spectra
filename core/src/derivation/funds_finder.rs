@@ -211,6 +211,34 @@ pub fn generate_funds_finder_candidates(
         }
     }
 
+    // Peercoin's registered address formats, accounts 0-2.
+    for template in &Chain::Peercoin.entry().derivation_path {
+        let format_label = match template.tag.as_str() {
+            "legacy" => "BIP44 Legacy (P…)",
+            "nestedSegWit" => "BIP49 Nested SegWit (p…)",
+            "nativeSegWit" => "BIP84 Native SegWit (pc1q)",
+            "taproot" => "BIP86 Taproot (pc1p)",
+            other => other,
+        };
+        for account in 0u32..3 {
+            let path = template.path.replace("{account}", &account.to_string());
+            let label = format!("{format_label} · Account {account}");
+            push_candidate(&mut out, Chain::Peercoin, &path, &label, || {
+                crate::derivation::dispatch::derive_for_chain(
+                    Chain::Peercoin,
+                    seed,
+                    &path,
+                    pass.as_deref(),
+                    None,
+                    None,
+                    true,
+                    false,
+                    false,
+                )
+            });
+        }
+    }
+
     // ── Dogecoin ──────────────────────────────────────────────────────────────
     for account in 0u32..3 {
         let path = format!("m/44'/3'/{}'/0/0", account);

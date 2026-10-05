@@ -17,6 +17,8 @@ struct AssetPrecisionBridgeTests: IsolatedAppStateSuite {
         store.applyPortfolioSnapshot(old)
         #expect(store.assetPrecision?.byDeploymentId[id] == 6)
         #expect(store.assetPrecision?.byDeploymentId["bitcoin:native"] == 8)
+        #expect(store.assetPrecision?.byDeploymentId["peercoin:native"] == 6)
+        #expect(store.assetPrecision?.byDeploymentId["peercoin-testnet:native"] == 6)
         _ = try await bridge.ready().applyStateCommand(command: .setCustomTokenDecimals(chainId: Chain.ethereum, contract: contract, decimals: 4))
         let current = try await bridge.ready().portfolioSnapshot()
         store.applyPortfolioSnapshot(current)

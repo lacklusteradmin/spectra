@@ -1,0 +1,30 @@
+{
+  "checked_at_utc": "2026-10-05T00:05:50.884972+00:00",
+  "chain_id": "ethereum",
+  "observed_chain_id": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "block_tag": "0x18e98e3",
+  "readings": [
+    {
+      "contract": "0x5a026ea79cda77007a474d7e5b66a663721f7979",
+      "role": "Avalanche actual Ethereum v2 adapter",
+      "owner_calldata": "0x8da5cb5b",
+      "owner_response": "0x000000000000000000000000e3df22b04f1f788ff025adc2466638f5aae588e0",
+      "owner": "0xe3df22b04f1f788ff025adc2466638f5aae588e0"
+    },
+    {
+      "contract": "0x7f1a98e5a4385c52a59761fa36231d8f274d3ee5",
+      "role": "LayerZero registered Ethereum v2 adapter",
+      "owner_calldata": "0x8da5cb5b",
+      "owner_response": "0x000000000000000000000000c6ce6d2c923835b3de5f23c63d1676f97d99c83e",
+      "owner": "0xc6ce6d2c923835b3de5f23c63d1676f97d99c83e"
+    },
+    {
+      "contract": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+      "role": "LayerZero registered Ethereum v1 adapter",
+      "owner_calldata": "0x8da5cb5b",
+      "owner_response": "0x000000000000000000000000dd9d411a080d967c7444a049bf878f5e4a5e23e1",
+      "owner": "0xdd9d411a080d967c7444a049bf878f5e4a5e23e1"
+    }
+  ]
+}

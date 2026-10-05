@@ -1,6 +1,6 @@
 # Supported chain scope
 
-Spectra has 49 mainnets and 39 test networks. A chain entry identifies a network;
+Spectra has 50 mainnets and 40 test networks. A chain entry identifies a network;
 it does not promise every asset protocol or an address indexer. Chain facts live
 in `registry::Chain`, provider claims in `core/data/endpoints.toml`, and every
 operation refuses missing capabilities before signing or changing holdings.
@@ -14,7 +14,7 @@ transfers select inputs with an explicitly empty native-asset list; token-bearin
 inputs are left untouched. A wallet with insufficient pure-ADA inputs cannot send
 an ADA-only transfer.
 
-Raw private-key import covers 48 mainnets and their corresponding test networks.
+Raw private-key import covers 49 mainnets and their corresponding test networks.
 Ed25519 chains accept 32-byte seeds, Substrate chains accept sr25519 seeds, and
 secp256k1 chains accept their validated scalar. Cardano accepts a validated
 64-byte extended key. Monero's spend/view key model uses mnemonic import instead
@@ -23,10 +23,29 @@ mainnets and test networks;
 Monero requires wallet scan keys. Bitcoin account xpub import validates the
 concrete network, including testnet 3, testnet 4 and signet.
 
-BTC, BCH, BSV, LTC and DOGE support account address discovery and multiple owned
+BTC, BCH, BSV, LTC, DOGE and PPC support account address discovery and multiple owned
 inputs. ZEC, BTG, DCR, KAS and DASH wallets have one derived address per network;
 receive and send share that address. They do not offer an account-wide gap scan
 or hand out child addresses that their signer cannot spend.
+
+Peercoin mainnet and testnet support BIP-44 legacy, BIP-49 nested SegWit,
+BIP-84 native SegWit and BIP-86 Taproot accounts, raw scalar and watch-only imports, account
+discovery and receive rotation. Balances aggregate owned receive and change
+addresses, using six-decimal PPC amounts. Ordinary version-3 transfers retain
+the actual P2PK/P2PKH/SegWit/Taproot prevout script and derive each signing key from
+its owned source. Miner and coinstake rewards remain in the total balance but
+are excluded from spendable inputs until 500 mainnet or 60 testnet confirmations.
+Recipient and change outputs follow Peercoin Core's 0.01 PPC wallet minimum;
+smaller change joins the reviewed fee. Fees reserve the full serialized size,
+including witness bytes, at 0.01 PPC/kB with a 0.001 PPC floor. Transfers
+choose the largest inputs needed; MAX uses a deterministic set within
+the single-transaction money bound and a conservative 100 kB serialized-size limit.
+Aggregate wallet balances have no single-transaction money cap. The current
+Blockbook network and precision must match before reads or submission.
+Peercoin minting requires an online node and is outside this transfer integration;
+the app does not advertise a minting/staking action. The [dated audit](audits/peercoin-2026-10-04.md)
+records protocol sources, verified keyless reads and submission-route checks;
+no funded live transaction was broadcast during verification.
 
 ## Fungible assets
 
@@ -61,12 +80,19 @@ supports transparent SegWit; MWEB is excluded. Solana transfer-fee, transfer-hoo
 and unknown Token-2022 extensions are refused until their semantics can be
 reviewed and signed correctly.
 
-The 59 deployments awaiting issuer or bridge identity verification are preserved
-as commented TOML records marked TODO in `tokens.toml`. Their 21 associated
-identities and 21 wiki records are likewise retained in place. They are not
-activated as trusted defaults until verified. The [original audit list](audits/chain-support-2026-10-04/removed-token-deployments.json)
-records that earlier removal decision; the source data is now restored. Explicit
-custom assets remain available. Verified legacy BTTOLD (TRC-10 ID `1002000`)
+The [follow-up source audit](audits/token-verification-2026-10-04/README.md)
+verifies and reactivates 58 of the 59 preserved deployments, along with all 21
+previously commented identities and wiki descriptions. The reactivated records
+retain their original addresses, standards and precision. Primary issuer/protocol
+documents, official bridge lists and exact bridge mappings establish identity; all 59 original
+contracts also pass fixed-block chain-ID, bytecode and decimals reads.
+The unresolved Avalanche PEPE deployment was removed at the user's explicit
+request; its underlying Ethereum PEPE and reciprocal bridge relationship are
+proved, but issuer or official bridge operator identity remains unresolved.
+Ethereum, Arbitrum and BNB PEPE remain active.
+The [original audit list](audits/chain-support-2026-10-04/removed-token-deployments.json)
+retains the earlier decision as history. Explicit custom assets remain available.
+Verified legacy BTTOLD (TRC-10 ID `1002000`)
 is separate from the redenominated TRC-20 BTT; it cannot inherit BTT's market
 quote or conflate their 1:1000 denomination.
 

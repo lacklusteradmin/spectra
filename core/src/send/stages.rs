@@ -3,24 +3,24 @@
 use crate::send::error::SendError;
 use serde::{Deserialize, Serialize};
 
-/// Wallet-owned Litecoin source, kept with each reviewed input so signing
+/// Wallet-owned account UTXO source, kept with each reviewed input so signing
 /// derives the exact key and checks ownership again after a restart.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct LitecoinSendSource {
+pub(crate) struct UtxoSendSource {
     pub address: String,
     pub derivation_path: Option<String>,
     pub script_pubkey: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct LitecoinPreparedInput {
-    pub source: LitecoinSendSource,
+pub(crate) struct UtxoPreparedInput {
+    pub source: UtxoSendSource,
     pub utxo: (String, u32, u64, Vec<u8>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct PreparedLitecoinTransaction {
-    pub inputs: Vec<LitecoinPreparedInput>,
+pub(crate) struct PreparedAccountUtxoTransaction {
+    pub inputs: Vec<UtxoPreparedInput>,
     pub amount: u64,
     pub fee: u64,
     pub recipient_script: Vec<u8>,
@@ -35,7 +35,8 @@ pub(crate) enum PreparedPayload {
     Monero(super::monero_local::PreparedMoneroTransaction),
     Decred(super::decred::PreparedDecredTransaction),
     Kaspa(super::kaspa::PreparedKaspaTransaction),
-    Litecoin(PreparedLitecoinTransaction),
+    Litecoin(PreparedAccountUtxoTransaction),
+    Peercoin(PreparedAccountUtxoTransaction),
     Near {
         public_key: [u8; 32],
         nonce: u64,

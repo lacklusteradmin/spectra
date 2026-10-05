@@ -1415,3 +1415,18 @@ api = "aptos-indexer"
 chain_id = "aptos-testnet"
 endpoint = "https://api.testnet.aptoslabs.com/v1/graphql"
 capabilities = ["history", "token-history", "token-discovery"]
+
+# Verified 2026-10-04: status, address/history, UTXO, fee and malformed broadcast rejection.
+[[endpoints]]
+id = "peercoin.mainnet.blockbook"
+api = "blockbook"
+chain_id = "peercoin"
+endpoint = "https://blockbook.peercoin.net"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "peercoin.testnet.blockbook"
+api = "blockbook"
+chain_id = "peercoin-testnet"
+endpoint = "https://tblockbook.peercoin.net"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]

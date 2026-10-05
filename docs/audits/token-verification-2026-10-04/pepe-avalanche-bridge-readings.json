@@ -1,0 +1,87 @@
+{
+  "checked_at_utc": "2026-10-05T00:03:36.197429+00:00",
+  "purpose": "Read-only reciprocal LayerZero OFT peers and underlying token identity; no account keys, transaction signing or broadcasting.",
+  "official_protocol_reference": "https://docs.layerzero.network/v2/concepts/technical-reference/oft-reference",
+  "official_registry_url": "https://metadata.layerzero-api.com/v1/metadata",
+  "issuer_origin_url": "https://www.pepe.vip/",
+  "readings": [
+    {
+      "chain_id": "avalanche",
+      "endpoint": "https://avalanche-c-chain-rpc.publicnode.com",
+      "expected_chain_id": 43114,
+      "observed_chain_id": 43114,
+      "block_tag": "0x5c49783",
+      "contract": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "remote_endpoint_id": 30101,
+      "peers_calldata": "0xbb0b6a530000000000000000000000000000000000000000000000000000000000007595",
+      "peers_response": "0x0000000000000000000000005a026ea79cda77007a474d7e5b66a663721f7979",
+      "peer_address": "0x5a026ea79cda77007a474d7e5b66a663721f7979",
+      "token_calldata": "0xfc0c546a",
+      "token_response": "0x000000000000000000000000a659d083b677d6bffe1cb704e1473b896727be6d",
+      "token_address": "0xa659d083b677d6bffe1cb704e1473b896727be6d"
+    },
+    {
+      "chain_id": "ethereum",
+      "endpoint": "https://ethereum-rpc.publicnode.com",
+      "expected_chain_id": 1,
+      "observed_chain_id": 1,
+      "block_tag": "0x18e98d8",
+      "contract": "0x5a026ea79cda77007a474d7e5b66a663721f7979",
+      "remote_endpoint_id": 30106,
+      "peers_calldata": "0xbb0b6a53000000000000000000000000000000000000000000000000000000000000759a",
+      "peers_response": "0x000000000000000000000000a659d083b677d6bffe1cb704e1473b896727be6d",
+      "peer_address": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "token_calldata": "0xfc0c546a",
+      "token_response": "0x0000000000000000000000006982508145454ce325ddbe47a25d4ec3d2311933",
+      "token_address": "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    }
+  ],
+  "verified_sources": [
+    {
+      "chain_id": "ethereum",
+      "contract": "0x5a026ea79cda77007a474d7e5b66a663721f7979",
+      "source_url": "https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api?module=contract&action=getsourcecode&address=0x5a026ea79cda77007a474d7e5b66a663721f7979",
+      "source_response_sha256": "77eb83e94b93909477ef9d5fe91566ccc9d5f3c0c4f809f1b025136d0d562cf7",
+      "contract_name": "PepeOFTAdapter",
+      "constructor_arguments": "0x0000000000000000000000006982508145454ce325ddbe47a25d4ec3d23119330000000000000000000000001a44076050125825900e736c501f859c50fe728c000000000000000000000000d9a2dd3f36c51610ea637e99ba5660c2402b26f4",
+      "implementation_sources": [
+        {
+          "path": "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol",
+          "content_sha256": "826e606e5ec4a8a22fb5d4876ddc1b0e3c50d6c8da9da96cb88cbd38877379fa"
+        },
+        {
+          "path": "@layerzerolabs/oft-evm/contracts/OFTAdapter.sol",
+          "content_sha256": "eb379c3d62dc2bde9c8f736d1c886c9c8ec0551cdf28b32e0e55bd84c531555d"
+        },
+        {
+          "path": "contracts/PepeOFTAdapter.sol",
+          "content_sha256": "083f1bc1df2f1e46d084ffbca8835bc786094665335665f556744798fbf01ef9"
+        }
+      ]
+    },
+    {
+      "chain_id": "avalanche",
+      "contract": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "source_url": "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api?module=contract&action=getsourcecode&address=0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "source_response_sha256": "37f19b0682139e83a3930f56f4023280ab8b6a8a557fde8f43ac84b6cd130021",
+      "contract_name": "PepeOFT",
+      "constructor_arguments": "0x0000000000000000000000001a44076050125825900e736c501f859c50fe728c000000000000000000000000d9a2dd3f36c51610ea637e99ba5660c2402b26f4",
+      "implementation_sources": [
+        {
+          "path": "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol",
+          "content_sha256": "826e606e5ec4a8a22fb5d4876ddc1b0e3c50d6c8da9da96cb88cbd38877379fa"
+        },
+        {
+          "path": "@layerzerolabs/oft-evm/contracts/OFT.sol",
+          "content_sha256": "6f7e6b7d514cd2be4e6e5fa0827706289882a62c496786c9c08d5560e1c52415"
+        },
+        {
+          "path": "contracts/PepeOFT.sol",
+          "content_sha256": "913955fc87933cc0b52af720ef5c433f1ad88534b8439d3ec714fe4374be2fa8"
+        }
+      ]
+    }
+  ],
+  "conclusion": "Pinned mainnet reads prove the deployed Avalanche OFT has the Ethereum adapter as its trusted peer, with the adapter reciprocally trusting that Avalanche OFT and wrapping issuer-authenticated Ethereum PEPE. Verified source shows the Ethereum adapter inherits LayerZero OFTAdapter (locking/unlocking underlying ERC-20) and the Avalanche token inherits LayerZero OFT. This is third-party bridge identity evidence, not issuer endorsement or a bridge security audit. Official operator attribution remains unresolved: actual adapter owner differs from the LayerZero-registered v1 and v2 PEPE adapters (see pepe-bridge-operator-readings.json); this proves origin only and is not sufficient to activate a trusted default deployment.",
+  "operator_evidence_path": "./pepe-bridge-operator-readings.json"
+}

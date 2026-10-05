@@ -30,7 +30,7 @@ pub fn derive_for_chain(
     use crate::derivation::{
         aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_gold as btg, bitcoin_sv as bsv,
         bittensor, cardano, dash, decred, dogecoin as doge, evm, icp, kaspa, litecoin as ltc,
-        monero as xmr, near, polkadot, solana, stellar, sui, ton, tron, xrp, zcash,
+        monero as xmr, near, peercoin, polkadot, solana, stellar, sui, ton, tron, xrp, zcash,
     };
 
     let s = seed_phrase.to_string();
@@ -64,6 +64,10 @@ pub fn derive_for_chain(
         }
         Chain::Litecoin => ltc::derive_litecoin(s, p, pass, script, wa, wp, wk)?,
         Chain::LitecoinTestnet => ltc::derive_litecoin_testnet(s, p, pass, script, wa, wp, wk)?,
+        Chain::Peercoin => peercoin::derive_peercoin(s, p, pass, script, wa, wp, wk)?,
+        Chain::PeercoinTestnet => {
+            peercoin::derive_peercoin_testnet(s, p, pass, script, wa, wp, wk)?
+        }
         Chain::Dogecoin => doge::derive_dogecoin(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
         Chain::DogecoinTestnet => {
             doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?

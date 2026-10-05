@@ -410,3 +410,11 @@ comment = "An Ethereum rollup for World applications. ETH pays ordinary transact
 family = "Ethereum L2 (OP Stack)"
 consensus = "Optimistic rollup on Ethereum"
 state_model = "EVM account state"
+
+[[chains]]
+chain = "peercoin"
+tags = ["UTXO", "PoS", "PoW", "Payments"]
+comment = "Launched in 2012, Peercoin pioneered proof-of-stake security alongside proof-of-work. Spectra supports ordinary transfers; minting requires a separate participating wallet."
+family = "UTXO payments network"
+consensus = "Hybrid Proof of Stake and Proof of Work (SHA-256)"
+state_model = "UTXO set"

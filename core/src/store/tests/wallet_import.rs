@@ -140,6 +140,91 @@ fn commit(chains: &[crate::registry::Chain]) -> WalletImportCommit {
 }
 
 #[tokio::test]
+async fn account_utxo_import_refuses_wrong_network_paths_before_storing() {
+    use crate::registry::Chain;
+    for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
+        let directory = std::env::temp_dir().join(crate::store::new_event_id());
+        std::fs::create_dir_all(&directory).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
+        service.set_secret_store(std::sync::Arc::new(
+            crate::store::secret_backends::InMemorySecretStore::new(),
+        ));
+        service
+            .open_state(directory.join("state.db").to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        for path in ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0'/0", "m/84'/0'/0'/2/0"] {
+            let mut input = commit(&[chain]);
+            input.seed_derivation_paths.set_path_for(chain, path);
+            assert!(
+                service.import_wallets(input).await.is_err(),
+                "{chain} accepted {path}"
+            );
+            assert!(
+                service.app_state().await.wallets.is_empty(),
+                "{chain} stored an invalid account"
+            );
+        }
+        drop(service);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn imported_protected_peercoin_accounts_receive_after_restart_without_secrets() {
+    use crate::registry::Chain;
+    let directory = std::env::temp_dir().join(crate::store::new_event_id());
+    std::fs::create_dir_all(&directory).unwrap();
+    let database = directory.join("state.db").to_string_lossy().into_owned();
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service.open_state(database.clone()).await.unwrap();
+    let mut input = commit(&[Chain::Peercoin, Chain::PeercoinTestnet]);
+    input.password = Some("public account fixture".into());
+    input.derivation_overrides.passphrase = Some("Peercoin passphrase".into());
+    let imported = service.import_wallets(input).await.unwrap();
+    drop(service);
+    let reopened = WalletService::new(vec![]).unwrap();
+    reopened.open_state(database).await.unwrap();
+    for wallet in imported.wallets {
+        let state = reopened.app_state().await;
+        let stored = state
+            .wallets
+            .iter()
+            .find(|stored| stored.id == wallet.id)
+            .unwrap();
+        assert!(stored.xpub.as_deref().is_some_and(|xpub| !xpub.is_empty()));
+        let received = reopened
+            .receive_address(wallet.id, stored.chain_id, true)
+            .await
+            .unwrap()
+            .unwrap();
+        let base = crate::derivation::path::default_path_from_catalog(stored.chain_id).unwrap();
+        let expected_path =
+            crate::derivation::path::derivation_path_replacing_last_two(base.clone(), 0, 1, base);
+        let expected = crate::derivation::dispatch::derive_for_chain(
+            stored.chain_id,
+            MNEMONIC,
+            &expected_path,
+            Some("Peercoin passphrase"),
+            None,
+            None,
+            true,
+            false,
+            false,
+        )
+        .unwrap()
+        .address
+        .unwrap();
+        assert_eq!(received, expected);
+    }
+    drop(reopened);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
 async fn imported_wallets_land_in_core_state() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();

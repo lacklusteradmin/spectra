@@ -37,6 +37,7 @@ pub mod litecoin;
 pub(crate) mod litecoin_quote;
 pub(crate) mod monero_local;
 pub mod near;
+pub mod peercoin;
 pub mod polkadot;
 pub mod polkadot_pools;
 pub mod solana;

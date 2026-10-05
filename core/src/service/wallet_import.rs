@@ -202,14 +202,12 @@ impl WalletService {
                 !commit.request.is_watch_only_import && !commit.request.is_private_key_import
             }) {
                 for wallet in &mut wallets {
-                    if wallet.chain_id.mainnet_counterpart() == Chain::Litecoin {
+                    if wallet.chain_id.uses_account_utxo() {
                         let path = wallet
                             .seed_derivation_paths
                             .path_for(wallet.chain_id)
                             .ok_or_else(|| {
-                                SpectraBridgeError::invalid(
-                                    "Litecoin wallet has no derivation path",
-                                )
+                                SpectraBridgeError::invalid("UTXO wallet has no derivation path")
                             })?;
                         wallet.account_xpub =
                             Some(super::address_discovery::UtxoDerivation::account_xpub(

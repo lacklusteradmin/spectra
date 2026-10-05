@@ -31,7 +31,11 @@ pub(crate) fn send_save(
         .validate()
         .map_err(|e| DbError::Invalid(e.to_string()))?;
     with_conn(database, |conn| {
-        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+        // Acquire the writer before reading: a deferred WAL snapshot cannot
+        // upgrade after another signer commits, even with a busy timeout.
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(DbError::from)?;
         let mut stored = stored.clone();
         let previous: Option<String> = tx
             .query_row(
@@ -117,7 +121,9 @@ pub(crate) fn send_record_icp_receipt(
         .validate()
         .map_err(|e| DbError::Invalid(e.to_string()))?;
     with_conn(database, |conn| {
-        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(DbError::from)?;
         let payload: String = tx
             .query_row(
                 "SELECT payload FROM send_artifacts WHERE id=?1",

@@ -624,6 +624,7 @@ mod utxo_discovery_is_the_registrys_chain_set {
             (Chain::BitcoinSV, Chain::BitcoinSVTestnet),
             (Chain::Litecoin, Chain::LitecoinTestnet),
             (Chain::Dogecoin, Chain::DogecoinTestnet),
+            (Chain::Peercoin, Chain::PeercoinTestnet),
         ] {
             assert!(mainnet.supports_deep_utxo_discovery(), "{mainnet:?}");
             assert!(
@@ -635,8 +636,8 @@ mod utxo_discovery_is_the_registrys_chain_set {
             Chain::all()
                 .filter(|c| c.supports_deep_utxo_discovery())
                 .count(),
-            12,
-            "five mainnets and seven testnets"
+            14,
+            "six mainnets and eight testnets"
         );
     }
 

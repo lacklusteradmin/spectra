@@ -56,6 +56,12 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "dogecoinTestnet" => {
             validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::DogecoinTestnet)
         }
+        "peercoin" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Peercoin)
+        }
+        "peercoinTestnet" => {
+            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::PeercoinTestnet)
+        }
         // EVM addresses are network-agnostic on the wire — same validator
         // for mainnet + every EVM testnet.
         "evm" | "evmTestnet" => validate_evm_address(&normalized_input),

@@ -1,0 +1,511 @@
+{
+  "checked_at_utc": "2026-10-05T00:09:32.892711+00:00",
+  "scope": "21 saved multichain deployments: ETHFI, LINEA, SCR, WLD, WLFI, ZK, ZRO and PEPE. Research only; token catalog was not edited.",
+  "verification_policy": "Require exact network + contract identity in issuer, protocol or official bridge material. Live contract metadata is supplemental, never identity proof by itself. Verified bridge wrappers are named as such. Unresolved original data is retained.",
+  "summary": {
+    "verified": 20,
+    "unresolved": 1,
+    "corrected": 0
+  },
+  "deployments": [
+    {
+      "token_id": "ether-fi",
+      "chain_id": "ethereum",
+      "original_contract": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+      "status": "verified",
+      "contract": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+      "decimals": 18,
+      "identity_source_url": "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/utils/constants.sol",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/19",
+      "metadata_evidence": {
+        "expected_chain_id": 1,
+        "observed_chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18,
+        "code_bytes": 7889
+      },
+      "additional_identity_source_urls": [
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/test/VerifyOFTDeployments.t.sol",
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/script/DeployOFT.s.sol",
+        "https://etherfi.gitbook.io/gov/ethfi/how-to-bridge-ethfi"
+      ],
+      "note": "Issuer repository declares MAINNET_ETHFI with the exact original Ethereum token address. Its live-fork verification test source references the Ethereum token and adapter deployment; those issuer tests were inspected as source, not executed during this audit. This address is the underlying ERC-20, separate from OFT adapter 0xe0080d2f853ecddbd81a643dc10da075df26fd3f.",
+      "bridge_version": "Ethereum native issuer governance token; issuer Wormhole NTT / LayerZero OFT adapter references.",
+      "source_excerpt": "MAINNET_ETHFI"
+    },
+    {
+      "token_id": "ether-fi",
+      "chain_id": "arbitrum",
+      "original_contract": "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27",
+      "status": "verified",
+      "contract": "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27",
+      "decimals": 18,
+      "identity_source_url": "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/utils/constants.sol",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/20",
+      "metadata_evidence": {
+        "expected_chain_id": 42161,
+        "observed_chain_id": 42161,
+        "block_tag": "0x1e80cec5",
+        "observed_decimals": 18,
+        "code_bytes": 170
+      },
+      "additional_identity_source_urls": [
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/test/VerifyOFTDeployments.t.sol",
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/script/DeployOFT.s.sol",
+        "https://etherfi.gitbook.io/gov/ethfi/how-to-bridge-ethfi"
+      ],
+      "note": "Issuer deployment constants declare the exact arbitrum ETHFI token address; chain configurations specify the real chain ID and distinguish underlying token from common OFT adapter 0xe0080d2f853ecddbd81a643dc10da075df26fd3f. Issuer scripts document the Wormhole NTT to LayerZero mint/burn OFT adapter path without changing the token address.",
+      "bridge_version": "Issuer L2 governance token: Wormhole NTT deployment with issuer LayerZero OFT migration scripts.",
+      "source_excerpt": "ARB_ETHFI"
+    },
+    {
+      "token_id": "ether-fi",
+      "chain_id": "base",
+      "original_contract": "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2",
+      "status": "verified",
+      "contract": "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2",
+      "decimals": 18,
+      "identity_source_url": "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/utils/constants.sol",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/21",
+      "metadata_evidence": {
+        "expected_chain_id": 8453,
+        "observed_chain_id": 8453,
+        "block_tag": "0x31c44c0",
+        "observed_decimals": 18,
+        "code_bytes": 177
+      },
+      "additional_identity_source_urls": [
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/test/VerifyOFTDeployments.t.sol",
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/script/DeployOFT.s.sol",
+        "https://etherfi.gitbook.io/gov/ethfi/how-to-bridge-ethfi"
+      ],
+      "note": "Issuer deployment constants declare the exact base ETHFI token address; chain configurations specify the real chain ID and distinguish underlying token from common OFT adapter 0xe0080d2f853ecddbd81a643dc10da075df26fd3f. Issuer scripts document the Wormhole NTT to LayerZero mint/burn OFT adapter path without changing the token address.",
+      "bridge_version": "Issuer L2 governance token: Wormhole NTT deployment with issuer LayerZero OFT migration scripts.",
+      "source_excerpt": "BASE_ETHFI"
+    },
+    {
+      "token_id": "ether-fi",
+      "chain_id": "scroll",
+      "original_contract": "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81",
+      "status": "verified",
+      "contract": "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81",
+      "decimals": 18,
+      "identity_source_url": "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/utils/constants.sol",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/22",
+      "metadata_evidence": {
+        "expected_chain_id": 534352,
+        "observed_chain_id": 534352,
+        "block_tag": "0x21a4b1c",
+        "observed_decimals": 18,
+        "code_bytes": 177
+      },
+      "additional_identity_source_urls": [
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/test/VerifyOFTDeployments.t.sol",
+        "https://github.com/etherfi-protocol/ethfi-wormhole/blob/4e3ad2912f98f6f967b9043f2774aba19f714f8b/script/DeployOFT.s.sol",
+        "https://etherfi.gitbook.io/gov/ethfi/how-to-bridge-ethfi"
+      ],
+      "note": "Issuer deployment constants declare the exact scroll ETHFI token address; chain configurations specify the real chain ID and distinguish underlying token from common OFT adapter 0xe0080d2f853ecddbd81a643dc10da075df26fd3f. Issuer scripts document the Wormhole NTT to LayerZero mint/burn OFT adapter path without changing the token address.",
+      "bridge_version": "Issuer L2 governance token: Wormhole NTT deployment with issuer LayerZero OFT migration scripts.",
+      "source_excerpt": "SCROLL_ETHFI"
+    },
+    {
+      "token_id": "ether-fi",
+      "chain_id": "optimism",
+      "original_contract": "0xe0080d2f853ecddbd81a643dc10da075df26fd3f",
+      "status": "verified",
+      "contract": "0xe0080d2f853ecddbd81a643dc10da075df26fd3f",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/23",
+      "metadata_evidence": {
+        "expected_chain_id": 10,
+        "observed_chain_id": 10,
+        "block_tag": "0x9678656",
+        "observed_decimals": 18,
+        "code_bytes": 170
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/api-reference/openapi/get-openapi",
+        "https://optimism.blockscout.com/api/v2/smart-contracts/0xe0080d2f853ecddbd81a643dc10da075df26fd3f",
+        "https://optimism.blockscout.com/api/v2/addresses/0xe0080d2f853ecddbd81a643dc10da075df26fd3f",
+        "https://optimism.io/case-studies/etherfi"
+      ],
+      "note": "Official LayerZero full mainnet metadata identifies this exact address on Optimism as NativeOFT, with peggedTo Ethereum issuer ETHFI 0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb and programaticallyPegged=true. Ethereum's same deterministic address is a ProxyOFT adapter around the original ERC-20; the Optimism deployment is a distinct OFT ERC-20. Independent verified proxy source links implementation OFTUpgradeable and ERC-20 metadata ETHFI/18. Official OP case study confirms Ether.fi asset migration through OFTs.",
+      "bridge_version": "LayerZero NativeOFT (OFT v3, endpoint v2; eid30111, sharedDecimals6/localDecimals18)",
+      "source_excerpt": "NativeOFT"
+    },
+    {
+      "token_id": "linea",
+      "chain_id": "ethereum",
+      "original_contract": "0x1789e0043623282d5dcc7f213d703c6d8bafbb04",
+      "status": "verified",
+      "contract": "0x1789e0043623282d5dcc7f213d703c6d8bafbb04",
+      "decimals": 18,
+      "identity_source_url": "https://docs.linea.build/network/overview/tokenomics",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/29",
+      "metadata_evidence": {
+        "expected_chain_id": 1,
+        "observed_chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18,
+        "code_bytes": 1528
+      },
+      "source_excerpt": "on Linea Mainnet and Ethereum Mainnet",
+      "bridge_version": "Linea native canonical token bridge",
+      "note": "Official Linea tokenomics explicitly names the exact same contract address on both mainnets and describes native bridging from Linea L2 to Ethereum L1. The identical addresses are separate network deployments, not chain aliases."
+    },
+    {
+      "token_id": "linea",
+      "chain_id": "linea",
+      "original_contract": "0x1789e0043623282d5dcc7f213d703c6d8bafbb04",
+      "status": "verified",
+      "contract": "0x1789e0043623282d5dcc7f213d703c6d8bafbb04",
+      "decimals": 18,
+      "identity_source_url": "https://docs.linea.build/network/overview/tokenomics",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/30",
+      "metadata_evidence": {
+        "expected_chain_id": 59144,
+        "observed_chain_id": 59144,
+        "block_tag": "0x1ebd52c",
+        "observed_decimals": 18,
+        "code_bytes": 1580
+      },
+      "source_excerpt": "on Linea Mainnet and Ethereum Mainnet",
+      "bridge_version": "Linea native canonical token bridge",
+      "note": "Official Linea tokenomics explicitly names the exact same contract address on both mainnets and describes native bridging from Linea L2 to Ethereum L1. The identical addresses are separate network deployments, not chain aliases."
+    },
+    {
+      "token_id": "pepe",
+      "chain_id": "arbitrum",
+      "original_contract": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+      "status": "verified",
+      "contract": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/35",
+      "metadata_evidence": {
+        "expected_chain_id": 42161,
+        "observed_chain_id": 42161,
+        "block_tag": "0x1e80cec5",
+        "observed_decimals": 18,
+        "code_bytes": 18324
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/openapi/oft-mainnet.json",
+        "https://www.pepe.vip/"
+      ],
+      "source_excerpt": "OFT_ADAPTER",
+      "bridge_version": "Third-party LayerZero endpoint v1 OFT bridge; sharedDecimals=4, localDecimals=18",
+      "note": "Official LayerZero mainnet OFT registry links exact Arbitrum and BNB token contracts to its Ethereum OFT_ADAPTER at the same address. Registry innerTokenAddress is canonical issuer Ethereum PEPE 0x6982508145454ce325ddbe47a25d4ec3d2311933, independently linked by issuer website. This verifies bridge asset identity; it does not assert native issuance or issuer endorsement of the bridge."
+    },
+    {
+      "token_id": "pepe",
+      "chain_id": "avalanche",
+      "original_contract": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "status": "unresolved",
+      "contract": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "decimals": 18,
+      "identity_source_url": "https://docs.layerzero.network/v2/concepts/technical-reference/oft-reference",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/36",
+      "metadata_evidence": {
+        "expected_chain_id": 43114,
+        "observed_chain_id": 43114,
+        "block_tag": "0x5c49584",
+        "observed_decimals": 18,
+        "code_bytes": 12493
+      },
+      "bridge_version": "Third-party LayerZero endpoint v2 OFT bridge: Avalanche PepeOFT ↔ Ethereum PepeOFTAdapter",
+      "note": "Exact original Avalanche PepeOFT is its own ERC-20 token (token()=self). Pinned chain-identity-checked peers(30101) returns Ethereum adapter0x5a026ea79cda77007a474d7e5b66a663721f7979; that adapter's peers(30106) reciprocally returns the Avalanche token, and token() returns issuer-authenticated Ethereum PEPE0x6982508145454ce325ddbe47a25d4ec3d2311933. Verified source confirms LayerZero OFT and OFTAdapter implementations and immutable canonical token/endpoint constructor arguments. Official LayerZero documentation defines these trusted peer channels and adapter locking/unlocking semantics. This version is separate from the Arbitrum/BNB endpoint v1 OFT; issuer endorsement of the bridge is not asserted. The wrapper origin and reciprocal bridge relation are proven, but official issuer/bridge-operator attribution remains unresolved. The user explicitly requested removal of this deployment from the catalog; these readings remain as research history.",
+      "additional_identity_source_urls": [
+        "https://www.pepe.vip/",
+        "https://etherscan.io/address/0x5a026ea79cda77007a474d7e5b66a663721f7979#code",
+        "https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api?module=contract&action=getsourcecode&address=0x5a026ea79cda77007a474d7e5b66a663721f7979",
+        "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api?module=contract&action=getsourcecode&address=0xa659d083b677d6bffe1cb704e1473b896727be6d",
+        "./pepe-avalanche-bridge-readings.json"
+      ],
+      "source_excerpt": "trusted counterpart",
+      "bridge_origin_status": "verified",
+      "official_operator_status": "unresolved",
+      "catalog_decision": "removed_at_user_request"
+    },
+    {
+      "token_id": "pepe",
+      "chain_id": "bnb",
+      "original_contract": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+      "status": "verified",
+      "contract": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/37",
+      "metadata_evidence": {
+        "expected_chain_id": 56,
+        "observed_chain_id": 56,
+        "block_tag": "0x77f0e85",
+        "observed_decimals": 18,
+        "code_bytes": 18324
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/openapi/oft-mainnet.json",
+        "https://www.pepe.vip/"
+      ],
+      "source_excerpt": "OFT_ADAPTER",
+      "bridge_version": "Third-party LayerZero endpoint v1 OFT bridge; sharedDecimals=4, localDecimals=18",
+      "note": "Official LayerZero mainnet OFT registry links exact Arbitrum and BNB token contracts to its Ethereum OFT_ADAPTER at the same address. Registry innerTokenAddress is canonical issuer Ethereum PEPE 0x6982508145454ce325ddbe47a25d4ec3d2311933, independently linked by issuer website. This verifies bridge asset identity; it does not assert native issuance or issuer endorsement of the bridge."
+    },
+    {
+      "token_id": "scroll",
+      "chain_id": "scroll",
+      "original_contract": "0xd29687c813d741e2f938f4ac377128810e217b1b",
+      "status": "verified",
+      "contract": "0xd29687c813d741e2f938f4ac377128810e217b1b",
+      "decimals": 18,
+      "identity_source_url": "https://gov.scroll.io/proposals/32195966105875256982966851806785706747970993241469507520936106720258197550754",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/42",
+      "metadata_evidence": {
+        "expected_chain_id": 534352,
+        "observed_chain_id": 534352,
+        "block_tag": "0x21a4b1c",
+        "observed_decimals": 18,
+        "code_bytes": 1581
+      },
+      "source_excerpt": "1 SCR back to the DAO treasury",
+      "bridge_version": "Scroll mainnet issuer governance token",
+      "note": "Official Scroll governance proposal transfers 1 SCR from the timelock to its DAO treasury. Its executed action links the full original token target, with transfer(address,uint256) calldata amount 1000000000000000000; the page identifies its on-chain Governor and SCR token data as Scroll mainnet. Pinned mainnet chainId/code/decimals reading separately confirms the target deployment."
+    },
+    {
+      "token_id": "worldcoin-wld",
+      "chain_id": "ethereum",
+      "original_contract": "0x163f8c2467924be0ae7b5347228cabf260318753",
+      "status": "verified",
+      "contract": "0x163f8c2467924be0ae7b5347228cabf260318753",
+      "decimals": 18,
+      "identity_source_url": "https://whitepaper.world.org/designing-for-scale/2025-04-28",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/49",
+      "metadata_evidence": {
+        "expected_chain_id": 1,
+        "observed_chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18,
+        "code_bytes": 4738
+      },
+      "additional_identity_source_urls": [
+        "https://whitepaper.world.org/designing-for-scale/2023-07-25"
+      ],
+      "source_excerpt": "WLD Token Contract",
+      "bridge_version": "Ethereum issuer ERC-20",
+      "note": "Issuer whitepaper lists exact Ethereum and Optimism contract addresses. Latest cited revision states Optimism was the main venue from 2023-07-24 until 2024-10-17 and that WLD remains available there following the move to World Chain; this deployment remains a real bridged WLD asset."
+    },
+    {
+      "token_id": "worldcoin-wld",
+      "chain_id": "optimism",
+      "original_contract": "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1",
+      "status": "verified",
+      "contract": "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1",
+      "decimals": 18,
+      "identity_source_url": "https://whitepaper.world.org/designing-for-scale/2025-04-28",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/50",
+      "metadata_evidence": {
+        "expected_chain_id": 10,
+        "observed_chain_id": 10,
+        "block_tag": "0x9678656",
+        "observed_decimals": 18,
+        "code_bytes": 5835
+      },
+      "additional_identity_source_urls": [
+        "https://whitepaper.world.org/designing-for-scale/2023-07-25"
+      ],
+      "source_excerpt": "WLD Token Contract",
+      "bridge_version": "Canonical Optimism bridge WLD (legacy distribution venue)",
+      "note": "Issuer whitepaper lists exact Ethereum and Optimism contract addresses. Latest cited revision states Optimism was the main venue from 2023-07-24 until 2024-10-17 and that WLD remains available there following the move to World Chain; this deployment remains a real bridged WLD asset."
+    },
+    {
+      "token_id": "world-liberty-financial",
+      "chain_id": "ethereum",
+      "original_contract": "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6",
+      "status": "verified",
+      "contract": "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6",
+      "decimals": 18,
+      "identity_source_url": "https://docs.worldlibertyfinancial.com/wlfi-token/contract-addresses",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/51",
+      "metadata_evidence": {
+        "expected_chain_id": 1,
+        "observed_chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18,
+        "code_bytes": 1159
+      },
+      "source_excerpt": "Decimals",
+      "additional_decimals_source_urls": [
+        "https://docs.worldlibertyfinancial.com/wlfi-token/contract-addresses"
+      ],
+      "bridge_version": "Chainlink CCIP Lock & Release origin",
+      "note": "Issuer contract-address table lists exact Ethereum and BNB Smart Chain token contracts, ticker WLFI, decimals=18, and network-specific Chainlink CCIP pools. BNB token is the CCIP burn/mint deployment, not an assumed Binance-Peg wrapper."
+    },
+    {
+      "token_id": "world-liberty-financial",
+      "chain_id": "bnb",
+      "original_contract": "0x47474747477b199288bf72a1d702f7fe0fb1deea",
+      "status": "verified",
+      "contract": "0x47474747477b199288bf72a1d702f7fe0fb1deea",
+      "decimals": 18,
+      "identity_source_url": "https://docs.worldlibertyfinancial.com/wlfi-token/contract-addresses",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/52",
+      "metadata_evidence": {
+        "expected_chain_id": 56,
+        "observed_chain_id": 56,
+        "block_tag": "0x77f0e85",
+        "observed_decimals": 18,
+        "code_bytes": 1385
+      },
+      "source_excerpt": "Decimals",
+      "additional_decimals_source_urls": [
+        "https://docs.worldlibertyfinancial.com/wlfi-token/contract-addresses"
+      ],
+      "bridge_version": "Chainlink CCIP Burn & Mint remote token",
+      "note": "Issuer contract-address table lists exact Ethereum and BNB Smart Chain token contracts, ticker WLFI, decimals=18, and network-specific Chainlink CCIP pools. BNB token is the CCIP burn/mint deployment, not an assumed Binance-Peg wrapper."
+    },
+    {
+      "token_id": "zksync",
+      "chain_id": "ethereum",
+      "original_contract": "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5",
+      "status": "verified",
+      "contract": "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5",
+      "decimals": 18,
+      "identity_source_url": "https://docs.zksync.io/zksync-protocol/contracts/l1-contracts/zk-chain-addresses",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/53",
+      "metadata_evidence": {
+        "expected_chain_id": 1,
+        "observed_chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18,
+        "code_bytes": 320
+      },
+      "source_excerpt": "originChainId",
+      "bridge_version": "Canonical zkSync NativeTokenVault registered Ethereum wrapper for Era-origin ZK (existing deployment)",
+      "note": "Pinned Ethereum on-chain reads at block0x18e9899 prove original wrapper0x66a5… originToken()=issuer Era0x5a7d…, nativeTokenVault()=official mainnet0xbed1eb542f9a5aa6419ff3deb921a372681111f6, and assetId()=0x83e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a. The official Vault reciprocally maps that asset to originChainId324 and tokenAddress0x66a5…, and assetId(wrapper) agrees. Official pinned NativeTokenVault source defines stored originChainId/tokenAddress/assetId mappings and legacy asset registration; registered current deployment is authoritative. The current factory calculation returning a different deterministic address is not evidence that this registered existing wrapper is incorrect. Source and raw readings retained in zksync-zk-bridge.json.",
+      "additional_identity_source_urls": [
+        "https://docs.zknation.io/zk-token/zk-token",
+        "https://github.com/matter-labs/era-contracts/blob/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/BridgedStandardERC20.sol",
+        "https://github.com/matter-labs/era-contracts/blob/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/ntv/NativeTokenVault.sol",
+        "https://github.com/matter-labs/era-contracts/blob/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/ntv/L1NativeTokenVault.sol",
+        "./zksync-zk-bridge.json"
+      ]
+    },
+    {
+      "token_id": "zksync",
+      "chain_id": "zksync-era",
+      "original_contract": "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e",
+      "status": "verified",
+      "contract": "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e",
+      "decimals": 18,
+      "identity_source_url": "https://docs.zknation.io/zk-token/zk-token",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/54",
+      "metadata_evidence": {
+        "expected_chain_id": 324,
+        "observed_chain_id": 324,
+        "block_tag": "0x44fbf04",
+        "observed_decimals": 18,
+        "code_bytes": 11168
+      },
+      "source_excerpt": "Deployed On",
+      "bridge_version": "ZKsync Era issuer governance token",
+      "note": "Official ZK Nation token documentation declares exact ZK address and deployment on ZKsync Era, plus Ethereum transferability."
+    },
+    {
+      "token_id": "layerzero",
+      "chain_id": "ethereum",
+      "original_contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "status": "verified",
+      "contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/55",
+      "metadata_evidence": {
+        "expected_chain_id": 1,
+        "observed_chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18,
+        "code_bytes": 14810
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/openapi/oft-mainnet.json",
+        "https://layerzero.foundation"
+      ],
+      "source_excerpt": "ZRO Token",
+      "bridge_version": "LayerZero endpoint v2 OFT; sharedDecimals=6, localDecimals=18",
+      "note": "LayerZero's officially documented mainnet OFT registry lists the exact ZRO contract on ethereum, type=OFT, endpointVersion=v2 and localDecimals=18. Identical deterministic address is present independently on each network."
+    },
+    {
+      "token_id": "layerzero",
+      "chain_id": "arbitrum",
+      "original_contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "status": "verified",
+      "contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/56",
+      "metadata_evidence": {
+        "expected_chain_id": 42161,
+        "observed_chain_id": 42161,
+        "block_tag": "0x1e80cec5",
+        "observed_decimals": 18,
+        "code_bytes": 14810
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/openapi/oft-mainnet.json",
+        "https://layerzero.foundation"
+      ],
+      "source_excerpt": "ZRO Token",
+      "bridge_version": "LayerZero endpoint v2 OFT; sharedDecimals=6, localDecimals=18",
+      "note": "LayerZero's officially documented mainnet OFT registry lists the exact ZRO contract on arbitrum, type=OFT, endpointVersion=v2 and localDecimals=18. Identical deterministic address is present independently on each network."
+    },
+    {
+      "token_id": "layerzero",
+      "chain_id": "base",
+      "original_contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "status": "verified",
+      "contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/57",
+      "metadata_evidence": {
+        "expected_chain_id": 8453,
+        "observed_chain_id": 8453,
+        "block_tag": "0x31c44c0",
+        "observed_decimals": 18,
+        "code_bytes": 14810
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/openapi/oft-mainnet.json",
+        "https://layerzero.foundation"
+      ],
+      "source_excerpt": "ZRO Token",
+      "bridge_version": "LayerZero endpoint v2 OFT; sharedDecimals=6, localDecimals=18",
+      "note": "LayerZero's officially documented mainnet OFT registry lists the exact ZRO contract on base, type=OFT, endpointVersion=v2 and localDecimals=18. Identical deterministic address is present independently on each network."
+    },
+    {
+      "token_id": "layerzero",
+      "chain_id": "bnb",
+      "original_contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "status": "verified",
+      "contract": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "decimals": 18,
+      "identity_source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+      "decimals_source_url": "./rpc-metadata.json#/deployments/58",
+      "metadata_evidence": {
+        "expected_chain_id": 56,
+        "observed_chain_id": 56,
+        "block_tag": "0x77f0e85",
+        "observed_decimals": 18,
+        "code_bytes": 14810
+      },
+      "additional_identity_source_urls": [
+        "https://docs.layerzero.network/openapi/oft-mainnet.json",
+        "https://layerzero.foundation"
+      ],
+      "source_excerpt": "ZRO Token",
+      "bridge_version": "LayerZero endpoint v2 OFT; sharedDecimals=6, localDecimals=18",
+      "note": "LayerZero's officially documented mainnet OFT registry lists the exact ZRO contract on bsc (BNB Smart Chain), type=OFT, endpointVersion=v2 and localDecimals=18. Identical deterministic address is present independently on each network."
+    }
+  ]
+}

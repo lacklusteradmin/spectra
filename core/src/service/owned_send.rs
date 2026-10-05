@@ -394,6 +394,11 @@ impl WalletService {
                 .preview_litecoin_owned_send(chain, &wallet_id, &amount, &destination)
                 .await?
                 .map(|preview| SendPreview::Utxo { preview }),
+            Chain::Peercoin => Some(SendPreview::Utxo {
+                preview: self
+                    .preview_peercoin_owned_send(chain, &wallet_id, &amount, &destination)
+                    .await?,
+            }),
             Chain::BitcoinCash | Chain::BitcoinSV => self
                 .fetch_utxo_fee_preview(chain, address, 0, destination)
                 .await?

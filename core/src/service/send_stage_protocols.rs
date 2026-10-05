@@ -463,6 +463,10 @@ impl WalletService {
                 self.prepare_litecoin(chain, request, sender, amount_u64)
                     .await?
             }
+            Chain::Peercoin => {
+                self.prepare_peercoin(chain, request, sender, amount_u64)
+                    .await?
+            }
             Chain::Monero => {
                 PreparedPayload::Monero(self.prepare_monero(request, amount_u64).await?)
             }
@@ -1257,6 +1261,7 @@ impl WalletService {
             PreparedPayload::Litecoin(_) => {
                 return self.sign_litecoin(chain, stored, signer).await;
             }
+            PreparedPayload::Peercoin(_) => return self.sign_peercoin(chain, stored, signer).await,
             PreparedPayload::Xrp {
                 sequence,
                 fee_drops,
@@ -1632,6 +1637,10 @@ impl WalletService {
             }
         } else if chain.mainnet_counterpart() == Chain::Zcash {
             BlockbookClient::new(eps, chain).zcash_context().await?;
+        } else if chain.mainnet_counterpart() == Chain::Peercoin {
+            BlockbookClient::new(eps, chain)
+                .verify_peercoin_network()
+                .await?;
         } else if chain == Chain::Icp {
             IcpClient::new(eps).verify_network().await?;
         } else if chain.mainnet_counterpart() == Chain::Monero {

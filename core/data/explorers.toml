@@ -441,3 +441,13 @@ tx_url = "https://assethub-westend.subscan.io/extrinsic/{hash}"
 chain_id = "monero-stagenet"
 name = "Monero Explorer"
 tx_url = "https://stagenet.xmrchain.net/tx/{hash}"
+
+[[explorers]]
+chain_id = "peercoin"
+name = "Peercoin Blockbook"
+tx_url = "https://blockbook.peercoin.net/tx/{hash}"
+
+[[explorers]]
+chain_id = "peercoin-testnet"
+name = "Peercoin Testnet Blockbook"
+tx_url = "https://tblockbook.peercoin.net/tx/{hash}"

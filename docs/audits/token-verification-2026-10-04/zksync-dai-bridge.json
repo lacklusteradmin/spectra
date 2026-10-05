@@ -1,0 +1,69 @@
+{
+  "checked_at_utc": "2026-10-05T00:03:31.776895+00:00",
+  "token_id": "dai",
+  "chain_id": "zksync-era",
+  "endpoint": "https://mainnet.era.zksync.io",
+  "observed_chain_id": 324,
+  "block_tag": "0x44fbf04",
+  "bridge_address": "0x11f943b2c77b743ab90f4a0ae7d5a4e7fca3e102",
+  "bridge_discovery": {
+    "method": "zks_getBridgeContracts",
+    "response": {
+      "jsonrpc": "2.0",
+      "result": {
+        "l1Erc20DefaultBridge": "0x57891966931eb4bb6fb81430e6ce0a03aabde063",
+        "l1SharedDefaultBridge": "0x8829ad80e425c646dab305381ff105169feece56",
+        "l1WethBridge": "0x0000000000000000000000000000000000000000",
+        "l2Erc20DefaultBridge": "0x0000000000000000000000000000000000010003",
+        "l2LegacySharedBridge": "0x11f943b2c77b743ab90f4a0ae7d5a4e7fca3e102",
+        "l2SharedDefaultBridge": "0x0000000000000000000000000000000000010003",
+        "l2WethBridge": "0x0000000000000000000000000000000000000000"
+      },
+      "id": 1
+    }
+  },
+  "source_urls": [
+    "https://docs.zksync.io/zksync-protocol/rollup/bridging-assets",
+    "https://github.com/zksync-sdk/zksync-ethers/blob/main/src/provider.ts",
+    "https://chainlog.sky.money/api/mainnet/active.json",
+    "https://raw.githubusercontent.com/matter-labs/era-contracts/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/L2SharedBridgeLegacy.sol",
+    "https://github.com/zksync-sdk/zksync-ethers/blob/f0af85c64dbdfe70c72de1941c2a8c5845d4e3fc/src/provider.ts"
+  ],
+  "calls": [
+    {
+      "function": "l1TokenAddress(address)",
+      "input": "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656",
+      "calldata": "0xf54266a20000000000000000000000004b9eb6c0b6ea15176bbf62841c6b2a8a398cb656",
+      "response": {
+        "jsonrpc": "2.0",
+        "result": "0x0000000000000000000000006b175474e89094c44da98b954eedeac495271d0f",
+        "id": 1
+      },
+      "decoded_address": "0x6b175474e89094c44da98b954eedeac495271d0f"
+    },
+    {
+      "function": "l2TokenAddress(address)",
+      "input": "0x6b175474e89094c44da98b954eedeac495271d0f",
+      "calldata": "0xf5f151680000000000000000000000006b175474e89094c44da98b954eedeac495271d0f",
+      "response": {
+        "jsonrpc": "2.0",
+        "result": "0x0000000000000000000000004b9eb6c0b6ea15176bbf62841c6b2a8a398cb656",
+        "id": 1
+      },
+      "decoded_address": "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656"
+    }
+  ],
+  "conclusion": "Both canonical bridge directions connect the saved zkSync Era token to issuer Ethereum DAI; this is the default zkSync ERC20 bridge version, not a native issuer deployment. Selectors derived with ethers 6 keccak256.",
+  "official_bridge_source": {
+    "url": "https://raw.githubusercontent.com/matter-labs/era-contracts/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/L2SharedBridgeLegacy.sol",
+    "commit": "be9a1fec4938e81c4f5d21c127fe49e51bac863e",
+    "source_sha256": "82206f7ea33a0440960c95d3ca724a49c64ed18f55dbd34f542062ba66373b0b",
+    "mapping_definition": "public l1TokenAddress maps the L2 token to its L1 origin; l2TokenAddress returns the NativeTokenVault counterpart or legacy CREATE2 token address.",
+    "source_lines": [
+      39,
+      149,
+      150,
+      154
+    ]
+  }
+}

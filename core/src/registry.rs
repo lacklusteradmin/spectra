@@ -61,6 +61,7 @@ pub enum Chain {
     Plasma,
     Monad,
     WorldChain,
+    Peercoin,
 
     // ── Testnets ─────────────────────────────────────────────────────────────
     BitcoinTestnet,
@@ -74,6 +75,7 @@ pub enum Chain {
     DecredTestnet,
     KaspaTestnet,
     DashTestnet,
+    PeercoinTestnet,
     EthereumSepolia,
     EthereumHoodi,
     ArbitrumSepolia,
@@ -228,6 +230,7 @@ const ALL_CHAINS: &[Chain] = &[
     Chain::Plasma,
     Chain::Monad,
     Chain::WorldChain,
+    Chain::Peercoin,
     // Testnets
     Chain::BitcoinTestnet,
     Chain::BitcoinTestnet4,
@@ -240,6 +243,7 @@ const ALL_CHAINS: &[Chain] = &[
     Chain::DecredTestnet,
     Chain::KaspaTestnet,
     Chain::DashTestnet,
+    Chain::PeercoinTestnet,
     Chain::EthereumSepolia,
     Chain::EthereumHoodi,
     Chain::ArbitrumSepolia,
@@ -398,7 +402,7 @@ impl Chain {
             Chain::BitcoinCash => &[Api::Blockbook, Api::BchRestV2],
             // Zcash's transparent builder asks Blockbook for its consensus
             // branch, which no other indexer reports.
-            Chain::BitcoinGold | Chain::Zcash => &[Api::Blockbook],
+            Chain::BitcoinGold | Chain::Zcash | Chain::Peercoin => &[Api::Blockbook],
             Chain::BitcoinSV => &[Api::Whatsonchain],
             Chain::Solana => &[Api::SolanaJsonRpc],
             Chain::Tron => &[Api::TronHttp],
@@ -465,6 +469,7 @@ impl Chain {
         // everything that does not go through the generic submit — always have
         // one. The rest need either a shared-path shape or a fee fallback.
         self.is_evm()
+            || self.uses_account_utxo()
             || !self.uses_generic_send_submit()
             || self.simple_preview_chain().is_some()
             || self.send_execution_shape().fee_fallback.is_some()
@@ -666,7 +671,55 @@ impl Chain {
             Self::Dash => Ok((0x4c, &[0x10])),
             Self::DashTestnet => Ok((0x8c, &[0x13])),
             Self::BitcoinGold => Ok((0x26, &[0x17])),
+            Self::Peercoin => Ok((0x37, &[0x75])),
+            Self::PeercoinTestnet => Ok((0x6f, &[0xc4])),
             _ => Err(self.not_in("fixed-fee UTXO")),
+        }
+    }
+
+    /// These send adapters resolve inputs and signing paths across a wallet's
+    /// persisted account addresses rather than using only its primary address.
+    pub fn uses_account_utxo(self) -> bool {
+        matches!(self.mainnet_counterpart(), Self::Litecoin | Self::Peercoin)
+    }
+
+    /// Peercoin Core amount.h: amount range sanity bound, not a supply cap.
+    pub(crate) fn peercoin_max_money(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Peercoin => Ok(21_000_000 * 1_000_000),
+            _ => Err(self.not_in("Peercoin")),
+        }
+    }
+
+    /// Standard recipient and retained-change floor: CENT, or 0.01 PPC.
+    pub(crate) fn peercoin_min_output_units(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Peercoin => Ok(10_000),
+            _ => Err(self.not_in("Peercoin")),
+        }
+    }
+
+    pub(crate) fn peercoin_min_fee_units(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Peercoin => Ok(1_000),
+            _ => Err(self.not_in("Peercoin")),
+        }
+    }
+
+    /// Consensus fees charge complete serialized bytes, including witness bytes.
+    pub(crate) fn peercoin_fee_per_kb_units(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Peercoin => Ok(10_000),
+            _ => Err(self.not_in("Peercoin")),
+        }
+    }
+
+    /// Both proof-of-work coinbase and proof-of-stake coinstake outputs mature.
+    pub(crate) fn peercoin_generated_output_maturity(self) -> Result<u32, RegistryError> {
+        match self {
+            Self::Peercoin => Ok(500),
+            Self::PeercoinTestnet => Ok(60),
+            _ => Err(self.not_in("Peercoin")),
         }
     }
 
@@ -690,6 +743,8 @@ impl Chain {
             Self::Litecoin => Some("ltc"),
             Self::LitecoinTestnet => Some("tltc"),
             Self::BitcoinGold => Some("btg"),
+            Self::Peercoin => Some("pc"),
+            Self::PeercoinTestnet => Some("tpc"),
             _ => None,
         }
     }
@@ -705,6 +760,10 @@ impl Chain {
     pub(crate) fn fixed_utxo_supports_witness(self, version: u8, program_length: usize) -> bool {
         match self {
             Self::Litecoin | Self::LitecoinTestnet => {
+                (version == 0 && matches!(program_length, 20 | 32))
+                    || (version == 1 && program_length == 32)
+            }
+            Self::Peercoin | Self::PeercoinTestnet => {
                 (version == 0 && matches!(program_length, 20 | 32))
                     || (version == 1 && program_length == 32)
             }
@@ -1116,7 +1175,8 @@ impl Chain {
             | Chain::DogecoinTestnet
             | Chain::ZcashTestnet
             | Chain::DecredTestnet
-            | Chain::DashTestnet => bitcoin::Network::Testnet,
+            | Chain::DashTestnet
+            | Chain::PeercoinTestnet => bitcoin::Network::Testnet,
             Chain::BitcoinTestnet4 => bitcoin::Network::Testnet4,
             Chain::BitcoinSignet => bitcoin::Network::Signet,
             _ => bitcoin::Network::Bitcoin,
@@ -1154,6 +1214,7 @@ impl Chain {
                 | Chain::Decred
                 | Chain::Kaspa
                 | Chain::Dash
+                | Chain::Peercoin
                 | Chain::Bittensor
                 // It has a shared-path preview like the rest.
                 | Chain::Monero
@@ -1178,6 +1239,10 @@ impl Chain {
             Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: Some("0.00001"),
+            },
+            Chain::Peercoin => SendExecutionShape {
+                fee_field: SendFeeField::FeeSats,
+                fee_fallback: None,
             },
             Chain::Litecoin => SendExecutionShape {
                 fee_field: SendFeeField::FeeSats,
@@ -1223,7 +1288,8 @@ impl Chain {
             | Chain::BitcoinGold
             | Chain::Decred
             | Chain::Kaspa
-            | Chain::Dash => PendingStatusPoll::Utxo {
+            | Chain::Dash
+            | Chain::Peercoin => PendingStatusPoll::Utxo {
                 require_send_kind: true,
             },
             Chain::Ton => PendingStatusPoll::TransactionStatus(EndpointApi::ToncenterV3),
@@ -1280,7 +1346,8 @@ impl Chain {
             | Chain::Dash
             | Chain::Decred
             | Chain::Zcash
-            | Chain::Kaspa => S::StandardUtxo,
+            | Chain::Kaspa
+            | Chain::Peercoin => S::StandardUtxo,
             other if other.is_evm() => S::Evm,
             _ => S::AccountBased,
         }
@@ -1314,6 +1381,9 @@ impl Chain {
             }
             Self::Litecoin | Self::LitecoinTestnet => {
                 return ltc::encode_litecoin_address(self, script, key);
+            }
+            Self::Peercoin | Self::PeercoinTestnet => {
+                return crate::derivation::peercoin::encode_peercoin_address(self, script, key);
             }
             Self::BitcoinGold | Self::Dash | Self::DashTestnet => {
                 btc::encode_p2pkh(self.fixed_utxo_address_versions()?.0, &key.serialize())
@@ -1366,6 +1436,7 @@ impl Chain {
                 | Chain::BitcoinSV
                 | Chain::Litecoin
                 | Chain::Dogecoin
+                | Chain::Peercoin
         )
     }
 
@@ -1456,6 +1527,8 @@ impl Chain {
             Chain::LitecoinTestnet => "litecoinTestnet",
             Chain::Dogecoin => "dogecoin",
             Chain::DogecoinTestnet => "dogecoinTestnet",
+            Chain::Peercoin => "peercoin",
+            Chain::PeercoinTestnet => "peercoinTestnet",
             Chain::Tron => "tron",
             Chain::TronNile => "tronTestnet",
             Chain::Solana => "solana",
@@ -1533,6 +1606,7 @@ impl Chain {
                 | Chain::Decred
                 | Chain::Kaspa
                 | Chain::Dash
+                | Chain::Peercoin
                 | Chain::Bittensor
         )
     }
@@ -1550,6 +1624,8 @@ impl Chain {
                 | Chain::BitcoinCashTestnet
                 | Chain::LitecoinTestnet
                 | Chain::DogecoinTestnet
+                | Chain::Peercoin
+                | Chain::PeercoinTestnet
         )
     }
 
@@ -1640,6 +1716,52 @@ pub enum PendingStatusPoll {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn peercoin_networks_use_native_precision_and_protocol_rules() {
+        for (chain, id, symbol, path, maturity) in [
+            (Chain::Peercoin, "peercoin", "PPC", "m/44'/6'/0'/0/0", 500),
+            (
+                Chain::PeercoinTestnet,
+                "peercoin-testnet",
+                "tPPC",
+                "m/44'/1'/0'/0/0",
+                60,
+            ),
+        ] {
+            assert_eq!(chain.str_id(), id);
+            assert_eq!(chain.mainnet_counterpart(), Chain::Peercoin);
+            assert_eq!(chain.native_decimals(), 6);
+            assert_eq!(chain.coin_symbol(), symbol);
+            assert_eq!(
+                crate::derivation::path::default_path_from_catalog(chain).unwrap(),
+                path
+            );
+            assert_eq!(chain.entry().artwork_name, "peercoin");
+            assert_eq!(
+                chain.peercoin_generated_output_maturity().unwrap(),
+                maturity
+            );
+            assert_eq!(chain.peercoin_min_output_units().unwrap(), 10_000);
+            assert_eq!(chain.peercoin_min_fee_units().unwrap(), 1_000);
+            assert_eq!(chain.peercoin_fee_per_kb_units().unwrap(), 10_000);
+            assert_eq!(chain.peercoin_max_money().unwrap(), 21_000_000_000_000);
+            assert!(chain.uses_utxo_client());
+            assert!(chain.supports_deep_utxo_discovery());
+            assert!(chain.supports_watch_only_import());
+            assert!(chain.derives_from_private_key());
+            assert!(chain.has_send_preview());
+            assert!(chain.send_execution_shape().fee_fallback.is_none());
+            assert!(chain.static_fee_units().is_none());
+            assert!(!chain.supports_staking());
+            assert!(!chain.hosts_tokens());
+            assert!(!chain.is_evm());
+            assert_eq!(chain.endpoint_apis(), &[EndpointApi::Blockbook]);
+        }
+        assert_eq!(Chain::Peercoin.coingecko_id(), "peercoin");
+        assert_eq!(Chain::PeercoinTestnet.coingecko_id(), "");
+        assert!(Chain::Bitcoin.peercoin_min_fee_units().is_err());
+    }
 
     /// A chain with several APIs needs one client answering in all of them,
     /// and only the UTXO family has one.
@@ -2307,6 +2429,7 @@ mod the_post_send_refresh_set_is_the_registrys {
             (Chain::Kaspa, vec![Chain::KaspaTestnet]),
             (Chain::Dash, vec![Chain::DashTestnet]),
             (Chain::BitcoinGold, vec![]),
+            (Chain::Peercoin, vec![Chain::PeercoinTestnet]),
         ] {
             assert!(utxo(mainnet), "{mainnet:?}");
             for testnet in testnets {
@@ -2315,8 +2438,8 @@ mod the_post_send_refresh_set_is_the_registrys {
         }
         assert_eq!(
             Chain::all().filter(|c| utxo(*c)).count(),
-            21,
-            "ten mainnets and eleven testnets"
+            23,
+            "eleven mainnets and twelve testnets"
         );
     }
 }

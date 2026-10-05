@@ -4,6 +4,34 @@ import Testing
 @testable import Spectra
 
 struct PresentationCatalogTests {
+    @Test func peercoinReachesThePickerAndWikiWithItsNativeIdentity() throws {
+        let rows = ChainSelectionDescriptor.popularOrder(Chain.all)
+        let mainnetRows = rows.picked(filter: .tag(.utxo), query: "Peercoin", order: .name, selected: [])
+        let mainnet = try #require(mainnetRows.first { $0.id == .peercoin })
+        #expect(mainnet.symbol == "PPC")
+        #expect(mainnet.artworkName == "peercoin")
+        #expect(!mainnet.isTestnet)
+        #expect(!mainnetRows.contains { $0.id == .peercoinTestnet })
+        let testnetRows = rows.picked(filter: .tag(.testnet), query: "Peercoin", order: .name, selected: [])
+        let testnet = try #require(testnetRows.first { $0.id == .peercoinTestnet })
+        #expect(testnet.isTestnet)
+        #expect(testnet.artworkName == "peercoin")
+        for chain in [Chain.peercoin, .peercoinTestnet] {
+            #expect(chain.nativeDecimals == 6)
+            #expect(chain.mainnetCounterpart == .peercoin)
+            #expect(chain.supportsWatchOnlyImport)
+            #expect(chain.derivesFromPrivateKey)
+            #expect(chain.hasSendPreview)
+        }
+        let coin = try #require(CoreReferenceTables.assetWikiEntry(tokenId: "peercoin"))
+        #expect(coin.symbol == "PPC")
+        #expect(coin.artworkName == "peercoin")
+        #expect(!coin.comment.isEmpty)
+        #expect(coin.livesOn.contains { $0.chainId == .peercoin && $0.isNative && $0.decimals == 6 })
+        #expect(!coin.livesOn.contains { $0.chainId == .peercoinTestnet })
+        #expect(CoreReferenceTables.chainWikiEntry(id: "peercoin") != nil)
+    }
+
     @Test func newEvmNetworksReachTheChainPickerWithTheirOwnIdentity() throws {
         let rows = ChainSelectionDescriptor.popularOrder(Chain.mainnets)
             .picked(filter: .tag(.evm), query: "", order: .name, selected: [])

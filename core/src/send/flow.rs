@@ -1459,6 +1459,27 @@ mod scanned_payload_tests {
         }
     }
 
+    #[test]
+    fn peercoin_payment_uris_validate_the_selected_network() {
+        let cases = [
+            (Chain::Peercoin, "PDFtxCFhnxaZk8JBYxazZvRdLr2GdVrLzm"),
+            (Chain::PeercoinTestnet, "mkBg6GwqZ4XdYQ72vTEqiwfgb6T6WRSDm5"),
+        ];
+        for (chain, address) in cases {
+            let payload = format!("peercoin:{address}?amount=1.123456&label=Peercoin");
+            assert_eq!(
+                scanned_send_address(chain, payload.clone()).as_deref(),
+                Some(address),
+            );
+            let other_network = if chain.is_testnet() {
+                Chain::Peercoin
+            } else {
+                Chain::PeercoinTestnet
+            };
+            assert_eq!(scanned_send_address(other_network, payload), None);
+        }
+    }
+
     /// The returned address is the stored form, not the scanned one. The
     /// scanner lowercased EVM addresses itself and left every other chain's
     /// normalization — Sui's and Aptos's missing `0x`, NEAR's and ICP's case —

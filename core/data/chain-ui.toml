@@ -699,3 +699,19 @@ search_keywords = ["Monero Stagenet", "Stagenet", "tXMR"]
 color = "orange"
 artwork_name = "monero"
 address_prefix_hint = ""
+
+[[chains]]
+chain_id = "peercoin"
+search_keywords = ["Peercoin", "PPC", "PPcoin"]
+popular_rank = 50
+tags = ["utxo", "pow", "payments"]
+color = "green"
+artwork_name = "peercoin"
+address_prefix_hint = "P… / p… / pc1q… / pc1p…"
+
+[[chains]]
+chain_id = "peercoin-testnet"
+search_keywords = ["Peercoin Testnet", "tPPC"]
+color = "green"
+artwork_name = "peercoin"
+address_prefix_hint = "m… / n… / 2… / tpc1q… / tpc1p…"

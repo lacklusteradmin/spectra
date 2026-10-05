@@ -1158,18 +1158,67 @@ mod pending_catalog_tests {
     }
 
     #[test]
-    fn unverified_deployments_and_their_asset_data_remain_in_source() {
+    fn researched_deployments_follow_recorded_catalog_decisions() {
         let archive: serde_json::Value = serde_json::from_str(include_str!(
             "../../docs/audits/chain-support-2026-10-04/removed-token-deployments.json"
         ))
         .unwrap();
+        let audit: serde_json::Value = serde_json::from_str(include_str!(
+            "../../docs/audits/token-verification-2026-10-04/verification.json"
+        ))
+        .unwrap();
+        let decisions = audit["deployments"].as_array().unwrap();
+        assert_eq!(
+            decisions.len(),
+            archive["deployments"].as_array().unwrap().len()
+        );
         let pending = pending_records(TOKENS_TOML);
-        let pending_deployments = serde_json::to_value(&pending["deployments"]).unwrap();
-        assert_eq!(pending_deployments, archive["deployments"]);
-        let pending_ids: HashSet<_> = pending["tokens"]
-            .as_array()
-            .unwrap()
-            .iter()
+        let active: toml::Value = toml::from_str(TOKENS_TOML).unwrap();
+        let active_deployments = serde_json::to_value(&active["deployments"]).unwrap();
+        let pending_deployments = pending
+            .get("deployments")
+            .map(|rows| serde_json::to_value(rows).unwrap())
+            .unwrap_or_else(|| serde_json::json!([]));
+        for record in archive["deployments"].as_array().unwrap() {
+            let matching_decisions: Vec<_> = decisions
+                .iter()
+                .filter(|entry| entry["original_deployment"] == *record)
+                .collect();
+            assert_eq!(
+                matching_decisions.len(),
+                1,
+                "one catalog decision per original: {record}"
+            );
+            let expected_counts = match matching_decisions[0]["catalog_decision"].as_str().unwrap()
+            {
+                "active" => (1, 0),
+                "pending" => (0, 1),
+                "removed_at_user_request" => (0, 0),
+                decision => panic!("unknown catalog decision: {decision}"),
+            };
+            let active_count = active_deployments
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|row| *row == record)
+                .count();
+            let pending_count = pending_deployments
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|row| *row == record)
+                .count();
+            assert_eq!(
+                (active_count, pending_count),
+                expected_counts,
+                "catalog must match its recorded decision with exact original fields: {record}"
+            );
+        }
+        let pending_ids: HashSet<_> = pending
+            .get("tokens")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
             .map(|token| token["id"].as_str().unwrap())
             .collect();
         let active = parse_token_file(TOKENS_TOML).unwrap();
@@ -1180,10 +1229,11 @@ mod pending_catalog_tests {
                 .all(|token| !pending_ids.contains(token.id.as_str()))
         );
         let wiki = pending_records(include_str!("../data/crypto-wiki.toml"));
-        let wiki_ids: HashSet<_> = wiki["assets"]
-            .as_array()
-            .unwrap()
-            .iter()
+        let wiki_ids: HashSet<_> = wiki
+            .get("assets")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
             .map(|asset| asset["token_id"].as_str().unwrap())
             .collect();
         assert_eq!(

@@ -508,6 +508,19 @@ derivation_path = [
 ]
 
 [[chains]]
+id = "peercoin"
+name = "Peercoin"
+family = "peercoin"
+environment = "mainnet"
+token_standards = []
+derivation_path = [
+  { tag = "legacy", path = "m/44'/6'/{account}'/0/0", is_default = true },
+  { tag = "nativeSegWit", path = "m/84'/6'/{account}'/0/0" },
+  { tag = "nestedSegWit", path = "m/49'/6'/{account}'/0/0" },
+  { tag = "taproot", path = "m/86'/6'/{account}'/0/0" },
+]
+
+[[chains]]
 id = "bitcoin-testnet"
 name = "Bitcoin Testnet 3"
 family = "bitcoin"
@@ -634,6 +647,19 @@ environment = "testnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
+]
+
+[[chains]]
+id = "peercoin-testnet"
+name = "Peercoin Testnet"
+family = "peercoin"
+environment = "testnet"
+token_standards = []
+derivation_path = [
+  { tag = "legacy", path = "m/44'/1'/{account}'/0/0", is_default = true },
+  { tag = "nativeSegWit", path = "m/84'/1'/{account}'/0/0" },
+  { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
+  { tag = "taproot", path = "m/86'/1'/{account}'/0/0" },
 ]
 
 [[chains]]
