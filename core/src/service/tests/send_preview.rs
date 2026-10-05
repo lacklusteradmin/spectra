@@ -229,9 +229,7 @@ async fn seed_probe_holding(
     token: Option<(&str, u32)>,
 ) -> String {
     use crate::store::state::WalletState;
-    use crate::store::wallet_domain::{
-        AssetHolding, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
-    };
+    use crate::store::wallet_domain::{AssetHolding, CoreTokenPreferenceEntry};
     let mut state = service.wallet_state.write().await;
     let mut wallet =
         WalletState::single_address("probe-wallet", "Probe", chain, "sender", None, false);
@@ -252,7 +250,6 @@ async fn seed_probe_holding(
     state.wallets.push(wallet);
     if let Some((contract, decimals)) = token {
         state.token_preferences.push(CoreTokenPreferenceEntry {
-            category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),

@@ -17,33 +17,49 @@ extension AssetWikiPlace: Identifiable {
 
 extension ChainWikiEntry: Identifiable {}
 
+/// One filter over the whole library: what kind of coin, or what kind of chain.
+private enum WikiTag: Hashable {
+    case token(TokenTag)
+    case chain(ChainTag)
+
+    var title: String {
+        switch self {
+        case .token(let tag): tag.title
+        case .chain(let tag): tag.title
+        }
+    }
+}
+
 // MARK: — Library (list view)
 
 struct CryptoWikiLibraryView: View {
     @State private var searchText: String = ""
-    @State private var selectedTag: String?
+    @State private var selectedTag: WikiTag?
     private var query: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var filteredCoins: [AssetWikiEntry] {
         CoreReferenceTables.assetWiki.filter { entry in
-            matches(tags: entry.tags, text: [entry.name, entry.symbol, entry.comment])
+            matches(tags: entry.tags.map(WikiTag.token), text: [entry.name, entry.symbol, entry.comment])
         }
     }
     private var filteredChains: [ChainWikiEntry] {
         CoreReferenceTables.chainWiki.filter { chain in
             matches(
-                tags: chain.tags.map(\.title),
+                tags: chain.tags.map(WikiTag.chain),
                 text: [chain.name, chain.comment, chain.family, chain.consensus, chain.stateModel])
         }
     }
-    private func matches(tags: [String], text: [String]) -> Bool {
+    private func matches(tags: [WikiTag], text: [String]) -> Bool {
         if let selectedTag, !tags.contains(selectedTag) { return false }
         guard !query.isEmpty else { return true }
-        return (text + tags).contains { $0.localizedCaseInsensitiveContains(query) }
+        return (text + tags.map(\.title)).contains { $0.localizedCaseInsensitiveContains(query) }
     }
-    private var availableTags: [String] {
-        let all = CoreReferenceTables.assetWiki.flatMap(\.tags)
-            + CoreReferenceTables.chainWiki.flatMap { $0.tags.map(\.title) }
-        return Array(Set(all)).sorted()
+    /// Coin tags, then chain tags, as the sections are ordered; each in core's
+    /// order, and only the tags some row carries.
+    private var availableTags: [WikiTag] {
+        let coinTags = Set(CoreReferenceTables.assetWiki.flatMap(\.tags))
+        let chainTags = Set(CoreReferenceTables.chainWiki.flatMap(\.tags))
+        return TokenTag.filterOrder.filter(coinTags.contains).map(WikiTag.token)
+            + ChainTag.pickerOrder.filter(chainTags.contains).map(WikiTag.chain)
     }
     var body: some View {
         let coins = filteredCoins
@@ -90,9 +106,9 @@ struct CryptoWikiLibraryView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker(AppLocalization.string("Tag"), selection: $selectedTag) {
-                        Text(AppLocalization.string("All")).tag(String?.none)
+                        Text(AppLocalization.string("All")).tag(WikiTag?.none)
                         ForEach(availableTags, id: \.self) { tag in
-                            Text(tag).tag(String?.some(tag))
+                            Text(tag.title).tag(WikiTag?.some(tag))
                         }
                     }
                 } label: {
@@ -162,7 +178,8 @@ struct AssetWikiDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: SpectraLayout.Space.xs) {
                         ForEach(asset.tags, id: \.self) { tag in
-                            Text(tag).font(.caption.weight(.semibold)).foregroundStyle(asset.accentColor)
+                            Text(tag.title)
+                                .font(.caption.weight(.semibold)).foregroundStyle(asset.accentColor)
                                 .padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.xs)
                                 .background(asset.accentColor.opacity(0.14), in: Capsule())
                         }

@@ -233,7 +233,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
 /// contracts in their canonical form.
 #[test]
 fn descriptors_are_the_known_tokens_for_the_chain() {
-    use crate::store::wallet_domain::{CoreTokenPreferenceCategory, CoreTokenPreferenceEntry};
+    use crate::store::wallet_domain::CoreTokenPreferenceEntry;
     fn entry(chain: crate::registry::Chain, contract: &str) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             token: crate::tokens::TokenDeploymentEntry {
@@ -255,7 +255,6 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
                 color: None,
                 artwork_name: String::new(),
             },
-            category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
         }
     }

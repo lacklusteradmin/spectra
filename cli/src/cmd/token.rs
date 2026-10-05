@@ -195,6 +195,7 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
                 "contract": token.contract,
                 "decimals": token.decimals,
                 "standard": token.token_standard,
+                "tags": token.tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
             }))
             .collect::<Vec<_>>(),
     }));

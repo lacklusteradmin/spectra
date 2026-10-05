@@ -812,6 +812,18 @@ contains "a testnet coin is named as a test coin" '"name":"Test Bitcoin"' \
     spectra --json token catalog --chain bitcoin-testnet-4
 contains "and so is a testnet token"              '"name":"Test USD Coin"' \
     spectra --json token catalog --chain ethereum-sepolia
+check "token tags come from one closed list" $OK python3 - "$BIN" "$DATA_DIR" <<'PYTOKENTAGS'
+import json, subprocess, sys
+
+result = subprocess.check_output([
+    sys.argv[1], "--data-dir", sys.argv[2], "--json", "token", "catalog", "--chain", "ethereum"
+])
+tags = {row["symbol"]: row["tags"] for row in json.loads(result)["tokens"]}
+assert tags["DAI"] == ["stablecoin"], tags["DAI"]
+assert tags["PEPE"] == ["meme"], tags["PEPE"]
+assert tags["ETH"] == [], tags["ETH"]
+assert {tag for row in tags.values() for tag in row} == {"stablecoin", "meme"}
+PYTOKENTAGS
 
 section "known tokens"
 check "editable price sources survive reopening" $OK python3 "$(dirname "$0")/cli-token-preferences.py" "$BIN"

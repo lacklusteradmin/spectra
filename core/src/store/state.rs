@@ -1242,8 +1242,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 (None, Some(hosting)) => {
                     state.token_preferences.push(
                         crate::store::wallet_domain::CoreTokenPreferenceEntry {
-                            category:
-                                crate::store::wallet_domain::CoreTokenPreferenceCategory::Custom,
                             is_built_in: false,
                             token: crate::tokens::TokenDeploymentEntry {
                                 deployment_id: format!(

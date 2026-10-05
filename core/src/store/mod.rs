@@ -52,7 +52,6 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
             // mistake, and skipping it is how it stays one.
             Some(token.chain_id).filter(|c| c.hosts_tokens())?;
             Some(wallet_domain::CoreTokenPreferenceEntry {
-                category: wallet_domain::CoreTokenPreferenceEntry::category_from_tags(&token.tags),
                 is_built_in: true,
                 token: token.clone(),
             })
