@@ -17,6 +17,56 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-05 — Network rules and presentation share one catalog row
+
+- **Before:** each network needed a `chains.toml` record plus a separate
+  `chain-ui.toml` record linked by `chain_id`. Loading built a second ID map
+  and rejected missing, duplicate and unknown presentation references.
+- **After:** every `chains.toml` row also carries search keywords, picker rank,
+  authored tags, color, artwork and address hints. `chain-ui.toml`, its parsed
+  record type and the presentation join are deleted. Parsing requires search
+  keywords, color and artwork for every network. Duplicate network IDs and
+  unknown mainnet families fail before catalog projection. Mainnets author
+  rank and tags; testnets inherit them, and derived tags remain registry facts.
+- **Why:** both files described the same 90 concrete networks one-to-one.
+  A single record removes redundant identities and join validation from the
+  catalog while keeping presentation classifications separate from protocol
+  decisions in the Rust API.
+- **CLI check:** `spectra --json chains --filter Bitcoin --testnets` exercises
+  merged mainnet/testnet records; `spectra --json chains --wiki --tag move`
+  reads the shared classification. Offline acceptance compares every wiki
+  row's tags with its chain catalog row.
+- **Verification:** `make verify -j 2` passed: rustfmt and clippy at `-D warnings`,
+  1,096 core tests plus one transport test, 479 offline CLI checks, and 129 iOS
+  tests in 28 suites. The obsolete separate-presentation row-order test was
+  deleted along with the join; the merged schema's required fields, duplicate
+  IDs and unknown families are covered by catalog tests.
+
+## 2026-10-05 — The chain wiki and picker share one tag classification
+
+- **Before:** `chain-ui.toml` authored typed picker tags while
+  `chain-wiki.toml` separately authored free-text tags such as `EVM`, `L2`,
+  `PoS` and `Rollup`. The two screens could classify the same chain differently.
+- **After:** `chain-ui.toml` is the only authored chain tag source. Core resolves
+  derived tags once and gives both `ChainEntry` and `ChainWikiEntry` the same
+  `ChainTag` list. Wiki badges and filters use the picker's localized labels,
+  including Layer 1 and Layer 2. The wiki file rejects tag fields. Its extra
+  descriptive tags are removed as filter options; consensus, family, state
+  model and prose continue to describe those properties. Wiki text search also
+  includes consensus and state model. `spectra chains --wiki`
+  exposes the wiki offline and shares the catalog's name/symbol and tag filters;
+  it refuses `--testnets` because wiki rows describe mainnets.
+- **Why:** a chain needs one classification, not a second tag vocabulary on its
+  wiki page. Descriptive prose already covers the removed labels without a
+  separately maintained filter taxonomy.
+- **CLI check:** `spectra --json chains --wiki --tag move` and
+  `spectra --json chains --tag move` return Sui and Aptos with identical tags.
+  The offline acceptance check compares every wiki row with its picker row.
+- **Verification:** `make verify` passed: rustfmt and clippy at `-D warnings`,
+  1,097 core tests plus one transport test, 479 offline CLI checks, and 129 iOS
+  tests in 28 suites. The iOS build regenerated the UniFFI bindings; the new
+  bridge test confirms every wiki row shares the picker's typed tags and labels.
+
 ## 2026-10-04 — Serialize persistence writers before reading their guards
 
 - **Before:** competing CLI signers could both open deferred SQLite read

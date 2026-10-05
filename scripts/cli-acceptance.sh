@@ -346,7 +346,7 @@ contains "and that Polygon is one of them"   '"watchOnlyImport":true' \
     spectra --json chains --filter Polygon
 contains "and Monero says it cannot"      '"watchOnlyImport":false' \
     spectra --json chains --filter Monero
-# EVM membership comes from the registry; display ranks join from chain-ui.toml.
+# EVM membership comes from the registry; display ranks live on the same chains.toml records.
 contains "Sepolia exposes core EVM membership" '"isEvm":true' \
     spectra --json chains --testnets --filter "Ethereum Sepolia"
 contains "Bitcoin remains non-EVM with separate UI metadata" '"isEvm":false' \
@@ -368,6 +368,26 @@ lacks "and nothing else"                                 '"name":"Bitcoin"' \
     spectra --json chains --tag move
 check "an unknown tag is a usage error"                 $USAGE \
     spectra chains --tag sidechain
+check "wiki and picker expose one chain tag classification" $OK python3 - "$BIN" "$DATA_DIR" <<'PYCHAINTAGS'
+import json, subprocess, sys
+
+def rows(*args):
+    result = subprocess.check_output([
+        sys.argv[1], "--data-dir", sys.argv[2], "--json", "chains", *args
+    ])
+    return {row["id"]: row for row in json.loads(result)["chains"]}
+
+picker, wiki = rows(), rows("--wiki")
+assert picker.keys() == wiki.keys()
+for chain_id, row in wiki.items():
+    assert row["tags"] == picker[chain_id]["tags"], chain_id
+assert wiki["bitcoin"]["tags"] == ["layer-1", "utxo", "pow"]
+assert wiki["base"]["tags"] == ["layer-2", "evm"]
+assert rows("--wiki", "--tag", "move").keys() == rows("--tag", "move").keys()
+assert list(rows("--wiki", "--filter", "Bitcoin Gold")) == ["bitcoin-gold"]
+PYCHAINTAGS
+check "wiki refuses testnet rows"                        $USAGE \
+    spectra chains --wiki --testnets
 check "refuses to watch Monero"           $REJECTED \
     spectra wallet watch --chain Monero --name "Watch XMR" \
         --address 48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi

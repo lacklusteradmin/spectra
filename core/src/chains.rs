@@ -1,23 +1,22 @@
 //! Concrete network registry embedded from `chains.toml`.
 //! Mainnets and testnets are equal records. Native token metadata in the public
 //! projection is joined from `tokens.toml`; it is never stored as a network fact.
-//! `chain-ui.toml` supplies presentation by network ID; `chain-wiki.toml` and
-//! `staking.toml` hold prose.
+//! Network rules and presentation share each catalog row; `chain-wiki.toml`
+//! and `staking.toml` hold prose.
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
-static CHAIN_UI_TOML: &str = include_str!("../data/chain-ui.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 static STAKING_TOML: &str = include_str!("../data/staking.toml");
 
-/// A filter the chain picker offers. A display classification only: it never
-/// decides a protocol capability.
+/// A shared classification for the chain picker and wiki. Presentation only:
+/// it never decides a protocol capability.
 ///
 /// Declaration order is the order the picker shows the filters in.
 /// `Layer1`, `Evm` and `Testnet` are derived from the registry; the rest are
-/// written in `chain-ui.toml`, and parsing them there means a misspelt tag
+/// written in `chains.toml`, and parsing them there means a misspelt tag
 /// fails when the file loads rather than dropping the chain from a filter.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, uniffi::Enum,
@@ -59,7 +58,7 @@ impl ChainTag {
         matches!(self, ChainTag::Layer1 | ChainTag::Evm | ChainTag::Testnet)
     }
 
-    /// The spelling `chain-ui.toml` and the CLI use.
+    /// The spelling `chains.toml` and the CLI use.
     pub fn as_str(self) -> &'static str {
         match self {
             ChainTag::Layer1 => "layer-1",
@@ -119,18 +118,6 @@ pub(crate) struct TomlChain {
     pub(crate) environment: String,
     pub(crate) token_standards: Vec<String>,
     derivation_path: Vec<TomlDerivationPathEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TomlUiFile {
-    chains: Vec<TomlChainUi>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TomlChainUi {
-    chain_id: String,
     search_keywords: Vec<String>,
     /// The chain's place in the picker. Written on mainnets only.
     #[serde(default)]
@@ -154,6 +141,7 @@ struct TomlDerivationPathEntry {
 
 /// The wiki file: one row per chain, joined to `chains.toml` by `chain`.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TomlWikiFile {
     chains: Vec<TomlWikiChain>,
 }
@@ -174,9 +162,9 @@ struct TomlStakingChain {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TomlWikiChain {
     chain: String,
-    tags: Vec<String>,
     comment: String,
     family: String,
     consensus: String,
@@ -238,8 +226,8 @@ pub struct ChainEntry {
     /// per-chain fact in a caller-owned list; every chain is ranked so the
     /// whole list has one order rather than eight ranked rows and the rest.
     pub popular_rank: u16,
-    /// The picker filters this chain appears under, in [`ChainTag::ALL`]
-    /// order. A testnet carries its mainnet's tags and `Testnet`.
+    /// The shared picker/wiki tags, in [`ChainTag::ALL`] order.
+    /// A testnet carries its mainnet's tags and `Testnet`.
     pub tags: Vec<ChainTag>,
     pub is_evm: bool,
     pub color: CatalogColor,
@@ -270,7 +258,8 @@ pub struct ChainWikiEntry {
     pub id: String,
     pub name: String,
     pub native_deployment_id: String,
-    pub tags: Vec<String>,
+    /// The same tags as the chain's mainnet catalog entry.
+    pub tags: Vec<ChainTag>,
     pub comment: String,
     pub family: String,
     pub consensus: String,
@@ -357,21 +346,9 @@ pub(crate) fn catalog_id(index: usize) -> &'static str {
         .id
 }
 
-static CATALOG: LazyLock<Vec<ChainEntry>> =
-    LazyLock::new(|| load_catalog(&DECLARED, CHAIN_UI_TOML));
+static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| load_catalog(&DECLARED));
 
-fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
-    let ui: TomlUiFile = toml::from_str(presentation)
-        .expect("chain-ui.toml must contain valid network presentation records");
-    let mut ui_by_id = std::collections::HashMap::new();
-    for row in ui.chains {
-        let id = row.chain_id.clone();
-        assert!(
-            ui_by_id.insert(id.clone(), row).is_none(),
-            "duplicate UI chain_id {id}"
-        );
-    }
-
+fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
     // Chain discriminants already index this catalog. Use that same ordering
     // here; from_str_id/entry would recursively initialize CATALOG.
     assert_eq!(
@@ -379,40 +356,49 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
         crate::registry::Chain::all().count(),
         "network catalog and registry must have the same number of chains"
     );
-    // A testnet's rank and tags are its mainnet's. Read before any row is
-    // consumed, so a testnet row can come before its mainnet's.
+    let mut ids = std::collections::HashSet::new();
+    for c in &parsed.chains {
+        assert!(ids.insert(&c.id), "duplicate network id {}", c.id);
+        assert!(
+            matches!(c.environment.as_str(), "mainnet" | "testnet"),
+            "invalid environment"
+        );
+        assert!(
+            parsed
+                .chains
+                .iter()
+                .any(|n| n.id == c.family && n.environment == "mainnet"),
+            "unknown network family"
+        );
+    }
+    // A testnet's rank and tags are its mainnet's. Resolve mainnet placement
+    // independently of the testnet's position in the catalog.
     let placement: std::collections::HashMap<&str, (u16, Vec<ChainTag>)> = parsed
         .chains
         .iter()
         .filter(|c| c.environment == "mainnet")
-        .filter_map(|c| ui_by_id.get(&c.id).map(|ui| (c.id.as_str(), ui)))
-        .map(|(id, ui)| {
-            let rank = ui
+        .map(|c| {
+            let id = c.id.as_str();
+            let rank = c
                 .popular_rank
                 .unwrap_or_else(|| panic!("mainnet {id} has no popular_rank"));
-            let mut tags = ui.tags.clone();
+            let mut tags = c.tags.clone();
             assert!(
                 tags.iter().all(|tag| !tag.is_derived()),
                 "{id} writes a derived tag"
             );
             tags.sort_unstable();
             tags.dedup();
-            assert_eq!(tags.len(), ui.tags.len(), "{id} repeats a tag");
+            assert_eq!(tags.len(), c.tags.len(), "{id} repeats a tag");
             (id, (rank, tags))
         })
         .collect();
 
-    let mut ids = std::collections::HashSet::new();
-    let catalog = parsed
+    parsed
         .chains
         .iter()
         .zip(crate::registry::Chain::all())
         .map(|(c, chain)| {
-            assert!(ids.insert(&c.id), "duplicate network id {}", c.id);
-            assert!(
-                matches!(c.environment.as_str(), "mainnet" | "testnet"),
-                "invalid environment"
-            );
             let native = crate::tokens::deployment(&format!("{}:native", c.id))
                 .expect("unknown native token deployment");
             assert!(
@@ -425,24 +411,14 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
                 "testnet token must be unpriced"
             );
             assert!(
-                parsed
-                    .chains
-                    .iter()
-                    .any(|n| n.id == c.family && n.environment == "mainnet"),
-                "unknown network family"
-            );
-            let ui = ui_by_id
-                .remove(&c.id)
-                .unwrap_or_else(|| panic!("missing UI record for network {}", c.id));
-            assert!(
-                !is_testnet || (ui.popular_rank.is_none() && ui.tags.is_empty()),
+                !is_testnet || (c.popular_rank.is_none() && c.tags.is_empty()),
                 "testnet {} restates its mainnet's rank or tags",
                 c.id
             );
             let (popular_rank, mut tags) = placement
                 .get(c.family.as_str())
                 .cloned()
-                .unwrap_or_else(|| panic!("missing UI record for network {}", c.family));
+                .expect("every network family has a mainnet placement");
             if !tags.contains(&ChainTag::Layer2) {
                 tags.push(ChainTag::Layer1);
             }
@@ -459,14 +435,14 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
                 family: c.family.clone(),
                 is_testnet,
                 native_deployment_id: native.deployment_id.clone(),
-                address_prefix_hint: ui.address_prefix_hint,
+                address_prefix_hint: c.address_prefix_hint.clone(),
                 gas_token_symbol: native.symbol.clone(),
-                search_keywords: ui.search_keywords,
+                search_keywords: c.search_keywords.clone(),
                 popular_rank,
                 tags,
                 is_evm: chain.is_evm(),
-                color: ui.color,
-                artwork_name: ui.artwork_name,
+                color: c.color,
+                artwork_name: c.artwork_name.clone(),
                 token_standards: c.token_standards.clone(),
                 contract_address_prompt: contract_address_prompt_for(&c.token_standards),
                 native_coingecko_id: native.coingecko_id.clone(),
@@ -483,9 +459,7 @@ fn load_catalog(parsed: &TomlFile, presentation: &str) -> Vec<ChainEntry> {
                     .collect(),
             }
         })
-        .collect();
-    assert!(ui_by_id.is_empty(), "UI records reference unknown networks");
-    catalog
+        .collect()
 }
 
 static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
@@ -505,7 +479,7 @@ static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
                 id: chain.id.clone(),
                 name: chain.name.clone(),
                 native_deployment_id: chain.native_deployment_id.clone(),
-                tags: w.tags,
+                tags: chain.tags.clone(),
                 comment: w.comment,
                 family: w.family,
                 consensus: w.consensus,
@@ -621,53 +595,38 @@ mod explicit_network_catalog {
         CATALOG.iter().find(|c| c.id == id).expect("a catalog row")
     }
 
-    #[test]
-    fn presentation_joins_by_id_independent_of_row_order() {
-        let reversed = CHAIN_UI_TOML
-            .split("[[chains]]")
-            .skip(1)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .map(|row| format!("[[chains]]{row}"))
-            .collect::<String>();
-        let actual = load_catalog(&DECLARED, &reversed);
-        assert_eq!(
-            serde_json::to_value(actual).unwrap(),
-            serde_json::to_value(&*CATALOG).unwrap()
-        );
+    fn load_catalog_text(source: &str) -> Vec<ChainEntry> {
+        let parsed: TomlFile = toml::from_str(source).unwrap();
+        load_catalog(&parsed)
     }
 
-    /// `evm` is the registry's fact; the presentation file cannot claim it.
+    /// `evm` is the registry's fact; the catalog cannot claim it.
     #[test]
     #[should_panic(expected = "bitcoin writes a derived tag")]
     fn derived_tags_cannot_be_written() {
-        let claimed = CHAIN_UI_TOML.replacen(
+        let claimed = CHAINS_TOML.replacen(
             "tags = [\"utxo\", \"pow\"]",
             "tags = [\"utxo\", \"pow\", \"evm\"]",
             1,
         );
-        load_catalog(&DECLARED, &claimed);
+        load_catalog_text(&claimed);
     }
 
     #[test]
     #[should_panic(expected = "testnet bitcoin-testnet restates its mainnet's rank or tags")]
     fn a_testnet_cannot_restate_its_mainnets_placement() {
-        let restated = CHAIN_UI_TOML.replacen(
-            "chain_id = \"bitcoin-testnet\"\n",
-            "chain_id = \"bitcoin-testnet\"\npopular_rank = 1\n",
+        let restated = CHAINS_TOML.replacen(
+            "id = \"bitcoin-testnet\"\n",
+            "id = \"bitcoin-testnet\"\npopular_rank = 1\n",
             1,
         );
-        load_catalog(&DECLARED, &restated);
+        load_catalog_text(&restated);
     }
 
     #[test]
     #[should_panic(expected = "mainnet bitcoin has no popular_rank")]
     fn every_mainnet_is_ranked() {
-        load_catalog(
-            &DECLARED,
-            &CHAIN_UI_TOML.replacen("popular_rank = 1\n", "", 1),
-        );
+        load_catalog_text(&CHAINS_TOML.replacen("popular_rank = 1\n", "", 1));
     }
 
     #[test]
@@ -720,42 +679,37 @@ mod explicit_network_catalog {
     }
 
     #[test]
-    #[should_panic(expected = "duplicate UI chain_id bitcoin")]
-    fn duplicate_presentation_references_are_rejected() {
-        let first = CHAIN_UI_TOML.split("[[chains]]").nth(1).unwrap();
-        load_catalog(&DECLARED, &format!("{CHAIN_UI_TOML}\n[[chains]]{first}"));
+    #[should_panic(expected = "duplicate network id bitcoin")]
+    fn duplicate_network_ids_are_rejected() {
+        load_catalog_text(&CHAINS_TOML.replacen("id = \"ethereum\"", "id = \"bitcoin\"", 1));
     }
 
     #[test]
-    #[should_panic(expected = "missing UI record for network bitcoin")]
-    fn missing_presentation_is_rejected() {
-        let without_bitcoin = CHAIN_UI_TOML
-            .split("[[chains]]")
-            .skip(2)
-            .map(|row| format!("[[chains]]{row}"))
-            .collect::<String>();
-        load_catalog(&DECLARED, &without_bitcoin);
+    fn every_network_requires_its_presentation_fields() {
+        for field in [
+            "search_keywords = [\"Bitcoin\", \"BTC\"]\n",
+            "color = \"orange\"\n",
+            "artwork_name = \"bitcoin\"\n",
+        ] {
+            let missing = CHAINS_TOML.replacen(field, "", 1);
+            assert!(toml::from_str::<TomlFile>(&missing).is_err(), "{field}");
+        }
     }
 
     #[test]
-    #[should_panic(expected = "UI records reference unknown networks")]
-    fn unknown_presentation_references_are_rejected() {
-        let unknown = CHAIN_UI_TOML
-            .split("[[chains]]")
-            .nth(1)
-            .unwrap()
-            .replace("chain_id = \"bitcoin\"", "chain_id = \"unknown-network\"");
-        load_catalog(&DECLARED, &format!("{CHAIN_UI_TOML}\n[[chains]]{unknown}"));
+    #[should_panic(expected = "unknown network family")]
+    fn unknown_network_families_are_rejected() {
+        load_catalog_text(&CHAINS_TOML.replacen("family = \"bitcoin\"", "family = \"unknown\"", 1));
     }
 
     #[test]
-    fn fields_in_the_wrong_catalog_are_rejected() {
-        let wrong_core = CHAINS_TOML.replacen("[[chains]]", "[[chains]]\ncolor = \"orange\"", 1);
+    fn unknown_and_misplaced_fields_are_rejected() {
+        let wrong_core = CHAINS_TOML.replacen("[[chains]]", "[[chains]]\ncomment = \"prose\"", 1);
         assert!(toml::from_str::<TomlFile>(&wrong_core).is_err());
         let configured_evm = CHAINS_TOML.replacen("[[chains]]", "[[chains]]\nis_evm = true", 1);
         assert!(toml::from_str::<TomlFile>(&configured_evm).is_err());
-        let wrong_ui = CHAIN_UI_TOML.replacen("[[chains]]", "[[chains]]\nis_evm = false", 1);
-        assert!(toml::from_str::<TomlUiFile>(&wrong_ui).is_err());
+        let wrong_wiki = CHAIN_WIKI_TOML.replacen("[[chains]]", "[[chains]]\ntags = [\"EVM\"]", 1);
+        assert!(toml::from_str::<TomlWikiFile>(&wrong_wiki).is_err());
     }
 
     #[test]
@@ -875,6 +829,13 @@ mod explicit_network_catalog {
         assert_eq!(dot.name, catalog.name);
         assert_eq!(dot.native_deployment_id, catalog.native_deployment_id);
         assert!(!dot.family.is_empty());
+    }
+
+    #[test]
+    fn wiki_and_picker_share_one_tag_classification() {
+        for wiki in WIKI.iter() {
+            assert_eq!(wiki.tags, entry(&wiki.id).tags, "{}", wiki.id);
+        }
     }
 
     /// The library shows chains under coins, which are alphabetical.
