@@ -1,0 +1,76 @@
+{
+  "source_url": "https://metadata.layerzero-api.com/v1/metadata/experiment/ofts/list?symbols=ZRO,ETHFI,PEPE",
+  "documentation_url": "https://docs.layerzero.network/openapi/oft-mainnet.json",
+  "checked_at_utc": "2026-10-04T23:59:55.586666+00:00",
+  "response": {
+    "PEPE": [
+      {
+        "name": "PEPE",
+        "sharedDecimals": 4,
+        "endpointVersion": "v1",
+        "deployments": {
+          "arbitrum": {
+            "address": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "ethereum": {
+            "address": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+            "localDecimals": 18,
+            "type": "OFT_ADAPTER",
+            "innerTokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+          },
+          "bsc": {
+            "address": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+            "localDecimals": 18,
+            "type": "OFT"
+          }
+        }
+      }
+    ],
+    "ZRO": [
+      {
+        "name": "ZRO Token",
+        "sharedDecimals": 6,
+        "endpointVersion": "v2",
+        "deployments": {
+          "ethereum": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "bsc": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "avalanche": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "polygon": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "arbitrum": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "optimism": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          },
+          "base": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "localDecimals": 18,
+            "type": "OFT"
+          }
+        }
+      }
+    ]
+  }
+}

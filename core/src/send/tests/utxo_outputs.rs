@@ -45,6 +45,9 @@ fn signed_transaction(chain: Chain, to: &str) -> ::bitcoin::Transaction {
             &sender,
             &key,
         ),
+        Chain::Peercoin => {
+            peercoin::sign_peercoin_tx(chain, &inputs, to, 50_000, 10_000, &sender, &key)
+        }
         _ => panic!("unexpected chain"),
     };
     ::bitcoin::consensus::deserialize(&result.unwrap()).unwrap()
@@ -80,7 +83,12 @@ fn every_fixed_utxo_signer_pays_the_recipient_script_type() {
             let tx = signed_transaction(chain, &to);
             assert_eq!(tx.output[0].value.to_sat(), 50_000);
             assert_eq!(tx.output[0].script_pubkey, expected, "{chain}: {to}");
-            assert_eq!(tx.output[1].value.to_sat(), 49_000);
+            let change = if chain.mainnet_counterpart() == Chain::Peercoin {
+                40_000
+            } else {
+                49_000
+            };
+            assert_eq!(tx.output[1].value.to_sat(), change);
             assert_eq!(
                 tx.output[1].script_pubkey.as_bytes(),
                 bitcoin_wire::p2pkh_script(&sender_hash(&[1; 32]))
@@ -128,8 +136,14 @@ fn cashaddr_and_legacy_addresses_pay_identical_outputs() {
 }
 
 #[test]
-fn litecoin_and_bitcoin_gold_pay_witness_programs() {
-    for chain in [Chain::Litecoin, Chain::LitecoinTestnet, Chain::BitcoinGold] {
+fn witness_utxo_chains_pay_supported_witness_programs() {
+    for chain in [
+        Chain::Litecoin,
+        Chain::LitecoinTestnet,
+        Chain::BitcoinGold,
+        Chain::Peercoin,
+        Chain::PeercoinTestnet,
+    ] {
         let hrp = bech32::Hrp::parse(chain.fixed_utxo_segwit_hrp().unwrap()).unwrap();
         for (version, program) in [
             (bech32::segwit::VERSION_0, vec![0x33; 20]),
@@ -137,7 +151,7 @@ fn litecoin_and_bitcoin_gold_pay_witness_programs() {
             (bech32::segwit::VERSION_1, vec![0x55; 32]),
         ] {
             let to = bech32::segwit::encode(hrp, version, &program).unwrap();
-            if chain == Chain::BitcoinGold && version == bech32::segwit::VERSION_1 {
+            if !chain.fixed_utxo_supports_witness(version.to_u8(), program.len()) {
                 assert!(!flow::is_valid_send_address(chain, to));
                 continue;
             }
@@ -163,6 +177,7 @@ fn utxo_address_parser_refuses_wrong_network_and_malformed_cashaddr() {
         (Chain::Dogecoin, Chain::DogecoinTestnet),
         (Chain::Litecoin, Chain::LitecoinTestnet),
         (Chain::Dash, Chain::DashTestnet),
+        (Chain::Peercoin, Chain::PeercoinTestnet),
     ] {
         for source in [chain, other] {
             let (version, p2sh) = source.fixed_utxo_address_versions().unwrap();
@@ -189,7 +204,13 @@ fn utxo_address_parser_refuses_wrong_network_and_malformed_cashaddr() {
 
 #[test]
 fn fixed_utxo_witness_refuses_unsupported_versions_and_lengths() {
-    for chain in [Chain::Litecoin, Chain::LitecoinTestnet, Chain::BitcoinGold] {
+    for chain in [
+        Chain::Litecoin,
+        Chain::LitecoinTestnet,
+        Chain::BitcoinGold,
+        Chain::Peercoin,
+        Chain::PeercoinTestnet,
+    ] {
         let hrp = bech32::Hrp::parse(chain.fixed_utxo_segwit_hrp().unwrap()).unwrap();
         for (version, length) in [
             (bech32::segwit::VERSION_1, 20),
@@ -199,7 +220,7 @@ fn fixed_utxo_witness_refuses_unsupported_versions_and_lengths() {
             assert!(!flow::is_valid_send_address(chain, to.clone()));
             assert!(parse_utxo_address(chain, &to).is_err());
         }
-        if chain == Chain::BitcoinGold {
+        if !chain.fixed_utxo_supports_witness(1, 32) {
             let to = bech32::segwit::encode(hrp, bech32::segwit::VERSION_1, &[0x33; 32]).unwrap();
             assert!(!flow::is_valid_send_address(chain, to.clone()));
             assert!(parse_utxo_address(chain, &to).is_err());

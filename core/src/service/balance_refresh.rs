@@ -90,8 +90,8 @@ impl WalletService {
         known: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
     ) -> Result<WalletState, SpectraBridgeError> {
         let chain = entry.chain_id;
-        let native = if chain.mainnet_counterpart() == Chain::Litecoin {
-            self.litecoin_wallet_balance(&entry.wallet_id, chain)
+        let native = if chain.uses_account_utxo() {
+            self.account_utxo_wallet_balance(&entry.wallet_id, chain)
                 .await?
         } else {
             self.fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())

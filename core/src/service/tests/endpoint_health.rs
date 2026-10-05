@@ -170,6 +170,59 @@ async fn aptos_indexer_health_uses_the_configured_api_and_proves_network_identit
 }
 
 #[tokio::test]
+async fn peercoin_health_verifies_network_and_precision_on_the_configured_origin() {
+    for chain in [Chain::Peercoin, Chain::PeercoinTestnet] {
+        for invalid_field in [None, Some("network"), Some("precision"), Some("coin")] {
+            let server = MockServer::start().await;
+            let mut identity = json!({
+                "blockbook": {
+                    "coin": if chain.is_testnet() { "Peercoin Testnet" } else { "Peercoin" },
+                    "decimals": 6
+                },
+                "backend": {
+                    "chain": if chain.is_testnet() { "testnet" } else { "livenet" },
+                    "blocks": 900_000
+                }
+            });
+            match invalid_field {
+                Some("network") => {
+                    identity["backend"]["chain"] = json!(if chain.is_testnet() {
+                        "livenet"
+                    } else {
+                        "testnet"
+                    });
+                }
+                Some("precision") => identity["blockbook"]["decimals"] = json!(8),
+                Some("coin") => identity["blockbook"]["coin"] = json!("Bitcoin"),
+                None => {}
+                _ => unreachable!(),
+            }
+            Mock::given(method("GET"))
+                .and(path("/peercoin/api/v2"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(identity))
+                .mount(&server)
+                .await;
+            let (checked, healthy, detail) = probe(
+                chain,
+                &record(
+                    chain,
+                    EndpointApi::Blockbook,
+                    format!("{}/peercoin", server.uri()),
+                ),
+            )
+            .await;
+            assert!(checked, "{detail}");
+            assert_eq!(healthy, invalid_field.is_none(), "{detail}");
+            let requests = server.received_requests().await.unwrap();
+            assert!(!requests.is_empty());
+            assert!(requests.iter().all(|request| {
+                request.method == "GET" && request.url.path() == "/peercoin/api/v2"
+            }));
+        }
+    }
+}
+
+#[tokio::test]
 async fn evm_checks_reads_after_chain_identity_and_rejects_wrong_network() {
     let server = MockServer::start().await;
     let record = record(Chain::Ethereum, EndpointApi::EvmJsonRpc, server.uri());

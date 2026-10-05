@@ -1,0 +1,500 @@
+{
+  "checked_on": "2026-10-04",
+  "scope": "DeFi assets and official bridge deployments; research only. Original contracts preserved unless authoritative evidence establishes a correction.",
+  "identity_policy": "Issuer/protocol-owned documentation or official bridge/tokenlist exact chain-and-address mapping; live code and decimals are supplemental, not identity proof.",
+  "counts": {
+    "verified": 20,
+    "unresolved": 0,
+    "corrected": 0
+  },
+  "deployments": [
+    {
+      "token_id": "curve-dao-token",
+      "chain_id": "celo",
+      "original_contract": "0x75184c282e55a7393053f0b8f4f3e7beae067fdc",
+      "status": "verified",
+      "contract": "0x75184c282e55a7393053f0b8f4f3e7beae067fdc",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/CRV/data.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/CRV/data.json",
+      "说明": "官方 Superchain tokenlist 将 Ethereum CRV 映射到原 Celo 合约；Celo native bridge 版本。Curve SDK 的其他 CRV 地址不替代该已验证版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://forno.celo.org",
+        "chain_id": 42220,
+        "block_tag": "0x4b95e0c",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Celo native OP Stack bridge",
+      "identity_source_sha256": "a3cbe68b77bea324205085f52023eab4fc45a85998ce4f41e6f069e1b3ff9e2f",
+      "identity_excerpt": "0x75184c282e55a7393053f0b8f4f3e7beae067fdc"
+    },
+    {
+      "token_id": "curve-dao-token",
+      "chain_id": "mantle",
+      "original_contract": "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75",
+      "status": "verified",
+      "contract": "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/mantlenetworkio/mantle-token-lists/3e0c8212bf12d6848dc6bd01be60b920bb576a5e/data/CRV/data.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/mantlenetworkio/mantle-token-lists/3e0c8212bf12d6848dc6bd01be60b920bb576a5e/data/CRV/data.json",
+      "说明": "Mantle 官方桥清单将 Ethereum CRV 映射到原 Mantle 合约，精度18。Curve SDK 的其他桥版本地址不构成原地址错误证据。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://mantle-rpc.publicnode.com",
+        "chain_id": 5000,
+        "block_tag": "0x60cfa2e",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Mantle official canonical bridge list version",
+      "identity_source_sha256": "3ba3e0f6607a57156cd685a568b7c4795f05beb8c4ea9f6298c30f03bfa9af3d",
+      "identity_excerpt": "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75"
+    },
+    {
+      "token_id": "curve-dao-token",
+      "chain_id": "x-layer",
+      "original_contract": "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89",
+      "status": "verified",
+      "contract": "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/curvefi/curve-js/fdf70ea6af581790699a797e522360d27400c105/src/constants/coins/xlayer.ts",
+      "decimals_source_url": "https://rpc.xlayer.tech",
+      "说明": "Curve 官方 SDK 的 COINS_XLAYER.crv 精确列出原地址，network_constants.ts 将该表用于 X Layer。协议认可的部署；SDK 本条未说明桥协议版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://rpc.xlayer.tech",
+        "chain_id": 196,
+        "block_tag": "0x45090da",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Curve protocol-recognized X Layer deployment; bridge technology not specified by SDK",
+      "identity_source_sha256": "92b511dba3aa795d27458869de80ebe761a92a20f5c73829ca1e87dbaaee1237",
+      "identity_excerpt": "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89",
+      "identity_source_urls": [
+        "https://raw.githubusercontent.com/curvefi/curve-js/fdf70ea6af581790699a797e522360d27400c105/src/constants/coins/xlayer.ts",
+        "https://raw.githubusercontent.com/curvefi/curve-js/fdf70ea6af581790699a797e522360d27400c105/src/constants/network_constants.ts"
+      ]
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "base",
+      "original_contract": "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
+      "status": "verified",
+      "contract": "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/DAI/data.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/DAI/data.json",
+      "说明": "官方 Superchain tokenlist 的 Base 映射，Ethereum 原资产为 DAI 0x6b175474e89094c44da98b954eedeac495271d0f；Base 桥接版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://base-rpc.publicnode.com",
+        "chain_id": 8453,
+        "block_tag": "0x31c44c0",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Base OP Stack canonical bridge",
+      "identity_source_sha256": "8de8a7d16d5b25ab37e79419fd54ee26d45ad082a2a7c927c37e7c61c66094ae",
+      "identity_excerpt": "0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "polygon",
+      "original_contract": "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
+      "status": "verified",
+      "contract": "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/maticnetwork/polygon-token-list/28c3afa156d3ffb95cd553b4c4ef6e48ee7e3756/src/tokens/defaultTokens.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/maticnetwork/polygon-token-list/28c3afa156d3ffb95cd553b4c4ef6e48ee7e3756/src/tokens/defaultTokens.json",
+      "说明": "Polygon 官方 bridge tokenlist 的 Ethereum DAI -> Polygon PoS wrappedTokens 映射；tags包含pos，非Polygon zkEVM或Agglayer版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://polygon-bor-rpc.publicnode.com",
+        "chain_id": 137,
+        "block_tag": "0x5a91a99",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Polygon PoS bridge",
+      "identity_source_sha256": "c6fbef81e398abc550659ae65bed3fcdd5d64a669e83bdc711edab4cceee2c88",
+      "identity_excerpt": "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "avalanche",
+      "original_contract": "0xd586e7f844cea2f87f50152665bcbc2c279d8d70",
+      "status": "verified",
+      "contract": "0xd586e7f844cea2f87f50152665bcbc2c279d8d70",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ava-labs/avalanche-bridge-resources/97e5c9339712704c7bdbc2de6df40315db5c5c7c/avalanche_contract_address.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/ava-labs/avalanche-bridge-resources/97e5c9339712704c7bdbc2de6df40315db5c5c7c/token_list.json",
+      "说明": "Avalanche Bridge 官方 DAI.e 合约。token_list.json 指定 Ethereum DAI 为底层资产、denomination18；这是 DAI.e 桥接版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+        "chain_id": 43114,
+        "block_tag": "0x5c49584",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Avalanche Bridge DAI.e (Ethereum-origin)",
+      "identity_source_sha256": "4f05182cdcc275b46090b7140328cf6c1b9c1ec7759186d4623efebfc8d23522",
+      "identity_excerpt": "0xd586e7f844cea2f87f50152665bcbc2c279d8d70"
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "linea",
+      "original_contract": "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5",
+      "status": "verified",
+      "contract": "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/Consensys/linea-token-list/5b7fb76ba5e3db3ffc879f38ca8f0b82fa678ac9/json/linea-mainnet-token-shortlist.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/Consensys/linea-token-list/5b7fb76ba5e3db3ffc879f38ca8f0b82fa678ac9/json/linea-mainnet-token-shortlist.json",
+      "说明": "Linea 官方清单精确列出 chainId59144、18位，tokenType canonical-bridge，rootChainId1及Ethereum DAI地址。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://linea-rpc.publicnode.com",
+        "chain_id": 59144,
+        "block_tag": "0x1ebd52c",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Linea canonical bridge",
+      "identity_source_sha256": "5248fadd5156ccb89301d1f30537ac361b2cb3be3e48ef1a94d5ead89aa15231",
+      "identity_excerpt": "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5"
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "zksync-era",
+      "original_contract": "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656",
+      "status": "verified",
+      "contract": "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/matter-labs/era-contracts/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/L2SharedBridgeLegacy.sol",
+      "decimals_source_url": "https://mainnet.era.zksync.io",
+      "说明": "zkSync官方bridge源码定义L1↔L2映射；官方RPC发现l2LegacySharedBridge，并于固定区块双向查询Ethereum DAI↔原合约完全一致。Ethereum原资产由Sky官方chainlog的MCD_DAI确认；原地址属于zkSync默认ERC20桥旧资产版本，经当前NativeTokenVault兼容路由。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://mainnet.era.zksync.io",
+        "chain_id": 324,
+        "block_tag": "0x44fbf04",
+        "observed_decimals": 18
+      },
+      "identity_source_urls": [
+        "https://raw.githubusercontent.com/matter-labs/era-contracts/be9a1fec4938e81c4f5d21c127fe49e51bac863e/l1-contracts/contracts/bridge/L2SharedBridgeLegacy.sol",
+        "https://github.com/zksync-sdk/zksync-ethers/blob/f0af85c64dbdfe70c72de1941c2a8c5845d4e3fc/src/provider.ts",
+        "https://chainlog.sky.money/api/mainnet/active.json",
+        "https://docs.zksync.io/zksync-protocol/rollup/bridging-assets"
+      ],
+      "bridge_version": "zkSync Era canonical ERC20 legacy/shared bridge token",
+      "identity_evidence_file": "docs/audits/token-verification-2026-10-04/zksync-dai-bridge.json",
+      "identity_excerpt": "l1TokenAddress(address); l2TokenAddress(address)",
+      "identity_source_sha256": "82206f7ea33a0440960c95d3ca724a49c64ed18f55dbd34f542062ba66373b0b"
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "unichain",
+      "original_contract": "0x20cab320a855b39f724131c69424240519573f81",
+      "status": "verified",
+      "contract": "0x20cab320a855b39f724131c69424240519573f81",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/DAI/data.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/DAI/data.json",
+      "说明": "官方 Superchain tokenlist 的 Unichain 映射，Ethereum 原资产为 DAI；Unichain 桥接版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://mainnet.unichain.org",
+        "chain_id": 130,
+        "block_tag": "0x399c69b",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Unichain OP Stack canonical bridge",
+      "identity_source_sha256": "8de8a7d16d5b25ab37e79419fd54ee26d45ad082a2a7c927c37e7c61c66094ae",
+      "identity_excerpt": "0x20cab320a855b39f724131c69424240519573f81"
+    },
+    {
+      "token_id": "dai",
+      "chain_id": "celo",
+      "original_contract": "0xac177de2439bd0c7659c61f373dbf247d1f41abe",
+      "status": "verified",
+      "contract": "0xac177de2439bd0c7659c61f373dbf247d1f41abe",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/DAI/data.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/DAI/data.json",
+      "说明": "官方 Superchain tokenlist 明确命名 Dai Stablecoin (Celo native bridge)，将Ethereum DAI映射到原合约；与旧Optics/Wormhole等版本分开。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://forno.celo.org",
+        "chain_id": 42220,
+        "block_tag": "0x4b95e0c",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Celo native OP Stack bridge",
+      "identity_source_sha256": "8de8a7d16d5b25ab37e79419fd54ee26d45ad082a2a7c927c37e7c61c66094ae",
+      "identity_excerpt": "0xac177de2439bd0c7659c61f373dbf247d1f41abe"
+    },
+    {
+      "token_id": "lido-dao",
+      "chain_id": "arbitrum",
+      "original_contract": "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60",
+      "status": "verified",
+      "contract": "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60",
+      "decimals": 18,
+      "identity_source_url": "https://tokenlist.arbitrum.io/ArbTokenLists/arbed_uniswap_labs_default.json",
+      "decimals_source_url": "https://tokenlist.arbitrum.io/ArbTokenLists/arbed_uniswap_labs_default.json",
+      "说明": "Arbitrum 官方 bridge UI 明确采用此官方发布清单；该项 chainId42161/原合约/18位，并记录 Ethereum LDO及官方标准ERC20网关映射。第三方原始metadata并非单独身份证据，桥映射来自官方发布列表。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+        "chain_id": 42161,
+        "block_tag": "0x1e80cec5",
+        "observed_decimals": 18
+      },
+      "identity_source_urls": [
+        "https://tokenlist.arbitrum.io/ArbTokenLists/arbed_uniswap_labs_default.json",
+        "https://raw.githubusercontent.com/OffchainLabs/arbitrum-token-bridge/0b8e4d5069c0aba28105ed965e3dd17573004f98/packages/arb-token-bridge-ui/src/util/TokenListUtils.ts"
+      ],
+      "bridge_version": "Arbitrum canonical ERC20 gateway bridge",
+      "identity_evidence": {
+        "chainId": 42161,
+        "address": "0x13Ad51ed4F1B7e9Dc168d8a00cB3f4dDD85EfA60",
+        "symbol": "LDO",
+        "decimals": 18,
+        "bridgeInfo": {
+          "1": {
+            "tokenAddress": "0x5a98fcbea516cf06857215779fd812ca3bef1b32",
+            "originBridgeAddress": "0x09e9222E96E7B4AE2a407B98d48e330053351EEe",
+            "destBridgeAddress": "0xa3a7b6f88361f48403514059f1f16c8e78d60eec"
+          }
+        },
+        "tokenlist_timestamp": "2026-10-04T23:11:56.441Z",
+        "tokenlist_version": {
+          "major": 73,
+          "minor": 5,
+          "patch": 0
+        }
+      },
+      "identity_source_sha256": "6b80d7eedfec1e2ec2a516e43e1c45d299bb6adadd19ff36636c221540918e17"
+    },
+    {
+      "token_id": "lido-dao",
+      "chain_id": "optimism",
+      "original_contract": "0xfdb794692724153d1488ccdbe0c56c252596735f",
+      "status": "verified",
+      "contract": "0xfdb794692724153d1488ccdbe0c56c252596735f",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/LDO/data.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/LDO/data.json",
+      "说明": "官方 Superchain tokenlist 精确列出 Ethereum LDO -> Optimism 合约映射、18位；清单将该token标记nonstandard。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://mainnet.optimism.io",
+        "chain_id": 10,
+        "block_tag": "0x9678656",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Optimism canonical bridge list version; nonstandard token metadata",
+      "identity_source_sha256": "6f160263914c84d5da83c8746bd90b2baaf9e6f4bcab9a824fdd10bd36c614d3",
+      "identity_excerpt": "0xfdb794692724153d1488ccdbe0c56c252596735f"
+    },
+    {
+      "token_id": "lido-dao",
+      "chain_id": "polygon",
+      "original_contract": "0xc3c7d422809852031b44ab29eec9f1eff2a58756",
+      "status": "verified",
+      "contract": "0xc3c7d422809852031b44ab29eec9f1eff2a58756",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/maticnetwork/polygon-token-list/28c3afa156d3ffb95cd553b4c4ef6e48ee7e3756/src/tokens/defaultTokens.json",
+      "decimals_source_url": "https://raw.githubusercontent.com/maticnetwork/polygon-token-list/28c3afa156d3ffb95cd553b4c4ef6e48ee7e3756/src/tokens/defaultTokens.json",
+      "说明": "Polygon 官方 bridge tokenlist 将 Ethereum LDO 映射到原 Polygon 合约，PoS bridge版本，decimals18。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://polygon-bor-rpc.publicnode.com",
+        "chain_id": 137,
+        "block_tag": "0x5a91a99",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Polygon PoS bridge",
+      "identity_source_sha256": "c6fbef81e398abc550659ae65bed3fcdd5d64a669e83bdc711edab4cceee2c88",
+      "identity_excerpt": "0xc3c7d422809852031b44ab29eec9f1eff2a58756"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "ethereum",
+      "original_contract": "0xae78736cd615f374d3085123a210448e74fc6393",
+      "status": "verified",
+      "contract": "0xae78736cd615f374d3085123a210448e74fc6393",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+      "decimals_source_url": "https://ethereum-rpc.publicnode.com",
+      "说明": "Rocket Pool 官方合约文档 Mainnet rETH 和 rocketTokenRETH 均列出原地址，Ethereum协议原生rETH。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Ethereum native issuer/protocol token",
+      "identity_source_sha256": "a1dde6ebe040cb5414bfc0d5022a7a98695af05a471318989da7b74545a51a4c",
+      "identity_excerpt": "ethereum rETH 0xae78736cd615f374d3085123a210448e74fc6393"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "arbitrum",
+      "original_contract": "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8",
+      "status": "verified",
+      "contract": "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+      "decimals_source_url": "https://arbitrum-one-rpc.publicnode.com",
+      "说明": "Rocket Pool官方合约文档精确列出原Arbitrum rETH。Arbitrum官方发布的桥清单补充Ethereum rETH和标准ERC20网关映射；CoinGecko原始metadata不单独承担身份验证。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+        "chain_id": 42161,
+        "block_tag": "0x1e80cec5",
+        "observed_decimals": 18
+      },
+      "identity_source_urls": [
+        "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+        "https://tokenlist.arbitrum.io/ArbTokenLists/arbed_coingecko.json",
+        "https://raw.githubusercontent.com/OffchainLabs/arbitrum-token-bridge/0b8e4d5069c0aba28105ed965e3dd17573004f98/packages/arb-token-bridge-ui/src/util/TokenListUtils.ts"
+      ],
+      "bridge_version": "Arbitrum canonical ERC20 gateway bridge",
+      "bridge_identity_evidence": {
+        "chainId": 42161,
+        "bridgeInfo": {
+          "1": {
+            "tokenAddress": "0xae78736cd615f374d3085123a210448e74fc6393",
+            "originBridgeAddress": "0x09e9222E96E7B4AE2a407B98d48e330053351EEe",
+            "destBridgeAddress": "0xa3a7b6f88361f48403514059f1f16c8e78d60eec"
+          }
+        }
+      },
+      "identity_source_sha256": "a1dde6ebe040cb5414bfc0d5022a7a98695af05a471318989da7b74545a51a4c",
+      "identity_excerpt": "arbitrum rETH 0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "optimism",
+      "original_contract": "0x9bcef72be871e61ed4fbbc7630889bee758eb81d",
+      "status": "verified",
+      "contract": "0x9bcef72be871e61ed4fbbc7630889bee758eb81d",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/rETH/data.json",
+      "说明": "Rocket Pool官方合约文档精确列出该链原rETH合约，Superchain官方tokenlist亦映射Ethereum rETH与该合约并明确18位；OP Stack官方桥版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://mainnet.optimism.io",
+        "chain_id": 10,
+        "block_tag": "0x9678656",
+        "observed_decimals": 18
+      },
+      "identity_source_urls": [
+        "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+        "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/rETH/data.json"
+      ],
+      "bridge_version": "OP Stack canonical bridge representation",
+      "identity_source_sha256": "a1dde6ebe040cb5414bfc0d5022a7a98695af05a471318989da7b74545a51a4c",
+      "identity_excerpt": "optimism rETH 0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "base",
+      "original_contract": "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c",
+      "status": "verified",
+      "contract": "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+      "decimals_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/rETH/data.json",
+      "说明": "Rocket Pool官方合约文档精确列出该链原rETH合约，Superchain官方tokenlist亦映射Ethereum rETH与该合约并明确18位；OP Stack官方桥版本。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://base-rpc.publicnode.com",
+        "chain_id": 8453,
+        "block_tag": "0x31c44c0",
+        "observed_decimals": 18
+      },
+      "identity_source_urls": [
+        "https://raw.githubusercontent.com/rocket-pool/docs.rocketpool.net/f5ebf7e5b387bd3b10d8ecdeeb37dc6c387688b3/docs/en/protocol/contracts-integrations.md",
+        "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/d2065d3c28ea4a3006d147bd16508a9bb1e016ad/data/rETH/data.json"
+      ],
+      "bridge_version": "OP Stack canonical bridge representation",
+      "identity_source_sha256": "a1dde6ebe040cb5414bfc0d5022a7a98695af05a471318989da7b74545a51a4c",
+      "identity_excerpt": "base rETH 0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
+    },
+    {
+      "token_id": "sky",
+      "chain_id": "ethereum",
+      "original_contract": "0x56072c95faa701256059aa122697b133aded9279",
+      "status": "verified",
+      "contract": "0x56072c95faa701256059aa122697b133aded9279",
+      "decimals": 18,
+      "identity_source_url": "https://chainlog.sky.money/api/mainnet/active.json",
+      "decimals_source_url": "https://ethereum-rpc.publicnode.com",
+      "说明": "Sky 官方 mainnet chainlog 的 SKY 键精确列出原合约；Ethereum SKY治理代币。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "observed_decimals": 18
+      },
+      "bridge_version": "Ethereum native issuer governance token",
+      "identity_source_sha256": "80a4942a13cceaa5a50fe5cae9e509217c23a38213eb1145551e41bdf1674e5e",
+      "identity_excerpt": "0x56072c95faa701256059aa122697b133aded9279"
+    },
+    {
+      "token_id": "susds",
+      "chain_id": "avalanche",
+      "original_contract": "0xb94d9613c7aab11e548a327154cc80eca911b5c1",
+      "status": "verified",
+      "contract": "0xb94d9613c7aab11e548a327154cc80eca911b5c1",
+      "decimals": 18,
+      "identity_source_url": "https://forum.skyeco.com/t/skylink-bridge-to-avalanche/27825",
+      "decimals_source_url": "https://api.avax.network/ext/bc/C/rpc",
+      "说明": "Sky 官方技术范围文档 New sUSDS proxy is deployed to the Avalanche Mainnet 精确列出原代理合约，并核查其L2SUSDS实现与权限；SkyLink/LayerZero OFT mint/burn版本，非OFT adapter地址。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+        "chain_id": 43114,
+        "block_tag": "0x5c49584",
+        "observed_decimals": 18
+      },
+      "bridge_version": "SkyLink LayerZero OFT mint/burn; L2SUSDS proxy",
+      "identity_excerpt": "susds ERC1967Proxy 0xb94d9613c7aab11e548a327154cc80eca911b5c1",
+      "identity_post_id": 106090,
+      "identity_post_updated_at": "2026-04-05T13:31:12.655Z",
+      "identity_post_cooked_sha256": "0a977b6f3b3474b6a6476ba0e7e8ef0397e866036574875b513dd590e72a748d",
+      "identity_source_urls": [
+        "https://forum.skyeco.com/t/skylink-bridge-to-avalanche/27825",
+        "https://vote.sky.money/executive/template-executive-vote-launch-avalanche-skylink-update-staking-rewards-grove-genesis-capital-transfer-safe-harbor-update-prime-agent-proxy-spells-april-9-2026"
+      ]
+    },
+    {
+      "token_id": "usds",
+      "chain_id": "avalanche",
+      "original_contract": "0x86ff09db814ac346a7c6fe2cd648f27706d1d470",
+      "status": "verified",
+      "contract": "0x86ff09db814ac346a7c6fe2cd648f27706d1d470",
+      "decimals": 18,
+      "identity_source_url": "https://forum.skyeco.com/t/skylink-bridge-to-avalanche/27825",
+      "decimals_source_url": "https://api.avax.network/ext/bc/C/rpc",
+      "说明": "Sky 官方技术范围文档 New USDS proxy is deployed to the Avalanche Mainnet 精确列出原代理合约，并核查其USDS实现与权限；SkyLink/LayerZero OFT mint/burn版本，非OFT adapter地址。",
+      "rpc_metadata_evidence": {
+        "file": "docs/audits/token-verification-2026-10-04/rpc-metadata.json",
+        "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+        "chain_id": 43114,
+        "block_tag": "0x5c49584",
+        "observed_decimals": 18
+      },
+      "bridge_version": "SkyLink LayerZero OFT mint/burn; USDS proxy",
+      "identity_excerpt": "usds ERC1967Proxy 0x86ff09db814ac346a7c6fe2cd648f27706d1d470",
+      "identity_post_id": 106090,
+      "identity_post_updated_at": "2026-04-05T13:31:12.655Z",
+      "identity_post_cooked_sha256": "0a977b6f3b3474b6a6476ba0e7e8ef0397e866036574875b513dd590e72a748d",
+      "identity_source_urls": [
+        "https://forum.skyeco.com/t/skylink-bridge-to-avalanche/27825",
+        "https://vote.sky.money/executive/template-executive-vote-launch-avalanche-skylink-update-staking-rewards-grove-genesis-capital-transfer-safe-harbor-update-prime-agent-proxy-spells-april-9-2026"
+      ]
+    }
+  ]
+}

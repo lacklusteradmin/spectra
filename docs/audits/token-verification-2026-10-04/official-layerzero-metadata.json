@@ -1,0 +1,503 @@
+{
+  "source_url": "https://metadata.layerzero-api.com/v1/metadata",
+  "checked_at_utc": "2026-10-05T00:01:50.979895+00:00",
+  "full_response_sha256": "87d340d39f73905723cc1e99cb96ea2cc91eb4fec99d7bf24a88a771da961807",
+  "selection": "Exact ETHFI, PEPE and ZRO symbol entries from official Ethereum/Optimism/Arbitrum/Base/Scroll/BNB/Avalanche metadata; full response was parsed read-only.",
+  "response_subset": {
+    "ethereum": {
+      "chainDetails": {
+        "cgNetworkId": "eth",
+        "nativeChainId": 1,
+        "name": "Ethereum",
+        "shortName": "Ethereum",
+        "chainKey": "ethereum",
+        "chainType": "evm",
+        "chainLayer": "L1",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "ETH TOKEN",
+          "symbol": "ETH",
+          "decimals": 18,
+          "cgId": "ethereum",
+          "cmcId": 1027
+        },
+        "averageBlockTime": 10800
+      },
+      "tokens": {
+        "0x6985884c4392d348587b19cb9eaaf157f13271cd": {
+          "symbol": "ZRO",
+          "decimals": 18,
+          "cgId": "layerzero",
+          "cmcId": 26997,
+          "type": "NativeOFT",
+          "sharedDecimals": 6,
+          "canonicalAsset": true,
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4",
+          "proxyAddresses": [
+            "0xade7076e3c646f75ec73181423a4bcee7b7f06d3"
+          ],
+          "endpointVersion": 2
+        },
+        "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb": {
+          "symbol": "ETHFI",
+          "decimals": 18,
+          "cmcId": 29814,
+          "type": "ERC20",
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd",
+          "proxyAddresses": [
+            "0xfd54f87e29c90f3492700c0c4c40f7ccbf495fba",
+            "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
+          ]
+        },
+        "0x6982508145454ce325ddbe47a25d4ec3d2311933": {
+          "symbol": "PEPE",
+          "decimals": 18,
+          "cgId": "pepe",
+          "cmcId": 24478,
+          "type": "ERC20",
+          "fee": true,
+          "tokenMeshId": "42753cb0-e3bd-5337-a985-ef387781fe9d",
+          "proxyAddresses": [
+            "0x7f1a98e5a4385c52a59761fa36231d8f274d3ee5",
+            "0x25d887ce7a35172c62febfd67a1856f20faebb00"
+          ]
+        },
+        "0xfd54f87e29c90f3492700c0c4c40f7ccbf495fba": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+          "decimals": 18,
+          "cmcId": 29814,
+          "symbol": "ETHFI",
+          "endpointVersion": 2,
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ETHFI"
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd"
+        },
+        "0x7f1a98e5a4385c52a59761fa36231d8f274d3ee5": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+          "decimals": 18,
+          "cgId": "pepe",
+          "cmcId": 24478,
+          "symbol": "PEPE",
+          "endpointVersion": 2,
+          "peggedTo": {
+            "address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "PEPE"
+          },
+          "tokenMeshId": "42753cb0-e3bd-5337-a985-ef387781fe9d"
+        },
+        "0xade7076e3c646f75ec73181423a4bcee7b7f06d3": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+          "decimals": 18,
+          "cgId": "layerzero",
+          "cmcId": 26997,
+          "symbol": "ZRO",
+          "endpointVersion": 2,
+          "peggedTo": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ZRO"
+          },
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4"
+        },
+        "0xe0080d2f853ecddbd81a643dc10da075df26fd3f": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+          "decimals": 18,
+          "cmcId": 29814,
+          "symbol": "ETHFI",
+          "oftVersion": 3,
+          "endpointVersion": 2,
+          "eid": 30101,
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ETHFI"
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd"
+        },
+        "0x25d887ce7a35172c62febfd67a1856f20faebb00": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 4,
+          "erc20TokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+          "decimals": 18,
+          "cgId": "pepe",
+          "cmcId": 24478,
+          "symbol": "PEPE",
+          "oftVersion": 2,
+          "canonicalAsset": true,
+          "peggedTo": {
+            "address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "PEPE"
+          },
+          "tokenMeshId": "42753cb0-e3bd-5337-a985-ef387781fe9d"
+        }
+      }
+    },
+    "optimism": {
+      "chainDetails": {
+        "chainStack": "OP_STACK",
+        "cgNetworkId": "optimism",
+        "nativeChainId": 10,
+        "name": "Optimism",
+        "shortName": "Optimism",
+        "chainKey": "optimism",
+        "chainType": "evm",
+        "chainLayer": "L2",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "ETH TOKEN",
+          "symbol": "ETH",
+          "decimals": 18,
+          "cgId": "ethereum",
+          "cmcId": 1027
+        },
+        "averageBlockTime": 1800
+      },
+      "tokens": {
+        "0xe0080d2f853ecddbd81a643dc10da075df26fd3f": {
+          "symbol": "ETHFI",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "sharedDecimals": 6,
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd",
+          "oftVersion": 3,
+          "eid": 30111
+        },
+        "0x6985884c4392d348587b19cb9eaaf157f13271cd": {
+          "symbol": "ZRO",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ZRO"
+          },
+          "sharedDecimals": 6,
+          "canonicalAsset": true,
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4",
+          "endpointVersion": 2
+        }
+      }
+    },
+    "arbitrum": {
+      "chainDetails": {
+        "chainStack": "ARB_STACK",
+        "cgNetworkId": "arbitrum",
+        "nativeChainId": 42161,
+        "name": "Arbitrum",
+        "shortName": "Arbitrum",
+        "chainKey": "arbitrum",
+        "chainType": "evm",
+        "chainLayer": "L2",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "ETH TOKEN",
+          "symbol": "ETH",
+          "decimals": 18,
+          "cgId": "ethereum",
+          "cmcId": 1027
+        },
+        "averageBlockTime": 200
+      },
+      "tokens": {
+        "0x25d887ce7a35172c62febfd67a1856f20faebb00": {
+          "symbol": "PEPE",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "PEPE"
+          },
+          "fee": true,
+          "sharedDecimals": 4,
+          "canonicalAsset": true,
+          "tokenMeshId": "42753cb0-e3bd-5337-a985-ef387781fe9d",
+          "eid": 110
+        },
+        "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27": {
+          "symbol": "ETHFI",
+          "decimals": 18,
+          "type": "ERC20",
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd",
+          "proxyAddresses": [
+            "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
+          ]
+        },
+        "0x6985884c4392d348587b19cb9eaaf157f13271cd": {
+          "symbol": "ZRO",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ZRO"
+          },
+          "sharedDecimals": 6,
+          "canonicalAsset": true,
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4",
+          "endpointVersion": 2
+        },
+        "0xe0080d2f853ecddbd81a643dc10da075df26fd3f": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27",
+          "decimals": 18,
+          "symbol": "ETHFI",
+          "oftVersion": 3,
+          "endpointVersion": 2,
+          "eid": 30110,
+          "mintAndBurn": true,
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd"
+        }
+      }
+    },
+    "base": {
+      "chainDetails": {
+        "chainStack": "OP_STACK",
+        "cgNetworkId": "base",
+        "nativeChainId": 8453,
+        "name": "Base",
+        "shortName": "Base",
+        "chainKey": "base",
+        "chainType": "evm",
+        "chainLayer": "L2",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "ETH TOKEN",
+          "symbol": "ETH",
+          "decimals": 18,
+          "cgId": "ethereum",
+          "cmcId": 1027
+        },
+        "averageBlockTime": 1800
+      },
+      "tokens": {
+        "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2": {
+          "symbol": "ETHFI",
+          "decimals": 18,
+          "type": "ERC20",
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd",
+          "proxyAddresses": [
+            "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
+          ]
+        },
+        "0x6985884c4392d348587b19cb9eaaf157f13271cd": {
+          "symbol": "ZRO",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ZRO"
+          },
+          "sharedDecimals": 6,
+          "canonicalAsset": true,
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4",
+          "endpointVersion": 2
+        },
+        "0xe0080d2f853ecddbd81a643dc10da075df26fd3f": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2",
+          "decimals": 18,
+          "symbol": "ETHFI",
+          "oftVersion": 3,
+          "endpointVersion": 2,
+          "eid": 30184,
+          "mintAndBurn": true,
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd"
+        }
+      }
+    },
+    "scroll": {
+      "chainDetails": {
+        "cgNetworkId": "scroll",
+        "nativeChainId": 534352,
+        "name": "Scroll",
+        "shortName": "Scroll",
+        "chainKey": "scroll",
+        "chainType": "evm",
+        "chainLayer": "L2",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "ETH TOKEN",
+          "symbol": "ETH",
+          "decimals": 18,
+          "cgId": "ethereum",
+          "cmcId": 1027
+        },
+        "averageBlockTime": 2700
+      },
+      "tokens": {
+        "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81": {
+          "symbol": "ETHFI",
+          "decimals": 18,
+          "type": "ERC20",
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd",
+          "proxyAddresses": [
+            "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
+          ]
+        },
+        "0xe0080d2f853ecddbd81a643dc10da075df26fd3f": {
+          "type": "ProxyOFT",
+          "sharedDecimals": 6,
+          "erc20TokenAddress": "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81",
+          "decimals": 18,
+          "symbol": "ETHFI",
+          "oftVersion": 3,
+          "endpointVersion": 2,
+          "eid": 30214,
+          "mintAndBurn": true,
+          "peggedTo": {
+            "address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+            "chainName": "ethereum",
+            "programaticallyPegged": true
+          },
+          "tokenMeshId": "4fd4a7a2-fe01-597d-b104-dbcbf6a867bd"
+        }
+      }
+    },
+    "bsc": {
+      "chainDetails": {
+        "cgNetworkId": "bsc",
+        "nativeChainId": 56,
+        "name": "BNB Chain",
+        "shortName": "BNB",
+        "chainKey": "bsc",
+        "chainType": "evm",
+        "chainLayer": "L1",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "BNB TOKEN",
+          "symbol": "BNB",
+          "decimals": 18,
+          "cgId": "binancecoin",
+          "cmcId": 1839
+        },
+        "averageBlockTime": 1400
+      },
+      "tokens": {
+        "0x25d887ce7a35172c62febfd67a1856f20faebb00": {
+          "symbol": "PEPE",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "PEPE"
+          },
+          "fee": true,
+          "sharedDecimals": 4,
+          "canonicalAsset": true,
+          "tokenMeshId": "42753cb0-e3bd-5337-a985-ef387781fe9d",
+          "eid": 102
+        },
+        "0x6985884c4392d348587b19cb9eaaf157f13271cd": {
+          "symbol": "ZRO",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ZRO"
+          },
+          "sharedDecimals": 6,
+          "canonicalAsset": true,
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4",
+          "endpointVersion": 2
+        }
+      }
+    },
+    "avalanche": {
+      "chainDetails": {
+        "cgNetworkId": "avax",
+        "nativeChainId": 43114,
+        "name": "Avalanche",
+        "shortName": "Avalanche",
+        "chainKey": "avalanche",
+        "chainType": "evm",
+        "chainLayer": "L1",
+        "chainStatus": "ACTIVE",
+        "nativeCurrency": {
+          "name": "AVAX TOKEN",
+          "symbol": "AVAX",
+          "decimals": 18,
+          "cgId": "avalanche-2",
+          "cmcId": 5805
+        },
+        "averageBlockTime": 1600
+      },
+      "tokens": {
+        "0x6985884c4392d348587b19cb9eaaf157f13271cd": {
+          "symbol": "ZRO",
+          "decimals": 18,
+          "type": "NativeOFT",
+          "peggedTo": {
+            "address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+            "chainName": "ethereum",
+            "programaticallyPegged": true,
+            "symbol": "ZRO"
+          },
+          "sharedDecimals": 6,
+          "canonicalAsset": true,
+          "tokenMeshId": "d12c475c-4ddc-5cb4-8136-e9c77918feb4",
+          "endpointVersion": 2
+        }
+      }
+    }
+  }
+}

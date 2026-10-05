@@ -1,0 +1,561 @@
+{
+  "checked_at_utc": "2026-10-05T00:01:12.700167+00:00",
+  "scope": "18 original deployments: issuer/native deployments and Ethereum ARB through Arbitrum canonical bridge. No catalog mutation.",
+  "evidence_policy": "Identity requires an issuer, official protocol, foundation, or canonical bridge source linking the exact contract to the named token and chain. Explorer labels and CoinGecko alone are insufficient. RPC reads prove chain identity, nonempty code and decimals only.",
+  "source_data": "../chain-support-2026-10-04/removed-token-deployments.json",
+  "rpc_metadata_source": "rpc-metadata.json",
+  "summary": {
+    "verified": 18,
+    "corrected": 0,
+    "unresolved": 0,
+    "issuer": 17,
+    "nativeBridge": 1,
+    "otherBridge": 0
+  },
+  "deployments": [
+    {
+      "token_id": "polygon-ecosystem-token",
+      "chain_id": "ethereum",
+      "original_contract": "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+      "decimals": 18,
+      "identity_source_url": "https://polygon.technology/blog/polygon-2-0-milestone-pol-contracts-are-live-on-ethereum-mainnet",
+      "decimals_source_url": "rpc-metadata.json#/deployments/0",
+      "identity_source_kind": "issuer announcement",
+      "identity_excerpt": "POL token on Ethereum: 0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6",
+      "notes": "Polygon 官方公告直接写明 Ethereum 主网的 POL 合约。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/0",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 8736,
+        "code_sha256": "cc45123fc65e35787e7817e2d43755a1a943bd2f5adcfe6f6c5dd5183a6ad11e"
+      },
+      "identity_source_sha256": "e194a55e1e991e7402ec54fdbb7e960ff4a49423c08112407d276883ceee8cd4",
+      "identity_source_bytes": 219513
+    },
+    {
+      "token_id": "mantle",
+      "chain_id": "ethereum",
+      "original_contract": "0x3c3a81e81dc49a522a592e7622a7e711c06bf354",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x3c3a81e81dc49a522a592e7622a7e711c06bf354",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/mantlenetworkio/mantle/main/packages/sdk/src/utils/contracts.ts",
+      "decimals_source_url": "rpc-metadata.json#/deployments/1",
+      "identity_source_kind": "issuer SDK source",
+      "identity_excerpt": "L1_MNT_ADDRESS / L2ChainID.MANTLE: 0x3c3a81e81dc49A522A592e7622A7E711c06bf354",
+      "notes": "Mantle 官方 SDK 将该地址定义为 Mantle 主网对应的 L1 MNT；Ethereum chainId=1 和精度由固定区块 RPC 补证。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/1",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 4021,
+        "code_sha256": "100f5b06201a23db542c089323c6524afca1430b7516319b72ff0eb5749487c9"
+      },
+      "identity_source_sha256": "2eb7ccc4a98ab2fca0e7b17d7bec95c36e21a0e6c7cc11f2a6edcb27256ad981",
+      "identity_source_bytes": 14495
+    },
+    {
+      "token_id": "crypto-com-chain",
+      "chain_id": "ethereum",
+      "original_contract": "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b",
+      "decimals": 8,
+      "identity_source_url": "https://crypto.com/price/cronos",
+      "decimals_source_url": "rpc-metadata.json#/deployments/2",
+      "identity_source_kind": "issuer site embedded metadata",
+      "identity_excerpt": "\"name\":\"Ethereum\",\"token_address\":\"0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b\",\"chain_id\":1",
+      "notes": "Crypto.com 官方 CRO 页面内嵌平台元数据直接列出 Ethereum、chain_id=1 和该合约；官方帮助页另说明 ERC20 CRO 与原生 CRO 的关系。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/2",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000008",
+        "observed_decimals": 8,
+        "code_bytes": 8144,
+        "code_sha256": "c752fd18503fa0f4e48b98380e60202cb9726ef7d470ebf3d87158d3de5592a6"
+      },
+      "additional_identity_source_urls": [
+        "https://help.crypto.com/en/articles/5019195-send-and-receive-cro-the-difference-between-native-cro-and-erc20-cro"
+      ],
+      "identity_source_sha256": "b5c6ee7739ea6066c8c09e68427effdc3588ea69bb3e90e8ad5e5a6130785592",
+      "identity_source_bytes": 784057
+    },
+    {
+      "token_id": "aerodrome-finance",
+      "chain_id": "base",
+      "original_contract": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/aerodrome-finance/contracts/main/README.md",
+      "decimals_source_url": "rpc-metadata.json#/deployments/3",
+      "identity_source_kind": "protocol deployment source",
+      "identity_excerpt": "AERO | 0x940181a94A35A4569E4529A3CDfB74e38FD98631",
+      "notes": "Aerodrome 官方合约仓库部署表列出 AERO，并将精确地址链接到 Base 主网浏览器；未用浏览器标签单独认定身份。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/3",
+        "endpoint": "https://base-rpc.publicnode.com",
+        "chain_id": 8453,
+        "block_tag": "0x31c44c0",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 4736,
+        "code_sha256": "b1c9be00acc529956bb2ebd62982fe177365982d715e905b6285e5727614f735"
+      },
+      "identity_source_sha256": "4a27e9c4a346d39b9d196d8d04209a1c38d707bffd7fffb7f90b852b4748417e",
+      "identity_source_bytes": 7237
+    },
+    {
+      "token_id": "arbitrum",
+      "chain_id": "ethereum",
+      "original_contract": "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1",
+      "status": "verified",
+      "category": "nativeBridge",
+      "contract": "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ArbitrumFoundation/docs/main/docs/deployment-addresses.md",
+      "decimals_source_url": "rpc-metadata.json#/deployments/4",
+      "identity_source_kind": "foundation deployment source",
+      "identity_excerpt": "$ARB Token (bridged) | Ethereum | 0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1 | chainID=1",
+      "notes": "Arbitrum Foundation 官方部署表直接标为 Ethereum 的 bridged ARB；与同表 Arbitrum One 原生 ARB 属于同一官方部署组。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/4",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 2593,
+        "code_sha256": "5673f7712b62a6106cbc2f1ce59b0894f537065ad84197f7b875cac051161ff7"
+      },
+      "identity_source_sha256": "df5c5263ffa2bdaf42d4b54760c7d2ed81b1b4d06000decf950e0a7109d2936e",
+      "identity_source_bytes": 8934
+    },
+    {
+      "token_id": "arbitrum",
+      "chain_id": "arbitrum",
+      "original_contract": "0x912ce59144191c1204e64559fe8253a0e49e6548",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x912ce59144191c1204e64559fe8253a0e49e6548",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ArbitrumFoundation/docs/main/docs/deployment-addresses.md",
+      "decimals_source_url": "rpc-metadata.json#/deployments/5",
+      "identity_source_kind": "foundation deployment source",
+      "identity_excerpt": "$ARB Token | Arb One | 0x912CE59144191C1204E64559FE8253a0e49E6548 | chainID=42161",
+      "notes": "Arbitrum Foundation 官方部署表直接列明 Arbitrum One 原生 ARB 及 chainID=42161。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/5",
+        "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+        "chain_id": 42161,
+        "block_tag": "0x1e80cec5",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 2593,
+        "code_sha256": "5673f7712b62a6106cbc2f1ce59b0894f537065ad84197f7b875cac051161ff7"
+      },
+      "identity_source_sha256": "df5c5263ffa2bdaf42d4b54760c7d2ed81b1b4d06000decf950e0a7109d2936e",
+      "identity_source_bytes": 8934
+    },
+    {
+      "token_id": "bitget-token",
+      "chain_id": "ethereum",
+      "original_contract": "0x54d2252757e1672eead234d27b1270728ff90581",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x54d2252757e1672eead234d27b1270728ff90581",
+      "decimals": 18,
+      "identity_source_url": "https://www.bitget.com/asia/activity-hub/BGB/intro",
+      "decimals_source_url": "rpc-metadata.json#/deployments/6",
+      "identity_source_kind": "issuer token introduction",
+      "identity_excerpt": "0x54D2252757e1672EEaD234D27B1270728fF90581（Ethereum）",
+      "notes": "Bitget 官方 BGB 页面明确区分 Ethereum 与 Morph 地址。原数据是 2024 年升级后的新 Ethereum 地址；官方升级公告另确认新旧合约 1:1 换币。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/6",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 4556,
+        "code_sha256": "9ea51e3db069429ba1fe2e6951c172ede029692c51d3a59616193f0db8ef1ad6"
+      },
+      "additional_identity_source_urls": [
+        "https://www.bitget.com/support/articles/12560603811970"
+      ],
+      "identity_source_sha256": "6db32ba06d79e3c2a5c3f02d72bbb3780bc113ee4d7e10c6efac8d6a762926ba",
+      "identity_source_bytes": 163553
+    },
+    {
+      "token_id": "blast",
+      "chain_id": "blast",
+      "original_contract": "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad",
+      "decimals": 18,
+      "identity_source_url": "https://assets.blast.io/cn/q2-2024.pdf",
+      "decimals_source_url": "rpc-metadata.json#/deployments/7",
+      "identity_source_kind": "issuer published report",
+      "identity_excerpt": "Token Address: 0xb1a5700fA2358173Fe465e6eA4Ff52E36e88E2ad; Network: Blast Mainnet",
+      "notes": "Blast 官方域名的 Q2 2024 报告将完整地址与 Blast Mainnet 并列，原地址和链一致。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/7",
+        "endpoint": "https://blast-rpc.publicnode.com",
+        "chain_id": 81457,
+        "block_tag": "0x2744406",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 12281,
+        "code_sha256": "e0d034576b991c62d1010ad319aee6c2ba0fcf900d00a2c7b57db729b0c1a966"
+      },
+      "identity_source_sha256": "8fb45196fd3419b6b077b5ff152d1cff0a3585ac8bfd721f3ee0f7a70bf00cee",
+      "identity_source_bytes": 10987698
+    },
+    {
+      "token_id": "ethereum-name-service",
+      "chain_id": "ethereum",
+      "original_contract": "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      "decimals": 18,
+      "identity_source_url": "https://basics.ensdao.org/ens-token",
+      "decimals_source_url": "rpc-metadata.json#/deployments/18",
+      "identity_source_kind": "DAO token documentation",
+      "identity_excerpt": "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72",
+      "notes": "ENS DAO 官方文档将 ENS 描述为 Ethereum ERC20 并列明完整代币合约；ENS 官方帮助页再次确认同一地址。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/18",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 18709,
+        "code_sha256": "f9d7b2afea6ec6542b7015bedc286e0f483b1622619cd67dff3e2de6776d0f61"
+      },
+      "additional_identity_source_urls": [
+        "https://support.ens.domains/en/articles/8874786-official-ens-websites-apps-and-tools"
+      ],
+      "identity_source_sha256": "1eb80a3373b7a9924e5a9067a7316371ecb22c80850119331afa61310c6426a1",
+      "identity_source_bytes": 399551
+    },
+    {
+      "token_id": "kucoin-shares",
+      "chain_id": "ethereum",
+      "original_contract": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811",
+      "decimals": 6,
+      "identity_source_url": "https://www.kucoin.com/announcement/en-kucoin-token",
+      "decimals_source_url": "rpc-metadata.json#/deployments/24",
+      "identity_source_kind": "issuer migration announcement",
+      "identity_excerpt": "New KCS Token Contract: 0xf34960d9d60be18cc1d5afc1a6f012a723a28811",
+      "notes": "KuCoin 官方升级完成公告直接列出新 KCS 合约；该公告没有合约浏览器链接。补充的 KuCoin 官方 KCS 页面将同一地址链接到 OKLink 的 eth/token 路径，并说明 KCS 是 Ethereum ERC-20。原数据使用新地址；其精度为 6，与链上读值一致。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/24",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000006",
+        "observed_decimals": 6,
+        "code_bytes": 8148,
+        "code_sha256": "6010ab6c84fc4dcc73e854cb2364b4999a9983b70e6dd78e3e6556d00227a25b"
+      },
+      "additional_identity_source_urls": [
+        "https://www.kucoin.com/price/KCS"
+      ],
+      "additional_identity_evidence": [
+        {
+          "source_url": "https://www.kucoin.com/price/KCS",
+          "source_kind": "issuer token page and issuer-selected Ethereum contract hyperlink",
+          "excerpt": "It operates on the Ethereum blockchain as an ERC-20 token; https://www.oklink.com/cn/eth/token/0xf34960d9d60be18cc1d5afc1a6f012a723a28811",
+          "source_sha256": "75d5966e700bcd7ee10313ff8d101b1da10b287211c39259ab23a13f98d6ab0d",
+          "source_bytes": 210461
+        }
+      ],
+      "identity_source_sha256": "664fd4673e9a51bf3d20cc55fbc7ed5700ec0a685d55e911f8fd7a727a774d26",
+      "identity_source_bytes": 125087
+    },
+    {
+      "token_id": "leo-token",
+      "chain_id": "ethereum",
+      "original_contract": "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3",
+      "decimals": 18,
+      "identity_source_url": "https://support.bitfinex.com/hc/en-us/articles/360023617554-Unus-Sed-LEO-Token-Conversion",
+      "decimals_source_url": "rpc-metadata.json#/deployments/28",
+      "identity_source_kind": "issuer contract hyperlink",
+      "identity_excerpt": "Ethereum hyperlink: https://etherscan.io/token/0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3",
+      "notes": "Bitfinex 官方帮助页将 Ethereum 链接直接指向精确的 LEO 合约；身份来自发行方选择该链接，非浏览器标签。该页面的 EOS/Vaulta 更名不影响 Ethereum 部署。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/28",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 6316,
+        "code_sha256": "78be95edbfad6769f08aac4edbf8bd5576404e3dd93088d4e405304837032352"
+      },
+      "issuer_contract_link": "https://etherscan.io/token/0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
+    },
+    {
+      "token_id": "ondo-finance",
+      "chain_id": "ethereum",
+      "original_contract": "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3",
+      "decimals": 18,
+      "identity_source_url": "https://docs.ondo.foundation/ondo-token",
+      "decimals_source_url": "rpc-metadata.json#/deployments/31",
+      "identity_source_kind": "foundation token documentation",
+      "identity_excerpt": "0xfAbA6f8e4a5E8Ab82F62fe7C39859FA577269BE3",
+      "notes": "Ondo Foundation 官方 ONDO 文档直接列出完整代币地址，但该页未标明链或链接该合约的 Ethereum 浏览器。补充的 Flux 官方 mainnet 配置将同一 ONDO_TOKEN_ADDRESS 设为治理合约的 comp，并列出 GOVERNOR_DELEGATOR_ADDRESS；Flux 地址文档将该治理合约列在 Ethereum Mainnet，Hardhat 的 mainnet 网络使用 ETHEREUM_RPC_URL。Flux 官方文档确认其由 Ondo 团队构建、由 Ondo DAO 治理，并链接源码组织。身份来自这些官方文档和源码的联合绑定；原地址一致。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/31",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 11822,
+        "code_sha256": "fac4203cd6d440c61254e05f369de80778de88874edec61d2593125ef6a09632"
+      },
+      "additional_identity_source_urls": [
+        "https://docs.fluxfinance.com/",
+        "https://docs.fluxfinance.com/addresses",
+        "https://raw.githubusercontent.com/flux-finance/contracts/main/scripts/lending/tasks/config/mainnet.config.ts",
+        "https://raw.githubusercontent.com/flux-finance/contracts/main/hardhat.config.ts"
+      ],
+      "additional_identity_evidence": [
+        {
+          "source_url": "https://docs.fluxfinance.com/",
+          "source_kind": "protocol documentation and source organization provenance",
+          "excerpt": "Flux Finance is a decentralized lending protocol built by the Ondo Finance team; Flux Finance is governed by the Ondo DAO; https://github.com/flux-finance",
+          "source_sha256": "8ae3e67782ff56bc706d532a5486b6308850752149c7c90740318b3dae7fbbf2",
+          "source_bytes": 26992
+        },
+        {
+          "source_url": "https://docs.fluxfinance.com/addresses",
+          "source_kind": "protocol Ethereum mainnet deployment documentation",
+          "excerpt": "Ethereum Mainnet | Governance | 0x336505EC1BcC1A020EeDe459f57581725D23465A | DAO contract",
+          "source_sha256": "b3547e5cb82175c9a2893af8ea270a6330450d9348eb115d9e443f4bf33fac39",
+          "source_bytes": 36766
+        },
+        {
+          "source_url": "https://raw.githubusercontent.com/flux-finance/contracts/main/scripts/lending/tasks/config/mainnet.config.ts",
+          "source_kind": "protocol mainnet governance configuration",
+          "excerpt": "const ONDO_TOKEN_ADDRESS = \"0xfAbA6f8e4a5E8Ab82F62fe7C39859FA577269BE3\"; const GOVERNOR_DELEGATOR_ADDRESS = \"0x336505EC1BcC1A020EeDe459f57581725D23465A\"; comp: ONDO_TOKEN_ADDRESS",
+          "source_sha256": "9ee3b8873f22e31eaa4f83f6ab3aa2cf066afbc2e29bd3b97eef82b6f8d196dd",
+          "source_bytes": 15615
+        },
+        {
+          "source_url": "https://raw.githubusercontent.com/flux-finance/contracts/main/hardhat.config.ts",
+          "source_kind": "protocol mainnet network configuration",
+          "excerpt": "mainnet: { accounts: [process.env.MAINNET_PRIVATE_KEY!], url: process.env.ETHEREUM_RPC_URL!, gas: 6000000 }",
+          "source_sha256": "475c389adcd8f69e2ea1fe234071c029f7c7664bb063e2612f4608f9e688d1da",
+          "source_bytes": 3174
+        }
+      ],
+      "identity_source_sha256": "b3ebc301e5f6c8c5cab7b03b47d2897096ba976e1a6ee5cf3b16d66537a11592",
+      "identity_source_bytes": 26469
+    },
+    {
+      "token_id": "optimism",
+      "chain_id": "optimism",
+      "original_contract": "0x4200000000000000000000000000000000000042",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x4200000000000000000000000000000000000042",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/master/data/OP/data.json",
+      "decimals_source_url": "rpc-metadata.json#/deployments/32",
+      "identity_source_kind": "protocol token list",
+      "identity_excerpt": "\"decimals\":18; \"optimism\":{\"address\":\"0x4200000000000000000000000000000000000042\"}",
+      "notes": "Optimism 官方 token list 用 optimism 键列出完整合约地址和 decimals=18；官方 OP Mainnet 地址文档另列同一 GovernanceToken，固定区块 RPC 确认 chainId=10。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/32",
+        "endpoint": "https://mainnet.optimism.io",
+        "chain_id": 10,
+        "block_tag": "0x9678656",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 16528,
+        "code_sha256": "b2718c87baa3cbba999fa606bc960463aafcfe05770e377fd1c72ee142d33dcc"
+      },
+      "additional_identity_source_urls": [
+        "https://docs.optimism.io/op-mainnet/network-information/op-addresses"
+      ],
+      "additional_decimals_source_urls": [
+        "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/master/data/OP/data.json"
+      ],
+      "identity_source_sha256": "f0cd5302c1af16941d1b987a81f168369555ea4efa8eb5139fc4cac92de0cd4a",
+      "identity_source_bytes": 185
+    },
+    {
+      "token_id": "pax-gold",
+      "chain_id": "ethereum",
+      "original_contract": "0x45804880de22913dafe09f4980848ece6ecbaf78",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x45804880de22913dafe09f4980848ece6ecbaf78",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/paxosglobal/paxos-gold-contract/master/README.md",
+      "decimals_source_url": "rpc-metadata.json#/deployments/33",
+      "identity_source_kind": "issuer contract repository",
+      "identity_excerpt": "PAXG proxy: 0x45804880De22913dAFE09f4980848ECE6EcbAf78",
+      "notes": "Paxos 官方 PAXG 合约仓库明确给出供用户交互的代理地址并链接 Ethereum。代码实现可升级，资产地址为该代理地址；精度 18 得到官方帮助页和 RPC 确认。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/33",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 1506,
+        "code_sha256": "0cc3661444715ecc358c2e32cb85a3175cfe9ab09b3bcd9b436e0f7c2d0a4e66"
+      },
+      "additional_decimals_source_urls": [
+        "https://support.paxos.com/articles/8564225276-pax-gold-minimum-investment-amounts"
+      ],
+      "identity_source_sha256": "c0866a05442e4fbe5f4de704f75b6be87a5bf85b40368d61177295a6c99725de",
+      "identity_source_bytes": 11155
+    },
+    {
+      "token_id": "pepe",
+      "chain_id": "ethereum",
+      "original_contract": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      "decimals": 18,
+      "identity_source_url": "https://pepe.vip",
+      "decimals_source_url": "rpc-metadata.json#/deployments/34",
+      "identity_source_kind": "issuer contract hyperlinks",
+      "identity_excerpt": "https://etherscan.io/address/0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      "notes": "PEPE 官网直接链接该精确 Ethereum 合约，并通过 Uniswap 的 Ethereum token 路径给出同一地址。未采用 thepepecoin.org 或仅靠探索器标签。此项仅核 Ethereum，不判断其它链的 PEPE。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/34",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 4517,
+        "code_sha256": "92cc803b6309d9080015e9ae084757871138b8ed59632f44d0d123b708dbf12b"
+      },
+      "issuer_contract_link": "https://etherscan.io/address/0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      "issuer_ethereum_token_link": "https://app.uniswap.org/explore/tokens/ethereum/0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      "identity_source_sha256": "1100da90cf1b856f489f8cc8be74b31751352bb0d6629e08612f169791e1ae95",
+      "identity_source_bytes": 1066778
+    },
+    {
+      "token_id": "shiba-inu",
+      "chain_id": "ethereum",
+      "original_contract": "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce",
+      "decimals": 18,
+      "identity_source_url": "https://shib.io/_next/static/chunks/77046-9bdd5a8a3361c361.js",
+      "decimals_source_url": "rpc-metadata.json#/deployments/43",
+      "identity_source_kind": "issuer website runtime token registry",
+      "identity_excerpt": "name:\"Ethereum\",address:\"0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE\"",
+      "notes": "Shib 官方网站公开脚本的代币合约表直接列明 Ethereum 与完整地址；SHIB 页面组件也将同一地址绑定 Shib Token。官方文档页的可检索渲染内容一致；当前直接 HTML 是加载壳，未用于证明身份。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/43",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 4852,
+        "code_sha256": "5c813da8be193a1a33a7533edc758e3ad29f1fa1730cbf2d8c9fc8a7f31c78f3"
+      },
+      "additional_identity_source_urls": [
+        "https://shib.io/tokens/shib",
+        "https://shib.io/tokens",
+        "https://shib.io/_next/static/chunks/app/(marketing)/tokens/shib/page-8f4fa7dcb8339605.js"
+      ],
+      "source_access": "Official website runtime JavaScript fetched directly on 2026-10-04; the Ethereum row contains the complete SHIB contract. Its token page component independently uses the same contractAddress.",
+      "identity_source_sha256": "0d4fcbde4d7c4c354a0909cab0ab8f0c1f35e51fab69854721d97ccc861b9418",
+      "identity_source_bytes": 28244
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "ethereum",
+      "original_contract": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "decimals": 8,
+      "identity_source_url": "https://docs.wbtc.network/resources/contract-addresses",
+      "decimals_source_url": "rpc-metadata.json#/deployments/47",
+      "identity_source_kind": "protocol contract documentation",
+      "identity_excerpt": "Ethereum | 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+      "notes": "WBTC 官方 Contract Addresses 表明确列出 Ethereum 代币地址；精度为 8，固定区块 RPC 与原数据匹配。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/47",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000008",
+        "observed_decimals": 8,
+        "code_bytes": 4582,
+        "code_sha256": "1377b93c57d7373bf87a742b4783deff88599e7a1bcca58f0a5d6a93e8a2973b"
+      },
+      "identity_source_sha256": "e7a4af503791c725616f2a289dc98dde7b93598af300716dfe2be5f1ef7389c7",
+      "identity_source_bytes": 69575
+    },
+    {
+      "token_id": "weth",
+      "chain_id": "ethereum",
+      "original_contract": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "status": "verified",
+      "category": "issuer",
+      "contract": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "decimals": 18,
+      "identity_source_url": "https://raw.githubusercontent.com/gnosis/canonical-weth/master/README.md",
+      "decimals_source_url": "rpc-metadata.json#/deployments/48",
+      "identity_source_kind": "canonical protocol source",
+      "identity_excerpt": "Mainnet: 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "notes": "Canonical WETH 官方源码包 README 列出 Ethereum mainnet 部署，Dapphub WETH9.sol 定义 decimals=18；使用协议源码，而非当前已改变内容的 weth.io。",
+      "rpc_evidence": {
+        "source_url": "rpc-metadata.json#/deployments/48",
+        "endpoint": "https://ethereum-rpc.publicnode.com",
+        "chain_id": 1,
+        "block_tag": "0x18e9899",
+        "decimals_response": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "observed_decimals": 18,
+        "code_bytes": 3124,
+        "code_sha256": "5566bf50796faf93c9b6f6adacd3b32c70bfe16b48ffc59db6cd144cbdc89739"
+      },
+      "additional_decimals_source_urls": [
+        "https://raw.githubusercontent.com/gnosis/canonical-weth/master/contracts/WETH9.sol"
+      ],
+      "identity_source_sha256": "a6098c424362ab206ce66836e3d0b97126b123a89885574e503d19840c717100",
+      "identity_source_bytes": 913
+    }
+  ]
+}

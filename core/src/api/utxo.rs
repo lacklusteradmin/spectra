@@ -20,6 +20,9 @@ use crate::api::{
 use crate::registry::Chain;
 use crate::{Endpoint, EndpointApi};
 
+/// Outpoint, amount and actual output script derived from verified raw bytes.
+pub(crate) type VerifiedUtxoInput = (String, u32, u64, Vec<u8>);
+
 // ── Answers
 
 /// An unspent output. The field names are Esplora's, which answers in this
@@ -162,6 +165,21 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.fetch_utxos(address).await,
                 Adapter::Whatsonchain(c) => c.fetch_utxos(address).await,
                 Adapter::BchRest(c) => c.fetch_utxos(address).await,
+            }
+        })
+        .await
+    }
+
+    pub(crate) async fn fetch_peercoin_inputs(
+        &self,
+        address: &str,
+    ) -> Result<Vec<VerifiedUtxoInput>, ApiError> {
+        self.race(|adapter| async move {
+            match adapter {
+                Adapter::Blockbook(client) => client.fetch_peercoin_inputs(address).await,
+                _ => Err(ApiError::InvalidInput(
+                    "Peercoin spends require a Blockbook indexer".into(),
+                )),
             }
         })
         .await

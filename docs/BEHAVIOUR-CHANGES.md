@@ -17,6 +17,152 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-04 — Serialize persistence writers before reading their guards
+
+- **Before:** competing CLI signers could both open deferred SQLite read
+  transactions, then one failed with `database is locked` when upgrading its
+  stale WAL snapshot. The existing five-second busy timeout could not resolve
+  that upgrade. ICP receipt merging and wallet-state saving used the same
+  read-before-write transaction pattern.
+- **After:** these write transactions begin with `BEGIN IMMEDIATE`, as history
+  writes already do. A signer waits for the active writer before reading the
+  artifact and its reservations, then refuses a conflicting signed transaction
+  through the domain reservation check. History queries remain read transactions.
+- **Why:** acquire the writer before establishing the read snapshot, following
+  [SQLite's transaction isolation guidance](https://www.sqlite.org/isolation.html).
+  This gives reservation checks the committed state and removes an inconsistent
+  locking model without weakening the concurrency assertion.
+- **CLI check:** `python3 scripts/cli-send-stages.py target/debug/spectra` races
+  two signer processes and requires one signed artifact and one reservation
+  refusal, with no submission.
+- **Verification:** all `make verify` gates passed through `make lint test`
+  (rustfmt, clippy at `-D warnings`, 1,096 core tests and one transport test),
+  `make test-cli` (477 offline checks, including the existing two-process
+  signer reservation race) and `make test-ios` (128 tests in 28 suites).
+
+## 2026-10-04 — Add complete Peercoin native transfer support
+
+- **Before:** Peercoin had an icon but no network, native deployment, address
+  derivation, wallet import or transfer path. Blockbook fee conversion assumed
+  eight decimal places for every coin and discarded provider confirmation counts.
+  Account UTXO history queried saved addresses using the mainnet family instead
+  of a testnet wallet's concrete network.
+- **After:** Peercoin mainnet and testnet are catalogued across the chain picker,
+  native PPC pricing/precision, icon, wiki, explorers, keyless endpoints,
+  diagnostics and Funds Finder. Seed accounts support BIP-44 legacy, BIP-49 nested
+  SegWit, BIP-84 native SegWit and BIP-86 Taproot addresses, discovery and receive
+  rotation; raw private-key and watch-only imports validate the concrete
+  network. Balance, history, send preview,
+  durable build/sign/broadcast and pending status use native six-decimal units.
+  Litecoin and Peercoin share one owned-account source model, so stored receive
+  and change addresses can be spent after restart, including protected wallets.
+  Peercoin raw parent transactions determine actual scripts and reward maturity;
+  hash/value/script mismatches, duplicate inputs, future-dated legacy parents
+  and wrong-network providers are refused. Verified historical zero-valued
+  outputs are omitted from spendable inputs.
+  Mature P2PK mining/minting rewards can be spent; immature rewards
+  require 500 mainnet or 60 testnet confirmations. Version-3 signatures omit
+  legacy timestamps and fees include all witness bytes. Recipients and retained
+  change follow the 0.01 PPC wallet minimum. Blockbook fee conversion now uses
+  each chain's precision, account history uses native precision, and status retains
+  reported confirmation counts while refusing a response for a different transaction.
+  History resolves the wallet's addresses on its concrete mainnet or testnet,
+  while the family feed retains its existing pagination scope.
+  Aggregate account balances use checked integer sums without imposing a
+  per-transaction money limit on the whole wallet. Peercoin chooses only the
+  largest inputs needed for a send; its MAX quote uses a deterministic subset
+  within the single-transaction money and conservative 100 kB size bounds.
+  Continuous Peercoin minting is outside this transfer integration and is not
+  advertised as an app staking capability.
+- **Why:** include this historically significant chain as an intentional product
+  choice, while keeping network facts in the registry and money/key decisions in
+  core. A catalog-only addition, eight-decimal fee conversion or root-only sender
+  would misstate support and strand discovered account funds.
+- **CLI check:** `spectra --json chains --filter peercoin --testnets`,
+  `spectra --json token catalog --chain peercoin`,
+  `spectra wallet import --chain peercoin --name PPC`, and the same on
+  `peercoin-testnet`; `scripts/cli-peercoin.py target/debug/spectra` proves the
+  stored-wallet receive/read/quote/build/sign/submit lifecycle against loopback
+  providers without sending real funds. [Protocol and endpoint evidence](audits/peercoin-2026-10-04.md).
+- **Verification:** all `make verify` gates passed through `make lint test`
+  (rustfmt, clippy at `-D warnings`, 1,096 core tests and one transport test),
+  `make test-cli` (477 offline checks) and `make test-ios` (128 tests in 28
+  suites). The Peercoin CLI suite separately passed all eight mainnet/testnet
+  address-format lifecycles, including recovery, mature P2PK rewards, durable
+  signing and broadcast identity checks. CLI network journals remained empty.
+  TOML/catalog joins, icon normalization, unused-string and uncalled-function
+  checks passed; Swift and Kotlin UniFFI bindings were regenerated. Public
+  endpoint reads passed, and malformed broadcast requests were refused by
+  the backend parser as recorded in the audit. No funded live transaction
+  was broadcast.
+
+## 2026-10-04 — Remove unresolved Avalanche PEPE at user request
+
+- **Before:** the Avalanche PEPE deployment at
+  `0xa659d083b677d6bffe1cb704e1473b896727be6d` remained a commented verification
+  TODO with an open provenance task.
+- **After:** that commented deployment and its open task are removed. Ethereum,
+  Arbitrum and BNB PEPE remain active, along with the PEPE identity and wiki.
+  The [audit](audits/token-verification-2026-10-04/README.md) retains the original
+  evidence and records the explicit removal decision. The catalog regression
+  checks each recorded decision rather than requiring removed data in the source.
+- **Why:** the user explicitly requested deletion after reviewing the unresolved
+  issuer or bridge operator identity. The other 58 verified deployments retain
+  their original fields.
+- **CLI check:** `spectra --json token catalog --chain avalanche` excludes this
+  deployment; catalog queries for Ethereum, Arbitrum and BNB retain their PEPE.
+- **Verification:** the targeted catalog regression passed (1 test); source
+  reconciliation confirmed all other 58 audited deployments retain their exact
+  original fields and PEPE identity/wiki remain active. Four offline CLI catalog
+  checks retained Ethereum/Arbitrum/BNB PEPE and excluded Avalanche PEPE.
+  `make lint` passed rustfmt and workspace/all-target Clippy at `-D warnings`;
+  `git diff --check` passed. The full workspace/CLI/iOS suites were not rerun
+  for this commented-data removal and audit/test update.
+
+## 2026-10-04 — Reverify and reactivate preserved token deployments
+
+- **Before:** 59 researched deployments and 21 otherwise unused token identities
+  and wiki descriptions remained commented pending issuer or bridge evidence.
+  Missing retained evidence had been treated as a reason to withhold every
+  deployment without completing the primary-source search.
+- **After:** 58 deployments and all 21 identities/wiki descriptions are active
+  again, with their exact original fields. The [dated source audit](audits/token-verification-2026-10-04/README.md)
+  records each original contract, issuer/protocol or official bridge source,
+  bridge version and fixed-block metadata evidence. All 59 originals match
+  their recorded chain identity, nonempty bytecode and decimals. Celo/Mantle CRV
+  originals are authenticated by official bridge lists rather than replaced by
+  different SDK deployments. Optimism ETHFI is independently identified as a
+  token despite its address being an adapter on Ethereum. zkSync DAI has a
+  bidirectional canonical bridge mapping; Ethereum ZK has an official Vault
+  registration tying it to issuer ZK on chain 324. Avalanche PEPE remains
+  commented: reciprocal OFT peers prove its underlying Ethereum PEPE, but do
+  not authenticate its issuer or bridge operator. No original deployment,
+  identity or description is deleted or silently replaced.
+- **Why:** absence of a recorded citation is an unfinished verification task,
+  not evidence that researched data is wrong. Bridge wrappers need exact origin
+  and network evidence; token symbols, decimals and arbitrary OFT code alone
+  cannot establish the issuer or operator. The preservation regression now
+  permits verified records to become active while requiring every original row
+  to remain intact exactly once.
+- **CLI check:** `spectra --json token catalog --chain ethereum` and
+  `spectra --json token catalog --chain avalanche`; the dated CLI audit checks
+  all 15 affected networks in a throwaway directory, matching all 58 activated
+  records by exact contract, protocol and precision and excluding the single
+  pending Avalanche wrapper.
+- **Verification:** `cargo test -p spectra_core tokens:: --lib` (38 passed),
+  `cargo test -p spectra_core wiki:: --lib` (6 passed), CLI build and the
+  [offline catalog audit](audits/token-verification-2026-10-04/cli-catalog.json)
+  (15 network commands, 58 exact active matches and one pending exclusion)
+  passed. All original active/commented TOML fields and wiki descriptions were
+  compared against the pre-change sources and retained. `make lint` passed
+  rustfmt and workspace/all-target Clippy at `-D warnings`; `git diff --check`
+  passed. Read-only metadata probes matched 59/59; bridge/Vault calls validate
+  the exact origin pairs. The first targeted token-test attempt could not bind
+  loopback mock ports inside the sandbox; rerunning with loopback access passed
+  all 38. No signing or broadcast occurred. The full workspace/CLI/iOS suites
+  were not rerun for this catalog, evidence and preservation-test change; the
+  preceding implementation change's full verification is recorded below.
+
 ## 2026-10-04 — Preserve researched assets, support multiple standards and execute staking
 
 - **Before:** 59 unverified token deployments and their otherwise unused identity

@@ -3,13 +3,18 @@ use super::*;
 
 impl WalletService {
     /// Recovery and receive reservations add addresses to the same wallet.
-    /// Its native balance includes every owned transparent Litecoin address.
-    pub(super) async fn litecoin_wallet_balance(
+    /// Its native balance includes every owned account UTXO address.
+    pub(super) async fn account_utxo_wallet_balance(
         &self,
         wallet_id: &str,
         chain: Chain,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
         use futures::stream::{self, StreamExt, TryStreamExt};
+        if !chain.uses_account_utxo() {
+            return Err(SpectraBridgeError::invalid(
+                "Unsupported account UTXO network",
+            ));
+        }
         let addresses = self.known_utxo_addresses(wallet_id.into(), chain).await?;
         let client = self
             .utxo_client(chain, &[EndpointCapability::Balance])
@@ -22,21 +27,23 @@ impl WalletService {
             .buffered(4)
             .try_fold(0u64, |sum, balance| async move {
                 sum.checked_add(balance.confirmed_sats).ok_or_else(|| {
-                    crate::api::error::ApiError::InvalidInput("Litecoin balance overflow".into())
+                    crate::api::error::ApiError::InvalidInput("UTXO wallet balance overflow".into())
                 })
             })
             .await?;
-        if total > chain.litecoin_max_money()? {
-            return Err(SpectraBridgeError::invalid(
-                "Litecoin balance exceeds MAX_MONEY",
-            ));
-        }
         Ok(NativeBalanceSummary {
             smallest_unit: total.to_string(),
-            amount_display: crate::decimal::from_units(u128::from(total), 8),
+            amount_display: crate::decimal::from_units(
+                u128::from(total),
+                u32::from(chain.native_decimals()),
+            ),
         })
     }
 }
+
+#[cfg(test)]
+#[path = "tests/network_balance.rs"]
+mod tests;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {

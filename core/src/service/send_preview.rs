@@ -696,7 +696,7 @@ impl WalletService {
                 ));
             }
         }
-        let sources = self.litecoin_send_sources(wallet_id, chain).await?;
+        let sources = self.account_utxo_send_sources(wallet_id, chain).await?;
         let sender = self
             .wallet_state
             .read()

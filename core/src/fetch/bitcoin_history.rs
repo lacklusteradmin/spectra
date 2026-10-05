@@ -8,6 +8,7 @@
 use crate::api::utxo::UtxoHistoryEntry;
 use crate::api::{HistoryPage, error::ApiError};
 use crate::fetch::history::CoreBitcoinHistorySnapshot;
+use crate::registry::Chain;
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
@@ -24,7 +25,7 @@ struct AddressCursor {
 
 #[derive(Serialize, Deserialize)]
 struct Cursor {
-    network: String,
+    network: Chain,
     sources: Vec<AddressCursor>,
     ready: VecDeque<CoreBitcoinHistorySnapshot>,
 }
@@ -91,7 +92,7 @@ fn accept_page(
 }
 
 pub(crate) async fn page<F, Fut>(
-    network: &str,
+    network: Chain,
     addresses: &[String],
     previous: Option<&str>,
     limit: usize,
@@ -124,7 +125,7 @@ where
             saved
         }
         None => Cursor {
-            network: network.to_string(),
+            network,
             ready: VecDeque::new(),
             sources: addresses
                 .iter()
@@ -200,7 +201,10 @@ where
             .filter(|(net, _)| *net != 0)
             .map(|(net, row)| CoreBitcoinHistorySnapshot {
                 txid: row.txid,
-                amount_btc: crate::decimal::from_units(net.unsigned_abs(), 8),
+                amount_btc: crate::decimal::from_units(
+                    net.unsigned_abs(),
+                    u32::from(network.native_decimals()),
+                ),
                 kind: if net > 0 { "receive" } else { "send" }.into(),
                 status: if row.confirmed {
                     "confirmed"
@@ -264,7 +268,7 @@ mod tests {
             let calls = std::sync::Mutex::new(Vec::new());
             for _ in 0..10 {
                 let result = page(
-                    "bitcoin",
+                    Chain::Bitcoin,
                     &["a".into()],
                     cursor.as_deref(),
                     10,
@@ -291,6 +295,61 @@ mod tests {
             assert_eq!(calls.len(), count as usize / 25 + 1);
         }
     }
+
+    #[tokio::test]
+    async fn peercoin_account_history_uses_six_decimal_units_and_network_bound_cursors() {
+        for chain in [Chain::Peercoin, Chain::PeercoinTestnet] {
+            let mut a = rows(2);
+            a[0].net_sats = 1_123_456;
+            a[1].net_sats = -500_000;
+            let b = a
+                .iter()
+                .map(|row| {
+                    let mut row = row.clone();
+                    row.net_sats = 100_000;
+                    row
+                })
+                .collect::<Vec<_>>();
+            let fetch = |address: String, after| {
+                std::future::ready(Ok(provider(
+                    if address == "a" { a.clone() } else { b.clone() },
+                    after,
+                )))
+            };
+            let first = page(chain, &["a".into(), "b".into()], None, 1, fetch)
+                .await
+                .unwrap();
+            assert_eq!(first.items[0].amount_btc, "1.223456");
+            assert_eq!(first.items[0].kind, "receive");
+            let next = page(
+                chain,
+                &["a".into(), "b".into()],
+                first.next_cursor.as_deref(),
+                1,
+                fetch,
+            )
+            .await
+            .unwrap();
+            assert_eq!(next.items[0].amount_btc, "0.4");
+            assert_eq!(next.items[0].kind, "send");
+            let other = if chain.is_testnet() {
+                Chain::Peercoin
+            } else {
+                Chain::PeercoinTestnet
+            };
+            assert!(
+                page(
+                    other,
+                    &["a".into(), "b".into()],
+                    first.next_cursor.as_deref(),
+                    1,
+                    fetch
+                )
+                .await
+                .is_err()
+            );
+        }
+    }
     #[tokio::test]
     async fn hd_cohort_crossing_a_provider_page_is_merged_before_ui_pagination() {
         let mut a = rows(30);
@@ -307,7 +366,7 @@ mod tests {
         let mut items = Vec::new();
         loop {
             let p = page(
-                "bitcoin",
+                Chain::Bitcoin,
                 &["a".into(), "b".into()],
                 cursor.as_deref(),
                 10,
@@ -339,14 +398,14 @@ mod tests {
     }
     #[tokio::test]
     async fn failures_and_repeated_cursors_do_not_claim_exhaustion() {
-        let p = page("bitcoin", &["a".into()], None, 10, |_, after| {
+        let p = page(Chain::Bitcoin, &["a".into()], None, 10, |_, after| {
             std::future::ready(Ok(provider(rows(50), after)))
         })
         .await
         .unwrap();
         assert!(
             page(
-                "bitcoin-testnet-4",
+                Chain::BitcoinTestnet4,
                 &["a".into()],
                 p.next_cursor.as_deref(),
                 10,
@@ -360,7 +419,7 @@ mod tests {
         );
         assert!(
             page(
-                "bitcoin",
+                Chain::Bitcoin,
                 &["a".into()],
                 p.next_cursor.as_deref(),
                 100,
@@ -370,7 +429,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            page("bitcoin", &["a".into()], None, 100, |_, _| {
+            page(Chain::Bitcoin, &["a".into()], None, 100, |_, _| {
                 std::future::ready(Ok(provider(rows(25), None)))
             })
             .await

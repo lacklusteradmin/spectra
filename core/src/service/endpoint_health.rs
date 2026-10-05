@@ -196,6 +196,18 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
 }
 
 pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool, String) {
+    if record.api == EndpointApi::Blockbook && chain.mainnet_counterpart() == Chain::Peercoin {
+        return match crate::api::blockbook::BlockbookClient::new(
+            std::sync::Arc::new(vec![record.endpoint.clone()]),
+            chain,
+        )
+        .verify_peercoin_network()
+        .await
+        {
+            Ok(()) => (true, true, "Peercoin network and precision verified".into()),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
     if record.api == EndpointApi::AptosIndexer {
         let Some(expected) = chain.aptos_chain_id() else {
             return (

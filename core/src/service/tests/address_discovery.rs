@@ -12,7 +12,7 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
     for chain in Chain::all().filter(|c| c.supports_deep_utxo_discovery()) {
         for purpose in [44, 49, 84, 86] {
             if match chain.mainnet_counterpart() {
-                Chain::Bitcoin => false,
+                Chain::Bitcoin | Chain::Peercoin => false,
                 Chain::Litecoin => purpose == 86,
                 _ => purpose != 44,
             } {
@@ -569,7 +569,7 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
 }
 
 #[test]
-fn litecoin_public_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
+fn public_utxo_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
     use crate::derivation::bitcoin::{
         ExtendedPublicKey, XPUB_VERSION_MAINNET, XPUB_VERSION_TESTNET,
     };
@@ -577,14 +577,19 @@ fn litecoin_public_accounts_match_seed_derivation_and_refuse_mismatched_identity
         passphrase: Some("public account fixture".into()),
         ..Default::default()
     };
-    for chain in [Chain::Litecoin, Chain::LitecoinTestnet] {
-        let coin = if chain.is_testnet() { 1 } else { 2 };
+    for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
+        let default = crate::derivation::path::default_path_from_catalog(chain).unwrap();
+        let coin = crate::derivation::bitcoin::parse_bip32_path(&default).unwrap()[1]
+            - crate::derivation::primitives::HARDENED_OFFSET;
         let version = if chain.is_testnet() {
             XPUB_VERSION_TESTNET
         } else {
             XPUB_VERSION_MAINNET
         };
-        for purpose in [44, 49, 84] {
+        for purpose in [44, 49, 84, 86] {
+            if purpose == 86 && chain.mainnet_counterpart() != Chain::Peercoin {
+                continue;
+            }
             let base = format!("m/{purpose}'/{coin}'/2'/1/9");
             let seed_context =
                 UtxoDerivation::with_overrides(chain, SEED, base.clone(), &overrides).unwrap();
@@ -637,9 +642,11 @@ fn litecoin_public_accounts_match_seed_derivation_and_refuse_mismatched_identity
 }
 
 #[tokio::test]
-async fn protected_litecoin_public_context_receives_after_restart_without_opening_secrets() {
-    for chain in [Chain::Litecoin, Chain::LitecoinTestnet] {
-        let coin = if chain.is_testnet() { 1 } else { 2 };
+async fn protected_account_utxo_public_context_receives_after_restart_without_opening_secrets() {
+    for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
+        let default = crate::derivation::path::default_path_from_catalog(chain).unwrap();
+        let coin = crate::derivation::bitcoin::parse_bip32_path(&default).unwrap()[1]
+            - crate::derivation::primitives::HARDENED_OFFSET;
         let base = format!("m/84'/{coin}'/2'/0/0");
         let context = UtxoDerivation::new(chain, SEED, base.clone()).unwrap();
         let root = context.derive(0).unwrap().0;
@@ -652,7 +659,7 @@ async fn protected_litecoin_public_context_receives_after_restart_without_openin
             Some(UtxoDerivation::account_xpub(chain, SEED, &base, &Default::default()).unwrap());
         let database = std::env::temp_dir()
             .join(format!(
-                "ltc-public-receive-{}.sqlite",
+                "account-utxo-public-receive-{}.sqlite",
                 crate::store::new_event_id()
             ))
             .to_string_lossy()

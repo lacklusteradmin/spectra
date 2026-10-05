@@ -127,7 +127,13 @@ impl AppStateChanges {
 
     pub(crate) fn save(self, database: &WalletDatabase) -> Result<(), DbError> {
         with_conn(database, |conn| {
-            let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+            // The secret-deletion guard reads before writing wallet rows.
+            // Serialize writers before establishing that read snapshot.
+            let tx = rusqlite::Transaction::new_unchecked(
+                conn,
+                rusqlite::TransactionBehavior::Immediate,
+            )
+            .map_err(DbError::from)?;
             let updated_at = now_secs();
             for (_, wallet, _) in &self.wallets {
                 let pending: bool = tx

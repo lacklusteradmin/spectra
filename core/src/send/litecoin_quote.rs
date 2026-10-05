@@ -3,11 +3,11 @@ use crate::derivation::utxo_address::parse_utxo_address;
 use crate::registry::Chain;
 use crate::send::error::SendError;
 use crate::send::preview_types::BitcoinSendPreview;
-use crate::send::stages::LitecoinPreparedInput;
+use crate::send::stages::UtxoPreparedInput;
 
 pub(crate) fn quote_inputs(
     chain: Chain,
-    inputs: &[LitecoinPreparedInput],
+    inputs: &[UtxoPreparedInput],
     change_script: &[u8],
     destination: &str,
     amount: u64,
@@ -77,13 +77,13 @@ mod tests {
     use super::*;
     use crate::derivation::litecoin::encode_litecoin_address;
     use crate::derivation::types::BitcoinScriptType;
-    use crate::send::stages::LitecoinSendSource;
+    use crate::send::stages::UtxoSendSource;
 
     fn prepared_input(
         chain: Chain,
         script_type: BitcoinScriptType,
         value: u64,
-    ) -> LitecoinPreparedInput {
+    ) -> UtxoPreparedInput {
         let secp = secp256k1::Secp256k1::new();
         let public_key = secp256k1::PublicKey::from_secret_key(
             &secp,
@@ -91,8 +91,8 @@ mod tests {
         );
         let address = encode_litecoin_address(chain, script_type, &public_key).unwrap();
         let script = parse_utxo_address(chain, &address).unwrap().script_pubkey();
-        LitecoinPreparedInput {
-            source: LitecoinSendSource {
+        UtxoPreparedInput {
+            source: UtxoSendSource {
                 address,
                 derivation_path: None,
                 script_pubkey: script.clone(),

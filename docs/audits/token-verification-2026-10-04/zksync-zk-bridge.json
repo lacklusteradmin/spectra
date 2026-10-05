@@ -1,0 +1,177 @@
+{
+  "checked_at_utc": "2026-10-05T00:07:40.650684+00:00",
+  "token_id": "zksync",
+  "chain_id": "ethereum",
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "observed_chain_id": 1,
+  "block_tag": "0x18e9899",
+  "wrapper": "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5",
+  "issuer_origin_token": "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e",
+  "issuer_origin_chain_id": 324,
+  "official_native_token_vault": "0xbed1eb542f9a5aa6419ff3deb921a372681111f6",
+  "source_urls": [
+    "https://docs.zksync.io/zksync-protocol/contracts/l1-contracts/zk-chain-addresses",
+    "https://docs.zknation.io/zk-token/zk-token"
+  ],
+  "wrapper_verified_source": "https://eth.blockscout.com/api/v2/smart-contracts/0xEA3c8d61A4B5476310975C13964a6Da6eF1dED49",
+  "vault_verified_source": "https://eth.blockscout.com/api/v2/smart-contracts/0x8E1C5A8c5d8C33ed0eC756d6f4006f2D875bA083",
+  "wrapper_calls": [
+    {
+      "signature": "originToken()",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5",
+            "data": "0x13096a41"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "0x0000000000000000000000005a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
+      }
+    },
+    {
+      "signature": "nativeTokenVault()",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5",
+            "data": "0x64e130cf"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": "0x000000000000000000000000bed1eb542f9a5aa6419ff3deb921a372681111f6"
+      }
+    },
+    {
+      "signature": "assetId()",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5",
+            "data": "0x44de240a"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": "0x83e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a"
+      }
+    }
+  ],
+  "vault_calls": [
+    {
+      "function": "originChainId",
+      "args": [
+        "0x83e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a"
+      ],
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0xbed1eb542f9a5aa6419ff3deb921a372681111f6",
+            "data": "0x5f3455b583e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "0x0000000000000000000000000000000000000000000000000000000000000144"
+      }
+    },
+    {
+      "function": "tokenAddress",
+      "args": [
+        "0x83e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a"
+      ],
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0xbed1eb542f9a5aa6419ff3deb921a372681111f6",
+            "data": "0x97bb3ce983e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": "0x00000000000000000000000066a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
+      }
+    },
+    {
+      "function": "assetId",
+      "args": [
+        "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
+      ],
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0xbed1eb542f9a5aa6419ff3deb921a372681111f6",
+            "data": "0xfd3f60df00000000000000000000000066a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": "0x83e2fbc0a739b3c765de4c2b4bf8072a71ea8fbb09c8cf579c71425d8bc8804a"
+      }
+    },
+    {
+      "function": "calculateCreate2TokenAddress",
+      "args": [
+        324,
+        "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
+      ],
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0xbed1eb542f9a5aa6419ff3deb921a372681111f6",
+            "data": "0xc487412c00000000000000000000000000000000000000000000000000000000000001440000000000000000000000005a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
+          },
+          "0x18e9899"
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": "0x000000000000000000000000f31b60c7a5c748c5cf84dd4de0eabbfc26d1b197"
+      }
+    }
+  ],
+  "conclusion": "Issuer originToken, official NativeTokenVault, matching assetId, origin chain 324 and Vault tokenAddress establish the saved Ethereum wrapper as canonical bridged ZK. This is an on-chain proof combined with issuer and protocol documentation, not an explorer ticker or market-data assumption.",
+  "factory_note": "The current calculateCreate2TokenAddress result is a different address. It is not used as identity proof: the official Vault registered tokenAddress and the deployed wrapper originToken/assetId are the authoritative pair for this existing deployment."
+}

@@ -376,7 +376,7 @@ impl WalletService {
     /// The public branches and base path used to derive UTXO addresses,
     /// resolved once so a scan does not redo it per index.
     ///
-    /// Litecoin requires its persisted account public key for mnemonic wallets.
+    /// Account UTXO wallets require their persisted public key for mnemonic wallets.
     /// Other chains return `None` when the phrase is unreadable without a password.
     pub(crate) async fn utxo_derivation_context(
         &self,
@@ -410,7 +410,7 @@ impl WalletService {
         let chain_id = chain;
         let resolved = crate::derivation::path::resolve_derivation_path(chain_id, raw_path)?;
 
-        if chain.mainnet_counterpart() == Chain::Litecoin {
+        if chain.uses_account_utxo() {
             if !matches!(
                 wallet.signing,
                 crate::store::state::WalletSigning::SeedPhrase { .. }
@@ -423,11 +423,11 @@ impl WalletService {
                 .filter(|value| !value.trim().is_empty())
                 .ok_or_else(|| {
                     SpectraBridgeError::invalid(
-                        "Litecoin mnemonic wallet is missing its account public key",
+                        "UTXO mnemonic wallet is missing its account public key",
                     )
                 })?;
             let root = wallet.address_on(chain).ok_or_else(|| {
-                SpectraBridgeError::invalid("Litecoin mnemonic wallet is missing its root address")
+                SpectraBridgeError::invalid("UTXO mnemonic wallet is missing its root address")
             })?;
             return UtxoDerivation::from_account_xpub(chain, xpub, resolved, root).map(Some);
         }
@@ -567,9 +567,9 @@ impl UtxoDerivation {
         base_path: String,
         root_address: &str,
     ) -> Result<Self, SpectraBridgeError> {
-        if chain.mainnet_counterpart() != Chain::Litecoin {
+        if !chain.uses_account_utxo() {
             return Err(SpectraBridgeError::invalid(
-                "expected a Litecoin public account",
+                "expected a public account UTXO network",
             ));
         }
         let indices = Self::path_indices(chain, &base_path)?;
@@ -582,7 +582,7 @@ impl UtxoDerivation {
         };
         if version != expected_version || account.depth != 3 || account.child_number != indices[2] {
             return Err(SpectraBridgeError::invalid(
-                "Litecoin account public key has the wrong network, depth or account",
+                "UTXO account public key has the wrong network, depth or account",
             ));
         }
         let secp = secp256k1::Secp256k1::new();
@@ -601,7 +601,7 @@ impl UtxoDerivation {
             != crate::derivation::utxo_address::parse_utxo_address(chain, root_address)?
         {
             return Err(SpectraBridgeError::invalid(
-                "Litecoin account public key does not derive the stored root address",
+                "UTXO account public key does not derive the stored root address",
             ));
         }
         Ok(context)
@@ -665,7 +665,7 @@ impl WalletService {
     /// which is why the reservation floor is 1.
     ///
     /// `None` for a chain without the walk or a wallet without readable HD
-    /// material. Litecoin mnemonic wallets use their stored public account;
+    /// material. UTXO mnemonic wallets use their stored public account;
     /// missing or mismatched public keys fail before reserving any index.
     pub async fn utxo_receive_address(
         &self,

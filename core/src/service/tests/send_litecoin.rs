@@ -2,6 +2,7 @@ use super::*;
 use crate::send::SendExecutionRequest;
 use crate::send::stages::SendStage;
 use crate::store::secret_backends::InMemorySecretStore;
+use crate::store::state::{WalletSigning, WalletState};
 use crate::store::wallet_secrets::store_seed_phrase;
 use serde_json::json;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -98,33 +99,6 @@ fn litecoin_fee_rate_uses_exact_checked_rounding() {
     );
     for rate in ["0", "-1", "NaN", "1e3", "18446744073709551616"] {
         assert!(litecoin_fee_for_vsize(rate, 2).is_err(), "{rate}");
-    }
-}
-
-#[test]
-fn litecoin_source_paths_obey_the_selected_network_catalog() {
-    for (chain, coin) in [(Chain::Litecoin, 2), (Chain::LitecoinTestnet, 1)] {
-        for purpose in [44, 49, 84] {
-            for branch in [0, 1] {
-                assert!(
-                    litecoin_account_path(chain, &format!("m/{purpose}'/{coin}'/3'/{branch}/4"))
-                        .is_ok()
-                );
-            }
-        }
-        for path in [
-            "m/84'/0'/3'/0/4".to_string(),
-            format!("m/84'/{coin}'/3'/0'/4"),
-            format!("m/84'/{coin}'/3'/0/4'"),
-            format!("m/84'/{coin}'/3'/2/4"),
-            format!("m/86'/{coin}'/3'/0/4"),
-            format!("m/84'/{coin}'/3/0/4"),
-        ] {
-            assert!(
-                litecoin_account_path(chain, &path).is_err(),
-                "{chain:?} {path}"
-            );
-        }
     }
 }
 
@@ -357,7 +331,7 @@ async fn litecoin_private_key_wallet_uses_its_actual_network_and_needs_no_path()
                 .unwrap(),
             derived
         );
-        let sources = wallet.litecoin_send_sources("w", chain).await.unwrap();
+        let sources = wallet.account_utxo_send_sources("w", chain).await.unwrap();
         assert_eq!(sources.len(), 1);
         assert!(sources[0].derivation_path.is_none());
         let built = wallet

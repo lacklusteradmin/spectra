@@ -59,6 +59,7 @@ check "network-correct raw keys and watch imports" 0 python3 "$(dirname "$0")/cl
 check "UTXO recipients preserve output script types" 0 python3 "$(dirname "$0")/cli-send-utxo.py" "$BIN"
 check "complete mined OP Stack fees and durable outcomes" 0 python3 "$(dirname "$0")/cli-receipt-fees.py" "$BIN"
 check "Litecoin SegWit recovery and durable signing" 0 python3 "$(dirname "$0")/cli-litecoin.py" "$BIN"
+check "Peercoin recovery, mature rewards and durable signing" 0 python3 "$(dirname "$0")/cli-peercoin.py" "$BIN"
 check "XRP signing and protocol validation" 0 python3 "$(dirname "$0")/cli-send-xrp.py" "$BIN"
 check "wallet deletion preserves keys and retries cleanup" 0 python3 "$(dirname "$0")/cli-wallet-deletion.py" "$BIN"
 check "TRC-10 discovery, signing and execution receipts" 0 python3 -B "$(dirname "$0")/cli-trc10.py" "$BIN"

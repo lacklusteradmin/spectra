@@ -420,7 +420,7 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let chain = wallet.chain_id;
     let service = service_for_chain(ctx, chain, &[EndpointCapability::Balance])?;
 
-    let summary = if chain.mainnet_counterpart() == Chain::Litecoin {
+    let summary = if chain.uses_account_utxo() {
         let updated = ctx
             .rt
             .block_on(service.refresh_wallet_balances(wallet.id.clone()))?;

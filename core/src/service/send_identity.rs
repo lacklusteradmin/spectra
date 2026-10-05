@@ -8,7 +8,7 @@ pub(super) struct ResolvedSendIdentity {
     pub from_address: String,
     pub private_key_hex: Zeroizing<String>,
     pub public_key_hex: Option<String>,
-    pub litecoin_sources: Vec<super::send_stage_litecoin::LitecoinSigningSource>,
+    pub account_utxo_sources: Vec<super::send_utxo_sources::UtxoSigningSource>,
 }
 
 fn invalid(message: &str) -> SpectraBridgeError {
@@ -66,10 +66,15 @@ impl WalletService {
         let secrets = self.secrets()?;
         let material = load_signing_material(&*secrets, wallet_id, password)
             .map_err(|error| invalid(&error.to_string()))?;
-        let litecoin_sources = if chain.mainnet_counterpart() == Chain::Litecoin {
+        let account_utxo_sources = if chain.uses_account_utxo() {
             sensitive_overrides.0.validate_for_chain(chain)?;
-            self.resolve_litecoin_signing_sources(&wallet, chain, &material, &sensitive_overrides)
-                .await?
+            self.resolve_account_utxo_signing_sources(
+                &wallet,
+                chain,
+                &material,
+                &sensitive_overrides,
+            )
+            .await?
         } else {
             Vec::new()
         };
@@ -154,7 +159,7 @@ impl WalletService {
             from_address,
             private_key_hex,
             public_key_hex: derived.public_key_hex,
-            litecoin_sources,
+            account_utxo_sources,
         })
     }
 }

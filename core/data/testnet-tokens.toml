@@ -825,3 +825,19 @@ kind = "token"
 standard = "SPL"
 contract = "CXk2AMBfi3TwaEL2468s6zP8xq9NxTXjp9gjMgzeUynM"
 decimals = 6
+
+[[tokens]]
+id = "peercoin-testnet"
+symbol = "tPPC"
+name = "Test Peercoin"
+coingecko_id = ""
+coinpaprika_id = ""
+color = "green"
+artwork_name = "peercoin"
+tags = []
+
+[[deployments]]
+token_id = "peercoin-testnet"
+chain_id = "peercoin-testnet"
+kind = "native"
+decimals = 6

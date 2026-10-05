@@ -25,6 +25,7 @@ pub mod litecoin;
 pub mod monero;
 pub mod near;
 pub mod path;
+pub mod peercoin;
 pub mod polkadot;
 pub mod primitives;
 mod private_key;
