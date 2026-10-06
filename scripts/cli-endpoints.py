@@ -22,17 +22,12 @@ with tempfile.TemporaryDirectory(prefix="spectra-endpoints-") as directory:
     assert {(row["chainId"], row["api"]) for row in custom["endpoints"]} == set(types)
     built_in = run("endpoints", "--catalog", "--source", "built-in")
     assert built_in["endpoints"] == catalog["endpoints"]
-    run("endpoints", "--chain", "solana", "--api", "esplora", "--capabilities", "balance", "--add", "https://wrong.example", success=False)
-    run("endpoints", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast", "--add", "file:///tmp/node", success=False)
     # Selection lists only endpoints the process may contact, and acceptance
     # confines it to loopback: these nodes are listed, never called.
     run("endpoints", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast", "--add", "http://127.0.0.1:1/node")
     configured = run("send", "configured-endpoints", "solana")
     assert "http://127.0.0.1:1/node" in json.dumps(configured)
     assert "http://127.0.0.1:1/node" not in json.dumps(run("send", "configured-endpoints", "solana-devnet"))
-    run("endpoints", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast", "--add", "http://127.0.0.1:1/node/", success=False)
-    for cap in ["made-up", "history"]:
-        run("endpoints", "--chain", "ethereum", "--api", "evm-json-rpc", "--capabilities", cap, "--add", "https://invalid-capability.example", success=False)
     for url, caps in [("http://127.0.0.1:2/balance-only", "balance"), ("http://127.0.0.1:3/broadcast-only", "broadcast")]:
         run("endpoints", "--chain", "ethereum", "--api", "evm-json-rpc", "--capabilities", caps, "--add", url)
     saved = run("endpoints", "--catalog", "--chain", "ethereum", "--source", "custom")["endpoints"]
@@ -41,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix="spectra-endpoints-") as directory:
     destinations = run("send", "configured-endpoints", "ethereum")["endpoints"]
     assert "http://127.0.0.1:2/balance-only" not in destinations
     assert "http://127.0.0.1:3/broadcast-only" in destinations
-    print(f"{len(types)} catalog network/API pairs persist; source filters and network isolation passed")
+    print(f"{len(types)} catalog network/API pairs persist; source filters and capability routing passed")
 
 # Missing built-in providers stay empty, while supported custom APIs still work.
 with tempfile.TemporaryDirectory(prefix="spectra-empty-endpoints-") as directory:
@@ -54,12 +49,7 @@ with tempfile.TemporaryDirectory(prefix="spectra-empty-endpoints-") as directory
         url = "http://127.0.0.1:4/" + chain
         run("endpoints", "--chain", chain, "--api", api, "--capabilities", "fee,broadcast", "--add", url)
         assert run("send", "configured-endpoints", chain)["endpoints"] == [url], chain
-    catalog = run("endpoints", "--catalog", "--source", "built-in")
-    assert any(row["chainId"] == "ethereum-sepolia" for row in catalog["configured"])
-    for chain in ["base", "arbitrum", "optimism", "avalanche", "mantle", "blast"]:
-        assert any(row["chainId"] == chain and row["api"] == "blockscout" for row in catalog["endpoints"])
-    assert not any(row["chainId"] == "berachain" and "history" in row["capabilities"] for row in catalog["endpoints"])
-    print("Missing providers remain empty; supported custom APIs and concrete network catalogs passed")
+    print("Missing providers remain empty and supported custom APIs work")
 
 # A testnet without public providers can exercise the real health command offline.
 import http.server

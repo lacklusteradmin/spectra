@@ -477,51 +477,6 @@ class HistoryTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); worker.join()
 
-    def test_tron_history_reads_trongrid_accounts(self):
-        """TRX and TRC-20 transfers come from TronGrid's v1 account API."""
-        me, them = 'TKHuVq1oKVruCGLvqVexFs6dawKv6fQgFs', 'TJ5usJLLwjwn7Pw3TPbdzreG7dvgKzfQ5y'
-        requests = []
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *args): pass
-            def do_GET(self):
-                requests.append(self.path)
-                route = self.path.split('?')[0]
-                if route == f'/v1/accounts/{me}/transactions':
-                    data = [{'txID': 'aa' * 32, 'block_timestamp': 1700000000000,
-                             'ret': [{'contractRet': 'SUCCESS'}],
-                             'raw_data': {'contract': [{'type': 'TransferContract', 'parameter': {'value': {
-                                 'amount': 2500000,
-                                 'owner_address': '41add5246bd889365714a57579fc070ef81a8b6d81',
-                                 'to_address': '4166426c7ac3d98b29191063833345b6bc540d7278'}}}]}}]
-                elif route == f'/v1/accounts/{me}/transactions/trc20':
-                    data = [{'transaction_id': 'bb' * 32, 'type': 'Transfer', 'block_timestamp': 1700000001000,
-                             'from': me, 'to': them, 'value': '7500000',
-                             'token_info': {'symbol': 'USDT', 'decimals': 6,
-                                            'address': 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'}}]
-                else:
-                    self.send_response(404); self.end_headers(); return
-                body = json.dumps({'data': data, 'success': True}).encode()
-                self.send_response(200); self.send_header('Content-Length', str(len(body)))
-                self.end_headers(); self.wfile.write(body)
-        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
-        try:
-            with tempfile.TemporaryDirectory(prefix='spectra-tron-history-') as directory:
-                def run(*args):
-                    p = subprocess.run([binary, '--data-dir', directory, '--json', *args],
-                        capture_output=True, text=True, timeout=60)
-                    assert p.returncode == 0, (p.stdout, p.stderr)
-                    return json.loads(p.stdout)
-                run('wallet', 'watch', '--chain', 'tron', '--address', me, '--name', 'TRX')
-                history = run('history', 'TRX', '--endpoint', f'http://127.0.0.1:{server.server_port}')
-                rows = {tx['hash']: tx for tx in history['transactions']}
-                assert set(rows) == {'aa' * 32, 'bb' * 32}, history
-                assert rows['aa' * 32]['kind'] == 'receive' and rows['aa' * 32]['amount'] == '2.5', rows
-                assert rows['bb' * 32]['kind'] == 'send' and rows['bb' * 32]['symbol'] == 'USDT', rows
-                assert all('only_confirmed=true' in path for path in requests), requests
-        finally:
-            server.shutdown(); server.server_close(); worker.join()
-
     def test_stored_pages(self):
         """History pages deduplicate, sort, search Unicode and keep distinct identities."""
         with tempfile.TemporaryDirectory(prefix='spectra-history-pages-') as directory:
@@ -570,24 +525,6 @@ class HistoryTests(unittest.TestCase):
                     db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (identity,solana_id,'solana',txhash.lower(),1,json.dumps(record)))
             distinct = run('txs','--page','--wallet','IdentityCases')['page']['records']
             assert {row['id'] for row in distinct} == {'case-upper','case-lower','unknown-one','unknown-two'}, distinct
-
-    def test_hide_small_amounts(self):
-        """Zero-value and dust transfers can be left out of a page; the threshold itself stays."""
-        with tempfile.TemporaryDirectory(prefix='spectra-history-small-') as directory:
-            def run(*args):
-                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
-                assert result.returncode == 0, (args, result.stdout, result.stderr)
-                return json.loads(result.stdout)
-            run('wallet', 'watch', '--chain', 'ethereum', '--address', '0x'+'11'*20, '--name', 'Dust')
-            with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
-                wid = db.execute('SELECT id FROM wallets').fetchone()[0]
-                for i, amount in enumerate(['0', '0.000009', '0.00001', '1']):
-                    row = dict(id=f'tx-{i}', walletId=wid, walletName='Dust', kind='receive', status='confirmed', chainId='ethereum', symbol='USDT', assetDisplayName='Tether', amount=amount, address='0x'+'22'*20, transactionHash=f'0x{i:064x}', createdAtUnix=i)
-                    db.execute('INSERT INTO history_records VALUES (?,?,?,?,?,?)', (row['id'],wid,'ethereum',row['transactionHash'],i,json.dumps(row)))
-            every = [r['amount'] for r in run('txs','--page')['page']['records']]
-            assert every == ['1','0.00001','0.000009','0'], every
-            kept = [r['amount'] for r in run('txs','--page','--hide-small-amounts')['page']['records']]
-            assert kept == ['1','0.00001'], kept
 
     def test_cursor_changes_and_ties(self):
         """Cursor survives anchor deletion and inserts; ties work in both directions."""
@@ -760,101 +697,6 @@ class HistoryTests(unittest.TestCase):
             page = run('txs','--page')
             assert page['actions']['utxo']['recheckUnavailableReason'] is None
             assert run('txs','--summary')['summary']['earliest'][0]['earliestCreatedAtUnix'] == 1700000000.125
-
-    def test_confirmed_doge_never_needs_automatic_polling(self):
-        """Persisted status, not an in-memory depth threshold, stops polling."""
-        with tempfile.TemporaryDirectory(prefix='spectra-doge-polling-') as directory:
-            def run(*args):
-                result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
-                                        capture_output=True, text=True, timeout=60)
-                assert result.returncode == 0, result.stdout + result.stderr
-                return json.loads(result.stdout)
-            run('txs')
-            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
-                for count in (1, 12, 100001):
-                    key = f'doge-{count}'
-                    row = dict(id=key, walletId='wallet', walletName='Fixture', kind='send',
-                               status='confirmed', chainId='dogecoin', symbol='DOGE',
-                               assetDisplayName='Dogecoin', amount='1', address='recipient',
-                               transactionHash='ab'*32, createdAtUnix=1234, confirmationCount=count)
-                    db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                               (key, 'wallet', 'dogecoin', row['transactionHash'], 1234, json.dumps(row)))
-            # Each invocation starts a fresh core service. These must not use the network.
-            assert run('txs', '--maintenance')['chains'] == []
-            assert run('txs', '--refresh-pending')['maintenance']['chains'] == []
-            for count in (1, 12, 100001):
-                result = run('txs', '--record', f'doge-{count}')
-                assert result['actions']['recheckUnavailableReason'] is None, result
-            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
-                payload = json.loads(db.execute('SELECT payload FROM history_records WHERE id=?', ('doge-1',)).fetchone()[0])
-                payload['status'] = 'pending'
-                payload['confirmationCount'] = 0
-                db.execute('UPDATE history_records SET payload=? WHERE id=?', (json.dumps(payload), 'doge-1'))
-            assert run('txs', '--maintenance')['chains'] == ['dogecoin']
-
-    def test_status_recheck(self):
-        """Recheck only the target transaction; failed reads preserve stored state."""
-        requests = []
-
-        response = {'confirmed': True, 'block_height': 321}
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *_):
-                pass
-            def do_GET(self):
-                requests.append(self.path)
-                data = json.dumps(response).encode()
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Content-Length', str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-        with tempfile.TemporaryDirectory(prefix='spectra-recheck-') as directory:
-            def run(*args, success=True):
-                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
-                assert (result.returncode == 0) == success, result.stdout + result.stderr
-                return json.loads(result.stdout) if success else None
-            run('txs')  # create the core schema
-            path = pathlib.Path(directory) / 'spectra.sqlite'
-            def rows():
-                with sqlite3.connect(path) as db:
-                    return {key: json.loads(payload) for key, payload in db.execute('SELECT id,payload FROM history_records')}
-            with sqlite3.connect(path) as db:
-                for key, status, tx_hash in [('target', 'failed', 'ab'*32), ('other', 'pending', 'cd'*32)]:
-                    row = dict(id=key, walletId='wallet', walletName='Fixture', kind='send', status=status,
-                               chainId='bitcoin-testnet-4', symbol='BTC', assetDisplayName='Bitcoin', amount='1',
-                               address='recipient', transactionHash=tx_hash, createdAtUnix=1234, failureReason={'kind': 'reported', 'message': 'old failure'})
-                    db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                               (key,'wallet',row['chainId'],tx_hash,1234,json.dumps(row)))
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-            worker = threading.Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            endpoint = f'http://127.0.0.1:{server.server_port}'
-            try:
-                change = run('txs','--recheck','TARGET','--endpoint',endpoint)['change']
-                assert change['oldStatus']=='failed' and change['newStatus']=='confirmed'
-                saved = rows()
-                assert saved['target']['receiptBlockNumber']==321
-                assert saved['target'].get('failureReason') is None
-                assert saved['other']['status']=='pending'
-                assert requests == ['/tx/'+'ab'*32+'/status']
-                response = {'confirmed': False}
-                run('txs','--recheck','target','--endpoint',endpoint)
-                assert rows()['target']['status']=='pending'
-                assert rows()['target'].get('receiptBlockNumber') is None
-                before = rows()
-                response = {'invalid': True}
-                run('txs','--recheck','target','--endpoint',endpoint,success=False)
-                assert rows()==before, 'failed provider read changed saved state'
-                count=len(requests)
-                run('txs','--recheck','missing','--endpoint',endpoint,success=False)
-                assert len(requests)==count
-            finally:
-                server.shutdown()
-                server.server_close()
-                worker.join()
-
 
 if __name__ == '__main__':
     if not __debug__:

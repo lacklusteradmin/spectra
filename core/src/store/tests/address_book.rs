@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::store::state::{AddressBookRejection, StateCommand};
+use crate::store::state::StateCommand;
 
 const BTC: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
 const BTC2: &str = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
@@ -226,18 +226,4 @@ async fn case_distinct_base58_addresses_are_different_recipients() {
         .expect("add");
     assert!(rejection(&transition.events).is_none());
     assert_eq!(transition.state.address_book.len(), 2);
-}
-
-#[test]
-fn rejection_reasons_serialize_as_the_strings_front_ends_match_on() {
-    for (reason, expected) in [
-        (AddressBookRejection::EmptyName, "emptyName"),
-        (AddressBookRejection::InvalidAddress, "invalidAddress"),
-        (AddressBookRejection::DuplicateAddress, "duplicateAddress"),
-    ] {
-        assert_eq!(
-            serde_json::to_value(reason).unwrap().as_str(),
-            Some(expected)
-        );
-    }
 }

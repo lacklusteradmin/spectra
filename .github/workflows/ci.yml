@@ -40,6 +40,14 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Source scans
+        run: |
+          python3 -B scripts/test-source-scan.py
+          scripts/unreachable-exports.sh
+          scripts/uncalled-core-fns.sh
+          scripts/unused-strings.sh
+          scripts/swift-shell-literals.sh
+
       - name: Tests
         run: cargo test --workspace
 

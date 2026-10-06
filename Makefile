@@ -17,9 +17,16 @@ IOS_TEST_DERIVED_DATA ?=
 # needs Xcode and a simulator, so it stays local.
 verify: lint test test-cli test-ios
 
+# Source scans: nothing exported, public or shipped may go unused, and the
+# app may not spell chain names or amount precision itself.
+SOURCE_SCANS := scripts/unreachable-exports.sh scripts/uncalled-core-fns.sh \
+	scripts/unused-strings.sh scripts/swift-shell-literals.sh
+
 lint:
 	cargo fmt --all -- --check
 	cargo clippy --workspace --all-targets -- -D warnings
+	python3 -B scripts/test-source-scan.py
+	@set -e; for scan in $(SOURCE_SCANS); do echo "$$scan"; $$scan; done
 
 fmt:
 	cargo fmt --all

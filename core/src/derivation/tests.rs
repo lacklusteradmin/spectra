@@ -931,6 +931,22 @@ fn canonical_external_golden_vectors_all_pass() {
         "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
     );
     check!(
+        "Bitcoin P2WPKH (BIP-84) second receive",
+        "github.com/bitcoin/bips/blob/master/bip-0084.mediawiki",
+        "m/84'/0'/0'/0/1",
+        false,
+        derive_bitcoin(
+            MNEMONIC.into(),
+            "m/84'/0'/0'/0/1".into(),
+            None,
+            BitcoinScriptType::P2wpkh,
+            true,
+            false,
+            false
+        ),
+        "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"
+    );
+    check!(
         "Bitcoin P2TR (BIP-86)",
         "github.com/bitcoin/bips/blob/master/bip-0086.mediawiki",
         "m/86'/0'/0'/0/0",

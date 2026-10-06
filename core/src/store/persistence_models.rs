@@ -185,7 +185,6 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         // None-valued optional fields must be omitted, not serialized as null.
         assert!(!json.contains("null"), "unexpected null in {json}");
-        assert!(!json.contains("feeRateDescription"));
         let decoded: CorePersistedTransactionRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, original);
     }

@@ -41,9 +41,9 @@ today's oddity, stop and fix the oddity instead.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains ownership and the
 boundary rules; [docs/OPEN-ITEMS.md](docs/OPEN-ITEMS.md) holds remaining work.
 
-- Core owns domain state and decisions; the CLI proves they need no platform;
-  Swift renders and forwards. New domain logic belongs in `core/` and must be
-  drivable from `spectra`.
+- Core owns domain state and decisions; Swift and the CLI render and forward.
+  New domain logic belongs in `core/`, and its rules are tested there with
+  `cargo test`, without a platform.
 - Per-chain facts belong on `registry::Chain`, not in caller-owned lists.
 - Every request to a chain service, broadcasts included, lives in
   `core/src/api/<api>.rs`, one file per `EndpointApi` named after its
@@ -67,8 +67,8 @@ handling or cross-platform/FFI integration changes, unless the user says otherwi
 make verify
 ```
 
-That is `make lint test test-cli test-ios` — `cargo fmt --check` and
-`cargo clippy -- -D warnings`, then `cargo test --workspace`,
+That is `make lint test test-cli test-ios` — `cargo fmt --check`,
+`cargo clippy -- -D warnings` and the unused-code source scans, then `cargo test --workspace`,
 `scripts/cli-acceptance.sh`, and `xcodebuild test` on an iPhone simulator. Run
 a single one by name when iterating. Report which checks actually ran.
 CI runs everything but `test-ios`, which needs Xcode and a simulator.
@@ -77,8 +77,11 @@ The workspace is clippy-clean at `-D warnings` and rustfmt-clean; `make fmt`
 applies the formatting. Both are gates, so a new warning fails the build rather
 than accumulating.
 
-CLI acceptance uses a throwaway directory without network. Prove a moved rule
-there before deleting its Swift implementation. No iOS test is expected to fail,
+CLI acceptance drives the real binary in a throwaway directory without
+network. A rule is tested in core; add an acceptance check only for what the
+binary alone shows: state across processes, files on disk, exit codes,
+confirmation gates, and send or staking flows against loopback nodes. No iOS
+test is expected to fail,
 including `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
 
 ## Platform constraints

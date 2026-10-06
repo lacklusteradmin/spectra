@@ -41,8 +41,8 @@ first use and no version needs naming here.
 
 ### The CLI
 
-The CLI is the front end with no platform under it, and every domain rule has to
-be drivable from it. It needs nothing but a Rust toolchain:
+The CLI is the front end with no platform under it. It needs nothing but a Rust
+toolchain:
 
 ```sh
 cargo run -p spectra_cli -- --help
@@ -66,9 +66,9 @@ make verify
 
 | Target | What it runs |
 |---|---|
-| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` |
+| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, unused-code source scans |
 | `make test` | `cargo test --workspace` |
-| `make test-cli` | `scripts/cli-acceptance.sh` — offline, throwaway data directory |
+| `make test-cli` | `scripts/cli-acceptance.sh` — the real binary end to end, offline, throwaway data directory |
 | `make test-ios` | `xcodebuild test` on an iPhone simulator |
 | `make check-ui` | design-token and icon-normalization checks |
 

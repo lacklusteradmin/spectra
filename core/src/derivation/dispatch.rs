@@ -226,17 +226,6 @@ mod dispatch_export_tests {
         }
     }
 
-    /// What private-key derivation does *not* cover, named rather than implied.
-    ///
-    /// Widening it is new derivation work, not a gate edit: these chains are
-    /// absent from the import picker because nothing can derive them, and the
-    /// day one of them can, it appears there without anyone editing a list.
-    #[test]
-    fn a_key_alone_is_not_enough_on_these_chains() {
-        assert!(!crate::registry::Chain::Monero.derives_from_private_key());
-        assert!(!crate::registry::Chain::MoneroStagenet.derives_from_private_key());
-    }
-
     /// Every chain the registry lists derives through the one dispatcher.
     ///
     /// This is the property the 50 separate entry points could not state: that

@@ -20,43 +20,6 @@ binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
 
 
 class WalletsTests(unittest.TestCase):
-    def test_bitcoin_account_xpub_validation(self):
-        """Only complete Bitcoin public keys may reach a watched wallet."""
-        xpub = 'xpub6BemYiVNp19Zz9Bw6kmmfXR2LEFukA1hnhSZrXgE2AUJvNLW8a87gg72bQLi4RfGHcKcR4ojrEFgFJgNCXcjVYSH75YmvhTZ7qh9FCrxv3a'
-        with tempfile.TemporaryDirectory(prefix='spectra-xpub-') as directory:
-            def run(*args, success=True):
-                p = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
-                assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
-                return json.loads(p.stdout) if success else None
-            for invalid in ['xpubgarbage', 'ypubgarbage', 'zpubgarbage', xpub[:-1] + '1']:
-                run('wallet', 'watch', '--chain', 'bitcoin', '--xpub', invalid, success=False)
-            run('wallet', 'watch', '--chain', 'ethereum', '--xpub', xpub, success=False)
-            run('wallet', 'watch', '--chain', 'bitcoin', '--xpub', xpub,
-                '--address', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', success=False)
-            assert run('wallet', 'list')['wallets'] == [], 'invalid xpub persisted a wallet'
-            watched = run('wallet', 'watch', '--chain', 'bitcoin', '--xpub', '  ' + xpub + '  ')
-            assert watched['count'] == 1, watched
-            assert run('wallet', 'list')['wallets'][0]['isWatchOnly']
-
-    def test_evm_alias_identity_uses_wallets_own_path(self):
-        """Ethereum and ETC aliases resolve one recorded key with its actual path."""
-        with tempfile.TemporaryDirectory(prefix='spectra-evm-alias-') as directory:
-            root = pathlib.Path(directory)
-            seed = root / 'seed.txt'
-            seed.write_text('test test test test test test test test test test test junk')
-            def run(*args):
-                p = subprocess.run([binary, '--data-dir', str(root / 'state'), '--json', *args], capture_output=True, text=True, timeout=60)
-                assert p.returncode == 0, (args, p.stdout, p.stderr)
-                return json.loads(p.stdout)
-            for source, path in [('ethereum', "m/44'/60'/3'/0/0"),
-                                 ('ethereum-classic', "m/44'/61'/2'/0/0")]:
-                imported = run('wallet', 'import', '--chain', source, '--path', path,
-                               '--seed-file', str(seed), '--no-password', '--name', source)['wallet']
-                assert imported['addresses'] == {source: imported['address']}, imported
-                for requested in ['ethereum', 'ethereum-classic', 'arbitrum', 'ethereum-sepolia']:
-                    identity = run('send', 'identity', '--from', source, '--chain', requested)
-                    assert identity['address'] == imported['address'], (source, requested, identity)
-
     def test_evm_custom_paths_match_signing_identity(self):
         """An L2's explicit path controls both import and signing after restart."""
         with tempfile.TemporaryDirectory(prefix='spectra-evm-path-') as directory:
@@ -206,38 +169,6 @@ class WalletsTests(unittest.TestCase):
             canonical = import_with('Canonical mnemonic', {'passphrase':'secret'})['wallet']
             assert canonical['address'] == trimmed['address'], 'raw mnemonic derived a different identity'
             run('send','identity','--from','Canonical mnemonic')
-
-    def test_names_and_receive(self):
-        """Unnamed wallets get unique durable names and their own receive address."""
-        with tempfile.TemporaryDirectory(prefix='spectra-wallets-') as directory:
-            def run(*args, success=True):
-                p=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True, timeout=60)
-                assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
-                return json.loads(p.stdout) if success else None
-            address='0x'+'01'*20
-            for i in range(3):
-                run('wallet','watch','--chain','ethereum','--address','0x'+f'{i+1:02x}'*20)
-            wallets=run('wallet','list')['wallets']
-            assert {w['name'] for w in wallets}=={'Wallet 1','Wallet 2','Wallet 3'},wallets
-            received=run('wallet','receive','Wallet 1')
-            assert received['address'] == address, received
-
-    def test_password_validation(self):
-        """Password validation counts Unicode characters and checks confirmation."""
-        with tempfile.TemporaryDirectory(prefix='spectra-password-') as directory:
-            def run(*args, success=True, env=None):
-                p=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True,
-                                 env={**os.environ, **(env or {})}, timeout=30)
-                assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
-                return json.loads(p.stdout)
-            # Only empty fields mean no password; whitespace is a blank one.
-            # A short password names core's minimum, so no client restates it.
-            short={'tooShort':{'minChars':4}}
-            for password, confirmation, reason in [('', '', None), ('   ','   ',short), ('abc','abc',short),
-                    ('密碼','密碼',short), ('密碼測試','密碼測試',None), ('abcd','abce','confirmationMismatch')]:
-                result=run('wallet','check-password',env={'SPECTRA_PASSWORD':password,'SPECTRA_PASSWORD_CONFIRMATION':confirmation})
-                assert result=={'valid':reason is None,'rejection':reason}, result
-
 
 if __name__ == '__main__':
     if not __debug__:

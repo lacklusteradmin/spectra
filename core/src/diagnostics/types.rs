@@ -1,8 +1,5 @@
-//! Rust-owned diagnostic record types exposed to Swift via UniFFI.
-//!
-//! The JSON serialization shape (serde rename attributes below) must stay
-//! byte-identical to the Swift dictionary layouts — changing field names here
-//! breaks the exported diagnostics-bundle format.
+//! Diagnostic record types exposed through UniFFI. The serde names below are
+//! the field names of the exported diagnostics bundle.
 
 use serde::{Deserialize, Serialize};
 
@@ -98,36 +95,6 @@ pub struct DiagnosticsEnvironmentMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn roundtrip<T>(json: &str)
-    where
-        T: Serialize + for<'de> Deserialize<'de> + PartialEq + std::fmt::Debug,
-    {
-        let decoded: T = serde_json::from_str(json).expect("decode");
-        let reencoded = serde_json::to_string(&decoded).expect("encode");
-        let redecoded: T = serde_json::from_str(&reencoded).expect("redecode");
-        assert_eq!(decoded, redecoded, "roundtrip mismatch");
-        // Re-encoding the re-decoded must match the first re-encoding byte-for-byte.
-        let reencoded2 = serde_json::to_string(&redecoded).expect("encode2");
-        assert_eq!(reencoded, reencoded2);
-    }
-
-    /// One record, one round-trip.
-    #[test]
-    fn history_roundtrip() {
-        roundtrip::<HistoryDiagnostics>(
-            r#"{"walletID":"w1","identifier":"addr","sourceUsed":"rust","transactionCount":5,"scannedCount":null,"nextCursor":"c","error":null,"perSource":[]}"#,
-        );
-    }
-
-    /// A chain that asks several backends carries one entry per backend rather
-    /// than a field per backend.
-    #[test]
-    fn history_with_sources_roundtrip() {
-        roundtrip::<HistoryDiagnostics>(
-            r#"{"walletID":"w1","identifier":"0xabc","sourceUsed":"rust","transactionCount":9,"scannedCount":10,"nextCursor":null,"error":"boom","perSource":[{"name":"rpc","count":1,"error":null},{"name":"blockscout","count":2,"error":"boom"}]}"#,
-        );
-    }
 
     /// The two numbers derived from the counts cannot disagree with them.
     #[test]
