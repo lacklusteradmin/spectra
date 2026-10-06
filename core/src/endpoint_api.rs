@@ -234,7 +234,7 @@ mod tests {
                 capability.as_str()
             );
         }
-        assert!("native-history".parse::<EndpointCapability>().is_err());
+        assert!("made-up".parse::<EndpointCapability>().is_err());
     }
 }
 

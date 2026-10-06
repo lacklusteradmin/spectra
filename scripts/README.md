@@ -18,14 +18,13 @@ when tests finish. The environment must allow binding local ports.
 
 | File | Purpose |
 |---|---|
-| `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks command output, exit codes and invalid inputs, then runs the Python suites below except `cli-monero-regtest.py`. |
-| `cli-wallets.py` | Wallet imports, mnemonic and passphrase handling, invalid derivation inputs, automatic names, receive addresses and password validation. |
-| `cli-portfolio.py` | Balance refresh and preservation after failed reads; network/token identity; valuation with missing quotes or exchange rates; persisted portfolio inclusion and its effect on totals; price and portfolio movement alerts. |
-| `cli-history.py` | Complete Bitcoin history pagination and duplicate-free repeated refreshes; stored history paging, search, sorting, deduplication and source labels; corrupt-record refusal; individual transaction status rechecks. |
+| `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks what only the binary shows (state across processes, the SQLite store and sealed secret files, exit codes, confirmation gates, the loopback network guard), then runs the Python suites below except `cli-monero-regtest.py`. Rules themselves are tested in core. |
+| `cli-wallets.py` | Custom EVM paths and signing identity after restart, passphrase handling and invalid derivation inputs, and per-network chain IDs in signed EVM bytes. |
+| `cli-portfolio.py` | Balance refresh and preservation after failed reads; network/token identity; valuation with missing quotes or exchange rates; persisted portfolio inclusion and its effect on totals; price alerts. |
+| `cli-history.py` | Complete Bitcoin history pagination and duplicate-free repeated refreshes; stored history paging, search, sorting, deduplication and source labels; corrupt-record refusal; provider cursors across restarts. |
 | `cli-send.py` | Send previews, self-send confirmation, fee refusal, cancellation and replacement drafts, who holds each transfer end and a not-yet-sent address (a wallet or a contact), and network mismatch refusal; wrong passwords never broadcast, while a correct password broadcasts once and saves the matching transaction. |
-| `cli-diagnostics.py` | Offline refresh outcomes, background maintenance policy, failure/recovery logs, diagnostics against the selected network, wrong-chain node refusal, and validator queries through the configured node. |
 | `cli-transport.py` | A stored Tor or custom-proxy policy routes a fresh CLI process through the selected SOCKS proxy. |
-| `cli-endpoints.py` | Typed endpoint persistence, source filters and API selection. |
+| `cli-endpoints.py` | Every catalog network/API pair persists as a custom endpoint; source filters, capability routing and the health summary for networks without providers. |
 | `cli-token-preferences.py` | Token-wide choices and editable price-source metadata survive process restarts. |
 | `cli-send-stages.py` | Durable build, sign and explicit-node submission stages against loopback nodes. |
 | `cli-send-polkadot.py` | Polkadot and Bittensor metadata-driven signing, reviewed fees and finalized success/failure events. |
@@ -45,7 +44,7 @@ when tests finish. The environment must allow binding local ports.
 | `cli-assertions.sh` | Shared shell assertions: checks exit codes and output, and counts passes and failures. Sourced by other scripts. |
 | `test-cli-assertions.sh` | Tests the assertion helpers so failed commands cannot be reported as passing. |
 
-The wallets, portfolio, history, send, diagnostics and transport suites use the
+The wallets, portfolio, history, send and transport suites use the
 standard-library `unittest` runner. Each scenario reports its own result, and a
 failure does not stop the remaining scenarios in that file. No third-party
 Python packages are required. Run a whole suite or an individual scenario:
@@ -72,8 +71,8 @@ handling and persistence; they do not establish acceptance by a real chain.
 ## Code and resource checks
 
 These source scans help identify problems. Review findings for dynamic calls and
-other cases a scan cannot resolve. Not all of these checks are part of
-`make verify`; run them directly as needed.
+other cases a scan cannot resolve. `make lint` and CI run every scan below except
+`check-design-tokens.sh`, which `make check-ui` runs.
 
 | File | Purpose |
 |---|---|
@@ -81,7 +80,7 @@ other cases a scan cannot resolve. Not all of these checks are part of
 | `uncalled-core-fns.sh` | Finds public Rust core functions with no detected callers. |
 | `unused-strings.sh` | Finds unused text and inconsistent translation keys across locales. |
 | `source_scan.py` | Shared production-source extraction for Rust and foreign source scans; test fixtures do not count as runtime callers or copy producers. |
-| `test-source-scan.py` | Tests production/test source selection and Rust module paths; run by CLI acceptance. |
+| `test-source-scan.py` | Tests production/test source selection and Rust module paths. |
 | `swift-shell-literals.sh` | Finds hard-coded chain names and amount precision in Swift, where domain rules should come from core. |
 | `check-design-tokens.sh` | Finds corner radii, opacity values and other style literals that bypass shared UI design tokens. |
 

@@ -66,12 +66,11 @@ longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
 `dead_code` treats it as API because the crate is a library, and the bindings
 never mentioned it — so it can lose its last caller and keep compiling.
 `derive_bitcoin_account_xpub_typed` did, for long enough that its doc comment
-still said it was exported. All three scripts run in `scripts/cli-acceptance.sh`.
+still said it was exported. All three scripts run in `make lint` and in CI.
 
-An export used only by the app may have no Rust coverage. Add a CLI entry point
-for domain rules: `spectra send assemble` exercises EVM assembly without keys
-or network. Offline assembly does not prove broadcasting works; the remaining
-coverage gaps are listed in [OPEN-ITEMS.md](OPEN-ITEMS.md).
+An export used only by the app still needs its rule covered: test that rule in
+core with `cargo test`. Offline tests do not prove broadcasting works; the
+remaining coverage gaps are listed in [OPEN-ITEMS.md](OPEN-ITEMS.md).
 
 ## Regenerating bindings
 

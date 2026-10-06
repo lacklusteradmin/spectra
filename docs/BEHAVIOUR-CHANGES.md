@@ -17,6 +17,61 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-06 — CLI acceptance tests the binary; rules are tested in core
+
+- **Before:** `scripts/cli-acceptance.sh` was the migration gate: every domain
+  rule had to be drivable from `spectra`, and a rule moved out of Swift was
+  proved there before its Swift implementation was deleted. With the migration
+  done, most of its inline checks re-ran a core rule in a fresh
+  process: address and seed validation, catalog flags, amount and fee
+  parsers, explorers, settings bounds, keypool, alerts, staking tables. Many
+  repeated a Rust unit test's exact input table; several asserted something
+  other than their title (a Cardano check filtered Monero, two catalog checks
+  matched only a chain name, a "four script types" check matched only the
+  chain); others pinned catalog data or probed for features already removed.
+  The deletion check looked for a private-key file on a wallet that never had
+  one. `cli-wallet-deletion.py` repeated `state_secret_deletion.rs`, most of
+  `cli-diagnostics.py` repeated core's diagnostic, refresh and redaction
+  tests, and nine Python tests in the history, wallets and portfolio suites
+  had core twins. The source scans ran inside the suite without invoking
+  `spectra`. AGENTS.md, the README and FFI-BOUNDARY.md required every rule to
+  be drivable from the CLI.
+- **After:** rules are tested in core with `cargo test`. The inline suite
+  checks only what the built binary shows: the exit-code contract, wallets
+  read back by a new process, refusal of incompatible stored rows and
+  metadata without changing their bytes, phrases and keys sealed on disk (no
+  plaintext, nothing stored on refusal, both files removed on deletion), the
+  `--yes` gates, and the loopback network guard. The Python suites that drive
+  staged sends, staking, finality, history, portfolio, endpoints and transport
+  through loopback nodes stay; the staged-send state machine has no other
+  coverage. `cli-wallet-deletion.py` and `cli-diagnostics.py` are deleted;
+  the one diagnostics case core lacked (Solana validators and minimum
+  delegation from the configured node) is now a core wiremock test. The nine
+  duplicated Python tests and the endpoint suite's duplicated validation and
+  catalog pins are deleted. BIP-84's second receive address, which only the
+  CLI asserted, is a core golden vector. The source scans run in `make lint`
+  and a CI "Source scans" step. AGENTS.md, the README, FFI-BOUNDARY.md,
+  `scripts/README.md` and the CLI's module doc state the new split.
+  Core's own suite loses the tests that tested nothing of ours: two serde
+  round trips of derived diagnostics records, a JSON-key pin "matching
+  Swift" on stored token preferences, a check of the strings front ends were
+  said to match (Swift matches the UniFFI enum), hand lists restating
+  registry flags (`these_chains_do_not_stake`, Monero's key and preview
+  flags), probes for removed endpoint fields and capability names, and the
+  chain-count pins in the UTXO polling and discovery tests, which now state
+  their rule for every chain: a testnet does what its mainnet does.
+- **Why:** a rule tested in a fresh process proves nothing its unit test does
+  not, and costs a process start per input and a second place to update. The
+  CLI suite earns its runtime only where the binary is the thing under test:
+  processes, disk, network and its own gates.
+- **CLI check:** `scripts/cli-acceptance.sh`; `make lint` prints each scan.
+- **Verification:** `make lint` passed (fmt, clippy `-D warnings`, the five
+  source scans); `cargo test --workspace` 1091 core tests plus the transport
+  integration test passed after the core cleanup, including the two new
+  ones; `scripts/cli-acceptance.sh` 66 passed, 0 failed, in about 14 minutes
+  before the core cleanup, which touched only tests. No Swift changed, so
+  `test-ios` was not run.
+
 ## 2026-10-05 — Token tags are a closed list, and the stored category is gone
 
 - **Before:** a token's `tags` were free strings from `tokens.toml`, so a

@@ -115,23 +115,4 @@ mod tests {
         assert!(Chain::Solana.supports_staking());
         assert!(!Chain::SolanaDevnet.supports_staking());
     }
-
-    /// What staking does *not* cover, named rather than implied.
-    #[test]
-    fn these_chains_do_not_stake() {
-        for chain in [
-            Chain::Bitcoin,
-            Chain::Ethereum,
-            Chain::Tron,
-            Chain::Xrp,
-            Chain::Monero,
-        ] {
-            assert!(
-                !chain.supports_staking(),
-                "{} now stakes — that is a new client, so record it in \
-                 BEHAVIOUR-CHANGES.md and take it off this list",
-                chain.str_id()
-            );
-        }
-    }
 }

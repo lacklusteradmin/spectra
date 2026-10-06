@@ -581,4 +581,65 @@ mod tests {
         );
         let _ = std::fs::remove_file(path);
     }
+
+    #[tokio::test]
+    async fn validators_come_from_the_configured_node_with_its_minimum_delegation() {
+        use wiremock::matchers::{body_partial_json, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        for (rpc, result) in [
+            (
+                "getVoteAccounts",
+                serde_json::json!({"current":[{
+                    "votePubkey":"Validator11111111111111111111111111111111",
+                    "activatedStake":1000,"commission":5
+                }],"delinquent":[]}),
+            ),
+            (
+                "getStakeMinimumDelegation",
+                serde_json::json!({"context":{"slot":100},"value":1_500_000_000u64}),
+            ),
+        ] {
+            Mock::given(method("POST"))
+                .and(body_partial_json(serde_json::json!({"method": rpc})))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"jsonrpc":"2.0","id":1,"result":result})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let path =
+            std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_event_id()));
+        let service = WalletService::new_catalog().unwrap();
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        service
+            .apply_state_command(StateCommand::SetAppSetting {
+                update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                    capabilities: crate::endpoint_capability_options(
+                        Chain::Solana,
+                        crate::EndpointApi::SolanaJsonRpc,
+                    ),
+                    chain_id: Chain::Solana,
+                    api: "solana-json-rpc".into(),
+                    endpoint: server.uri(),
+                },
+            })
+            .await
+            .unwrap();
+        let validators = service
+            .fetch_staking_validators(Chain::Solana)
+            .await
+            .unwrap();
+        assert_eq!(validators.len(), 1);
+        assert_eq!(
+            validators[0].min_delegation_smallest_unit.as_deref(),
+            Some("1500000000")
+        );
+        let _ = std::fs::remove_file(path);
+    }
 }

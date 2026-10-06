@@ -290,12 +290,7 @@ capabilities = ["balance"]"#;
                 toml::from_str::<TomlEndpoint>(&valid.replace("ethereum-sepolia", bad)).is_err()
             );
         }
-        for field in ["chain_id", "group_title", "kind", "explorer_label"] {
-            assert!(
-                toml::from_str::<TomlEndpoint>(&format!("{valid}\n{field} = \"Ethereum\" "))
-                    .is_err()
-            );
-        }
+        assert!(toml::from_str::<TomlEndpoint>(&format!("{valid}\nlabel = \"Ethereum\"")).is_err());
     }
 }
 

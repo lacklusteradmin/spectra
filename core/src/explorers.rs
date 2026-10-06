@@ -106,7 +106,6 @@ mod tests {
     #[test]
     fn the_embedded_file_loads_one_explorer_per_listed_network() {
         assert_eq!(transaction_explorers().len(), EXPLORERS.len());
-        assert!(transaction_explorers().len() > 40);
     }
 
     #[test]

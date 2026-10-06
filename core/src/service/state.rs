@@ -618,27 +618,14 @@ mod utxo_discovery_is_the_registrys_chain_set {
     /// Every UTXO testnet is in the discovery set its mainnet is in.
     #[test]
     fn the_testnets_are_in_the_set_their_mainnets_are_in() {
-        for (mainnet, testnet) in [
-            (Chain::Bitcoin, Chain::BitcoinTestnet),
-            (Chain::BitcoinCash, Chain::BitcoinCashTestnet),
-            (Chain::BitcoinSV, Chain::BitcoinSVTestnet),
-            (Chain::Litecoin, Chain::LitecoinTestnet),
-            (Chain::Dogecoin, Chain::DogecoinTestnet),
-            (Chain::Peercoin, Chain::PeercoinTestnet),
-        ] {
-            assert!(mainnet.supports_deep_utxo_discovery(), "{mainnet:?}");
-            assert!(
-                testnet.supports_deep_utxo_discovery(),
-                "{testnet:?} walks the same addresses its mainnet does"
+        assert!(Chain::Bitcoin.supports_deep_utxo_discovery());
+        for chain in Chain::all() {
+            assert_eq!(
+                chain.supports_deep_utxo_discovery(),
+                chain.mainnet_counterpart().supports_deep_utxo_discovery(),
+                "{chain:?} walks the same addresses its mainnet does"
             );
         }
-        assert_eq!(
-            Chain::all()
-                .filter(|c| c.supports_deep_utxo_discovery())
-                .count(),
-            14,
-            "six mainnets and eight testnets"
-        );
     }
 
     /// Every entry point answers empty for a chain without the walk rather

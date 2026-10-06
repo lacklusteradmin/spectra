@@ -2411,53 +2411,14 @@ mod the_post_send_refresh_set_is_the_registrys {
     #[test]
     fn every_utxo_testnet_polls_the_way_its_mainnet_does() {
         let utxo = |c: Chain| matches!(c.pending_status_poll(), PendingStatusPoll::Utxo { .. });
-        for (mainnet, testnets) in [
-            (
-                Chain::Bitcoin,
-                vec![
-                    Chain::BitcoinTestnet,
-                    Chain::BitcoinTestnet4,
-                    Chain::BitcoinSignet,
-                ],
-            ),
-            (Chain::Litecoin, vec![Chain::LitecoinTestnet]),
-            (Chain::BitcoinCash, vec![Chain::BitcoinCashTestnet]),
-            (Chain::BitcoinSV, vec![Chain::BitcoinSVTestnet]),
-            (Chain::Dogecoin, vec![Chain::DogecoinTestnet]),
-            (Chain::Zcash, vec![Chain::ZcashTestnet]),
-            (Chain::Decred, vec![Chain::DecredTestnet]),
-            (Chain::Kaspa, vec![Chain::KaspaTestnet]),
-            (Chain::Dash, vec![Chain::DashTestnet]),
-            (Chain::BitcoinGold, vec![]),
-            (Chain::Peercoin, vec![Chain::PeercoinTestnet]),
-        ] {
-            assert!(utxo(mainnet), "{mainnet:?}");
-            for testnet in testnets {
-                assert!(utxo(testnet), "{testnet:?} must poll like {mainnet:?}");
-            }
+        assert!(utxo(Chain::Bitcoin));
+        for chain in Chain::all() {
+            assert_eq!(
+                utxo(chain),
+                utxo(chain.mainnet_counterpart()),
+                "{chain:?} must poll like its mainnet"
+            );
         }
-        assert_eq!(
-            Chain::all().filter(|c| utxo(*c)).count(),
-            23,
-            "eleven mainnets and twelve testnets"
-        );
-    }
-}
-
-#[cfg(test)]
-mod monero_takes_the_shared_submit_path {
-    use super::Chain;
-
-    /// Monero's send is the generic one.
-    ///
-    /// It has a shared-path preview, which is what the flag needs: without one
-    /// `has_send_preview` would answer through the `!uses_generic_send_submit`
-    /// branch and go false the moment the flag flipped.
-    #[test]
-    fn it_has_the_preview_the_shared_path_needs() {
-        assert!(Chain::Monero.uses_generic_send_submit());
-        assert!(Chain::Monero.simple_preview_chain().is_some());
-        assert!(Chain::Monero.has_send_preview());
     }
 }
 

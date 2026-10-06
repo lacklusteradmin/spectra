@@ -564,11 +564,11 @@ pub struct CoreDashboardPinOption {
 }
 
 #[cfg(test)]
-mod roundtrip_tests {
+mod token_preference_tests {
     use super::*;
 
     #[test]
-    fn token_preference_entry_roundtrip_matches_swift_keys() {
+    fn an_entry_is_identified_by_its_deployment() {
         let entry = CoreTokenPreferenceEntry {
             is_built_in: true,
             token: crate::tokens::TokenDeploymentEntry {
@@ -591,14 +591,6 @@ mod roundtrip_tests {
                 artwork_name: "usdt".to_string(),
             },
         };
-        let json = serde_json::to_string(&entry).unwrap();
-        assert!(json.contains("\"chainId\":\"bnb\""));
-        assert!(json.contains("\"tags\":[\"stablecoin\"]"));
-        assert!(json.contains("\"coingeckoId\""));
-        assert!(json.contains("\"isBuiltIn\":true"));
-        let decoded: CoreTokenPreferenceEntry = serde_json::from_str(&json).unwrap();
-        assert_eq!(decoded, entry);
-
         // Identity is the token's, not a stored string.
         assert_eq!(
             entry.id(),

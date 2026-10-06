@@ -82,44 +82,6 @@ class PortfolioTests(unittest.TestCase):
             run('settings', 'reset', '--scope', 'dashboardCustomization', '--yes')
             options_with_pins(defaults)
 
-    def test_movement_notifications(self):
-        """Persist movement baselines; do not repeat or fabricate notifications."""
-        with tempfile.TemporaryDirectory(prefix='spectra-wallets-') as directory:
-            def run(*args, success=True):
-                p=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True, timeout=60)
-                assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
-                return json.loads(p.stdout) if success else None
-            for i in range(3):
-                run('wallet','watch','--chain','ethereum','--address','0x'+f'{i+1:02x}'*20)
-            dbpath=pathlib.Path(directory)/'spectra.sqlite'
-            def change_wallets(change):
-                with sqlite3.connect(dbpath) as db:
-                    for id,payload in db.execute('SELECT id,payload FROM wallets').fetchall():
-                        w=json.loads(payload); change(w)
-                        db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(w),id))
-            def seed(w):
-                w['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainId='ethereum',
-                    tokenStandard='Native',contractAddress=None,amount='1')]
-            change_wallets(seed)
-            def quote(price):
-                with sqlite3.connect(dbpath) as db:
-                    db.execute('INSERT OR REPLACE INTO app_state_meta (key,value) VALUES (?,?)',('quotes',json.dumps({'prices':{'ethereum:native':price}})))
-            quote(1000)
-            assert run('alert','movement')['notification'] is None
-            quote(1200)
-            movement=run('alert','movement')['notification']
-            assert movement['absoluteDelta']==600 and movement['directionUp'],movement
-            assert run('alert','movement')['notification'] is None
-            quote(1600)
-            assert run('alert','movement','--active')['notification'] is None
-            assert run('alert','movement')['notification'] is None
-            run('wallet', 'inclusion', 'Wallet 2', 'false')
-            assert run('alert','movement')['notification'] is None
-            quote(0)
-            assert run('alert','movement')['notification'] is None
-            quote(2000)
-            assert run('alert','movement')['notification'] is None
-
     def test_valuation_and_inclusion(self):
         """Missing quotes stay incomplete; inclusion changes persist and alter totals."""
         with tempfile.TemporaryDirectory(prefix='spectra-valuation-') as directory:
