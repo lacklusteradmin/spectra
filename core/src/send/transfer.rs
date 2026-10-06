@@ -1,5 +1,5 @@
 use crate::registry::Chain;
-use crate::store::wallet_domain::{AssetHolding, CoreTokenPreferenceEntry};
+use crate::store::wallet_domain::{AssetHolding, TokenPreferenceEntry};
 
 /// A token's contract and its own decimals.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub struct SendAsset {
 
 impl SendAsset {
     /// `None` for a holding on a chain core does not know.
-    pub fn of(holding: &AssetHolding, preferences: &[CoreTokenPreferenceEntry]) -> Option<Self> {
+    pub fn of(holding: &AssetHolding, preferences: &[TokenPreferenceEntry]) -> Option<Self> {
         let chain = holding.chain_id;
         let kind = if holding.is_native() {
             SendAssetKind::Native
@@ -84,7 +84,7 @@ impl SendAsset {
 pub(crate) fn can_send_coin(
     coin: &AssetHolding,
     has_signing_material: bool,
-    token_preferences: &[CoreTokenPreferenceEntry],
+    token_preferences: &[TokenPreferenceEntry],
 ) -> bool {
     has_signing_material
         && SendAsset::of(coin, token_preferences).is_some_and(|asset| asset.is_sendable())
@@ -111,13 +111,8 @@ mod tests {
         }
     }
 
-    fn tracked(
-        chain: Chain,
-        symbol: &str,
-        contract: &str,
-        decimals: u32,
-    ) -> CoreTokenPreferenceEntry {
-        CoreTokenPreferenceEntry {
+    fn tracked(chain: Chain, symbol: &str, contract: &str, decimals: u32) -> TokenPreferenceEntry {
+        TokenPreferenceEntry {
             is_built_in: false,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
@@ -141,7 +136,7 @@ mod tests {
         }
     }
 
-    fn sendable(holding: &AssetHolding, preferences: &[CoreTokenPreferenceEntry]) -> bool {
+    fn sendable(holding: &AssetHolding, preferences: &[TokenPreferenceEntry]) -> bool {
         SendAsset::of(holding, preferences).is_some_and(|asset| asset.is_sendable())
     }
 

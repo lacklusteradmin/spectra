@@ -8,7 +8,7 @@ use futures::{StreamExt as _, stream};
 use crate::SpectraBridgeError;
 use crate::registry::Chain;
 use crate::service::WalletService;
-use crate::store::state::CoreAppState;
+use crate::store::state::ResidentState;
 
 /// What one chain's history refresh did.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -54,7 +54,7 @@ struct Target {
 
 /// The wallets on `chain` that have an address, with the address for the
 /// network each is on. `wallet_ids` scopes it; empty means every wallet.
-fn targets(state: &CoreAppState, chain: Chain, wallet_ids: &[String]) -> Vec<Target> {
+fn targets(state: &ResidentState, chain: Chain, wallet_ids: &[String]) -> Vec<Target> {
     state
         .wallets
         .iter()
@@ -105,8 +105,8 @@ fn record_for(
     target: &Target,
     _chain: Chain,
     entry: crate::fetch::history_decode::NormalizedHistoryItem,
-) -> crate::fetch::transactions::CoreTransactionRecord {
-    crate::fetch::transactions::CoreTransactionRecord {
+) -> crate::fetch::transactions::FetchedTransactionRecord {
+    crate::fetch::transactions::FetchedTransactionRecord {
         // The feed names every row's deployment; the ticker is display text.
         deployment_id: entry.deployment_id,
         id: crate::store::new_transaction_id(),
@@ -290,7 +290,7 @@ const MIN_EVM_PAGE_SIZE: u32 = 20;
 const MAX_EVM_PAGE_SIZE: u32 = 500;
 
 /// The tokens this chain's history should decode, as the user has them.
-fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::TokenDescriptor> {
+fn token_descriptors(state: &ResidentState, chain: Chain) -> Vec<crate::service::TokenDescriptor> {
     if !chain.hosts_tokens() {
         return Vec::new();
     }
@@ -457,8 +457,8 @@ impl WalletService {
 /// string and lands as the `f64` the store holds.
 fn evm_record(
     planned: crate::fetch::history_decode::EvmHistoryTransactionRecord,
-) -> crate::fetch::transactions::CoreTransactionRecord {
-    crate::fetch::transactions::CoreTransactionRecord {
+) -> crate::fetch::transactions::FetchedTransactionRecord {
+    crate::fetch::transactions::FetchedTransactionRecord {
         deployment_id: planned.deployment_id,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(planned.wallet_id),
@@ -580,7 +580,9 @@ impl WalletService {
                                 symbol: target.network.coin_symbol().into(),
                                 chain_id: target.network,
                                 amount: entry.amount_btc,
-                                counterparty: entry.counterparty_address,
+                                // A row nets the wallet's every address in one
+                                // transaction, so it names no single counterparty.
+                                counterparty: String::new(),
                                 tx_hash: entry.txid,
                                 block_height: entry.block_height,
                                 timestamp: entry.created_at_unix,

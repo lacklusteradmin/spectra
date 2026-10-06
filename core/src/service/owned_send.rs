@@ -95,7 +95,7 @@ impl SendPreviewDetails {
 
 #[allow(clippy::too_many_arguments)]
 fn owned_preview(
-    state: &CoreAppState,
+    state: &ResidentState,
     wallet_id: String,
     holding: &crate::store::wallet_domain::AssetHolding,
     amount: &str,
@@ -636,7 +636,6 @@ impl WalletService {
                 gas_budget: (shape.fee_field == SendFeeField::GasBudget).then(|| fee.clone()),
                 fee_amount: (shape.fee_field == SendFeeField::FeeAmount).then(|| fee.clone()),
                 evm_overrides: overrides,
-                monero_priority: None,
                 sign_only: false,
             },
             preview,

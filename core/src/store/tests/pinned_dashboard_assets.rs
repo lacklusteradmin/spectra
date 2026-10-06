@@ -119,7 +119,7 @@ async fn one_asset_is_pinned_against_the_set_the_dashboard_shows() {
             .settings
             .pinned_dashboard_token_ids
     }
-    let is_pinned = |options: &[crate::store::wallet_domain::CoreDashboardPinOption], id: &str| {
+    let is_pinned = |options: &[crate::store::wallet_domain::DashboardPinOption], id: &str| {
         options
             .iter()
             .find(|option| option.token_id == id)

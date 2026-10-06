@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /// enums. Both representations use Unix seconds, including fractional seconds.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreTransactionRecord {
+pub struct FetchedTransactionRecord {
     /// Known for local sends; provider history may omit protocol identity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_id: Option<String>,
@@ -111,8 +111,8 @@ pub enum TransactionMergeStrategy {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionMergeRequest {
-    pub existing_transactions: Vec<CoreTransactionRecord>,
-    pub incoming_transactions: Vec<CoreTransactionRecord>,
+    pub existing_transactions: Vec<FetchedTransactionRecord>,
+    pub incoming_transactions: Vec<FetchedTransactionRecord>,
     pub strategy: TransactionMergeStrategy,
     pub chain_id: crate::registry::Chain,
     pub preserve_created_at_sentinel_unix: Option<f64>,
@@ -120,37 +120,37 @@ pub struct TransactionMergeRequest {
 
 // Wire/storage conversion normalizes kind/status; Unix timestamps are unchanged.
 
-use crate::store::persistence_models::CorePersistedTransactionRecord;
-use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+use crate::store::persistence_models::TransactionRecord;
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
-fn kind_from_raw(raw: &str) -> CoreTransactionKind {
+fn kind_from_raw(raw: &str) -> TransactionKind {
     match raw {
-        "send" => CoreTransactionKind::Send,
-        "stake" => CoreTransactionKind::Stake,
-        "unstake" => CoreTransactionKind::Unstake,
-        "withdraw" => CoreTransactionKind::Withdraw,
-        "claimRewards" => CoreTransactionKind::ClaimRewards,
-        _ => CoreTransactionKind::Receive,
+        "send" => TransactionKind::Send,
+        "stake" => TransactionKind::Stake,
+        "unstake" => TransactionKind::Unstake,
+        "withdraw" => TransactionKind::Withdraw,
+        "claimRewards" => TransactionKind::ClaimRewards,
+        _ => TransactionKind::Receive,
     }
 }
 
-fn kind_to_raw(kind: CoreTransactionKind) -> &'static str {
+fn kind_to_raw(kind: TransactionKind) -> &'static str {
     kind.as_raw()
 }
 
 /// Resolve unknown wire status by kind: receives default to pending,
 /// sends to confirmed. Persisted status is required, so this fallback
 /// is applied only at ingestion.
-fn status_from_raw(raw: &str, kind: CoreTransactionKind) -> CoreTransactionStatus {
-    CoreTransactionStatus::from_raw(raw).unwrap_or(if kind.is_submitted() {
-        CoreTransactionStatus::Confirmed
+fn status_from_raw(raw: &str, kind: TransactionKind) -> TransactionStatus {
+    TransactionStatus::from_raw(raw).unwrap_or(if kind.is_submitted() {
+        TransactionStatus::Confirmed
     } else {
-        CoreTransactionStatus::Pending
+        TransactionStatus::Pending
     })
 }
 
-impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
-    fn from(stored: CorePersistedTransactionRecord) -> Self {
+impl From<TransactionRecord> for FetchedTransactionRecord {
+    fn from(stored: TransactionRecord) -> Self {
         Self {
             deployment_id: stored.deployment_id,
             id: stored.id,
@@ -186,8 +186,8 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
     }
 }
 
-impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
-    fn from(wire: CoreTransactionRecord) -> Self {
+impl From<FetchedTransactionRecord> for TransactionRecord {
+    fn from(wire: FetchedTransactionRecord) -> Self {
         Self {
             actions: Default::default(),
             deployment_id: wire.deployment_id,
@@ -224,7 +224,7 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
     }
 }
 
-pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransactionRecord> {
+pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransactionRecord> {
     let TransactionMergeRequest {
         existing_transactions,
         incoming_transactions,
@@ -310,7 +310,7 @@ type IdentityBucketKey = (
     Option<String>,
 );
 
-fn bucket_key(record: &CoreTransactionRecord) -> IdentityBucketKey {
+fn bucket_key(record: &FetchedTransactionRecord) -> IdentityBucketKey {
     (
         record.chain_id,
         record.transaction_hash.clone(),
@@ -324,7 +324,7 @@ fn bucket_key(record: &CoreTransactionRecord) -> IdentityBucketKey {
 }
 
 fn incoming_is_relevant(
-    incoming: &CoreTransactionRecord,
+    incoming: &FetchedTransactionRecord,
     strategy: &TransactionMergeStrategy,
     chain_id: crate::registry::Chain,
 ) -> bool {
@@ -341,8 +341,8 @@ fn incoming_is_relevant(
 }
 
 fn matches_identity(
-    existing: &CoreTransactionRecord,
-    incoming: &CoreTransactionRecord,
+    existing: &FetchedTransactionRecord,
+    incoming: &FetchedTransactionRecord,
     strategy: &TransactionMergeStrategy,
     chain_id: crate::registry::Chain,
 ) -> bool {
@@ -380,19 +380,19 @@ fn matches_identity(
 }
 
 fn staking_provider_match(
-    existing: &CoreTransactionRecord,
-    incoming: &CoreTransactionRecord,
+    existing: &FetchedTransactionRecord,
+    incoming: &FetchedTransactionRecord,
 ) -> bool {
     kind_from_raw(&existing.kind).is_staking()
         && matches!(incoming.kind.as_str(), "send" | "receive")
 }
 
 fn merge_record(
-    existing: CoreTransactionRecord,
-    incoming: CoreTransactionRecord,
+    existing: FetchedTransactionRecord,
+    incoming: FetchedTransactionRecord,
     strategy: &TransactionMergeStrategy,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> CoreTransactionRecord {
+) -> FetchedTransactionRecord {
     let mut incoming = incoming;
     if kind_from_raw(&existing.kind).is_staking() {
         incoming.kind = existing.kind.clone();
@@ -412,10 +412,10 @@ fn merge_record(
 }
 
 fn merge_standard_utxo(
-    existing: CoreTransactionRecord,
-    incoming: CoreTransactionRecord,
-) -> CoreTransactionRecord {
-    CoreTransactionRecord {
+    existing: FetchedTransactionRecord,
+    incoming: FetchedTransactionRecord,
+) -> FetchedTransactionRecord {
+    FetchedTransactionRecord {
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -460,10 +460,10 @@ fn merge_standard_utxo(
 }
 
 fn merge_dogecoin(
-    existing: CoreTransactionRecord,
-    incoming: CoreTransactionRecord,
-) -> CoreTransactionRecord {
-    CoreTransactionRecord {
+    existing: FetchedTransactionRecord,
+    incoming: FetchedTransactionRecord,
+) -> FetchedTransactionRecord {
+    FetchedTransactionRecord {
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -514,11 +514,11 @@ fn merge_dogecoin(
 }
 
 fn merge_account_based(
-    existing: CoreTransactionRecord,
-    incoming: CoreTransactionRecord,
+    existing: FetchedTransactionRecord,
+    incoming: FetchedTransactionRecord,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> CoreTransactionRecord {
-    CoreTransactionRecord {
+) -> FetchedTransactionRecord {
+    FetchedTransactionRecord {
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -567,11 +567,11 @@ fn merge_account_based(
 }
 
 fn merge_evm(
-    existing: CoreTransactionRecord,
-    incoming: CoreTransactionRecord,
+    existing: FetchedTransactionRecord,
+    incoming: FetchedTransactionRecord,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> CoreTransactionRecord {
-    CoreTransactionRecord {
+) -> FetchedTransactionRecord {
+    FetchedTransactionRecord {
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -643,12 +643,12 @@ fn normalize_evm_address(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CoreTransactionRecord, TransactionMergeRequest, TransactionMergeStrategy,
+        FetchedTransactionRecord, TransactionMergeRequest, TransactionMergeStrategy,
         merge_transactions,
     };
 
-    fn sample_transaction(chain_id: crate::registry::Chain) -> CoreTransactionRecord {
-        CoreTransactionRecord {
+    fn sample_transaction(chain_id: crate::registry::Chain) -> FetchedTransactionRecord {
+        FetchedTransactionRecord {
             deployment_id: None,
             id: "tx-1".to_string(),
             wallet_id: Some("wallet-1".to_string()),
@@ -950,8 +950,8 @@ mod wire_persisted_conversion {
     /// Every field populated with a distinguishable value, so a field dropped
     /// or crossed in the conversion shows up as an inequality rather than
     /// passing on defaults.
-    fn populated_wire() -> CoreTransactionRecord {
-        CoreTransactionRecord {
+    fn populated_wire() -> FetchedTransactionRecord {
+        FetchedTransactionRecord {
             deployment_id: None,
             id: "TX-1".to_string(),
             wallet_id: Some("w1".to_string()),
@@ -992,17 +992,17 @@ mod wire_persisted_conversion {
     #[test]
     fn wire_to_stored_and_back_is_lossless() {
         let original = populated_wire();
-        let stored: CorePersistedTransactionRecord = original.clone().into();
-        let round_tripped: CoreTransactionRecord = stored.into();
+        let stored: TransactionRecord = original.clone().into();
+        let round_tripped: FetchedTransactionRecord = stored.into();
         assert_eq!(round_tripped, original);
     }
 
     #[test]
     fn the_unix_timestamp_is_unchanged() {
-        let stored: CorePersistedTransactionRecord = populated_wire().into();
+        let stored: TransactionRecord = populated_wire().into();
         // Identical Unix seconds in storage, FFI, and provider records.
         assert_eq!(stored.created_at_unix, 1_700_000_000.0);
-        let back: CoreTransactionRecord = stored.into();
+        let back: FetchedTransactionRecord = stored.into();
         assert_eq!(back.created_at_unix, 1_700_000_000.0);
     }
 
@@ -1015,26 +1015,26 @@ mod wire_persisted_conversion {
         wire.status = "who-knows".to_string();
 
         wire.kind = "send".to_string();
-        let as_send: CorePersistedTransactionRecord = wire.clone().into();
-        assert_eq!(as_send.status, CoreTransactionStatus::Confirmed);
+        let as_send: TransactionRecord = wire.clone().into();
+        assert_eq!(as_send.status, TransactionStatus::Confirmed);
 
         wire.kind = "receive".to_string();
-        let as_receive: CorePersistedTransactionRecord = wire.into();
-        assert_eq!(as_receive.status, CoreTransactionStatus::Pending);
+        let as_receive: TransactionRecord = wire.into();
+        assert_eq!(as_receive.status, TransactionStatus::Pending);
     }
 
     #[test]
     fn the_three_named_statuses_survive_a_round_trip() {
         for (raw, status) in [
-            ("pending", CoreTransactionStatus::Pending),
-            ("confirmed", CoreTransactionStatus::Confirmed),
-            ("failed", CoreTransactionStatus::Failed),
+            ("pending", TransactionStatus::Pending),
+            ("confirmed", TransactionStatus::Confirmed),
+            ("failed", TransactionStatus::Failed),
         ] {
             let mut wire = populated_wire();
             wire.status = raw.to_string();
-            let stored: CorePersistedTransactionRecord = wire.into();
+            let stored: TransactionRecord = wire.into();
             assert_eq!(stored.status, status);
-            let back: CoreTransactionRecord = stored.into();
+            let back: FetchedTransactionRecord = stored.into();
             assert_eq!(back.status, raw);
         }
     }

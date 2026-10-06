@@ -1,4 +1,4 @@
-use crate::fetch::transactions::CoreTransactionRecord;
+use crate::fetch::transactions::FetchedTransactionRecord;
 use crate::service::{TransactionCommand, WalletService};
 
 fn tmp_db(tag: &str) -> String {
@@ -19,8 +19,8 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
     (service, db)
 }
 
-fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionRecord {
-    CoreTransactionRecord {
+fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> FetchedTransactionRecord {
+    FetchedTransactionRecord {
         deployment_id: None,
         id: id.to_string(),
         wallet_id: Some("w1".to_string()),
@@ -54,7 +54,7 @@ fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionReco
     }
 }
 
-fn merge(incoming: Vec<CoreTransactionRecord>) -> TransactionCommand {
+fn merge(incoming: Vec<FetchedTransactionRecord>) -> TransactionCommand {
     // Strategy comes from the registry now — "Bitcoin" implies StandardUtxo.
     TransactionCommand::Merge {
         incoming,

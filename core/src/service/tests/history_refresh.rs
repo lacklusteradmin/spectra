@@ -11,7 +11,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         include_in_portfolio_total: true,
         chain_id: chain,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -31,7 +31,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
 /// address for the network each is on.
 #[test]
 fn targets_are_the_chains_wallets_that_have_an_address() {
-    let state = CoreAppState {
+    let state = ResidentState {
         wallets: vec![
             wallet("w1", Chain::Solana, &[(Chain::Solana, "So1")]),
             wallet("w2", Chain::Solana, &[]),
@@ -60,7 +60,7 @@ fn targets_are_the_chains_wallets_that_have_an_address() {
 /// found nothing. The two are separate answers.
 #[test]
 fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
-    let mut state = CoreAppState {
+    let mut state = ResidentState {
         wallets: vec![wallet(
             "w1",
             Chain::Bitcoin,
@@ -108,7 +108,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
 /// other history paths use, not as the Unix epoch.
 #[test]
 fn an_undated_entry_is_stored_as_unknown() {
-    let state = CoreAppState {
+    let state = ResidentState {
         wallets: vec![wallet(
             "w1",
             Chain::Litecoin,
@@ -143,7 +143,7 @@ fn an_undated_entry_is_stored_as_unknown() {
 /// A wallet on a testnet fetches the address for that network.
 #[test]
 fn a_target_follows_the_network_the_wallet_is_on() {
-    let mut state = CoreAppState {
+    let mut state = ResidentState {
         wallets: vec![wallet(
             "w1",
             Chain::Bitcoin,
@@ -233,9 +233,9 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
 /// contracts in their canonical form.
 #[test]
 fn descriptors_are_the_known_tokens_for_the_chain() {
-    use crate::store::wallet_domain::CoreTokenPreferenceEntry;
-    fn entry(chain: crate::registry::Chain, contract: &str) -> CoreTokenPreferenceEntry {
-        CoreTokenPreferenceEntry {
+    use crate::store::wallet_domain::TokenPreferenceEntry;
+    fn entry(chain: crate::registry::Chain, contract: &str) -> TokenPreferenceEntry {
+        TokenPreferenceEntry {
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
@@ -258,7 +258,7 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
             is_built_in: true,
         }
     }
-    let state = CoreAppState {
+    let state = ResidentState {
         token_preferences: vec![
             entry(
                 crate::registry::Chain::Ethereum,
@@ -285,7 +285,7 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
 
 #[test]
 fn descriptors_use_each_concrete_networks_token_deployments() {
-    let state = CoreAppState {
+    let state = ResidentState {
         token_preferences: crate::store::built_in_token_preferences(),
         ..Default::default()
     };
@@ -774,7 +774,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     assert_eq!(stored.len(), 1);
     assert_eq!(
         stored[0].status,
-        crate::store::wallet_domain::CoreTransactionStatus::Failed
+        crate::store::wallet_domain::TransactionStatus::Failed
     );
     assert_eq!(stored[0].chain_id, Chain::EthereumSepolia);
     let mut wrong_network = fetched.clone();

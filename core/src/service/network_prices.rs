@@ -159,7 +159,7 @@ impl WalletService {
     pub async fn refresh_owned_prices(
         &self,
         force: bool,
-    ) -> Result<CoreAppState, SpectraBridgeError> {
+    ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -244,7 +244,7 @@ impl WalletService {
     pub async fn refresh_owned_fiat_rates(
         &self,
         force: bool,
-    ) -> Result<CoreAppState, SpectraBridgeError> {
+    ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;

@@ -181,7 +181,6 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            monero_priority: None,
             sign_only: false,
         };
         let prepared = service.build_send(request).await.unwrap();
@@ -219,7 +218,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             assert_eq!(history.len(), 1);
             assert_eq!(
                 history[0].payload.status,
-                crate::store::wallet_domain::CoreTransactionStatus::Pending
+                crate::store::wallet_domain::TransactionStatus::Pending
             );
             assert_eq!(history[0].payload.transaction_hash, signed.transaction_hash);
             wrong_response.store(false, std::sync::atomic::Ordering::Relaxed);

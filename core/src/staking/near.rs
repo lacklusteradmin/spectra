@@ -43,7 +43,6 @@ impl NearStakingClient {
                 Ok(Some(StakingValidator {
                     identifier: v.account_id.clone(),
                     display_name: v.account_id,
-                    apy: None,
                     commission: Some(pool.commission),
                     total_stake_smallest_unit: Some(v.stake),
                     is_active: !pool.paused,
@@ -52,7 +51,6 @@ impl NearStakingClient {
                     uptime_pct: uptime,
                     website: None,
                     description: Some(format!("Pool owner: {}", pool.owner_id)),
-                    next_epoch_active: None,
                 }))
             }
         })

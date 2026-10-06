@@ -1,10 +1,10 @@
 use super::*;
 use crate::service::{ChainEndpoints, StatusPollOutcome};
-use crate::store::wallet_domain::CoreTransactionStatus;
+use crate::store::wallet_domain::TransactionStatus;
 use serde_json::json;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
-fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecord {
+fn record(id: &str, chain: Chain, status: &str) -> TransactionRecord {
     serde_json::from_value(json!({
         "id":id, "walletId":"wallet", "walletName":"Original", "kind":"send",
         "chainId":chain.str_id(), "symbol":chain.coin_symbol(), "assetDisplayName":"Coin",
@@ -31,7 +31,7 @@ async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletSer
     service.open_state(path.clone()).await.unwrap();
     (service, path)
 }
-async fn save(service: &WalletService, record: CorePersistedTransactionRecord) {
+async fn save(service: &WalletService, record: TransactionRecord) {
     service
         .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record)])
         .await
@@ -64,7 +64,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
             .await
             .unwrap();
         assert_eq!(change.old_status.as_raw(), previous);
-        assert_eq!(change.new_status, CoreTransactionStatus::Confirmed);
+        assert_eq!(change.new_status, TransactionStatus::Confirmed);
         assert_eq!(change.status_changed, previous != "confirmed");
         assert_eq!(
             change.notify,
@@ -84,7 +84,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
                 .unwrap()
                 .payload
                 .status,
-            CoreTransactionStatus::Pending
+            TransactionStatus::Pending
         );
     }
     server.verify().await;
@@ -142,7 +142,7 @@ async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
         .recheck_transaction_status("target".into())
         .await
         .unwrap();
-    assert_eq!(change.new_status, CoreTransactionStatus::Pending);
+    assert_eq!(change.new_status, TransactionStatus::Pending);
     assert!(
         !change.notify,
         "pending again is not an outcome to announce"
@@ -190,7 +190,7 @@ async fn explicit_recheck_refuses_invalid_scope_before_network_or_tracker_mutati
         );
     }
     let mut row = record("target", Chain::Bitcoin, "pending");
-    row.kind = crate::store::wallet_domain::CoreTransactionKind::Receive;
+    row.kind = crate::store::wallet_domain::TransactionKind::Receive;
     save(&service, row).await;
     assert!(
         service
@@ -199,7 +199,7 @@ async fn explicit_recheck_refuses_invalid_scope_before_network_or_tracker_mutati
             .is_err()
     );
     row = record("receive", Chain::Litecoin, "failed");
-    row.kind = crate::store::wallet_domain::CoreTransactionKind::Receive;
+    row.kind = crate::store::wallet_domain::TransactionKind::Receive;
     assert!(recheck_chain(&row).is_ok());
     assert!(server.received_requests().await.unwrap().is_empty());
     assert!(service.status_trackers.read().await.is_empty());
@@ -287,7 +287,7 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
             }
             "hash" => {
                 assert!(result.is_err());
-                assert_eq!(rows[0].status, CoreTransactionStatus::Failed);
+                assert_eq!(rows[0].status, TransactionStatus::Failed);
             }
             _ => {
                 assert!(result.is_ok());
@@ -321,7 +321,7 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
         .await
         .unwrap();
     assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].new_status, CoreTransactionStatus::Confirmed);
+    assert_eq!(changes[0].new_status, TransactionStatus::Confirmed);
     assert_eq!(
         service.transactions().await.unwrap()[0].confirmation_count,
         Some(1)

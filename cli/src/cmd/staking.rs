@@ -13,7 +13,7 @@ use crate::out::{self, Out};
 pub enum StakingCommand {
     /// Staking network descriptions, minimum stake and unbonding periods. Offline.
     Chains,
-    /// Available validator information; measured APY when supplied by the chain.
+    /// Available validators: name, identifier, commission and minimum delegation.
     Validators(ValidatorsArgs),
     /// Effective configured endpoints, without making network requests.
     Endpoints(ValidatorsArgs),
@@ -257,14 +257,9 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
         }
         for validator in validators.iter().take(args.limit) {
             println!(
-                "  {}  {:<34} {:>7}",
+                "  {}  {}",
                 out::tint("●", chain).bold(),
-                validator.display_name,
-                validator
-                    .apy
-                    .map(|apy| format!("{:.2}%", apy * 100.0))
-                    .unwrap_or_else(|| "APY unavailable".into())
-                    .bold(),
+                validator.display_name
             );
             println!("     {}", out::hint(&validator.identifier));
         }
@@ -285,7 +280,6 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
             .map(|validator| serde_json::json!({
                 "identifier": validator.identifier,
                 "name": validator.display_name,
-                "apy": validator.apy,
                 "commission": validator.commission,
                 "minDelegationSmallestUnit": validator.min_delegation_smallest_unit,
             }))

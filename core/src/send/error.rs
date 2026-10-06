@@ -15,11 +15,11 @@ pub enum SendError {
     /// The spendable balance does not cover the amount plus the fee. The
     /// message names what fell short where a chain has more than one balance.
     #[error("{0}")]
-    InsufficientFunds(crate::CoreMessage),
+    InsufficientFunds(crate::LocalizableMessage),
     /// The send as requested cannot be built: an amount, address, fee or
     /// reviewed plan that is out of range or no longer matches.
     #[error("{0}")]
-    Invalid(crate::CoreMessage),
+    Invalid(crate::LocalizableMessage),
     /// Building or signing failed on a valid request.
     #[error("{0}")]
     Internal(String),

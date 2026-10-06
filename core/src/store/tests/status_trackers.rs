@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 
 fn tmp_db(tag: &str) -> String {
     let mut path = std::env::temp_dir();
@@ -11,14 +11,14 @@ fn tmp_db(tag: &str) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn pending_send(id: &str, chain: crate::registry::Chain) -> CorePersistedTransactionRecord {
+fn pending_send(id: &str, chain: crate::registry::Chain) -> TransactionRecord {
     serde_json::from_value(serde_json::json!({
         "id": id, "walletId": "w1", "kind": "send", "status": "pending",
         "walletName": "W", "assetDisplayName": chain, "symbol": "BTC",
         "chainId": chain, "amount": "1", "address": "bc1qexample",
         "transactionHash": format!("hash-{id}"), "createdAtUnix": 0.0,
     }))
-    .expect("fixture must match CorePersistedTransactionRecord")
+    .expect("fixture must match TransactionRecord")
 }
 
 // ── Confirmation-poll trackers (core-owned) ───────────────────────────
@@ -84,9 +84,9 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
         .expect("apply");
 
     assert_eq!(changes.len(), 1);
-    use crate::store::wallet_domain::CoreTransactionStatus;
-    assert_eq!(changes[0].old_status, CoreTransactionStatus::Pending);
-    assert_eq!(changes[0].new_status, CoreTransactionStatus::Confirmed);
+    use crate::store::wallet_domain::TransactionStatus;
+    assert_eq!(changes[0].old_status, TransactionStatus::Pending);
+    assert_eq!(changes[0].new_status, TransactionStatus::Confirmed);
     assert!(changes[0].status_changed);
     assert_eq!(changes[0].transaction_hash.as_deref(), Some("hash-tx1"));
 
@@ -94,7 +94,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
     let tx = stored.iter().find(|t| t.id == "tx1").expect("still there");
     assert_eq!(
         tx.status,
-        crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+        crate::store::wallet_domain::TransactionStatus::Confirmed
     );
     assert_eq!(tx.confirmation_count, Some(6));
     assert_eq!(tx.receipt_block_number, Some(900_000));

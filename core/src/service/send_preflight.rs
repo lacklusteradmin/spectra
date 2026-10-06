@@ -181,7 +181,7 @@ impl WalletService {
 /// its tokens — and for a token the user does not track.
 fn supported_evm_token(
     holding: &crate::store::wallet_domain::AssetHolding,
-    preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
+    preferences: &[crate::store::wallet_domain::TokenPreferenceEntry],
 ) -> Option<(String, String)> {
     let chain = holding.chain_id;
     if !chain.is_evm() || holding.is_native() {
@@ -317,7 +317,7 @@ mod preflight_tests {
     use crate::registry::Chain;
     use crate::store::state::WalletState;
     use crate::store::wallet_domain::AssetHolding;
-    use crate::store::wallet_domain::CoreTokenPreferenceEntry;
+    use crate::store::wallet_domain::TokenPreferenceEntry;
 
     fn holding(
         chain: crate::registry::Chain,
@@ -337,8 +337,8 @@ mod preflight_tests {
         }
     }
 
-    fn known(chain: Chain, standard: &str, contract: &str) -> CoreTokenPreferenceEntry {
-        CoreTokenPreferenceEntry {
+    fn known(chain: Chain, standard: &str, contract: &str) -> TokenPreferenceEntry {
+        TokenPreferenceEntry {
             is_built_in: false,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: crate::tokens::protocol_deployment_id(chain, standard, contract)

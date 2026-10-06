@@ -3,7 +3,7 @@ use crate::service::{
     HISTORY_SMALL_AMOUNT_THRESHOLD, HistoryPage, HistoryQuery, HistoryQueryFilter,
     TransactionSnapshot,
 };
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 use crate::wallet_db::error::DbError;
 
 // All user-facing projections select the same canonical transaction and owner.
@@ -163,7 +163,7 @@ pub(crate) fn history_page(
 pub(crate) fn history_find(
     database: &WalletDatabase,
     id: &str,
-) -> Result<Option<CorePersistedTransactionRecord>, DbError> {
+) -> Result<Option<TransactionRecord>, DbError> {
     use rusqlite::OptionalExtension;
     with_conn(database, |conn| {
         let json: Option<String> = conn
@@ -211,7 +211,7 @@ pub(crate) fn history_snapshot(
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(DbError::from)?;
         for row in rows {
-            let record: CorePersistedTransactionRecord =
+            let record: TransactionRecord =
                 serde_json::from_str(&row.map_err(DbError::from)?).map_err(DbError::from)?;
             if let Some(send) = crate::service::history_derived::replaceable_send(&record) {
                 replaceable.push(send);

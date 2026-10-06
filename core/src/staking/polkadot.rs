@@ -19,7 +19,6 @@ impl PolkadotStakingClient {
             .map(|pool| StakingValidator {
                 identifier: pool.id.to_string(),
                 display_name: pool.name,
-                apy: None,
                 commission: pool.commission,
                 total_stake_smallest_unit: Some(pool.active_balance.to_string()),
                 is_active: pool.is_open,
@@ -28,7 +27,6 @@ impl PolkadotStakingClient {
                 uptime_pct: None,
                 website: None,
                 description: None,
-                next_epoch_active: None,
             })
             .collect())
     }

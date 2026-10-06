@@ -1,6 +1,6 @@
 use crate::derivation::import::{WalletImportCommit, WalletImportRequest};
 use crate::service::WalletService;
-use crate::store::wallet_domain::{CoreSeedDerivationPreset, CoreWalletDerivationOverrides};
+use crate::store::wallet_domain::{SeedDerivationPreset, WalletDerivationOverrides};
 
 const MNEMONIC: &str = "test test test test test test test test test test test junk";
 
@@ -130,10 +130,10 @@ fn commit(chains: &[crate::registry::Chain]) -> WalletImportCommit {
             is_private_key_import: false,
             watch_only_entries: Default::default(),
         },
-        seed_derivation_preset: CoreSeedDerivationPreset::Standard,
+        seed_derivation_preset: SeedDerivationPreset::Standard,
         seed_derivation_paths: crate::derivation::path::seed_derivation_paths_for_account(0)
             .unwrap(),
-        derivation_overrides: CoreWalletDerivationOverrides::default(),
+        derivation_overrides: WalletDerivationOverrides::default(),
         seed_phrase: Some(MNEMONIC.into()),
         private_key: None,
     }
@@ -257,7 +257,7 @@ async fn imported_wallets_land_in_core_state() {
                 MNEMONIC,
                 &[crate::registry::Chain::Solana],
                 &crate::derivation::path::seed_derivation_paths_for_account(0).unwrap(),
-                &CoreWalletDerivationOverrides::default()
+                &WalletDerivationOverrides::default()
             )[&crate::registry::Chain::Solana]
                 .as_str()
         )

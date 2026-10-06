@@ -1,4 +1,4 @@
-use crate::store::state::{CoreAppState, StateCommand};
+use crate::store::state::{ResidentState, StateCommand};
 use crate::wallet_db;
 
 /// One database per test. Keyed by thread id as well as pid: two tests in
@@ -37,7 +37,7 @@ fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
 #[test]
 fn an_impossible_precision_is_refused_rather_than_clamped() {
     let db = tmp_db();
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     let events = crate::store::state::reduce_state_in_place(&mut state, add_custom("USDT", 99));
     assert_eq!(
         events.first(),

@@ -59,7 +59,7 @@ async fn imported_wallet(service: &WalletService, password: Option<&str>) -> Str
             is_private_key_import: false,
             watch_only_entries: Default::default(),
         },
-        seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+        seed_derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         seed_derivation_paths: Default::default(),
         derivation_overrides: Default::default(),
         seed_phrase: Some(MNEMONIC.into()),

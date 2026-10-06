@@ -3,7 +3,7 @@
 use crate::derivation::error::DerivationError;
 
 use crate::registry::Chain;
-use crate::store::wallet_domain::{CoreSeedDerivationPaths, CoreSeedDerivationPreset};
+use crate::store::wallet_domain::{SeedDerivationPaths, SeedDerivationPreset};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -25,8 +25,8 @@ pub fn resolve_derivation_path(
 
 #[uniffi::export]
 pub fn derivation_paths_for_preset(
-    preset: CoreSeedDerivationPreset,
-) -> Result<CoreSeedDerivationPaths, crate::SpectraBridgeError> {
+    preset: SeedDerivationPreset,
+) -> Result<SeedDerivationPaths, crate::SpectraBridgeError> {
     Ok(seed_derivation_paths_for_account(preset.account_index())?)
 }
 
@@ -96,7 +96,7 @@ pub(crate) fn format_derivation_path_segments(segments: &[DerivationPathSegment]
 /// chain derives without a configurable BIP-32 path.
 pub(crate) fn seed_derivation_paths_for_account(
     account: u32,
-) -> Result<CoreSeedDerivationPaths, DerivationError> {
+) -> Result<SeedDerivationPaths, DerivationError> {
     let mut by_chain = std::collections::HashMap::new();
     for chain in Chain::all() {
         // Keyed by id rather than display name — ids are the stable key, and
@@ -114,7 +114,7 @@ pub(crate) fn seed_derivation_paths_for_account(
             "Chain catalog produced no derivation paths.".into(),
         ));
     }
-    Ok(CoreSeedDerivationPaths { by_chain })
+    Ok(SeedDerivationPaths { by_chain })
 }
 
 fn render_derivation_path_template(template: &str, account: u32) -> String {

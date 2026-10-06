@@ -19,7 +19,6 @@ fn vote_account_to_validator(v: VoteAccount, is_active: bool, minimum: u64) -> S
     StakingValidator {
         identifier: v.vote_pubkey.clone(),
         display_name: format!("Validator {}", short_id(&v.vote_pubkey)),
-        apy: None,
         commission: Some(v.commission as f64 / 100.0),
         total_stake_smallest_unit: Some(v.activated_stake.to_string()),
         is_active,
@@ -32,7 +31,6 @@ fn vote_account_to_validator(v: VoteAccount, is_active: bool, minimum: u64) -> S
         uptime_pct: None,
         website: None,
         description: None,
-        next_epoch_active: None,
     }
 }
 

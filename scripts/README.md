@@ -78,6 +78,9 @@ other cases a scan cannot resolve. `make lint` and CI run every scan below excep
 |---|---|
 | `unreachable-exports.sh` | Finds exported Rust interfaces with no detected Swift or CLI callers. |
 | `uncalled-core-fns.sh` | Finds public Rust core functions with no detected callers. |
+| `unwritten-record-fields.sh` | Finds `uniffi::Record` fields no production code writes. Builds core and the CLI with `--emit=mir` into `target/mir/` and runs `record_writers.py` on the result. |
+| `record_writers.py` | Reads rustc's MIR, where every place carries its type, to find each record field's writes; its docstring says what counts as one. |
+| `test-record-writers.py` | Compiles a fixture with the pinned rustc and checks what the MIR reader reports, so a toolchain that prints MIR differently fails there first. |
 | `unused-strings.sh` | Finds unused text and inconsistent translation keys across locales. |
 | `source_scan.py` | Shared production-source extraction for Rust and foreign source scans; test fixtures do not count as runtime callers or copy producers. |
 | `test-source-scan.py` | Tests production/test source selection and Rust module paths. |
@@ -86,7 +89,10 @@ other cases a scan cannot resolve. `make lint` and CI run every scan below excep
 
 The function scan matches names rather than resolving receiver types or building
 a call graph. An unrelated method with the same name can hide an unused method;
-review these candidates manually even when the scan passes.
+review these candidates manually even when the scan passes. The record-field
+scan does resolve types — it reads them from the compiler — but it does not
+follow a value through a function call, so a field set from a call's result
+counts as written whatever the call returns.
 
 ## Icons
 

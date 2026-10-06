@@ -10,7 +10,7 @@ use spectra_core::derivation::import::{
 };
 use spectra_core::registry::Chain;
 use spectra_core::store::state::{StateCommand, WalletState};
-use spectra_core::store::wallet_domain::CoreSeedDerivationPaths;
+use spectra_core::store::wallet_domain::SeedDerivationPaths;
 use spectra_core::store::wallet_secrets;
 
 use super::resolve_chain;
@@ -386,10 +386,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -
     // Every chain named goes to core, which takes one for a private key and
     // derives its address before sealing anything.
     let name = args.creation.name.clone().unwrap_or_default();
-    let mut commit = commit_for(
-        request_for(chains, &name),
-        CoreSeedDerivationPaths::default(),
-    );
+    let mut commit = commit_for(request_for(chains, &name), SeedDerivationPaths::default());
     commit.request.is_private_key_import = true;
     commit.private_key = Some(private_key.clone());
     commit.password = password;
@@ -437,7 +434,7 @@ fn seal_and_import(
     let password = args.optional_password()?;
 
     let name = args.name.clone().unwrap_or_default();
-    let mut paths = CoreSeedDerivationPaths::default();
+    let mut paths = SeedDerivationPaths::default();
     for c in chains {
         let path = derivation_path(*c, args.path.as_deref())?;
         paths.by_chain.insert(c.str_id().to_string(), path);
@@ -490,7 +487,7 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     let service = ctx.service()?;
     let outcome = ctx
         .rt
-        .block_on(service.import_wallets(commit_for(request, CoreSeedDerivationPaths::default())))
+        .block_on(service.import_wallets(commit_for(request, SeedDerivationPaths::default())))
         .map_err(CliError::from)?;
 
     // One wallet per address entry, which is what the planner expanded them
@@ -797,7 +794,7 @@ fn request_for(chains: &[Chain], name: &str) -> WalletImportRequest {
 
 fn commit_for(
     request: WalletImportRequest,
-    seed_derivation_paths: CoreSeedDerivationPaths,
+    seed_derivation_paths: SeedDerivationPaths,
 ) -> WalletImportCommit {
     WalletImportCommit {
         password: None,

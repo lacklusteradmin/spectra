@@ -43,8 +43,10 @@ jobs:
       - name: Source scans
         run: |
           python3 -B scripts/test-source-scan.py
+          python3 -B scripts/test-record-writers.py
           scripts/unreachable-exports.sh
           scripts/uncalled-core-fns.sh
+          scripts/unwritten-record-fields.sh
           scripts/unused-strings.sh
           scripts/swift-shell-literals.sh
 

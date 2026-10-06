@@ -175,7 +175,7 @@ impl TransactionChange {
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum TransactionCommand {
     Upsert {
-        records: Vec<crate::store::persistence_models::CorePersistedTransactionRecord>,
+        records: Vec<crate::store::persistence_models::TransactionRecord>,
     },
     /// Merge freshly fetched history for a chain into what is stored.
     ///
@@ -183,7 +183,7 @@ pub enum TransactionCommand {
     /// crosses the FFI. The merge strategy is not a parameter: it is a
     /// property of the chain and comes from `registry::Chain`.
     Merge {
-        incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
+        incoming: Vec<crate::fetch::transactions::FetchedTransactionRecord>,
         chain_id: crate::registry::Chain,
         preserve_created_at_sentinel_unix: Option<f64>,
     },

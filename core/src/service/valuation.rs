@@ -25,7 +25,7 @@ pub struct PortfolioValuation {
     pub alert_targets: HashMap<String, f64>,
 }
 
-pub(super) fn price(state: &CoreAppState, holding: &AssetHolding) -> Option<f64> {
+pub(super) fn price(state: &ResidentState, holding: &AssetHolding) -> Option<f64> {
     if holding.chain_id.is_testnet() {
         return None;
     }
@@ -38,12 +38,12 @@ pub(super) fn price(state: &CoreAppState, holding: &AssetHolding) -> Option<f64>
 }
 
 /// USD value of the holding's whole balance.
-pub(super) fn value(state: &CoreAppState, holding: &AssetHolding) -> Option<f64> {
+pub(super) fn value(state: &ResidentState, holding: &AssetHolding) -> Option<f64> {
     value_of(state, holding, &holding.amount)
 }
 
 /// USD value of `amount` of the holding's asset.
-fn value_of(state: &CoreAppState, holding: &AssetHolding, amount: &str) -> Option<f64> {
+fn value_of(state: &ResidentState, holding: &AssetHolding, amount: &str) -> Option<f64> {
     let amount = crate::decimal::canonical(amount)?;
     let value = crate::decimal::to_f64(&amount) * price(state, holding)?;
     value.is_finite().then_some(value)
@@ -52,7 +52,7 @@ fn value_of(state: &CoreAppState, holding: &AssetHolding, amount: &str) -> Optio
 /// A wallet's holdings in the order it shows them: most valuable first,
 /// unpriced ones after, each run by symbol. Stable, so equal rows keep
 /// the catalog's order.
-pub(super) fn order_holdings_by_value(state: &CoreAppState, holdings: &mut [AssetHolding]) {
+pub(super) fn order_holdings_by_value(state: &ResidentState, holdings: &mut [AssetHolding]) {
     use std::cmp::Ordering;
     holdings.sort_by(|a, b| {
         match (value(state, a), value(state, b)) {
@@ -66,7 +66,7 @@ pub(super) fn order_holdings_by_value(state: &CoreAppState, holdings: &mut [Asse
 }
 
 /// USD to the display currency, when the rate is known.
-pub(super) fn display_rate(state: &CoreAppState) -> Option<f64> {
+pub(super) fn display_rate(state: &ResidentState) -> Option<f64> {
     if state.settings.fiat_currency == crate::store::state::FiatCurrency::Usd {
         return Some(1.0);
     }
@@ -78,14 +78,14 @@ pub(super) fn display_rate(state: &CoreAppState) -> Option<f64> {
 }
 
 /// A USD figure in the display currency.
-pub(super) fn to_display(state: &CoreAppState, usd: f64) -> Option<f64> {
+pub(super) fn to_display(state: &ResidentState, usd: f64) -> Option<f64> {
     let value = usd * display_rate(state)?;
     value.is_finite().then_some(value)
 }
 
 /// `amount` of the holding's asset, in the display currency.
 pub(super) fn display_value_of(
-    state: &CoreAppState,
+    state: &ResidentState,
     holding: &AssetHolding,
     amount: &str,
 ) -> Option<f64> {
@@ -93,12 +93,12 @@ pub(super) fn display_value_of(
 }
 
 /// One unit of the holding's asset, in the display currency.
-pub(super) fn display_price(state: &CoreAppState, holding: &AssetHolding) -> Option<f64> {
+pub(super) fn display_price(state: &ResidentState, holding: &AssetHolding) -> Option<f64> {
     to_display(state, price(state, holding)?)
 }
 
 pub(super) fn total<'a>(
-    state: &CoreAppState,
+    state: &ResidentState,
     holdings: impl Iterator<Item = &'a AssetHolding>,
 ) -> QuotedTotal {
     let mut total = 0.0;
@@ -120,7 +120,7 @@ pub(super) fn total<'a>(
     }
 }
 
-pub(super) fn portfolio_valuation(state: &CoreAppState) -> PortfolioValuation {
+pub(super) fn portfolio_valuation(state: &ResidentState) -> PortfolioValuation {
     let holding_values = state
         .wallets
         .iter()
@@ -170,7 +170,7 @@ mod tests {
     use super::*;
     #[test]
     fn missing_invalid_and_overflowed_quotes_are_not_zero_or_stored_prices() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         let mut coin = crate::tokens::deployment("ethereum:native")
             .unwrap()
             .holding_template();
@@ -206,7 +206,7 @@ mod tests {
     /// A testnet coin is never quoted, even when a price is keyed by its id.
     #[test]
     fn a_testnet_holding_has_no_value() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         let mut coin = crate::registry::Chain::EthereumSepolia.native_holding_template();
         coin.amount = "1".into();
         state.quotes.prices.insert(coin.deployment_id(), 3000.0);
@@ -217,7 +217,7 @@ mod tests {
     /// Most valuable first, unpriced after, ties by symbol.
     #[test]
     fn a_wallet_shows_its_most_valuable_holdings_first() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         let tokens: Vec<_> = crate::store::built_in_token_preferences()
             .into_iter()
             .filter(|p| p.token.chain_id == crate::registry::Chain::Ethereum)

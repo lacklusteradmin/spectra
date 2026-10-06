@@ -573,7 +573,7 @@ fn public_utxo_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
     use crate::derivation::bitcoin::{
         ExtendedPublicKey, XPUB_VERSION_MAINNET, XPUB_VERSION_TESTNET,
     };
-    let overrides = crate::store::wallet_domain::CoreWalletDerivationOverrides {
+    let overrides = crate::store::wallet_domain::WalletDerivationOverrides {
         passphrase: Some("public account fixture".into()),
         ..Default::default()
     };
@@ -692,7 +692,7 @@ async fn protected_account_utxo_public_context_receives_after_restart_without_op
 #[test]
 fn owned_receive_derivation_uses_the_wallet_passphrase() {
     let path = "m/84'/0'/2'/0/0".to_string();
-    let overrides = crate::store::wallet_domain::CoreWalletDerivationOverrides {
+    let overrides = crate::store::wallet_domain::WalletDerivationOverrides {
         passphrase: Some("different wallet".into()),
         ..Default::default()
     };

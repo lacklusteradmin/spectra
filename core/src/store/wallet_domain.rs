@@ -9,7 +9,7 @@ use zeroize::Zeroize;
 /// The operation represented by a stored transaction.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
-pub enum CoreTransactionKind {
+pub enum TransactionKind {
     Send,
     Receive,
     Stake,
@@ -17,7 +17,7 @@ pub enum CoreTransactionKind {
     Withdraw,
     ClaimRewards,
 }
-impl CoreTransactionKind {
+impl TransactionKind {
     pub fn as_raw(self) -> &'static str {
         match self {
             Self::Send => "send",
@@ -39,38 +39,36 @@ impl CoreTransactionKind {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum CoreTransactionDirection {
+pub enum TransactionDirection {
     Outgoing,
     Incoming,
     Neutral,
 }
 #[uniffi::export]
-pub fn transaction_kind_direction(kind: CoreTransactionKind) -> CoreTransactionDirection {
+pub fn transaction_kind_direction(kind: TransactionKind) -> TransactionDirection {
     match kind {
-        CoreTransactionKind::Send | CoreTransactionKind::Stake => {
-            CoreTransactionDirection::Outgoing
+        TransactionKind::Send | TransactionKind::Stake => TransactionDirection::Outgoing,
+        TransactionKind::Receive | TransactionKind::Withdraw | TransactionKind::ClaimRewards => {
+            TransactionDirection::Incoming
         }
-        CoreTransactionKind::Receive
-        | CoreTransactionKind::Withdraw
-        | CoreTransactionKind::ClaimRewards => CoreTransactionDirection::Incoming,
-        CoreTransactionKind::Unstake => CoreTransactionDirection::Neutral,
+        TransactionKind::Unstake => TransactionDirection::Neutral,
     }
 }
 #[uniffi::export]
-pub fn transaction_kind_is_submitted(kind: CoreTransactionKind) -> bool {
+pub fn transaction_kind_is_submitted(kind: TransactionKind) -> bool {
     kind.is_submitted()
 }
 
-/// Swift `TransactionStatus` — rawValues: `"pending"`, `"confirmed"`, `"failed"`.
+/// Where a transaction stands; stored as `"pending"`, `"confirmed"` or `"failed"`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
-pub enum CoreTransactionStatus {
+pub enum TransactionStatus {
     Pending,
     Confirmed,
     Failed,
 }
 
-impl CoreTransactionStatus {
+impl TransactionStatus {
     /// The stored and wire spelling.
     pub fn as_raw(self) -> &'static str {
         match self {
@@ -92,9 +90,9 @@ impl CoreTransactionStatus {
     }
 }
 
-/// Swift `PriceAlertCondition` — rawValues: `"Above"`, `"Below"` (PascalCase).
+/// Which side of its target a price alert fires on; stored as `"Above"` or `"Below"`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-pub enum CorePriceAlertCondition {
+pub enum PriceAlertCondition {
     #[serde(rename = "Above")]
     Above,
     #[serde(rename = "Below")]
@@ -105,14 +103,14 @@ pub enum CorePriceAlertCondition {
     Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
 )]
 #[serde(rename_all = "camelCase")]
-pub enum CoreSeedDerivationPreset {
+pub enum SeedDerivationPreset {
     #[default]
     Standard,
     Account1,
     Account2,
 }
 
-impl CoreSeedDerivationPreset {
+impl SeedDerivationPreset {
     /// The BIP-44 account a preset's default paths use.
     pub fn account_index(self) -> u32 {
         match self {
@@ -227,12 +225,12 @@ impl AssetHolding {
 /// Algorithms and iteration settings come from the chain and derivation path.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CoreWalletDerivationOverrides {
+pub struct WalletDerivationOverrides {
     pub passphrase: Option<String>,
     pub hmac_key: Option<String>,
 }
 
-impl CoreWalletDerivationOverrides {
+impl WalletDerivationOverrides {
     pub fn validate_for_chain(
         &self,
         chain: crate::registry::Chain,
@@ -276,7 +274,7 @@ impl CoreWalletDerivationOverrides {
 /// cloned `WalletState` carries them in the clear — so whatever takes them
 /// out of one owes them a wipe. Two paths derive from a stored wallet, the
 /// send identity and Bitcoin's history xpub, and this is how both hold them.
-pub(crate) struct SensitiveOverrides(pub(crate) CoreWalletDerivationOverrides);
+pub(crate) struct SensitiveOverrides(pub(crate) WalletDerivationOverrides);
 
 impl SensitiveOverrides {
     /// Take the overrides out of a wallet record, leaving it with none.
@@ -304,13 +302,13 @@ impl Drop for SensitiveOverrides {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreSeedDerivationPaths {
+pub struct SeedDerivationPaths {
     /// Concrete network ID → derivation path. Mainnet and testnet overrides
     /// are independent, even when their default paths happen to match.
     pub by_chain: HashMap<String, String>,
 }
 
-impl CoreSeedDerivationPaths {
+impl SeedDerivationPaths {
     /// Derivation path configured for this exact network.
     pub fn path_for(&self, chain: crate::registry::Chain) -> Option<&str> {
         self.by_chain.get(chain.str_id()).map(String::as_str)
@@ -341,9 +339,9 @@ pub struct WalletView {
     pub addresses: HashMap<String, String>,
     /// Account public key for receiving and recovery without unlocking a seed.
     pub account_xpub: Option<String>,
-    pub seed_derivation_preset: CoreSeedDerivationPreset,
-    pub seed_derivation_paths: CoreSeedDerivationPaths,
-    pub derivation_overrides: CoreWalletDerivationOverrides,
+    pub seed_derivation_preset: SeedDerivationPreset,
+    pub seed_derivation_paths: SeedDerivationPaths,
+    pub derivation_overrides: WalletDerivationOverrides,
     pub holdings: Vec<AssetHolding>,
     pub include_in_portfolio_total: bool,
     /// What the wallet signs with and whether a password guards it — read
@@ -442,7 +440,7 @@ impl crate::store::state::WalletState {
     /// the explicit paths stored on addresses and the active wallet path.
     ///
     /// `WalletState` remains the authority. This produces a view model.
-    pub fn to_wallet_view(&self, defaults: &CoreSeedDerivationPaths) -> WalletView {
+    pub fn to_wallet_view(&self, defaults: &SeedDerivationPaths) -> WalletView {
         let mut seed_derivation_paths = defaults.clone();
         for address in &self.addresses {
             if let Some(path) = address.derivation_path.as_deref() {
@@ -493,13 +491,13 @@ impl crate::store::state::WalletState {
 /// one record.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreTokenPreferenceEntry {
+pub struct TokenPreferenceEntry {
     pub token: crate::tokens::TokenDeploymentEntry,
     /// The catalog ships it; the user cannot edit or delete it.
     pub is_built_in: bool,
 }
 
-impl CoreTokenPreferenceEntry {
+impl TokenPreferenceEntry {
     /// Identity: a token *is* its contract on its chain.
     pub fn id(&self) -> String {
         self.token.deployment_id.clone()
@@ -514,7 +512,7 @@ impl CoreTokenPreferenceEntry {
 /// One place an asset is held: a chain, a token standard, a contract.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreDashboardAssetHolding {
+pub struct DashboardAssetHolding {
     pub coin: AssetHolding,
     /// In the display currency; `None` when unpriced.
     pub value: Option<f64>,
@@ -533,7 +531,7 @@ pub struct CoreDashboardAssetHolding {
 /// persisted beside them. None means at least one place is unpriced.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreDashboardAssetGroup {
+pub struct DashboardAssetGroup {
     /// Everything held across `holdings`, as an exact decimal.
     pub total_amount: String,
     /// In the display currency; `None` when any place is unpriced.
@@ -545,14 +543,14 @@ pub struct CoreDashboardAssetGroup {
     /// held, or the catalog's entry for it when it is held nowhere. An identity,
     /// not a place — read `holdings` for those.
     pub identity: AssetHolding,
-    pub holdings: Vec<CoreDashboardAssetHolding>,
+    pub holdings: Vec<DashboardAssetHolding>,
     pub is_pinned: bool,
 }
 
 /// An asset the dashboard can pin. `deployment_id` is the place it is drawn
 /// from — the colour and artwork follow the deployment, never the ticker.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
-pub struct CoreDashboardPinOption {
+pub struct DashboardPinOption {
     pub token_id: String,
     pub deployment_id: String,
     pub symbol: String,
@@ -569,7 +567,7 @@ mod token_preference_tests {
 
     #[test]
     fn an_entry_is_identified_by_its_deployment() {
-        let entry = CoreTokenPreferenceEntry {
+        let entry = TokenPreferenceEntry {
             is_built_in: true,
             token: crate::tokens::TokenDeploymentEntry {
                 deployment_id: "bnb:bep-20:0x1111111111111111111111111111111111111111".into(),

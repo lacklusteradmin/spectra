@@ -34,7 +34,6 @@ fn request(chain: Chain, recipient: String) -> SendExecutionRequest {
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        monero_priority: None,
         sign_only: false,
     }
 }

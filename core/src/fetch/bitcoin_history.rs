@@ -7,7 +7,7 @@
 
 use crate::api::utxo::UtxoHistoryEntry;
 use crate::api::{HistoryPage, error::ApiError};
-use crate::fetch::history::CoreBitcoinHistorySnapshot;
+use crate::fetch::history::BitcoinHistorySnapshot;
 use crate::registry::Chain;
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ struct AddressCursor {
 struct Cursor {
     network: Chain,
     sources: Vec<AddressCursor>,
-    ready: VecDeque<CoreBitcoinHistorySnapshot>,
+    ready: VecDeque<BitcoinHistorySnapshot>,
 }
 
 fn height(row: &UtxoHistoryEntry) -> u64 {
@@ -97,7 +97,7 @@ pub(crate) async fn page<F, Fut>(
     previous: Option<&str>,
     limit: usize,
     fetch: F,
-) -> Result<HistoryPage<CoreBitcoinHistorySnapshot>, ApiError>
+) -> Result<HistoryPage<BitcoinHistorySnapshot>, ApiError>
 where
     F: Fn(String, Option<String>) -> Fut,
     Fut: Future<Output = Result<crate::api::HistoryPage<UtxoHistoryEntry>, ApiError>>,
@@ -199,7 +199,7 @@ where
         let mut merged = grouped
             .into_values()
             .filter(|(net, _)| *net != 0)
-            .map(|(net, row)| CoreBitcoinHistorySnapshot {
+            .map(|(net, row)| BitcoinHistorySnapshot {
                 txid: row.txid,
                 amount_btc: crate::decimal::from_units(
                     net.unsigned_abs(),
@@ -212,7 +212,6 @@ where
                     "pending"
                 }
                 .into(),
-                counterparty_address: String::new(),
                 block_height: row.block_height.map(|h| h as i64),
                 created_at_unix: row.block_time.unwrap_or(0) as f64,
             })

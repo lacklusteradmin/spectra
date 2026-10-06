@@ -1,5 +1,5 @@
 use crate::service::{TransactionCommand, WalletService};
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 
 fn tmp_db(tag: &str) -> String {
     let mut path = std::env::temp_dir();
@@ -19,7 +19,7 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
     (service, db)
 }
 
-fn record(id: &str, wallet: &str, status: &str) -> CorePersistedTransactionRecord {
+fn record(id: &str, wallet: &str, status: &str) -> TransactionRecord {
     serde_json::from_value(serde_json::json!({
         "id": id,
         "walletId": wallet,
@@ -34,7 +34,7 @@ fn record(id: &str, wallet: &str, status: &str) -> CorePersistedTransactionRecor
         "transactionHash": format!("hash-{id}"),
         "createdAtUnix": 0.0,
     }))
-    .expect("fixture must match CorePersistedTransactionRecord")
+    .expect("fixture must match TransactionRecord")
 }
 
 /// The whole point: core decides what is new and what is an update.

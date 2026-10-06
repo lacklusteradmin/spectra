@@ -138,7 +138,7 @@ impl WalletService {
 
 /// One wallet's Bitcoin history page, and which source answered.
 pub(crate) struct BitcoinHistoryPage {
-    pub snapshots: Vec<crate::fetch::history::CoreBitcoinHistorySnapshot>,
+    pub snapshots: Vec<crate::fetch::history::BitcoinHistorySnapshot>,
     pub next_cursor: Option<String>,
     pub source_used: String,
     pub identifier: String,
@@ -289,9 +289,9 @@ fn bitcoin_record(
     wallet: &crate::store::state::WalletState,
     chain: Chain,
     source_used: &str,
-    snapshot: crate::fetch::history::CoreBitcoinHistorySnapshot,
-) -> crate::fetch::transactions::CoreTransactionRecord {
-    crate::fetch::transactions::CoreTransactionRecord {
+    snapshot: crate::fetch::history::BitcoinHistorySnapshot,
+) -> crate::fetch::transactions::FetchedTransactionRecord {
+    crate::fetch::transactions::FetchedTransactionRecord {
         deployment_id: crate::tokens::deployment_id_for(chain, None),
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet.id.clone()),
@@ -302,7 +302,9 @@ fn bitcoin_record(
         symbol: chain.coin_symbol().to_string(),
         chain_id: chain,
         amount: snapshot.amount_btc.clone(),
-        address: snapshot.counterparty_address,
+        // A snapshot nets the wallet's every address in one transaction, so it
+        // names no single counterparty.
+        address: String::new(),
         transaction_hash: Some(snapshot.txid).filter(|txid| !txid.is_empty()),
         nonce: None,
         receipt_block_number: snapshot.block_height,

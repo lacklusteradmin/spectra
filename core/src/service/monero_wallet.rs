@@ -308,16 +308,7 @@ impl WalletService {
             chain,
         )
         .await?;
-        Ok(monero_local::prepare(
-            &wallet,
-            &rpc,
-            pair,
-            &request.to_address,
-            amount,
-            &key,
-            request.monero_priority.unwrap_or(2),
-        )
-        .await?)
+        Ok(monero_local::prepare(&wallet, &rpc, pair, &request.to_address, amount, &key).await?)
     }
     /// Called under the sender lock by sign_send. Scan new blocks before spending.
     pub(super) async fn sign_monero(

@@ -43,7 +43,7 @@ pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -
 ///
 /// `id` is derived from chain and contract rather than minted at random: a
 /// built-in's identity *is* its contract.
-pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
+pub fn built_in_token_preferences() -> Vec<wallet_domain::TokenPreferenceEntry> {
     crate::tokens::catalog()
         .iter()
         .filter(|token| !token.is_native())
@@ -51,7 +51,7 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
             // A catalog row on a chain that cannot host tokens is a data
             // mistake, and skipping it is how it stays one.
             Some(token.chain_id).filter(|c| c.hosts_tokens())?;
-            Some(wallet_domain::CoreTokenPreferenceEntry {
+            Some(wallet_domain::TokenPreferenceEntry {
                 is_built_in: true,
                 token: token.clone(),
             })
@@ -63,11 +63,11 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
 /// rows replace persisted copies and custom aliases of them. Each normalized
 /// network/identifier appears once, even when its protocol label differs.
 pub fn merge_built_in_token_preferences(
-    built_ins: Vec<wallet_domain::CoreTokenPreferenceEntry>,
-    persisted: Vec<wallet_domain::CoreTokenPreferenceEntry>,
-) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
+    built_ins: Vec<wallet_domain::TokenPreferenceEntry>,
+    persisted: Vec<wallet_domain::TokenPreferenceEntry>,
+) -> Vec<wallet_domain::TokenPreferenceEntry> {
     let mut merged = built_ins;
-    let key = |entry: &wallet_domain::CoreTokenPreferenceEntry| {
+    let key = |entry: &wallet_domain::TokenPreferenceEntry| {
         (
             entry.token.chain_id,
             crate::tokens::normalize_token_identifier(
@@ -90,7 +90,7 @@ pub fn merge_built_in_token_preferences(
 /// chain: one token's deployments sit together, so a list grouped by token
 /// keeps this order without sorting again. Every writer of the list sorts
 /// with this, so an edited list matches the one a reload builds.
-pub(crate) fn sort_token_preferences(entries: &mut [wallet_domain::CoreTokenPreferenceEntry]) {
+pub(crate) fn sort_token_preferences(entries: &mut [wallet_domain::TokenPreferenceEntry]) {
     entries.sort_by(|lhs, rhs| {
         rhs.is_built_in
             .cmp(&lhs.is_built_in)
@@ -109,7 +109,7 @@ pub struct WalletEarliestTransactionDate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreResetPlan {
+pub struct ResetPlan {
     pub reset_wallets_and_secrets: bool,
     pub reset_history_and_cache: bool,
     pub reset_alerts_and_contacts: bool,
@@ -121,12 +121,12 @@ pub struct CoreResetPlan {
 ///
 /// Core applies the domain resets; the returned scope expansion also tells
 /// the platform which of its own flows and preferences to clear.
-pub fn reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
+pub fn reset_dispatch(scopes: Vec<state::ResetScope>) -> ResetPlan {
     use state::ResetScope;
     let has = |scope: ResetScope| scopes.contains(&scope);
     let wallets_and_secrets = has(ResetScope::WalletsAndSecrets);
     let history_and_cache = wallets_and_secrets || has(ResetScope::HistoryAndCache);
-    CoreResetPlan {
+    ResetPlan {
         reset_wallets_and_secrets: wallets_and_secrets,
         reset_history_and_cache: history_and_cache,
         reset_alerts_and_contacts: has(ResetScope::AlertsAndContacts),
@@ -139,14 +139,14 @@ pub fn reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
 /// Swift formats the user-facing text itself.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct PriceAlertEvaluationAlert {
+pub struct PriceAlertRule {
     pub id: String,
     pub holding_key: String,
     pub asset_display_name: String,
     pub symbol: String,
     pub chain_id: crate::registry::Chain,
     pub target_price: f64,
-    pub condition: wallet_domain::CorePriceAlertCondition,
+    pub condition: wallet_domain::PriceAlertCondition,
     pub is_enabled: bool,
     pub has_triggered: bool,
 }
@@ -179,7 +179,7 @@ pub struct PriceAlertNotification {
     pub chain_id: crate::registry::Chain,
     pub target_price: f64,
     pub live_price: f64,
-    pub condition: wallet_domain::CorePriceAlertCondition,
+    pub condition: wallet_domain::PriceAlertCondition,
     #[serde(default)]
     pub currency: state::FiatCurrency,
 }
@@ -192,7 +192,7 @@ pub struct PriceAlertEvaluation {
 }
 
 pub fn evaluate_price_alerts(
-    alerts: Vec<PriceAlertEvaluationAlert>,
+    alerts: Vec<PriceAlertRule>,
     prices: Vec<PriceAlertEvaluationPrice>,
 ) -> PriceAlertEvaluation {
     let price_by_key: HashMap<String, f64> = prices
@@ -209,8 +209,8 @@ pub fn evaluate_price_alerts(
             continue;
         };
         let meets_target = match alert.condition {
-            wallet_domain::CorePriceAlertCondition::Above => live_price >= alert.target_price,
-            wallet_domain::CorePriceAlertCondition::Below => live_price <= alert.target_price,
+            wallet_domain::PriceAlertCondition::Above => live_price >= alert.target_price,
+            wallet_domain::PriceAlertCondition::Below => live_price <= alert.target_price,
         };
         if meets_target && !alert.has_triggered {
             updates.push(PriceAlertTriggerUpdate {
@@ -569,8 +569,8 @@ pub struct TransactionStatusChange {
     pub id: String,
     pub chain_id: crate::registry::Chain,
     pub transaction_hash: Option<String>,
-    pub old_status: crate::store::wallet_domain::CoreTransactionStatus,
-    pub new_status: crate::store::wallet_domain::CoreTransactionStatus,
+    pub old_status: crate::store::wallet_domain::TransactionStatus,
+    pub new_status: crate::store::wallet_domain::TransactionStatus,
     pub status_changed: bool,
     /// Whether to tell the user: the status reached confirmed or failed while
     /// transaction status notifications are on. Core's rule, as for price

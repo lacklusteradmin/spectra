@@ -54,7 +54,6 @@ pub(super) mod request_fixture {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            monero_priority: None,
             sign_only: false,
         }
     }
@@ -100,7 +99,7 @@ mod sign_only_tests {
 mod send_chain_tests {
     use super::send_chain_for;
     use crate::registry::Chain;
-    use crate::store::state::{CoreAppState, WalletState};
+    use crate::store::state::{ResidentState, WalletState};
 
     fn wallet(id: &str, chain: Chain, chain_id: Option<Chain>) -> WalletState {
         WalletState {
@@ -112,7 +111,7 @@ mod send_chain_tests {
             include_in_portfolio_total: true,
             chain_id: chain_id.unwrap_or(chain),
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -125,7 +124,7 @@ mod send_chain_tests {
     /// id.
     #[test]
     fn a_send_requires_the_explicit_network_and_never_retargets() {
-        let state = CoreAppState {
+        let state = ResidentState {
             wallets: vec![wallet("w1", Chain::Ethereum, Some(Chain::EthereumSepolia))],
             ..Default::default()
         };

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
 /// Why a transaction is failed, or why its submission is in doubt. Stored as
 /// the reason; a front end words it in the reader's language.
@@ -37,7 +37,7 @@ impl TransactionFailure {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CorePersistedTransactionRecord {
+pub struct TransactionRecord {
     /// Read-time projection; never persisted or trusted on writes.
     #[serde(skip)]
     pub actions: crate::service::TransactionActions,
@@ -47,11 +47,11 @@ pub struct CorePersistedTransactionRecord {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wallet_id: Option<String>,
-    /// Swift `TransactionKind`: `"send"` or `"receive"`.
-    pub kind: CoreTransactionKind,
+    /// What the transaction did; stored in camelCase (`"send"`, `"claimRewards"`).
+    pub kind: TransactionKind,
     /// Whether the transaction is pending, confirmed or failed. Not optional,
     /// so every reader gets the same answer.
-    pub status: CoreTransactionStatus,
+    pub status: TransactionStatus,
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
@@ -111,9 +111,9 @@ mod tests {
         // Minimal encoded shape for a received record: no null fields, and
         // createdAtUnix as seconds since 1970-01-01 UTC. `status` is required.
         let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainId":"bitcoin","amount":"0.5","address":"bc1qreceive","createdAtUnix":745200000.0}"#;
-        let decoded: CorePersistedTransactionRecord = serde_json::from_str(json).unwrap();
-        assert_eq!(decoded.kind, CoreTransactionKind::Receive);
-        assert_eq!(decoded.status, CoreTransactionStatus::Pending);
+        let decoded: TransactionRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(decoded.kind, TransactionKind::Receive);
+        assert_eq!(decoded.status, TransactionStatus::Pending);
         assert_eq!(decoded.created_at_unix, 745200000.0);
         let reencoded = serde_json::to_string(&decoded).unwrap();
         assert_eq!(reencoded, json);
@@ -123,14 +123,14 @@ mod tests {
     /// chain-specific extras. Tests start from this and mutate the specific
     /// fields they exercise so the assertion focus is on what changed,
     /// not a wall of `None`s.
-    fn minimal_record() -> CorePersistedTransactionRecord {
-        CorePersistedTransactionRecord {
+    fn minimal_record() -> TransactionRecord {
+        TransactionRecord {
             actions: Default::default(),
             deployment_id: None,
             id: "11111111-2222-3333-4444-555555555555".to_string(),
             wallet_id: None,
-            kind: CoreTransactionKind::Receive,
-            status: CoreTransactionStatus::Pending,
+            kind: TransactionKind::Receive,
+            status: TransactionStatus::Pending,
             wallet_name: "Main".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
@@ -161,10 +161,10 @@ mod tests {
 
     #[test]
     fn transaction_record_roundtrip_with_receipt_fields() {
-        let original = CorePersistedTransactionRecord {
+        let original = TransactionRecord {
             wallet_id: Some("wallet-1".to_string()),
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Confirmed,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Confirmed,
             asset_display_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
             chain_id: crate::registry::Chain::Ethereum,
@@ -185,7 +185,7 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         // None-valued optional fields must be omitted, not serialized as null.
         assert!(!json.contains("null"), "unexpected null in {json}");
-        let decoded: CorePersistedTransactionRecord = serde_json::from_str(&json).unwrap();
+        let decoded: TransactionRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, original);
     }
 }

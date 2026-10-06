@@ -471,7 +471,7 @@ impl UtxoDerivation {
         chain: crate::registry::Chain,
         phrase: &str,
         base_path: String,
-        overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+        overrides: &crate::store::wallet_domain::WalletDerivationOverrides,
     ) -> Result<Self, SpectraBridgeError> {
         let secp = secp256k1::Secp256k1::new();
         let account = Self::account_private_key(chain, phrase, &base_path, overrides)?;
@@ -520,7 +520,7 @@ impl UtxoDerivation {
         chain: Chain,
         phrase: &str,
         base_path: &str,
-        overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+        overrides: &crate::store::wallet_domain::WalletDerivationOverrides,
     ) -> Result<crate::derivation::bitcoin::ExtendedPrivateKey, SpectraBridgeError> {
         overrides.validate_for_chain(chain)?;
         let mut indices = Self::path_indices(chain, base_path)?;
@@ -548,7 +548,7 @@ impl UtxoDerivation {
         chain: Chain,
         phrase: &str,
         base_path: &str,
-        overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+        overrides: &crate::store::wallet_domain::WalletDerivationOverrides,
     ) -> Result<String, SpectraBridgeError> {
         let account = Self::account_private_key(chain, phrase, base_path, overrides)?;
         let version = if chain.is_testnet() {

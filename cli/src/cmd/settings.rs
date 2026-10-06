@@ -4,7 +4,7 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::CoreResetPlan;
+use spectra_core::store::ResetPlan;
 use spectra_core::store::state::{
     AppSettingUpdate, AppSettings, BackgroundSyncProfile, ResetScope, StateCommand, StateEvent,
 };
@@ -256,7 +256,7 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
     Ok(())
 }
 
-fn reset_description(plan: &CoreResetPlan) -> String {
+fn reset_description(plan: &ResetPlan) -> String {
     [
         (plan.reset_wallets_and_secrets, "wallets and secrets"),
         (plan.reset_history_and_cache, "history and cache"),

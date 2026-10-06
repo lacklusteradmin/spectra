@@ -1,7 +1,7 @@
 //! Core-owned Build → Sign → Broadcast. No stage rebuilds a reviewed transaction.
 use super::*;
 use crate::send::stages::*;
-use crate::store::wallet_domain::CoreTransactionStatus;
+use crate::store::wallet_domain::TransactionStatus;
 use zeroize::Zeroizing;
 
 #[cfg(test)]
@@ -259,7 +259,7 @@ impl WalletService {
                 .ok_or_else(|| {
                     SpectraBridgeError::failure("Missing journaled submission record")
                 })?;
-            if record.status != CoreTransactionStatus::Pending {
+            if record.status != TransactionStatus::Pending {
                 return Err(SpectraBridgeError::failure(
                     "Substrate operation is already final; do not rebroadcast",
                 ));
@@ -401,7 +401,7 @@ impl WalletService {
             .map(|row| row.payload);
         let mut history = match existing {
             Some(record) => {
-                if record.status == CoreTransactionStatus::Confirmed {
+                if record.status == TransactionStatus::Confirmed {
                     return Err(SpectraBridgeError::failure(
                         "Transaction is already confirmed",
                     ));
@@ -421,7 +421,7 @@ impl WalletService {
         if icp_staking {
             // A repaired neuron reuses its original history identity, while the
             // reviewed management revision has new ingress request IDs.
-            history.status = CoreTransactionStatus::Pending;
+            history.status = TransactionStatus::Pending;
             history.failure_reason = None;
             history.transaction_hash = submission.transaction_hash.clone();
         } else if history.transaction_hash.is_none() {
@@ -554,7 +554,7 @@ impl WalletService {
             history.transaction_hash = accepted.transaction_hash.clone();
             history.failure_reason = None;
             if icp_staking {
-                history.status = CoreTransactionStatus::Confirmed;
+                history.status = TransactionStatus::Confirmed;
             }
             self.save_send_record(history).await?;
         }

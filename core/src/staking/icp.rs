@@ -42,7 +42,6 @@ impl IcpStakingClient {
                 Ok(StakingValidator {
                     identifier: id.id.to_string(),
                     display_name: data.name,
-                    apy: None,
                     commission: None,
                     total_stake_smallest_unit: None,
                     is_active: true,
@@ -51,7 +50,6 @@ impl IcpStakingClient {
                     uptime_pct: None,
                     website: None,
                     description: data.description,
-                    next_epoch_active: None,
                 })
             })
             .collect()

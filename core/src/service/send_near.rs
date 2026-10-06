@@ -83,7 +83,6 @@ impl WalletService {
             spendableBalance: decimal(quote.spendable),
             maxSendable: decimal(quote.spendable.saturating_sub(quote.budget)),
             feeRateDescription: Some("Protocol prepayment budget; storage stake retained".into()),
-            ..Default::default()
         })
     }
 

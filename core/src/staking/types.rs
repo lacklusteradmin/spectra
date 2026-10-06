@@ -12,8 +12,8 @@ pub enum StakingAction {
 }
 
 impl StakingAction {
-    pub fn transaction_kind(self) -> crate::store::wallet_domain::CoreTransactionKind {
-        use crate::store::wallet_domain::CoreTransactionKind as K;
+    pub fn transaction_kind(self) -> crate::store::wallet_domain::TransactionKind {
+        use crate::store::wallet_domain::TransactionKind as K;
         match self {
             Self::Stake => K::Stake,
             Self::Unstake => K::Unstake,
@@ -135,8 +135,6 @@ pub struct StakingValidator {
     /// Display name. Falls back to a truncated identifier if the chain has no
     /// validator naming convention.
     pub display_name: String,
-    /// Annualised measured reward rate as a fraction; None when unavailable.
-    pub apy: Option<f64>,
     /// Validator commission as a fraction (0.05 == 5%). None if not modeled.
     pub commission: Option<f64>,
     /// Total stake assigned to this validator, in the chain's native smallest
@@ -156,9 +154,6 @@ pub struct StakingValidator {
     pub website: Option<String>,
     /// Validator's self-reported description / identity blurb.
     pub description: Option<String>,
-    /// True when this validator will join the active set next epoch.
-    /// Useful for showing "activating soon" in the picker. `None` if not tracked.
-    pub next_epoch_active: Option<bool>,
 }
 
 /// Internal staking query refusal; WalletService maps it to the bridge error.

@@ -3,12 +3,12 @@ use crate::wallet_db::error::DbError;
 
 // ── App state (wallets + settings) ────────────────────────────────────────────
 //
-// This is the persistence layer for `store::state::CoreAppState` — the
+// This is the persistence layer for `store::state::ResidentState` — the
 // chain-agnostic wallet model.
 //
 // Storage follows the `history_records` house style: identity and query columns
 // are promoted, the rest of the record rides along as JSON in `payload`. Wallet
-// order is explicit in `sort_index` because `CoreAppState.wallets` is a `Vec`
+// order is explicit in `sort_index` because `ResidentState.wallets` is a `Vec`
 // and its order is user-visible.
 
 pub(super) const META_SCHEMA_VERSION: &str = "schema_version";
@@ -39,8 +39,8 @@ pub(crate) struct AppStateChanges {
 
 impl AppStateChanges {
     pub(crate) fn between(
-        before: Option<&CoreAppState>,
-        after: &CoreAppState,
+        before: Option<&ResidentState>,
+        after: &ResidentState,
     ) -> Result<Self, DbError> {
         if after.schema_version != crate::store::state::APP_STATE_SCHEMA_VERSION {
             return Err(DbError::Invalid(format!(
@@ -268,7 +268,7 @@ pub(crate) fn complete_secret_deletion(
 
 /// Explicit snapshot replacement (imports and standalone store callers).
 /// Service commands use a delta against their serialized committed state.
-pub fn app_state_save(database: &WalletDatabase, state: &CoreAppState) -> Result<(), DbError> {
+pub fn app_state_save(database: &WalletDatabase, state: &ResidentState) -> Result<(), DbError> {
     AppStateChanges::between(None, state)?.save(database)
 }
 
@@ -294,11 +294,11 @@ pub fn address_book_load_all(database: &WalletDatabase) -> Result<Vec<AddressBoo
     })
 }
 
-/// Load the persisted [`CoreAppState`].
+/// Load the persisted [`ResidentState`].
 ///
-/// An untouched database loads as `CoreAppState::default()`, so first run needs
+/// An untouched database loads as `ResidentState::default()`, so first run needs
 /// no special-casing at the call site.
-pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, DbError> {
+pub fn app_state_load(database: &WalletDatabase) -> Result<ResidentState, DbError> {
     let wallets = wallet_load_all(database)?;
     let address_book = address_book_load_all(database)?;
     with_conn(database, |conn| {
@@ -311,10 +311,10 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, DbError
             })
             .map_err(DbError::from)?;
 
-        let mut state = CoreAppState {
+        let mut state = ResidentState {
             wallets,
             address_book,
-            ..CoreAppState::default()
+            ..ResidentState::default()
         };
         let mut seen = std::collections::HashSet::new();
         for row in rows {

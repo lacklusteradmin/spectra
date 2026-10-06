@@ -6,7 +6,7 @@ use crate::registry::Chain;
 // ── Normalized chain history — standard output from fetch_normalized_history_json
 
 /// A chain history entry normalized to a standard format that Swift can map
-/// directly to `CoreTransactionRecord` without any chain-specific parsing.
+/// directly to `FetchedTransactionRecord` without any chain-specific parsing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainHistoryEntry {
     pub deployment_id: Option<String>,
@@ -744,15 +744,14 @@ mod normalize_chain_history_tests {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreBitcoinHistorySnapshot {
+pub struct BitcoinHistorySnapshot {
     pub txid: String,
     /// The net movement, as an exact decimal in BTC.
     pub amount_btc: String,
     pub kind: String,
     pub status: String,
-    pub counterparty_address: String,
     pub block_height: Option<i64>,
     pub created_at_unix: f64,
 }
