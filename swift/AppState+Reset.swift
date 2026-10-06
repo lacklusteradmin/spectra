@@ -6,7 +6,7 @@ extension AppState {
         if let failure = await authenticate(.resetData, reason: AppLocalization.string("Authenticate to reset wallet data")) {
             return failure
         }
-        await awaitPendingStateCommands()
+        await stateCommands.awaitPending()
         let outcome: ResetOutcome
         do {
             outcome = try await self.bridge.ready().resetData(scopes: Array(scopes))
@@ -35,7 +35,6 @@ extension AppState {
     /// Core cleared what it recorded; screens re-read rather than keep a copy.
     private func resetDiagnosticsViewState() {
         chainDiagnosticsState.diagnosticsRevision &+= 1
-        isLoadingMoreOnChainHistory = false
         lastPendingTransactionRefreshAt = nil
     }
 }

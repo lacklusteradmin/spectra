@@ -147,14 +147,13 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
     /// generic fallback rather than against the English text so the test
     /// does not depend on which locale it runs in.
     @Test func everyEVMChainGetsAFormatSpecificAddressHint() {
-        let store = makeState()
         // Kaspa has no arm of its own, so its message is the fallback.
-        let generic = store.addressBookAddressValidationMessage(for: "", chain: .kaspa)
+        let generic = addressBookAddressValidationMessage(for: "", chain: .kaspa)
         let evmMainnets = Chain.mainnets.filter(\.isEVM)
         #expect(!evmMainnets.isEmpty)
         for chain in evmMainnets {
-            #expect(store.addressBookAddressValidationMessage(for: "", chain: chain) != generic, "\(chain.displayName) still gets the generic hint")
-            #expect(store.addressBookAddressValidationMessage(for: "nope", chain: chain) != store.addressBookAddressValidationMessage(for: "nope", chain: .kaspa), "\(chain.displayName) still gets the generic invalid-address hint")
+            #expect(addressBookAddressValidationMessage(for: "", chain: chain) != generic, "\(chain.displayName) still gets the generic hint")
+            #expect(addressBookAddressValidationMessage(for: "nope", chain: chain) != addressBookAddressValidationMessage(for: "nope", chain: .kaspa), "\(chain.displayName) still gets the generic invalid-address hint")
         }
     }
     @Test func everyCatalogCapabilityHasALocalizedLabel() async throws {
@@ -235,7 +234,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
     @Test func settingCurrencyGoesThroughCoreAndIsNormalized() async throws {
         let store = makeState()
         store.updateSetting(.fiatCurrency(value: .eur))
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
 
         let state = try await bridge.ready().appState()
         #expect(state.settings.fiatCurrency == .eur)
@@ -247,7 +246,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
     @Test func currencySurvivesIntoAFreshAppState() async throws {
         let writer = makeState()
         writer.updateSetting(.fiatCurrency(value: .jpy))
-        await writer.awaitPendingStateCommands()
+        await writer.stateCommands.awaitPending()
 
         let reader = makeState()
         await reader.loadCoreOwnedState()
@@ -260,11 +259,11 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
     // Swift sends commands and renders what comes back.
 
     private func clearAddressBook(_ store: AppState) async {
-        for id in store.addressBook.map(\.id) {
-            store.removeAddressBookEntry(id: id)
+        for id in store.addressBook.entries.map(\.id) {
+            store.addressBook.remove(id: id)
         }
-        await store.awaitPendingStateCommands()
-        #expect(store.addressBook.isEmpty)
+        await store.stateCommands.awaitPending()
+        #expect(store.addressBook.entries.isEmpty)
     }
 
     @Test func queuedContactWritesCannotBeUndoneByAnOlderRead() async throws {
@@ -272,19 +271,19 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         await store.loadCoreOwnedState()
         await clearAddressBook(store)
         for index in 1...3 {
-            store.addAddressBookEntry(
+            store.addressBook.add(
                 name: "Contact \(index)",
                 address: "0x" + String(repeating: String(index), count: 40),
                 chain: .ethereum)
         }
-        await store.awaitPendingStateCommands()
-        #expect(store.addressBook.count == 3)
+        await store.stateCommands.awaitPending()
+        #expect(store.addressBook.entries.count == 3)
         let stale = try await bridge.ready().appState()
 
-        for entry in store.addressBook { store.removeAddressBookEntry(id: entry.id) }
-        await store.awaitPendingStateCommands()
+        for entry in store.addressBook.entries { store.addressBook.remove(id: entry.id) }
+        await store.stateCommands.awaitPending()
         store.applyCoreState(stale)
-        #expect(store.addressBook.isEmpty, "an earlier read must not resurrect removed contacts")
+        #expect(store.addressBook.entries.isEmpty, "an earlier read must not resurrect removed contacts")
         let persisted = try await bridge.ready().appState()
         #expect(persisted.addressBook.isEmpty)
     }
@@ -295,20 +294,20 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         await store.loadCoreOwnedState()
         await clearAddressBook(store)
 
-        store.addAddressBookEntry(
+        store.addressBook.add(
             name: "  Cold Wallet  ", address: "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
             chain: .bitcoin, note: " vault ")
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
 
-        #expect(store.addressBook.count == 1)
-        #expect(store.addressBook.first?.name == "Cold Wallet", "core trims")
-        #expect(store.addressBook.first?.note == "vault")
-        #expect(store.addressBookError == nil)
+        #expect(store.addressBook.entries.count == 1)
+        #expect(store.addressBook.entries.first?.name == "Cold Wallet", "core trims")
+        #expect(store.addressBook.entries.first?.note == "vault")
+        #expect(store.addressBook.error == nil)
 
         // A fresh AppState sees it — same path that makes a CLI change visible.
         let reader = makeState()
         await reader.loadCoreOwnedState()
-        #expect(reader.addressBook.count == 1)
+        #expect(reader.addressBook.entries.count == 1)
 
         await clearAddressBook(store)
     }
@@ -321,11 +320,11 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         _ = try await bridge.ready()
         await store.loadCoreOwnedState()
         await clearAddressBook(store)
-        store.addAddressBookEntry(
+        store.addressBook.add(
             name: "Typo", address: "definitely-not-an-address", chain: .bitcoin)
-        await store.awaitPendingStateCommands()
-        #expect(store.addressBook.isEmpty)
-        #expect(store.addressBookError != nil)
+        await store.stateCommands.awaitPending()
+        #expect(store.addressBook.entries.isEmpty)
+        #expect(store.addressBook.error != nil)
     }
 
     @Test func torDoesNotActivateOrStopForAnUncommittedToggle() async throws {
@@ -334,22 +333,22 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         let store = makeState()
         store.updateSetting(.torUseCustomProxy(value: true))
         store.updateSetting(.torCustomProxyAddress(value: "socks5://127.0.0.1:19050"))
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
         #expect(torStatus() == .stopped)
         store.updateSetting(.torEnabled(value: true))
         #expect(store.appSettings.torEnabled)
         #expect(!store.committedAppSettings.torEnabled)
         #expect(torStatus() == .stopped)
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
         #expect(store.committedAppSettings.torEnabled)
         #expect(torStatus() == .ready)
         store.updateSetting(.torEnabled(value: false))
         #expect(torStatus() == .ready)
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
         #expect(torStatus() == .stopped)
         store.updateSetting(.torUseCustomProxy(value: false))
         store.updateSetting(.torCustomProxyAddress(value: "socks5://127.0.0.1:9050"))
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
     }
 
     @Test func settingsRuntimeUsesCommittedValuesWhileEditsAreQueued() async throws {
@@ -363,7 +362,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         #expect(store.committedAppSettings.bitcoinStopGap == initial)
         store.updateSetting(.bitcoinStopGap(value: initial))
         #expect(store.committedAppSettings.bitcoinStopGap == initial)
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
         #expect(store.appSettings.bitcoinStopGap == initial)
         #expect(store.committedAppSettings.bitcoinStopGap == initial)
     }
@@ -377,7 +376,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         store.updateSetting(.useLargeMovementNotifications(value: false))
         #expect(store.appSettings.customEndpoints.last?.endpoint == "https://wallet.example", "core's rule trims before the command lands")
         #expect(store.appSettings.bitcoinStopGap == 200, "9999 is outside 1...200")
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
 
         let fresh = makeState()
         await fresh.loadCoreOwnedState()
@@ -387,7 +386,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
 
         store.updateSetting(.bitcoinStopGap(value: 10))
         store.updateSetting(.useLargeMovementNotifications(value: true))
-        await store.awaitPendingStateCommands()
+        await store.stateCommands.awaitPending()
     }
 
     @Test func importCompletionPreservesAPartialSuccessNotice() async {

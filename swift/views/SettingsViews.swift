@@ -52,7 +52,7 @@ struct SettingsView: View {
                         HStack(spacing: SpectraLayout.Space.m) {
                             Label(AppLocalization.string("Tor Network"), systemImage: "network.badge.shield.half.filled")
                             Spacer(minLength: SpectraLayout.Space.s)
-                            TorStatusBadge(status: store.torStatus)
+                            TorStatusBadge(status: store.tor.status)
                         }
                     }
                 }
@@ -89,8 +89,8 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Route.self) { route in
                 switch route {
-                case .addressBook: AddressBookView(store: store)
-                case .knownTokens: TokenRegistrySettingsView(store: store)
+                case .addressBook: AddressBookView(addressBook: store.addressBook)
+                case .knownTokens: TokenRegistrySettingsView(tokens: store.tokenPreferences)
                 case .appearance: AppearanceSettingsView(preferences: store.preferences)
                 case .priceAlerts: PriceAlertsView(store: store)
                 case .largeMovementAlerts: LargeMovementAlertsSettingsView(store: store)

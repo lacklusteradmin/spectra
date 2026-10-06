@@ -216,7 +216,7 @@ private struct SendRecipientIdentityView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .task(id: LookupIdentity(walletId: store.sendFlow.walletId, chain: chain, address: address, addressBook: store.addressBook)) {
+        .task(id: LookupIdentity(walletId: store.sendFlow.walletId, chain: chain, address: address, addressBook: store.addressBook.entries)) {
             holder = nil
             let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, let chain else { return }

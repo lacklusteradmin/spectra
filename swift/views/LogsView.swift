@@ -127,7 +127,7 @@ struct LogsView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(AppLocalization.string("Clear"), role: .destructive) {
-                    store.clearOperationalLogs()
+                    diagnosticsState.clearOperationalLogs()
                 }.disabled(diagnosticsState.operationalLogs.isEmpty)
             }
         }

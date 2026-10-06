@@ -4,7 +4,7 @@ import UIKit
 
 /// Saved recipients, with adding a contact as a toolbar action.
 struct AddressBookView: View {
-    @Bindable var store: AppState
+    let addressBook: AddressBookState
     @State private var isAddingContact = false
     @State private var openContact: AddressBookEntry?
 
@@ -22,7 +22,7 @@ struct AddressBookView: View {
 
                     rejectionNotice
 
-                    if store.addressBook.isEmpty {
+                    if addressBook.entries.isEmpty {
                         SpectraEmptyStateCard(
                             title: "No saved addresses yet",
                             message: "Save frequent recipients here so future sends are faster.",
@@ -36,7 +36,7 @@ struct AddressBookView: View {
                         )
                     } else {
                         LazyVStack(spacing: SpectraLayout.Space.m) {
-                            ForEach(store.addressBook) { entry in
+                            ForEach(addressBook.entries) { entry in
                                 AddressBookContactCard(entry: entry) { openContact = entry }
                             }
                         }
@@ -60,19 +60,19 @@ struct AddressBookView: View {
             }
         }
         .navigationDestination(isPresented: $isAddingContact) {
-            NewAddressBookContactView(store: store)
+            NewAddressBookContactView(addressBook: addressBook)
         }
         .navigationDestination(item: $openContact) { entry in
-            AddressBookContactView(store: store, entry: entry)
+            AddressBookContactView(addressBook: addressBook, entry: entry)
         }
     }
 
-    /// Core's reason for refusing a contact. `addressBookError` has been set
+    /// Core's reason for refusing a contact. `addressBook.error` has been set
     /// since address-book commands moved to core and no screen showed it, so a
     /// refused save was indistinguishable from a save that did nothing.
     @ViewBuilder
     private var rejectionNotice: some View {
-        if let addressBookError = store.addressBookError {
+        if let addressBookError = addressBook.error {
             HStack(alignment: .top, spacing: SpectraLayout.Space.m) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.subheadline.weight(.semibold))
@@ -81,7 +81,7 @@ struct AddressBookView: View {
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
-                    store.addressBookError = nil
+                    addressBook.error = nil
                 } label: {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.semibold))

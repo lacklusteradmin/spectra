@@ -116,7 +116,7 @@ struct SendView: View {
             if let qrScannerErrorMessage { Text(verbatim: qrScannerErrorMessage) }
         }
         .task(id: currentStep) {
-            if currentStep == .from { await store.loadSavedSends() }
+            if currentStep == .from { await store.sendFlow.loadSavedArtifacts() }
         }
         .onDisappear {
             sendWalletPassword = ""
@@ -172,7 +172,7 @@ struct SendView: View {
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {
                 sendWalletPassword = ""
-                store.clearHighRiskSendConfirmation()
+                store.sendFlow.isShowingHighRiskConfirmation = false
             }
             Button(AppLocalization.string("Sign Transaction"), role: .destructive) {
                 let password = store.stagedSendRequiresPassword ? sendWalletPassword : nil
@@ -206,7 +206,7 @@ struct SendView: View {
                             if index > 0 { Divider().opacity(0.3) }
                             Button {
                                 Task {
-                                    if await store.resumeSend(id: artifact.id) { go(to: .confirm) }
+                                    if await store.sendFlow.resume(id: artifact.id) { go(to: .confirm) }
                                 }
                             } label: {
                                 SavedSendRow(artifact: artifact, walletName: store.wallet(for: artifact.walletId)?.name)
@@ -360,7 +360,7 @@ struct SendView: View {
                 let session = store.sendFlow.session.id
                 Task {
                     guard store.sendFlow.session.isCurrent(session) else { return }
-                    await store.submitSend()
+                    await store.sendFlow.build()
                 }
             case .sign: store.sendFlow.isShowingHighRiskConfirmation = true
             case .broadcast, .retry: startBroadcast()
@@ -405,8 +405,8 @@ struct SendView: View {
                 && currentRecipientResolution != nil
                 && store.sendAmountIsValid
                 && quotedInputKey == previewRefreshKey
-                && store.customEvmFeeValidationError == nil
-                && store.evmNonceValidationError == nil
+                && store.sendFlow.customEvmFeeValidationError == nil
+                && store.sendFlow.evmNonceValidationError == nil
         }
     }
 

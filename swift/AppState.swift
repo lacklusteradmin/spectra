@@ -26,18 +26,20 @@ import SwiftUI
 
 // MARK: - AppState architecture
 //
-// `AppState` is the app's central `@Observable` store. Its methods live in one
-// `AppState+<Domain>.swift` file per domain — send, receive, import, address
-// book, networks, app lock, maintenance, reset and so on — and every extension
-// attaches methods to the same instance: there is no per-extension state.
+// `AppState` is the app's central `@Observable` store: the wallet, portfolio
+// and transaction projections, and the composition root for the domains.
+// A domain with state of its own — the send and receive flows, wallet import,
+// the address book, token preferences, price alerts, Tor, history paging,
+// diagnostics, the platform's own preferences — is a small `@MainActor`
+// `@Observable` type `AppState` owns, holding that domain's projection or view
+// state and its actions. Its views read that object, not properties here.
+// `notifications` holds no state at all.
 //
-// The extensions hide the line count but not the coupling. Derived state that
-// can be one value already is (`WalletDerivedCache`, rebuilt in one
-// assignment); a domain that grows state of its own belongs in a composed type
-// `AppState` owns, not in more properties here.
+// The `AppState+<Domain>.swift` extensions are the adapters left over: what
+// needs the wallet projection, or more than one domain, to answer.
 //
-// Adding a method? Put it in its domain's file, or start one for a new domain,
-// rather than growing this file or a neighbour's.
+// Adding state? Put it in its domain's type, or start one for a new domain,
+// rather than growing this class.
 @MainActor
 @Observable
 final class AppState {
@@ -48,6 +50,28 @@ final class AppState {
         formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
         return formatter
     }()
+
+    // ── Domains ─────────────────────────────────────────────────────────
+    // `let`, so reading one is not itself observed: a view tracks only the
+    // properties it reads inside the domain object.
+
+    /// Every state command goes through this one queue; see `StateCommandQueue`.
+    let stateCommands: StateCommandQueue
+    let sendFlow: SendFlowState
+    let receiveFlow = ReceiveFlowState()
+    let walletImport = WalletImportSession()
+    let addressBook: AddressBookState
+    let tokenPreferences: TokenPreferencesState
+    let priceAlerts: PriceAlertsState
+    let historyPaging = HistoryPagingState()
+    let tor: TorState
+    /// The five preferences this platform keeps for itself. Settings core owns
+    /// are `appSettings`.
+    let preferences = AppUserPreferences()
+    let diagnostics: WalletDiagnosticsState
+    let chainDiagnosticsState = WalletChainDiagnosticsState()
+    let notifications: PlatformNotifications
+
     /// Recorded transactions.
     ///
     /// Domain state: core owns the store and its persistence. This is a
@@ -69,8 +93,6 @@ final class AppState {
 
     func adoptAssetPrecision(_ precision: AssetPrecisionCatalog) { assetPrecision = precision }
     var transactionCount: UInt64 = 0
-    /// Wallets whose chain history has pages left, from core's snapshot.
-    var walletsWithMoreHistory: Set<String> = []
     /// The pending sends core says can still be replaced on their chain.
     /// Adopted with the rest of the transaction-derived views; observed,
     /// because the composer's Speed Up / Cancel buttons read it.
@@ -119,9 +141,6 @@ final class AppState {
     /// `portfolio`, `availableSendCoins(for:)` and their siblings.
     var walletDerivedCache: WalletDerivedCache = .empty
     var isShowingAddWalletEntry: Bool = false
-    let sendFlow = SendFlowState()
-    let receiveFlow = ReceiveFlowState()
-    let walletImport = WalletImportSession()
     /// Why the last state command, or a wallet deletion, did not go through.
     /// Flows with their own refusal field — contacts, tokens, alerts — use that.
     var commandError: String?
@@ -139,13 +158,6 @@ final class AppState {
     @ObservationIgnored var isExpensiveNetwork: Bool = false
     /// When core last checked pending sends without a failure, from its clock.
     var lastPendingTransactionRefreshAt: Date? = nil
-    let chainDiagnosticsState = WalletChainDiagnosticsState()
-
-    /// Read-only keypool diagnostics. Reading does not reserve an address.
-    /// The reserved address and path are those recorded when the index was handed out.
-    func chainKeypoolDiagnostics(for chain: Chain) async throws -> [KeypoolDiagnostic] {
-        try await self.bridge.ready().keypoolDiagnostics(chain: chain)
-    }
     /// Display currency for prices and totals: core's setting, changed like
     /// any other through `updateSetting(.fiatCurrency(value:))`.
     var selectedFiatCurrency: FiatCurrency { appSettings.fiatCurrency }
@@ -170,15 +182,16 @@ final class AppState {
         guard after != before else { return }
         appSettings = after
         settingCommandsInFlight += 1
-        enqueueStateCommand(.setAppSetting(update: update)) { store, result in
-            store.settingCommandsInFlight -= 1
+        stateCommands.enqueue(.setAppSetting(update: update)) { [weak self] result in
+            guard let self else { return }
+            self.settingCommandsInFlight -= 1
             // The last edit in flight hands the form back to core's settings.
             // A failed write never changes runtime services, and the committed
             // projection is restored even if storage cannot be read again.
-            if store.settingCommandsInFlight == 0 { store.appSettings = store.committedAppSettings }
+            if self.settingCommandsInFlight == 0 { self.appSettings = self.committedAppSettings }
             guard case .failure(let error) = result else { return }
-            store.reportCommandError(error)
-            if let state = try? await store.bridge.ready().appState() { store.applyCoreState(state) }
+            self.reportCommandError(error)
+            if let state = try? await self.bridge.ready().appState() { self.applyCoreState(state) }
         }
     }
 
@@ -198,7 +211,7 @@ final class AppState {
         if (appSettings.useTransactionStatusNotifications && !before.useTransactionStatusNotifications)
             || (appSettings.useLargeMovementNotifications && !before.useLargeMovementNotifications)
         {
-            requestNotificationPermission()
+            notifications.requestPermission()
         }
     }
 
@@ -217,29 +230,11 @@ final class AppState {
             reactToSettingsChange(from: before)
         }
         if settingCommandsInFlight == 0 { appSettings = state.settings }
-        if state.addressBook != addressBook { addressBook = state.addressBook }
-        if state.tokenPreferences != tokenPreferences { tokenPreferences = state.tokenPreferences }
-        if state.priceAlerts != priceAlerts { priceAlerts = state.priceAlerts }
+        addressBook.adopt(state.addressBook)
+        tokenPreferences.adopt(state.tokenPreferences)
+        priceAlerts.adopt(state.priceAlerts)
         return true
     }
-    /// Read-only projection adopted from core; edits send individual intents.
-    private(set) var priceAlerts: [PriceAlertRule] = []
-    /// Saved recipients.
-    ///
-    /// Domain state: core owns the list, the rules about what may be saved, and
-    /// the persistence. This is core's list as last adopted. Mutate it with
-    /// `addAddressBookEntry` / `renameAddressBookEntry` /
-    /// `removeAddressBookEntry`, which send commands.
-    private(set) var addressBook: [AddressBookEntry] = []
-    /// Why core refused the last address-book change, if it did.
-    var addressBookError: String?
-    /// The known-token projection: the catalog and the user's custom tokens.
-    /// Change it through `addCustomTokenPreference` or `removeCustomTokenPreference`.
-    private(set) var tokenPreferences: [TokenPreferenceEntry] = []
-    /// Why core refused the last token-preference change, if it did.
-    var tokenPreferenceError: String?
-    /// The tail of the state-command queue; see `enqueueStateCommand`.
-    @ObservationIgnored var stateCommandTask: Task<Void, Never>?
     // Quote notices and groups are adopted together from the same core
     // snapshot; every money figure arrives valued, in `portfolioValuation`.
     // `applyQuoteProjection` is the notices' only writer.
@@ -252,45 +247,29 @@ final class AppState {
         AmountPresentation(assetPrecision: assetPrecision, valuation: portfolioValuation,
             selectedFiatCurrency: selectedFiatCurrency)
     }
-    /// The five preferences this platform keeps for itself. Split out so views
-    /// that only read them are not invalidated by wallet or balance changes.
-    let preferences = AppUserPreferences()
-    var isLoadingMoreOnChainHistory: Bool = false
-    let diagnostics: WalletDiagnosticsState
     @ObservationIgnored var userInitiatedRefreshTask: Task<Bool, Never>?
     @ObservationIgnored var balanceProgressTask: Task<Void, Never>? // Coalesces mid-sweep portfolio reads.
     @ObservationIgnored var appIsActive = true
     @ObservationIgnored var deviceConditionsTask: Task<Void, Never>? // Orders reports to core's engine.
     @ObservationIgnored var refreshEventsTask: Task<Void, Never>? // Drains core's refresh events in order.
-
-    // ── Tor routing ───────────────────────────────────────────────────────
-    /// Live Tor bootstrap/connection state, reported by core's refresh engine. Drives the
-    /// dashboard indicator and the settings status row.
-    var torStatus: TorStatus = .stopped
     #if canImport(Network)
         let networkPathMonitor = NWPathMonitor()
         let networkPathMonitorQueue = DispatchQueue(label: "spectra.network.monitor")
     #endif
-    private func applyVerificationNotice(_ n: SendVerificationNotice) {
-        sendFlow.verificationNotice = n.notice
-        sendFlow.verificationNoticeIsWarning = n.isWarning
-    }
-    /// What core says about the last send, judged from its stored record.
-    func updateStagedSendVerificationNotice() async {
-        let session = sendFlow.session.id
-        guard let transactionId = sendFlow.session.artifact?.id else {
-            sendFlow.clearVerificationNotice()
-            return
-        }
-        guard let notice = try? await self.bridge.ready().sendVerificationNotice(transactionId: transactionId),
-            sendFlow.session.isCurrent(session), sendFlow.session.artifact?.id == transactionId
-        else { return }
-        applyVerificationNotice(notice)
-    }
     init(bridge: WalletServiceBridge = .shared, startServices: Bool = true) {
         self.bridge = bridge
         self.servicesEnabled = startServices
-        self.diagnostics = WalletDiagnosticsState(bridge: bridge)
+        let diagnostics = WalletDiagnosticsState(bridge: bridge)
+        let commands = StateCommandQueue(bridge: bridge)
+        self.diagnostics = diagnostics
+        self.stateCommands = commands
+        self.notifications = PlatformNotifications(bridge: bridge, diagnostics: diagnostics)
+        self.sendFlow = SendFlowState(bridge: bridge)
+        self.addressBook = AddressBookState(commands: commands)
+        self.tokenPreferences = TokenPreferencesState(commands: commands, diagnostics: diagnostics)
+        self.priceAlerts = PriceAlertsState(commands: commands)
+        self.tor = TorState(bridge: bridge)
+        commands.adopt = { [weak self] in await self?.adoptCommittedTransition($0) }
         guard startServices else { return }
         // A launch is a return to the app too: without this, closing it from
         // the app switcher and opening it again would get past auto-lock.
@@ -336,7 +315,6 @@ final class AppState {
         balanceProgressTask?.cancel()
         deviceConditionsTask?.cancel()
         refreshEventsTask?.cancel()
-        stateCommandTask?.cancel()
         #if canImport(Network)
             networkPathMonitor.cancel()
         #endif

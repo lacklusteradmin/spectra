@@ -41,6 +41,6 @@ extension AppState {
     }
     func refreshForForegroundIfNeeded() async {
         await performCoreRefresh(.foreground)
-        await reconcileSendLiveActivities()
+        await notifications.reconcileSendLiveActivities(amounts: amounts)
     }
 }

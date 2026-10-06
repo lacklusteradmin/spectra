@@ -74,7 +74,7 @@ extension AppState {
     }
     func renameWallet(id: String, to newName: String) async {
         let completed = await walletImport.submit {
-            try await self.applyStateCommand(.renameWallet(walletId: id, name: newName))
+            try await self.stateCommands.apply(.renameWallet(walletId: id, name: newName))
             return nil
         }
         if completed { isShowingAddWalletEntry = false }

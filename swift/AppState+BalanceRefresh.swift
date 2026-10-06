@@ -31,7 +31,7 @@ extension AppState {
                 switch event {
                 case .balanceUpdated: self.adoptBalanceProgress()
                 case .refreshComplete(let result): await self.adoptRefreshResult(result)
-                case .torStatusChanged(let status): self.torStatus = status
+                case .torStatusChanged(let status): self.tor.adopt(status)
                 }
             }
         }

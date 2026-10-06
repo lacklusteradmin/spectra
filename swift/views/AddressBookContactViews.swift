@@ -8,7 +8,7 @@ import UIKit
 
 /// Adding a recipient, on its own page behind the address book's `+`.
 struct NewAddressBookContactView: View {
-    @Bindable var store: AppState
+    let addressBook: AddressBookState
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
     @State private var chain: Chain? = Chain.mainnets.first
@@ -20,7 +20,7 @@ struct NewAddressBookContactView: View {
     private var trimmedAddress: String { address.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSave: Bool {
         guard let chain else { return false }
-        return store.canSaveAddressBookEntry(name: name, address: address, chain: chain)
+        return canSaveAddressBookEntry(name: name, address: address, chain: chain)
     }
 
     var body: some View {
@@ -46,7 +46,7 @@ struct NewAddressBookContactView: View {
                 Button {
                     guard let chain else { return }
                     spectraNotificationHaptic(.success)
-                    store.addAddressBookEntry(name: name, address: address, chain: chain, note: note)
+                    addressBook.add(name: name, address: address, chain: chain, note: note)
                     dismiss()
                 } label: {
                     Label(AppLocalization.string("Save Contact"), systemImage: "checkmark")
@@ -160,7 +160,7 @@ struct NewAddressBookContactView: View {
 
     private var addressValidationMessage: String {
         guard let chain else { return AppLocalization.string("Select a chain first.") }
-        return store.addressBookAddressValidationMessage(for: address, chain: chain)
+        return addressBookAddressValidationMessage(for: address, chain: chain)
     }
 
     private var addressValidationColor: Color { canSave ? .green : .secondary }
@@ -168,7 +168,7 @@ struct NewAddressBookContactView: View {
 
 /// A saved recipient with rename and delete actions.
 struct AddressBookContactView: View {
-    @Bindable var store: AppState
+    let addressBook: AddressBookState
     let entry: AddressBookEntry
     @Environment(\.dismiss) private var dismiss
     @State private var editedName: String = ""
@@ -178,7 +178,7 @@ struct AddressBookContactView: View {
     /// The stored contact, so a rename is reflected here rather than leaving
     /// the pushed page showing the name it was opened with.
     private var contact: AddressBookEntry {
-        store.addressBook.first { $0.id == entry.id } ?? entry
+        addressBook.entries.first { $0.id == entry.id } ?? entry
     }
 
     private var canRename: Bool {
@@ -206,7 +206,7 @@ struct AddressBookContactView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(AppLocalization.string("Save")) {
-                    store.renameAddressBookEntry(id: contact.id, to: editedName)
+                    addressBook.rename(id: contact.id, to: editedName)
                     spectraHaptic(.light)
                 }
                 .disabled(!canRename)
@@ -309,7 +309,7 @@ struct AddressBookContactView: View {
         ) {
             Button(AppLocalization.string("Delete"), role: .destructive) {
                 spectraHaptic(.medium)
-                store.removeAddressBookEntry(id: contact.id)
+                addressBook.remove(id: contact.id)
                 dismiss()
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}

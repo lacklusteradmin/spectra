@@ -1,15 +1,10 @@
 import Foundation
 
 extension AppState {
-    /// Core names the wallets with history left to fetch in its snapshot.
-    func canLoadMoreOnChainHistory(for walletIds: Set<String>) -> Bool {
-        !isLoadingMoreOnChainHistory && !walletIds.isDisjoint(with: walletsWithMoreHistory)
-    }
     func loadMoreOnChainHistory(for walletIds: Set<String>) async {
-        guard !isLoadingMoreOnChainHistory, !walletIds.isEmpty else { return }
-        isLoadingMoreOnChainHistory = true
-        defer { isLoadingMoreOnChainHistory = false }
-        await adoptHistoryRefresh(scope: .wallets(walletIds: Array(walletIds)), loadMore: true)
+        await historyPaging.loadMore(for: walletIds) {
+            await self.adoptHistoryRefresh(scope: .wallets(walletIds: Array($0)), loadMore: true)
+        }
     }
     func refreshHistory(chain: Chain) async {
         await adoptHistoryRefresh(scope: .chains(chainIds: [chain.id]))

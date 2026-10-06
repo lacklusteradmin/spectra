@@ -11,16 +11,16 @@ struct TokenRegistryPresentationTests: IsolatedAppStateSuite {
     @Test func customEditorPersistsBothPriceSourcesAndKeepsIdentity() async throws {
         let state = makeState()
         let identifier = "0x1111111111111111111111111111111111111111"
-        let added = await state.addCustomTokenPreference(chain: .ethereum, symbol: "DEMO", name: "Demo",
+        let added = await state.tokenPreferences.addCustom(chain: .ethereum, symbol: "DEMO", name: "Demo",
             contractAddress: identifier, coinpaprikaId: "demo-token", decimals: 6)
         #expect(added == nil)
-        let entry = try #require(state.tokenPreferences.first { !$0.isBuiltIn })
+        let entry = try #require(state.tokenPreferences.entries.first { !$0.isBuiltIn })
         #expect(entry.token.coinpaprikaId == "demo-token")
         #expect(entry.token.coingeckoId == "")
-        let edited = await state.addCustomTokenPreference(chain: .ethereum, symbol: "NEW", name: "New Demo",
+        let edited = await state.tokenPreferences.addCustom(chain: .ethereum, symbol: "NEW", name: "New Demo",
             contractAddress: identifier, coingeckoId: "demo", coinpaprikaId: "demo-new", decimals: 8, editing: entry)
         #expect(edited == nil)
-        let current = try #require(state.tokenPreferences.first { $0.id == entry.id })
+        let current = try #require(state.tokenPreferences.entries.first { $0.id == entry.id })
         #expect(current.token.tokenId == entry.token.tokenId)
         #expect(current.token.name == "New Demo")
         #expect(current.token.coinpaprikaId == "demo-new")
@@ -35,11 +35,11 @@ struct TokenRegistryPresentationTests: IsolatedAppStateSuite {
         let state = makeState()
         let seeded = try await bridge.ready().applyStateCommand(command: .mergeBuiltInTokens)
         state.applyCoreState(seeded.state)
-        let entry = try #require(state.tokenPreferences.first { $0.token.symbol == "USDC" })
+        let entry = try #require(state.tokenPreferences.entries.first { $0.token.symbol == "USDC" })
         let views: [(String, AnyView)] = [
-            ("Known tokens", AnyView(NavigationStack { TokenRegistrySettingsView(store: state) })),
-            ("Token detail", AnyView(NavigationStack { TokenRegistryDetailView(store: state, groupKey: entry.token.tokenId) })),
-            ("Custom token form", AnyView(NavigationStack { AddCustomTokenView(store: state) }))
+            ("Known tokens", AnyView(NavigationStack { TokenRegistrySettingsView(tokens: state.tokenPreferences) })),
+            ("Token detail", AnyView(NavigationStack { TokenRegistryDetailView(tokens: state.tokenPreferences, groupKey: entry.token.tokenId) })),
+            ("Custom token form", AnyView(NavigationStack { AddCustomTokenView(tokens: state.tokenPreferences) }))
         ]
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousWindow = scene.windows.first(where: \.isKeyWindow)

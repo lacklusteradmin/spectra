@@ -30,8 +30,8 @@ struct SendStagesViewTests: IsolatedAppStateSuite {
             attempts: hasSubmission ? [BroadcastAttempt(endpoint: "https://ethereum.example/rpc", attemptedAt: 0,
                 outcome: .accepted, transactionHash: hash, detail: "Accepted by the node.")] : [], selectedEndpoints: [])
         state.sendFlow.session.artifact = artifact
-        #expect(state.pendingHighRiskSendReasons[0].contains("0.25"))
-        #expect(state.pendingHighRiskSendReasons.count == 3)
+        #expect(state.sendFlow.pendingHighRiskReasons[0].contains("0.25"))
+        #expect(state.sendFlow.pendingHighRiskReasons.count == 3)
         var record: TransactionRecord? = hasSubmission ? TransactionRecord(
             id: artifact.id, walletId: artifact.walletId, kind: .send,
             status: stage == .confirmed ? .confirmed : .pending,
@@ -82,7 +82,7 @@ struct SendStagesViewTests: IsolatedAppStateSuite {
             review: SendArtifactReview(warnings: [], recipientWarnings: [], requiresSelfSendConfirmation: false, staking: nil),
             preparedDetails: "", signingPayloadHex: "", signedPayload: nil, transactionHash: nil,
             attempts: [], selectedEndpoints: [])
-        let summary = state.pendingHighRiskSendReasons[0]
+        let summary = state.sendFlow.pendingHighRiskReasons[0]
         #expect(summary.contains("USDC"))
         #expect(!summary.contains(contract))
     }

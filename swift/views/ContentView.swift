@@ -24,7 +24,7 @@ struct ContentView: View {
             let isLaunch = !hasBeenActive
             hasBeenActive = true
             Task {
-                if isLaunch { await store.reconcileSendLiveActivities() }
+                if isLaunch { await store.notifications.reconcileSendLiveActivities(amounts: store.amounts) }
                 else { await store.refreshForForegroundIfNeeded() }
             }
         case .background:

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 struct TokenRegistrySettingsView: View {
-    let store: AppState
+    let tokens: TokenPreferencesState
     /// The chain filter; nil includes every chain.
     private static let chainFilterOptions: [Chain?] =
         [nil] + Chain.tokenHostingChains.map { Optional($0) }
@@ -27,13 +27,13 @@ struct TokenRegistrySettingsView: View {
             SpectraBackdrop().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: SpectraLayout.sectionSpacing) {
-                    if let error = store.tokenPreferenceError {
-                        TokenPreferenceErrorNotice(message: error) { store.tokenPreferenceError = nil }
+                    if let error = tokens.error {
+                        TokenPreferenceErrorNotice(message: error) { tokens.error = nil }
                     }
                     if !groups.isEmpty {
                         SpectraRowGroup(data: groups) { group in
                             NavigationLink {
-                                TokenRegistryDetailView(store: store, groupKey: group.key)
+                                TokenRegistryDetailView(tokens: tokens, groupKey: group.key)
                             } label: {
                                 TokenRegistryGroupRowView(group: group)
                             }
@@ -56,7 +56,7 @@ struct TokenRegistrySettingsView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
-                    AddCustomTokenView(store: store)
+                    AddCustomTokenView(tokens: tokens)
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -66,7 +66,7 @@ struct TokenRegistrySettingsView: View {
     }
     @ViewBuilder
     private func emptyState(isFilteredEmpty: Bool) -> some View {
-        if store.tokenPreferences.isEmpty {
+        if tokens.entries.isEmpty {
             ProgressView()
         } else if isFilteredEmpty {
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -105,7 +105,7 @@ struct TokenRegistrySettingsView: View {
     private var filteredGroups: [TokenRegistryGroup] {
         // Core orders the list with one token's deployments together, so the
         // groups and their rows keep that order as they are.
-        let allEntries = store.tokenPreferences
+        let allEntries = tokens.entries
         let grouped = Dictionary(grouping: allEntries, by: \.token.tokenId)
         var seen: Set<String> = []
         let groups = allEntries.map(\.token.tokenId).filter { seen.insert($0).inserted }

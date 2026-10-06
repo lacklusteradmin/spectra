@@ -5,7 +5,7 @@ extension AppState {
         do {
             let change = try await self.bridge.ready().recheckTransactionStatus(transactionId: transactionId)
             await refreshTransactionProjection()
-            await deliverPendingStatusChanges([change])
+            await notifications.deliverPendingStatusChanges([change], amounts: amounts)
             if change.statusChanged {
                 return AppLocalization.format("Status updated: %@.", change.newStatus.localizedTitle)
             }

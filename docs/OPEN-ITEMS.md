@@ -18,26 +18,6 @@ Delete an item once it is done; what changed belongs in
   offline CLI fixtures. Keep live probes read-only; any resulting behaviour
   changes need `BEHAVIOUR-CHANGES.md` entries and `make verify`.
 
-- [ ] **Give `AppState`'s domains their own observable state.** `AppState` is
-  one `@Observable` class whose methods are spread over 30
-  `AppState+<Domain>.swift` extensions, a third of them under 40 lines. The
-  extensions share every stored property, so the split hides line count but
-  not coupling, and any view that reads one property is in the same
-  invalidation scope as the rest. `sendFlow`, `receiveFlow`, `walletImport`,
-  `preferences` and `diagnostics` already show the target shape: a small
-  `@MainActor @Observable` type that `AppState` owns, holding that domain's
-  view state and exposing its actions. Move the remaining domains the same way
-  — address book, token preferences, price alerts, Tor, history paging,
-  send execution and preview, notifications and Live
-  Activities — one domain per change, each taking its properties out of
-  `AppState` and its views reading the new object rather than the store.
-  Merge the tiny extensions that are only adapters (`Diagnostics`,
-  `Persistence`, `TorLifecycle`) into the domain that owns them
-  rather than giving each a type. Keep core as the owner of domain state: the
-  new types hold projections and view state only, per AGENTS.md. Each step
-  needs the iOS suite green and no user-visible change; record nothing unless
-  behaviour moves.
-
 ## Supported chain scope
 
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) defines supported protocols, import formats,

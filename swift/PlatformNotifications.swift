@@ -1,39 +1,48 @@
 import Foundation
 import UserNotifications
 
-// Core decides what is worth telling the user — a price alert, a large
-// portfolio movement, a send reaching a terminal status — and logs it. What is
-// left on this side is what a platform has: a notification and a Live Activity.
-extension AppState {
-    func requestNotificationPermission() {
+/// What this platform has for telling the user something: a notification and
+/// the send Live Activity.
+///
+/// Core decides what is worth telling the user — a price alert, a large
+/// portfolio movement, a send reaching a terminal status — and logs it. No view
+/// reads anything here, so nothing is kept: the notification center holds its
+/// requests and ActivityKit the running activities.
+@MainActor
+struct PlatformNotifications {
+    let bridge: WalletServiceBridge
+    let diagnostics: WalletDiagnosticsState // Where a failed delivery is logged.
+
+    func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
     }
-    func requestTransactionStatusNotificationPermission() {
-        guard committedAppSettings.useTransactionStatusNotifications || committedAppSettings.useLargeMovementNotifications else { return }
-        requestNotificationPermission()
+    /// A send asks only when an alert that needs the permission is on.
+    func requestPermissionAfterSend(settings: AppSettings) {
+        guard settings.useTransactionStatusNotifications || settings.useLargeMovementNotifications else { return }
+        requestPermission()
     }
 
-    private func postNotification(identifier: String, title: String, body: String) async {
+    private func post(identifier: String, title: String, body: String) async {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         do { try await UNUserNotificationCenter.current().add(request) }
-        catch { appendOperationalLog(.error, category: "Notifications", message: error.localizedDescription) }
+        catch { diagnostics.appendOperationalLog(.error, category: "Notifications", message: error.localizedDescription) }
     }
 
-    func deliverPriceAlertNotifications(_ notifications: [PriceAlertNotification]) async {
-        for notification in notifications { await sendPriceAlertNotification(for: notification) }
+    func deliverPriceAlerts(_ notifications: [PriceAlertNotification], amounts: AmountPresentation) async {
+        for notification in notifications { await postPriceAlert(notification, amounts: amounts) }
     }
     /// One sentence per condition, so each language words both directions.
-    private func sendPriceAlertNotification(for notification: PriceAlertNotification) async {
+    private func postPriceAlert(_ notification: PriceAlertNotification, amounts: AmountPresentation) async {
         let template: String
         switch notification.condition {
         case .above: template = "%@ on %@ is now %@, above your target of %@."
         case .below: template = "%@ on %@ is now %@, below your target of %@."
         }
-        await postNotification(
+        await post(
             identifier: "price-alert-\(notification.id)-\(UUID().uuidString)",
             title: AppLocalization.format("%@ price alert", notification.symbol),
             body: AppLocalization.format(
@@ -42,9 +51,9 @@ extension AppState {
                 amounts.formattedFiat(notification.targetPrice, currency: notification.currency)))
     }
 
-    func deliverPortfolioMovement(_ evaluation: LargeMovementEvaluation) async {
+    func deliverPortfolioMovement(_ evaluation: LargeMovementEvaluation, amounts: AmountPresentation) async {
         let percent = evaluation.ratio.formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.locale))
-        await postNotification(
+        await post(
             identifier: "portfolio-movement-\(UUID().uuidString)",
             title: AppLocalization.string("Large portfolio movement detected"),
             body: AppLocalization.format(
@@ -57,18 +66,18 @@ extension AppState {
     /// Deliver native effects after the caller adopts the transaction projection.
     /// A Live Activity follows every change; a notification only what core
     /// says is worth one.
-    func deliverPendingStatusChanges(_ changes: [TransactionStatusChange]) async {
+    func deliverPendingStatusChanges(_ changes: [TransactionStatusChange], amounts: AmountPresentation) async {
         for change in changes where change.statusChanged {
             guard let transaction = try? await bridge.ready().transaction(id: change.id) else { continue }
-            if change.notify { await sendTransactionStatusNotification(for: transaction, newStatus: change.newStatus) }
-            await finishSendLiveActivity(for: transaction, newStatus: change.newStatus)
+            if change.notify { await postTransactionStatus(transaction, newStatus: change.newStatus) }
+            await finishSendLiveActivity(for: transaction, newStatus: change.newStatus, amounts: amounts)
         }
     }
-    private func sendTransactionStatusNotification(for transaction: TransactionRecord, newStatus: TransactionStatus) async {
+    private func postTransactionStatus(_ transaction: TransactionRecord, newStatus: TransactionStatus) async {
         guard let body = transaction.sendOutcomeDetail(for: newStatus) else { return }
         let title = newStatus == .confirmed
             ? AppLocalization.format("%@ transaction confirmed", transaction.symbol)
             : AppLocalization.format("%@ transaction failed", transaction.symbol)
-        await postNotification(identifier: "transaction-status-\(transaction.id)-\(newStatus)", title: title, body: body)
+        await post(identifier: "transaction-status-\(transaction.id)-\(newStatus)", title: title, body: body)
     }
 }

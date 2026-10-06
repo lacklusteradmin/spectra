@@ -12,14 +12,14 @@
 		90AA00222F60000200BBB001 /* generated/spectra_core.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90AA00212F60000200BBB001 /* generated/spectra_core.swift */; };
 		90F002000000000000000002 /* AppState+BalanceRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000002 /* AppState+BalanceRefresh.swift */; };
 		90F002000000000000000003 /* AppState+CoreStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000003 /* AppState+CoreStateStore.swift */; };
-		90F002000000000000000004 /* AppState+DiagnosticsEndpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000004 /* AppState+DiagnosticsEndpoints.swift */; };
+		90F002000000000000000004 /* AppState+ChainDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000004 /* AppState+ChainDiagnostics.swift */; };
 		90F002000000000000000005 /* AppState+ImportLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000005 /* AppState+ImportLifecycle.swift */; };
 		90F002000000000000000006 /* AppState+OperationalTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000006 /* AppState+OperationalTelemetry.swift */; };
 		90F002000000000000000007 /* AppState+PricingFiat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000007 /* AppState+PricingFiat.swift */; };
 		90F002000000000000000008 /* AppState+ReceiveFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000008 /* AppState+ReceiveFlow.swift */; };
-		90F00200000000000000000A /* AppState+SendExecution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000A /* AppState+SendExecution.swift */; };
+		90F00200000000000000000A /* SendFlowState+Execution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000A /* SendFlowState+Execution.swift */; };
 		90F00200000000000000000B /* AppState+SendFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000B /* AppState+SendFlow.swift */; };
-		90F00200000000000000000C /* AppState+SendPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000C /* AppState+SendPreview.swift */; };
+		90F00200000000000000000C /* SendFlowState+Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000C /* SendFlowState+Preview.swift */; };
 		90F00200000000000000000E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000E /* AppState.swift */; };
 		90F00200000000000000000F /* AppStateTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000000F /* AppStateTypes.swift */; };
 		90F002000000000000000010 /* AppUserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000010 /* AppUserPreferences.swift */; };
@@ -28,15 +28,15 @@
 		90F002000000000000000017 /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000017 /* CoreModels.swift */; };
 		90F002000000000000000018 /* AppState+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000018 /* AppState+Dashboard.swift */; };
 		90F00200000000000000001A /* DiagnosticsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000001A /* DiagnosticsState.swift */; };
-		90F00200000000000000001B /* AppState+Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000001B /* AppState+Diagnostics.swift */; };
+		90F00200000000000000001B /* HistoryPagingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000001B /* HistoryPagingState.swift */; };
 		90F00200000000000000001F /* AppState+Maintenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000001F /* AppState+Maintenance.swift */; };
-		90F002000000000000000022 /* AppState+Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000022 /* AppState+Persistence.swift */; };
+		90F002000000000000000022 /* StateCommandQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000022 /* StateCommandQueue.swift */; };
 		90F002000000000000000026 /* RegistryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000026 /* RegistryModels.swift */; };
 		90F002000000000000000027 /* SecureStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000027 /* SecureStores.swift */; };
 		90F002000000000000000029 /* SendPreviewTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000029 /* SendPreviewTypes.swift */; };
 		90F00200000000000000002C /* StaticContentCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000002C /* StaticContentCatalog.swift */; };
 		90F00200000000000000002D /* Store+Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000002D /* Store+Formatting.swift */; };
-		90F00200000000000000002E /* AppState+Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000002E /* AppState+Notifications.swift */; };
+		90F00200000000000000002E /* PlatformNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000002E /* PlatformNotifications.swift */; };
 		90F00200000000000000002F /* AppState+DiagnosticsExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000002F /* AppState+DiagnosticsExport.swift */; };
 		90F002000000000000000030 /* AppState+History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000030 /* AppState+History.swift */; };
 		90F002000000000000000031 /* AppState+Reset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000031 /* AppState+Reset.swift */; };
@@ -44,21 +44,20 @@
 		90F002000000000000000035 /* WalletDerivedCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000035 /* WalletDerivedCache.swift */; };
 		90F002000000000000000037 /* AppEndpointDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000037 /* AppEndpointDirectory.swift */; };
 		90F002000000000000000038 /* WalletServiceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000038 /* WalletServiceBridge.swift */; };
-		90F002000000000000000039 /* AppState+TorLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000039 /* AppState+TorLifecycle.swift */; };
+		90F002000000000000000039 /* TorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000039 /* TorState.swift */; };
 		90F00200000000000000003B /* SetupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000003B /* SetupFlow.swift */; };
 		90F00200000000000000003C /* ImportDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F00100000000000000003C /* ImportDraft.swift */; };
 		90F002000000000000000080 /* WalletRefreshObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000080 /* WalletRefreshObserver.swift */; };
 		90F0020000000000000000F1 /* SeedPhraseEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F0010000000000000000F1 /* SeedPhraseEntry.swift */; };
 		90F002000000000000000100 /* Chain+Registry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000100 /* Chain+Registry.swift */; };
-		90F002000000000000000102 /* AppState+SendLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000102 /* AppState+SendLiveActivity.swift */; };
-		90F002000000000000000200 /* AppState+AddressBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000200 /* AppState+AddressBook.swift */; };
-		90F002000000000000000201 /* AppState+ChainActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000201 /* AppState+ChainActions.swift */; };
+		90F002000000000000000102 /* PlatformNotifications+SendLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000102 /* PlatformNotifications+SendLiveActivity.swift */; };
+		90F002000000000000000200 /* AddressBookState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000200 /* AddressBookState.swift */; };
 		90F002000000000000000202 /* AppState+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000202 /* AppState+Lifecycle.swift */; };
 		90F002000000000000000203 /* AppState+AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000203 /* AppState+AppLock.swift */; };
 		90F002000000000000000204 /* AppState+TransactionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000204 /* AppState+TransactionActions.swift */; };
 		90F002000000000000000206 /* AppState+Wallets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000206 /* AppState+Wallets.swift */; };
 		90F002000000000000000207 /* AppState+MoneroSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F001000000000000000207 /* AppState+MoneroSync.swift */; };
-		90F0020000000000000002F0 /* AppState+PriceAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F0010000000000000002F0 /* AppState+PriceAlerts.swift */; };
+		90F0020000000000000002F0 /* PriceAlertsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F0010000000000000002F0 /* PriceAlertsState.swift */; };
 		91C100012F70000100AAA001 /* SpectraLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 91C100032F70000100AAA001 /* SpectraLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		91D900000000000000000002 /* SendSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D900000000000000000001 /* SendSession.swift */; };
 		91DB00000000000000000001 /* SendFlowState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DA00000000000000000001 /* SendFlowState.swift */; };
@@ -66,7 +65,7 @@
 		91DB00000000000000000003 /* WalletImportSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DA00000000000000000003 /* WalletImportSession.swift */; };
 		91DC00000000000000000003 /* AmountPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DC00000000000000000001 /* AmountPresentation.swift */; };
 		91DC00000000000000000004 /* AssetPresentationCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DC00000000000000000002 /* AssetPresentationCatalog.swift */; };
-		91DC000000000000000000A2 /* AppState+TokenPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DC000000000000000000A1 /* AppState+TokenPreferences.swift */; };
+		91DC000000000000000000A2 /* TokenPreferencesState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DC000000000000000000A1 /* TokenPreferencesState.swift */; };
 		91DD00000000000000000003 /* SeedPhraseRevealState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DD00000000000000000001 /* SeedPhraseRevealState.swift */; };
 		91DD00000000000000000004 /* MoneroSyncViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DD00000000000000000002 /* MoneroSyncViewModel.swift */; };
 /* End PBXBuildFile section */
@@ -109,14 +108,14 @@
 		90AEE1792F5AFB43008CFE5E /* Spectra.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Spectra.xctestplan; sourceTree = "<group>"; };
 		90F001000000000000000002 /* AppState+BalanceRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+BalanceRefresh.swift"; sourceTree = "<group>"; };
 		90F001000000000000000003 /* AppState+CoreStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+CoreStateStore.swift"; sourceTree = "<group>"; };
-		90F001000000000000000004 /* AppState+DiagnosticsEndpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+DiagnosticsEndpoints.swift"; sourceTree = "<group>"; };
+		90F001000000000000000004 /* AppState+ChainDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+ChainDiagnostics.swift"; sourceTree = "<group>"; };
 		90F001000000000000000005 /* AppState+ImportLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+ImportLifecycle.swift"; sourceTree = "<group>"; };
 		90F001000000000000000006 /* AppState+OperationalTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+OperationalTelemetry.swift"; sourceTree = "<group>"; };
 		90F001000000000000000007 /* AppState+PricingFiat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+PricingFiat.swift"; sourceTree = "<group>"; };
 		90F001000000000000000008 /* AppState+ReceiveFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+ReceiveFlow.swift"; sourceTree = "<group>"; };
-		90F00100000000000000000A /* AppState+SendExecution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+SendExecution.swift"; sourceTree = "<group>"; };
+		90F00100000000000000000A /* SendFlowState+Execution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SendFlowState+Execution.swift"; sourceTree = "<group>"; };
 		90F00100000000000000000B /* AppState+SendFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+SendFlow.swift"; sourceTree = "<group>"; };
-		90F00100000000000000000C /* AppState+SendPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+SendPreview.swift"; sourceTree = "<group>"; };
+		90F00100000000000000000C /* SendFlowState+Preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SendFlowState+Preview.swift"; sourceTree = "<group>"; };
 		90F00100000000000000000E /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		90F00100000000000000000F /* AppStateTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTypes.swift; sourceTree = "<group>"; };
 		90F001000000000000000010 /* AppUserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUserPreferences.swift; sourceTree = "<group>"; };
@@ -125,15 +124,15 @@
 		90F001000000000000000017 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
 		90F001000000000000000018 /* AppState+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Dashboard.swift"; sourceTree = "<group>"; };
 		90F00100000000000000001A /* DiagnosticsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsState.swift; sourceTree = "<group>"; };
-		90F00100000000000000001B /* AppState+Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Diagnostics.swift"; sourceTree = "<group>"; };
+		90F00100000000000000001B /* HistoryPagingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPagingState.swift; sourceTree = "<group>"; };
 		90F00100000000000000001F /* AppState+Maintenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Maintenance.swift"; sourceTree = "<group>"; };
-		90F001000000000000000022 /* AppState+Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Persistence.swift"; sourceTree = "<group>"; };
+		90F001000000000000000022 /* StateCommandQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateCommandQueue.swift; sourceTree = "<group>"; };
 		90F001000000000000000026 /* RegistryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistryModels.swift; sourceTree = "<group>"; };
 		90F001000000000000000027 /* SecureStores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStores.swift; sourceTree = "<group>"; };
 		90F001000000000000000029 /* SendPreviewTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendPreviewTypes.swift; sourceTree = "<group>"; };
 		90F00100000000000000002C /* StaticContentCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaticContentCatalog.swift; sourceTree = "<group>"; };
 		90F00100000000000000002D /* Store+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Store+Formatting.swift"; sourceTree = "<group>"; };
-		90F00100000000000000002E /* AppState+Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Notifications.swift"; sourceTree = "<group>"; };
+		90F00100000000000000002E /* PlatformNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformNotifications.swift; sourceTree = "<group>"; };
 		90F00100000000000000002F /* AppState+DiagnosticsExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+DiagnosticsExport.swift"; sourceTree = "<group>"; };
 		90F001000000000000000030 /* AppState+History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+History.swift"; sourceTree = "<group>"; };
 		90F001000000000000000031 /* AppState+Reset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Reset.swift"; sourceTree = "<group>"; };
@@ -141,21 +140,20 @@
 		90F001000000000000000035 /* WalletDerivedCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletDerivedCache.swift; sourceTree = "<group>"; };
 		90F001000000000000000037 /* AppEndpointDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEndpointDirectory.swift; sourceTree = "<group>"; };
 		90F001000000000000000038 /* WalletServiceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletServiceBridge.swift; sourceTree = "<group>"; };
-		90F001000000000000000039 /* AppState+TorLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+TorLifecycle.swift"; sourceTree = "<group>"; };
+		90F001000000000000000039 /* TorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TorState.swift; sourceTree = "<group>"; };
 		90F00100000000000000003B /* SetupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupFlow.swift; sourceTree = "<group>"; };
 		90F00100000000000000003C /* ImportDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportDraft.swift; sourceTree = "<group>"; };
 		90F001000000000000000080 /* WalletRefreshObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletRefreshObserver.swift; sourceTree = "<group>"; };
 		90F0010000000000000000F1 /* SeedPhraseEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedPhraseEntry.swift; sourceTree = "<group>"; };
 		90F001000000000000000100 /* Chain+Registry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Chain+Registry.swift"; sourceTree = "<group>"; };
-		90F001000000000000000102 /* AppState+SendLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+SendLiveActivity.swift"; sourceTree = "<group>"; };
-		90F001000000000000000200 /* AppState+AddressBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+AddressBook.swift"; sourceTree = "<group>"; };
-		90F001000000000000000201 /* AppState+ChainActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+ChainActions.swift"; sourceTree = "<group>"; };
+		90F001000000000000000102 /* PlatformNotifications+SendLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlatformNotifications+SendLiveActivity.swift"; sourceTree = "<group>"; };
+		90F001000000000000000200 /* AddressBookState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressBookState.swift; sourceTree = "<group>"; };
 		90F001000000000000000202 /* AppState+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Lifecycle.swift"; sourceTree = "<group>"; };
 		90F001000000000000000203 /* AppState+AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+AppLock.swift"; sourceTree = "<group>"; };
 		90F001000000000000000204 /* AppState+TransactionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+TransactionActions.swift"; sourceTree = "<group>"; };
 		90F001000000000000000206 /* AppState+Wallets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Wallets.swift"; sourceTree = "<group>"; };
 		90F001000000000000000207 /* AppState+MoneroSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+MoneroSync.swift"; sourceTree = "<group>"; };
-		90F0010000000000000002F0 /* AppState+PriceAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+PriceAlerts.swift"; sourceTree = "<group>"; };
+		90F0010000000000000002F0 /* PriceAlertsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceAlertsState.swift; sourceTree = "<group>"; };
 		91B000012F5B000100AAA001 /* SpectraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpectraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		91C100032F70000100AAA001 /* SpectraLiveActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SpectraLiveActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		91D900000000000000000001 /* SendSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendSession.swift; sourceTree = "<group>"; };
@@ -164,7 +162,7 @@
 		91DA00000000000000000003 /* WalletImportSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletImportSession.swift; sourceTree = "<group>"; };
 		91DC00000000000000000001 /* AmountPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountPresentation.swift; sourceTree = "<group>"; };
 		91DC00000000000000000002 /* AssetPresentationCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetPresentationCatalog.swift; sourceTree = "<group>"; };
-		91DC000000000000000000A1 /* AppState+TokenPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+TokenPreferences.swift"; sourceTree = "<group>"; };
+		91DC000000000000000000A1 /* TokenPreferencesState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenPreferencesState.swift; sourceTree = "<group>"; };
 		91DD00000000000000000001 /* SeedPhraseRevealState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedPhraseRevealState.swift; sourceTree = "<group>"; };
 		91DD00000000000000000002 /* MoneroSyncViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneroSyncViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -258,9 +256,9 @@
 				90F001000000000000000017 /* CoreModels.swift */,
 				90F001000000000000000018 /* AppState+Dashboard.swift */,
 				90F00100000000000000001A /* DiagnosticsState.swift */,
-				90F00100000000000000001B /* AppState+Diagnostics.swift */,
+				90F00100000000000000001B /* HistoryPagingState.swift */,
 				90F00100000000000000001F /* AppState+Maintenance.swift */,
-				90F001000000000000000022 /* AppState+Persistence.swift */,
+				90F001000000000000000022 /* StateCommandQueue.swift */,
 				90F001000000000000000026 /* RegistryModels.swift */,
 				90F001000000000000000027 /* SecureStores.swift */,
 				90F001000000000000000029 /* SendPreviewTypes.swift */,
@@ -278,27 +276,26 @@
 				90F001000000000000000002 /* AppState+BalanceRefresh.swift */,
 				90F001000000000000000080 /* WalletRefreshObserver.swift */,
 				90F001000000000000000003 /* AppState+CoreStateStore.swift */,
-				90F001000000000000000004 /* AppState+DiagnosticsEndpoints.swift */,
-				90F001000000000000000039 /* AppState+TorLifecycle.swift */,
+				90F001000000000000000004 /* AppState+ChainDiagnostics.swift */,
+				90F001000000000000000039 /* TorState.swift */,
 				90F001000000000000000005 /* AppState+ImportLifecycle.swift */,
 				90F001000000000000000006 /* AppState+OperationalTelemetry.swift */,
 				90F001000000000000000007 /* AppState+PricingFiat.swift */,
 				90F001000000000000000008 /* AppState+ReceiveFlow.swift */,
-				90F00100000000000000000A /* AppState+SendExecution.swift */,
+				90F00100000000000000000A /* SendFlowState+Execution.swift */,
 				90F00100000000000000000B /* AppState+SendFlow.swift */,
 				90F001000000000000000206 /* AppState+Wallets.swift */,
-				90F0010000000000000002F0 /* AppState+PriceAlerts.swift */,
-				91DC000000000000000000A1 /* AppState+TokenPreferences.swift */,
+				90F0010000000000000002F0 /* PriceAlertsState.swift */,
+				91DC000000000000000000A1 /* TokenPreferencesState.swift */,
 				90F001000000000000000207 /* AppState+MoneroSync.swift */,
 				90F001000000000000000204 /* AppState+TransactionActions.swift */,
 				90F001000000000000000203 /* AppState+AppLock.swift */,
 				90F001000000000000000202 /* AppState+Lifecycle.swift */,
-				90F001000000000000000201 /* AppState+ChainActions.swift */,
-				90F001000000000000000200 /* AppState+AddressBook.swift */,
-				90F001000000000000000102 /* AppState+SendLiveActivity.swift */,
-				90F00100000000000000000C /* AppState+SendPreview.swift */,
+				90F001000000000000000200 /* AddressBookState.swift */,
+				90F001000000000000000102 /* PlatformNotifications+SendLiveActivity.swift */,
+				90F00100000000000000000C /* SendFlowState+Preview.swift */,
 				90F00100000000000000002D /* Store+Formatting.swift */,
-				90F00100000000000000002E /* AppState+Notifications.swift */,
+				90F00100000000000000002E /* PlatformNotifications.swift */,
 				90F001000000000000000030 /* AppState+History.swift */,
 				90F001000000000000000031 /* AppState+Reset.swift */,
 				90F001000000000000000032 /* AppState+DerivedState.swift */,
@@ -509,9 +506,9 @@
 				90F002000000000000000017 /* CoreModels.swift in Sources */,
 				90F002000000000000000018 /* AppState+Dashboard.swift in Sources */,
 				90F00200000000000000001A /* DiagnosticsState.swift in Sources */,
-				90F00200000000000000001B /* AppState+Diagnostics.swift in Sources */,
+				90F00200000000000000001B /* HistoryPagingState.swift in Sources */,
 				90F00200000000000000001F /* AppState+Maintenance.swift in Sources */,
-				90F002000000000000000022 /* AppState+Persistence.swift in Sources */,
+				90F002000000000000000022 /* StateCommandQueue.swift in Sources */,
 				90F002000000000000000026 /* RegistryModels.swift in Sources */,
 				90F002000000000000000027 /* SecureStores.swift in Sources */,
 				90F002000000000000000029 /* SendPreviewTypes.swift in Sources */,
@@ -532,27 +529,26 @@
 				90F002000000000000000002 /* AppState+BalanceRefresh.swift in Sources */,
 				90F002000000000000000080 /* WalletRefreshObserver.swift in Sources */,
 				90F002000000000000000003 /* AppState+CoreStateStore.swift in Sources */,
-				90F002000000000000000004 /* AppState+DiagnosticsEndpoints.swift in Sources */,
-				90F002000000000000000039 /* AppState+TorLifecycle.swift in Sources */,
+				90F002000000000000000004 /* AppState+ChainDiagnostics.swift in Sources */,
+				90F002000000000000000039 /* TorState.swift in Sources */,
 				90F002000000000000000005 /* AppState+ImportLifecycle.swift in Sources */,
 				90F002000000000000000006 /* AppState+OperationalTelemetry.swift in Sources */,
 				90F002000000000000000007 /* AppState+PricingFiat.swift in Sources */,
 				90F002000000000000000008 /* AppState+ReceiveFlow.swift in Sources */,
-				90F00200000000000000000A /* AppState+SendExecution.swift in Sources */,
+				90F00200000000000000000A /* SendFlowState+Execution.swift in Sources */,
 				90F00200000000000000000B /* AppState+SendFlow.swift in Sources */,
 				90F002000000000000000206 /* AppState+Wallets.swift in Sources */,
-				90F0020000000000000002F0 /* AppState+PriceAlerts.swift in Sources */,
-				91DC000000000000000000A2 /* AppState+TokenPreferences.swift in Sources */,
+				90F0020000000000000002F0 /* PriceAlertsState.swift in Sources */,
+				91DC000000000000000000A2 /* TokenPreferencesState.swift in Sources */,
 				90F002000000000000000207 /* AppState+MoneroSync.swift in Sources */,
 				90F002000000000000000204 /* AppState+TransactionActions.swift in Sources */,
 				90F002000000000000000203 /* AppState+AppLock.swift in Sources */,
 				90F002000000000000000202 /* AppState+Lifecycle.swift in Sources */,
-				90F002000000000000000201 /* AppState+ChainActions.swift in Sources */,
-				90F002000000000000000200 /* AppState+AddressBook.swift in Sources */,
-				90F002000000000000000102 /* AppState+SendLiveActivity.swift in Sources */,
-				90F00200000000000000000C /* AppState+SendPreview.swift in Sources */,
+				90F002000000000000000200 /* AddressBookState.swift in Sources */,
+				90F002000000000000000102 /* PlatformNotifications+SendLiveActivity.swift in Sources */,
+				90F00200000000000000000C /* SendFlowState+Preview.swift in Sources */,
 				90F00200000000000000002D /* Store+Formatting.swift in Sources */,
-				90F00200000000000000002E /* AppState+Notifications.swift in Sources */,
+				90F00200000000000000002E /* PlatformNotifications.swift in Sources */,
 				90F002000000000000000030 /* AppState+History.swift in Sources */,
 				90F002000000000000000031 /* AppState+Reset.swift in Sources */,
 				90F002000000000000000032 /* AppState+DerivedState.swift in Sources */,

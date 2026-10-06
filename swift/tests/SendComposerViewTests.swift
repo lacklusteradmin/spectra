@@ -154,7 +154,7 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
             maxSendable: "1.49958")
         state.sendFlow.previewStore.apply(OwnedSendPreview(
             walletId: state.sendFlow.walletId, holdingKey: state.sendFlow.holdingKey, chainId: .ethereum,
-            amount: state.sendAmountInput, preview: .ethereum(preview: preview), networkFee: "0.00042",
+            amount: state.sendFlow.amountInput, preview: .ethereum(preview: preview), networkFee: "0.00042",
             networkFeeValue: 1.26, amountValue: 750, details: SendPreviewDetails(
                 spendableBalance: "1.5", feeRateDescription: nil, estimatedTransactionBytes: nil,
                 selectedInputCount: nil, usesChangeOutput: nil, maxSendable: "1.49958"),

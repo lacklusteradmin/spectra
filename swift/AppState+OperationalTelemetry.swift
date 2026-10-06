@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 extension AppState {
-    func clearOperationalLogs() { diagnostics.clearOperationalLogs() }
     var networkSyncStatusText: String {
         let reachability = isNetworkReachable ? AppLocalization.string("reachable") : AppLocalization.string("offline")
         let constrained = isConstrainedNetwork ? AppLocalization.string("constrained") : AppLocalization.string("unconstrained")

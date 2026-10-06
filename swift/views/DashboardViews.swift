@@ -43,7 +43,7 @@ struct DashboardView: View {
                 }
                 // Tor is off by default and lives in Settings; the toolbar
                 // reports it only while it is doing something.
-                if store.torStatus != .stopped {
+                if store.tor.status != .stopped {
                     ToolbarItem(placement: .topBarLeading) {
                         NavigationLink {
                             TorSettingsView(store: store)
@@ -99,7 +99,7 @@ struct DashboardView: View {
         )
     }
     private var torToolbarIndicator: some View {
-        let status = store.torStatus
+        let status = store.tor.status
         let color: Color
         let icon: String
         switch status {

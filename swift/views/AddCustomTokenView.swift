@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 struct AddCustomTokenView: View {
-    let store: AppState
+    let tokens: TokenPreferencesState
     var editing: TokenPreferenceEntry? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var selectedChain: Chain? = Chain.tokenHostingChains.first
@@ -58,7 +58,7 @@ struct AddCustomTokenView: View {
                     guard let selectedChain else { return }
                     isSaving = true
                     Task { @MainActor in
-                        formMessage = await store.addCustomTokenPreference(
+                        formMessage = await tokens.addCustom(
                             chain: selectedChain, symbol: symbolInput, name: nameInput,
                             contractAddress: identifierInput, coingeckoId: coingeckoIdInput,
                             coinpaprikaId: coinpaprikaIdInput, decimals: decimalsInput, editing: editing)

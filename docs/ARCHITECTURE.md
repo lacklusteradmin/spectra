@@ -256,11 +256,18 @@ renders the exact artifact amount and exposes the prepared transaction details.
 
 ### Native flow lifetimes and display precision
 
-`AppState` composes `SendFlowState`, `ReceiveFlowState` and
-`WalletImportSession`. These objects own form inputs, loading/error state,
-request identities and reset behavior. Domain calls remain thin adapters on
-`AppState`; no forwarding copies of the flow fields live there. Import and
-rename completions may update only the session that submitted them. Dismissal
+`AppState` composes one `@MainActor @Observable` object per domain: the send
+and receive flows, wallet import, the address book, token preferences, price
+alerts, Tor, history paging, diagnostics and the platform's own preferences.
+Each holds that domain's projection or view state — form inputs, loading and
+error state, request identities, reset behavior — and the actions that need
+nothing else; views read the object, and no forwarding copies of its fields
+live on `AppState`. A projection of core state (contacts, tokens, alerts) has
+one writer, `adopt`, fed by `AppState.applyCoreState`, and its edits go through
+the shared `StateCommandQueue`. What needs the wallet projection or several
+domains — the selected send holding, a wallet's signing requirement,
+post-broadcast work — stays a thin adapter on `AppState`. Import and rename
+completions may update only the session that submitted them. Dismissal
 invalidates the session and clears secret inputs; a core commit still refreshes
 the domain projection even when its form is gone.
 

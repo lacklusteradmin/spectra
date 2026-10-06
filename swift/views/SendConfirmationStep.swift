@@ -61,7 +61,7 @@ struct SendConfirmationStep: View {
         if let selectedCoin {
             SendAmountSummaryView(
                 artworkName: selectedCoin.artworkName, symbol: selectedCoin.symbol,
-                chain: selectedCoin.chain, amount: store.sendAmountInput,
+                chain: selectedCoin.chain, amount: store.sendFlow.amountInput,
                 fiatText: store.amounts.formattedFiatIfAvailable(confirmedQuote?.amountValue).map { "≈ \($0)" })
         }
     }

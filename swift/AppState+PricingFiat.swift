@@ -10,19 +10,6 @@ extension AppState {
         if fiatRatesRefreshError != rates { fiatRatesRefreshError = rates }
     }
 
-    // ── Core-owned state ──────────────────────────────────────────────────
-
-    /// Load core's state and mirror it. `ready()` has opened the database, so
-    /// this reads what core holds rather than opening it again.
-    func loadCoreOwnedState() async {
-        do {
-            let state = try await self.bridge.ready().appState()
-            applyCoreState(state)
-        } catch {
-            appendOperationalLog(.error, category: "Storage", message: error.localizedDescription)
-        }
-    }
-
     var portfolioQuotedTotal: QuotedTotal? { portfolioValuation?.portfolio }
     func setPortfolioInclusion(_ isIncluded: Bool, for walletId: String) {
         sendStateCommand(.setWalletPortfolioInclusion(walletId: walletId, included: isIncluded))

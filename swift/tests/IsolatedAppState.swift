@@ -32,7 +32,7 @@ final class IsolatedAppState {
 
     func close() async throws {
         for state in states {
-            await state.awaitPendingStateCommands()
+            await state.stateCommands.awaitPending()
             await state.diagnostics.flushPendingPersistence()
         }
         states.removeAll()

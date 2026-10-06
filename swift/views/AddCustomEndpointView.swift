@@ -83,7 +83,7 @@ struct AddCustomEndpointView: View {
                     isSaving = true
                     Task { @MainActor in
                         do {
-                            let transition = try await store.applyStateCommand(.setAppSetting(
+                            let transition = try await store.stateCommands.apply(.setAppSetting(
                                 update: .addCustomEndpoint(capabilities: Array(capabilities), chainId: chain, api: api, endpoint: url)))
                             if transition.events.contains(where: { if case .appSettingRejected = $0 { return true }; return false }) {
                                 errorMessage = copy.invalidEndpointMessage

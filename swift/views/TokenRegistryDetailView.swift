@@ -2,12 +2,12 @@ import Foundation
 import SwiftUI
 
 struct TokenRegistryDetailView: View {
-    let store: AppState
+    let tokens: TokenPreferencesState
     let groupKey: String
     @State private var isShowingRemoveConfirmation = false
     @Environment(\.dismiss) private var dismiss
     private var groupEntries: [TokenPreferenceEntry] {
-        store.tokenPreferences.filter { $0.token.tokenId == groupKey }
+        tokens.entries.filter { $0.token.tokenId == groupKey }
     }
     var body: some View {
         Group {
@@ -15,8 +15,8 @@ struct TokenRegistryDetailView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: SpectraLayout.sectionSpacing) {
                         heroCard(entry)
-                        if let error = store.tokenPreferenceError {
-                            TokenPreferenceErrorNotice(message: error) { store.tokenPreferenceError = nil }
+                        if let error = tokens.error {
+                            TokenPreferenceErrorNotice(message: error) { tokens.error = nil }
                         }
                         spectraDetailCard(title: "Price Sources") {
                             providerRow("CoinGecko", id: entry.token.coingeckoId)
@@ -44,19 +44,19 @@ struct TokenRegistryDetailView: View {
                     if !entry.isBuiltIn {
                         ToolbarItem(placement: .topBarTrailing) {
                             NavigationLink(AppLocalization.string("Edit")) {
-                                AddCustomTokenView(store: store, editing: entry)
+                                AddCustomTokenView(tokens: tokens, editing: entry)
                             }
                         }
                     }
                 }
                 .confirmationDialog(AppLocalization.string("Remove Token"), isPresented: $isShowingRemoveConfirmation,
                     titleVisibility: .visible) {
-                    Button(AppLocalization.string("Remove"), role: .destructive) { store.removeCustomTokenPreference(entry) }
+                    Button(AppLocalization.string("Remove"), role: .destructive) { tokens.removeCustom(entry) }
                     Button(AppLocalization.string("Cancel"), role: .cancel) {}
                 } message: {
                     Text(AppLocalization.string("This custom token will be removed and will no longer appear in your portfolio."))
                 }
-                .onAppear { store.tokenPreferenceError = nil }
+                .onAppear { tokens.error = nil }
             } else {
                 ContentUnavailableView(AppLocalization.string("Token Not Found"), systemImage: "questionmark.circle")
             }

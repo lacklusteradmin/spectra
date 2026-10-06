@@ -67,7 +67,7 @@ struct TorSettingsView: View {
                 Label(AppLocalization.string("Enable Tor"), systemImage: "network.badge.shield.half.filled")
             }
             statusRow
-            if case .error = store.torStatus {
+            if case .error = store.tor.status {
                 reconnectButton
             }
         } header: {
@@ -81,20 +81,20 @@ struct TorSettingsView: View {
         HStack {
             Text(AppLocalization.string("Status"))
             Spacer()
-            TorStatusBadge(status: store.torStatus)
+            TorStatusBadge(status: store.tor.status)
         }
-        if case .bootstrapping(let pct) = store.torStatus {
+        if case .bootstrapping(let pct) = store.tor.status {
             ProgressView(value: Double(pct), total: 100)
                 .animation(.easeInOut, value: pct)
         }
-        if case .error(let msg) = store.torStatus {
+        if case .error(let msg) = store.tor.status {
             Text(msg).font(.caption).foregroundStyle(.red).lineLimit(3)
         }
     }
 
     private var reconnectButton: some View {
         Button {
-            store.reconnectTor()
+            store.tor.reconnect()
         } label: {
             Label(AppLocalization.string("Reconnect"), systemImage: "arrow.trianglehead.2.clockwise")
         }

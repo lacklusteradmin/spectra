@@ -38,20 +38,22 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
             { $0.sendFlow.customEvmPriorityFeeGwei = "invalid" },
             { $0.sendFlow.previewRequestId = UUID() },
         ]
+        let target = { store.sendPreviewTarget }
         for edit in edits {
-            let input = store.sendPreviewInputSnapshot
+            let input = store.sendFlow.previewInput(for: target())
             let request = store.sendFlow.previewRequestId
             edit(store)
             store.sendFlow.session.error = "current form message"
-            store.adoptSendPreviewResult(.failure(NSError(domain: "old", code: 1)),
-                requestId: request, input: input)
+            store.sendFlow.adoptPreviewResult(.failure(NSError(domain: "old", code: 1)),
+                requestId: request, input: input, target: target)
             #expect(store.sendFlow.session.error == "current form message")
-            store.adoptSendPreviewResult(.success(nil), requestId: request, input: input)
+            store.sendFlow.adoptPreviewResult(.success(nil), requestId: request, input: input, target: target)
             #expect(store.sendFlow.session.error == "current form message")
         }
-        store.adoptSendPreviewResult(.failure(NSError(domain: "current", code: 1,
+        store.sendFlow.adoptPreviewResult(.failure(NSError(domain: "current", code: 1,
             userInfo: [NSLocalizedDescriptionKey: "current failure"])),
-            requestId: store.sendFlow.previewRequestId, input: store.sendPreviewInputSnapshot)
+            requestId: store.sendFlow.previewRequestId, input: store.sendFlow.previewInput(for: target()),
+            target: target)
         #expect(store.sendFlow.session.error == "current failure")
         let oldRequest = store.sendFlow.previewRequestId
         store.cancelSend()

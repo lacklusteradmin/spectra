@@ -86,7 +86,7 @@ private struct SendTransferPartyView: View {
             }
         }
         .task(id: LookupIdentity(
-            walletId: walletId, chain: chain, address: address, contacts: store.addressBook)) {
+            walletId: walletId, chain: chain, address: address, contacts: store.addressBook.entries)) {
             holder = nil
             lookupCompleted = false
             guard !walletId.isEmpty, !address.isEmpty else { return }

@@ -20,7 +20,7 @@ struct SendStagesView: View {
                 store: store, walletId: artifact.walletId, chain: artifact.chainId,
                 sender: artifact.sender, recipient: artifact.recipient,
                 saveRecipient: displayedTransaction.map { record in
-                    { store.saveRecipientToAddressBook(record) }
+                    { store.addressBook.saveRecipient(of: record) }
                 })
                 .padding(SpectraLayout.cardPadding)
                 .spectraCardFill()
@@ -294,7 +294,7 @@ struct SendStagesView: View {
                     if !artifact.signingPayloadHex.isEmpty {
                         technicalValue("Signing payload", value: artifact.signingPayloadHex)
                     }
-                    if !artifact.attempts.isEmpty, store.pendingHighRiskSendReasons.count > 1 {
+                    if !artifact.attempts.isEmpty, store.sendFlow.pendingHighRiskReasons.count > 1 {
                         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
                             Text(AppLocalization.string("Review warnings"))
                                 .font(.caption.weight(.semibold))
@@ -326,7 +326,7 @@ struct SendStagesView: View {
     }
 
     private var reviewWarnings: some View {
-        ForEach(Array(store.pendingHighRiskSendReasons.dropFirst().enumerated()), id: \.offset) { _, reason in
+        ForEach(Array(store.sendFlow.pendingHighRiskReasons.dropFirst().enumerated()), id: \.offset) { _, reason in
             Label(reason, systemImage: "exclamationmark.triangle")
                 .font(.subheadline)
                 .foregroundStyle(.spectraWarning)

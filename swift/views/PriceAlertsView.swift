@@ -54,14 +54,14 @@ struct PriceAlertsView: View {
                 }
             }
             Section(AppLocalization.string("Active Alerts")) {
-                if store.priceAlerts.isEmpty {
+                if store.priceAlerts.rules.isEmpty {
                     SpectraEmptyStateCard(
                         title: "No alerts configured yet",
                         message: "Add a price rule to watch one of your portfolio assets.",
                         systemImage: "bell.slash"
                     )
                 } else {
-                    ForEach(store.priceAlerts) { alert in
+                    ForEach(store.priceAlerts.rules) { alert in
                         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
                             HStack {
                                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
@@ -113,7 +113,7 @@ struct PriceAlertsView: View {
         selectedCoin != nil && !targetPriceText.isEmpty && !isSubmitting
     }
     private func editAlert(_ command: StateCommand) async {
-        do { try await store.editPriceAlert(command) }
+        do { try await store.priceAlerts.edit(command) }
         catch { formMessage = userErrorMessage(error) }
     }
     private func addAlert() async {
@@ -122,10 +122,10 @@ struct PriceAlertsView: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            try await store.editPriceAlert(.addPriceAlert(
+            try await store.priceAlerts.edit(.addPriceAlert(
                 holdingKey: selectedCoin.holdingKey, targetPrice: target,
                 currency: store.selectedFiatCurrency, condition: selectedCondition))
-            store.requestNotificationPermission()
+            store.notifications.requestPermission()
             targetPriceText = ""
             selectedCondition = .above
             formMessage = AppLocalization.string("Alert added. Spectra will notify you when this target is hit.")

@@ -126,10 +126,11 @@ enum SendLiveActivityStore {
 
 // MARK: - The three moments
 
-extension AppState {
+extension PlatformNotifications {
     private func sendLiveActivityState(
         for transaction: TransactionRecord,
-        phase: SendTransactionLiveActivityAttributes.ContentState.Phase
+        phase: SendTransactionLiveActivityAttributes.ContentState.Phase,
+        amounts: AmountPresentation
     ) -> SendTransactionLiveActivityAttributes.ContentState {
         sendLiveActivityContentState(
             for: transaction, phase: phase,
@@ -138,16 +139,16 @@ extension AppState {
     }
 
     /// A broadcast was accepted and the transaction is waiting on the chain.
-    func startSendLiveActivity(for transaction: TransactionRecord) {
+    func startSendLiveActivity(for transaction: TransactionRecord, amounts: AmountPresentation) {
         guard transaction.isSubmittedOperation, transaction.status == .pending else { return }
         SendLiveActivityStore.start(
             transactionId: transaction.id,
-            state: sendLiveActivityState(for: transaction, phase: .sending))
+            state: sendLiveActivityState(for: transaction, phase: .sending, amounts: amounts))
     }
 
     /// Core reported a terminal status for a transaction.
     func finishSendLiveActivity(
-        for transaction: TransactionRecord, newStatus: TransactionStatus
+        for transaction: TransactionRecord, newStatus: TransactionStatus, amounts: AmountPresentation
     ) async {
         let phase: SendTransactionLiveActivityAttributes.ContentState.Phase
         switch newStatus {
@@ -157,7 +158,7 @@ extension AppState {
         }
         await SendLiveActivityStore.end(
             transactionId: transaction.id,
-            state: sendLiveActivityState(for: transaction, phase: phase), lingering: true)
+            state: sendLiveActivityState(for: transaction, phase: phase, amounts: amounts), lingering: true)
     }
 
     /// Retire activities whose transaction stopped being in flight while the app
@@ -165,19 +166,19 @@ extension AppState {
     ///
     /// Without this, a send that confirmed after the app was terminated leaves a
     /// spinner on the lock screen until the staleness date passes.
-    func reconcileSendLiveActivities() async {
+    func reconcileSendLiveActivities(amounts: AmountPresentation) async {
         let runningIds = SendLiveActivityStore.runningTransactionIds
         guard !runningIds.isEmpty else { return }
         await reconcileSendActivities(transactionIds: runningIds,
-            lookup: { try await self.bridge.ready().transaction(id: $0) },
+            lookup: { try await bridge.ready().transaction(id: $0) },
             finish: { id, transaction in
                 if let transaction {
-                    await self.finishSendLiveActivity(for: transaction, newStatus: transaction.status)
+                    await finishSendLiveActivity(for: transaction, newStatus: transaction.status, amounts: amounts)
                 } else {
                     await SendLiveActivityStore.end(transactionId: id, state: nil, lingering: false)
                 }
             }, failed: {
-                self.appendOperationalLog(.error, category: "Live Activity", message: $0.localizedDescription)
+                diagnostics.appendOperationalLog(.error, category: "Live Activity", message: $0.localizedDescription)
             })
     }
 }

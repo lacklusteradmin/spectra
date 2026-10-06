@@ -101,7 +101,7 @@ struct SendNetworkStep: View {
                 TextField(AppLocalization.string("Priority Fee (gwei)"), text: Bindable(store.sendFlow).customEvmPriorityFeeGwei)
                     .keyboardType(.decimalPad).padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
                     .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
-                if let customEvmFeeValidationError = store.customEvmFeeValidationError {
+                if let customEvmFeeValidationError = store.sendFlow.customEvmFeeValidationError {
                     Text(customEvmFeeValidationError).font(.caption).foregroundStyle(.red)
                 } else {
                     Text(AppLocalization.string("Custom EIP-1559 fees are applied to this send and preview."))
@@ -113,7 +113,7 @@ struct SendNetworkStep: View {
                 TextField(AppLocalization.string("Nonce"), text: Bindable(store.sendFlow).evmManualNonce)
                     .keyboardType(.numberPad).padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
                     .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
-                if let evmNonceValidationError = store.evmNonceValidationError {
+                if let evmNonceValidationError = store.sendFlow.evmNonceValidationError {
                     Text(evmNonceValidationError).font(.caption).foregroundStyle(.red)
                 }
             }

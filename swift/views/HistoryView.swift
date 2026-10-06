@@ -197,9 +197,9 @@ struct HistoryView: View {
         if let selectedWalletId { return [selectedWalletId] }
         return Set(store.wallets.map(\.id))
     }
-    private var canLoadMoreVisibleHistory: Bool { store.canLoadMoreOnChainHistory(for: historyWalletIds) }
+    private var canLoadMoreVisibleHistory: Bool { store.historyPaging.canLoadMore(for: historyWalletIds) }
     private var shouldShowPagingControls: Bool {
-        hasMoreStoredHistory || canLoadMoreVisibleHistory || store.isLoadingMoreOnChainHistory
+        hasMoreStoredHistory || canLoadMoreVisibleHistory || store.historyPaging.isLoadingMore
     }
     private var pagedRows: [HistoryRowPresentation] {
         visibleTransactions.map(historyRowPresentation)
@@ -283,12 +283,12 @@ struct HistoryView: View {
             }
         } label: {
             HStack {
-                if store.isLoadingMoreOnChainHistory { ProgressView() }
-                Text(AppLocalization.string(store.isLoadingMoreOnChainHistory ? "Loading" : "Load more"))
+                if store.historyPaging.isLoadingMore { ProgressView() }
+                Text(AppLocalization.string(store.historyPaging.isLoadingMore ? "Loading" : "Load more"))
             }.frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(.glass)
-        .disabled(store.isLoadingMoreOnChainHistory || isLoadingPage)
+        .disabled(store.historyPaging.isLoadingMore || isLoadingPage)
     }
     private var historyEmptyStateCard: some View {
         SpectraEmptyStateCard(

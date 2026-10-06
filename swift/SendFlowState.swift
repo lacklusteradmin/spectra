@@ -1,9 +1,15 @@
 import Foundation
 
-/// Transient native flow state; persisted domain data remains in core.
+/// The send composer: its form, its preview and the send it stages.
+///
+/// Transient native flow state; persisted domain data remains in core, which
+/// quotes, builds, signs and broadcasts. What only the wallet projection knows
+/// — the selected holding, whether a wallet signs with a password, what a
+/// completed send sets off — `AppState` supplies.
 @MainActor
 @Observable
 final class SendFlowState {
+    @ObservationIgnored let bridge: WalletServiceBridge // Service identity is not view state.
     var walletId: String = ""
     var holdingKey: String = ""
     var amount: String = ""
@@ -31,6 +37,8 @@ final class SendFlowState {
     var isPresented: Bool = false {
         didSet { if oldValue && !isPresented { resetComposer() } }
     }
+
+    init(bridge: WalletServiceBridge) { self.bridge = bridge }
 
     func clearVerificationNotice() {
         verificationNotice = nil
@@ -85,5 +93,52 @@ final class SendFlowState {
         walletId = ""
         holdingKey = ""
         savedArtifacts = []
+    }
+
+    // MARK: - The form as core reads it
+
+    /// The amount field as core reads it.
+    var amountInput: String { AmountPresentation.canonicalDecimalInput(amount) }
+
+    private var parsedCustomEvmFees: Result<EvmCustomFeeConfiguration, Error>? {
+        // The toggle is cleared outside the EVM family; only EVM preview and
+        // submit paths read these fees.
+        guard useCustomEvmFees else { return nil }
+        return Result {
+            try parseEvmCustomFees(
+                maxFeeGweiRaw: AmountPresentation.canonicalDecimalInput(customEvmMaxFeeGwei),
+                priorityFeeGweiRaw: AmountPresentation.canonicalDecimalInput(customEvmPriorityFeeGwei))
+        }
+    }
+    var customEvmFeeValidationError: String? {
+        guard case .failure(let error)? = parsedCustomEvmFees else { return nil }
+        switch error {
+        case EvmCustomFeeError.InvalidMaxFee: return AppLocalization.string("Enter a valid Max Fee in gwei.")
+        case EvmCustomFeeError.InvalidPriorityFee: return AppLocalization.string("Enter a valid Priority Fee in gwei.")
+        case EvmCustomFeeError.MaxBelowPriority: return AppLocalization.string("Max Fee must be greater than or equal to Priority Fee.")
+        default: return userErrorMessage(error)
+        }
+    }
+    func customEvmFeeConfiguration() -> EvmCustomFeeConfiguration? {
+        guard case .success(let fees)? = parsedCustomEvmFees else { return nil }
+        return fees
+    }
+    var evmNonceValidationError: String? {
+        do {
+            _ = try explicitEvmNonce()
+            return nil
+        } catch EvmNonceError.Empty {
+            return AppLocalization.string("Enter a nonce value for manual nonce mode.")
+        } catch EvmNonceError.InvalidInteger {
+            return AppLocalization.string("Nonce must be a non-negative integer.")
+        } catch EvmNonceError.TooLarge {
+            return AppLocalization.string("Nonce value is too large.")
+        } catch {
+            return userErrorMessage(error)
+        }
+    }
+    func explicitEvmNonce() throws -> Int? {
+        guard evmManualNonceEnabled else { return nil }
+        return Int(try parseEvmNonce(raw: evmManualNonce))
     }
 }
