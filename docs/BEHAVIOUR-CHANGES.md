@@ -17,6 +17,32 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-06 — A data reset no longer clears an in-flight history page fetch
+
+- **Before:** `AppState.isLoadingMoreOnChainHistory` had two writers. "Load
+  more" set it for the fetch it ran, and a reset that cleared history and
+  cache set it back to `false` whether or not a fetch was still running. The
+  button re-enabled under a running fetch, a second page fetch could start
+  beside it, and the first one's completion then cleared the flag under the
+  second.
+- **After:** the flag is `HistoryPagingState.isLoadingMore`, and `loadMore` is
+  its only writer: a running fetch clears it when it ends, a reset leaves it
+  alone, and one page fetch runs at a time. The move is part of giving
+  `AppState`'s domains their own observable state — address book, token
+  preferences, price alerts, Tor, history paging, send execution and preview,
+  notifications and Live Activities — which changes nothing else a user sees.
+- **Why:** a flag saying a fetch is in flight is the fetch's to clear. The
+  reset clears what core recorded and could not know whether a fetch was
+  still running.
+- **CLI check:** none applies; this is native view state. Core's history
+  cursors and their reset are unchanged. `HistoryPagingStateTests` holds the
+  single-flight rule.
+- **Verification:** `make verify` passed: lint (rustfmt, clippy at
+  `-D warnings`, the source-scan and record-writer tests, every scan at 0),
+  `cargo test --workspace` (1,090 core tests and one transport integration
+  test), `scripts/cli-acceptance.sh` (66 checks) and `make test-ios` (130
+  tests in 29 suites on iPhone 17 Pro, `TEST SUCCEEDED`).
+
 ## 2026-10-06 — FFI record fields nothing writes are deleted, and a MIR scan keeps them out
 
 - **Before:** 48 `uniffi::Record` fields crossed the FFI with no production
