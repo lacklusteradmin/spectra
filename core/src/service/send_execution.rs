@@ -254,7 +254,7 @@ impl WalletService {
 /// naming a different family — which `resolve_send_identity` refuses anyway —
 /// keeps the requested chain, so this cannot move a send onto another chain.
 pub(crate) fn send_chain_for(
-    state: &crate::store::state::CoreAppState,
+    state: &crate::store::state::ResidentState,
     wallet_id: &str,
     requested: Chain,
 ) -> Result<Chain, SpectraBridgeError> {

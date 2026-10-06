@@ -2,12 +2,10 @@
 use crate::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 
-pub(super) fn recheck_chain(
-    record: &CorePersistedTransactionRecord,
-) -> Result<Chain, SpectraBridgeError> {
+pub(super) fn recheck_chain(record: &TransactionRecord) -> Result<Chain, SpectraBridgeError> {
     let chain = record.chain_id;
     let PendingStatusPoll::Utxo { require_send_kind } = chain.pending_status_poll() else {
         return Err(SpectraBridgeError::invalid(
@@ -137,9 +135,9 @@ impl WalletService {
                 let current_status = current.status;
                 let old_status = current_status.as_raw().to_string();
                 let new_status = if confirmed {
-                    crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+                    crate::store::wallet_domain::TransactionStatus::Confirmed
                 } else {
-                    crate::store::wallet_domain::CoreTransactionStatus::Pending
+                    crate::store::wallet_domain::TransactionStatus::Pending
                 };
                 let decision = crate::store::apply_resolved_pending_transaction_statuses(
                     vec![crate::store::ResolvedPendingTransactionInput {

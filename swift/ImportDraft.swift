@@ -31,11 +31,11 @@ final class WalletImportDraft {
     /// the import can use.
     var importsPrivateKey: Bool = false
     var privateKeyInput: String = ""
-    var seedDerivationPreset: CoreSeedDerivationPreset = .standard
+    var seedDerivationPreset: SeedDerivationPreset = .standard
     var seedDerivationPaths: SeedDerivationPaths = .defaults
     // Power-user derivation overrides (Advanced Options sheet). Each field is
     // a user-entered string; blank/empty-picker means "use chain preset default".
-    // These are converted to CoreWalletDerivationOverrides at import time via
+    // These are converted to WalletDerivationOverrides at import time via
     // `resolvedDerivationOverrides`.
     var overridePassphrase: String = ""
     var overrideHmacKey: String = ""
@@ -89,7 +89,7 @@ final class WalletImportDraft {
         }
     }
     /// Core interprets exact secret input and refuses unsupported overrides.
-    var resolvedDerivationOverrides: CoreWalletDerivationOverrides {
+    var resolvedDerivationOverrides: WalletDerivationOverrides {
         parseWalletDerivationInput(input: WalletDerivationInput(
             passphrase: overridePassphrase, hmacKey: overrideHmacKey))
     }

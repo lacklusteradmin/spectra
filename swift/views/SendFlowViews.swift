@@ -48,7 +48,7 @@ struct SendView: View {
 
     private var isSendBusy: Bool { store.sendFlow.session.isBusy || store.sendFlow.isPreparingPreview }
 
-    private var selectedNetworkSendCoin: Coin? {
+    private var selectedNetworkSendCoin: AssetHolding? {
         store.availableSendCoins(for: store.sendFlow.walletId).first(where: { $0.holdingKey == store.sendFlow.holdingKey })
     }
 
@@ -273,7 +273,7 @@ struct SendView: View {
     }
 
     @ViewBuilder
-    private func flowBottomBar(selectedCoin: Coin?) -> some View {
+    private func flowBottomBar(selectedCoin: AssetHolding?) -> some View {
         SpectraBottomActionBar {
             if currentStep != .from && store.sendFlow.session.artifact?.attempts.isEmpty != false {
                 Button {
@@ -379,7 +379,7 @@ struct SendView: View {
         }
     }
 
-    private func canUsePrimaryAction(selectedCoin: Coin?) -> Bool {
+    private func canUsePrimaryAction(selectedCoin: AssetHolding?) -> Bool {
         switch currentStep {
         case .from:
             return store.selectedWalletForSend() != nil && selectedCoin != nil
@@ -507,7 +507,7 @@ private struct SavedSendRow: View {
 
     var body: some View {
         let chain = artifact.chainId
-        let badge = Coin.nativeChainBadge(for: chain) ?? (nil, Color.secondary)
+        let badge = AssetHolding.nativeChainBadge(for: chain) ?? (nil, Color.secondary)
         HStack(spacing: SpectraLayout.Space.m) {
             CoinBadge(artworkName: badge.artworkName, fallbackText: artifact.symbol, color: badge.color, size: 28)
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {

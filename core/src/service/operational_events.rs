@@ -36,7 +36,7 @@ impl WalletService {
         &self,
         changes: &mut [crate::store::TransactionStatusChange],
     ) {
-        use crate::store::wallet_domain::CoreTransactionStatus as Status;
+        use crate::store::wallet_domain::TransactionStatus as Status;
         let notifications_on = self
             .wallet_state
             .read()

@@ -7,7 +7,7 @@ struct SendConfirmationStep: View {
     let recipientAddress: String
 
     private var isSendBusy: Bool { store.sendFlow.session.isBusy || store.sendFlow.isPreparingPreview }
-    private var selectedCoin: Coin? {
+    private var selectedCoin: AssetHolding? {
         store.availableSendCoins(for: store.sendFlow.walletId).first(where: { $0.holdingKey == store.sendFlow.holdingKey })
     }
 
@@ -15,7 +15,7 @@ struct SendConfirmationStep: View {
         confirmStep(selectedCoin: selectedCoin)
     }
 
-    private func confirmStep(selectedCoin: Coin?) -> some View {
+    private func confirmStep(selectedCoin: AssetHolding?) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             amountCard(selectedCoin: selectedCoin)
             if let selectedCoin {
@@ -57,7 +57,7 @@ struct SendConfirmationStep: View {
     }
 
     @ViewBuilder
-    private func amountCard(selectedCoin: Coin?) -> some View {
+    private func amountCard(selectedCoin: AssetHolding?) -> some View {
         if let selectedCoin {
             SendAmountSummaryView(
                 artworkName: selectedCoin.artworkName, symbol: selectedCoin.symbol,

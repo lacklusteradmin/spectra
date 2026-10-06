@@ -18,29 +18,6 @@ Delete an item once it is done; what changed belongs in
   offline CLI fixtures. Keep live probes read-only; any resulting behaviour
   changes need `BEHAVIOUR-CHANGES.md` entries and `make verify`.
 
-- [ ] **Detect FFI record fields with no production writer.** A syntactic scan
-  cannot reliably distinguish unwritten fields from serde or multi-line writes.
-  A useful gate needs type-aware analysis before it can reject unused fields.
-
-- [ ] **Name FFI types once, in Rust, so Swift needs no typealiases.** Swift
-  renames nine UniFFI types with `typealias`, so each has two names and both
-  appear in code: `Coin = AssetHolding`, `TransactionRecord =
-  CorePersistedTransactionRecord`, `TransactionStatus = CoreTransactionStatus`,
-  `PriceAlertRule = PriceAlertEvaluationAlert`, `PriceAlertCondition =
-  CorePriceAlertCondition`, `TokenPreferenceEntry = CoreTokenPreferenceEntry`,
-  `SeedDerivationPaths = CoreSeedDerivationPaths`, `DashboardAssetGroup =
-  CoreDashboardAssetGroup` and `DashboardPinOption = CoreDashboardPinOption`
-  (the last two in `swift/views/DashboardViews.swift`, the rest in
-  `CoreModels.swift`, `ChainTypes.swift` and `RegistryModels.swift`). Pick the
-  one name each type should have — drop the `Core` prefix, which says where a
-  type lives rather than what it is, and settle `Coin` versus `AssetHolding` —
-  and rename the Rust type (or set its UniFFI name) so the binding carries it.
-  Apply the same rule to the remaining `Core*` exports Swift uses unaliased
-  (`CoreSeedDerivationPreset`, `CoreWalletDerivationOverrides`,
-  `CoreTokenPreferenceKey`, `CoreAppState`). Rename in CLI and Kotlin call
-  sites in the same change, regenerate the bindings, delete every alias, and
-  pass `make verify`. No behaviour changes; nothing to record beyond the
-  commit.
 - [ ] **Give `AppState`'s domains their own observable state.** `AppState` is
   one `@Observable` class whose methods are spread over 30
   `AppState+<Domain>.swift` extensions, a third of them under 40 lines. The

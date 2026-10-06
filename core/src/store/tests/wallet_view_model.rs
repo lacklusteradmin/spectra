@@ -1,9 +1,9 @@
 use crate::registry::Chain;
 use crate::store::state::{WalletAddress, WalletState};
 use crate::store::wallet_domain::AssetHolding;
-use crate::store::wallet_domain::CoreSeedDerivationPaths;
+use crate::store::wallet_domain::SeedDerivationPaths;
 
-fn defaults() -> CoreSeedDerivationPaths {
+fn defaults() -> SeedDerivationPaths {
     crate::derivation::path::derivation_paths_for_preset(Default::default()).expect("defaults")
 }
 
@@ -17,7 +17,7 @@ fn summary() -> WalletState {
         include_in_portfolio_total: true,
         chain_id: crate::registry::Chain::BitcoinTestnet4,
         xpub: Some("zpub123".to_string()),
-        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Account2,
+        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Account2,
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: vec![AssetHolding {

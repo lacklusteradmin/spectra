@@ -145,9 +145,9 @@ pub struct WalletImportPlan {
 pub struct WalletImportCommit {
     pub password: Option<String>,
     pub request: WalletImportRequest,
-    pub seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
-    pub seed_derivation_paths: crate::store::wallet_domain::CoreSeedDerivationPaths,
-    pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    pub seed_derivation_preset: crate::store::wallet_domain::SeedDerivationPreset,
+    pub seed_derivation_paths: crate::store::wallet_domain::SeedDerivationPaths,
+    pub derivation_overrides: crate::store::wallet_domain::WalletDerivationOverrides,
     /// Seed used to derive selected chains when `resolved_addresses` is empty.
     pub seed_phrase: Option<String>,
     /// The key to derive a private-key import's address from, when the caller
@@ -204,14 +204,14 @@ pub fn derive_private_key_import_address(
 
 /// Derive an address for every selected chain, keyed by chain.
 ///
-/// The path comes from `CoreSeedDerivationPaths::path_for` for the concrete
+/// The path comes from `SeedDerivationPaths::path_for` for the concrete
 /// network. A chain whose derivation fails is left out here; the planner
 /// refuses an import that leaves any selected chain without an address.
 pub fn derive_import_addresses(
     seed_phrase: &str,
     selected_chain_ids: &[Chain],
-    paths: &crate::store::wallet_domain::CoreSeedDerivationPaths,
-    overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    paths: &crate::store::wallet_domain::SeedDerivationPaths,
+    overrides: &crate::store::wallet_domain::WalletDerivationOverrides,
 ) -> std::collections::HashMap<Chain, String> {
     let mut by_chain_id = std::collections::HashMap::new();
     for &chain in selected_chain_ids {
@@ -1039,7 +1039,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             refused,
-            DerivationError::Invalid(crate::CoreMessage::new(
+            DerivationError::Invalid(crate::LocalizableMessage::new(
                 "Could not derive a %@ address from this secret.",
                 ["Solana"],
             ))

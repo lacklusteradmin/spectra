@@ -8,7 +8,7 @@ pub struct PortfolioMovementBaseline {
     pub total_usd: f64,
 }
 
-fn observe(state: &CoreAppState) -> Option<PortfolioMovementBaseline> {
+fn observe(state: &ResidentState) -> Option<PortfolioMovementBaseline> {
     let mut composition = Vec::new();
     let mut total_usd = 0.0;
     for wallet in state
@@ -39,7 +39,7 @@ fn observe(state: &CoreAppState) -> Option<PortfolioMovementBaseline> {
     })
 }
 
-fn evaluate(state: &mut CoreAppState, app_is_active: bool) -> Option<LargeMovementEvaluation> {
+fn evaluate(state: &mut ResidentState, app_is_active: bool) -> Option<LargeMovementEvaluation> {
     if !state.settings.use_large_movement_notifications {
         state.movement_baseline = None;
         return None;
@@ -97,8 +97,8 @@ impl WalletService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn state() -> CoreAppState {
-        let mut s = CoreAppState::default();
+    fn state() -> ResidentState {
+        let mut s = ResidentState::default();
         s.wallets.push(crate::store::state::WalletState {
             id: "wallet-a".into(),
             name: "A".into(),
@@ -106,7 +106,7 @@ mod tests {
             chain_id: crate::registry::Chain::Ethereum,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             addresses: vec![],

@@ -1,6 +1,6 @@
 //! Bounded history queries and the small summary used outside the history screen.
 use super::*;
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
@@ -58,7 +58,7 @@ impl Default for HistoryQuery {
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryPage {
-    pub records: Vec<CorePersistedTransactionRecord>,
+    pub records: Vec<TransactionRecord>,
     pub has_more: bool,
     pub next_cursor: Option<String>,
 }
@@ -66,7 +66,7 @@ pub struct HistoryPage {
 #[serde(rename_all = "camelCase")]
 pub struct TransactionSnapshot {
     pub revision: u64,
-    pub recent_and_pending: Vec<CorePersistedTransactionRecord>,
+    pub recent_and_pending: Vec<TransactionRecord>,
     pub replaceable: Vec<super::history_derived::ReplaceableSend>,
     pub earliest: Vec<crate::store::WalletEarliestTransactionDate>,
     pub total_count: u64,
@@ -116,7 +116,7 @@ pub struct TransactionEndpoints {
 /// known to hold, and who holds each end — the first of `known` to list it.
 /// Addresses compare in the chain's own normal form.
 pub(crate) fn transaction_endpoints_for(
-    record: &CorePersistedTransactionRecord,
+    record: &TransactionRecord,
     owned: &[String],
     known: &[KnownHolder],
 ) -> TransactionEndpoints {
@@ -143,18 +143,18 @@ pub(crate) fn transaction_endpoints_for(
         .filter(|a| is_mine(a))
         .or_else(|| counterparty.clone().filter(|a| is_mine(a)));
     let (from, to) = match record.kind {
-        crate::store::wallet_domain::CoreTransactionKind::Send
-        | crate::store::wallet_domain::CoreTransactionKind::Stake => {
+        crate::store::wallet_domain::TransactionKind::Send
+        | crate::store::wallet_domain::TransactionKind::Stake => {
             let to = counterparty.filter(|c| !same(&Some(c.clone()), &source));
             (source, to)
         }
-        crate::store::wallet_domain::CoreTransactionKind::Receive
-        | crate::store::wallet_domain::CoreTransactionKind::Withdraw
-        | crate::store::wallet_domain::CoreTransactionKind::ClaimRewards => {
+        crate::store::wallet_domain::TransactionKind::Receive
+        | crate::store::wallet_domain::TransactionKind::Withdraw
+        | crate::store::wallet_domain::TransactionKind::ClaimRewards => {
             let from = counterparty.filter(|c| !same(&Some(c.clone()), &wallet_side));
             (from, wallet_side)
         }
-        crate::store::wallet_domain::CoreTransactionKind::Unstake => (source, None),
+        crate::store::wallet_domain::TransactionKind::Unstake => (source, None),
     };
     let endpoint = |address: String| TransactionEndpoint {
         is_mine: is_mine(&address),
@@ -259,7 +259,7 @@ impl WalletService {
                     page.records = page
                         .records
                         .into_iter()
-                        .map(CorePersistedTransactionRecord::with_actions)
+                        .map(TransactionRecord::with_actions)
                         .collect();
                     page
                 })
@@ -283,7 +283,7 @@ impl WalletService {
                 snapshot.recent_and_pending = snapshot
                     .recent_and_pending
                     .into_iter()
-                    .map(CorePersistedTransactionRecord::with_actions)
+                    .map(TransactionRecord::with_actions)
                     .collect();
                 snapshot
             })
@@ -298,7 +298,7 @@ impl WalletService {
     pub async fn transaction(
         &self,
         id: String,
-    ) -> Result<Option<CorePersistedTransactionRecord>, SpectraBridgeError> {
+    ) -> Result<Option<TransactionRecord>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -306,7 +306,7 @@ impl WalletService {
             tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
                 .await
                 .map_err(SpectraBridgeError::failure)?
-                .map(|record| record.map(CorePersistedTransactionRecord::with_actions))
+                .map(|record| record.map(TransactionRecord::with_actions))
                 .map_err(Into::into)
         })
         .await
@@ -383,7 +383,7 @@ impl WalletService {
 mod endpoint_tests {
     use super::*;
 
-    fn record(kind: &str, address: &str, source: Option<&str>) -> CorePersistedTransactionRecord {
+    fn record(kind: &str, address: &str, source: Option<&str>) -> TransactionRecord {
         serde_json::from_value(serde_json::json!({
             "id": "t", "walletId": "w", "kind": kind, "status": "confirmed",
             "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH",

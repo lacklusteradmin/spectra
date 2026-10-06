@@ -37,7 +37,6 @@ impl AptosStakingClient {
                     Ok(Some(StakingValidator {
                         display_name: format!("Delegation pool {}", short_id(&validator.addr)),
                         identifier: validator.addr,
-                        apy: None,
                         commission: Some(commission as f64 / 10_000.0),
                         total_stake_smallest_unit: Some(validator.voting_power),
                         is_active: true,
@@ -48,7 +47,6 @@ impl AptosStakingClient {
                         uptime_pct: None,
                         website: None,
                         description: None,
-                        next_epoch_active: None,
                     }))
                 }
             })

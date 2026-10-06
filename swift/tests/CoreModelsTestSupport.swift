@@ -18,10 +18,10 @@ extension WalletView {
         chainId: Chain,
         addresses: [Chain: String] = [:],
         bitcoinXpub: String? = nil,
-        seedDerivationPreset: CoreSeedDerivationPreset = .standard,
-        seedDerivationPaths: CoreSeedDerivationPaths? = nil,
-        derivationOverrides: CoreWalletDerivationOverrides = CoreWalletDerivationOverrides(passphrase: nil, hmacKey: nil),
-        holdings: [Coin] = [],
+        seedDerivationPreset: SeedDerivationPreset = .standard,
+        seedDerivationPaths: SeedDerivationPaths? = nil,
+        derivationOverrides: WalletDerivationOverrides = WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
+        holdings: [AssetHolding] = [],
         includeInPortfolioTotal: Bool = true,
         signing: WalletSigning = .watchOnly
     ) {
@@ -89,7 +89,7 @@ extension TransactionRecord {
     /// A record with every field a test does not name left empty. The app never
     /// builds one — core records what was sent and fetched.
     init(
-        id: String, walletId: String? = nil, deploymentId: String? = nil, kind: CoreTransactionKind,
+        id: String, walletId: String? = nil, deploymentId: String? = nil, kind: TransactionKind,
         status: TransactionStatus, walletName: String, assetDisplayName: String, symbol: String,
         chainId: Chain, amount: String, address: String, transactionHash: String? = nil,
         nonce: Int64? = nil, failureReason: TransactionFailure? = nil
@@ -116,7 +116,7 @@ extension AssetHolding {
     static func fixture(
         name: String, symbol: String, coingeckoId: String = "", chainId: Chain, tokenStandard: String = "Native",
         contractAddress: String? = nil, amount: String
-    ) -> Coin {
+    ) -> AssetHolding {
         let id = contractAddress.map { "\(chainId.id):\(tokenStandard.lowercased()):\($0.lowercased())" } ?? "\(chainId.id):native"
         return AssetHolding(
             id: id, name: name, symbol: symbol, coingeckoId: coingeckoId, chainId: chainId,

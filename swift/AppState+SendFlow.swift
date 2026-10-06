@@ -22,7 +22,7 @@ extension AppState {
         sendFlow.clearDestinationCheck()
     }
     func cancelSend() { sendFlow.close() }
-    var selectedSendCoin: Coin? {
+    var selectedSendCoin: AssetHolding? {
         availableSendCoins(for: sendFlow.walletId).first(where: { $0.holdingKey == sendFlow.holdingKey })
     }
     var sendAmountDecimals: UInt32? {
@@ -58,7 +58,7 @@ extension AppState {
         guard !sendFlow.isPreparingPreview else { return nil }
         return sendQuote?.shortcuts[percentage]
     }
-    func sendPreviewDetails(for coin: Coin) -> SendPreviewDetails? {
+    func sendPreviewDetails(for coin: AssetHolding) -> SendPreviewDetails? {
         sendFlow.previewStore.quote(walletId: sendFlow.walletId, coin: coin)?.details
     }
     private var parsedCustomEvmFees: Result<EvmCustomFeeConfiguration, Error>? {
@@ -181,7 +181,7 @@ extension AppState {
         await signPreparedSend(password: password)
     }
 
-    func availableSendCoins(for walletId: String) -> [Coin] { walletDerivedCache.availableSendCoinsByWalletId[walletId] ?? [] }
+    func availableSendCoins(for walletId: String) -> [AssetHolding] { walletDerivedCache.availableSendCoinsByWalletId[walletId] ?? [] }
     var sendEnabledWallets: [WalletView] { walletDerivedCache.sendEnabledWallets }
     var canBeginSend: Bool { !sendEnabledWallets.isEmpty }
     var replacementNonceStateMessage: String? {

@@ -763,7 +763,7 @@ mod every_chain_accepts_what_it_derives {
         let mut checked = 0;
         let mut failures: Vec<String> = Vec::new();
         for chain in Chain::all().filter(|c| !c.is_testnet()) {
-            let Some(path) = crate::store::wallet_domain::CoreSeedDerivationPaths::default()
+            let Some(path) = crate::store::wallet_domain::SeedDerivationPaths::default()
                 .path_for(chain)
                 .map(str::to_string)
                 .or_else(|| crate::derivation::path::default_path_from_catalog(chain).ok())

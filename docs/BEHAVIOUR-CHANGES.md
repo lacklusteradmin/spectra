@@ -17,6 +17,60 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-06 — FFI record fields nothing writes are deleted, and a MIR scan keeps them out
+
+- **Before:** 48 `uniffi::Record` fields crossed the FFI with no production
+  writer, so every reader saw `None`, `0`, `false` or an empty string:
+  `estimatedTransactionBytes`, `selectedInputCount` and `usesChangeOutput` on
+  the twelve account-model send previews (the last two also on Polkadot's);
+  XRP's `sequence` and `lastLedgerSequence`, Stellar's `sequence`, Cardano's
+  `ttlSlot`, TON's `sequenceNumber` and Tron's `simulationUsed`;
+  `StakingValidator.apy` and `next_epoch_active`;
+  `SendExecutionRequest.monero_priority`; and
+  `BitcoinHistorySnapshot.counterparty_address`. The TON send sheet showed
+  "Sequence Number: 0" on every preview. The XRP, Stellar and Cardano lines
+  and a validator's APY sat behind a check that never passed. `spectra
+  staking validators` printed "APY unavailable" beside every validator and
+  `"apy": null` in JSON, and `spectra --json send preview` printed the zeros
+  and nulls. Monero's builder accepted priorities 1–4 and refused others, but
+  only ever received the default 2. A `send::flow` test pinned that
+  account-model previews "deliberately drop" fields their records carried,
+  and `BitcoinHistorySnapshot` derived `uniffi::Record` although nothing
+  crossed with it. OPEN-ITEMS held the gate as undone because a syntactic
+  scan cannot tell an unwritten field from a serde or multi-line write.
+- **After:** the fields are deleted, with the Swift lines that showed them,
+  their six strings in each locale, the CLI's APY column and `apy` key, and
+  the pinning test. A Monero send uses normal priority, the one the preview's
+  `priorityLabel` already named. A Bitcoin history row's counterparty is an
+  explicit empty string: the row nets every address of the wallet in one
+  transaction, so it names no single counterparty. `BitcoinHistorySnapshot`
+  is internal. `scripts/unwritten-record-fields.sh` builds core and the CLI
+  with `--emit=mir` and fails on any record field production code never
+  writes; `scripts/record_writers.py` defines a write and
+  `scripts/test-record-writers.py` checks that definition against a fixture
+  compiled by the pinned rustc. Both run in `make lint` and the CI "Source
+  scans" step.
+- **Why:** a field that is always `None` or `0` is a second, false account of
+  what core knows; TON's sequence number showed a value nothing computed.
+  rustc's `dead_code` treats a `pub` field in a library as API, and only the
+  compiler knows which struct `x.field` names, so the gate reads its MIR,
+  where every place carries its type and `#[cfg(test)]` code is already gone.
+- **CLI check:** `spectra --json staking validators --chain internet-computer`
+  against the loopback replica in `scripts/cli-icp-staking.py` lists the
+  validator with no `apy`; `scripts/cli-send-near.py` and
+  `scripts/cli-send-polkadot.py` run `spectra --json send preview` for
+  account-model chains, whose previews now carry only what their builders
+  measure. `scripts/unwritten-record-fields.sh` reports `0 unwritten record
+  field(s)`; run before the deletions, it named exactly these 48.
+- **Verification:** `make verify`, run as its four targets: `make lint`
+  (rustfmt, clippy at `-D warnings`, the source-scan and record-writer tests,
+  and every scan including the new one at 0), `cargo test --workspace` (1,090
+  core tests and one transport integration test), `scripts/cli-acceptance.sh`
+  (66 checks, no external requests) and `make test-ios` (129 tests in 28
+  suites on iPhone 17 Pro, `TEST SUCCEEDED`), whose Rust build phase
+  regenerated the Swift bindings. The same change renamed the `Core*` FFI
+  types and deleted Swift's aliases; that rename changes no behaviour.
+
 ## 2026-10-06 — CLI acceptance tests the binary; rules are tested in core
 
 - **Before:** `scripts/cli-acceptance.sh` was the migration gate: every domain

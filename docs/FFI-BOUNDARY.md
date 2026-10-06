@@ -15,7 +15,12 @@ Integration rules for **UniFFI 0.31.2 + Swift 6**. See
 | `#[uniffi::export] impl` | Methods on an object; keep internal helpers in an unexported block |
 | `#[uniffi::export(with_foreign)]` trait | Shell callbacks implemented by Swift and called by Rust |
 
-`SpectraBridgeError::InvalidInput` and `Failure` carry a `CoreMessage`: an
+Name an exported type for what it is, once, in Rust: the binding carries that
+name to Swift and Kotlin, and front ends use it with no `typealias` or prefix.
+`TransactionRecord`, not `CoreTransactionRecord` — where a type is defined is
+not what it is.
+
+`SpectraBridgeError::InvalidInput` and `Failure` carry a `LocalizableMessage`: an
 English `template` with a `%@` for each of its `args`. The template is the key a
 front end looks up in its string tables, so a sentence a person reads names its
 values as `args` (`SpectraBridgeError::refused`, `failed`,
@@ -39,7 +44,7 @@ record: scrub its owned strings on the receiving call path.
 - **Timestamps:** transaction payload/FFI `created_at_unix` and the indexed
   `HistoryRecord.created_at` all use Unix seconds, including fractional seconds.
   Swift renders with `Date(timeIntervalSince1970:)`; there is no epoch conversion.
-- **Versions:** `CoreAppState.revision` orders successful state publications within
+- **Versions:** `ResidentState.revision` orders successful state publications within
   one service session. Failed and no-op commands do not advance it; it is not
   persisted. Snapshot sequence numbers order projections; their contained state
   revision must also pass the front end's committed-state check.
@@ -66,7 +71,15 @@ longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
 `dead_code` treats it as API because the crate is a library, and the bindings
 never mentioned it — so it can lose its last caller and keep compiling.
 `derive_bitcoin_account_xpub_typed` did, for long enough that its doc comment
-still said it was exported. All three scripts run in `make lint` and in CI.
+still said it was exported.
+
+`scripts/unwritten-record-fields.sh` checks the fields of every
+`uniffi::Record`: one that production code never sets to anything but `None`,
+`0` or empty still crosses, renders and reads as data. rustc cannot see it on
+a `pub` struct and a name match cannot tell which struct `x.field` writes, so
+the scan reads the MIR rustc emits, where every place carries its type.
+`scripts/record_writers.py` says what counts as a write. All four scripts run
+in `make lint` and in CI.
 
 An export used only by the app still needs its rule covered: test that rule in
 core with `cargo test`. Offline tests do not prove broadcasting works; the
@@ -91,7 +104,7 @@ callback-interface `vtablePtr` statics itself.
 
 | Symptom | Check |
 |---|---|
-| `Cannot find type 'CoreFoo' in scope` | Regenerate bindings and confirm the declaration is exported |
+| `Cannot find type 'Foo' in scope` | Regenerate bindings and confirm the declaration is exported |
 | `does not conform to protocol 'Codable'` | UniFFI does not generate `Codable`; add the appropriate Swift conformance |
 | `Unknown network: …` | A stored row or TOML entry names an id the catalog does not have; chains cross the FFI as `Chain`, so the text came from storage or a file |
 | A key path into a subscript will not compile | Avoid `dict[key, default:]` in key paths; provide a suitable subscript |

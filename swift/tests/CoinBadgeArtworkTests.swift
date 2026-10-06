@@ -51,7 +51,7 @@ struct CoinBadgeArtworkTests {
     /// keep them apart.
     @Test func aChainBadgeStillDrawsTheChain() throws {
         for chain in Chain.all {
-            let native = try #require(Coin.nativeChainBadge(for: chain), "\(chain.displayName)")
+            let native = try #require(AssetHolding.nativeChainBadge(for: chain), "\(chain.displayName)")
             let badge = CoinBadge(
                 artworkName: native.artworkName, fallbackText: chain.gasTokenSymbol, color: native.color)
             #expect(UIImage(named: badge.artworkName) != nil, "\(chain.displayName) drew a letter")
@@ -60,7 +60,7 @@ struct CoinBadgeArtworkTests {
             artworkName: Chain.base.entry?.artworkName,
             fallbackText: "BASE", color: .orange)
         let etherOnBase = CoinBadge(
-            artworkName: Coin.fixture(name: "", symbol: "ETH", chainId: Chain.base, amount: "0").artworkName,
+            artworkName: AssetHolding.fixture(name: "", symbol: "ETH", chainId: Chain.base, amount: "0").artworkName,
             fallbackText: "ETH", color: .orange)
         #expect(base.artworkName == "base")
         #expect(etherOnBase.artworkName == "ethereum")
@@ -68,7 +68,7 @@ struct CoinBadgeArtworkTests {
             artworkName: Chain.worldChain.entry?.artworkName,
             fallbackText: "ETH", color: .orange)
         let etherOnWorldChain = CoinBadge(
-            artworkName: Coin.fixture(name: "", symbol: "ETH", chainId: Chain.worldChain, amount: "0").artworkName,
+            artworkName: AssetHolding.fixture(name: "", symbol: "ETH", chainId: Chain.worldChain, amount: "0").artworkName,
             fallbackText: "ETH", color: .orange)
         #expect(worldChain.artworkName == "worldcoin")
         #expect(etherOnWorldChain.artworkName == "ethereum")
@@ -79,7 +79,7 @@ struct CoinBadgeArtworkTests {
     /// A custom contract cannot borrow USDC artwork by copying its symbol.
     @Test func anUnknownCoinFallsBackToItsLetter() {
         let unknown = CoinBadge(
-            artworkName: Coin.fixture(name: "USD Coin", symbol: "USDC", coingeckoId: "usd-coin", chainId: Chain.ethereum,
+            artworkName: AssetHolding.fixture(name: "USD Coin", symbol: "USDC", coingeckoId: "usd-coin", chainId: Chain.ethereum,
                 tokenStandard: "ERC-20", contractAddress: "0xdead", amount: "0").artworkName,
             fallbackText: "USDCE", color: .orange)
         #expect(unknown.artworkName == "")

@@ -1,4 +1,4 @@
-use crate::store::state::CoreAppState;
+use crate::store::state::ResidentState;
 
 /// Refusing corrupt metadata must leave every wallet and the bad bytes on disk.
 #[test]
@@ -14,7 +14,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         path.to_string_lossy().into_owned()
     };
 
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     state.wallets.push(crate::store::state::WalletState {
         id: "w1".into(),
         name: "Kept".into(),
@@ -24,7 +24,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         include_in_portfolio_total: true,
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -82,14 +82,14 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
         include_in_portfolio_total: true,
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
         addresses: Vec::new(),
     };
 
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     state
         .wallets
         .push(wallet("stale", "Written by an older build"));

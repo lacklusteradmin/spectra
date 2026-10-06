@@ -62,7 +62,7 @@ private struct ReceiveAddressView: View {
         store.receiveEnabledWallets.first(where: { $0.id == store.receiveFlow.walletId })
     }
 
-    private var selectedCoin: Coin? {
+    private var selectedCoin: AssetHolding? {
         store.selectedReceiveCoin(for: store.receiveFlow.walletId)
     }
 
@@ -127,7 +127,7 @@ private struct ReceiveAddressView: View {
             // chain and draws its mark, not the gas token's.
             HStack(spacing: SpectraLayout.Space.m) {
                 if let coin {
-                    let badge = Coin.nativeChainBadge(for: coin.chain) ?? (nil, coin.color)
+                    let badge = AssetHolding.nativeChainBadge(for: coin.chain) ?? (nil, coin.color)
                     CoinBadge(
                         artworkName: badge.artworkName,
                         fallbackText: coin.chainName,
@@ -258,7 +258,7 @@ private struct WalletReceiveRow: View {
     let onSelect: () -> Void
 
     var body: some View {
-        let badge = Coin.nativeChainBadge(for: wallet.family) ?? (nil, Color.mint)
+        let badge = AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, Color.mint)
 
         Button(action: onSelect) {
             HStack(spacing: SpectraLayout.Space.m) {

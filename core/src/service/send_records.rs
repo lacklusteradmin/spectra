@@ -1,13 +1,13 @@
 //! Outgoing records are written before submission and completed by core.
 use super::*;
-use crate::store::persistence_models::CorePersistedTransactionRecord;
-use crate::store::wallet_domain::CoreTransactionStatus;
+use crate::store::persistence_models::TransactionRecord;
+use crate::store::wallet_domain::TransactionStatus;
 
 /// The symbol and name a send's asset is shown by: the chain's coin, or the
 /// known token at `contract`. A contract no known token claims is named by
 /// the contract itself rather than by a guess.
 pub(super) fn send_asset_names(
-    state: &crate::store::state::CoreAppState,
+    state: &crate::store::state::ResidentState,
     chain: Chain,
     contract: Option<&str>,
 ) -> (String, String) {
@@ -33,7 +33,7 @@ impl WalletService {
         chain: Chain,
         request: &crate::send::SendExecutionRequest,
         source: &str,
-    ) -> Result<CorePersistedTransactionRecord, SpectraBridgeError> {
+    ) -> Result<TransactionRecord, SpectraBridgeError> {
         self.bound_database().await?;
         let state = self.app_state().await;
         let wallet = state
@@ -55,7 +55,7 @@ impl WalletService {
             ),
         }
         .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
-        let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
+        let record: TransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
             "walletName": wallet.name, "assetDisplayName": display_name, "symbol": symbol,
@@ -69,14 +69,14 @@ impl WalletService {
     }
     pub(super) async fn save_send_record(
         &self,
-        record: CorePersistedTransactionRecord,
+        record: TransactionRecord,
     ) -> Result<(), SpectraBridgeError> {
         self.save_prepared_send_record(record, false).await
     }
 
     pub(super) async fn save_prepared_send_record(
         &self,
-        record: CorePersistedTransactionRecord,
+        record: TransactionRecord,
         reserve_nonce: bool,
     ) -> Result<(), SpectraBridgeError> {
         self.write_persisted(move |service| async move {
@@ -172,7 +172,7 @@ impl WalletService {
             ));
         }
         record.transaction_hash = Some(hash.clone());
-        record.status = CoreTransactionStatus::Pending;
+        record.status = TransactionStatus::Pending;
         record.failure_reason = None;
         self.save_send_record(record).await?;
         Ok(hash)
@@ -180,12 +180,12 @@ impl WalletService {
 }
 
 pub(super) fn rebroadcast_input(
-    record: &CorePersistedTransactionRecord,
+    record: &TransactionRecord,
 ) -> Result<(Chain, String, String), SpectraBridgeError> {
     if !record.kind.is_submitted() {
         return Err(SpectraBridgeError::failure("only sends can be rebroadcast"));
     }
-    if record.status == CoreTransactionStatus::Confirmed {
+    if record.status == TransactionStatus::Confirmed {
         return Err(SpectraBridgeError::failure("transaction already confirmed"));
     }
     let chain = record.chain_id;
@@ -299,7 +299,7 @@ impl WalletService {
                     .as_deref()
                     .is_some_and(|a| a.eq_ignore_ascii_case(source))
                 && r.kind.is_submitted()
-                && r.status == CoreTransactionStatus::Pending
+                && r.status == TransactionStatus::Pending
                 && let Some(nonce) = r.nonce
             {
                 let nonce = u64::try_from(nonce)
@@ -372,7 +372,7 @@ mod tests {
             })
             .await
             .unwrap();
-        let mut record: CorePersistedTransactionRecord = serde_json::from_value(json!({
+        let mut record: TransactionRecord = serde_json::from_value(json!({
             "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0,
             "signedTransactionPayload": "0xdeadbeef", "signedTransactionPayloadFormat": "evm.raw_hex"
         })).unwrap();
@@ -431,11 +431,11 @@ mod tests {
                 .failure_reason
                 .is_some()
         );
-        record.status = CoreTransactionStatus::Confirmed;
+        record.status = TransactionStatus::Confirmed;
         service.save_send_record(record.clone()).await.unwrap();
         server.reset().await;
         let mut late = record.clone();
-        late.status = CoreTransactionStatus::Pending;
+        late.status = TransactionStatus::Pending;
         late.failure_reason = Some(
             crate::store::persistence_models::TransactionFailure::Reported {
                 message: "late result".into(),
@@ -446,7 +446,7 @@ mod tests {
             service.fetch_all_history_records().await.unwrap()[0]
                 .payload
                 .status,
-            CoreTransactionStatus::Confirmed
+            TransactionStatus::Confirmed
         );
         assert!(service.rebroadcast_transaction(record.id).await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());
@@ -459,7 +459,7 @@ mod send_asset_name_tests {
 
     #[test]
     fn a_send_asset_is_named_by_its_coin_its_token_or_its_contract() {
-        let state = crate::store::state::CoreAppState {
+        let state = crate::store::state::ResidentState {
             token_preferences: crate::store::built_in_token_preferences(),
             ..Default::default()
         };

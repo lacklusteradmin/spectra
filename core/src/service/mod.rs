@@ -7,7 +7,7 @@
 //!
 //! | module | owns |
 //! |---|---|
-//! | [`state`] | resident `CoreAppState` projections and serialized persistence |
+//! | [`state`] | `ResidentState` projections and serialized persistence |
 //! | [`network`] | endpoint health and transaction status |
 //! | `network_balance`, `network_tokens`, `network_history`, `network_hd`, `network_prices` | chain reads grouped by responsibility |
 //! | [`send_preflight`] | send eligibility, routing and recipient warnings |
@@ -44,7 +44,7 @@ pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::registry::Chain;
 pub(crate) use crate::store::secret_store::SecretStore;
 pub(crate) use crate::store::state::{
-    CoreAppState, StateCommand, StateTransition, reduce_state_in_place,
+    ResidentState, StateCommand, StateTransition, reduce_state_in_place,
 };
 pub(crate) use crate::store::wallet_domain::AssetHolding;
 pub(crate) use crate::store::{TransactionStatusPollConfig, TransactionStatusTrackerState};
@@ -193,7 +193,7 @@ pub struct WalletService {
     /// Optional Keychain delegate (set via `set_secret_store`).
     pub(crate) secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Canonical in-memory wallet + holdings state.
-    pub(crate) wallet_state: Arc<AsyncRwLock<CoreAppState>>,
+    pub(crate) wallet_state: Arc<AsyncRwLock<ResidentState>>,
     /// The revision of each state `publish_state` commits — every state
     /// command, import, reset and open, but not a sweep's balances. The refresh
     /// engine follows it to learn that the wallets changed.
@@ -260,7 +260,7 @@ impl WalletService {
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints)?)),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
-            wallet_state: Arc::new(AsyncRwLock::new(CoreAppState::default())),
+            wallet_state: Arc::new(AsyncRwLock::new(ResidentState::default())),
             published: Arc::new(tokio::sync::watch::Sender::new(0)),
             wallet_identity_revision: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             state_binding: Arc::new(crate::service::state::StateBinding::default()),

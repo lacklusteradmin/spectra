@@ -297,7 +297,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                             ),
                             ..Default::default()
                         }),
-                        monero_priority: None,
                         sign_only: false,
                     }),
                 )?;
@@ -1284,11 +1283,11 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             let direction =
                 spectra_core::store::wallet_domain::transaction_kind_direction(record.kind);
             let incoming =
-                direction == spectra_core::store::wallet_domain::CoreTransactionDirection::Incoming;
+                direction == spectra_core::store::wallet_domain::TransactionDirection::Incoming;
             let mark = match direction {
-                spectra_core::store::wallet_domain::CoreTransactionDirection::Incoming => "↓",
-                spectra_core::store::wallet_domain::CoreTransactionDirection::Outgoing => "↑",
-                spectra_core::store::wallet_domain::CoreTransactionDirection::Neutral => "↔",
+                spectra_core::store::wallet_domain::TransactionDirection::Incoming => "↓",
+                spectra_core::store::wallet_domain::TransactionDirection::Outgoing => "↑",
+                spectra_core::store::wallet_domain::TransactionDirection::Neutral => "↔",
             };
             let colored_mark = if incoming {
                 mark.truecolor(120, 230, 160).bold()
@@ -1490,7 +1489,6 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
                 access_list_json: None,
             }
         }),
-        monero_priority: None,
         sign_only: args.sign_only,
     };
 

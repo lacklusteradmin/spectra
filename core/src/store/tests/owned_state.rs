@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::store::state::{CoreAppState, StateCommand};
+use crate::store::state::{ResidentState, StateCommand};
 
 fn tmp_db(tag: &str) -> String {
     let mut path = std::env::temp_dir();
@@ -29,12 +29,12 @@ async fn defaults_to_usd_before_anything_is_stored() {
     // of those, because opening seeds it from the catalog rather than
     // leaving a caller to remember the merge.
     assert_eq!(
-        CoreAppState {
+        ResidentState {
             revision: 0,
             token_preferences: Vec::new(),
             ..state.clone()
         },
-        CoreAppState::default()
+        ResidentState::default()
     );
     assert_eq!(
         state.token_preferences,

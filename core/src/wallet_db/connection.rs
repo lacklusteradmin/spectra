@@ -147,7 +147,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              chain_id                 TEXT    NOT NULL,
              is_watch_only              INTEGER NOT NULL DEFAULT 0,
              include_in_portfolio_total INTEGER NOT NULL DEFAULT 1,
-             sort_index                 INTEGER NOT NULL,  -- preserves CoreAppState.wallets order
+             sort_index                 INTEGER NOT NULL,  -- preserves ResidentState.wallets order
              payload                    TEXT    NOT NULL,  -- full WalletState JSON
              updated_at                 INTEGER NOT NULL
          );
@@ -165,7 +165,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              id         TEXT    NOT NULL PRIMARY KEY,
              chain_id TEXT    NOT NULL,
              address    TEXT    NOT NULL,
-             sort_index INTEGER NOT NULL,  -- preserves CoreAppState.address_book order
+             sort_index INTEGER NOT NULL,  -- preserves ResidentState.address_book order
              payload    TEXT    NOT NULL,  -- full AddressBookEntry JSON
              updated_at INTEGER NOT NULL
          );

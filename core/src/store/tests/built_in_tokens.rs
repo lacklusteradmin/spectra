@@ -73,9 +73,9 @@ async fn merging_keeps_what_the_user_added() {
 #[test]
 fn a_built_in_cannot_be_removed() {
     use crate::store::state::{
-        CoreAppState, StateEvent, TokenPreferenceRejection, reduce_state_in_place,
+        ResidentState, StateEvent, TokenPreferenceRejection, reduce_state_in_place,
     };
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
     let usdc = state
         .token_preferences
@@ -179,7 +179,7 @@ async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() 
     second_alias.token.contract = custom.token.contract.to_lowercase();
     second_alias.token.token_standard = "BEP-20".into();
     second_alias.token.symbol = "DUPLICATE".into();
-    let state = crate::store::state::CoreAppState {
+    let state = crate::store::state::ResidentState {
         token_preferences: vec![alias, custom.clone(), second_alias],
         ..Default::default()
     };

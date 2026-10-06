@@ -38,7 +38,7 @@ struct DonationsView: View {
     }
     @ViewBuilder
     private func donationRow(chain: Chain, title: String, address: String) -> some View {
-        let badge = Coin.nativeChainBadge(for: chain) ?? (artworkName: nil, color: Color.mint)
+        let badge = AssetHolding.nativeChainBadge(for: chain) ?? (artworkName: nil, color: Color.mint)
         let isCopied = copiedAddress == address
         HStack(spacing: SpectraLayout.Space.m) {
             CoinBadge(artworkName: badge.artworkName, fallbackText: title, color: badge.color, size: 32)

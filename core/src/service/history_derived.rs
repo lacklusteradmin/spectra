@@ -2,7 +2,7 @@
 
 use crate::SpectraBridgeError;
 use crate::service::WalletService;
-use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -48,9 +48,9 @@ pub struct ReplaceableSend {
 /// nonce by, belonging to a wallet.
 ///
 pub(crate) fn replaceable_send(
-    record: &crate::store::persistence_models::CorePersistedTransactionRecord,
+    record: &crate::store::persistence_models::TransactionRecord,
 ) -> Option<ReplaceableSend> {
-    if record.kind != CoreTransactionKind::Send || record.status != CoreTransactionStatus::Pending {
+    if record.kind != TransactionKind::Send || record.status != TransactionStatus::Pending {
         return None;
     }
     let wallet_id = record
@@ -81,14 +81,14 @@ pub(crate) fn replaceable_send(
     })
 }
 
-pub(crate) fn status_string(status: CoreTransactionStatus) -> String {
+pub(crate) fn status_string(status: TransactionStatus) -> String {
     status.as_raw().to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::persistence_models::CorePersistedTransactionRecord;
+    use crate::store::persistence_models::TransactionRecord;
 
     fn temp_db(label: &str) -> String {
         let path = std::env::temp_dir().join(format!(
@@ -100,12 +100,7 @@ mod tests {
         path.to_string_lossy().into_owned()
     }
 
-    fn record(
-        id: &str,
-        wallet: &str,
-        chain: &str,
-        created_at_swift: f64,
-    ) -> CorePersistedTransactionRecord {
+    fn record(id: &str, wallet: &str, chain: &str, created_at_swift: f64) -> TransactionRecord {
         let json = format!(
             r#"{{"id":"{id}","walletId":"{wallet}","kind":"receive","status":"pending","walletName":"W",
                  "assetDisplayName":"Bitcoin","symbol":"BTC","chainId":"{chain}","amount":"0.5",
@@ -239,7 +234,7 @@ mod tests {
 mod replaceable_tests {
     use super::*;
     use crate::service::types::TransactionCommand;
-    use crate::store::persistence_models::CorePersistedTransactionRecord;
+    use crate::store::persistence_models::TransactionRecord;
     use serde_json::json;
     use std::sync::Arc;
 
@@ -250,7 +245,7 @@ mod replaceable_tests {
         chain: &str,
         symbol: &str,
         overrides: serde_json::Value,
-    ) -> CorePersistedTransactionRecord {
+    ) -> TransactionRecord {
         let mut value = json!({
             "id": id,
             "walletId": "wallet-1",

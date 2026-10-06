@@ -176,7 +176,7 @@ struct WalletDetailView: View {
         self.wallet = wallet
     }
     private struct HoldingPresentation: Identifiable {
-        let coin: Coin
+        let coin: AssetHolding
         let amountText: String
         let valueText: String
         var id: String { coin.id }
@@ -223,7 +223,7 @@ struct WalletDetailView: View {
             // A wallet is on one chain, so its address is that chain's.
             walletAddress: wallet.address(on: wallet.chain),
             derivationPathsText: derivationPathsText(for: wallet),
-            walletBadge: Coin.nativeChainBadge(for: wallet.family) ?? (nil, .mint),
+            walletBadge: AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, .mint),
             visibleHoldingPresentations: holdingPresentations,
             walletTotalValueText: store.preferences.hideBalances
                 ? "••••••" : store.amounts.formattedWalletTotal(walletId: wallet.id)

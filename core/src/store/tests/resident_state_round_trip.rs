@@ -1,5 +1,5 @@
-use crate::store::state::{CoreAppState, StateCommand, reduce_state_in_place};
-use crate::store::wallet_domain::CorePriceAlertCondition;
+use crate::store::state::{ResidentState, StateCommand, reduce_state_in_place};
+use crate::store::wallet_domain::PriceAlertCondition;
 use crate::wallet_db;
 
 fn tmp_db() -> String {
@@ -15,7 +15,7 @@ fn tmp_db() -> String {
 
 #[test]
 fn an_alert_that_cannot_fire_is_refused() {
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     for target in ["0", "-5", "inf", "NaN", "1e3", "", "0.000001"] {
         reduce_state_in_place(
             &mut state,
@@ -23,7 +23,7 @@ fn an_alert_that_cannot_fire_is_refused() {
                 holding_key: "bitcoin:native".into(),
                 target_price: target.into(),
                 currency: crate::store::state::FiatCurrency::Usd,
-                condition: CorePriceAlertCondition::Above,
+                condition: PriceAlertCondition::Above,
             },
         );
     }
@@ -35,14 +35,14 @@ fn an_alert_that_cannot_fire_is_refused() {
 #[test]
 fn alerts_contacts_and_currency_survive_reopening() {
     let db = tmp_db();
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     reduce_state_in_place(
         &mut state,
         StateCommand::AddPriceAlert {
             holding_key: "bitcoin:native".into(),
             target_price: "1".into(),
             currency: crate::store::state::FiatCurrency::Usd,
-            condition: CorePriceAlertCondition::Above,
+            condition: PriceAlertCondition::Above,
         },
     );
     reduce_state_in_place(
@@ -85,7 +85,7 @@ fn alerts_contacts_and_currency_survive_reopening() {
 #[test]
 fn resetting_settings_restores_every_default() {
     use crate::store::state::{AppSettingUpdate as U, StateCommand, reduce_state_in_place};
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     let defaults = state.settings.clone();
 
     for update in [
@@ -157,7 +157,7 @@ fn resetting_settings_restores_every_default() {
 fn every_settings_field_round_trips() {
     use crate::store::state::AppSettingUpdate as U;
     let db = tmp_db();
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     let updates = vec![
         U::AddCustomEndpoint {
             capabilities: crate::endpoint_capability_options(
@@ -230,8 +230,8 @@ fn every_settings_field_round_trips() {
 #[test]
 fn a_setting_outside_its_range_is_bounded() {
     use crate::store::state::AppSettingUpdate as U;
-    let mut state = CoreAppState::default();
-    fn set(state: &mut CoreAppState, update: U) {
+    let mut state = ResidentState::default();
+    fn set(state: &mut ResidentState, update: U) {
         reduce_state_in_place(state, StateCommand::SetAppSetting { update });
     }
 

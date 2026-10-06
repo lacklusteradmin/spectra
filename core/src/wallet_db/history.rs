@@ -1,11 +1,11 @@
 use super::*;
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 use crate::wallet_db::error::DbError;
 
 // ── History record types ──────────────────────────────────────────────────────
 
 /// Represents one persisted transaction record. `payload` is the typed
-/// `CorePersistedTransactionRecord` directly — Rust serializes it to JSON
+/// `TransactionRecord` directly — Rust serializes it to JSON
 /// for the SQLite TEXT column and deserializes on read, so the JSON shape
 /// never crosses the FFI as a String.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
@@ -16,7 +16,7 @@ pub struct HistoryRecord {
     pub chain_id: crate::registry::Chain,
     pub tx_hash: Option<String>,
     pub created_at: f64,
-    pub payload: crate::store::persistence_models::CorePersistedTransactionRecord,
+    pub payload: crate::store::persistence_models::TransactionRecord,
 }
 
 // ── History record CRUD ───────────────────────────────────────────────────────
@@ -30,9 +30,9 @@ const UNDATED_PENDING_SORT_KEY: f64 = 253_402_300_799.0;
 /// the history, so it sorts after every dated one: first when newest-first,
 /// last when oldest-first. Its payload keeps the unknown time, so it still
 /// reads as undated; once it confirms, the dated record replaces the key.
-fn history_sort_key(payload: &CorePersistedTransactionRecord) -> f64 {
+fn history_sort_key(payload: &TransactionRecord) -> f64 {
     let undated = payload.created_at_unix <= 0.0;
-    if undated && payload.status == crate::store::wallet_domain::CoreTransactionStatus::Pending {
+    if undated && payload.status == crate::store::wallet_domain::TransactionStatus::Pending {
         UNDATED_PENDING_SORT_KEY
     } else {
         payload.created_at_unix
@@ -41,7 +41,7 @@ fn history_sort_key(payload: &CorePersistedTransactionRecord) -> f64 {
 
 /// Index a record under its sort key; the payload keeps its own time.
 pub fn history_record_from_payload(
-    payload: crate::store::persistence_models::CorePersistedTransactionRecord,
+    payload: crate::store::persistence_models::TransactionRecord,
 ) -> HistoryRecord {
     HistoryRecord {
         id: payload.id.to_lowercase(),
@@ -334,7 +334,7 @@ pub fn history_clear(database: &WalletDatabase) -> Result<(), DbError> {
 /// that arrived while the network request was in flight.
 pub(crate) fn history_save_send_progress(
     database: &WalletDatabase,
-    incoming: &CorePersistedTransactionRecord,
+    incoming: &TransactionRecord,
     reserve_nonce: bool,
 ) -> Result<(), DbError> {
     use rusqlite::OptionalExtension;
@@ -390,7 +390,7 @@ pub(crate) fn history_save_send_progress(
             .optional()
             .map_err(DbError::from)?;
         let payload = if let Some(json) = previous {
-            let mut stored: CorePersistedTransactionRecord =
+            let mut stored: TransactionRecord =
                 serde_json::from_str(&json).map_err(DbError::from)?;
             if stored.wallet_id != incoming.wallet_id || stored.chain_id != incoming.chain_id {
                 return Err(DbError::Invalid("send record identity changed".into()));
@@ -404,7 +404,7 @@ pub(crate) fn history_save_send_progress(
             if incoming.transaction_hash.is_some() {
                 stored.transaction_hash = incoming.transaction_hash.clone();
             }
-            if stored.status != crate::store::wallet_domain::CoreTransactionStatus::Confirmed {
+            if stored.status != crate::store::wallet_domain::TransactionStatus::Confirmed {
                 stored.status = incoming.status;
                 stored.failure_reason = incoming.failure_reason.clone();
             }

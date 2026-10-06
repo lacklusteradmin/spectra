@@ -16,9 +16,6 @@ pub struct EvmSendPreview {
     pub estimatedNetworkFee: String,
     pub spendableBalance: Option<String>,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: Option<String>,
 }
 
@@ -53,12 +50,8 @@ pub struct DogecoinSendPreview {
 pub struct TronSendPreview {
     pub estimatedNetworkFee: String,
     pub feeLimitSun: i64,
-    pub simulationUsed: bool,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -68,9 +61,6 @@ pub struct SolanaSendPreview {
     pub estimatedNetworkFee: String,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -79,13 +69,8 @@ pub struct SolanaSendPreview {
 pub struct XrpSendPreview {
     pub estimatedNetworkFee: String,
     pub feeDrops: i64,
-    pub sequence: i64,
-    pub lastLedgerSequence: i64,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -94,12 +79,8 @@ pub struct XrpSendPreview {
 pub struct StellarSendPreview {
     pub estimatedNetworkFee: String,
     pub feeStroops: i64,
-    pub sequence: i64,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -110,9 +91,6 @@ pub struct MoneroSendPreview {
     pub priorityLabel: String,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -120,12 +98,8 @@ pub struct MoneroSendPreview {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct CardanoSendPreview {
     pub estimatedNetworkFee: String,
-    pub ttlSlot: u64,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -137,9 +111,6 @@ pub struct SuiSendPreview {
     pub referenceGasPrice: u64,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -151,9 +122,6 @@ pub struct AptosSendPreview {
     pub gasUnitPriceOctas: u64,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -161,12 +129,8 @@ pub struct AptosSendPreview {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct TonSendPreview {
     pub estimatedNetworkFee: String,
-    pub sequenceNumber: u32,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -177,9 +141,6 @@ pub struct IcpSendPreview {
     pub feeE8s: u64,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -190,9 +151,6 @@ pub struct NearSendPreview {
     pub feeBudgetYoctoNear: String,
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }
 
@@ -203,7 +161,5 @@ pub struct PolkadotSendPreview {
     pub spendableBalance: String,
     pub feeRateDescription: Option<String>,
     pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
     pub maxSendable: String,
 }

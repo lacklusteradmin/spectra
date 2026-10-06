@@ -67,7 +67,7 @@ func chainRiskProbeMessages(chainName: String, symbol: String, activity: SendDes
     case .funded: return (nil, nil)
     }
 }
-extension CoreMessage {
+extension LocalizableMessage {
     /// Core's sentence in the reader's language: its English template is the
     /// key into the string tables, and its values go in where the template
     /// says. Text with no table entry — a node's or a library's own words —

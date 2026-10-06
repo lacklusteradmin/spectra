@@ -1,6 +1,6 @@
 //! Relational storage. Connection ownership and cross-table transactions stay
 //! centralized; CRUD is grouped by the domain it stores.
-use crate::store::state::{AddressBookEntry, CoreAppState, WalletState};
+use crate::store::state::{AddressBookEntry, ResidentState, WalletState};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 mod addresses;

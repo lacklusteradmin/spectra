@@ -31,7 +31,7 @@ pub enum AppRefreshIntent {
 }
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct AppRefreshResult {
-    pub state: CoreAppState,
+    pub state: ResidentState,
     pub pending: Option<PendingMaintenanceResult>,
     pub failures: Vec<String>,
     pub poll_seconds: u64,

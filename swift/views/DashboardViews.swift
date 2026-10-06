@@ -192,7 +192,7 @@ struct DashboardView: View {
     @ViewBuilder
     private func walletsCardRows(wallets: [WalletView]) -> some View {
         ForEach(Array(wallets.enumerated()), id: \.element.id) { index, wallet in
-            let badge = Coin.nativeChainBadge(for: wallet.family) ?? (nil, .mint)
+            let badge = AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, .mint)
             Button { selectedWalletId = wallet.id } label: {
                 WalletCardView(
                     presentation: WalletCardView.Presentation(
@@ -293,8 +293,7 @@ struct AppNoticeItem: Identifiable {
     let systemImage: String
     var timestamp: Date? = nil
 }
-typealias DashboardAssetGroup = CoreDashboardAssetGroup
-extension CoreDashboardAssetGroup: Identifiable {
+extension DashboardAssetGroup: Identifiable {
     /// Core supplies the asset's display identity from its primary holding,
     /// or from the catalog when a pinned asset is not held.
     var name: String { identity.name }
@@ -303,8 +302,7 @@ extension CoreDashboardAssetGroup: Identifiable {
     var color: Color { identity.color }
 }
 
-typealias DashboardPinOption = CoreDashboardPinOption
-extension CoreDashboardPinOption: Identifiable {
+extension DashboardPinOption: Identifiable {
     public var id: String { tokenId }
     var color: Color { AssetPresentationCatalog.color(deploymentId: deploymentId) }
 }
@@ -437,7 +435,7 @@ private struct AssetChainBreakdownRow: View {
     let valueText: String
     let fallbackColor: Color
     var body: some View {
-        let badge = Coin.nativeChainBadge(for: chain) ?? (nil, fallbackColor)
+        let badge = AssetHolding.nativeChainBadge(for: chain) ?? (nil, fallbackColor)
         return HStack(alignment: .center, spacing: SpectraLayout.Space.m) {
             CoinBadge(
                 artworkName: badge.artworkName,

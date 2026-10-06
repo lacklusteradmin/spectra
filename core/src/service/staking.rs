@@ -4,7 +4,7 @@ use crate::send::stages::{
     PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend,
 };
 use crate::staking::{StakingPosition, StakingRequest, StakingValidator, service::StakingService};
-use crate::store::wallet_domain::CoreTransactionStatus;
+use crate::store::wallet_domain::TransactionStatus;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -174,7 +174,6 @@ impl WalletService {
                 fee_rate_svb: None,
                 fee_sat: None,
                 gas_budget: None,
-                monero_priority: None,
                 sign_only: false,
             };
             let signing_payload = match &prepared {
@@ -306,7 +305,7 @@ impl WalletService {
                 .ok_or_else(|| {
                     SpectraBridgeError::invalid("Missing journaled staking operation")
                 })?;
-            if record.status != CoreTransactionStatus::Pending {
+            if record.status != TransactionStatus::Pending {
                 return Ok(stored.view);
             }
             let status = if chain == Chain::Icp {

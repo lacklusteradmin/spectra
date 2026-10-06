@@ -100,7 +100,6 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                monero_priority: None,
                 sign_only: false,
             })
             .await
@@ -261,7 +260,6 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             gas_budget: None,
             fee_amount: Some("0.007".into()),
             evm_overrides: None,
-            monero_priority: None,
             sign_only: false,
         };
         let prepared = PreparedPayload::Ton {
@@ -348,9 +346,9 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
         assert_eq!(
             record.status,
             match status {
-                "pending" => CoreTransactionStatus::Pending,
-                "confirmed" => CoreTransactionStatus::Confirmed,
-                _ => CoreTransactionStatus::Failed,
+                "pending" => TransactionStatus::Pending,
+                "confirmed" => TransactionStatus::Confirmed,
+                _ => TransactionStatus::Failed,
             }
         );
         assert_eq!(

@@ -12,7 +12,7 @@ struct SendNetworkStep: View {
     /// The quote for the selected holding; nil while none is current.
     private var quote: OwnedSendPreview? { store.sendQuote }
 
-    private func hasNetworkSendSections(for coin: Coin?) -> Bool {
+    private func hasNetworkSendSections(for coin: AssetHolding?) -> Bool {
         coin?.chain.hasSendPreview ?? false
     }
 
@@ -27,12 +27,12 @@ struct SendNetworkStep: View {
         networkStep(selectedCoin: selectedCoin)
     }
 
-    private var selectedCoin: Coin? {
+    private var selectedCoin: AssetHolding? {
         store.availableSendCoins(for: store.sendFlow.walletId).first(where: { $0.holdingKey == store.sendFlow.holdingKey })
     }
 
     @ViewBuilder
-    private func networkStep(selectedCoin: Coin?) -> some View {
+    private func networkStep(selectedCoin: AssetHolding?) -> some View {
         // Shown inside the review's disclosure, which already names it: no
         // page header of its own.
         if hasNetworkSendSections(for: selectedCoin) {
@@ -42,7 +42,7 @@ struct SendNetworkStep: View {
         }
     }
 
-    private func noNetworkPreviewCard(selectedCoin: Coin?) -> some View {
+    private func noNetworkPreviewCard(selectedCoin: AssetHolding?) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             networkSectionHeader("Network")
             if let selectedCoin {
@@ -63,7 +63,7 @@ struct SendNetworkStep: View {
     // MARK: - Network fee card
 
     @ViewBuilder
-    private func networkCard(selectedCoin: Coin?) -> some View {
+    private func networkCard(selectedCoin: AssetHolding?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             networkCardContent(selectedCoin: selectedCoin)
         }
@@ -75,7 +75,7 @@ struct SendNetworkStep: View {
     /// One branch per preview shape. The chain decides which, through the
     /// registry; nothing here names one.
     @ViewBuilder
-    private func networkCardContent(selectedCoin: Coin?) -> some View {
+    private func networkCardContent(selectedCoin: AssetHolding?) -> some View {
         if let selectedCoin {
             let chain = selectedCoin.chain
             if chain.isEVM {
@@ -90,7 +90,7 @@ struct SendNetworkStep: View {
     // MARK: — Network sub-sections
 
     @ViewBuilder
-    private func evmNetworkContent(selectedCoin: Coin) -> some View {
+    private func evmNetworkContent(selectedCoin: AssetHolding) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
             networkSectionHeader(AppLocalization.format("%@ Network", selectedCoin.chainName))
             Toggle(AppLocalization.string("Use Custom Fees"), isOn: Bindable(store.sendFlow).useCustomEvmFees)
@@ -157,7 +157,7 @@ struct SendNetworkStep: View {
     /// fee and nonce overrides. A UTXO preview's rate, size, inputs and change
     /// are the detail rows below it.
     @ViewBuilder
-    private func simpleFeeContent(selectedCoin: Coin, chain: Chain) -> some View {
+    private func simpleFeeContent(selectedCoin: AssetHolding, chain: Chain) -> some View {
         let chainName = selectedCoin.chainName
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
             networkSectionHeader(AppLocalization.format("%@ Network", chainName))
@@ -187,15 +187,6 @@ struct SendNetworkStep: View {
     /// compile error here rather than a card that quietly shows only the fee.
     private func previewDetailLines(_ preview: SendPreview) -> [String] {
         switch preview {
-        case .xrp(let p):
-            return [
-                p.sequence > 0 ? AppLocalization.format("Sequence: %lld", p.sequence) : nil,
-                p.lastLedgerSequence > 0 ? AppLocalization.format("Last Ledger Sequence: %lld", p.lastLedgerSequence) : nil,
-            ].compactMap { $0 }
-        case .stellar(let p):
-            return p.sequence > 0 ? [AppLocalization.format("Sequence: %lld", p.sequence)] : []
-        case .cardano(let p):
-            return p.ttlSlot > 0 ? [AppLocalization.format("TTL Slot: %lld", p.ttlSlot)] : []
         case .monero(let p):
             return [AppLocalization.format("Priority: %@", p.priorityLabel)]
         case .sui(let p):
@@ -208,9 +199,8 @@ struct SendNetworkStep: View {
                 AppLocalization.format("Max Gas Amount: %llu", p.maxGasAmount),
                 AppLocalization.format("Gas Unit Price: %llu octas", p.gasUnitPriceOctas),
             ]
-        case .ton(let p):
-            return [AppLocalization.format("Sequence Number: %u", p.sequenceNumber)]
-        case .utxo, .dogecoin, .ethereum, .tron, .solana, .icp, .near, .polkadot, .bittensor:
+        case .utxo, .dogecoin, .ethereum, .tron, .solana, .xrp, .stellar, .cardano, .ton, .icp, .near,
+             .polkadot, .bittensor:
             return []
         }
     }
@@ -220,7 +210,7 @@ struct SendNetworkStep: View {
     /// so those are not repeated here — the repeat of the rate rounded the
     /// priority fee the rows gave as 0.001 gwei to "0.00".
     @ViewBuilder
-    private func sendPreviewDetailsContent(for selectedCoin: Coin) -> some View {
+    private func sendPreviewDetailsContent(for selectedCoin: AssetHolding) -> some View {
         let isEVM = selectedCoin.chain.isEVM
         if let details = store.sendPreviewDetails(for: selectedCoin), details.hasDetailRows(isEVM: isEVM) {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {

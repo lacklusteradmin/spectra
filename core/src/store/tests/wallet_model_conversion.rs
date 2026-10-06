@@ -1,12 +1,11 @@
 use crate::registry::Chain;
 use crate::store::wallet_domain::{
-    AssetHolding, CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
-    WalletView,
+    AssetHolding, SeedDerivationPaths, SeedDerivationPreset, WalletDerivationOverrides, WalletView,
 };
 use std::collections::HashMap;
 
 fn bitcoin_wallet() -> WalletView {
-    let mut paths = CoreSeedDerivationPaths::default();
+    let mut paths = SeedDerivationPaths::default();
     paths.set_path_for(Chain::Bitcoin, "m/84'/0'/0'/0/0");
     paths.set_path_for(Chain::BitcoinTestnet4, "m/84'/1'/0'/0/0");
     paths.set_path_for(Chain::Ethereum, "m/44'/60'/0'/0/0");
@@ -18,9 +17,9 @@ fn bitcoin_wallet() -> WalletView {
         chain_id: crate::registry::Chain::BitcoinTestnet4,
         addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
         account_xpub: Some("zpub123".to_string()),
-        seed_derivation_preset: CoreSeedDerivationPreset::Account2,
+        seed_derivation_preset: SeedDerivationPreset::Account2,
         seed_derivation_paths: paths,
-        derivation_overrides: CoreWalletDerivationOverrides {
+        derivation_overrides: WalletDerivationOverrides {
             passphrase: Some("secret".to_string()),
             ..Default::default()
         },
@@ -58,7 +57,7 @@ fn carries_overrides_xpub_preset_and_holdings() {
     assert_eq!(summary.xpub.as_deref(), Some("zpub123"));
     assert_eq!(
         summary.derivation_preset,
-        crate::store::wallet_domain::CoreSeedDerivationPreset::Account2
+        crate::store::wallet_domain::SeedDerivationPreset::Account2
     );
     assert_eq!(summary.holdings.len(), 1);
     assert_eq!(summary.holdings[0].amount, "1.5");

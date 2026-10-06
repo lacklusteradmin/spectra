@@ -19,12 +19,12 @@ uniffi::setup_scaffolding!();
 /// Text from a library or a node carries no template of its own; it arrives
 /// as a template with no `args` that no table names, and reads as it is.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct CoreMessage {
+pub struct LocalizableMessage {
     pub template: String,
     pub args: Vec<String>,
 }
 
-impl CoreMessage {
+impl LocalizableMessage {
     /// A sentence with values. Every `%@` in `template` takes one of `args`.
     pub fn new(
         template: &'static str,
@@ -43,7 +43,7 @@ impl CoreMessage {
     }
 }
 
-impl std::fmt::Display for CoreMessage {
+impl std::fmt::Display for LocalizableMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut args = self.args.iter();
         let mut pieces = self.template.split("%@");
@@ -58,7 +58,7 @@ impl std::fmt::Display for CoreMessage {
     }
 }
 
-impl From<String> for CoreMessage {
+impl From<String> for LocalizableMessage {
     fn from(text: String) -> Self {
         Self {
             template: text,
@@ -67,7 +67,7 @@ impl From<String> for CoreMessage {
     }
 }
 
-impl From<&str> for CoreMessage {
+impl From<&str> for LocalizableMessage {
     fn from(text: &str) -> Self {
         text.to_string().into()
     }
@@ -81,7 +81,7 @@ impl From<&str> for CoreMessage {
 ///
 /// `Network` and `Decode` carry transport and parser detail for the log; a
 /// front end words those itself. `InvalidInput` and `Failure` carry a
-/// [`CoreMessage`] a person reads.
+/// [`LocalizableMessage`] a person reads.
 #[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
 pub enum SpectraBridgeError {
     /// Network / RPC failure — connectivity, timeout, TLS, HTTP non-2xx, etc.
@@ -95,11 +95,11 @@ pub enum SpectraBridgeError {
     /// Bad caller input — empty seed phrase, invalid address, unsupported
     /// chain ID, etc. UI surfaces these inline against the offending field.
     #[error("{message}")]
-    InvalidInput { message: CoreMessage },
+    InvalidInput { message: LocalizableMessage },
     /// Core could not do what was asked: storage, signing, or a state that
     /// changed underneath the request.
     #[error("{message}")]
-    Failure { message: CoreMessage },
+    Failure { message: LocalizableMessage },
 }
 
 impl SpectraBridgeError {
@@ -123,7 +123,7 @@ impl SpectraBridgeError {
         args: impl IntoIterator<Item = impl std::fmt::Display>,
     ) -> Self {
         Self::InvalidInput {
-            message: CoreMessage::new(template, args),
+            message: LocalizableMessage::new(template, args),
         }
     }
 
@@ -133,7 +133,7 @@ impl SpectraBridgeError {
         args: impl IntoIterator<Item = impl std::fmt::Display>,
     ) -> Self {
         Self::Failure {
-            message: CoreMessage::new(template, args),
+            message: LocalizableMessage::new(template, args),
         }
     }
 }
@@ -220,10 +220,10 @@ mod core_message_tests {
     /// The English a CLI prints and the key an app looks up are one value.
     #[test]
     fn a_message_renders_its_values_into_its_template() {
-        let message = CoreMessage::new("Insufficient %@ for %@", ["ETH", "the fee"]);
+        let message = LocalizableMessage::new("Insufficient %@ for %@", ["ETH", "the fee"]);
         assert_eq!(message.to_string(), "Insufficient ETH for the fee");
         assert_eq!(message.template, "Insufficient %@ for %@");
-        let plain = CoreMessage::from("Wallet not found");
+        let plain = LocalizableMessage::from("Wallet not found");
         assert_eq!(plain.to_string(), "Wallet not found");
         assert!(plain.args.is_empty());
     }

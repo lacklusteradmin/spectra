@@ -102,13 +102,13 @@ for key in sorted(set(re.findall(r'AppLocalization\.(?:string|format)\("([A-Za-z
     if key not in source_keys:
         failures.append(f"  {'RuntimeStrings.en.json':<36} Swift names a missing key {key!r}")
 
-# Core's sentences with values (`refused`, `failed`, `CoreMessage::new`) are
+# Core's sentences with values (`refused`, `failed`, `LocalizableMessage::new`) are
 # the ones a front end can only translate by table: an untranslated one reads
 # in English with its values in, which is the gap this closes. Test modules
 # are out of scope; they make up sentences of their own.
 rust = '\n'.join(re.sub(r'\\\s*\n\s*', '', text)
                  for p, text in production if p.suffix == '.rs' and p.parts[:2] == ('core', 'src'))
-for key in sorted(set(re.findall(r'(?:\brefused|\bfailed|CoreMessage::new)\(\s*"((?:[^"\\]|\\.)*)"', rust))):
+for key in sorted(set(re.findall(r'(?:\brefused|\bfailed|LocalizableMessage::new)\(\s*"((?:[^"\\]|\\.)*)"', rust))):
     if key not in source_keys:
         failures.append(f"  {'RuntimeStrings.en.json':<36} core names an untranslated sentence {key!r}")
 

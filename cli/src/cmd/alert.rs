@@ -3,8 +3,8 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::{StateCommand, StateEvent};
-use spectra_core::store::wallet_domain::CorePriceAlertCondition;
-use spectra_core::store::{PriceAlertEvaluationAlert, PriceAlertRejection};
+use spectra_core::store::wallet_domain::PriceAlertCondition;
+use spectra_core::store::{PriceAlertRejection, PriceAlertRule};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
@@ -81,13 +81,13 @@ pub fn run(ctx: &Ctx, out: Out, command: AlertCommand) -> CliResult<()> {
     }
 }
 
-fn describe(alert: &PriceAlertEvaluationAlert) -> String {
+fn describe(alert: &PriceAlertRule) -> String {
     format!(
         "{} {} {:.2}",
         alert.symbol,
         match alert.condition {
-            CorePriceAlertCondition::Above => "≥",
-            CorePriceAlertCondition::Below => "≤",
+            PriceAlertCondition::Above => "≥",
+            PriceAlertCondition::Below => "≤",
         },
         alert.target_price
     )
@@ -124,8 +124,8 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
                 "chain": alert.chain_id,
                 "target": alert.target_price,
                 "condition": match alert.condition {
-                    CorePriceAlertCondition::Above => "above",
-                    CorePriceAlertCondition::Below => "below",
+                    PriceAlertCondition::Above => "above",
+                    PriceAlertCondition::Below => "below",
                 },
                 "enabled": alert.is_enabled,
                 "triggered": alert.has_triggered,
@@ -178,9 +178,9 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
                     ))
                 })?,
             condition: if args.above {
-                CorePriceAlertCondition::Above
+                PriceAlertCondition::Above
             } else {
-                CorePriceAlertCondition::Below
+                PriceAlertCondition::Below
             },
         },
     )?;

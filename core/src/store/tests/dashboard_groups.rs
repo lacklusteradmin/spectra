@@ -130,14 +130,14 @@ async fn an_unvouched_token_is_never_merged_by_symbol() {
 
 /// A row names itself from its identity, which is the place most of it is held
 /// — or the catalog's entry, for a pinned asset held nowhere.
-fn row_symbol(g: &crate::store::wallet_domain::CoreDashboardAssetGroup) -> &str {
+fn row_symbol(g: &crate::store::wallet_domain::DashboardAssetGroup) -> &str {
     g.identity.symbol.as_str()
 }
 
 /// A row's value: the sum of its holdings', or none when any is unpriced.
 ///
 /// The values are in the display currency, which is USD in these tests.
-fn row_value(g: &crate::store::wallet_domain::CoreDashboardAssetGroup) -> Option<f64> {
+fn row_value(g: &crate::store::wallet_domain::DashboardAssetGroup) -> Option<f64> {
     g.holdings
         .iter()
         .map(|h| h.value)

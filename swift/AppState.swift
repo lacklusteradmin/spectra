@@ -82,7 +82,7 @@ final class AppState {
     /// Imported wallets.
     ///
     /// Domain state: core owns the list and persists it. This is a projection
-    /// of `CoreAppState.wallets`, rendered into the shape the views use — see
+    /// of `ResidentState.wallets`, rendered into the shape the views use — see
     /// `WalletState::to_wallet_view`. `private(set)`, because assigning to it
     /// would only desynchronise it from core; change it with import and field
     /// intents, wallet deletion, or a reset. Core's refresh engine follows the
@@ -208,7 +208,7 @@ final class AppState {
     /// through a `StateCommand` and lands back here. Wallet-derived values come
     /// with the portfolio snapshot, which the caller reads when it needs one.
     @discardableResult
-    func applyCoreState(_ state: CoreAppState) -> Bool {
+    func applyCoreState(_ state: ResidentState) -> Bool {
         guard state.revision >= appliedCoreStateRevision else { return false }
         appliedCoreStateRevision = state.revision
         if state.settings != committedAppSettings {

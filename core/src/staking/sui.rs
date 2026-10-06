@@ -39,7 +39,6 @@ impl SuiStakingClient {
                     } else {
                         v.name.clone()
                     },
-                    apy: None,
                     commission: commission_bps
                         .filter(|v| v.is_finite() && (0.0..=10_000.0).contains(v))
                         .map(|v| v / 10_000.0),
@@ -60,7 +59,6 @@ impl SuiStakingClient {
                     } else {
                         Some(v.description)
                     },
-                    next_epoch_active: None,
                 }
             })
             .collect();

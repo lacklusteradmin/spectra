@@ -42,10 +42,10 @@ extension AppState {
             receiveFlow.error = userErrorMessage(error)
         }
     }
-    func availableReceiveCoins(for walletId: String) -> [Coin] { walletDerivedCache.availableReceiveCoinsByWalletId[walletId] ?? [] }
+    func availableReceiveCoins(for walletId: String) -> [AssetHolding] { walletDerivedCache.availableReceiveCoinsByWalletId[walletId] ?? [] }
     /// Choose the native holding, or the first token if none is native,
     /// for the receive screen's symbol and icon. This does not select an address.
-    func selectedReceiveCoin(for walletId: String) -> Coin? {
+    func selectedReceiveCoin(for walletId: String) -> AssetHolding? {
         let receiveCoins = availableReceiveCoins(for: walletId)
         return receiveCoins.first { $0.contractAddress == nil } ?? receiveCoins.first
     }

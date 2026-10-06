@@ -15,7 +15,7 @@ final class SendPreviewStore {
     /// The quote, if it was made for this wallet's holding on its network.
     /// A quote for another holding, or a mainnet quote shown on a testnet,
     /// is none.
-    func quote(walletId: String, coin: Coin) -> OwnedSendPreview? {
+    func quote(walletId: String, coin: AssetHolding) -> OwnedSendPreview? {
         guard let quote, quote.walletId == walletId, quote.holdingKey == coin.holdingKey,
               quote.chainId == coin.chainId else { return nil }
         return quote

@@ -37,7 +37,7 @@ struct WalletServiceBridgeTests {
                 isWatchOnlyImport: false, isPrivateKeyImport: false,
                 watchOnlyEntries: WalletImportWatchOnlyEntries(byChainId: [:], bitcoinXpub: nil)),
             seedDerivationPreset: .standard, seedDerivationPaths: .defaults,
-            derivationOverrides: CoreWalletDerivationOverrides(passphrase: nil, hmacKey: nil),
+            derivationOverrides: WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
             seedPhrase: "test test test test test test test test test test test junk", privateKey: nil))
         #expect(outcome.wallets.count == 1)
         #expect(outcome.wallets[0].signing == .seedPhrase(passwordProtected: false))
@@ -70,7 +70,7 @@ struct WalletServiceBridgeTests {
                     isWatchOnlyImport: false, isPrivateKeyImport: true,
                     watchOnlyEntries: WalletImportWatchOnlyEntries(byChainId: [:], bitcoinXpub: nil)),
                 seedDerivationPreset: .standard, seedDerivationPaths: .defaults,
-                derivationOverrides: CoreWalletDerivationOverrides(passphrase: nil, hmacKey: nil),
+                derivationOverrides: WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
                 seedPhrase: nil, privateKey: "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"))
         }
         let refusal = try #require(error)
@@ -80,10 +80,10 @@ struct WalletServiceBridgeTests {
 
     /// A sentence with values is looked up by its template and filled in.
     @Test func coreSentencesWithValuesAreTranslatedByTemplate() {
-        let message = CoreMessage(template: "Insufficient %@ balance.", args: ["ETH"])
+        let message = LocalizableMessage(template: "Insufficient %@ balance.", args: ["ETH"])
         #expect(message.localizedText == AppLocalization.format("Insufficient %@ balance.", "ETH"))
         #expect(message.localizedText.contains("ETH"))
         // Text no table names reads as core sent it.
-        #expect(CoreMessage(template: "node said no", args: []).localizedText == "Node said no")
+        #expect(LocalizableMessage(template: "node said no", args: []).localizedText == "Node said no")
     }
 }

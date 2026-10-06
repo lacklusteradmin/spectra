@@ -247,11 +247,8 @@ pub(crate) fn compute_send_preview_details(
     // Which fields each preview shape contributes. The seventh value is an
     // estimated network fee, present only for UTXO chains; it backs the
     // `coin_amount - fee` fallback applied below when a preview reports no
-    // spendable balance or max-sendable of its own.
-    //
-    // Several shapes carry fields this deliberately drops (Tron and friends
-    // populate `estimatedTransactionBytes`, but the send sheet does not show
-    // byte counts for account-model chains).
+    // spendable balance or max-sendable of its own. Byte, input and change
+    // counts exist only where a builder measures them.
     let (spendable, fee_rate, tx_bytes, input_count, uses_change, max_sendable, est_fee) =
         match preview {
             SendPreview::Utxo { preview: p } => (
@@ -433,32 +430,6 @@ mod tests {
             .expect("details");
         assert_eq!(d.spendableBalance, Some("9".into()));
         assert_eq!(d.maxSendable, Some("8".into()));
-    }
-
-    /// Account-model chains contribute balance, fee text and max sendable, and
-    /// deliberately drop the byte/input/change fields their record also carries.
-    #[test]
-    fn account_model_previews_drop_utxo_only_fields() {
-        let d = compute_send_preview_details(
-            Some(SendPreview::Tron {
-                preview: TronSendPreview {
-                    spendableBalance: "100".into(),
-                    feeRateDescription: Some("1 TRX".to_string()),
-                    estimatedTransactionBytes: Some(300),
-                    selectedInputCount: Some(1),
-                    usesChangeOutput: Some(true),
-                    maxSendable: "99".into(),
-                    ..Default::default()
-                },
-            }),
-            Some("100"),
-        )
-        .expect("details");
-        assert_eq!(d.spendableBalance, Some("100".into()));
-        assert_eq!(d.maxSendable, Some("99".into()));
-        assert_eq!(d.estimatedTransactionBytes, None);
-        assert_eq!(d.selectedInputCount, None);
-        assert_eq!(d.usesChangeOutput, None);
     }
 
     /// Polkadot is the one account-model chain that does surface byte size.

@@ -304,7 +304,7 @@ mod receipt_cost_completeness {
                         .to_string_lossy()
                         .into_owned();
                     service.open_state(database).await.unwrap();
-                    let old: crate::store::persistence_models::CorePersistedTransactionRecord =
+                    let old: crate::store::persistence_models::TransactionRecord =
                         serde_json::from_value(json!({
                             "id": "pending", "walletId": "w", "walletName": "Wallet",
                             "kind": "send", "status": "pending", "chainId": chain,
@@ -343,14 +343,14 @@ mod receipt_cost_completeness {
                         .await
                         .unwrap();
                     let supplied = service.transactions().await.unwrap().remove(0);
-                    use crate::store::wallet_domain::CoreTransactionStatus;
+                    use crate::store::wallet_domain::TransactionStatus;
                     for stored in [polled, supplied] {
                         assert_eq!(
                             stored.status,
                             if is_failed {
-                                CoreTransactionStatus::Failed
+                                TransactionStatus::Failed
                             } else {
-                                CoreTransactionStatus::Confirmed
+                                TransactionStatus::Confirmed
                             }
                         );
                         assert_eq!(stored.receipt_block_number, Some(7));

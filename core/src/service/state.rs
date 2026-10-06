@@ -35,7 +35,7 @@ impl StateBinding {
 impl WalletService {
     // ── Owned application state ───────────────────────────────────────────
     //
-    // `CoreAppState` is the domain state, and this service owns it. Front ends
+    // `ResidentState` is the domain state, and this service owns it. Front ends
     // send a `StateCommand` and receive the resulting state; they do not keep
     // their own copy and mutate it.
     //
@@ -45,12 +45,12 @@ impl WalletService {
 
     /// Bind the service to its state database and load what is stored there.
     ///
-    /// An untouched database yields `CoreAppState::default()`. Call once at
+    /// An untouched database yields `ResidentState::default()`. Call once at
     /// startup; the returned state is the caller's initial snapshot.
     pub async fn open_state(
         &self,
         database_path: String,
-    ) -> Result<CoreAppState, SpectraBridgeError> {
+    ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -201,7 +201,7 @@ impl WalletService {
     /// Pin candidates, with pinned assets first and each group ordered by symbol.
     pub async fn dashboard_pin_options(
         &self,
-    ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
+    ) -> Result<Vec<crate::store::wallet_domain::DashboardPinOption>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -283,7 +283,7 @@ impl WalletService {
     // ── Owned transaction store ───────────────────────────────────────────
     //
     // Transactions are core-owned like everything else in this section, but
-    // they deliberately do *not* live in `CoreAppState`. History is unbounded,
+    // they deliberately do *not* live in `ResidentState`. History is unbounded,
     // and `apply_state_command` returns the whole state — putting them there
     // would clone every transaction on every unrelated command.
     //
@@ -314,7 +314,7 @@ impl WalletService {
     }
 
     /// Current snapshot of the owned state.
-    pub async fn app_state(&self) -> CoreAppState {
+    pub async fn app_state(&self) -> ResidentState {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -361,7 +361,7 @@ impl WalletService {
         mutate: F,
     ) -> Result<StateTransition, SpectraBridgeError>
     where
-        F: FnOnce(&mut CoreAppState) -> Vec<crate::store::state::StateEvent> + Send + 'static,
+        F: FnOnce(&mut ResidentState) -> Vec<crate::store::state::StateEvent> + Send + 'static,
     {
         self.write_persisted(move |service| async move {
             let database = service.state_binding.connection().await;
@@ -487,7 +487,7 @@ impl WalletService {
     }
 
     /// Publish only after persistence succeeds, while holding the state writer.
-    pub(super) async fn publish_state(&self, mut state: CoreAppState) -> CoreAppState {
+    pub(super) async fn publish_state(&self, mut state: ResidentState) -> ResidentState {
         let mut current = self.wallet_state.write().await;
         state.revision = current.revision + 1;
         if !same_wallets_apart_from_balances(&current.wallets, &state.wallets) {
@@ -675,7 +675,7 @@ mod secret_deletion_tests;
 mod address_discovery_tests;
 
 fn wallets_for_display(
-    state: &CoreAppState,
+    state: &ResidentState,
 ) -> Result<Vec<crate::store::wallet_domain::WalletView>, SpectraBridgeError> {
     let wallets = &state.wallets;
     let mut rendered = Vec::with_capacity(wallets.len());
@@ -690,7 +690,7 @@ fn wallets_for_display(
 }
 
 fn derive_wallet_state(
-    state: &CoreAppState,
+    state: &ResidentState,
     signing_material_wallet_ids: Vec<String>,
 ) -> Result<WalletDerivedState, SpectraBridgeError> {
     use std::collections::{BTreeMap, HashSet};
@@ -801,9 +801,9 @@ fn derive_wallet_state(
 }
 
 fn dashboard_pin_options_from(
-    state: &CoreAppState,
-) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
-    use crate::store::wallet_domain::CoreDashboardPinOption;
+    state: &ResidentState,
+) -> Result<Vec<crate::store::wallet_domain::DashboardPinOption>, SpectraBridgeError> {
+    use crate::store::wallet_domain::DashboardPinOption;
     let pinned = state.settings.pinned_dashboard_assets();
     let catalog = crate::tokens::list_token_deployments(None);
     let coins = catalog
@@ -811,7 +811,7 @@ fn dashboard_pin_options_from(
         .chain(state.token_preferences.iter().map(|e| &e.token))
         .map(|t| t.holding_template())
         .chain(state.wallets.iter().flat_map(|w| w.holdings.clone()));
-    let mut options = std::collections::BTreeMap::<String, CoreDashboardPinOption>::new();
+    let mut options = std::collections::BTreeMap::<String, DashboardPinOption>::new();
     for coin in coins {
         if coin.chain_id.is_testnet() {
             continue;
@@ -819,7 +819,7 @@ fn dashboard_pin_options_from(
         let token_id = coin.token_identity();
         options
             .entry(token_id.clone())
-            .or_insert_with(|| CoreDashboardPinOption {
+            .or_insert_with(|| DashboardPinOption {
                 token_id: token_id.clone(),
                 deployment_id: coin.deployment_id(),
                 symbol: coin.symbol.clone(),
@@ -850,10 +850,10 @@ fn dashboard_pin_options_from(
 }
 
 fn dashboard_groups_from(
-    state: &CoreAppState,
+    state: &ResidentState,
     derived: &WalletDerivedState,
-) -> Result<Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>, SpectraBridgeError> {
-    use crate::store::wallet_domain::{CoreDashboardAssetGroup, CoreDashboardAssetHolding};
+) -> Result<Vec<crate::store::wallet_domain::DashboardAssetGroup>, SpectraBridgeError> {
+    use crate::store::wallet_domain::{DashboardAssetGroup, DashboardAssetHolding};
 
     let settings = &state.settings;
     let pinned = settings.pinned_dashboard_assets();
@@ -883,7 +883,7 @@ fn dashboard_groups_from(
         grouped.entry(key).or_default().push(coin.clone());
     }
 
-    let mut groups: Vec<CoreDashboardAssetGroup> = Vec::new();
+    let mut groups: Vec<DashboardAssetGroup> = Vec::new();
     for key in order {
         let Some(coins) = grouped.get(&key) else {
             continue;
@@ -915,10 +915,10 @@ fn dashboard_groups_from(
                 }
             }
         }
-        let mut holdings: Vec<CoreDashboardAssetHolding> = place_order
+        let mut holdings: Vec<DashboardAssetHolding> = place_order
             .iter()
             .filter_map(|p| by_place.get(p))
-            .map(|coin| CoreDashboardAssetHolding {
+            .map(|coin| DashboardAssetHolding {
                 value: display_of(usd_of(coin)),
                 coin: coin.clone(),
             })
@@ -950,7 +950,7 @@ fn dashboard_groups_from(
                 crate::decimal::add(&sum, &h.coin.amount)
             })
             .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
-        groups.push(CoreDashboardAssetGroup {
+        groups.push(DashboardAssetGroup {
             total_amount,
             total_value: display_of(total_usd),
             price: valuation::display_price(state, &largest.coin),
@@ -963,8 +963,8 @@ fn dashboard_groups_from(
 
     // A pinned token the user holds none of still gets a row, named by the
     // catalog and holding nothing.
-    let row_symbol = |g: &CoreDashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
-    let row_value = |g: &CoreDashboardAssetGroup| {
+    let row_symbol = |g: &DashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
+    let row_value = |g: &DashboardAssetGroup| {
         g.holdings.iter().try_fold(0.0, |sum, holding| {
             usd_of(&holding.coin).map(|value| sum + value)
         })
@@ -974,7 +974,7 @@ fn dashboard_groups_from(
         let Some(prototype) = pinned_prototype(state, symbol, derived) else {
             continue;
         };
-        groups.push(CoreDashboardAssetGroup {
+        groups.push(DashboardAssetGroup {
             total_amount: "0".to_string(),
             total_value: display_of(Some(0.0)),
             price: valuation::display_price(state, &prototype),
@@ -1019,7 +1019,7 @@ fn dashboard_groups_from(
     Ok(groups)
 }
 fn pinned_prototype(
-    state: &CoreAppState,
+    state: &ResidentState,
     token_id: &str,
     derived: &WalletDerivedState,
 ) -> Option<crate::store::wallet_domain::AssetHolding> {
@@ -1043,7 +1043,7 @@ fn pinned_prototype(
 impl WalletService {
     fn derive_wallet_projection(
         &self,
-        state: &CoreAppState,
+        state: &ResidentState,
     ) -> Result<WalletDerivedState, SpectraBridgeError> {
         // What a wallet signs with is recorded on it, so the projection reads
         // no secret store.
@@ -1065,11 +1065,11 @@ pub struct PortfolioSnapshot {
     /// Changes when a wallet is added, removed, or changes in anything but
     /// its balances: what history rows and transaction details read.
     pub wallet_identity_revision: u64,
-    pub state: CoreAppState,
+    pub state: ResidentState,
     pub wallets: Vec<crate::store::wallet_domain::WalletView>,
     pub derived: WalletDerivedState,
-    pub groups: Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>,
-    pub pin_options: Vec<crate::store::wallet_domain::CoreDashboardPinOption>,
+    pub groups: Vec<crate::store::wallet_domain::DashboardAssetGroup>,
+    pub pin_options: Vec<crate::store::wallet_domain::DashboardPinOption>,
     pub valuation: super::valuation::PortfolioValuation,
     pub asset_precision: crate::formatting::AssetPrecisionCatalog,
 }

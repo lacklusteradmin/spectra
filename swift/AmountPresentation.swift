@@ -39,11 +39,11 @@ struct AmountPresentation {
         formattedQuotedTotal(valuation?.wallets[walletId])
     }
     /// What a wallet's holding is worth, as core valued it.
-    func holdingValue(walletId: String, coin: Coin) -> Double? {
+    func holdingValue(walletId: String, coin: AssetHolding) -> Double? {
         valuation?.holdingValues[walletId]?[coin.id]
     }
     /// One unit of a held asset, as core priced it.
-    func price(of coin: Coin) -> Double? { valuation?.prices[coin.id] }
+    func price(of coin: AssetHolding) -> Double? { valuation?.prices[coin.id] }
     /// A price alert's target, as core converted it.
     func alertTarget(_ alert: PriceAlertRule) -> Double? { valuation?.alertTargets[alert.id] }
 

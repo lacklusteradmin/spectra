@@ -117,7 +117,7 @@ struct NewAddressBookContactView: View {
     }
 
     private var chainRow: some View {
-        let badge = Coin.nativeChainBadge(for: chain) ?? (nil, Color.mint)
+        let badge = AssetHolding.nativeChainBadge(for: chain) ?? (nil, Color.mint)
         let chainName = chain?.displayName ?? AppLocalization.string("Select a chain")
 
         return Button {
@@ -222,7 +222,7 @@ struct AddressBookContactView: View {
     }
 
     private var contactHero: some View {
-        let badge = Coin.nativeChainBadge(for: contact.chainId) ?? (nil, Color.mint)
+        let badge = AssetHolding.nativeChainBadge(for: contact.chainId) ?? (nil, Color.mint)
 
         return VStack(spacing: SpectraLayout.Space.m) {
             CoinBadge(

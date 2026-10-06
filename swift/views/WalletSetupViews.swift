@@ -10,10 +10,6 @@ struct SetupView: View {
     private var chainSelectionDescriptors: [ChainSelectionDescriptor] {
         Self.allChainDescriptors.filter { draft.offers($0.id) }
     }
-    /// Type alias kept for site-local readability — the underlying type
-    /// lives in `SetupFlow.swift` so `SetupFlow` can reference it.
-    private typealias SetupPage = WalletSetupPage
-
     /// Linear flow for the current mode. Drives the step counter, primary
     /// action routing, and back routing — replacing three separate switch
     /// statements that historically had to stay in sync.
@@ -28,8 +24,8 @@ struct SetupView: View {
     private let copy = ImportFlowContent.current
     /// The page this screen shows. Each page is its own pushed screen, so the
     /// system back button and the swipe step back one page at a time.
-    private let setupPage: SetupPage
-    @State private var nextPage: SetupPage?
+    private let setupPage: WalletSetupPage
+    @State private var nextPage: WalletSetupPage?
     @State private var chainSearchText: String = ""
     @State private var isShowingAllChainsPage: Bool = false
     init(store: AppState, draft: WalletImportDraft, page: WalletSetupPage? = nil) {

@@ -16,10 +16,10 @@ use crate::store::{ResolvedPendingStatus, TransactionStatusChange};
 /// A receive confirms on its own where `require_send_kind` says so.
 /// Confirmed records never need automatic status polling.
 fn tracked(
-    records: &[crate::store::persistence_models::CorePersistedTransactionRecord],
+    records: &[crate::store::persistence_models::TransactionRecord],
     chain: Chain,
     poll: PendingStatusPoll,
-) -> Vec<crate::store::persistence_models::CorePersistedTransactionRecord> {
+) -> Vec<crate::store::persistence_models::TransactionRecord> {
     records
         .iter()
         .filter(|r| r.chain_id == chain)
@@ -30,12 +30,12 @@ fn tracked(
 
 /// Shared by polling and pruning: a tracker lives as long as its transaction is tracked.
 pub(super) fn needs_status_poll(
-    kind: crate::store::wallet_domain::CoreTransactionKind,
-    status: crate::store::wallet_domain::CoreTransactionStatus,
+    kind: crate::store::wallet_domain::TransactionKind,
+    status: crate::store::wallet_domain::TransactionStatus,
     hash: Option<&str>,
     poll: PendingStatusPoll,
 ) -> bool {
-    use crate::store::wallet_domain::CoreTransactionStatus as S;
+    use crate::store::wallet_domain::TransactionStatus as S;
     let sends_only = match poll {
         PendingStatusPoll::Utxo { require_send_kind } => require_send_kind,
         PendingStatusPoll::EvmReceipt
@@ -399,7 +399,7 @@ impl WalletService {
         &self,
         chain: Chain,
         api: crate::EndpointApi,
-        record: &crate::store::persistence_models::CorePersistedTransactionRecord,
+        record: &crate::store::persistence_models::TransactionRecord,
     ) -> Result<crate::api::transaction_status::TransactionStatus, SpectraBridgeError> {
         use crate::EndpointApi as Api;
         use std::sync::Arc;
@@ -614,12 +614,12 @@ impl WalletService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::persistence_models::CorePersistedTransactionRecord;
+    use crate::store::persistence_models::TransactionRecord;
     use serde_json::json;
 
     #[test]
     fn all_staking_submissions_remain_eligible_for_pending_verification() {
-        use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
+        use crate::store::wallet_domain::{TransactionKind as K, TransactionStatus as S};
         for kind in [K::Stake, K::Unstake, K::Withdraw, K::ClaimRewards] {
             assert!(needs_status_poll(
                 kind,
@@ -649,11 +649,7 @@ mod tests {
     }
 
     /// Built from the stored JSON shape so a test says only what it is about.
-    fn record(
-        id: &str,
-        chain: Chain,
-        overrides: serde_json::Value,
-    ) -> CorePersistedTransactionRecord {
+    fn record(id: &str, chain: Chain, overrides: serde_json::Value) -> TransactionRecord {
         let mut value = json!({
             "id": id,
             "walletId": "wallet-1",
@@ -678,7 +674,7 @@ mod tests {
         serde_json::from_value(value).expect("stored transaction shape")
     }
 
-    fn ids(records: &[CorePersistedTransactionRecord]) -> Vec<&str> {
+    fn ids(records: &[TransactionRecord]) -> Vec<&str> {
         records.iter().map(|record| record.id.as_str()).collect()
     }
 
@@ -902,7 +898,7 @@ mod tests {
         let stored = service.transaction("old".into()).await.unwrap().unwrap();
         assert_eq!(
             stored.status,
-            crate::store::wallet_domain::CoreTransactionStatus::Pending
+            crate::store::wallet_domain::TransactionStatus::Pending
         );
         assert!(stored.failure_reason.is_none());
         let tracker = service.status_trackers.read().await["old"].clone();
@@ -987,7 +983,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             overflow.status,
-            crate::store::wallet_domain::CoreTransactionStatus::Pending
+            crate::store::wallet_domain::TransactionStatus::Pending
         );
         assert!(overflow.receipt_block_number.is_none());
         assert!(overflow.failure_reason.is_none());
@@ -998,7 +994,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             healthy.status,
-            crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+            crate::store::wallet_domain::TransactionStatus::Confirmed
         );
         assert_eq!(healthy.receipt_block_number, Some(17));
         let trackers = service.status_trackers.read().await;
@@ -1190,7 +1186,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             row.status,
-            crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+            crate::store::wallet_domain::TransactionStatus::Confirmed
         );
         // The receipt's cost reaches the record: 0x5208 gas at 1 wei is
         // 21000 wei, in Sepolia ETH's eighteen places.

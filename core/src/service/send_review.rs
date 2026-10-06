@@ -256,7 +256,6 @@ mod tests {
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                monero_priority: None,
                 sign_only: false,
             },
         }

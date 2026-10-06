@@ -7,8 +7,8 @@ import VisionKit
 fileprivate struct SendComposerPresentation {
     let sendWallets: [WalletView]
     let selectedWallet: WalletView?
-    let availableSendCoins: [Coin]
-    let selectedCoin: Coin?
+    let availableSendCoins: [AssetHolding]
+    let selectedCoin: AssetHolding?
     let selectedCoinAmountText: String?
     let selectedCoinApproximateFiatText: String?
     let addressBookEntries: [AddressBookEntry]
@@ -63,7 +63,7 @@ struct SendFromPage: View {
     private var walletRow: some View {
         HStack(spacing: SpectraLayout.Space.m) {
             if let selectedWallet = presentation.selectedWallet {
-                let badge = Coin.nativeChainBadge(for: selectedWallet.family) ?? (nil, Color.mint)
+                let badge = AssetHolding.nativeChainBadge(for: selectedWallet.family) ?? (nil, Color.mint)
                 CoinBadge(
                     artworkName: badge.artworkName,
                     fallbackText: selectedWallet.familyName,
@@ -94,7 +94,7 @@ struct SendFromPage: View {
     }
 
     /// One row per asset, full width.
-    private func assetRow(coin: Coin, isSelected: Bool) -> some View {
+    private func assetRow(coin: AssetHolding, isSelected: Bool) -> some View {
         Button {
             guard !isSelected else { return }
             store.sendFlow.holdingKey = coin.holdingKey

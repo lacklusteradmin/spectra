@@ -3,7 +3,7 @@ import SwiftUI
 extension AppState {
     /// The only writer of the two quote notices, called while adopting a
     /// newer, coherent portfolio snapshot.
-    func applyQuoteProjection(_ state: CoreAppState) {
+    func applyQuoteProjection(_ state: ResidentState) {
         let prices = state.quotes.pricesError.map(priceRefreshMessage)
         let rates = state.quotes.fiatError.map(fiatRateRefreshMessage)
         if quoteRefreshError != prices { quoteRefreshError = prices }
@@ -27,7 +27,7 @@ extension AppState {
     func setPortfolioInclusion(_ isIncluded: Bool, for walletId: String) {
         sendStateCommand(.setWalletPortfolioInclusion(walletId: walletId, included: isIncluded))
     }
-    var portfolio: [Coin] { walletDerivedCache.portfolio }
+    var portfolio: [AssetHolding] { walletDerivedCache.portfolio }
 }
 
 /// Core says why the stored prices were kept; the sentence is this app's.

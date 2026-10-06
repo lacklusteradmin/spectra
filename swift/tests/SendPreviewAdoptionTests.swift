@@ -10,19 +10,19 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
         let store = SendPreviewStore()
         let preview = SendPreview.solana(preview: SolanaSendPreview(
             estimatedNetworkFee: "0.000005", spendableBalance: "1", feeRateDescription: nil,
-            estimatedTransactionBytes: nil, selectedInputCount: nil, usesChangeOutput: nil, maxSendable: "0.999995"))
+            maxSendable: "0.999995"))
         let quote = OwnedSendPreview(walletId: "w", holdingKey: "solana:native", chainId: Chain.solana, amount: "1",
             preview: preview, networkFee: "0.000005", networkFeeValue: nil, amountValue: nil,
             details: nil, shortcuts: [100: "0.999994999"], recipient: nil)
         store.apply(quote)
-        let sol = Coin.fixture(name: "Solana", symbol: "SOL", chainId: Chain.solana, amount: "1")
+        let sol = AssetHolding.fixture(name: "Solana", symbol: "SOL", chainId: Chain.solana, amount: "1")
         #expect(store.quote(walletId: "w", coin: sol)?.shortcuts[100] == "0.999994999")
         #expect(store.quote(walletId: "other", coin: sol) == nil)
-        let token = Coin.fixture(name: "Other", symbol: "OTH", chainId: Chain.solana, tokenStandard: "SPL",
+        let token = AssetHolding.fixture(name: "Other", symbol: "OTH", chainId: Chain.solana, tokenStandard: "SPL",
             contractAddress: "other", amount: "1")
         #expect(store.quote(walletId: "w", coin: token) == nil)
         // The same asset on another network is another holding.
-        let devnet = Coin.fixture(name: "Solana", symbol: "SOL", chainId: Chain.solanaDevnet, amount: "1")
+        let devnet = AssetHolding.fixture(name: "Solana", symbol: "SOL", chainId: Chain.solanaDevnet, amount: "1")
         #expect(store.quote(walletId: "w", coin: devnet) == nil)
         store.reset()
         #expect(store.quote(walletId: "w", coin: sol) == nil)

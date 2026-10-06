@@ -8,9 +8,9 @@ import Foundation
 /// not a cache, it is a second copy of core's answer going stale in the dark.
 struct WalletDerivedCache: Equatable {
     var walletById: [String: WalletView]
-    var portfolio: [Coin]
-    var availableSendCoinsByWalletId: [String: [Coin]]
-    var availableReceiveCoinsByWalletId: [String: [Coin]]
+    var portfolio: [AssetHolding]
+    var availableSendCoinsByWalletId: [String: [AssetHolding]]
+    var availableReceiveCoinsByWalletId: [String: [AssetHolding]]
     var sendEnabledWallets: [WalletView]
     var receiveEnabledWallets: [WalletView]
 

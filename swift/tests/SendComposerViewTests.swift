@@ -118,7 +118,7 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
     private func makeComposerFixture() async throws -> AppState {
         let state = makeState()
         state.isNetworkReachable = false
-        let holdings: [Coin] = [
+        let holdings: [AssetHolding] = [
             .fixture(name: "Ethereum", symbol: "ETH", coingeckoId: "ethereum", chainId: .ethereum, amount: "1.5"),
             .fixture(name: "USD Coin", symbol: "USDC", coingeckoId: "usd-coin", chainId: .ethereum,
                 tokenStandard: "ERC-20", contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", amount: "2500"),
@@ -151,7 +151,7 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
         let preview = EvmSendPreview(
             nonce: 12, gasLimit: 21_000, maxFeePerGasGwei: "20", maxPriorityFeePerGasGwei: "1",
             estimatedNetworkFee: "0.00042", spendableBalance: "1.5", feeRateDescription: nil,
-            estimatedTransactionBytes: nil, selectedInputCount: nil, usesChangeOutput: nil, maxSendable: "1.49958")
+            maxSendable: "1.49958")
         state.sendFlow.previewStore.apply(OwnedSendPreview(
             walletId: state.sendFlow.walletId, holdingKey: state.sendFlow.holdingKey, chainId: .ethereum,
             amount: state.sendAmountInput, preview: .ethereum(preview: preview), networkFee: "0.00042",

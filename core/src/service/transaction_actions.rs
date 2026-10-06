@@ -1,5 +1,5 @@
 //! Action availability is derived from the same checks used before execution.
-use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::persistence_models::TransactionRecord;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -16,7 +16,7 @@ impl Default for TransactionActions {
         }
     }
 }
-impl CorePersistedTransactionRecord {
+impl TransactionRecord {
     pub(crate) fn with_actions(mut self) -> Self {
         self.actions = TransactionActions {
             recheck_unavailable_reason: super::transaction_recheck::recheck_chain(&self)

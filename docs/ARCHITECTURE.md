@@ -39,7 +39,7 @@ caches. Keychain, biometrics, notifications, Live Activities and device signals
 stay on the platform and supply inputs to core-owned policy. Losing view state
 on restart may cost a redraw; losing domain state must not lose user data.
 
-`CoreAppState` holds small resident collections. Unbounded history is a separate
+`ResidentState` holds small resident collections. Unbounded history is a separate
 queryable store so changing a setting does not clone every transaction.
 `WalletService::open_state` binds the database; state commands persist before
 returning and no-op commands emit no events or writes. UI projections have one

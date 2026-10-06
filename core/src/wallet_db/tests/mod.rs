@@ -130,10 +130,10 @@ fn litecoin_keypool_history_counts_all_catalog_scripts_and_accounts() {
 fn unreadable_metadata_refuses_loading() {
     for key in [META_TOKEN_PREFERENCES, META_PRICE_ALERTS, META_FIAT_RATES] {
         let db = tmp_db();
-        let saved = CoreAppState {
+        let saved = ResidentState {
             wallets: vec![wallet("w1", crate::registry::Chain::Bitcoin)],
             selected_wallet_id: Some("w1".to_string()),
-            ..CoreAppState::default()
+            ..ResidentState::default()
         };
         app_state_save(&db, &saved).unwrap();
         for raw in ["{broken", "null"] {
@@ -169,7 +169,7 @@ fn unreadable_metadata_refuses_loading() {
 #[test]
 fn unreadable_settings_still_fail_the_load() {
     let db = tmp_db();
-    app_state_save(&db, &CoreAppState::default()).unwrap();
+    app_state_save(&db, &ResidentState::default()).unwrap();
     with_conn(&db, |conn| {
         conn.execute(
             "UPDATE app_state_meta SET value = ?1 WHERE key = ?2",
@@ -294,7 +294,7 @@ fn address_round_trip() {
 use crate::store::state::{AppSettings, WalletAddress};
 
 /// Minimal history record. The payload is decoded from JSON rather than
-/// built field-by-field: `CorePersistedTransactionRecord` has ~30 fields of
+/// built field-by-field: `TransactionRecord` has ~30 fields of
 /// which only these are required, and going through serde keeps the helper
 /// honest about which ones those are.
 fn history_record(id: &str, wallet_id: &str) -> HistoryRecord {
@@ -315,7 +315,7 @@ fn history_record_on(id: &str, wallet_id: &str, chain_id: crate::registry::Chain
         "address": "bc1qexample",
         "createdAtUnix": 0.0,
     }))
-    .expect("history payload fixture must match CorePersistedTransactionRecord");
+    .expect("history payload fixture must match TransactionRecord");
     HistoryRecord {
         id: id.to_string(),
         wallet_id: Some(wallet_id.to_string()),
@@ -336,7 +336,7 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
         chain_id: chain,
         include_in_portfolio_total: true,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -352,13 +352,13 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
 #[test]
 fn app_state_load_on_empty_db_is_default() {
     let db = tmp_db();
-    assert_eq!(app_state_load(&db).unwrap(), CoreAppState::default());
+    assert_eq!(app_state_load(&db).unwrap(), ResidentState::default());
 }
 
 #[test]
 fn persisted_floats_round_trip_without_changing_bits() {
     let db = tmp_db();
-    let mut state = CoreAppState::default();
+    let mut state = ResidentState::default();
     // Adjacent representable timestamps exercise decimal parsing without relying
     // on the wall clock to happen to produce a value that loses precision.
     for offset in 0..256 {
@@ -381,7 +381,7 @@ fn persisted_floats_round_trip_without_changing_bits() {
 #[test]
 fn app_state_round_trips() {
     let db = tmp_db();
-    let state = CoreAppState {
+    let state = ResidentState {
         revision: 0,
         movement_baseline: None,
         diagnostics: Default::default(),
@@ -424,13 +424,13 @@ fn app_state_save_preserves_wallet_order() {
         wallet("aa", crate::registry::Chain::Solana),
         wallet("mm", crate::registry::Chain::Sui),
     ];
-    let state = CoreAppState {
+    let state = ResidentState {
         revision: 0,
         movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
         wallets: ordered.clone(),
-        ..CoreAppState::default()
+        ..ResidentState::default()
     };
     app_state_save(&db, &state).unwrap();
     let ids: Vec<String> = app_state_load(&db)
@@ -447,21 +447,21 @@ fn app_state_save_prunes_removed_wallets() {
     let db = tmp_db();
     app_state_save(
         &db,
-        &CoreAppState {
+        &ResidentState {
             wallets: vec![
                 wallet("w1", crate::registry::Chain::Bitcoin),
                 wallet("w2", crate::registry::Chain::Ethereum),
             ],
             selected_wallet_id: Some("w1".to_string()),
-            ..CoreAppState::default()
+            ..ResidentState::default()
         },
     )
     .unwrap();
     app_state_save(
         &db,
-        &CoreAppState {
+        &ResidentState {
             wallets: vec![wallet("w2", crate::registry::Chain::Ethereum)],
-            ..CoreAppState::default()
+            ..ResidentState::default()
         },
     )
     .unwrap();
@@ -478,7 +478,7 @@ fn app_state_save_prunes_removed_wallets() {
 #[test]
 fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     let db = tmp_db();
-    let before = CoreAppState {
+    let before = ResidentState {
         wallets: vec![
             wallet("a", crate::registry::Chain::Bitcoin),
             wallet("b", crate::registry::Chain::Solana),
@@ -492,7 +492,7 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
             address: "recipient".into(),
             note: "".into(),
         }],
-        ..CoreAppState::default()
+        ..ResidentState::default()
     };
     app_state_save(&db, &before).unwrap();
     let mut after = before.clone();
@@ -574,12 +574,12 @@ fn scoped_history_fetches_return_only_their_own_rows() {
 #[test]
 fn removing_a_wallet_takes_its_rows_and_leaves_the_others() {
     let db = tmp_db();
-    let before = CoreAppState {
+    let before = ResidentState {
         wallets: vec![
             wallet("w1", crate::registry::Chain::Bitcoin),
             wallet("w2", crate::registry::Chain::Bitcoin),
         ],
-        ..CoreAppState::default()
+        ..ResidentState::default()
     };
     app_state_save(&db, &before).unwrap();
     for id in ["w1", "w2"] {
@@ -679,7 +679,7 @@ fn unknown_metadata_and_schema_versions_are_refused() {
         (META_SCHEMA_VERSION, "3"),
     ] {
         let db = tmp_db();
-        app_state_save(&db, &CoreAppState::default()).unwrap();
+        app_state_save(&db, &ResidentState::default()).unwrap();
         with_conn(&db, |conn| {
             conn.execute(
                 "INSERT OR REPLACE INTO app_state_meta (key, value) VALUES (?1, ?2)",
@@ -786,14 +786,14 @@ fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
 fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
     let db = tmp_db();
     let mut pending = history_record_on("pending", "w1", crate::registry::Chain::Ethereum);
-    pending.payload.kind = crate::store::wallet_domain::CoreTransactionKind::Send;
-    pending.payload.status = crate::store::wallet_domain::CoreTransactionStatus::Pending;
+    pending.payload.kind = crate::store::wallet_domain::TransactionKind::Send;
+    pending.payload.status = crate::store::wallet_domain::TransactionStatus::Pending;
     pending.payload.source_address = Some("0xAbC".into());
     pending.payload.nonce = Some(7);
     let mut confirmed = pending.clone();
     confirmed.id = "confirmed".into();
     confirmed.payload.id = confirmed.id.clone();
-    confirmed.payload.status = crate::store::wallet_domain::CoreTransactionStatus::Confirmed;
+    confirmed.payload.status = crate::store::wallet_domain::TransactionStatus::Confirmed;
     let mut other = pending.clone();
     other.id = "other".into();
     other.payload.id = other.id.clone();
@@ -857,9 +857,9 @@ fn history_pages_can_hide_small_amounts() {
     let db = tmp_db();
     app_state_save(
         &db,
-        &CoreAppState {
+        &ResidentState {
             wallets: vec![wallet("w1", crate::registry::Chain::Bitcoin)],
-            ..CoreAppState::default()
+            ..ResidentState::default()
         },
     )
     .unwrap();
@@ -917,9 +917,9 @@ fn undated_pending_transactions_sort_as_the_newest() {
     let db = tmp_db();
     app_state_save(
         &db,
-        &CoreAppState {
+        &ResidentState {
             wallets: vec![wallet("w1", crate::registry::Chain::Bitcoin)],
-            ..CoreAppState::default()
+            ..ResidentState::default()
         },
     )
     .unwrap();
@@ -981,7 +981,7 @@ fn undated_pending_transactions_sort_as_the_newest() {
 #[test]
 fn staking_history_roundtrips_and_reserves_all_submitted_pending_operations() {
     use crate::registry::Chain;
-    use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
+    use crate::store::wallet_domain::{TransactionKind as K, TransactionStatus as S};
     let db = tmp_db();
     for (i, kind) in [
         K::Stake,

@@ -108,8 +108,6 @@ pub struct SendExecutionRequest {
     /// EVM overrides (nonce, custom gas fees). Typed; Rust assembles the
     /// payload fragment internally — no JSON shuttle from Swift.
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
-    /// Monero priority level.
-    pub monero_priority: Option<u32>,
     /// Sign the transaction and stop, without putting it on the chain.
     ///
     /// Everything a send does except the irreversible step: the stored
@@ -502,7 +500,6 @@ mod tests {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            monero_priority: None,
             sign_only: false,
         };
         request.zeroize_sensitive_fields();

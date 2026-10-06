@@ -86,7 +86,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
 
     @Test func editingWalletNamePreservesExistingHoldings() async throws {
         let store = makeState()
-        let existingHolding = Coin.fixture(
+        let existingHolding = AssetHolding.fixture(
             name: "Ethereum", symbol: "ETH", coingeckoId: "ethereum", chainId: Chain.ethereum, amount: "2")
         let wallet = WalletView(
             id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!, name: "Primary ETH", chainId: Chain.ethereum,

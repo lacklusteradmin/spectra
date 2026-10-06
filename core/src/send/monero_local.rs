@@ -292,7 +292,6 @@ pub(crate) async fn prepare(
     recipient: &str,
     amount: u64,
     encryption_key: &[u8],
-    priority: u32,
 ) -> Result<PreparedMoneroTransaction, SendError> {
     let chain = wallet.chain_id;
     let network = match chain.monero_network_name()? {
@@ -307,15 +306,10 @@ pub(crate) async fn prepare(
             "Monero local wallet must finish syncing before building".into(),
         ));
     }
-    let fee_priority = match priority {
-        1 => FeePriority::Unimportant,
-        2 => FeePriority::Normal,
-        3 => FeePriority::Elevated,
-        4 => FeePriority::Priority,
-        _ => return Err(SendError::Invalid("Invalid Monero priority".into())),
-    };
+    // Normal, the priority the preview's `priorityLabel` names; there is no
+    // other to choose.
     let fee_rate = rpc
-        .fee_rate(fee_priority, 1_000_000_000)
+        .fee_rate(FeePriority::Normal, 1_000_000_000)
         .await
         .map_err(SendError::invalid)?;
     let mut candidates = wallet.unlocked()?;

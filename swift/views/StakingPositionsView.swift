@@ -145,10 +145,6 @@ struct StakingValidatorPicker: View {
                                                 .caption
                                             ).foregroundStyle(.secondary)
                                         }
-                                        if let apy = validator.apy {
-                                            Text(AppLocalization.format("%.1f%% APY", apy * 100)).font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
                                     }
                                     Spacer(minLength: SpectraLayout.Space.s)
                                     if selected == validator.identifier {

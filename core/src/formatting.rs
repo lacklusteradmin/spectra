@@ -233,7 +233,7 @@ pub struct AssetPrecisionCatalog {
 }
 
 pub(crate) fn asset_precision_catalog(
-    state: &crate::store::state::CoreAppState,
+    state: &crate::store::state::ResidentState,
 ) -> AssetPrecisionCatalog {
     let by_deployment_id = crate::tokens::catalog()
         .iter()

@@ -58,12 +58,12 @@ pub struct WalletState {
     pub chain_id: crate::registry::Chain,
     pub include_in_portfolio_total: bool,
     pub xpub: Option<String>,
-    pub derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
+    pub derivation_preset: crate::store::wallet_domain::SeedDerivationPreset,
     /// The single path this wallet derives from. A wallet belongs to one chain,
     /// so it needs one path — not the whole per-chain table.
     pub derivation_path: Option<String>,
     /// Power-user derivation overrides, if the wallet was imported with any.
-    pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    pub derivation_overrides: crate::store::wallet_domain::WalletDerivationOverrides,
     pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub addresses: Vec<WalletAddress>,
 }
@@ -101,7 +101,7 @@ impl WalletState {
             chain_id,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: derivation_path.clone(),
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -516,7 +516,7 @@ impl Default for AppSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CoreAppState {
+pub struct ResidentState {
     /// Session-local committed-state version. Never persisted or supplied by a client.
     #[serde(skip)]
     pub revision: u64,
@@ -530,10 +530,10 @@ pub struct CoreAppState {
     /// Saved recipients, most recently added first.
     pub address_book: Vec<AddressBookEntry>,
     /// Which tokens the user tracks, and how many decimals each displays.
-    pub token_preferences: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+    pub token_preferences: Vec<crate::store::wallet_domain::TokenPreferenceEntry>,
     /// Price alerts. Domain state by rule 4 — losing one on restart means an
     /// alert the user set never fires.
-    pub price_alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
+    pub price_alerts: Vec<crate::store::PriceAlertRule>,
     /// USD → display-currency cross rates, as `code -> rate`.
     ///
     /// Every quoted amount passes through these, and they are what the app
@@ -546,7 +546,7 @@ pub struct CoreAppState {
 
 pub(crate) const APP_STATE_SCHEMA_VERSION: u32 = 2;
 
-impl Default for CoreAppState {
+impl Default for ResidentState {
     fn default() -> Self {
         Self {
             revision: 0,
@@ -634,7 +634,7 @@ pub enum AppSettingUpdate {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateCommand {
     ReplaceState {
-        state: CoreAppState,
+        state: ResidentState,
     },
     RenameWallet {
         wallet_id: String,
@@ -736,7 +736,7 @@ pub enum StateCommand {
         /// decimal point. Core parses it; a front end does not.
         target_price: String,
         currency: FiatCurrency,
-        condition: crate::store::wallet_domain::CorePriceAlertCondition,
+        condition: crate::store::wallet_domain::PriceAlertCondition,
     },
     TogglePriceAlert {
         id: String,
@@ -824,7 +824,7 @@ pub enum StateEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StateTransition {
-    pub state: CoreAppState,
+    pub state: ResidentState,
     pub events: Vec<StateEvent>,
 }
 
@@ -832,7 +832,7 @@ pub struct StateTransition {
 /// normalized, so this is a case-insensitive compare rather than a per-chain
 /// rule. `excluding` skips one entry, for edit-in-place checks.
 fn address_book_contains(
-    state: &CoreAppState,
+    state: &ResidentState,
     chain_id: crate::registry::Chain,
     normalized_address: &str,
     excluding: Option<&str>,
@@ -856,7 +856,7 @@ pub(crate) const MAX_TOKEN_SYMBOL_CHARS: usize = 12;
 /// Matched on the *normalized* contract, which is the chain's own rule — a TON
 /// jetton address is case-significant and an EVM one is not.
 fn token_preference_index(
-    state: &CoreAppState,
+    state: &ResidentState,
     chain: crate::registry::Chain,
     contract: &str,
 ) -> Option<usize> {
@@ -869,7 +869,7 @@ fn token_hosting_chain(chain: crate::registry::Chain) -> Option<crate::registry:
 }
 
 fn token_preference_row(
-    state: &CoreAppState,
+    state: &ResidentState,
     hosting: crate::registry::Chain,
     contract: &str,
 ) -> Option<usize> {
@@ -991,7 +991,7 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
 /// Store a pin set: trimmed, de-duplicated with the first occurrence winning,
 /// so display order is the order the assets were pinned in.
 fn set_pinned_dashboard_assets(
-    state: &mut CoreAppState,
+    state: &mut ResidentState,
     token_ids: Vec<String>,
     events: &mut Vec<StateEvent>,
 ) {
@@ -1009,7 +1009,7 @@ fn set_pinned_dashboard_assets(
     }
 }
 
-pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) -> Vec<StateEvent> {
+pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -> Vec<StateEvent> {
     let mut events = Vec::new();
 
     match command {
@@ -1241,7 +1241,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 (Some(reason), _) => events.push(token_preference_rejected(reason)),
                 (None, Some(hosting)) => {
                     state.token_preferences.push(
-                        crate::store::wallet_domain::CoreTokenPreferenceEntry {
+                        crate::store::wallet_domain::TokenPreferenceEntry {
                             is_built_in: false,
                             token: crate::tokens::TokenDeploymentEntry {
                                 deployment_id: format!(
@@ -1415,7 +1415,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
 mod tests {
     use super::*;
 
-    fn reduce_state(mut state: CoreAppState, command: StateCommand) -> StateTransition {
+    fn reduce_state(mut state: ResidentState, command: StateCommand) -> StateTransition {
         let events = reduce_state_in_place(&mut state, command);
         StateTransition { state, events }
     }
@@ -1430,7 +1430,7 @@ mod tests {
             chain_id: chain,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_overrides: Default::default(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             holdings: Vec::new(),
@@ -1471,7 +1471,7 @@ mod tests {
     #[test]
     fn custom_tokens_accept_multiple_protocols_and_reject_alias_duplicates_and_invalid_pairs() {
         use crate::registry::Chain;
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         let command =
             |chain_id, standard: Option<&str>, contract: &str| StateCommand::AddCustomToken {
                 chain_id,
@@ -1551,7 +1551,7 @@ mod tests {
         let bounds = input_bounds();
         let at = |decimals| {
             reduce_state(
-                CoreAppState::default(),
+                ResidentState::default(),
                 add_token(
                     crate::registry::Chain::Ethereum,
                     "AT",
@@ -1585,7 +1585,7 @@ mod tests {
     fn a_contract_is_judged_by_the_chain_that_hosts_it() {
         let solana_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
         let wrong_chain = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Base, "USDC", solana_mint, 6),
         );
         assert_eq!(
@@ -1595,7 +1595,7 @@ mod tests {
         assert!(wrong_chain.state.token_preferences.is_empty());
 
         let wrong_way_round = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Solana, "USDC", EVM_CONTRACT, 6),
         );
         assert_eq!(
@@ -1604,7 +1604,7 @@ mod tests {
         );
 
         let right = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Solana, "USDC", solana_mint, 6),
         );
         assert_eq!(rejection(&right), None);
@@ -1616,7 +1616,7 @@ mod tests {
     #[test]
     fn a_symbol_is_normalized_and_a_pasted_name_is_not_one() {
         let added = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Base, "  moon ", EVM_CONTRACT, 18),
         );
         assert_eq!(added.state.token_preferences[0].token.symbol, "MOON");
@@ -1628,7 +1628,7 @@ mod tests {
         assert!(!added.state.token_preferences[0].is_built_in);
 
         let pasted = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(
                 crate::registry::Chain::Base,
                 "Moonbeam Network Token",
@@ -1642,7 +1642,7 @@ mod tests {
         );
 
         let empty = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Base, "  ", EVM_CONTRACT, 18),
         );
         assert_eq!(
@@ -1657,7 +1657,7 @@ mod tests {
     #[test]
     fn a_duplicate_is_the_same_contract_however_it_is_spelled() {
         let first = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Base, "MOON", EVM_CONTRACT, 18),
         );
         let again = reduce_state(
@@ -1687,7 +1687,7 @@ mod tests {
     /// The catalog's rows are not the user's to edit or delete.
     #[test]
     fn a_built_in_token_is_not_editable() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
         let built_in = state
             .token_preferences
@@ -1728,7 +1728,7 @@ mod tests {
     #[test]
     fn a_reset_drops_what_the_user_added() {
         let added = reduce_state(
-            CoreAppState::default(),
+            ResidentState::default(),
             add_token(crate::registry::Chain::Base, "MOON", EVM_CONTRACT, 18),
         );
         let reset = reduce_state(added.state, StateCommand::ResetTokenPreferences);
@@ -1759,7 +1759,7 @@ mod tests {
 
     #[test]
     fn upsert_wallet_selects_first_wallet() {
-        let state = CoreAppState::default();
+        let state = ResidentState::default();
         let transition = reduce_state(
             state,
             StateCommand::UpsertWallet {

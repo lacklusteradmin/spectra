@@ -169,7 +169,7 @@ impl WalletService {
 
 pub(super) fn destination_probe_asset(
     holding: &crate::store::wallet_domain::AssetHolding,
-    preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
+    preferences: &[crate::store::wallet_domain::TokenPreferenceEntry],
 ) -> Result<(Chain, Option<TokenDescriptor>), SpectraBridgeError> {
     let asset = crate::send::SendAsset::of(holding, preferences).ok_or_else(|| {
         SpectraBridgeError::InvalidInput {

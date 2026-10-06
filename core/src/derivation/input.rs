@@ -1,5 +1,5 @@
 //! Raw secret editor text retains whitespace. Unknown options are refused.
-use crate::store::wallet_domain::CoreWalletDerivationOverrides;
+use crate::store::wallet_domain::WalletDerivationOverrides;
 
 #[derive(Clone, Default, serde::Deserialize, uniffi::Record)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
@@ -9,13 +9,11 @@ pub struct WalletDerivationInput {
 }
 
 #[uniffi::export]
-pub fn parse_wallet_derivation_input(
-    input: WalletDerivationInput,
-) -> CoreWalletDerivationOverrides {
+pub fn parse_wallet_derivation_input(input: WalletDerivationInput) -> WalletDerivationOverrides {
     fn exact(s: String) -> Option<String> {
         (!s.is_empty()).then_some(s)
     }
-    CoreWalletDerivationOverrides {
+    WalletDerivationOverrides {
         passphrase: exact(input.passphrase),
         hmac_key: exact(input.hmac_key),
     }
@@ -32,7 +30,7 @@ mod tests {
             r#"{"curve":"ed25519"}"#,
         ] {
             assert!(serde_json::from_str::<WalletDerivationInput>(input).is_err());
-            assert!(serde_json::from_str::<CoreWalletDerivationOverrides>(input).is_err());
+            assert!(serde_json::from_str::<WalletDerivationOverrides>(input).is_err());
         }
         let parsed = parse_wallet_derivation_input(WalletDerivationInput {
             passphrase: " secret ".into(),

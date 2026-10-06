@@ -162,7 +162,7 @@ def main():
             run('endpoints', '--chain', 'internet-computer', '--api', 'icp-replica', '--capabilities', 'staking,verification,broadcast', '--add', endpoint)
             run('endpoints', '--chain', 'internet-computer', '--api', 'icp-rosetta', '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
             validators = run('staking', 'validators', '--chain', 'internet-computer')['validators']
-            assert len(validators) == 1 and validators[0]['identifier'] == '1' and validators[0]['apy'] is None
+            assert len(validators) == 1 and validators[0]['identifier'] == '1'
             active = run('staking', 'positions', '--from', 'Neuron')['positions']
             assert len(active) == 1 and active[0]['id'] == '42' and active[0]['staked_amount_smallest_unit'] == '199990000'
             assert 'withdraw' not in active[0]['available_actions']

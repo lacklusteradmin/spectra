@@ -9,7 +9,7 @@ struct PriceAlertsView: View {
     @State private var formMessage: String?
     @State private var removingAlertId: String?
     private var alertableHoldingKeys: Set<String> { Set(store.portfolio.map(\.holdingKey)) }
-    private var selectedCoin: Coin? {
+    private var selectedCoin: AssetHolding? {
         store.portfolio.first(where: { $0.holdingKey == selectedHoldingKey })
     }
     var body: some View {

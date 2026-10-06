@@ -544,14 +544,14 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
     service
         .mutate_persisted_state(|state| {
             state.settings.use_price_alerts = true;
-            state.price_alerts = vec![crate::store::PriceAlertEvaluationAlert {
+            state.price_alerts = vec![crate::store::PriceAlertRule {
                 id: "a".into(),
                 holding_key: "ethereum:native".into(),
                 asset_display_name: "Ethereum".into(),
                 symbol: "ETH".into(),
                 chain_id: crate::registry::Chain::Ethereum,
                 target_price: 2.0,
-                condition: crate::store::wallet_domain::CorePriceAlertCondition::Above,
+                condition: crate::store::wallet_domain::PriceAlertCondition::Above,
                 is_enabled: true,
                 has_triggered: false,
             }];

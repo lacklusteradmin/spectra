@@ -1,8 +1,8 @@
 //! Alert edits are intents over the latest owned state, never list replacement.
 use super::{
-    PriceAlertEvaluationAlert,
-    state::{CoreAppState, StateEvent},
-    wallet_domain::CorePriceAlertCondition,
+    PriceAlertRule,
+    state::{ResidentState, StateEvent},
+    wallet_domain::PriceAlertCondition,
 };
 
 /// Typed reasons for refused alert edits; front ends localize them.
@@ -25,11 +25,11 @@ fn rejected(reason: PriceAlertRejection) -> Vec<StateEvent> {
     vec![StateEvent::PriceAlertRejected { reason }]
 }
 pub(super) fn add(
-    state: &mut CoreAppState,
+    state: &mut ResidentState,
     key: String,
     target: String,
     currency: super::state::FiatCurrency,
-    condition: CorePriceAlertCondition,
+    condition: PriceAlertCondition,
 ) -> Vec<StateEvent> {
     let Some(target) = crate::decimal::canonical(target.trim()).map(|t| crate::decimal::to_f64(&t))
     else {
@@ -71,7 +71,7 @@ pub(super) fn add(
     let id = super::new_event_id();
     state.price_alerts.insert(
         0,
-        PriceAlertEvaluationAlert {
+        PriceAlertRule {
             id: id.clone(),
             holding_key: key,
             asset_display_name,
@@ -85,7 +85,7 @@ pub(super) fn add(
     );
     vec![StateEvent::PriceAlertAdded { id }]
 }
-pub(super) fn toggle(state: &mut CoreAppState, id: String) -> Vec<StateEvent> {
+pub(super) fn toggle(state: &mut ResidentState, id: String) -> Vec<StateEvent> {
     let Some(alert) = state.price_alerts.iter_mut().find(|a| a.id == id) else {
         return rejected(PriceAlertRejection::AlertNotFound);
     };
@@ -95,7 +95,7 @@ pub(super) fn toggle(state: &mut CoreAppState, id: String) -> Vec<StateEvent> {
     }
     vec![StateEvent::PriceAlertChanged { id }]
 }
-pub(super) fn remove(state: &mut CoreAppState, id: String) -> Vec<StateEvent> {
+pub(super) fn remove(state: &mut ResidentState, id: String) -> Vec<StateEvent> {
     let before = state.price_alerts.len();
     state.price_alerts.retain(|a| a.id != id);
     if state.price_alerts.len() == before {
@@ -110,7 +110,7 @@ mod tests {
     use super::*;
     #[test]
     fn alert_intents_preserve_other_trigger_state_and_convert_owned_rates() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         state.fiat_rates_from_usd.insert("EUR".into(), 0.8);
         assert!(matches!(
             add(
@@ -118,7 +118,7 @@ mod tests {
                 "ethereum:native".into(),
                 "0.000008".into(),
                 crate::store::state::FiatCurrency::Eur,
-                CorePriceAlertCondition::Above
+                PriceAlertCondition::Above
             )[0],
             StateEvent::PriceAlertAdded { .. }
         ));
@@ -130,7 +130,7 @@ mod tests {
             "bitcoin:native".into(),
             "100".into(),
             crate::store::state::FiatCurrency::Usd,
-            CorePriceAlertCondition::Below,
+            PriceAlertCondition::Below,
         );
         let second = state.price_alerts[0].id.clone();
         toggle(&mut state, second.clone());
@@ -158,7 +158,7 @@ mod tests {
     /// A refusal carries a code for the front end to word, not core's prose.
     #[test]
     fn a_refusal_names_its_reason_as_a_code() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         let subject = |events: Vec<StateEvent>| match &events[0] {
             StateEvent::PriceAlertRejected { reason } => *reason,
             other => panic!("not a refusal: {other:?}"),
@@ -169,7 +169,7 @@ mod tests {
                 "bitcoin:native".into(),
                 "0".into(),
                 crate::store::state::FiatCurrency::Usd,
-                CorePriceAlertCondition::Above
+                PriceAlertCondition::Above
             )),
             PriceAlertRejection::InvalidTarget
         );
@@ -179,7 +179,7 @@ mod tests {
                 "bitcoin:native".into(),
                 "1".into(),
                 crate::store::state::FiatCurrency::Eur,
-                CorePriceAlertCondition::Above
+                PriceAlertCondition::Above
             )),
             PriceAlertRejection::MissingCurrencyRate
         );
@@ -189,7 +189,7 @@ mod tests {
                 "nowhere:native".into(),
                 "1".into(),
                 crate::store::state::FiatCurrency::Usd,
-                CorePriceAlertCondition::Above
+                PriceAlertCondition::Above
             )),
             PriceAlertRejection::UnknownAsset
         );
@@ -198,7 +198,7 @@ mod tests {
             "bitcoin:native".into(),
             "1".into(),
             crate::store::state::FiatCurrency::Usd,
-            CorePriceAlertCondition::Above,
+            PriceAlertCondition::Above,
         );
         assert_eq!(
             subject(add(
@@ -206,7 +206,7 @@ mod tests {
                 "bitcoin:native".into(),
                 "1".into(),
                 crate::store::state::FiatCurrency::Usd,
-                CorePriceAlertCondition::Above
+                PriceAlertCondition::Above
             )),
             PriceAlertRejection::DuplicateAlert
         );

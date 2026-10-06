@@ -112,9 +112,6 @@ pub fn build_evm_send_preview_record(
         estimatedNetworkFee: d.estimated_network_fee_eth,
         spendableBalance: d.spendable_balance,
         feeRateDescription: d.fee_rate_description,
-        estimatedTransactionBytes: None,
-        selectedInputCount: None,
-        usesChangeOutput: None,
         maxSendable: d.max_sendable,
     })
 }
@@ -195,13 +192,9 @@ pub fn build_tron_send_preview_record(
     Some(crate::send::preview_types::TronSendPreview {
         estimatedNetworkFee: obj_decimal(o, "estimated_fee_trx")?,
         feeLimitSun: o.get("fee_limit_sun").and_then(|v| v.as_i64()).unwrap_or(0),
-        simulationUsed: false,
         maxSendable: obj_decimal(o, "max_sendable").unwrap_or_else(|| spendable.clone()),
         spendableBalance: spendable,
         feeRateDescription: obj_str(o, "fee_rate_description"),
-        estimatedTransactionBytes: None,
-        selectedInputCount: None,
-        usesChangeOutput: None,
     })
 }
 
@@ -268,9 +261,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 estimatedNetworkFee: fee,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -278,13 +268,8 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
             preview: XrpSendPreview {
                 estimatedNetworkFee: fee,
                 feeDrops: raw.parse().unwrap_or(12),
-                sequence: 0,
-                lastLedgerSequence: 0,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -292,12 +277,8 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
             preview: StellarSendPreview {
                 estimatedNetworkFee: fee,
                 feeStroops: raw.parse().unwrap_or(100),
-                sequence: 0,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -307,21 +288,14 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 priorityLabel: "normal".into(),
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
         SimpleChain::Cardano => SimpleChainPreview::Cardano {
             preview: CardanoSendPreview {
                 estimatedNetworkFee: fee,
-                ttlSlot: 0,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -332,9 +306,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 referenceGasPrice: 1_000,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -354,9 +325,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                     gasUnitPriceOctas: gas,
                     spendableBalance: bal,
                     feeRateDescription: Some(format!("{} octas/unit", gas)),
-                    estimatedTransactionBytes: None,
-                    selectedInputCount: None,
-                    usesChangeOutput: None,
                     maxSendable: max,
                 },
             }
@@ -364,12 +332,8 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
         SimpleChain::Ton => SimpleChainPreview::Ton {
             preview: TonSendPreview {
                 estimatedNetworkFee: fee,
-                sequenceNumber: 0,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -379,9 +343,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 feeE8s: raw.parse().unwrap_or(10_000),
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -391,9 +352,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 feeBudgetYoctoNear: raw,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
-                estimatedTransactionBytes: None,
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -405,8 +363,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 estimatedTransactionBytes: o
                     .get("estimated_transaction_bytes")
                     .and_then(serde_json::Value::as_i64),
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },
@@ -418,8 +374,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
                 estimatedTransactionBytes: o
                     .get("estimated_transaction_bytes")
                     .and_then(serde_json::Value::as_i64),
-                selectedInputCount: None,
-                usesChangeOutput: None,
                 maxSendable: max,
             },
         },

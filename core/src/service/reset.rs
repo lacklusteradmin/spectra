@@ -2,8 +2,8 @@
 use super::*;
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ResetOutcome {
-    pub state: CoreAppState,
-    pub plan: crate::store::CoreResetPlan,
+    pub state: ResidentState,
+    pub plan: crate::store::ResetPlan,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -82,7 +82,7 @@ mod tests {
             include_in_portfolio_total: true,
             chain_id: crate::registry::Chain::Ethereum,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: vec![],

@@ -604,7 +604,7 @@ pub trait RefreshObserver: Send + Sync {
 /// A wallet with no address is not an error and not a log line — it is a
 /// watch-only import that stored nothing, or a wallet on a chain the registry
 /// does not know, and either way there is nothing to fetch.
-pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> Vec<RefreshEntry> {
+pub(crate) fn refresh_entries_for(state: &crate::store::state::ResidentState) -> Vec<RefreshEntry> {
     state.wallets.iter().filter_map(refresh_entry_for).collect()
 }
 
@@ -648,7 +648,7 @@ pub struct RefreshEntry {
 mod refresh_entry_tests {
     use super::refresh_entries_for;
     use crate::registry::Chain;
-    use crate::store::state::{CoreAppState, WalletAddress, WalletState};
+    use crate::store::state::{ResidentState, WalletAddress, WalletState};
 
     fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         WalletState {
@@ -660,7 +660,7 @@ mod refresh_entry_tests {
             include_in_portfolio_total: true,
             chain_id: chain,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
+            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -680,7 +680,7 @@ mod refresh_entry_tests {
     /// the network that wallet is on.
     #[test]
     fn an_entry_carries_the_address_for_the_network_the_wallet_is_on() {
-        let mut state = CoreAppState {
+        let mut state = ResidentState {
             wallets: vec![wallet(
                 "w1",
                 Chain::Bitcoin,
@@ -707,7 +707,7 @@ mod refresh_entry_tests {
     /// the fetch key. Only Bitcoin has one.
     #[test]
     fn a_bitcoin_xpub_is_the_fetch_key() {
-        let mut state = CoreAppState::default();
+        let mut state = ResidentState::default();
         let mut btc = wallet("w1", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1main")]);
         btc.xpub = Some("zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs".to_string());
         state.wallets = vec![btc];
@@ -721,7 +721,7 @@ mod refresh_entry_tests {
     /// A wallet with no address is left out rather than refreshed with nothing.
     #[test]
     fn a_wallet_with_no_address_is_not_an_entry() {
-        let state = CoreAppState {
+        let state = ResidentState {
             wallets: vec![
                 wallet("w1", Chain::Solana, &[]),
                 wallet("w2", Chain::Solana, &[(Chain::Solana, "So1")]),
@@ -738,7 +738,7 @@ mod refresh_entry_tests {
     /// own — and an Arbitrum wallet reads the same slot.
     #[test]
     fn the_evm_family_shares_one_address() {
-        let state = CoreAppState {
+        let state = ResidentState {
             wallets: vec![wallet("w1", Chain::Arbitrum, &[(Chain::Ethereum, "0xabc")])],
             ..Default::default()
         };

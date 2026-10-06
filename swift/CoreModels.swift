@@ -14,10 +14,9 @@ extension SendPreviewDetails {
             || usesChangeOutput != nil
     }
 }
-/// `Coin` is the Rust-defined `AssetHolding`. Its `id` is the deployment id
-/// core derives; every projection this app reads carries it.
-typealias Coin = AssetHolding
-extension Coin: Identifiable {
+/// A holding's `id` is the deployment id core derives; every projection
+/// this app reads carries it.
+extension AssetHolding: Identifiable {
     var color: Color { AssetPresentationCatalog.color(deploymentId: id) }
     var holdingKey: String { id }
     var chain: Chain { chainId }
@@ -57,7 +56,6 @@ extension WalletView {
     var familyName: String { family.displayName }
 }
 
-typealias SeedDerivationPaths = CoreSeedDerivationPaths
 extension SeedDerivationPaths {
     /// Configured derivation path for this exact network, or `""` when the
     /// chain has no BIP-32 path (Monero) or is not in the catalog. Core keys
@@ -76,7 +74,7 @@ extension SeedDerivationPaths {
 
     /// Preset paths from the Rust catalog. No fallback table: an empty map
     /// surfaces a missing catalog path rather than substituting a guessed one.
-    static func forPreset(_ preset: CoreSeedDerivationPreset) -> SeedDerivationPaths {
+    static func forPreset(_ preset: SeedDerivationPreset) -> SeedDerivationPaths {
         (try? derivationPathsForPreset(preset: preset))
             ?? SeedDerivationPaths(byChain: [:])
     }
@@ -118,10 +116,8 @@ extension PriceAlertCondition {
     }
 }
 /// The alert rule core stores. Not a Swift copy of it — core owns the list,
-/// the rule that a target must be positive, and the persistence.
-typealias PriceAlertRule = PriceAlertEvaluationAlert
-
-/// `id` is an opaque core-assigned string, not a platform-minted `UUID`.
+/// the rule that a target must be positive, and the persistence. `id` is an
+/// opaque core-assigned string, not a platform-minted `UUID`.
 extension PriceAlertRule: Identifiable {}
 
 extension PriceAlertRule {
@@ -142,8 +138,6 @@ extension AddressBookEntry: Identifiable {
     }
 }
 /// A stored transaction, as core keeps it.
-typealias TransactionRecord = CorePersistedTransactionRecord
-
 extension TransactionRecord: Identifiable {
     /// History with no deployment identity draws its letter.
     var artworkName: String { AssetPresentationCatalog.artwork(deploymentId: deploymentId) }
@@ -179,7 +173,7 @@ extension TransactionRecord: Identifiable {
         }
     }
     var isSubmittedOperation: Bool { transactionKindIsSubmitted(kind: kind) }
-    var amountDirection: CoreTransactionDirection { transactionKindDirection(kind: kind) }
+    var amountDirection: TransactionDirection { transactionKindDirection(kind: kind) }
     var amountSign: String {
         switch amountDirection {
         case .incoming: return "+"

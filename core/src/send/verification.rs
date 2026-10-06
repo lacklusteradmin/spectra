@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
-pub enum CoreSendVerificationStatus {
+pub enum SendVerificationStatus {
     Deferred,
     Failed { message: String },
 }
@@ -22,18 +22,18 @@ pub struct SendVerificationNotice {
 /// front end shows comes from the stored record, through
 /// [`verification_notice_for_last_sent`].
 fn verification_notice_for_status(
-    status: CoreSendVerificationStatus,
+    status: SendVerificationStatus,
     chain: crate::registry::Chain,
 ) -> SendVerificationNotice {
     match status {
-        CoreSendVerificationStatus::Deferred => SendVerificationNotice {
+        SendVerificationStatus::Deferred => SendVerificationNotice {
             notice: Some(format!(
                 "Broadcast succeeded, but {} network verification is still catching up. Status will update shortly.",
                 chain.chain_display_name()
             )),
             is_warning: false,
         },
-        CoreSendVerificationStatus::Failed { message } => SendVerificationNotice {
+        SendVerificationStatus::Failed { message } => SendVerificationNotice {
             notice: Some(format!(
                 "Warning: Broadcast succeeded, but post-broadcast verification reported: {}",
                 message
@@ -46,8 +46,8 @@ fn verification_notice_for_status(
 /// The parts of a stored send record the notice reads.
 #[derive(Debug, Clone)]
 pub struct LastSentTransactionSnapshot {
-    pub kind: crate::store::wallet_domain::CoreTransactionKind,
-    pub status: crate::store::wallet_domain::CoreTransactionStatus,
+    pub kind: crate::store::wallet_domain::TransactionKind,
+    pub status: crate::store::wallet_domain::TransactionStatus,
     pub chain_id: crate::registry::Chain,
     pub transaction_hash: Option<String>,
     pub failure_reason: Option<crate::store::persistence_models::TransactionFailure>,
@@ -56,10 +56,8 @@ pub struct LastSentTransactionSnapshot {
     pub confirmation_count: Option<i64>,
 }
 
-impl From<&crate::store::persistence_models::CorePersistedTransactionRecord>
-    for LastSentTransactionSnapshot
-{
-    fn from(record: &crate::store::persistence_models::CorePersistedTransactionRecord) -> Self {
+impl From<&crate::store::persistence_models::TransactionRecord> for LastSentTransactionSnapshot {
+    fn from(record: &crate::store::persistence_models::TransactionRecord) -> Self {
         Self {
             kind: record.kind,
             status: record.status,
@@ -82,7 +80,7 @@ impl From<&crate::store::persistence_models::CorePersistedTransactionRecord>
 pub fn verification_notice_for_last_sent(
     snapshot: Option<LastSentTransactionSnapshot>,
 ) -> SendVerificationNotice {
-    use crate::store::wallet_domain::CoreTransactionStatus;
+    use crate::store::wallet_domain::TransactionStatus;
     let Some(tx) = snapshot else {
         return SendVerificationNotice::default();
     };
@@ -97,36 +95,36 @@ pub fn verification_notice_for_last_sent(
     if hash_trimmed.is_empty() {
         return SendVerificationNotice::default();
     }
-    if tx.status == CoreTransactionStatus::Failed {
+    if tx.status == TransactionStatus::Failed {
         let message = tx
             .failure_reason
             .as_ref()
             .map(|failure| failure.english())
             .unwrap_or_else(|| "Broadcast was not confirmed by the network.".to_string());
         return verification_notice_for_status(
-            CoreSendVerificationStatus::Failed { message },
+            SendVerificationStatus::Failed { message },
             tx.chain_id,
         );
     }
-    let observed_on_network = tx.status == CoreTransactionStatus::Confirmed
+    let observed_on_network = tx.status == TransactionStatus::Confirmed
         || tx.transaction_history_source.is_some()
         || tx.receipt_block_number.is_some()
         || tx.confirmation_count.unwrap_or(0) > 0;
     if observed_on_network {
         return SendVerificationNotice::default();
     }
-    verification_notice_for_status(CoreSendVerificationStatus::Deferred, tx.chain_id)
+    verification_notice_for_status(SendVerificationStatus::Deferred, tx.chain_id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+    use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
     fn snapshot() -> LastSentTransactionSnapshot {
         LastSentTransactionSnapshot {
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Pending,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Pending,
             chain_id: crate::registry::Chain::Bitcoin,
             transaction_hash: None,
             failure_reason: None,
@@ -139,7 +137,7 @@ mod tests {
     #[test]
     fn deferred_mentions_chain_name() {
         let n = verification_notice_for_status(
-            CoreSendVerificationStatus::Deferred,
+            SendVerificationStatus::Deferred,
             crate::registry::Chain::Bitcoin,
         );
         assert!(n.notice.unwrap().contains("Bitcoin"));
@@ -149,7 +147,7 @@ mod tests {
     #[test]
     fn failed_includes_message_and_warning_flag() {
         let n = verification_notice_for_status(
-            CoreSendVerificationStatus::Failed {
+            SendVerificationStatus::Failed {
                 message: "node down".into(),
             },
             crate::registry::Chain::Tron,
@@ -168,8 +166,8 @@ mod tests {
     #[test]
     fn last_sent_empty_hash_returns_clear() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Pending,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Pending,
             chain_id: crate::registry::Chain::Ethereum,
             transaction_hash: Some("   ".into()),
             ..snapshot()
@@ -180,8 +178,8 @@ mod tests {
     #[test]
     fn last_sent_confirmed_returns_clear() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Confirmed,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Confirmed,
             chain_id: crate::registry::Chain::Ethereum,
             transaction_hash: Some("0xabc".into()),
             ..snapshot()
@@ -192,8 +190,8 @@ mod tests {
     #[test]
     fn last_sent_failed_uses_fallback_reason() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Failed,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Failed,
             chain_id: crate::registry::Chain::Ethereum,
             transaction_hash: Some("0xabc".into()),
             failure_reason: None,
@@ -206,8 +204,8 @@ mod tests {
     #[test]
     fn last_sent_pending_unobserved_returns_deferred() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Pending,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Pending,
             chain_id: crate::registry::Chain::Solana,
             transaction_hash: Some("0xabc".into()),
             ..snapshot()
@@ -219,8 +217,8 @@ mod tests {
     #[test]
     fn last_sent_dogecoin_confirmed_via_counter_returns_clear() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: CoreTransactionKind::Send,
-            status: CoreTransactionStatus::Pending,
+            kind: TransactionKind::Send,
+            status: TransactionStatus::Pending,
             chain_id: crate::registry::Chain::Dogecoin,
             transaction_hash: Some("abc".into()),
             confirmation_count: Some(1),

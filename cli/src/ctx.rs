@@ -2,7 +2,7 @@
 //! opened.
 //!
 //! The CLI holds no wallet model of its own — `WalletState` and
-//! `CoreAppState` are core's, using the same SQLite schema as the app.
+//! `ResidentState` are core's, using the same SQLite schema as the app.
 
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use spectra_core::service::WalletService;
 use spectra_core::store::secret_backends::FileSecretStore;
-use spectra_core::store::state::{CoreAppState, StateCommand, StateTransition, WalletState};
+use spectra_core::store::state::{ResidentState, StateCommand, StateTransition, WalletState};
 
 use crate::error::{CliError, CliResult};
 
@@ -120,7 +120,7 @@ impl Ctx {
         Ok(())
     }
 
-    pub fn state(&self) -> CliResult<CoreAppState> {
+    pub fn state(&self) -> CliResult<ResidentState> {
         let service = WalletService::new_catalog().map_err(CliError::from)?;
         service.set_secret_store(self.secrets.clone());
         self.rt

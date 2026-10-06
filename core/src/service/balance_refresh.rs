@@ -87,7 +87,7 @@ impl WalletService {
     async fn fetch_wallet_balances(
         &self,
         entry: RefreshEntry,
-        known: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+        known: Vec<crate::store::wallet_domain::TokenPreferenceEntry>,
     ) -> Result<WalletState, SpectraBridgeError> {
         let chain = entry.chain_id;
         let native = if chain.uses_account_utxo() {
