@@ -14,10 +14,44 @@ transfers select inputs with an explicitly empty native-asset list; token-bearin
 inputs are left untouched. A wallet with insufficient pure-ADA inputs cannot send
 an ADA-only transfer.
 
+Each network restores the phrase formats its own wallets write and creates
+in one every wallet for it restores. Most networks read and create BIP-39.
+Monero reads its 25-word seed in all thirteen Monero wordlists and the 16-word
+Polyseed in all ten of its lists, and creates the 25-word seed; a Polyseed's
+birthday becomes the wallet's restore height, and an encrypted Polyseed is
+refused because Monero imports take no passphrase. TON reads and creates
+ton-crypto's 24-word mnemonic, including password-protected ones opened with
+the derivation passphrase. Neither reads BIP-39, which none of their wallets
+restore. A Monero wallet's restore height is fixed at import: typed, from a
+Polyseed's birthday, near now for a created wallet (from monthly checkpoints
+read off two public daemons), or the start of the chain.
+
+A phrase wallet derives along one of its network's derivation profiles at an
+account index, or a custom path. Bitcoin and its test networks offer native
+SegWit (default), legacy, nested SegWit and Taproot; Litecoin legacy (default),
+native and nested SegWit; Peercoin all four; Bitcoin Cash its BIP-44 coin type
+and the older coin type 0; Solana `m/44'/501'/{account}'/0'` and the older
+`m/44'/501'/{account}'`; every other chain with a path its one standard
+profile. NEAR walks SLIP-10 along `m/44'/397'/{account}'` as near-seed-phrase
+does. Monero, TON, Polkadot and Bittensor derive without a path and refuse one.
+Every profile is checked at two accounts against independent implementations.
+A NEAR phrase or key may hold a named account instead of its implicit one,
+once a verified node lists the key among the account's full-access keys.
+XRP and Stellar accounts exist only once they hold the network's reserve,
+which the receive screen reads from the network while a wallet is empty.
+
 Raw private-key import covers 49 mainnets and their corresponding test networks.
 Ed25519 chains accept 32-byte seeds, Substrate chains accept sr25519 seeds, and
-secp256k1 chains accept their validated scalar. Cardano accepts a validated
-64-byte extended key. Monero's spend/view key model uses mnemonic import instead
+secp256k1 chains accept their validated scalar, each as 64 hex digits. Cardano
+accepts a validated 64-byte extended key. Each chain also reads the encoding
+its own wallets export: compressed WIF on the Bitcoin family (BTC, BCH, BSV,
+BTG, LTC, DOGE, DASH, ZEC and PPC) with the network's own version byte, a
+base58 or Solana-CLI JSON keypair on Solana, an `S…` secret seed on Stellar,
+`suiprivkey1…` (Ed25519) on Sui, AIP-80 `ed25519-priv-0x…` on Aptos and an
+`ed25519:…` key string on NEAR. A keypair whose public half is not its
+secret's, a WIF for another network and an uncompressed WIF are refused: an
+uncompressed key owns a different P2PKH address than the compressed key
+Spectra signs with. Monero's spend/view key model uses mnemonic import instead
 of a generic 32-byte key. Watch-only addresses are available on supported
 mainnets and test networks;
 Monero requires wallet scan keys. Bitcoin account xpub import validates the

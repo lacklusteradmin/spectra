@@ -54,16 +54,15 @@ async fn imported_wallet(service: &WalletService, password: Option<&str>) -> Str
         password: password.map(str::to_owned),
         request: crate::derivation::import::WalletImportRequest {
             wallet_name: String::new(),
-            selected_chain_ids: vec![crate::registry::Chain::Ethereum],
-            is_watch_only_import: false,
-            is_private_key_import: false,
-            watch_only_entries: Default::default(),
+            chain: crate::registry::Chain::Ethereum,
+            kind: crate::derivation::import::WalletImportKind::Phrase,
         },
-        seed_derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
-        seed_derivation_paths: Default::default(),
+        derivation_path: None,
         derivation_overrides: Default::default(),
         seed_phrase: Some(MNEMONIC.into()),
         private_key: None,
+        restore_height: None,
+        named_account: None,
     };
     service.import_wallets(commit).await.unwrap().wallets[0]
         .id

@@ -336,7 +336,6 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
         chain_id: chain,
         include_in_portfolio_total: true,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -346,6 +345,7 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
             kind: "receive".to_string(),
             derivation_path: None,
         }],
+        restore_height: None,
     }
 }
 

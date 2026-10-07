@@ -1,0 +1,36 @@
+{
+  "provenance": "@ton/ton 16.3.0, @ton/core 0.63.1, @ton/crypto 3.3.0",
+  "mnemonics": [
+    {
+      "mnemonic": "tribe trick matter citizen jealous turtle flee evidence tired milk wisdom eager fancy mother gate worth fly wedding zero ski purchase evidence cycle public",
+      "password": "",
+      "public_key": "ecadffda6eeb6147e555d5fb5feeb0e840c0ef34dc89de37ea13c1bbcd1a3e2b",
+      "private_key": "9823df0e6e0637b15e2c9a9be730980b2328b0ee03e035ab83a4133f2ac0e0db",
+      "address": "EQD6uz6oeLD-m0eCVF5zqnt_PizlULu07ERbGvYzvBXvoSA2"
+    },
+    {
+      "mnemonic": "bulk cat tobacco alcohol confirm confirm paper carry endorse volume space plunge boring copy lake plunge auto scale deputy fluid amount napkin unaware chief",
+      "password": "",
+      "public_key": "69aa279cb35e2b7b8fb296c41af320003d3752554b345c556c3c4d6d57c1c22e",
+      "private_key": "2f5d98c22b59004a415f03a5a6d331c1eec9225464fa6c9fa194f209fbe47e4c",
+      "address": "EQDJMuSCcqYnvBEBu3wXpe08TKjNSoz5FN5PFz8w6w5R15yB"
+    },
+    {
+      "mnemonic": "rice butter wool mention shiver axis soccer truth ramp crowd tonight able oval again during chair cargo blur ice fabric buddy wait goat pigeon",
+      "password": "",
+      "public_key": "d41fc81bd3ff2c05105f08ad4c48332831e1032712a5a27d7840e0ac8aa8537c",
+      "private_key": "3050eca547cb38bc1ffa3d3fac06e92f51a13ad701f842ece45b6f797d91efc0",
+      "address": "EQD66Pm7NeTV5AY235ZwRE6gA2rM0EKkM2cSO49708arCa8M"
+    }
+  ],
+  "password_protected": {
+    "mnemonic": "loyal another bike egg page local fly spirit brand side pyramid frost before bonus amateur beauty risk hamster lens build author clip engage cluster",
+    "password": "spectra fixture",
+    "public_key": "c48bdde88209c1d7a19b675939a6cc9aa27b6ce558f8d26507d335392a7ea1f8",
+    "private_key": "540268407b0bdc450302690b54de7971873170a114eb8331b4ec7b7ded3d085e",
+    "address": "EQDSw5Qnp5eO819qhelRrMa7115I1IMNBCMPChRgajOrEhOX"
+  },
+  "password_protected_valid_without_password": false,
+  "bip39_phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+  "bip39_phrase_is_ton_mnemonic": false
+}

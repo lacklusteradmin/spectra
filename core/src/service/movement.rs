@@ -106,7 +106,6 @@ mod tests {
             chain_id: crate::registry::Chain::Ethereum,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             addresses: vec![],
@@ -120,6 +119,7 @@ mod tests {
                 contract_address: None,
                 amount: "1".into(),
             }],
+            restore_height: None,
         });
         s.quotes.prices.insert("ethereum:native".into(), 1000.0);
         s

@@ -355,6 +355,72 @@ impl Chain {
         self.mainnet_counterpart() != Self::Monero
     }
 
+    /// The private-key encodings an import on this chain accepts, or none
+    /// where a key alone yields no address.
+    pub fn private_key_formats(self) -> Vec<crate::derivation::setup::WalletSecretFormat> {
+        use crate::derivation::setup::WalletSecretFormat as F;
+        if !self.derives_from_private_key() {
+            return Vec::new();
+        }
+        let native = match self.mainnet_counterpart() {
+            Self::Cardano => return vec![F::CardanoExtendedKey],
+            _ if self.wif_version().is_some() => Some(F::Wif),
+            Self::Solana => Some(F::SolanaKeypair),
+            Self::Stellar => Some(F::StellarSecretSeed),
+            Self::Sui => Some(F::SuiPrivateKey),
+            Self::Aptos => Some(F::AptosPrivateKey),
+            Self::Near => Some(F::NearSecretKey),
+            _ => None,
+        };
+        std::iter::once(F::HexSecret32).chain(native).collect()
+    }
+
+    /// The version byte a Wallet Import Format key carries on this network,
+    /// for the Base58Check-WIF chains: the Bitcoin family's own, and `0xEF`
+    /// (Dogecoin `0xF1`) on their test networks.
+    pub fn wif_version(self) -> Option<u8> {
+        let mainnet = match self.mainnet_counterpart() {
+            Self::Bitcoin
+            | Self::BitcoinCash
+            | Self::BitcoinSV
+            | Self::BitcoinGold
+            | Self::Zcash => 0x80,
+            Self::Litecoin => 0xb0,
+            Self::Dogecoin => 0x9e,
+            Self::Dash => 0xcc,
+            Self::Peercoin => 0xb7,
+            _ => return None,
+        };
+        Some(match (self.is_testnet(), self.mainnet_counterpart()) {
+            (false, _) => mainnet,
+            (true, Self::Dogecoin) => 0xf1,
+            (true, _) => 0xef,
+        })
+    }
+
+    /// The phrase encodings an import on this chain restores from: the ones
+    /// its own wallets write. Monero and TON wallets do not read BIP-39.
+    pub fn phrase_formats(self) -> Vec<crate::derivation::setup::WalletSecretFormat> {
+        use crate::derivation::setup::WalletSecretFormat as F;
+        match self.mainnet_counterpart() {
+            Self::Monero => vec![F::MoneroPhrase, F::Polyseed],
+            Self::Ton => vec![F::TonMnemonic],
+            _ => vec![F::Bip39Phrase],
+        }
+    }
+
+    /// The phrase encoding a wallet created on this chain is generated in:
+    /// one every wallet for the chain restores. For Monero that is the
+    /// 25-word seed, which older wallets read and Polyseed's do not replace.
+    pub fn created_phrase_format(self) -> crate::derivation::setup::WalletSecretFormat {
+        use crate::derivation::setup::WalletSecretFormat as F;
+        match self.mainnet_counterpart() {
+            Self::Monero => F::MoneroPhrase,
+            Self::Ton => F::TonMnemonic,
+            _ => F::Bip39Phrase,
+        }
+    }
+
     /// The decode shape this chain's send preview comes back in, for the
     /// chains core estimates through one entry point.
     ///
@@ -583,6 +649,37 @@ impl Chain {
     /// `default_path_from_catalog`.
     pub fn uses_derivation_path(self) -> bool {
         crate::chains::default_derivation_path_template(self).is_some()
+    }
+
+    /// The derivation profiles a phrase wallet on this chain can use, the
+    /// default first. Empty where the chain derives without a path (Monero,
+    /// TON, Polkadot, Bittensor), which also means it has no account index.
+    pub fn derivation_profiles(self) -> Vec<crate::chains::DerivationProfile> {
+        let entries = &self.entry().derivation_path;
+        entries
+            .iter()
+            .filter(|entry| entry.is_default)
+            .chain(entries.iter().filter(|entry| !entry.is_default))
+            .map(|entry| entry.profile)
+            .collect()
+    }
+
+    /// The path `profile` derives at account `account` on this chain, or
+    /// `None` when the chain does not offer the profile or the index does not
+    /// fit a hardened segment.
+    pub fn derivation_profile_path(
+        self,
+        profile: crate::chains::DerivationProfile,
+        account: u32,
+    ) -> Option<String> {
+        if account >= 1 << 31 {
+            return None;
+        }
+        self.entry()
+            .derivation_path
+            .iter()
+            .find(|entry| entry.profile == profile)
+            .map(|entry| entry.path.replace("{account}", &account.to_string()))
     }
 
     /// Returns `true` for chains that are testnets.
@@ -1428,6 +1525,28 @@ impl Chain {
         })
     }
 
+    /// Whether this chain's wallets own one address per network, which every
+    /// receive and send uses: no account-wide gap scan and no fresh receive
+    /// addresses.
+    pub fn has_single_owned_address(self) -> bool {
+        matches!(
+            self.mainnet_counterpart(),
+            Self::Zcash | Self::BitcoinGold | Self::Decred | Self::Kaspa | Self::Dash
+        )
+    }
+
+    /// Whether the ledger creates an account only once it holds the
+    /// network's reserve, so a first payment below it fails.
+    pub fn requires_account_reserve(self) -> bool {
+        matches!(self.mainnet_counterpart(), Self::Xrp | Self::Stellar)
+    }
+
+    /// Whether a wallet's balance and history come from scanning blocks on
+    /// the device through a daemon, rather than from a provider's index.
+    pub fn scans_for_balance(self) -> bool {
+        self.mainnet_counterpart() == Self::Monero
+    }
+
     pub fn supports_deep_utxo_discovery(self) -> bool {
         matches!(
             self.mainnet_counterpart(),
@@ -2266,12 +2385,6 @@ pub struct ChainIdentity {
     pub address_slot: String,
     /// HD discovery walks this chain's addresses past the last used one.
     pub supports_deep_utxo_discovery: bool,
-    /// A watch-only import can carry addresses for this chain.
-    pub supports_watch_only_import: bool,
-    /// An import can carry an account xpub for this chain.
-    pub accepts_account_xpub: bool,
-    /// A private key alone yields an address on this chain.
-    pub derives_from_private_key: bool,
     /// The staking tab can query this chain's live validator directory.
     pub supports_staking: bool,
     /// The send screen has a network card to show for this chain — a fee, a
@@ -2279,6 +2392,8 @@ pub struct ChainIdentity {
     pub has_send_preview: bool,
     /// The chain can hold tracked tokens.
     pub hosts_tokens: bool,
+    /// The ledger creates an account only once it holds the network's reserve.
+    pub requires_account_reserve: bool,
     /// The mainnet this chain belongs to, or itself.
     pub mainnet_counterpart: Chain,
 }
@@ -2300,12 +2415,10 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             is_evm: chain.is_evm(),
             address_slot: chain.address_slot().to_string(),
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
-            supports_watch_only_import: chain.supports_watch_only_import(),
-            accepts_account_xpub: chain.accepts_account_xpub(),
-            derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),
             hosts_tokens: chain.hosts_tokens(),
+            requires_account_reserve: chain.requires_account_reserve(),
             mainnet_counterpart: chain.mainnet_counterpart(),
         })
         .collect()

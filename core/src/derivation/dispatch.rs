@@ -102,8 +102,8 @@ pub fn derive_for_chain(
         Chain::Ton => ton::derive_ton(s, pass, wa, wp, wk)?,
         Chain::TonTestnet => ton::derive_ton_testnet(s, pass, wa, wp, wk)?,
         Chain::Icp => icp::derive_icp(s, p, pass, wa, wp, wk)?,
-        Chain::Near => near::derive_near(s, pass, wa, wp, wk)?,
-        Chain::NearTestnet => near::derive_near_testnet(s, pass, wa, wp, wk)?,
+        Chain::Near => near::derive_near(s, p, pass, wa, wp, wk)?,
+        Chain::NearTestnet => near::derive_near_testnet(s, p, pass, wa, wp, wk)?,
         Chain::Polkadot => polkadot::derive_polkadot(s, pass, hmac, wa, wp, wk)?,
         Chain::PolkadotWestend => polkadot::derive_polkadot_westend(s, pass, hmac, wa, wp, wk)?,
         Chain::Bittensor => bittensor::derive_bittensor(s, pass, wa, wp, wk)?,
@@ -162,12 +162,22 @@ mod dispatch_export_tests {
 
     #[test]
     fn raw_keys_derive_the_same_network_address_as_their_mnemonic_keys() {
+        use crate::derivation::phrase::test_phrase;
         use crate::registry::Chain;
-        const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         for chain in Chain::all().filter(|c| c.derives_from_private_key()) {
             let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
-            let expected =
-                derive_for_chain(chain, PHRASE, &path, None, None, None, true, true, true).unwrap();
+            let expected = derive_for_chain(
+                chain,
+                test_phrase(chain),
+                &path,
+                None,
+                None,
+                None,
+                true,
+                true,
+                true,
+            )
+            .unwrap();
             let actual =
                 derive_from_private_key(chain, expected.private_key_hex.unwrap(), true, true)
                     .unwrap()
@@ -232,7 +242,6 @@ mod dispatch_export_tests {
     /// the set of derivable chains and the set the registry knows are the same.
     #[test]
     fn every_registry_chain_derives_through_one_call() {
-        const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let mut missing = Vec::new();
         for chain in crate::registry::Chain::all() {
             // Every chain, with no `continue`: a chain the catalog gives no
@@ -240,8 +249,17 @@ mod dispatch_export_tests {
             // mind receiving one.
             let path = crate::derivation::path::default_path_from_catalog(chain)
                 .expect("a registry chain always has an answer, even when it is none");
-            let result =
-                derive_for_chain(chain, PHRASE, &path, None, None, None, true, false, false);
+            let result = derive_for_chain(
+                chain,
+                crate::derivation::phrase::test_phrase(chain),
+                &path,
+                None,
+                None,
+                None,
+                true,
+                false,
+                false,
+            );
             match result {
                 Ok(r) if r.address.is_some() => {}
                 _ => missing.push(chain.str_id()),

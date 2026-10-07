@@ -158,12 +158,15 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
     service.open_state(database).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
-    let defaults =
-        crate::derivation::path::derivation_paths_for_preset(Default::default()).unwrap();
     for chain in Chain::all() {
-        let path = defaults.path_for(chain).unwrap_or_default();
+        let path = &crate::derivation::path::default_path_from_catalog(chain).unwrap();
+        // Monero and TON read their own phrases, not BIP-39.
+        let seed = match chain.mainnet_counterpart() {
+            Chain::Monero | Chain::Ton => crate::derivation::phrase::test_phrase(chain),
+            _ => SEED,
+        };
         let derived = crate::derivation::dispatch::derive_for_chain(
-            chain, SEED, path, None, None, None, true, false, false,
+            chain, seed, path, None, None, None, true, false, false,
         )
         .unwrap();
         let address = derived.address.unwrap();
@@ -180,7 +183,7 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
             })
             .await
             .unwrap();
-        store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
+        store_seed_phrase(&*secrets, "w", seed, None).unwrap();
         let resolved = service.send_identity_address("w".into(), chain, None).await;
         assert_eq!(
             resolved.unwrap_or_else(|e| panic!("{chain:?}: {e}")),

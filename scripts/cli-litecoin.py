@@ -118,6 +118,15 @@ try:
             flags = [] if protected else ['--no-password']
             return run('wallet', 'import', '--chain', chain, '--name', name, '--path', path, *flags)['wallet']
 
+        def address_at(chain, path):
+            # Previewed in an empty store: here the account is already a wallet,
+            # and a second import of it is refused.
+            result = subprocess.run([binary, '--data-dir', str(pathlib.Path(directory) / 'vectors'), '--json',
+                                     'wallet', 'import', '--chain', chain, '--path', path, '--preview'],
+                                    capture_output=True, text=True, env=env, timeout=60)
+            assert result.returncode == 0, (chain, path, result.stdout, result.stderr)
+            return json.loads(result.stdout)['addresses'][0]
+
         for chain in ['litecoin', 'litecoin-testnet']:
             run('endpoints', '--chain', chain, '--api', 'blockbook',
                 '--capabilities', 'balance,history,utxo,fee,broadcast,verification', '--add', endpoint)
@@ -135,7 +144,7 @@ try:
                 wallet = import_path(chain, name, path + '/0/0', protected=True)
                 root = wallet['address']
                 received = run('wallet', 'receive', name, password=None)['address']
-                expected = import_path(chain, name + '-receive-vector', path + '/0/1')['address']
+                expected = address_at(chain, path + '/0/1')
                 assert received == expected and received != root, (chain, purpose, root, received)
                 if purpose == 84:
                     assert root.startswith('tltc1q' if coin == 1 else 'ltc1q'), root
@@ -148,8 +157,7 @@ try:
                     # terminate recovery, and change-branch funds must be found.
                     recovered = []
                     for branch, index, value in [(0, 7, 300_000), (0, 27, 400_000), (1, 3, 500_000)]:
-                        address = import_path(chain, f'{name}-vector-{branch}-{index}',
-                                              path + f'/{branch}/{index}')['address']
+                        address = address_at(chain, path + f'/{branch}/{index}')
                         serial += 1
                         fund(address, value, serial)
                         recovered.append(address)

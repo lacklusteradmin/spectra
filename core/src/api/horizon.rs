@@ -202,6 +202,15 @@ impl HorizonClient {
             .map_err(|e| ApiError::Decode(format!("sequence parse: {e}")))
     }
 
+    /// The latest ledger's base reserve, in stroops. A new account holds two
+    /// of them: one for itself and one more, which is the network minimum.
+    pub(crate) async fn fetch_base_reserve(&self) -> Result<u64, ApiError> {
+        let page: serde_json::Value = self.get("/ledgers?order=desc&limit=1").await?;
+        page.pointer("/_embedded/records/0/base_reserve_in_stroops")
+            .and_then(serde_json::Value::as_u64)
+            .or_decode("ledgers: missing base_reserve_in_stroops")
+    }
+
     pub async fn fetch_base_fee(&self) -> Result<u64, ApiError> {
         let stats: HorizonFeeStats = self.get("/fee_stats").await?;
         Ok(stats.fee_charged.mode.parse::<u64>().unwrap_or(100))

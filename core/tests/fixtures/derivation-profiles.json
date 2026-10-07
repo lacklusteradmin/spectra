@@ -1,0 +1,1518 @@
+{
+  "provenance": "bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.0.1, ripple-keypairs 3.1.0, @mysten/sui 1.38.0, @aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/principal 3.4.3, @emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0",
+  "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "vectors": [
+    {
+      "chain": "bitcoin",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/0'/0'/0/0",
+      "address": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/0'/1'/0/0",
+      "address": "bc1qku0qh0mc00y8tk0n65x2tqw4trlspak0fnjmfz"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/0'/0'/0/0",
+      "address": "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/0'/1'/0/0",
+      "address": "15qucUWKf95Fo58FdCBhUTSAtsm22HHE2Q"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/0'/0'/0/0",
+      "address": "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/0'/1'/0/0",
+      "address": "35eszW2wmZ4hn7hfG5LGqxw5xCPjZcEJPM"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/0'/0'/0/0",
+      "address": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/0'/1'/0/0",
+      "address": "bc1pkq6ayylfpe5hn05550ry25pkakuf72x9qkjc2sl06dfcet8sg25q9y3j3y"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/1'/0'/0/0",
+      "address": "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/1'/1'/0/0",
+      "address": "tb1qp7shgcwx3mpzgxjvff0d77vuhchcldzfy60x6s"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/1'/0'/0/0",
+      "address": "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/1'/1'/0/0",
+      "address": "2N3QbAwmmFko9xpTp9hsXiLQ8xSXNhUEoF3"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/1'/0'/0/0",
+      "address": "tb1p8wpt9v4frpf3tkn0srd97pksgsxc5hs52lafxwru9kgeephvs7rqlqt9zj"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/1'/1'/0/0",
+      "address": "tb1p7d86ep54kqwzyke26cz6uux398tmweaf0valsqtc3aukp22wvzsqnyh456"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/1'/0'/0/0",
+      "address": "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/1'/1'/0/0",
+      "address": "tb1qp7shgcwx3mpzgxjvff0d77vuhchcldzfy60x6s"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/1'/0'/0/0",
+      "address": "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/1'/1'/0/0",
+      "address": "2N3QbAwmmFko9xpTp9hsXiLQ8xSXNhUEoF3"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/1'/0'/0/0",
+      "address": "tb1p8wpt9v4frpf3tkn0srd97pksgsxc5hs52lafxwru9kgeephvs7rqlqt9zj"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/1'/1'/0/0",
+      "address": "tb1p7d86ep54kqwzyke26cz6uux398tmweaf0valsqtc3aukp22wvzsqnyh456"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/1'/0'/0/0",
+      "address": "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/1'/1'/0/0",
+      "address": "tb1qp7shgcwx3mpzgxjvff0d77vuhchcldzfy60x6s"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/1'/0'/0/0",
+      "address": "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/1'/1'/0/0",
+      "address": "2N3QbAwmmFko9xpTp9hsXiLQ8xSXNhUEoF3"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/1'/0'/0/0",
+      "address": "tb1p8wpt9v4frpf3tkn0srd97pksgsxc5hs52lafxwru9kgeephvs7rqlqt9zj"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/1'/1'/0/0",
+      "address": "tb1p7d86ep54kqwzyke26cz6uux398tmweaf0valsqtc3aukp22wvzsqnyh456"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/2'/0'/0/0",
+      "address": "LUWPbpM43E2p7ZSh8cyTBEkvpHmr3cB8Ez"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/2'/1'/0/0",
+      "address": "LYBmmhHSciRQ5kUsEdyAFxzVTbKkKqtypB"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/2'/0'/0/0",
+      "address": "ltc1qjmxnz78nmc8nq77wuxh25n2es7rzm5c2rkk4wh"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/2'/1'/0/0",
+      "address": "ltc1q6he42udnkdx2m5dctfyjs2z9xl76xcdshd5htt"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/2'/0'/0/0",
+      "address": "M7wtsL7wSHDBJVMWWhtQfTMSYYkyooAAXM"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/2'/1'/0/0",
+      "address": "MUGUTH3fYXdzAoDG9vD93Evy6WY5krRo7y"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/1'/0'/0/0",
+      "address": "tltc1q6rz28mcfaxtmd6v789l9rrlrusdprr9pesrjxk"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/1'/1'/0/0",
+      "address": "tltc1qp7shgcwx3mpzgxjvff0d77vuhchcldzfajdc2e"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/1'/0'/0/0",
+      "address": "QRHtkDQdVvNNwrVjEdeCGviCw7Ny3SNNiA"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/1'/1'/0/0",
+      "address": "QWmMHxe1GrrF71DrmouYo2qa6pyCaeKcDK"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/6'/0'/0/0",
+      "address": "PFinP8Tm5hFJKfVnSMFfiNibPNfHgXzTDZ"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/6'/1'/0/0",
+      "address": "PThupwaEmD8ekNV6QeVGVBjCxvuwHeKvmN"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/6'/0'/0/0",
+      "address": "pc1q0z96wtve2jsutxtdphu7tz3zf9wsfc5sff0zjp"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/6'/1'/0/0",
+      "address": "pc1q68mwumnp9p4thuvg25aspyy5yxc98qflc4t269"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/6'/0'/0/0",
+      "address": "pM9VG8MzA91gmLfxBCE6tUCN2oK1owDKHS"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/6'/1'/0/0",
+      "address": "pPmCYbJjxJDNmgQGtZgY5LBCSy6zaZqYii"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/6'/0'/0/0",
+      "address": "pc1pxfwcsfgsjd5squmqu3srg2puk0pwrz6n4kqnt0m78kyzales5fnsxq5s7v"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/6'/1'/0/0",
+      "address": "pc1p8tle7qdwtsq5wuavfe7gt03udwvaumt67pmexcakxtazs6tn7hrqlgagth"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/1'/0'/0/0",
+      "address": "tpc1q6rz28mcfaxtmd6v789l9rrlrusdprr9pw2mg3h"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/1'/1'/0/0",
+      "address": "tpc1qp7shgcwx3mpzgxjvff0d77vuhchcldzf2g4zac"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/1'/0'/0/0",
+      "address": "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/1'/1'/0/0",
+      "address": "2N3QbAwmmFko9xpTp9hsXiLQ8xSXNhUEoF3"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/1'/0'/0/0",
+      "address": "tpc1p8wpt9v4frpf3tkn0srd97pksgsxc5hs52lafxwru9kgeephvs7rqmv6ldv"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/1'/1'/0/0",
+      "address": "tpc1p7d86ep54kqwzyke26cz6uux398tmweaf0valsqtc3aukp22wvzsqhgx0my"
+    },
+    {
+      "chain": "bitcoin-cash",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/145'/0'/0/0",
+      "address": "1mW6fDEMjKrDHvLvoEsaeLxSCzZBf3Bfg"
+    },
+    {
+      "chain": "bitcoin-cash",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/145'/1'/0/0",
+      "address": "145P7nCwq6q6U7Yuw7dhTPvMJsX5M87vaT"
+    },
+    {
+      "chain": "bitcoin-cash",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/0'/0'/0/0",
+      "address": "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
+    },
+    {
+      "chain": "bitcoin-cash",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/0'/1'/0/0",
+      "address": "15qucUWKf95Fo58FdCBhUTSAtsm22HHE2Q"
+    },
+    {
+      "chain": "bitcoin-cash-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "bitcoin-cash-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "bitcoin-sv",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/236'/0'/0/0",
+      "address": "1K6LZdwpKT5XkEZo2T2kW197aMXYbYMc4f"
+    },
+    {
+      "chain": "bitcoin-sv",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/236'/1'/0/0",
+      "address": "18pBoqRpHUYf9udsab5G9LT3vQUPxEyMFf"
+    },
+    {
+      "chain": "bitcoin-sv-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
+    },
+    {
+      "chain": "bitcoin-sv-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "n2VQDkgibQ3S8wPVH25Mea3TcQgVFFQqab"
+    },
+    {
+      "chain": "bitcoin-gold",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/156'/0'/0/0",
+      "address": "GeTZ7bjfXtGsyEcerSSFJNUSZwLfjtCJX9"
+    },
+    {
+      "chain": "bitcoin-gold",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/156'/1'/0/0",
+      "address": "GKhviGvnyz1tJRGWWgLDRTeGwa26VB3UJS"
+    },
+    {
+      "chain": "dogecoin",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/3'/0'/0/0",
+      "address": "DBus3bamQjgJULBJtYXpEzDWQRwF5iwxgC"
+    },
+    {
+      "chain": "dogecoin",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/3'/1'/0/0",
+      "address": "DEiUcV7xvCRdpQmsW3i8T9EVsb7zeiUQRt"
+    },
+    {
+      "chain": "dogecoin-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "nZVmfmUtKPmskB9Ds4P9GUJy9eYFqPKHqH"
+    },
+    {
+      "chain": "dogecoin-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "nqAcByHJ1kyBmoffKrjzcpb2sRCNgTT2JR"
+    },
+    {
+      "chain": "dash",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/5'/0'/0/0",
+      "address": "XoJA8qE3N2Y3jMLEtZ3vcN42qseZ8LvFf5"
+    },
+    {
+      "chain": "dash",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/5'/1'/0/0",
+      "address": "XfoXRyRePBFFhg7fKbsGRQBixHipJSGqNf"
+    },
+    {
+      "chain": "dash-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "yRd4FhXfVGHXpsuZXPNkMrfD9GVj46pnjt"
+    },
+    {
+      "chain": "dash-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "yhHtmuL5BdUqrWRzzBjbiCwGs39qreLYjD"
+    },
+    {
+      "chain": "zcash",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/133'/0'/0/0",
+      "address": "t1XVXWCvpMgBvUaed4XDqWtgQgJSu1Ghz7F"
+    },
+    {
+      "chain": "zcash",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/133'/1'/0/0",
+      "address": "t1Hxm2pmTLYuKhyLeZoSPjsHPFLWePSTDka"
+    },
+    {
+      "chain": "zcash-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "tmF1xjfhsSzhy55dmhorzTnKjtHhZmPKzts"
+    },
+    {
+      "chain": "zcash-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "tmWgoFsWH9MuH6iADAcDqp8boc4MgaP2SfK"
+    },
+    {
+      "chain": "decred",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/42'/0'/0/0",
+      "address": "Dso5BhFYjnymYwAzsCDEUENmmh7Y9TA4FM7"
+    },
+    {
+      "chain": "decred",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/42'/1'/0/0",
+      "address": "DsV6x8ShVR3yCGUGWT8kqFnv4k2nx1aMsUi"
+    },
+    {
+      "chain": "decred-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1'/0'/0/0",
+      "address": "TsRNPKrLuu6oKMWYoXyjeaZUp5isnb9SEq9"
+    },
+    {
+      "chain": "decred-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1'/1'/0/0",
+      "address": "TsdyCsscYtkifp6ck3pQK8zBKNUQBPNCiLM"
+    },
+    {
+      "chain": "kaspa",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/111111'/0'/0/0",
+      "address": "kaspa:qqd6e65yefepe9wk0m9vuxdufxd80sphy67gwwd0vdaumzdt4tc9s3qt0lqeh"
+    },
+    {
+      "chain": "kaspa",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/111111'/1'/0/0",
+      "address": "kaspa:qzyqe0y64jqvx043jd0mpgugrd00y39zp0t7j64854k7r0ln2eu3vck8n7p07"
+    },
+    {
+      "chain": "kaspa-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/111111'/0'/0/0",
+      "address": "kaspatest:qqd6e65yefepe9wk0m9vuxdufxd80sphy67gwwd0vdaumzdt4tc9ssxd5s7gn"
+    },
+    {
+      "chain": "kaspa-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/111111'/1'/0/0",
+      "address": "kaspatest:qzyqe0y64jqvx043jd0mpgugrd00y39zp0t7j64854k7r0ln2eu3vespg3l76"
+    },
+    {
+      "chain": "xrp",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/144'/0'/0/0",
+      "address": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3"
+    },
+    {
+      "chain": "xrp",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/144'/1'/0/0",
+      "address": "rNAB7uPziNwZAkdzyeo6xRA9pKTsJxZ6td"
+    },
+    {
+      "chain": "xrp-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/144'/0'/0/0",
+      "address": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3"
+    },
+    {
+      "chain": "xrp-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/144'/1'/0/0",
+      "address": "rNAB7uPziNwZAkdzyeo6xRA9pKTsJxZ6td"
+    },
+    {
+      "chain": "tron",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/195'/0'/0/0",
+      "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+    },
+    {
+      "chain": "tron",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/195'/1'/0/0",
+      "address": "TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4"
+    },
+    {
+      "chain": "tron-nile",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/195'/0'/0/0",
+      "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+    },
+    {
+      "chain": "tron-nile",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/195'/1'/0/0",
+      "address": "TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4"
+    },
+    {
+      "chain": "ethereum-classic",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/61'/0'/0/0",
+      "address": "0xFA22515E43658ce56A7682B801e9B5456f511420"
+    },
+    {
+      "chain": "ethereum-classic",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/61'/1'/0/0",
+      "address": "0x30d8947b9c14DEB3d9a792FC110c2F818A91397D"
+    },
+    {
+      "chain": "ethereum-classic-mordor",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/61'/0'/0/0",
+      "address": "0xFA22515E43658ce56A7682B801e9B5456f511420"
+    },
+    {
+      "chain": "ethereum-classic-mordor",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/61'/1'/0/0",
+      "address": "0x30d8947b9c14DEB3d9a792FC110c2F818A91397D"
+    },
+    {
+      "chain": "solana",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/501'/0'/0'",
+      "address": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+    },
+    {
+      "chain": "solana",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/501'/1'/0'",
+      "address": "Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb"
+    },
+    {
+      "chain": "solana",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/501'/0'",
+      "address": "GjJyeC1r2RgkuoCWMyPYkCWSGSGLcz266EaAkLA27AhL"
+    },
+    {
+      "chain": "solana",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/501'/1'",
+      "address": "ANf3TEKFL6jPWjzkndo4CbnNdUNkBk4KHPggJs2nu8Xi"
+    },
+    {
+      "chain": "solana-devnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/501'/0'/0'",
+      "address": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+    },
+    {
+      "chain": "solana-devnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/501'/1'/0'",
+      "address": "Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb"
+    },
+    {
+      "chain": "solana-devnet",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/501'/0'",
+      "address": "GjJyeC1r2RgkuoCWMyPYkCWSGSGLcz266EaAkLA27AhL"
+    },
+    {
+      "chain": "solana-devnet",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/501'/1'",
+      "address": "ANf3TEKFL6jPWjzkndo4CbnNdUNkBk4KHPggJs2nu8Xi"
+    },
+    {
+      "chain": "stellar",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/148'/0'",
+      "address": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX"
+    },
+    {
+      "chain": "stellar",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/148'/1'",
+      "address": "GDVSYYTUAJ3ACHTPQNSTQBDQ4LDHQCMNY4FCEQH5TJUMSSLWQSTG42MV"
+    },
+    {
+      "chain": "stellar-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/148'/0'",
+      "address": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX"
+    },
+    {
+      "chain": "stellar-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/148'/1'",
+      "address": "GDVSYYTUAJ3ACHTPQNSTQBDQ4LDHQCMNY4FCEQH5TJUMSSLWQSTG42MV"
+    },
+    {
+      "chain": "sui",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/784'/0'/0'/0'",
+      "address": "0x5e93a736d04fbb25737aa40bee40171ef79f65fae833749e3c089fe7cc2161f1"
+    },
+    {
+      "chain": "sui",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/784'/1'/0'/0'",
+      "address": "0x082d099250999ab8450a9ef3a962edf9e2449e1045be32ba5a0f2c6117ff7167"
+    },
+    {
+      "chain": "sui-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/784'/0'/0'/0'",
+      "address": "0x5e93a736d04fbb25737aa40bee40171ef79f65fae833749e3c089fe7cc2161f1"
+    },
+    {
+      "chain": "sui-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/784'/1'/0'/0'",
+      "address": "0x082d099250999ab8450a9ef3a962edf9e2449e1045be32ba5a0f2c6117ff7167"
+    },
+    {
+      "chain": "aptos",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/637'/0'/0'/0'",
+      "address": "0xeb663b681209e7087d681c5d3eed12aaa8e1915e7c87794542c3f96e94b3d3bf"
+    },
+    {
+      "chain": "aptos",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/637'/1'/0'/0'",
+      "address": "0xf867372dfec13fb6c0740d4b574363685e10e6f243e9554ffa8f6e698e940efa"
+    },
+    {
+      "chain": "aptos-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/637'/0'/0'/0'",
+      "address": "0xeb663b681209e7087d681c5d3eed12aaa8e1915e7c87794542c3f96e94b3d3bf"
+    },
+    {
+      "chain": "aptos-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/637'/1'/0'/0'",
+      "address": "0xf867372dfec13fb6c0740d4b574363685e10e6f243e9554ffa8f6e698e940efa"
+    },
+    {
+      "chain": "near",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/397'/0'",
+      "address": "5510e2b44cae6eb807e3e0e45d579dda058c274abcba15e5cb84636f5d1ee412"
+    },
+    {
+      "chain": "near",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/397'/1'",
+      "address": "3b93b03253b9715213ec314eb50ecc99d25602ccb5b059f91f51d24710d54326"
+    },
+    {
+      "chain": "near-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/397'/0'",
+      "address": "5510e2b44cae6eb807e3e0e45d579dda058c274abcba15e5cb84636f5d1ee412"
+    },
+    {
+      "chain": "near-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/397'/1'",
+      "address": "3b93b03253b9715213ec314eb50ecc99d25602ccb5b059f91f51d24710d54326"
+    },
+    {
+      "chain": "internet-computer",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/223'/0'/0/0",
+      "address": "744e6bee881995001fcc0fac040b1993566687724bca9c1ac8565ed728f56f82"
+    },
+    {
+      "chain": "internet-computer",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/223'/1'/0/0",
+      "address": "5d392a640c2552892b0c6aad5de18a2c8ce16873949af048b4bf7e2397694172"
+    },
+    {
+      "chain": "cardano",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/1852'/1815'/0'/0/0",
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp"
+    },
+    {
+      "chain": "cardano",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/1852'/1815'/1'/0/0",
+      "address": "addr1v9kjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gmul5d4"
+    },
+    {
+      "chain": "cardano-preprod",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/1852'/1815'/0'/0/0",
+      "address": "addr_test1vq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss9hjl0y"
+    },
+    {
+      "chain": "cardano-preprod",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/1852'/1815'/1'/0/0",
+      "address": "addr_test1vpkjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gq5tgzs"
+    },
+    {
+      "chain": "ethereum",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "ethereum",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "ethereum-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "ethereum-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "ethereum-hoodi",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "ethereum-hoodi",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "arbitrum",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "arbitrum",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "arbitrum-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "arbitrum-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "optimism",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "optimism",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "optimism-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "optimism-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "avalanche",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "avalanche",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "avalanche-fuji",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "avalanche-fuji",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "base",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "base",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "base-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "base-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "bnb",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "bnb",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "bnb-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "bnb-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "hyperliquid",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "hyperliquid",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "hyperliquid-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "hyperliquid-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "polygon",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "polygon",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "polygon-amoy",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "polygon-amoy",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "linea",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "linea",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "linea-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "linea-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "scroll",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "scroll",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "blast",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "blast",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "mantle",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "mantle",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "sei",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "sei",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "celo",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "celo",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "celo-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "celo-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "cronos",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "cronos",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "cronos-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "cronos-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "opbnb",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "opbnb",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "zksync-era",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "zksync-era",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "zksync-era-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "zksync-era-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "sonic",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "sonic",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "sonic-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "sonic-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "berachain",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "berachain",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "unichain",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "unichain",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "ink",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "ink",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "ink-sepolia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "ink-sepolia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "x-layer",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "x-layer",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "x-layer-testnet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "x-layer-testnet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "plasma",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "plasma",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "monad",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "monad",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "world-chain",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "world-chain",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    }
+  ]
+}

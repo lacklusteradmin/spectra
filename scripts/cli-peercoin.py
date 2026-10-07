@@ -204,9 +204,18 @@ try:
             return run('wallet', 'import', '--chain', chain, '--name', name, '--path', path,
                        *([] if protected else ['--no-password']))['wallet']
 
+        def address_at(chain, path):
+            # Previewed in an empty store: here the account is already a wallet,
+            # and a second import of it is refused.
+            result = subprocess.run([binary, '--data-dir', str(pathlib.Path(directory) / 'vectors'), '--json',
+                                     'wallet', 'import', '--chain', chain, '--path', path, '--preview'],
+                                    capture_output=True, text=True, env=env, timeout=60)
+            assert result.returncode == 0, (chain, path, result.stdout, result.stderr)
+            return json.loads(result.stdout)['addresses'][0]
+
         catalog = run('chains', '--filter', 'peercoin', '--testnets')['chains']
         assert {chain['id'] for chain in catalog} == {'peercoin', 'peercoin-testnet'}, catalog
-        assert all(chain['privateKeyImport'] and chain['watchOnlyImport'] and
+        assert all({'importPrivateKey', 'watchAddresses'} <= set(chain['setupMethods']) and
                    chain['supportsSeparateSigning'] and 'utxo' in chain['tags'] for chain in catalog), catalog
         for chain in ('peercoin', 'peercoin-testnet'):
             run('endpoints', '--chain', chain, '--api', 'blockbook', '--capabilities',
@@ -233,7 +242,7 @@ try:
                 wallet = import_path(chain, name, path + '/0/0', protected=True)
                 root = wallet['address']
                 received = run('wallet', 'receive', name, password=None)['address']
-                expected = import_path(chain, name + '-receive-vector', path + '/0/1')['address']
+                expected = address_at(chain, path + '/0/1')
                 assert received == expected and root != received
                 assert run('send', 'scan', '--chain', chain,
                            f'peercoin:{received}?amount=0.5&label=History')['address'] == received
@@ -245,7 +254,7 @@ try:
                     # spend discovered external and change branches together.
                     recovered = []
                     for branch, index, value in [(0, 7, 3_000_000), (0, 27, 4_000_000), (1, 3, 5_000_000)]:
-                        address = import_path(chain, f'{name}-vector-{branch}-{index}', path + f'/{branch}/{index}')['address']
+                        address = address_at(chain, path + f'/{branch}/{index}')
                         fund(chain, address, value)
                         recovered.append(address)
                     discovered = run('pool', 'discover', name, password=None)
@@ -323,14 +332,18 @@ try:
 
             # Generated coinbase and coinstake outputs use independent maturity
             # rules on each network. Keep the genuine P2PK reward script.
+            # Watched, the address cannot send; the key then upgrades that
+            # wallet in place.
             raw_name = chain + '-key'
-            raw_wallet = run('wallet', 'import', '--chain', chain, '--name', raw_name,
-                             '--private-key-env', 'PPC_PRIVATE_KEY', '--no-password')['wallet']
-            sender = raw_wallet['address']
-            watched = run('wallet', 'watch', '--chain', chain, '--name', chain + '-watch', '--address', sender)['wallet']
+            sender = run('wallet', 'import', '--chain', chain, '--private-key-env', 'PPC_PRIVATE_KEY',
+                         '--preview')['addresses'][0]
+            watched = run('wallet', 'watch', '--chain', chain, '--name', raw_name, '--address', sender)['wallet']
             assert watched['address'] == sender
-            run('send', 'build', '--from', chain + '-watch', '--to', sender, '--amount', '0.5',
+            run('send', 'build', '--from', raw_name, '--to', sender, '--amount', '0.5',
                 '--endpoint', endpoint(chain), success=False)
+            upgraded = run('wallet', 'import', '--chain', chain, '--name', 'ignored',
+                           '--private-key-env', 'PPC_PRIVATE_KEY', '--no-password')
+            assert upgraded['upgraded'] and upgraded['wallet']['id'] == watched['id'], upgraded
             maturity = 500 if chain == 'peercoin' else 60
             public = bytes.fromhex('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
             reward_script = b'\x21' + public + b'\xac'

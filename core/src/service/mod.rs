@@ -65,7 +65,7 @@ pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 
 pub(crate) use serde::{Deserialize, Serialize};
 
-mod address_discovery;
+pub(crate) mod address_discovery;
 mod balance_refresh;
 mod diagnostic_state;
 pub use diagnostic_state::{
@@ -74,7 +74,7 @@ pub use diagnostic_state::{
     DiagnosticsSourceCount,
 };
 mod funds_scan;
-pub use funds_scan::{FundsScan, FundsScanProgress, FundsScanRead};
+pub use funds_scan::{FundsScan, FundsScanEndpoint, FundsScanProgress, FundsScanRead};
 mod helpers;
 mod history_bitcoin;
 mod history_cursor;
@@ -327,6 +327,11 @@ impl WalletService {
             let mut custom = self
                 .custom_api_endpoints(chain, chain.endpoint_apis(), &[])
                 .await;
+            // The user's endpoints alone, when the user said so for this
+            // network: the catalog's are not contacted at all.
+            if self.uses_custom_endpoints_only(chain).await {
+                return Arc::new(custom);
+            }
             if !custom.is_empty() {
                 for url in base.iter() {
                     if !custom.contains(url) {
@@ -445,6 +450,10 @@ mod send_stage_protocols;
 mod send_stage_utxo;
 mod send_stages;
 mod send_utxo_sources;
+mod setup_summary;
+pub use setup_summary::{
+    AccountReserve, CapabilityCoverage, SetupEndpoint, WalletSetupLimit, WalletSetupSummary,
+};
 
 pub use owned_send::{OwnedReplacementDraft, OwnedSendPreview, OwnedSendQuote};
 

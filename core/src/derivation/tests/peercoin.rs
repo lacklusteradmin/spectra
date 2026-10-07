@@ -1,4 +1,5 @@
 use super::*;
+use crate::chains::DerivationProfile;
 use crate::derivation::utxo_address::{ParsedUtxoAddress, parse_utxo_address};
 
 const PHRASE: &str =
@@ -63,10 +64,14 @@ fn catalog_paths_derive_every_supported_script_on_the_selected_network() {
                 address.clone()
             ));
             let parsed = parse_utxo_address(chain, &address).unwrap();
-            match template.tag.as_str() {
-                "legacy" => assert!(matches!(parsed, ParsedUtxoAddress::P2pkh(_))),
-                "nestedSegWit" => assert!(matches!(parsed, ParsedUtxoAddress::P2sh(_))),
-                "nativeSegWit" => {
+            match template.profile {
+                DerivationProfile::Legacy => {
+                    assert!(matches!(parsed, ParsedUtxoAddress::P2pkh(_)))
+                }
+                DerivationProfile::NestedSegWit => {
+                    assert!(matches!(parsed, ParsedUtxoAddress::P2sh(_)))
+                }
+                DerivationProfile::NativeSegWit => {
                     assert!(
                         matches!(parsed, ParsedUtxoAddress::Witness { version: 0, ref program } if program.len() == 20)
                     );
@@ -79,13 +84,13 @@ fn catalog_paths_derive_every_supported_script_on_the_selected_network() {
                     );
                     assert_eq!(upper.normalized_value.as_deref(), Some(address.as_str()));
                 }
-                "taproot" => {
+                DerivationProfile::Taproot => {
                     assert!(
                         matches!(parsed, ParsedUtxoAddress::Witness { version: 1, ref program } if program.len() == 32)
                     );
                     assert!(address.starts_with(if chain.is_testnet() { "tpc1p" } else { "pc1p" }));
                 }
-                tag => panic!("unexpected Peercoin path tag {tag}"),
+                DerivationProfile::Standard => panic!("Peercoin lists no standard profile"),
             }
             let public = secp256k1::PublicKey::from_slice(
                 &hex::decode(result.public_key_hex.unwrap()).unwrap(),
@@ -128,32 +133,6 @@ fn peercoin_discovery_accepts_taproot_paths_on_the_concrete_network() {
                 crate::derivation::path::utxo_discovery_index(&path, other, branch),
                 None
             );
-        }
-    }
-}
-
-#[test]
-fn funds_finder_scans_peercoin_catalog_formats_for_three_accounts() {
-    let candidates = crate::derivation::funds_finder::generate_funds_finder_candidates(
-        crate::derivation::funds_finder::FundsFinderRequest {
-            seed_phrase: PHRASE.into(),
-            passphrase: None,
-        },
-    )
-    .unwrap();
-    let peercoin: Vec<_> = candidates
-        .iter()
-        .filter(|c| c.chain_id == Chain::Peercoin)
-        .collect();
-    assert_eq!(peercoin.len(), 12);
-    for template in &Chain::Peercoin.entry().derivation_path {
-        for account in 0..3 {
-            let path = template.path.replace("{account}", &account.to_string());
-            let candidate = peercoin.iter().find(|c| c.derivation_path == path).unwrap();
-            assert!(crate::send::flow::is_valid_send_address(
-                Chain::Peercoin,
-                candidate.address.clone()
-            ));
         }
     }
 }

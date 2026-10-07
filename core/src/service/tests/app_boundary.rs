@@ -166,20 +166,6 @@ fn movement_alert_requires_both_thresholds_and_valid_observations() {
     }
 }
 
-#[test]
-fn private_key_editor_normalizes_only_a_complete_hex_key() {
-    assert_eq!(
-        private_key_hex(format!("  0X{}  ", "AB".repeat(32))),
-        Some("ab".repeat(32))
-    );
-    for invalid in ["ab".repeat(31), "gg".repeat(32), String::new()] {
-        assert!(!is_private_key_hex(invalid.clone()));
-        assert!(private_key_hex(invalid).is_none());
-    }
-    assert!(is_private_key_hex(format!("0x{}", "ab".repeat(32))));
-    assert!(is_private_key_hex(format!("0x{}", "ab".repeat(64))));
-}
-
 #[tokio::test]
 async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input() {
     let server = MockServer::start().await;

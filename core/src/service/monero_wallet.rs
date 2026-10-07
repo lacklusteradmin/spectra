@@ -49,9 +49,11 @@ impl WalletService {
             }
             let db = this.bound_database().await?;
             if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_none() {
+                // Not scanned yet: the scan will start at the restore height
+                // the wallet was imported with.
                 return Ok(Some(MoneroSyncStatus {
                     wallet_id,
-                    scanned_height: 0,
+                    scanned_height: wallet.restore_height.unwrap_or(0),
                     target_height: 0,
                     unlocked_piconeros: 0,
                     complete: false,
@@ -65,11 +67,12 @@ impl WalletService {
 
     /// Bounded, durable scan batch. Both shells can await batches until complete;
     /// cancellation between batches loses no progress. No key is sent to a server.
+    /// The first batch starts at the restore height the wallet was imported
+    /// with, which nothing changes afterwards.
     pub async fn sync_monero_wallet(
         &self,
         wallet_id: String,
         password: Option<String>,
-        restore_height: Option<u64>,
     ) -> Result<MoneroSyncStatus, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
@@ -82,6 +85,7 @@ impl WalletService {
                 .find(|w| w.id == wallet_id)
                 .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
             let chain = wallet.chain_id;
+            let restore_height = wallet.restore_height.unwrap_or(0);
             chain.monero_network_name()?;
             let signer = this
                 .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
@@ -100,11 +104,6 @@ impl WalletService {
             let db = this.bound_database().await?;
             let (revision, mut cached, key) =
                 if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_some() {
-                    if restore_height.is_some() {
-                        return Err(crate::SpectraBridgeError::failure(
-                            "Restore height can only be set before the first Monero sync",
-                        ));
-                    }
                     let (r, w, k) = this.load_monero(&wallet_id).await?;
                     (Some(r), w, k)
                 } else {
@@ -114,8 +113,8 @@ impl WalletService {
                             wallet_id: wallet_id.clone(),
                             chain_id: chain,
                             sender: signer.from_address.clone(),
-                            restore_height: restore_height.unwrap_or(0),
-                            next_height: restore_height.unwrap_or(0),
+                            restore_height,
+                            next_height: restore_height,
                             timestamps: Vec::new(),
                             last_hash: None,
                             target_height: 0,
@@ -345,9 +344,14 @@ mod tests {
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../tests/fixtures/monero-local.json")).unwrap();
         let private = crate::derivation::monero::derive_monero(
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
-            true, true, true,
-        ).unwrap().private_key_hex.unwrap();
+            crate::derivation::phrase::test_phrase(crate::registry::Chain::Monero).into(),
+            true,
+            true,
+            true,
+        )
+        .unwrap()
+        .private_key_hex
+        .unwrap();
         let key = cache_key(
             fixture["wallet_id"].as_str().unwrap(),
             &hex::decode(&private).unwrap()[32..],

@@ -2,7 +2,8 @@
 //!
 //! - `parse_ton_address`: parse raw or
 //!   base64url user-friendly addresses.
-//! - `derive_ton_seed`: TON mnemonic (ton-crypto / TonKeeper / Tonhub) PBKDF2.
+//! - `derive_ton_seed`: TON's own 24-word mnemonic (ton-crypto / Tonkeeper /
+//!   Tonhub), checked before it is expanded.
 //! - The v4R2 path computes the wallet's account id from the embedded
 //!   wallet code BOC + a freshly-built data cell. Correctness is locked
 //!   by `v4r2_code_hash_and_depth`'s self-test against the published
@@ -91,32 +92,134 @@ impl TonAddress {
     }
 }
 
-// ── TON mnemonic seed expansion ──────────────────────────────────────────
+// ── TON mnemonic ─────────────────────────────────────────────────────────
+//
+// TON wallets (Tonkeeper, Tonhub, ton-crypto) use their own 24-word
+// mnemonic, drawn from the BIP-39 English list but not BIP-39: there is no
+// checksum word. A phrase is a TON mnemonic when PBKDF2 over its entropy
+// starts with a zero byte; a password-protected one, when a one-round PBKDF2
+// with another salt starts with a one. Every rule here is ton-crypto 3.3.0's
+// (`mnemonicValidate`, `mnemonicNew`, `mnemonicToSeed`).
 
-// TON mnemonic → 64-byte seed: HMAC-SHA512(mnemonic, passphrase) then PBKDF2 with "TON default seed" salt.
+/// The length of every TON mnemonic.
+pub(crate) const TON_MNEMONIC_WORDS: usize = 24;
+const TON_PBKDF_ITERATIONS: u32 = 100_000;
+
+/// HMAC-SHA512 keyed by the phrase, over the password.
+fn ton_entropy(mnemonic: &str, password: &str) -> Result<Zeroizing<[u8; 64]>, DerivationError> {
+    hmac_sha512(mnemonic.as_bytes(), &[password.as_bytes()])
+}
+
+fn pbkdf2_first_byte(entropy: &[u8; 64], salt: &str, iterations: u32) -> u8 {
+    let mut seed = Zeroizing::new([0u8; 64]);
+    pbkdf2_hmac::<Sha512>(entropy, salt.as_bytes(), iterations, &mut *seed);
+    seed[0]
+}
+
+fn is_basic_seed(entropy: &[u8; 64]) -> bool {
+    pbkdf2_first_byte(
+        entropy,
+        "TON seed version",
+        (TON_PBKDF_ITERATIONS / 256).max(1),
+    ) == 0
+}
+
+fn is_password_seed(entropy: &[u8; 64]) -> bool {
+    pbkdf2_first_byte(entropy, "TON fast seed version", 1) == 1
+}
+
+/// What kind of TON mnemonic 24 English-list words are, if any: one that
+/// needs no password, or one that needs one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TonMnemonicKind {
+    Basic,
+    PasswordProtected,
+}
+
+pub(crate) fn ton_mnemonic_kind(
+    mnemonic: &str,
+) -> Result<Option<TonMnemonicKind>, DerivationError> {
+    let entropy = ton_entropy(mnemonic, "")?;
+    Ok(if is_basic_seed(&entropy) {
+        Some(TonMnemonicKind::Basic)
+    } else if is_password_seed(&entropy) {
+        Some(TonMnemonicKind::PasswordProtected)
+    } else {
+        None
+    })
+}
+
+/// Refuse anything a TON wallet would not restore: the wrong length, a word
+/// outside the list, a phrase that is not a TON mnemonic, or a password that
+/// does not open a password-protected one.
+pub(crate) fn check_ton_mnemonic(mnemonic: &str, password: &str) -> Result<(), DerivationError> {
+    let words: Vec<&str> = mnemonic.split_whitespace().collect();
+    if words.len() != TON_MNEMONIC_WORDS {
+        return Err(DerivationError::refused(
+            "A TON mnemonic has 24 words, not %@.",
+            [words.len()],
+        ));
+    }
+    if let Some(word) = words
+        .iter()
+        .find(|word| bip39::Language::English.find_word(word).is_none())
+    {
+        return Err(DerivationError::refused(
+            "%@ is not a TON mnemonic word.",
+            [word.to_string()],
+        ));
+    }
+    let mnemonic = words.join(" ");
+    let valid = match ton_mnemonic_kind(&mnemonic)? {
+        Some(TonMnemonicKind::Basic) => password.is_empty(),
+        Some(TonMnemonicKind::PasswordProtected) => {
+            !password.is_empty() && is_basic_seed(&*ton_entropy(&mnemonic, password)?)
+        }
+        None => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(DerivationError::invalid(
+            "This is not a TON mnemonic, or its password does not match.",
+        ))
+    }
+}
+
+/// A new TON mnemonic that needs no password, as ton-crypto's `mnemonicNew`
+/// makes one: random words until the phrase passes the TON check.
+pub(crate) fn generate_ton_mnemonic() -> Result<Zeroizing<String>, DerivationError> {
+    use rand::Rng;
+    let list = bip39::Language::English.word_list();
+    let mut rng = rand::thread_rng();
+    loop {
+        let mnemonic = Zeroizing::new(
+            (0..TON_MNEMONIC_WORDS)
+                .map(|_| list[rng.gen_range(0..list.len())])
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        if ton_mnemonic_kind(&mnemonic)? == Some(TonMnemonicKind::Basic) {
+            return Ok(mnemonic);
+        }
+    }
+}
+
+/// TON mnemonic → 64-byte seed: PBKDF2-HMAC-SHA512 over the entropy, salted
+/// "TON default seed". The private key is the first 32 bytes.
 pub(crate) fn derive_ton_seed(
     mnemonic: &str,
-    passphrase: &str,
-    salt_prefix: Option<&str>,
-    iteration_count: u32,
+    password: &str,
 ) -> Result<Zeroizing<[u8; 64]>, DerivationError> {
-    // TON mnemonic scheme (ton-crypto / TonKeeper / Tonhub):
-    //   entropy = HMAC-SHA512(key = mnemonic_string, data = passphrase_bytes)
-    //   seed    = PBKDF2-HMAC-SHA512(entropy, salt = "TON default seed",
-    //                                 iterations = 100_000, dklen = 64)
-    //   priv    = seed[0..32]
-    //
-    // `salt_prefix` and `iteration_count` are honored as customization
-    // points — defaults match the ton-crypto reference implementation.
-    let entropy = hmac_sha512(mnemonic.as_bytes(), &[passphrase.as_bytes()])?;
-    let iterations = if iteration_count == 0 {
-        100_000
-    } else {
-        iteration_count
-    };
-    let salt = salt_prefix.unwrap_or("TON default seed");
+    check_ton_mnemonic(mnemonic, password)?;
+    let entropy = ton_entropy(mnemonic, password)?;
     let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(&*entropy, salt.as_bytes(), iterations, &mut *seed);
+    pbkdf2_hmac::<Sha512>(
+        &*entropy,
+        b"TON default seed",
+        TON_PBKDF_ITERATIONS,
+        &mut *seed,
+    );
     Ok(seed)
 }
 
@@ -342,7 +445,7 @@ pub(crate) fn derive_ton_standard(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""), None, 0)?;
+    let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""))?;
     let mut private_key = [0u8; 32];
     private_key.copy_from_slice(&seed[..32]);
     let signing_key = SigningKey::from_bytes(&private_key);

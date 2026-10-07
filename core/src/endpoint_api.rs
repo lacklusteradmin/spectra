@@ -238,6 +238,33 @@ mod tests {
     }
 }
 
+/// An API a network takes a custom endpoint in, with what Spectra's adapter
+/// for it reads there.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct EndpointApiOption {
+    pub api: EndpointApi,
+    /// The API's name as `endpoints.toml` and `AddCustomEndpoint` spell it.
+    pub id: String,
+    pub capabilities: Vec<EndpointCapability>,
+}
+
+/// The APIs `chain` takes a custom endpoint in — every one with an adapter
+/// operation there, whether or not the catalog lists an endpoint for it, so a
+/// network with no built-in provider can still be given one.
+#[uniffi::export]
+pub fn endpoint_api_options(chain: crate::registry::Chain) -> Vec<EndpointApiOption> {
+    chain
+        .compatible_endpoint_apis()
+        .into_iter()
+        .map(|api| EndpointApiOption {
+            api,
+            id: api.as_str().into(),
+            capabilities: endpoint_capability_options(chain, api),
+        })
+        .filter(|option| !option.capabilities.is_empty())
+        .collect()
+}
+
 /// Operations implemented by Spectra's adapter. This is an editing constraint,
 /// never a claim that any particular provider enables those operations.
 #[uniffi::export]

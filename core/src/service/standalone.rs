@@ -1,41 +1,9 @@
-//! Exports that need no service state: hex normalisation, the large-movement
-//! threshold, the built-in token catalog, and BIP-39.
+//! Exports that need no service state: the large-movement threshold, the
+//! built-in token catalog, and phrase generation.
 //!
 //! Synchronous and free of I/O, so Swift can call them from a `static let`.
 
 use crate::SpectraBridgeError;
-
-/// Trim + lowercase + strip leading `0x` from a private-key hex string.
-pub(crate) fn private_key_hex_normalized(raw_value: String) -> String {
-    let trimmed = raw_value.trim().to_lowercase();
-    match trimmed.strip_prefix("0x") {
-        Some(stripped) => stripped.to_string(),
-        None => trimmed,
-    }
-}
-
-/// The normalised 32-byte signing seed or 64-byte extended hex key, or `None` when the input is not one.
-///
-/// Not exported: the import commit is the only caller that needs the key, and
-/// it is in core. The editor needs only [`is_private_key_hex`].
-pub(crate) fn private_key_hex(raw_value: String) -> Option<String> {
-    let normalized = private_key_hex_normalized(raw_value);
-    (matches!(normalized.len(), 64 | 128) && normalized.chars().all(|c| c.is_ascii_hexdigit()))
-        .then_some(normalized)
-}
-
-/// Whether the input is a 32-byte signing seed or 64-byte extended hex key, once normalised.
-///
-/// The key editor asks this on every render. It asked `private_key_hex`,
-/// which answered with the normalised key itself — a fresh copy of a secret
-/// back across the boundary each time, for a caller that compared it with
-/// `nil` — and the app then kept up to 128 typed candidates as the keys of a
-/// process-lifetime cache so as not to ask again. A yes or no is all the
-/// editor reads, and it is cheap enough to ask directly.
-#[uniffi::export]
-pub fn is_private_key_hex(raw_value: String) -> bool {
-    private_key_hex(raw_value).is_some()
-}
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -99,28 +67,16 @@ pub fn list_all_builtin_token_deployments() -> Vec<tokens::TokenDeploymentEntry>
     tokens::list_token_deployments(None)
 }
 
-/// Generate a new random BIP-39 mnemonic of `word_count` words.
+/// Generate a new phrase for a wallet on `chain`, of `word_count` words, in
+/// the format the chain's own wallets restore: BIP-39 for most, Monero's
+/// 25-word seed, TON's 24-word mnemonic.
 ///
-/// Refuses a length BIP-39 does not define rather than substituting one.
-/// `seed_phrase_entropy_bits` in `crate::validation` is the only list of
-/// accepted lengths.
+/// Refuses a length the chain's created format does not have rather than
+/// substituting one; `seed_phrase_lengths` lists them.
 #[uniffi::export]
-pub fn generate_mnemonic(word_count: u32) -> Result<String, SpectraBridgeError> {
-    use bip39::{Language, Mnemonic};
-    use rand::RngCore;
-
-    let entropy_bits =
-        crate::validation::seed_phrase_entropy_bits(word_count).ok_or_else(|| {
-            SpectraBridgeError::InvalidInput {
-                message: format!(
-                    "{word_count} is not a BIP-39 phrase length. Use 12, 15, 18, 21 or 24 words."
-                )
-                .into(),
-            }
-        })?;
-    let mut entropy = vec![0u8; entropy_bits as usize / 8];
-    rand::thread_rng().fill_bytes(&mut entropy);
-    Ok(Mnemonic::from_entropy_in(Language::English, &entropy)
-        .expect("valid entropy length")
-        .to_string())
+pub fn generate_seed_phrase(
+    chain: crate::registry::Chain,
+    word_count: u32,
+) -> Result<String, SpectraBridgeError> {
+    Ok(crate::derivation::phrase::generate_phrase(chain, word_count)?.to_string())
 }

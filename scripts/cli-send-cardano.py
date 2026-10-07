@@ -50,12 +50,15 @@ try:
                 env=env, capture_output=True, text=True, timeout=45)
             assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
             return json.loads(result.stdout)
+        # The extended key is the phrase's account key: it previews the
+        # phrase's address, and once the phrase is imported it is that wallet.
+        previewed = run('wallet', 'import', '--chain', 'cardano', '--private-key-env', 'CARDANO_KEY', '--preview')
+        assert previewed['addresses'] == [vector['address']], previewed
         wallet = run('wallet', 'import', '--chain', 'cardano', '--name', 'Cardano', '--no-password')['wallet']
         assert wallet['address'] == vector['address'], wallet
-        imported = run('wallet', 'import', '--chain', 'cardano', '--name', 'Extended', '--private-key-env', 'CARDANO_KEY')['wallet']
-        assert imported['address'] == vector['address'], imported
+        run('wallet', 'import', '--chain', 'cardano', '--name', 'Extended', '--private-key-env', 'CARDANO_KEY', success=False)
         run('wallet', 'import', '--chain', 'cardano', '--name', 'Short key', '--private-key-env', 'SHORT_CARDANO_KEY', success=False)
-        assert run('send', 'identity', '--from', 'Extended')['address'] == vector['address']
+        assert run('send', 'identity', '--from', 'Cardano')['address'] == vector['address']
         run('endpoints', '--chain', 'cardano', '--api', 'koios',
             '--capabilities', 'balance,utxo,verification,broadcast', '--add', endpoint)
         def build(success=True):

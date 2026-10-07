@@ -1,5 +1,7 @@
 //! Import and secret-store adapters.
 use super::*;
+use crate::derivation::import::{ImportedAddress, WalletImportKind};
+use zeroize::Zeroizing;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -36,9 +38,41 @@ impl WalletService {
         }
     }
 
-    /// Import wallets: plan them, build them, and store them.
+    /// What `import_wallets` would store for `commit`, without sealing or
+    /// storing anything and without touching the network: the planning the
+    /// import runs, so the two cannot disagree. The password is the import's
+    /// to judge, not the preview's.
+    pub async fn preview_wallet_import(
+        &self,
+        commit: crate::derivation::import::WalletImportCommit,
+    ) -> Result<crate::derivation::import::WalletImportPreview, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let plan = plan_import(commit)?;
+            let stored = this.wallet_state.read().await.wallets.clone();
+            let placed = place_import(plan, &stored)?;
+            Ok(crate::derivation::import::WalletImportPreview {
+                addresses: placed
+                    .plan
+                    .wallets
+                    .iter()
+                    .map(preview_address)
+                    .collect::<Result<_, _>>()?,
+                rejected_addresses: placed.plan.rejected_addresses,
+                upgrades_wallet: placed.upgrade.map(|wallet| wallet.name),
+            })
+        })
+        .await
+    }
+
+    /// Import a wallet on one network: derive or validate its address, build
+    /// it, and store it. A watch import of several addresses stores one wallet
+    /// per address. A signing import whose address or account key a
+    /// watch-only wallet on the network already holds gives that wallet its
+    /// keys instead; every other duplicate is refused (`place_import`).
     ///
-    /// Core stores secrets before atomically committing all wallets.
+    /// Core seals secrets, then commits the wallets atomically, and removes
+    /// the sealed secrets again if the commit fails.
     pub async fn import_wallets(
         &self,
         commit: crate::derivation::import::WalletImportCommit,
@@ -46,22 +80,6 @@ impl WalletService {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            // One validation rule for every chain, applied before planning so a
-            // malformed address cannot reach storage. Both inputs carry addresses:
-            // `resolved_addresses` for a signing import, `watch_only_entries` for a
-            // watch-only one. Validating only the first covered the path whose
-            // address core derived itself and skipped the path where the user
-            // typed it.
-            let mut commit = commit;
-            commit.request.check_shape()?;
-            // Canonicalize before both derivation and storage, regardless of caller.
-            commit.seed_phrase = commit.seed_phrase.map(|phrase| {
-                phrase
-                    .split_whitespace()
-                    .map(str::to_lowercase)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            });
             // `None` is the choice of no password; a blank `Some` is a request
             // for one that has none. Refused before anything is planned or
             // stored, rather than left to the secret store after the wallets
@@ -73,156 +91,13 @@ impl WalletService {
             {
                 return Err(crate::store::wallet_secrets::WalletSecretError::EmptyPassword.into());
             }
-            if commit.request.is_private_key_import {
-                commit.private_key = Some(
-                    super::standalone::private_key_hex(
-                        commit.private_key.take().unwrap_or_default(),
-                    )
-                    .ok_or_else(|| SpectraBridgeError::failure("Enter a valid hex signing key."))?,
-                );
+            let plan = plan_import(commit)?;
+            // A named account is held only once the network confirms it.
+            if let Some((account, public_key)) = &plan.named_account_key {
+                this.confirm_named_account(plan.commit.request.chain, account, public_key)
+                    .await?;
             }
-            if (commit.request.is_watch_only_import || commit.request.is_private_key_import)
-                && !commit.derivation_overrides.is_empty()
-            {
-                return Err(SpectraBridgeError::failure(
-                    "Derivation overrides require a mnemonic wallet",
-                ));
-            }
-            for &chain in &commit.request.selected_chain_ids {
-                commit.derivation_overrides.validate_for_chain(chain)?;
-            }
-            // Complete explicit overrides with network-local defaults before
-            // deriving, so those same paths are persisted with the addresses.
-            let mut paths = crate::derivation::path::derivation_paths_for_preset(
-                commit.seed_derivation_preset,
-            )?;
-            paths
-                .by_chain
-                .extend(std::mem::take(&mut commit.seed_derivation_paths.by_chain));
-            commit.seed_derivation_paths = paths;
-            let mut resolved_addresses = std::collections::HashMap::new();
-            // Derive here when the caller did not — from a seed phrase or from a
-            // private key, whichever this import carries. Keep concrete networks
-            // distinct even when their addresses share a presentation slot.
-            if !commit.request.is_watch_only_import {
-                let key = commit
-                    .private_key
-                    .clone()
-                    .filter(|k| !k.trim().is_empty())
-                    .filter(|_| commit.request.is_private_key_import);
-                let seed = commit
-                    .seed_phrase
-                    .clone()
-                    .filter(|s| !s.trim().is_empty())
-                    .filter(|_| !commit.request.is_private_key_import);
-                let derived = match (&key, &seed) {
-                    (Some(key), _) => Some(
-                        // `check_shape` has held a private-key import to one chain.
-                        crate::derivation::import::derive_private_key_import_address(
-                            key,
-                            commit.request.selected_chain_ids[0],
-                        )?,
-                    ),
-                    (None, Some(seed)) => Some(crate::derivation::import::derive_import_addresses(
-                        seed,
-                        &commit.request.selected_chain_ids,
-                        &commit.seed_derivation_paths,
-                        &commit.derivation_overrides,
-                    )),
-                    (None, None) => {
-                        return Err(SpectraBridgeError::failure(
-                            "Signing import requires a seed phrase or private key",
-                        ));
-                    }
-                };
-                if let Some(derived) = derived {
-                    resolved_addresses = derived
-                        .into_iter()
-                        .map(|(chain, address)| {
-                            (
-                                chain,
-                                crate::derivation::import::WalletImportAddresses::single(
-                                    chain, address,
-                                ),
-                            )
-                        })
-                        .collect();
-                    // Deriving nothing is a refusal, not an import. A secret the
-                    // deriver cannot read — the wrong wordlist, an override that
-                    // does not apply — produced a stored wallet with an empty
-                    // address that read to the user as "imported", which is the
-                    // mistake watch-only imports already refuse to make.
-                    if resolved_addresses.is_empty() {
-                        return Err(SpectraBridgeError::invalid(
-                            "Could not derive an address from this secret for any selected chain.",
-                        ));
-                    }
-                }
-            }
-            // Core-derived addresses are judged by the network that owns their
-            // slot; typed watch-only addresses by the chain they were typed for.
-            let mut rejected_addresses = Vec::new();
-            let validated = resolved_addresses
-                .into_iter()
-                .map(|(chain, addresses)| {
-                    let (validated, rejected) =
-                        crate::derivation::import::validated_addresses(&addresses);
-                    rejected_addresses.extend(rejected);
-                    (chain, validated)
-                })
-                .collect();
-            let (validated_watch_only, rejected_watch_only) =
-                crate::derivation::import::validated_watch_only_entries(
-                    &commit.request.watch_only_entries,
-                );
-            commit.request.watch_only_entries = validated_watch_only;
-            rejected_addresses.extend(rejected_watch_only);
-
-            // A plan that fails *because* validation emptied the input is a refusal
-            // of what the caller supplied, not an internal failure — say which
-            // address was refused, and classify it so a caller can tell the two
-            // apart without reading the message.
-            let plan_request = crate::derivation::import::WalletImportPlanRequest::new(
-                commit.request.clone(),
-                validated,
-                commit.password.is_some(),
-            );
-            let plan = match crate::derivation::import::plan_wallet_import(plan_request) {
-                Ok(plan) => plan,
-                Err(message) if !rejected_addresses.is_empty() => {
-                    return Err(SpectraBridgeError::InvalidInput {
-                        message: format!("{message} Rejected: {}", rejected_addresses.join(", "))
-                            .into(),
-                    });
-                }
-                Err(message) => return Err(SpectraBridgeError::from(message)),
-            };
-            let mut wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
-            if let Some(seed) = commit.seed_phrase.as_deref().filter(|_| {
-                !commit.request.is_watch_only_import && !commit.request.is_private_key_import
-            }) {
-                for wallet in &mut wallets {
-                    if wallet.chain_id.uses_account_utxo() {
-                        let path = wallet
-                            .seed_derivation_paths
-                            .path_for(wallet.chain_id)
-                            .ok_or_else(|| {
-                                SpectraBridgeError::invalid("UTXO wallet has no derivation path")
-                            })?;
-                        wallet.account_xpub =
-                            Some(super::address_discovery::UtxoDerivation::account_xpub(
-                                wallet.chain_id,
-                                seed,
-                                path,
-                                &commit.derivation_overrides,
-                            )?);
-                    }
-                }
-            }
-            let is_watch_only = commit.request.is_watch_only_import;
-            let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
-            let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);
-            let password = commit.password.take().map(zeroize::Zeroizing::new);
+            let is_watch_only = plan.commit.request.kind.is_watch_only();
             this.write_persisted(move |service| async move {
                 let database = service.bound_database().await?;
                 let source = database.clone();
@@ -231,19 +106,32 @@ impl WalletService {
                 })
                 .await
                 .map_err(SpectraBridgeError::failure)??;
+                let mut snapshot = service.wallet_state.read().await.clone();
+                // Placed against the state this write commits over, so a
+                // duplicate cannot slip in between a check and the commit.
+                let Placed { plan, upgrade } = place_import(plan, &snapshot.wallets)?;
+                let ImportPlan {
+                    mut commit,
+                    mut wallets,
+                    rejected_addresses,
+                    ..
+                } = plan;
+                let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
+                let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);
+                let password = commit.password.take().map(zeroize::Zeroizing::new);
                 if wallets.iter().any(|wallet| pending.contains(&wallet.id)) {
                     return Err(SpectraBridgeError::failure(
                         "Import ID still has pending secret cleanup",
                     ));
                 }
-                let mut snapshot = service.wallet_state.read().await.clone();
-                if wallets
-                    .iter()
-                    .any(|w| snapshot.wallets.iter().any(|old| old.id == w.id))
+                if upgrade.is_none()
+                    && wallets
+                        .iter()
+                        .any(|w| snapshot.wallets.iter().any(|old| old.id == w.id))
                 {
                     return Err(SpectraBridgeError::failure("Import ID already exists"));
                 }
-                if commit.request.wallet_name.trim().is_empty() {
+                if upgrade.is_none() && commit.request.wallet_name.trim().is_empty() {
                     let mut used: std::collections::HashSet<String> = snapshot
                         .wallets
                         .iter()
@@ -261,13 +149,15 @@ impl WalletService {
                     }
                 }
                 let previous = snapshot.clone();
-                for wallet in &wallets {
-                    reduce_state_in_place(
-                        &mut snapshot,
-                        StateCommand::UpsertWallet {
-                            wallet: wallet.to_wallet_state()?,
-                        },
-                    );
+                let states = match &upgrade {
+                    Some(upgraded) => vec![upgraded.clone()],
+                    None => wallets
+                        .iter()
+                        .map(|wallet| wallet.to_wallet_state())
+                        .collect::<Result<Vec<_>, _>>()?,
+                };
+                for wallet in states {
+                    reduce_state_in_place(&mut snapshot, StateCommand::UpsertWallet { wallet });
                 }
                 let changes =
                     crate::wallet_db::AppStateChanges::between(Some(&previous), &snapshot)?;
@@ -279,7 +169,7 @@ impl WalletService {
                 let result: Result<(), SpectraBridgeError> = async {
                     if let Some(store) = &secrets {
                         for wallet in &wallets {
-                            let result = if commit.request.is_private_key_import {
+                            let result = if commit.request.kind == WalletImportKind::PrivateKey {
                                 crate::store::wallet_secrets::store_private_key(
                                     &**store,
                                     &wallet.id,
@@ -321,13 +211,458 @@ impl WalletService {
                 }
                 service.publish_state(snapshot).await;
                 Ok(crate::derivation::import::WalletImportOutcome {
-                    secret_kind: plan.secret_kind,
                     wallets,
                     rejected_addresses,
+                    upgraded: upgrade.is_some(),
                 })
             })
             .await
         })
         .await
     }
+}
+
+/// An import worked out without storing anything: the commit as core reads
+/// it — the phrase canonical, the key in hex, the path resolved — the wallets
+/// it builds and the typed addresses it refused. The preview and the import
+/// both start here, so the address a page shows is the one the import stores.
+struct ImportPlan {
+    commit: crate::derivation::import::WalletImportCommit,
+    wallets: Vec<crate::store::wallet_domain::WalletView>,
+    rejected_addresses: Vec<String>,
+    /// The named account the wallet holds and the public key (hex) the
+    /// network must list among its full-access keys before it is stored.
+    named_account_key: Option<(String, String)>,
+}
+
+fn plan_import(
+    mut commit: crate::derivation::import::WalletImportCommit,
+) -> Result<ImportPlan, SpectraBridgeError> {
+    // One validation rule for every address, derived or typed, applied
+    // before anything is built so a malformed address cannot reach
+    // storage.
+    commit.request.check_shape()?;
+    let chain = commit.request.chain;
+    // Canonicalize before both derivation and storage, regardless of caller.
+    commit.seed_phrase = commit.seed_phrase.map(|phrase| {
+        phrase
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
+    // The secret the kind names, and no other: a watch import that
+    // carried a phrase, or a phrase import that carried a key, would
+    // seal or drop material the caller did not mean to hand over.
+    let has_seed = commit
+        .seed_phrase
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+    let has_key = commit
+        .private_key
+        .as_deref()
+        .is_some_and(|k| !k.trim().is_empty());
+    match (&commit.request.kind, has_seed, has_key) {
+        (WalletImportKind::Phrase, true, false) | (WalletImportKind::PrivateKey, false, true) => {}
+        (kind, false, false) if kind.is_watch_only() => {}
+        (WalletImportKind::Phrase, false, _) => {
+            return Err(SpectraBridgeError::invalid(
+                "A phrase import requires a seed phrase.",
+            ));
+        }
+        (WalletImportKind::PrivateKey, _, false) => {
+            return Err(SpectraBridgeError::invalid(
+                "A private-key import requires a private key.",
+            ));
+        }
+        _ => {
+            return Err(SpectraBridgeError::invalid(
+                "An import carries only the secret its kind names.",
+            ));
+        }
+    }
+    // A key in any of the chain's own encodings, read into the hex the
+    // key is sealed and derived as.
+    if commit.request.kind == WalletImportKind::PrivateKey {
+        let typed = Zeroizing::new(commit.private_key.take().unwrap_or_default());
+        commit.private_key =
+            Some(crate::derivation::key_formats::parse_private_key(chain, &typed)?.to_string());
+    }
+    if commit.request.kind != WalletImportKind::Phrase
+        && (!commit.derivation_overrides.is_empty()
+            || commit
+                .derivation_path
+                .as_deref()
+                .is_some_and(|path| !path.trim().is_empty()))
+    {
+        return Err(SpectraBridgeError::failure(
+            "Derivation overrides require a mnemonic wallet",
+        ));
+    }
+    commit.derivation_overrides.validate_for_chain(chain)?;
+    // A named account is a NEAR key holder's, by name; read before deriving
+    // so a malformed one is refused before any key work.
+    let named_account = match commit
+        .named_account
+        .take()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+    {
+        None => None,
+        Some(name) => {
+            if !chain.supports_named_sender_accounts()
+                || !matches!(
+                    commit.request.kind,
+                    WalletImportKind::Phrase | WalletImportKind::PrivateKey
+                )
+            {
+                return Err(SpectraBridgeError::invalid(
+                    "Only a NEAR key import takes a named account.",
+                ));
+            }
+            let normalized = crate::derivation::import::normalized_import_address(chain, &name)
+                .filter(|account| {
+                    !(account.len() == 64 && account.bytes().all(|b| b.is_ascii_hexdigit()))
+                })
+                .ok_or_else(|| {
+                    SpectraBridgeError::from(crate::derivation::error::DerivationError::refused(
+                        "Not a NEAR named account: %@",
+                        [&name],
+                    ))
+                })?;
+            Some(normalized)
+        }
+    };
+    let mut named_account_key = None;
+    // A phrase in a format the chain's own wallets do not write — BIP-39
+    // on Monero or TON — restores nothing those wallets would, so it is
+    // refused here rather than read another way.
+    if let Some(seed) = commit
+        .seed_phrase
+        .as_deref()
+        .filter(|_| commit.request.kind == WalletImportKind::Phrase)
+    {
+        crate::derivation::phrase::check_phrase(
+            chain,
+            seed,
+            commit.derivation_overrides.passphrase.as_deref(),
+        )?;
+    }
+    // The wallet's one path, resolved before deriving so the path
+    // stored is the one the address came from. Only a phrase walks
+    // one.
+    commit.derivation_path = if commit.request.kind == WalletImportKind::Phrase {
+        crate::derivation::path::import_derivation_path(chain, commit.derivation_path.as_deref())?
+    } else {
+        None
+    };
+    // A derived address is judged by the network it was derived for;
+    // a typed one by the chain it was typed for. Typed addresses that
+    // do not parse are reported, and the rest imported.
+    let mut rejected_addresses = Vec::new();
+    let imported = match &commit.request.kind {
+        WalletImportKind::Phrase | WalletImportKind::PrivateKey => {
+            // The secret was matched to its kind above.
+            let derived = if commit.request.kind == WalletImportKind::PrivateKey {
+                crate::derivation::import::derive_private_key_import_address(
+                    commit.private_key.as_deref().unwrap_or_default(),
+                    chain,
+                )?
+            } else {
+                crate::derivation::import::derive_import_address(
+                    commit.seed_phrase.as_deref().unwrap_or_default(),
+                    chain,
+                    commit.derivation_path.as_deref().unwrap_or_default(),
+                    &commit.derivation_overrides,
+                )?
+            };
+            if let Some(account) = &named_account {
+                // NEAR's implicit account is the public key in hex.
+                named_account_key = Some((account.clone(), derived.to_ascii_lowercase()));
+            }
+            let derived = named_account.clone().unwrap_or(derived);
+            let address = crate::derivation::import::normalized_import_address(chain, &derived)
+                .ok_or_else(|| {
+                    SpectraBridgeError::from(crate::derivation::error::DerivationError::refused(
+                        "Could not derive a %@ address from this secret.",
+                        [chain.chain_display_name()],
+                    ))
+                })?;
+            vec![ImportedAddress::Address(address)]
+        }
+        WalletImportKind::WatchAddresses { addresses } => {
+            let (kept, rejected) =
+                crate::derivation::import::validated_watch_addresses(chain, addresses);
+            rejected_addresses.extend(rejected);
+            if kept.is_empty() {
+                let message = "Enter at least one valid address to import.";
+                return Err(if rejected_addresses.is_empty() {
+                    SpectraBridgeError::invalid(message)
+                } else {
+                    SpectraBridgeError::InvalidInput {
+                        message: format!("{message} Rejected: {}", rejected_addresses.join(", "))
+                            .into(),
+                    }
+                });
+            }
+            kept.into_iter().map(ImportedAddress::Address).collect()
+        }
+        WalletImportKind::WatchAccountXpub { xpub } => {
+            let xpub =
+                crate::derivation::import::validated_account_xpub(xpub).ok_or_else(|| {
+                    SpectraBridgeError::InvalidInput {
+                        message: format!(
+                            "Enter a valid account public key. Rejected: {}",
+                            xpub.trim()
+                        )
+                        .into(),
+                    }
+                })?;
+            vec![ImportedAddress::AccountXpub(xpub)]
+        }
+    };
+    // A Monero wallet scans from its restore height: the one typed or
+    // given for a created wallet, else a Polyseed's birthday, else the
+    // start of the chain. No other chain scans.
+    let restore_height = if chain.mainnet_counterpart() == Chain::Monero {
+        Some(match commit.restore_height {
+            Some(height) => {
+                crate::monero_heights::check_restore_height(chain, height)?;
+                height
+            }
+            None => commit
+                .seed_phrase
+                .as_deref()
+                .and_then(crate::derivation::phrase::polyseed_birthday)
+                .map_or(0, |birthday| {
+                    crate::monero_heights::height_at_or_before(chain, birthday)
+                }),
+        })
+    } else if commit.restore_height.is_some() {
+        return Err(SpectraBridgeError::invalid(
+            "Only Monero wallets take a restore height.",
+        ));
+    } else {
+        None
+    };
+    let mut wallets =
+        crate::derivation::import::wallets_for_import(&commit, imported, restore_height);
+    if let Some(seed) = commit
+        .seed_phrase
+        .as_deref()
+        .filter(|_| commit.request.kind == WalletImportKind::Phrase)
+        && chain.uses_account_utxo()
+    {
+        let path = commit
+            .derivation_path
+            .as_deref()
+            .ok_or_else(|| SpectraBridgeError::invalid("UTXO wallet has no derivation path"))?;
+        let xpub = super::address_discovery::UtxoDerivation::account_xpub(
+            chain,
+            seed,
+            path,
+            &commit.derivation_overrides,
+        )?;
+        for wallet in &mut wallets {
+            wallet.account_xpub = Some(xpub.clone());
+        }
+    }
+    Ok(ImportPlan {
+        commit,
+        wallets,
+        rejected_addresses,
+        named_account_key,
+    })
+}
+
+/// The address a planned wallet shows: its own, or for a watched account the
+/// first receive address of the key.
+fn preview_address(
+    wallet: &crate::store::wallet_domain::WalletView,
+) -> Result<String, SpectraBridgeError> {
+    if let Some(address) = wallet.primary_address() {
+        return Ok(address.to_string());
+    }
+    wallet
+        .account_xpub
+        .as_deref()
+        .and_then(first_receive_address)
+        .ok_or_else(|| SpectraBridgeError::failure("a planned wallet has no address"))
+}
+
+/// A plan placed among the wallets already stored on its network.
+struct Placed {
+    plan: ImportPlan,
+    /// The watch-only wallet a signing import gives its keys to, as it will
+    /// be stored; `plan.wallets` is then that one wallet.
+    upgrade: Option<crate::store::state::WalletState>,
+}
+
+/// Where an import meets the stored wallets. A wallet holds its address,
+/// and a watched account holds its key and the key's first receive address;
+/// no two wallets on one network hold the same one.
+///
+/// - A signing import (a phrase or a key) whose address or account key a
+///   watch-only wallet holds gives that wallet its keys: the wallet keeps its
+///   id, name, settings and balances — so its history and labels, which hang
+///   off the id — and is otherwise what the import would have stored.
+/// - One a wallet already signs for is refused, naming that wallet.
+/// - A watched line already held, or typed twice, joins the refused lines;
+///   a watch with no line left, and an account key watched again, is refused
+///   naming the wallet that holds it.
+fn place_import(
+    mut plan: ImportPlan,
+    stored: &[crate::store::state::WalletState],
+) -> Result<Placed, SpectraBridgeError> {
+    use crate::derivation::error::DerivationError;
+    let chain = plan.commit.request.chain;
+    // What each stored wallet on the network holds, worked out once.
+    let held: Vec<_> = stored
+        .iter()
+        .filter(|wallet| wallet.chain_id == chain)
+        .map(|wallet| {
+            let mut addresses: Vec<String> =
+                wallet.addresses.iter().map(|a| a.address.clone()).collect();
+            addresses.extend(wallet.xpub.as_deref().and_then(first_receive_address));
+            (
+                wallet,
+                addresses,
+                wallet.xpub.as_deref().and_then(account_key),
+            )
+        })
+        .collect();
+    let holder = |wallet: &crate::store::wallet_domain::WalletView| {
+        let address = preview_address(wallet).ok();
+        let key = wallet.account_xpub.as_deref().and_then(account_key);
+        held.iter()
+            .find(|(_, addresses, stored_key)| {
+                address.as_ref().is_some_and(|a| addresses.contains(a))
+                    || key.is_some() && *stored_key == key
+            })
+            .map(|(wallet, _, _)| *wallet)
+    };
+    let refused = |held_by: &crate::store::state::WalletState| -> SpectraBridgeError {
+        DerivationError::refused("This is already in the wallet “%@”.", [&held_by.name]).into()
+    };
+    match plan.commit.request.kind {
+        WalletImportKind::Phrase | WalletImportKind::PrivateKey => {
+            let Some(existing) = holder(&plan.wallets[0]) else {
+                return Ok(Placed {
+                    plan,
+                    upgrade: None,
+                });
+            };
+            if !existing.is_watch_only() {
+                return Err(refused(existing));
+            }
+            let mut upgraded = plan.wallets[0].to_wallet_state()?;
+            upgraded.id = existing.id.clone();
+            upgraded.name = existing.name.clone();
+            upgraded.include_in_portfolio_total = existing.include_in_portfolio_total;
+            upgraded.holdings = existing.holdings.clone();
+            plan.wallets = vec![upgraded.to_wallet_view()];
+            Ok(Placed {
+                plan,
+                upgrade: Some(upgraded),
+            })
+        }
+        WalletImportKind::WatchAddresses { .. } => {
+            let mut kept: Vec<crate::store::wallet_domain::WalletView> = Vec::new();
+            let mut first_holder = None;
+            for wallet in std::mem::take(&mut plan.wallets) {
+                let address = wallet.primary_address().unwrap_or_default().to_string();
+                let repeated = kept
+                    .iter()
+                    .any(|k| k.primary_address() == Some(address.as_str()));
+                match holder(&wallet) {
+                    Some(held_by) => {
+                        first_holder.get_or_insert(held_by);
+                        plan.rejected_addresses.push(address);
+                    }
+                    None if repeated => plan.rejected_addresses.push(address),
+                    None => kept.push(wallet),
+                }
+            }
+            if kept.is_empty() {
+                return Err(match first_holder {
+                    Some(held_by) => refused(held_by),
+                    None => {
+                        SpectraBridgeError::invalid("Enter at least one valid address to import.")
+                    }
+                });
+            }
+            // Numbered names follow the wallets that remain.
+            let name = plan.commit.request.wallet_name.trim();
+            let count = kept.len();
+            for (index, wallet) in kept.iter_mut().enumerate() {
+                wallet.name = if count > 1 && !name.is_empty() {
+                    format!("{name} {}", index + 1)
+                } else {
+                    name.to_string()
+                };
+            }
+            plan.wallets = kept;
+            Ok(Placed {
+                plan,
+                upgrade: None,
+            })
+        }
+        WalletImportKind::WatchAccountXpub { .. } => match holder(&plan.wallets[0]) {
+            Some(held_by) => Err(refused(held_by)),
+            None => Ok(Placed {
+                plan,
+                upgrade: None,
+            }),
+        },
+    }
+}
+
+impl WalletService {
+    /// Confirm on the network that `account` lists `public_key_hex` among
+    /// its full-access keys, the key a send from it will sign with.
+    async fn confirm_named_account(
+        &self,
+        chain: Chain,
+        account: &str,
+        public_key_hex: &str,
+    ) -> Result<(), SpectraBridgeError> {
+        let client = crate::api::near_json_rpc::NearClient::new(
+            self.endpoints_for(chain, &[EndpointCapability::Verification])
+                .await,
+        );
+        client.verify_network(chain).await?;
+        let key = hex::decode(public_key_hex)?;
+        match client
+            .fetch_full_access_key_nonce(account, &bs58::encode(key).into_string())
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(
+                crate::api::error::ApiError::Rejected(_)
+                | crate::api::error::ApiError::InvalidInput(_),
+            ) => Err(crate::derivation::error::DerivationError::refused(
+                "“%@” does not hold this key as a full-access key.",
+                [account],
+            )
+            .into()),
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+/// The first receive address of an account public key.
+fn first_receive_address(xpub: &str) -> Option<String> {
+    crate::derivation::xpub_walker::derive_children(xpub.trim(), 0, 0, 1)
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|child| child.address)
+}
+
+/// An account public key as its key, whatever version bytes it was written
+/// with: a zpub and the xpub of the same account are one account.
+fn account_key(xpub: &str) -> Option<String> {
+    crate::derivation::xpub_walker::normalize_xpub(xpub.trim())
+        .ok()
+        .map(|(canonical, _, _)| canonical)
 }

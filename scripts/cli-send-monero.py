@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Offline Monero CLI ownership/network guards. Signature fixture runs in Rust."""
 import http.server, json, os, pathlib, subprocess, sys, tempfile, threading
+# The Monero seed of the wallet the recorded fixtures were made with: Monero
+# reads its own 25-word seed, not BIP-39.
+MONERO_SEED = ('syndrome portents apex vivid flippant dizzy bumper duplex enjoy deodorant bunch pigment wolf muppet tuition wept ailments kiwi roles against today morsel eternal excess wolf')
 binary = str(pathlib.Path(sys.argv[1]).resolve())
 requests = []
 class Node(http.server.BaseHTTPRequestHandler):
@@ -19,13 +22,19 @@ try:
         def run(*args, success=True, password='fixture-password'):
             result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
                 capture_output=True, text=True, timeout=60, env={**os.environ,
-                'SPECTRA_PASSWORD': password, 'SPECTRA_SEED': 'abandon '*11+'about'})
+                'SPECTRA_PASSWORD': password, 'SPECTRA_SEED': MONERO_SEED})
             assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
-            return json.loads(result.stdout)
-        run('wallet', 'import', '--chain', 'monero', '--name', 'LocalXmr')
+            return json.loads(result.stdout) if result.stdout.strip() else None
+        run('wallet', 'import', '--chain', 'monero', '--name', 'LocalXmr', '--restore-height', '3000000')
+        assert run('wallet', 'show', 'LocalXmr')['wallet']['restoreHeight'] == 3000000
+        # The height is the wallet's from import: no sync takes another.
+        run('send', 'sync-monero', '--from', 'LocalXmr', '--restore-height', '1', success=False)
+        run('wallet', 'import', '--chain', 'monero', '--name', 'Future', '--restore-height', '99999999999', success=False)
+        run('wallet', 'import', '--chain', 'bitcoin', '--name', 'NotMonero', '--restore-height', '1', success=False)
         run('endpoints','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification','--add', f'http://127.0.0.1:{server.server_port}')
         initial = run('send', 'monero-status', '--from', 'LocalXmr')['sync']
-        assert not initial['complete'] and initial['scanned_height'] == 0 and not requests
+        # The first scan starts at the stored restore height.
+        assert not initial['complete'] and initial['scanned_height'] == 3000000 and not requests
         run('send', 'sync-monero', '--from', 'LocalXmr', password='wrong', success=False)
         assert not requests
         run('send', 'sync-monero', '--from', 'LocalXmr', '--chain', 'zcash', success=False)
@@ -34,6 +43,6 @@ try:
         assert 'wrong network' in failed['error']
         assert requests == [('/get_info', b'{}')], 'keys must not be sent to the daemon'
         assert run('send', 'monero-status', '--from', 'LocalXmr')['sync'] == initial
-        print('PASS Monero: durable status, local authorization and wrong-network refusal without sending keys')
+        print('PASS Monero: stored restore height, durable status, local authorization and wrong-network refusal without sending keys')
 finally:
     server.shutdown(); server.server_close()

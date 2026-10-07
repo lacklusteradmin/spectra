@@ -99,28 +99,6 @@ pub enum PriceAlertCondition {
     Below,
 }
 
-#[derive(
-    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
-)]
-#[serde(rename_all = "camelCase")]
-pub enum SeedDerivationPreset {
-    #[default]
-    Standard,
-    Account1,
-    Account2,
-}
-
-impl SeedDerivationPreset {
-    /// The BIP-44 account a preset's default paths use.
-    pub fn account_index(self) -> u32 {
-        match self {
-            Self::Standard => 0,
-            Self::Account1 => 1,
-            Self::Account2 => 2,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolding {
@@ -300,27 +278,6 @@ impl Drop for SensitiveOverrides {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SeedDerivationPaths {
-    /// Concrete network ID → derivation path. Mainnet and testnet overrides
-    /// are independent, even when their default paths happen to match.
-    pub by_chain: HashMap<String, String>,
-}
-
-impl SeedDerivationPaths {
-    /// Derivation path configured for this exact network.
-    pub fn path_for(&self, chain: crate::registry::Chain) -> Option<&str> {
-        self.by_chain.get(chain.str_id()).map(String::as_str)
-    }
-
-    /// Set the path for this exact network.
-    pub fn set_path_for(&mut self, chain: crate::registry::Chain, path: impl Into<String>) {
-        self.by_chain
-            .insert(chain.str_id().to_string(), path.into());
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletView {
@@ -339,14 +296,17 @@ pub struct WalletView {
     pub addresses: HashMap<String, String>,
     /// Account public key for receiving and recovery without unlocking a seed.
     pub account_xpub: Option<String>,
-    pub seed_derivation_preset: SeedDerivationPreset,
-    pub seed_derivation_paths: SeedDerivationPaths,
+    /// The one path this wallet derives from: a profile's, or a custom one.
+    /// `None` on a chain that derives without a path.
+    pub derivation_path: Option<String>,
     pub derivation_overrides: WalletDerivationOverrides,
     pub holdings: Vec<AssetHolding>,
     pub include_in_portfolio_total: bool,
     /// What the wallet signs with and whether a password guards it — read
     /// from the wallet record, so rendering one touches no secret store.
     pub signing: crate::store::state::WalletSigning,
+    /// A Monero wallet's restore height; `None` on other chains.
+    pub restore_height: Option<u64>,
 }
 
 impl WalletView {
@@ -365,8 +325,8 @@ impl WalletView {
 // ── WalletView ↔ WalletState ───────────────────────────────────────
 //
 // `WalletState` owns persisted wallet facts; `WalletView` projects them for the
-// native UI. Both identify the selected chain with `chain_id`. View derivation
-// defaults are rebuilt from the catalog; only the wallet's actual path is stored.
+// native UI. Both identify the selected chain with `chain_id` and carry the
+// wallet's one derivation path.
 
 impl WalletView {
     /// Convert to the model core computes with.
@@ -380,11 +340,6 @@ impl WalletView {
         use crate::store::state::{WalletAddress, WalletState};
 
         let chain = self.chain_id;
-        let derivation_path = self
-            .seed_derivation_paths
-            .path_for(chain)
-            .map(str::to_string);
-
         Ok(WalletState {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -392,8 +347,7 @@ impl WalletView {
             chain_id: chain,
             include_in_portfolio_total: self.include_in_portfolio_total,
             xpub: self.account_xpub.clone(),
-            derivation_preset: self.seed_derivation_preset,
-            derivation_path: derivation_path.clone(),
+            derivation_path: self.derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
             holdings: self.holdings.clone(),
             // The wallet's own slot comes first and the rest follow by slot id:
@@ -420,14 +374,14 @@ impl WalletView {
                             chain_id: owner,
                             address: address.clone(),
                             kind: "receive".to_string(),
-                            derivation_path: self
-                                .seed_derivation_paths
-                                .path_for(owner)
-                                .map(str::to_string),
+                            derivation_path: (owner == chain)
+                                .then(|| self.derivation_path.clone())
+                                .flatten(),
                         })
                     })
                     .collect()
             },
+            restore_height: self.restore_height,
         })
     }
 }
@@ -435,22 +389,9 @@ impl WalletView {
 impl crate::store::state::WalletState {
     /// Convert back into the shape the iOS app renders.
     ///
-    /// The reverse of [`WalletView::to_wallet_state`], and lossy in the
-    /// direction that does not matter: network defaults are overlaid with
-    /// the explicit paths stored on addresses and the active wallet path.
-    ///
-    /// `WalletState` remains the authority. This produces a view model.
-    pub fn to_wallet_view(&self, defaults: &SeedDerivationPaths) -> WalletView {
-        let mut seed_derivation_paths = defaults.clone();
-        for address in &self.addresses {
-            if let Some(path) = address.derivation_path.as_deref() {
-                seed_derivation_paths.set_path_for(address.chain_id, path);
-            }
-        }
-        if let Some(path) = self.derivation_path.as_deref() {
-            seed_derivation_paths.set_path_for(self.chain_id, path);
-        }
-
+    /// The reverse of [`WalletView::to_wallet_state`]. `WalletState`
+    /// remains the authority; this produces a view model.
+    pub fn to_wallet_view(&self) -> WalletView {
         WalletView {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -466,8 +407,7 @@ impl crate::store::state::WalletState {
                 })
                 .collect(),
             account_xpub: self.xpub.clone(),
-            seed_derivation_preset: self.derivation_preset,
-            seed_derivation_paths,
+            derivation_path: self.derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
             holdings: self
                 .holdings
@@ -477,6 +417,7 @@ impl crate::store::state::WalletState {
                 .collect(),
             include_in_portfolio_total: self.include_in_portfolio_total,
             signing: self.signing,
+            restore_height: self.restore_height,
         }
     }
 }

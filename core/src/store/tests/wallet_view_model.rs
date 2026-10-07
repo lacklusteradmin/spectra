@@ -1,11 +1,6 @@
 use crate::registry::Chain;
 use crate::store::state::{WalletAddress, WalletState};
 use crate::store::wallet_domain::AssetHolding;
-use crate::store::wallet_domain::SeedDerivationPaths;
-
-fn defaults() -> SeedDerivationPaths {
-    crate::derivation::path::derivation_paths_for_preset(Default::default()).expect("defaults")
-}
 
 fn summary() -> WalletState {
     WalletState {
@@ -15,9 +10,8 @@ fn summary() -> WalletState {
             password_protected: false,
         },
         include_in_portfolio_total: true,
-        chain_id: crate::registry::Chain::BitcoinTestnet4,
+        chain_id: crate::registry::Chain::Bitcoin,
         xpub: Some("zpub123".to_string()),
-        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Account2,
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: vec![AssetHolding {
@@ -36,26 +30,21 @@ fn summary() -> WalletState {
             kind: "receive".to_string(),
             derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
         }],
+        restore_height: None,
     }
 }
 
 /// Everything the app renders survives the trip out to the view model.
 #[test]
 fn the_view_model_carries_what_the_app_shows() {
-    let view = summary().to_wallet_view(&defaults());
+    let view = summary().to_wallet_view();
     assert_eq!(view.id, "w1");
-    assert_eq!(view.chain_id, crate::registry::Chain::BitcoinTestnet4);
+    assert_eq!(view.chain_id, crate::registry::Chain::Bitcoin);
     assert_eq!(view.account_xpub.as_deref(), Some("zpub123"));
     assert_eq!(view.address_for(Chain::Bitcoin), Some("bc1qexample"));
     assert_eq!(view.holdings.len(), 1);
     assert_eq!(view.holdings[0].amount, "1.5");
-    // The wallet's own path overrides the default for its chain.
-    assert_eq!(
-        view.seed_derivation_paths.path_for(Chain::Bitcoin),
-        Some("m/84'/0'/2'/0/0")
-    );
-    // Other chains keep the catalog defaults, which is all they ever were.
-    assert!(view.seed_derivation_paths.path_for(Chain::Solana).is_some());
+    assert_eq!(view.derivation_path.as_deref(), Some("m/84'/0'/2'/0/0"));
 }
 
 /// Round trip through both conversions preserves everything the summary
@@ -63,9 +52,6 @@ fn the_view_model_carries_what_the_app_shows() {
 #[test]
 fn summary_survives_a_round_trip_through_the_view_model() {
     let original = summary();
-    let round_tripped = original
-        .to_wallet_view(&defaults())
-        .to_wallet_state()
-        .unwrap();
+    let round_tripped = original.to_wallet_view().to_wallet_state().unwrap();
     assert_eq!(round_tripped, original);
 }

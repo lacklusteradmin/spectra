@@ -18,7 +18,7 @@ use crate::derivation::solana::derive_solana;
 use crate::derivation::stellar::derive_stellar;
 use crate::derivation::sui::derive_sui;
 use crate::derivation::ton::derive_ton;
-use crate::derivation::ton::{crc16_xmodem, derive_ton_seed, v4r2_code_hash_and_depth};
+use crate::derivation::ton::{crc16_xmodem, v4r2_code_hash_and_depth};
 use crate::derivation::tron::derive_tron;
 use crate::derivation::types::BitcoinScriptType;
 use crate::derivation::xrp::derive_xrp;
@@ -27,6 +27,14 @@ use ed25519_dalek::SigningKey;
 const MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 const ALL_ALL: &str = "all all all all all all all all all all all all";
+/// The libmonero crate's documented 25-word seed; Monero reads no BIP-39.
+const MONERO_SEED: &str = "tissue raking haunted huts afraid volcano howls liar egotistic befit \
+                           rounded older bluntly imbalance pivot exotic tuxedo amaze mostly \
+                           lukewarm macro vocal hounded biplane rounded";
+/// A ton-crypto mnemonic from `ton-mnemonics.json`; TON reads no BIP-39.
+const TON_MNEMONIC: &str = "tribe trick matter citizen jealous turtle flee evidence tired milk \
+                            wisdom eager fancy mother gate worth fly wedding zero ski purchase \
+                            evidence cycle public";
 const SEP_0005: &str = "illness spike retreat truth genius clock brain pass fit cave bargain toe";
 
 #[test]
@@ -210,7 +218,10 @@ fn derives_all_supported_chains() {
             true
         )
     );
-    ok!("ton", derive_ton(m.clone(), None, true, true, true));
+    ok!(
+        "ton",
+        derive_ton(TON_MNEMONIC.into(), None, true, true, true)
+    );
     ok!(
         "internet_computer",
         derive_icp(
@@ -222,12 +233,18 @@ fn derives_all_supported_chains() {
             true
         )
     );
-    ok!("near", derive_near(m.clone(), None, true, true, true));
+    ok!(
+        "near",
+        derive_near(m.clone(), "m/44'/397'/0'".into(), None, true, true, true)
+    );
     ok!(
         "polkadot",
         derive_polkadot(m.clone(), None, None, true, true, true)
     );
-    ok!("monero", derive_monero(m.clone(), true, true, true));
+    ok!(
+        "monero",
+        derive_monero(MONERO_SEED.into(), true, true, true)
+    );
 }
 
 #[test]
@@ -338,30 +355,28 @@ fn unknown_wordlist_is_rejected() {
     );
 }
 
+/// near-seed-phrase 0.2.1 (`parseSeedPhrase`, behind MyNearWallet and
+/// Meteor): SLIP-10 ed25519 along `m/44'/397'/{account}'`, and the implicit
+/// account is the hex public key.
 #[test]
-fn near_direct_seed_vector() {
-    // NEAR uses the MyNearWallet / near-seed-phrase convention:
-    // priv = BIP-39 PBKDF2 seed[0..32]. For "abandon abandon … about"
-    // with EMPTY passphrase, the 64-byte seed begins with the publicly
-    // documented constant 5eb00bbd…
-    let result =
-        derive_near(MNEMONIC.into(), None, true, true, true).expect("near direct-seed derive");
-    let priv_hex = result.private_key_hex.expect("near priv");
-    let pub_hex = result.public_key_hex.expect("near pub");
-    let address = result.address.expect("near address");
-
-    assert_eq!(
-        priv_hex,
-        "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1"
-    );
-
-    let priv_bytes = hex::decode(&priv_hex).expect("decode priv");
-    let mut priv_arr = [0u8; 32];
-    priv_arr.copy_from_slice(&priv_bytes);
-    let expected_pub = hex::encode(SigningKey::from_bytes(&priv_arr).verifying_key().to_bytes());
-    assert_eq!(pub_hex, expected_pub);
-    // NEAR implicit account id = hex(public_key).
-    assert_eq!(address, expected_pub);
+fn near_follows_near_seed_phrase() {
+    for (path, public, secret) in [
+        (
+            "m/44'/397'/0'",
+            "5510e2b44cae6eb807e3e0e45d579dda058c274abcba15e5cb84636f5d1ee412",
+            "0c158d858a52316667d03d1d04aad51b3b542cd705215810629b78c501492fba",
+        ),
+        (
+            "m/44'/397'/1'",
+            "3b93b03253b9715213ec314eb50ecc99d25602ccb5b059f91f51d24710d54326",
+            "a20b5f6c6f2148bc42fe70cbfa5c367e95672c8bcffddfe4feb1f326dac40e4a",
+        ),
+    ] {
+        let result = derive_near(MNEMONIC.into(), path.into(), None, true, true, true).unwrap();
+        assert_eq!(result.private_key_hex.as_deref(), Some(secret), "{path}");
+        assert_eq!(result.public_key_hex.as_deref(), Some(public), "{path}");
+        assert_eq!(result.address.as_deref(), Some(public), "{path}");
+    }
 }
 
 #[test]
@@ -369,7 +384,7 @@ fn ton_mnemonic_structure() {
     // TON mnemonic scheme: entropy = HMAC-SHA512(mnemonic, passphrase);
     // seed = PBKDF2(entropy, "TON default seed", 100_000, 64); priv = seed[0..32].
     // derive_ton always returns V4R2 bounceable mainnet format.
-    let result = derive_ton(MNEMONIC.into(), None, true, true, true).expect("ton derive");
+    let result = derive_ton(TON_MNEMONIC.into(), None, true, true, true).expect("ton derive");
     let priv_hex = result.private_key_hex.expect("ton priv");
     let pub_hex = result.public_key_hex.expect("ton pub");
     let address = result.address.expect("ton address");
@@ -386,35 +401,6 @@ fn ton_mnemonic_structure() {
         "expected V4R2 bounceable address, got: {address}"
     );
     assert_eq!(address.len(), 48, "V4R2 must be 48 chars: {address}");
-}
-
-#[test]
-fn ton_mnemonic_diverges_from_slip10() {
-    // TON uses PBKDF2-based seed derivation, not SLIP-10.
-    let ton_priv = derive_ton(MNEMONIC.into(), None, false, false, true)
-        .expect("ton priv")
-        .private_key_hex;
-    // Solana at the TON coin-type path uses SLIP-10 — result must differ.
-    let slip10_priv = derive_solana(
-        MNEMONIC.into(),
-        "m/44'/607'/0'".into(),
-        None,
-        None,
-        false,
-        false,
-        true,
-    )
-    .expect("slip10 priv")
-    .private_key_hex;
-    assert_ne!(ton_priv, slip10_priv);
-}
-
-#[test]
-fn ton_mnemonic_honors_iteration_count() {
-    // Default (100_000 when 0 is passed) vs explicit 50_000 PBKDF2 iterations.
-    let seed_default = derive_ton_seed(MNEMONIC, "", None, 0).unwrap();
-    let seed_custom = derive_ton_seed(MNEMONIC, "", None, 50_000).unwrap();
-    assert_ne!(&seed_default[..32], &seed_custom[..32]);
 }
 
 #[test]
@@ -673,7 +659,7 @@ fn monero_address_structure() {
     // Monero mainnet standard address: 0x12 || spend(32) || view(32) ||
     // keccak256(prev)[..4] = 69 bytes → 95 chars chunked Base58.
     // Network byte 0x12 forces the first character to be '4'.
-    let result = derive_monero(MNEMONIC.into(), true, true, true).expect("monero derive");
+    let result = derive_monero(MONERO_SEED.into(), true, true, true).expect("monero derive");
     let priv_hex = result.private_key_hex.expect("monero priv");
     let pub_hex = result.public_key_hex.expect("monero pub");
     let address = result.address.expect("monero address");
@@ -688,24 +674,17 @@ fn monero_address_structure() {
 }
 
 #[test]
-fn monero_keys_match_reduced_bip39_seed_prefix() {
-    // The BIP-39 seed prefix for "abandon … about" with empty passphrase
-    // is 5eb0…fc1; that 32-byte LE integer exceeds the curve25519 group
-    // order ℓ, so sc_reduce32 reduces it to the value below.
+fn monero_spend_key_is_the_reduced_seed_key() {
+    // A 25-word seed encodes the spend key itself; derivation reduces it.
     use curve25519_dalek::scalar::Scalar as DalekScalar;
-    let bip39_prefix =
-        hex::decode("5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1")
-            .expect("decode bip39 prefix");
-    let mut bytes = [0u8; 32];
-    bytes.copy_from_slice(&bip39_prefix);
-    let expected = hex::encode(DalekScalar::from_bytes_mod_order(bytes).to_bytes());
-
-    let result = derive_monero(MNEMONIC.into(), false, false, true).expect("monero");
+    let key = crate::derivation::monero_words::decode(MONERO_SEED).unwrap();
+    let expected = hex::encode(DalekScalar::from_bytes_mod_order(*key).to_bytes());
+    let result = derive_monero(MONERO_SEED.into(), false, false, true).expect("monero");
     let priv_hex = result.private_key_hex.expect("priv");
     assert_eq!(
         &priv_hex[..64],
         expected,
-        "private_key_hex[0..64] must be sc_reduce32(seed prefix)"
+        "private_key_hex[0..64] must be sc_reduce32(key)"
     );
 }
 
@@ -716,7 +695,7 @@ fn monero_view_key_is_keccak_of_spend() {
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
     use curve25519_dalek::scalar::Scalar as DalekScalar;
 
-    let result = derive_monero(MNEMONIC.into(), false, true, true).expect("monero");
+    let result = derive_monero(MONERO_SEED.into(), false, true, true).expect("monero");
     let pub_hex = result.public_key_hex.expect("pub");
     let priv_bytes = hex::decode(result.private_key_hex.expect("priv")).expect("decode priv");
     assert_eq!(
@@ -748,56 +727,6 @@ fn monero_view_key_is_keccak_of_spend() {
 }
 
 #[test]
-fn monero_passphrase_changes_keys() {
-    // The public API has no passphrase for Monero; passphrase affects the
-    // upstream BIP-39 seed, which determines the spend key.
-    let seed_empty = derive_bip39_seed(MNEMONIC, "", 0, None, None).unwrap();
-    let seed_trezor = derive_bip39_seed(MNEMONIC, "TREZOR", 0, None, None).unwrap();
-    assert_ne!(&seed_empty[..32], &seed_trezor[..32]);
-}
-
-#[test]
-fn monero_electrum_seed_decodes_known_vector() {
-    // Test vector sourced from the libmonero crate's own doc-test.
-    // 24 data words encode the spend secret; word 25 ("rounded") is the CRC checksum.
-    use crate::derivation::monero::decode_monero_electrum_seed;
-    let phrase = "tissue raking haunted huts afraid volcano howls liar egotistic \
-                  befit rounded older bluntly imbalance pivot exotic tuxedo amaze \
-                  mostly lukewarm macro vocal hounded biplane rounded";
-    let seed = decode_monero_electrum_seed(phrase).expect("decode failed");
-    assert_eq!(
-        hex::encode(*seed),
-        "f7b3beabc9bd6ced864096c0891a8fdf94dc714178a09828775dba01b4df9ab8"
-    );
-}
-
-#[test]
-fn monero_electrum_seed_bad_checksum_rejected() {
-    use crate::derivation::monero::decode_monero_electrum_seed;
-    // Replace the checksum word with a wrong word.
-    let phrase = "tissue raking haunted huts afraid volcano howls liar egotistic \
-                  befit rounded older bluntly imbalance pivot exotic tuxedo amaze \
-                  mostly lukewarm macro vocal hounded biplane abbey";
-    let err = decode_monero_electrum_seed(phrase).expect_err("should fail checksum");
-    assert!(
-        err.to_string().contains("checksum"),
-        "expected checksum error, got: {err}"
-    );
-}
-
-#[test]
-fn monero_electrum_and_bip39_produce_different_addresses() {
-    // The same 12-word BIP-39 mnemonic treated as a Monero Electrum seed must fail
-    // because the BIP-39 word list ≠ Monero word list.
-    use crate::derivation::monero::decode_monero_electrum_seed;
-    let bip39_12 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-    assert!(
-        decode_monero_electrum_seed(bip39_12).is_err(),
-        "12-word BIP-39 must not parse as Electrum"
-    );
-}
-
-#[test]
 fn monero_base58_encodes_known_length_pattern() {
     // Sanity check the chunked Base58: a 69-byte input must produce 95
     // characters (8 full blocks * 11 chars + 1 5-byte trailing block * 7).
@@ -825,11 +754,11 @@ fn ton_v4r2_address_structure_and_determinism() {
     // → 48 chars under base64url-no-pad). v4R2 bounceable mainnet
     // addresses all start with "EQ" because tag=0x11, workchain=0x00
     // decodes to base64 `EQ`.
-    let a = derive_ton(MNEMONIC.into(), None, true, false, false)
+    let a = derive_ton(TON_MNEMONIC.into(), None, true, false, false)
         .expect("ton v4r2")
         .address
         .expect("address");
-    let b = derive_ton(MNEMONIC.into(), None, true, false, false)
+    let b = derive_ton(TON_MNEMONIC.into(), None, true, false, false)
         .expect("ton v4r2 again")
         .address
         .expect("address");
@@ -844,7 +773,7 @@ fn ton_v4r2_address_structure_and_determinism() {
 #[test]
 fn ton_v4r2_diverges_from_raw_account_id() {
     // The V4R2 smart-contract address differs from the raw "0:<pubkey_hex>" form.
-    let result = derive_ton(MNEMONIC.into(), None, true, true, false).expect("ton derive");
+    let result = derive_ton(TON_MNEMONIC.into(), None, true, true, false).expect("ton derive");
     let v4_addr = result.address.expect("v4r2 address");
     let pub_hex = result.public_key_hex.expect("pub key");
     let raw_addr = format!("0:{pub_hex}");
@@ -853,12 +782,14 @@ fn ton_v4r2_diverges_from_raw_account_id() {
 
 #[test]
 fn ton_v4r2_changes_with_mnemonic() {
-    let addr_a = derive_ton(MNEMONIC.into(), None, true, false, false)
+    let addr_a = derive_ton(TON_MNEMONIC.into(), None, true, false, false)
         .expect("a")
         .address
         .expect("a addr");
     let addr_b = derive_ton(
-        "legal winner thank year wave sausage worth useful legal winner thank yellow".into(),
+        crate::derivation::ton::generate_ton_mnemonic()
+            .unwrap()
+            .to_string(),
         None,
         true,
         false,
