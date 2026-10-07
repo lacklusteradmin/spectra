@@ -1,24 +1,10 @@
 import Foundation
 import SwiftUI
 
-/// One page of wallet setup. The form lives in the `@Bindable` draft; the
-/// store supplies app-wide state and performs the import.
+/// One page of wallet setup. The network and the method were chosen before
+/// the form opened; the form lives in the `@Bindable` draft, and the store
+/// supplies app-wide state and performs the import.
 struct SetupView: View {
-    /// Every chain, in the picker's popular order.
-    private static let allChainDescriptors = ChainSelectionDescriptor.popularOrder(Chain.all)
-    /// The chains this import can use, in popular order.
-    private var chainSelectionDescriptors: [ChainSelectionDescriptor] {
-        Self.allChainDescriptors.filter { draft.offers($0.id) }
-    }
-    /// Linear flow for the current mode. Drives the step counter, primary
-    /// action routing, and back routing — replacing three separate switch
-    /// statements that historically had to stay in sync.
-    private var setupFlow: SetupFlow {
-        if isEditingWallet { return .editWallet }
-        if usesWatchAddressesFlow { return .watchOnly }
-        if isCreateMode { return .createNewWallet }
-        return .seedPhraseImport
-    }
     private let store: AppState
     @Bindable var draft: WalletImportDraft
     private let copy = ImportFlowContent.current
@@ -26,108 +12,41 @@ struct SetupView: View {
     /// system back button and the swipe step back one page at a time.
     private let setupPage: WalletSetupPage
     @State private var nextPage: WalletSetupPage?
-    @State private var chainSearchText: String = ""
-    @State private var isShowingAllChainsPage: Bool = false
     init(store: AppState, draft: WalletImportDraft, page: WalletSetupPage? = nil) {
         self.store = store
         self.draft = draft
-        setupPage = page ?? (draft.isEditingWallet ? .walletName : .details)
+        setupPage = page ?? draft.setupFlow.pages.first ?? .walletName
     }
     private var isEditingWallet: Bool { draft.isEditingWallet }
-    private var isCreateMode: Bool { draft.isCreateMode }
-    private var isWatchAddressesImportMode: Bool { !isEditingWallet && !isCreateMode && draft.isWatchOnlyMode }
-    private var usesSeedPhraseFlow: Bool { !isEditingWallet && !draft.isWatchOnlyMode }
-    private var isPrivateKeyImportMode: Bool { draft.isPrivateKeyImportMode }
-    private var usesWatchAddressesFlow: Bool { !isEditingWallet && draft.isWatchOnlyMode }
-    private var pageCopy: WalletSetupPageCopy {
-        setupPage.copy(
-            copy,
-            mode: WalletSetupMode(
-                isEditingWallet: isEditingWallet, isCreateMode: isCreateMode,
-                isPrivateKeyImport: isPrivateKeyImportMode, isWatchOnly: draft.isWatchOnlyMode))
-    }
-    private var setupTitle: String { pageCopy.title }
-    private var setupSubtitle: String { pageCopy.subtitle }
-    private var canContinueFromSecretStep: Bool {
-        draft.isSecretComplete && !store.walletImport.isBusy
-    }
-    private var canContinueToBackupVerification: Bool {
-        canContinueFromSecretStep
-            && draft.walletPasswordValidationError == nil
-            && !store.walletImport.isBusy
-    }
-    private var canSubmitFromPasswordStep: Bool {
-        draft.walletPasswordValidationError == nil
-            && store.canImportWallet
-            && !store.walletImport.isBusy
-    }
-    private var canAdvanceFromDetailsPage: Bool {
-        if usesSeedPhraseFlow { return !draft.selectedChains.isEmpty && !store.walletImport.isBusy }
-        if usesWatchAddressesFlow { return !draft.selectedChains.isEmpty && !store.walletImport.isBusy }
-        return store.canImportWallet && !store.walletImport.isBusy
-    }
-    /// What the primary button says on the page that submits rather than
-    /// advances. Shared by every page that reaches the end of its flow.
-    private var submitActionTitle: String {
-        if isEditingWallet { return AppLocalization.string("import_flow.save_wallet") }
-        if isCreateMode { return AppLocalization.string("import_flow.create_wallet") }
-        return isWatchAddressesImportMode
-            ? AppLocalization.string("import_flow.watch_addresses") : AppLocalization.string("import_flow.import_wallet")
-    }
-    private var canSubmitSetup: Bool { store.canImportWallet && !store.walletImport.isBusy }
-    private var primaryActionTitle: String {
-        let next = AppLocalization.string("import_flow.next")
+    private var pageCopy: WalletSetupPageCopy { setupPage.copy(copy, mode: draft.mode) }
+    private var nextPageInFlow: WalletSetupPage? { draft.setupFlow.next(after: setupPage) }
+    /// Whether this page's part of the form is complete enough to leave it.
+    /// Pages before it were complete when they were left.
+    private var isPageComplete: Bool {
         switch setupPage {
-        case .seedPhrase:
-            return next
-        case .details:
-            return (usesSeedPhraseFlow || usesWatchAddressesFlow) ? next : submitActionTitle
-        case .password:
-            if isCreateMode { return AppLocalization.string("import_flow.continue_to_backup_verification") }
-            return advancesToWalletName ? next : submitActionTitle
-        // Both advance to the wallet-name step rather than submitting; that
-        // step performs the final submit.
-        case .watchAddresses, .backupVerification:
-            return advancesToWalletName ? next : submitActionTitle
-        case .walletName:
-            return submitActionTitle
+        case .seedPhrase: draft.isSecretComplete
+        case .password: draft.walletPasswordValidationError == nil
+        case .backupVerification: draft.isBackupVerificationComplete
+        case .watchAddresses, .walletName: store.canImportWallet
         }
     }
     private var isPrimaryActionEnabled: Bool {
-        switch setupPage {
-        case .seedPhrase:
-            return canContinueFromSecretStep
-        case .details:
-            return (usesSeedPhraseFlow || usesWatchAddressesFlow) ? canAdvanceFromDetailsPage : canSubmitSetup
-        case .password:
-            return isCreateMode ? canContinueToBackupVerification : (canSubmitFromPasswordStep || advancesToWalletName)
-        case .watchAddresses:
-            return canAdvanceFromWatchAddressesPage
-        case .backupVerification, .walletName:
-            return canSubmitSetup
+        guard !store.walletImport.isBusy, isPageComplete else { return false }
+        return nextPageInFlow != nil || store.canImportWallet
+    }
+    /// "Next" while the flow has pages left, and what the submit does on the
+    /// last one.
+    private var primaryActionTitle: String {
+        switch nextPageInFlow {
+        case .backupVerification: return AppLocalization.string("import_flow.continue_to_backup_verification")
+        case .some: return AppLocalization.string("import_flow.next")
+        case nil: break
         }
-    }
-    /// True when the current page should advance to the `.walletName` step
-    /// rather than submitting directly.
-    private var advancesToWalletName: Bool {
-        guard !isEditingWallet else { return false }
-        switch setupPage {
-        case .password: return isCreateMode ? false : canSubmitFromPasswordStep
-        case .backupVerification: return true
-        case .watchAddresses: return canAdvanceFromWatchAddressesPage
-        case .details, .seedPhrase, .walletName: return false
-        }
-    }
-    private var canAdvanceFromWatchAddressesPage: Bool {
-        store.canImportWallet && !store.walletImport.isBusy
-    }
-    private var selectedChainSet: Set<Chain> { Set(draft.selectedChains) }
-    private var selectedChainCount: Int { draft.selectedChains.count }
-    private var chainSelectionSummary: String {
-        switch selectedChainCount {
-        case 0: return AppLocalization.string("import_flow.no_chains_selected")
-        case 1: return AppLocalization.string("import_flow.one_chain_selected")
-        default: return AppLocalization.format("import_flow.multiple_chains_selected_format", selectedChainCount)
+        switch draft.mode {
+        case .edit: return AppLocalization.string("import_flow.save_wallet")
+        case .setup(.createPhrase): return AppLocalization.string("import_flow.create_wallet")
+        case .setup(.watchAddresses), .setup(.watchAccountXpub): return AppLocalization.string("import_flow.watch_addresses")
+        case .setup: return AppLocalization.string("import_flow.import_wallet")
         }
     }
     @ViewBuilder
@@ -187,29 +106,28 @@ struct SetupView: View {
     @ViewBuilder
     private var setupHeader: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            Text(setupTitle).font(.largeTitle.weight(.bold)).foregroundStyle(Color.primary)
+            if !isEditingWallet, let chain = draft.chain, let entry = chain.entry {
+                // The network this wallet is added on, chosen before the form.
+                HStack(spacing: SpectraLayout.Space.xs) {
+                    CoinBadge(artworkName: entry.artworkName, fallbackText: entry.gasTokenSymbol, color: entry.color.color, size: 20)
+                    Text(chain.displayName).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                }
+            }
+            Text(pageCopy.title).font(.largeTitle.weight(.bold)).foregroundStyle(Color.primary)
                 .lineLimit(3).minimumScaleFactor(0.7).allowsTightening(true).fixedSize(horizontal: false, vertical: true)
-            Text(setupSubtitle).font(.subheadline).foregroundStyle(.secondary)
+            Text(pageCopy.subtitle).font(.subheadline).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
-    /// Single rendering entry point for the page body. Replaces six
-    /// separate `*PageSection` properties stacked in a VStack, each with
-    /// their own internal "if isShowing<X>" gate that could drift out of
-    /// sync with the page enum. A switch over `setupPage` makes the page
-    /// → content map structural — adding a page is one new case rather
-    /// than "remember to add the section *and* gate it correctly inside."
+    /// Single rendering entry point for the page body: a switch over
+    /// `setupPage` makes the page → content map structural.
     @ViewBuilder
     private var pageContent: some View {
         switch setupPage {
-        case .details:
-            if !isEditingWallet { chainSelectionCard }
         case .watchAddresses:
-            if !isEditingWallet, draft.isWatchOnlyMode { watchAddressesPageContent }
+            watchPageContent
         case .seedPhrase:
-            if !draft.isWatchOnlyMode {
-                WalletSecretStep(store: store, draft: draft, showsBackupVerification: false)
-            }
+            WalletSecretStep(store: store, draft: draft, showsBackupVerification: false)
         case .password:
             passwordPageContent
         case .backupVerification:
@@ -218,109 +136,44 @@ struct SetupView: View {
             walletNamePageContent
         }
     }
-    /// The most popular chains as rows, then the way to every chain. The
-    /// count beside the title stands in for a header, since the page title
-    /// above already names the step.
+    /// A watch import's one field: addresses on the network, each judged by
+    /// core's watch-only rule, or the account public key that stands in for
+    /// the whole account.
     @ViewBuilder
-    private var chainSelectionCard: some View {
-        let mainnets = chainSelectionDescriptors.filter { !$0.isTestnet }
-        // The most popular mainnets are listed on the page itself; the rest
-        // are one tap away behind "Browse all".
-        let shortList = Array(mainnets.prefix(6))
-        let shortListIDs = Set(shortList.map(\.id))
-        let allowsMultipleSelection = draft.allowsMultipleChainSelection
-        let extraSelectionCount = draft.selectedChains.filter { !shortListIDs.contains($0) }.count
-        VStack(alignment: .leading, spacing: SpectraLayout.sectionSpacing) {
-            SpectraRowGroup(
-                title: AppLocalization.string("Popular chains"), trailing: chainSelectionSummary, data: shortList
-            ) { descriptor in
-                ChainSelectionRow(
-                    descriptor: descriptor, isSelected: selectedChainSet.contains(descriptor.id),
-                    allowsMultipleSelection: allowsMultipleSelection
-                ) { draft.toggleChainSelection(descriptor.id) }
-            }
-            Button {
-                chainSearchText = ""
-                isShowingAllChainsPage = true
-            } label: {
-                HStack(spacing: SpectraLayout.Space.m) {
-                    Text(AppLocalization.format("Browse all %lld chains", mainnets.count))
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.tint)
-                    Spacer(minLength: SpectraLayout.Space.s)
-                    if extraSelectionCount > 0 {
-                        Text("+\(extraSelectionCount)")
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).monospacedDigit()
+    private var watchPageContent: some View {
+        if let chain = draft.chain {
+            setupCard {
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                    if draft.method == .watchAccountXpub {
+                        Text(AppLocalization.string("Account Public Key")).font(.headline).foregroundStyle(Color.primary)
+                        TextField("xpub… / ypub… / zpub…", text: $draft.accountXpubInput).textInputAutocapitalization(.never)
+                            .autocorrectionDisabled().font(.system(.footnote, design: .monospaced))
+                            .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
+                    } else {
+                        Text(copy.addressesToWatchTitle).font(.headline).foregroundStyle(Color.primary)
+                        Text(copy.addressesToWatchSubtitle).font(.subheadline).foregroundStyle(.secondary)
+                        let validation = watchedAddressValidationMessage(
+                            entries: draft.watchOnlyEntries,
+                            assetDisplayName: chain.displayName,
+                            validator: { isValidWatchOnlyAddress(chain: chain, address: $0) }
+                        )
+                        watchedAddressSection(
+                            title: chain.displayName, text: $draft.watchOnlyInput,
+                            validationMessage: validation.message, validationColor: validation.color
+                        )
                     }
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                 }
-                .spectraRowPadding()
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .spectraCardFill()
-        }
-        .navigationDestination(isPresented: $isShowingAllChainsPage) {
-            AllChainsSelectionView(
-                chainSearchText: $chainSearchText, descriptors: chainSelectionDescriptors,
-                selectedChains: selectedChainSet,
-                toggleSelection: { chain in
-                    draft.toggleChainSelection(chain)
-                    // A single choice is made once picked.
-                    if !allowsMultipleSelection { isShowingAllChainsPage = false }
-                },
-                clearAllSelections: allowsMultipleSelection
-                    ? { for chain in draft.selectedChains { draft.toggleChainSelection(chain) } } : nil
-            )
-        }
-    }
-    /// Page-level rendering contract: callers (the `pageContent` switch)
-    /// have already verified the page is active. These `*PageContent`
-    /// properties don't re-check `isShowing<X>` — they just render.
-    @ViewBuilder
-    private var watchAddressesPageContent: some View {
-        setupCard {
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                Text(copy.addressesToWatchTitle).font(.headline).foregroundStyle(Color.primary)
-                Text(copy.addressesToWatchSubtitle).font(.subheadline).foregroundStyle(.secondary)
-                watchAddressesInputsGroup
-                watchAddressesEmptyNote
-            }
-        }
-    }
-    /// The one field a watch-only import has: addresses on the chain it is
-    /// on, each judged by core's watch-only import rule.
-    @ViewBuilder
-    private var watchAddressesInputsGroup: some View {
-        if let chain = draft.selectedChains.first {
-            let validation = watchedAddressValidationMessage(
-                entries: draft.watchOnlyEntries,
-                assetDisplayName: chain.displayName,
-                validator: { isValidWatchOnlyAddress(chain: chain, address: $0) }
-            )
-            watchedAddressSection(
-                title: chain.displayName, text: $draft.watchOnlyInput,
-                caption: chain.acceptsAccountXpub ? copy.bitcoinWatchCaption : nil,
-                validationMessage: validation.message, validationColor: validation.color
-            )
-            // A chain whose import takes an account xpub has a second form: one
-            // xpub instead of a list of addresses.
-            if chain.acceptsAccountXpub {
-                TextField("xpub... / zpub...", text: $draft.bitcoinXpubInput).textInputAutocapitalization(.never)
-                    .autocorrectionDisabled().padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var watchAddressesEmptyNote: some View {
-        if draft.selectedChains.isEmpty {
-            Text(AppLocalization.string("Select a supported chain above to enter its address to watch.")).font(.caption)
-                .foregroundStyle(.spectraWarning.opacity(0.9))
+            WalletAddressPreviewCard(store: store, draft: draft)
         }
     }
     @ViewBuilder
     private var walletNamePageContent: some View {
+        // The last page before the commit says what the wallet will do and
+        // whom it asks, while the endpoints can still change.
+        if !isEditingWallet, let chain = draft.chain {
+            WalletSetupSummaryCard(store: store, chain: chain)
+        }
         setupCard {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                 Text(
@@ -363,7 +216,7 @@ struct SetupView: View {
     private func performPrimaryAction() {
         // Linear advance. `nil` from `next` means we're on the last page —
         // submit instead of routing.
-        if let next = setupFlow.next(after: setupPage) {
+        if let next = nextPageInFlow {
             // Backup verification checks a challenge drawn as it is entered.
             if next == .backupVerification { draft.prepareBackupVerificationChallenge() }
             nextPage = next

@@ -36,37 +36,34 @@ pub fn resolve_chain(needle: &str) -> CliResult<Chain> {
 /// Refuse a seed phrase core would not accept, naming what is wrong with it.
 ///
 /// The CLI reads phrases from a file or the environment, so it has no
-/// language picker and no expected length: core infers both from the words,
-/// as the import page does.
-pub fn reject_bad_seed_phrase(phrase: &str) -> CliResult<()> {
+/// language picker and no expected length: core infers both from the words
+/// in the chain's own formats, as the import page does; BIP-39 for a phrase
+/// on no chain, which is what Funds Finder scans.
+pub fn reject_bad_seed_phrase(chain: Option<Chain>, phrase: &str) -> CliResult<()> {
     use spectra_core::validation::{SeedPhraseCheck, check_seed_phrase};
     let verdict = check_seed_phrase(SeedPhraseCheck {
         words: phrase.split_whitespace().map(str::to_string).collect(),
         language: None,
         word_count: None,
+        chain,
     });
+    let kind = chain.map_or("BIP-39", |chain| chain.chain_display_name());
     if !verdict.invalid_words.is_empty() {
         return Err(CliError::rejected(match verdict.language {
             Some(language) => format!(
-                "not in the {} BIP-39 word list: {}",
+                "not in the {} word list: {}",
                 language.name,
                 verdict.invalid_words.join(", ")
             ),
             None => format!(
-                "not in any BIP-39 word list: {}",
+                "not {kind} phrase words: {}",
                 verdict.invalid_words.join(", ")
             ),
         }));
     }
-    if !verdict.is_complete {
-        return Err(CliError::rejected(format!(
-            "{} words; a seed phrase has 12, 15, 18, 21 or 24",
-            verdict.words.len()
-        )));
-    }
-    if !verdict.checksum_valid {
+    if !verdict.is_valid {
         return Err(CliError::rejected(verdict.problem.map_or_else(
-            || "not a valid BIP-39 mnemonic (check the words and the count)".to_string(),
+            || format!("not a {kind} phrase (check the words and the count)"),
             seed_phrase_problem_text,
         )));
     }
@@ -77,14 +74,30 @@ pub fn reject_bad_seed_phrase(phrase: &str) -> CliResult<()> {
 pub fn seed_phrase_problem_text(problem: spectra_core::validation::SeedPhraseProblem) -> String {
     use spectra_core::validation::SeedPhraseProblem;
     match problem {
-        SeedPhraseProblem::NonStandardLength { word_count } => {
-            format!("{word_count} words; a seed phrase has 12, 15, 18, 21 or 24")
+        SeedPhraseProblem::NonStandardLength {
+            word_count,
+            allowed,
+        } => {
+            let allowed: Vec<String> = allowed.iter().map(u32::to_string).collect();
+            format!(
+                "{word_count} words; a phrase here has {}",
+                allowed.join(", ")
+            )
         }
         SeedPhraseProblem::WrongWordCount { expected } => {
             format!("seed phrase must be {expected} words")
         }
         SeedPhraseProblem::InvalidChecksum => {
             "invalid seed phrase checksum; check the words".to_string()
+        }
+        SeedPhraseProblem::AmbiguousLanguage => {
+            "the words read as different phrases in two languages; type them in full".to_string()
+        }
+        SeedPhraseProblem::EncryptedPolyseed => {
+            "this Polyseed is encrypted with a password, which Spectra cannot take".to_string()
+        }
+        SeedPhraseProblem::UnsupportedPolyseed => {
+            "this Polyseed uses features Spectra does not support".to_string()
         }
     }
 }

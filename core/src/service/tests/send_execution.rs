@@ -111,11 +111,11 @@ mod send_chain_tests {
             include_in_portfolio_total: true,
             chain_id: chain_id.unwrap_or(chain),
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
             addresses: Vec::new(),
+            restore_height: None,
         }
     }
 

@@ -42,7 +42,7 @@ struct SeedPhraseEntryView: View {
 
     private func header(_ verdict: SeedPhraseVerdict) -> some View {
         let filled = verdict.words.count
-        let isComplete = verdict.checksumValid
+        let isComplete = verdict.isValid
         return HStack(spacing: SpectraLayout.Space.s) {
             Text("\(filled) / \(verdict.wordCount)")
                 .font(.caption.weight(.semibold).monospacedDigit())
@@ -101,7 +101,7 @@ struct SeedPhraseEntryView: View {
             return (AppLocalization.format("import_flow.seed_phrase_off_list_format", languageName, words), .red)
         }
         if let problem = verdict.problem { return (problem.localizedMessage, .red) }
-        if verdict.checksumValid, let languageName {
+        if verdict.isValid, let languageName {
             return (AppLocalization.format("import_flow.seed_phrase_valid_format", languageName, Int(verdict.wordCount)), .green)
         }
         return (

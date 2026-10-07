@@ -234,7 +234,12 @@ impl WalletService {
         required: &[EndpointCapability],
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let mut urls = self.custom_api_endpoints(chain, &[api], required).await;
-        for record in &crate::endpoints::catalog().records {
+        let catalog_records: &[EndpointRecord] = if self.uses_custom_endpoints_only(chain).await {
+            &[]
+        } else {
+            &crate::endpoints::catalog().records
+        };
+        for record in catalog_records {
             if record.chain_id == chain
                 && record.api == api
                 && required.iter().all(|c| record.capabilities.contains(c))
@@ -245,6 +250,16 @@ impl WalletService {
         }
         urls.retain(|url| crate::api::http::may_contact(url));
         Ok(urls)
+    }
+
+    /// Whether the user set this network to their own endpoints alone.
+    pub(crate) async fn uses_custom_endpoints_only(&self, chain: Chain) -> bool {
+        self.wallet_state
+            .read()
+            .await
+            .settings
+            .custom_endpoints_only
+            .contains(&chain)
     }
 
     pub(crate) async fn custom_api_endpoints(

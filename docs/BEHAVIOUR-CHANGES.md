@@ -17,6 +17,453 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-06 — NEAR imports hold named accounts; XRP and Stellar say their reserve
+
+- **Before:** a NEAR key imported only as its implicit hex account, although
+  sending already signed for a named account (`alice.near`) whose stored
+  address it was: nothing could store one. XRP and Stellar accounts exist
+  only once they hold the network's reserve, and nothing said so before a
+  first payment that would fail below it.
+- **After:** NEAR's phrase and private-key methods ask for an optional named
+  account (`WalletSetupField::NamedAccount`, `WalletImportCommit.named_account`).
+  The preview shows it without contacting anything; the import confirms on a
+  verified node that the account lists the key as a full-access key, then
+  stores the named account as the wallet's address. A function-call key, an
+  unknown account, a malformed name or a named account on another chain or
+  kind is refused before anything is stored. `WalletService::account_reserve`
+  reads XRP's base reserve (`server_state`) or two of Stellar's base reserve
+  (the latest ledger) from a verified endpoint; the receive screen shows it
+  while a wallet on those networks holds nothing, and `ChainIdentity` carries
+  `requires_account_reserve`. `spectra wallet import --named-account` and
+  `spectra wallet reserve --chain X` reach both.
+- **Why:** each network's page offers what that network has: NEAR wallets
+  restore named accounts, and the reserve is the one fact a first receive
+  on XRP or Stellar needs, read from the network rather than written into
+  copy that goes stale when validators vote it down.
+- **CLI check:** against a loopback NEAR node, `wallet import --chain near
+  --named-account alice.near` stores `alice.near` and `send identity` signs
+  as it, `--named-account bob.near` (a key the node does not list) exits 3
+  naming it, and `--chain ethereum --named-account …` exits 3; against
+  loopback XRPL and Horizon, `wallet reserve --chain xrp` and `--chain
+  stellar` print `1` (`scripts/cli-wallets.py`).
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,118 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-acceptance.sh` (67 checks) and `xcodebuild test` on iPhone 17
+  Pro (138 tests in 30 suites passed).
+
+## 2026-10-06 — A network's page finds the accounts a phrase has used
+
+- **Before:** Funds Finder was the only search: across a fixed set of
+  mainnets, by balance alone, so an emptied account read as unused, and its
+  results ended there — importing one meant starting over and typing the
+  path. `begin_funds_scan` with a chain filtered the cross-network matrix, so
+  a test network could not be scanned, and nothing said which providers the
+  candidate addresses would be sent to.
+- **After:** on the phrase import page, "Find Used Accounts" opens a scan of
+  that network's derivation profiles at accounts 0–2 (`begin_funds_scan` with
+  the chain: core checks the phrase in the network's format, derives the
+  candidates and refuses a network that derives one account). The scan names
+  its endpoints (`FundsScan::endpoints`) before anything is sent and runs only
+  when asked; each read reports balance, `used` — funded, or with a
+  transaction in its history — and a failed read as unread, never unused, in
+  candidate order. Choosing a used account sets the import's profile and
+  account. Funds Finder keeps the cross-network search, now reporting used
+  accounts too, and "Import This Account" opens the single-wallet import on
+  that network with the phrase, passphrase, profile and account filled in.
+  `spectra rescan` prints the endpoints first and every read in order.
+- **Why:** the network's page knows the network, so the search belongs
+  there; sending addresses to a provider is the user's decision, made with
+  the provider named; and a result is only useful if it becomes the wallet.
+- **CLI check:** against a loopback node and indexer on `ethereum-sepolia`
+  with only the user's endpoints, `spectra rescan --chain ethereum-sepolia`
+  lists the two endpoints, reads accounts 0, 1, 2 in order, reports account
+  0 used through its history with no balance, account 1 funded and account 2
+  unread after a 500, and `wallet import --profile standard --account 1`
+  then stores account 1's address; `rescan --chain polkadot` and `--chain
+  monero` exit 3 (`scripts/cli-wallets.py`).
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,116 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-acceptance.sh` (67 checks) and `xcodebuild test` on iPhone 17
+  Pro (137 tests in 30 suites passed), one run shared with the setup
+  summary below.
+
+## 2026-10-06 — The last setup page says what the wallet will do, and whom it asks
+
+- **Before:** a wallet was added without saying what it could do on its
+  network: whether history and token discovery needed a custom indexer,
+  whether it could stake, that ZEC, BTG, DCR, KAS and DASH use one address,
+  that XRP and Stellar accounts need a reserve, that Cardano leaves
+  token-bearing inputs untouched, that Zcash is transparent-only, or that a
+  test network had no provider at all. Nor did it say which endpoints its
+  first refresh would send the address to, and custom endpoints were only
+  ever added beside the catalog's, which were still contacted. The add-
+  endpoint form offered only networks the catalog already had an endpoint
+  for, so a test network with none could not be given one.
+- **After:** `WalletService::wallet_setup_summary(chain)` reports balance,
+  history and token-discovery coverage (configured, needs the user's
+  endpoint, or unavailable), staking, the network's limits from new registry
+  facts (`has_single_owned_address`, `requires_account_reserve`,
+  `scans_for_balance`, plus Cardano's and Zcash's) and the endpoints the first
+  refresh reads from, contacting nothing. The setup flow's last page shows
+  it, with "Use only my endpoints" — the new `AppSettings.custom_endpoints_only`,
+  under which neither the network's transport nor its indexers reach a
+  catalog URL — and "Add Endpoint", whose form now lists every network and
+  API from core's `endpoint_api_options(chain)`. `spectra wallet capabilities
+  --chain X` prints the summary and `spectra endpoints --chain X --custom-only
+  true|false` sets the switch.
+- **Why:** the address leaves the device on the first refresh; the user
+  should see, before committing, what will be asked of whom and be able to
+  change it, and the limits are registry facts, not Swift copy.
+- **CLI check:** `spectra wallet capabilities --chain bnb` reports history
+  `needsCustomEndpoint`, `--chain dash-testnet` balance `needsCustomEndpoint`
+  and `singleAddress`, `--chain zcash` `singleAddress` and `transparentOnly`;
+  with `--custom-only true` on `base-sepolia` the summary lists no endpoint and
+  a balance read fails until a loopback endpoint is added, after which it is
+  the only one listed and the read succeeds (`scripts/cli-wallets.py`). The
+  core test `custom_endpoints_only_keeps_every_catalog_url_out` holds that no
+  catalog URL is reached through either path.
+- **Verification:** shares the used-account search's run above.
+
+## 2026-10-06 — A signing import upgrades its watched wallet; other duplicates are refused
+
+- **Before:** nothing stopped a second wallet with the same network and
+  address — the only check was on minted ids. Importing the phrase of a
+  watched address added a second wallet beside the watch, with its own empty
+  history; watching an address twice, or importing one phrase twice, did the
+  same.
+- **After:** `place_import` meets every import with the wallets stored on its
+  network; a wallet holds its address, and a watched account its key and the
+  key's first receive address. A phrase or private-key import whose address
+  or account a watch-only wallet holds gives that wallet its keys: it keeps
+  its id — and so its history and labels — name, portfolio setting and
+  balances, and is otherwise what the import would have stored (signing kind,
+  path, overrides); the secret is sealed under the existing id and the state
+  committed with it, and a failed commit removes the secret and leaves the
+  watch as it was. `WalletImportOutcome.upgraded` says so, and the preview's
+  `upgrades_wallet` names the wallet before anything is sealed. Every other
+  match is refused naming the holder: an address held with keys, an address
+  or account watched again. In a multi-address watch a held or repeated line
+  joins the rejected lines and the rest import, numbered after what remains.
+  The same address on another network is another wallet.
+- **Why:** a wallet on a network is identified by what it holds; two wallets
+  holding one address split its history and double its balance, and the
+  upgrade is the step from watching to holding the keys.
+- **CLI check:** watch `0x9858…da94` on `ethereum-sepolia` as "Cold", save a
+  received transfer from a loopback indexer, then `wallet import` its phrase:
+  `upgraded` is true with the watch's id, `wallet show Cold` is no longer
+  watch-only, `txs --wallet Cold` still lists the transfer after reopening,
+  and `send build`/`send sign` against a loopback node sign from it; importing
+  the phrase again and watching the address again exit 3 naming "Cold"
+  (`scripts/cli-wallets.py`).
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,113 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-acceptance.sh` (67 checks) and `xcodebuild test` on iPhone 17
+  Pro (137 tests in 30 suites passed), one run shared by this change, the
+  address preview and the derivation profiles. The suites that imported one
+  wallet twice now watch first and upgrade, preview the second address in an
+  empty store, or expect the refusal.
+
+## 2026-10-06 — Each setup page shows the address it will store
+
+- **Before:** the address a phrase, key or watch import stored was first
+  seen after the import had sealed the secret and stored the wallet; a
+  created wallet showed none before its backup check. A wrong profile,
+  account or passphrase surfaced only as an empty balance afterwards.
+- **After:** `WalletService::preview_wallet_import` runs the planning
+  `import_wallets` runs — the same checks, the same derivation, the same
+  address normalization — and returns the addresses it would store (a
+  watched account's first receive address) and the lines it would refuse,
+  sealing and storing nothing and reading no network. The phrase, key,
+  create and watch pages show it as the inputs settle, so a created wallet
+  shows its address before backup verification. `spectra wallet import` and
+  `wallet watch` take `--preview`.
+- **Why:** the user can match the address against the wallet they are
+  restoring before anything is sealed; one planning function for both makes
+  the preview and the commit unable to disagree.
+- **CLI check:** `SPECTRA_SEED='abandon … about' spectra wallet import --chain
+  bitcoin --preview` prints BIP-84's `bc1qcr8te4kr…306fyu` and stores no
+  wallet; `wallet watch --chain bitcoin --xpub <BIP-84 zpub> --preview` prints
+  the same address (`scripts/cli-wallets.py`). The core test
+  `the_preview_is_the_address_the_import_stores` holds it on every network
+  and method.
+- **Verification:** shares the watched-wallet upgrade's run above.
+
+## 2026-10-06 — NEAR derives along its path, as NEAR's wallets do
+
+- **Before:** a NEAR phrase wallet's key was the BIP-39 seed's first 32
+  bytes ("direct seed"), whatever the catalog path `m/44'/397'/0'` said; a
+  test called this the near-seed-phrase convention. near-seed-phrase, behind
+  MyNearWallet and Meteor, walks SLIP-10 along that path, so a NEAR phrase
+  imported into Spectra opened a different account than in those wallets,
+  and the account index could not move it.
+- **After:** `near::derive_near` takes the path and walks SLIP-10 ed25519
+  like every other ed25519 chain; the implicit account is still the hex
+  public key. `m/44'/397'/{account}'` is NEAR's one profile.
+- **Why:** a phrase restores the account its network's wallets restore, or
+  it is not a backup — the same fault as Monero's and TON's BIP-39 readings.
+- **CLI check:** `SPECTRA_SEED='abandon … about' spectra wallet import
+  --chain near --account 1` stores `3b93b032…4326`, near-seed-phrase 0.2.1's
+  account for `m/44'/397'/1'` (`scripts/cli-wallets.py`); the core test
+  `near_follows_near_seed_phrase` holds both accounts' keys.
+- **Verification:** shares the derivation-profile change's run below.
+
+## 2026-10-06 — A phrase wallet chooses a derivation profile and an account
+
+- **Before:** an import carried `SeedDerivationPreset` (Standard, Account 1,
+  Account 2), which moved every chain's account at once, and
+  `SeedDerivationPaths`, a map of every chain's path, of which a one-chain
+  wallet used one entry; wallets stored the preset beside their one path.
+  The app no longer offered the preset, only a raw path editor. Funds Finder
+  had its own matrix of paths and English labels (Ethereum address indexes
+  1–2, three truncated "legacy" Ethereum paths, Stellar's `m/44'/148'`),
+  while the catalog listed paths nothing could spend or that no wallet uses:
+  Bitcoin's two Electrum-style paths and Bitcoin Cash's `m/0`, which the
+  account signer cannot rediscover, Cardano's `m/44'/1815'` read as a Shelley
+  address, XRP's and Tron's unnamed "legacy" paths, and paths for Polkadot,
+  Bittensor and TON, whose derivers ignore any path.
+- **After:** `chains.toml` lists each chain's derivation profiles — `standard`,
+  or on the Bitcoin family `legacy`, `nestedSegWit`, `nativeSegWit` and
+  `taproot` where its signer spends them, plus Solana's and Bitcoin Cash's
+  `legacy` — each a template with one account segment.
+  `Chain::derivation_profiles` and `derivation_profile_path(chain, profile,
+  account)` are the one answer; the setup descriptor offers them on the
+  phrase methods, the network's page picks a profile (where there are
+  several) and an account, and Advanced keeps the raw path, which replaces
+  them. `WalletImportCommit`, `WalletView` and `WalletState` carry one
+  `derivation_path`; the preset and the path map are deleted. An import
+  refuses a path that does not parse instead of falling back to the default,
+  and a path on a chain that derives without one (Monero, TON, Polkadot,
+  Bittensor) instead of ignoring it. Funds Finder scans every profile of
+  every mainnet that restores BIP-39 at accounts 0–2, and its candidates
+  name their profile and account rather than an English label; the dropped
+  matrix paths are reachable as custom paths. `spectra wallet import` takes
+  `--profile` and `--account`, and `wallet methods` lists the profiles.
+- **Why:** a one-network wallet needs that network's choices, not a preset
+  across every chain; the setup page and Funds Finder were two models of
+  which paths exist, and the catalog listed paths no signer or deriver
+  honoured.
+- **CLI check:** `spectra wallet import --chain bitcoin --profile taproot
+  --account 1` stores the independent vector's address and path and keeps it
+  after reopening; `--profile sideways` exits 2, `--chain ethereum --profile
+  taproot` and `--chain polkadot --path "m/44'/354'/1'"` exit 3
+  (`scripts/cli-wallets.py`). Every listed profile at accounts 0 and 1 matches
+  `core/tests/fixtures/derivation-profiles.json`, 216 addresses from
+  bitcoinjs-lib, ethers, ed25519-hd-key, the Solana, Stellar, Sui and Aptos
+  SDKs, ripple-keypairs, near-seed-phrase, @dfinity/principal, Cardano's
+  serialization library, blake-hash and kaspa-wasm
+  (`scripts/generate-derivation-profile-vectors.cjs`).
+- **Verification:** shares the watched-wallet upgrade's run above.
+
+## 2026-10-06 — A private key imports in its chain's own encoding
+
+- **Before:** a private-key import took only 32- or 64-byte hex
+  (`standalone::private_key_hex`), on every chain alike; the editor asked
+  `is_private_key_hex`. A WIF, a Solana keypair, a Stellar `S…` seed, a
+  `suiprivkey1…`, an AIP-80 Aptos key or a NEAR `ed25519:…` string was
+  refused as "not a private key", so a key exported from the chain's own
+  wallet had to be converted to hex elsewhere first.
+- **After:** `Chain::private_key_formats` lists what each network reads, the
+  setup descriptor offers it, and `key_formats::parse_private_key` reads it
+  into the hex the key is sealed and derived as, before anything is stored.
+  WIF is read on the Base58Check-WIF chains with their own version bytes; a
+  WIF for another network is refused, and so is an uncompressed WIF, which
+  owns a different P2PKH address than the compressed key Spectra signs with —
+  refused rather than kept, because no signer here spends an uncompressed
+  key. A 64-byte keypair (Solana, NEAR) is refused when its public half is not
+  its secret's; a Sui key must be Ed25519 (flag 0). Hex still reads where it
+  imported before; the editor now judges its length by the chain (64 bytes on
+  Cardano, 32 elsewhere) instead of accepting either and leaving the import
+  to refuse. The editor asks `is_valid_private_key(chain, …)` and names the
+  network's formats under the field; `is_private_key_hex` is deleted.
+- **Why:** an import restores what the chain's own wallets hand out. Hex
+  alone pushed the conversion, and the chance of a wrong network byte or a
+  mismatched keypair, outside Spectra where nothing checked it.
+- **CLI check:** `COVERAGE_KEY=<WIF> spectra wallet import --chain bitcoin
+  --private-key-env COVERAGE_KEY` stores the same address as the key's hex;
+  the uncompressed WIF, a mainnet WIF on `bitcoin-testnet`, a WIF on
+  `ethereum` and a mismatched NEAR keypair exit 3
+  (`scripts/cli-wallets.py`). Vectors come from wif 5.0.0, @solana/web3.js
+  1.98.4, @stellar/stellar-base 14.0.1, @mysten/sui 1.38.0,
+  @aptos-labs/ts-sdk 5.1.1 and @near-js/crypto 2.5.1
+  (`scripts/generate-private-key-vectors.cjs`).
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,106 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-acceptance.sh` (67 checks) and `xcodebuild test` on iPhone 17
+  Pro (135 tests in 30 suites passed).
+
+## 2026-10-06 — A Monero wallet's restore height is fixed at import
+
+- **Before:** a Monero wallet's scan started at 0 unless a height was typed
+  on the sync screen before the first sync, or passed with `spectra send
+  sync-monero --restore-height`, which refused it after the first sync. A
+  created wallet scanned from block 0. Before any sync, `send monero-status`
+  reported a scanned height of 0.
+- **After:** `WalletState` and `WalletView` carry `restore_height`, set when
+  the wallet is imported and read by the first scan: a typed height (`wallet
+  import --restore-height`, or the restore-height field the Monero network's
+  import page shows because its setup descriptor asks for it), else a
+  Polyseed's birthday mapped to the last checkpoint at or before it, else 0.
+  A created wallet starts at `monero_new_wallet_restore_height`, the last
+  checkpoint at or before now. The checkpoints are monthly (height,
+  timestamp) pairs from November 2021 in `core/data/monero-checkpoints.json`,
+  read by `scripts/generate-monero-checkpoints.py` from two public daemons per
+  network that must agree on each block hash. A height past the estimated
+  tip, or a height on any other chain, is refused. The sync screen's field,
+  the sync call's parameter and the CLI flag are gone, and `send
+  monero-status` reports the restore height as the scan's start.
+- **Why:** where a wallet's scan starts is a fact about the wallet, known when
+  it is added, not a setting of its first sync. A created wallet has no
+  outputs before it existed, and a Polyseed says when it was made.
+- **CLI check:** `spectra wallet import --chain monero --restore-height
+  3000000` then `spectra --json send monero-status --from <wallet>` reports
+  `scanned_height` 3000000; `send sync-monero --restore-height` is a usage
+  error; `wallet new --chain monero` stores a height above 3,700,000;
+  `scripts/cli-send-monero.py` and `scripts/cli-wallets.py` check these.
+- **Verification:** shares the private-key change's run above.
+
+## 2026-10-06 — Monero and TON read and create their own phrases
+
+- **Before:** the setup page judged every phrase as BIP-39. Monero read any
+  phrase but a 25-word one as BIP-39, taking the BIP-39 seed's first 32 bytes
+  as its spend key, and read 25-word seeds only in English; TON derived any
+  phrase with the TON scheme without checking it was a TON mnemonic. Creating
+  a wallet generated BIP-39 for every chain, so a created Monero or TON
+  backup restored only in Spectra, while Monero's 25-word seeds and
+  Tonkeeper's mnemonics failed the setup page's BIP-39 checksum.
+- **After:** `Chain::phrase_formats` and `created_phrase_format` say what each
+  network reads and creates, and the setup descriptor, the verdict, the import
+  and creation all follow them. Monero reads its 25-word seed in all thirteen
+  Monero wordlists, by monero-wallet-cli's prefix and checksum rules, and the
+  16-word Polyseed in its ten lists; it creates the 25-word seed. TON reads
+  and creates ton-crypto's 24-word mnemonic, and its derivation passphrase
+  opens a password-protected one. Both refuse BIP-39. `check_seed_phrase`
+  takes the chain, reports the `format` it read and `is_valid` (was
+  `checksum_valid`), and names an encrypted or unsupported Polyseed and
+  shortened words that read as two phrases; `seed_phrase_lengths` and
+  `seed_phrase_languages` take the chain; `generate_mnemonic` is
+  `generate_seed_phrase(chain, word_count)`. The grid, the created length
+  chips and the Advanced sheet follow the network. `wallet check-seed` takes
+  `--chain`, and `wallet new` defaults to the created format's length.
+  `derive_ton_seed` lost its unused salt and iteration parameters, and the
+  inline English Monero wordlist moved to `core/data/wordlists` beside the
+  other twelve and Polyseed's ten.
+- **Why:** a phrase restores the wallet its network's own apps restore, or it
+  is not a backup. BIP-39 on Monero and TON produced wallets no Monero or TON
+  wallet reproduces, and refused the phrases those wallets write.
+- **CLI check:** `SPECTRA_SEED='abandon … about' spectra wallet import
+  --chain monero` and `--chain ton` exit 3; a fixture Monero seed, Polyseed
+  and TON mnemonic import to the fixtures' addresses; `wallet new --chain
+  monero` prints 25 words and `--chain ton` 24 (`scripts/cli-wallets.py`).
+  Vectors come from monero-python 1.1.1, the Polyseed reference
+  implementation and ton-crypto 3.3.0 (`scripts/generate-monero-phrase-vectors.py`,
+  `scripts/polyseed-vectors.c`, `scripts/generate-ton-mnemonic-vectors.cjs`).
+  Recorded Monero fixtures keep their keys: their wallet is now restored from
+  the 25-word seed of the same spend key.
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,099 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-wallets.py` and `scripts/cli-send-monero.py` (the suites these
+  changes touch, run alone) and `xcodebuild test` on iPhone 17
+  Pro (135 tests in 30 suites passed). A later full run, shared with the
+  private-key change above, passed `scripts/cli-acceptance.sh` (67 checks);
+  the one failure the first run reported did not recur.
+
+## 2026-10-06 — A copied seed phrase stays on this device for a minute
+
+- **Before:** the create page's Copy button wrote the phrase to
+  `UIPasteboard.general.string`: shared with the user's other devices through
+  Universal Clipboard and left on the pasteboard until something replaced
+  it. The wallet's Show Seed Phrase sheet had no way to copy the phrase.
+- **After:** both copy through `copySecretToPasteboard`, which writes a
+  `.localOnly` item that expires after 60 seconds. The seed sheet has a Copy
+  button and says how long the copy lasts. Spectra does not model several
+  wallets sharing one phrase: adding the phrase on a second network is a
+  second import, pasted from this copy.
+- **Why:** one wallet per network means a phrase used on two networks is
+  entered twice; the reveal already sits behind Face ID and the wallet
+  password, so copying from it is the shortest correct path. A phrase on a
+  shared, permanent pasteboard is readable by every later paste and every
+  signed-in device.
+- **CLI check:** none applies; the pasteboard is the app's. `spectra wallet
+  export --yes` remains the CLI's way to read a phrase. `SecretPasteboardTests`
+  holds that the copy reads back as text.
+- **Verification:** `xcodebuild test` on iPhone 17 Pro (132 tests in 30
+  suites passed) and `scripts/unused-strings.sh` at 0.
+
+## 2026-10-06 — Add Wallet chooses the network first
+
+- **Before:** Add Wallet listed five methods; each opened a chain picker
+  filtered by registry flags (`derives_from_private_key`,
+  `supports_watch_only_import`, `accepts_account_xpub`), and the watch page
+  for Bitcoin held both an address list and an xpub field. Test networks were
+  a filter chip in the picker. `spectra chains` printed `privateKeyImport`
+  and `watchOnlyImport` columns.
+- **After:** Add Wallet is the network list, with a "Show test networks"
+  switch in place of the chip (the address book's picker gets the same
+  switch) and Find Lost Funds above the list. A network opens its own page
+  listing what core's `wallet_setup_descriptor` offers: create a phrase,
+  import a phrase, import a private key, watch addresses, watch an account
+  xpub, each with the formats it accepts there. Watching an account is its
+  own method with its own page. The form no longer has a chain page; the
+  network shows above each page's title. `import_wallets` refuses any kind
+  the network's descriptor does not offer, `spectra wallet methods --chain X`
+  prints the descriptor, and `spectra chains` prints `setupMethods` instead
+  of the two columns. `ChainIdentity` no longer carries the three flags.
+- **Why:** every later page can be specific to one network only if the
+  network comes first. The flags were three answers to one question, read by
+  the picker, the import and the CLI separately; the descriptor is the one
+  answer, and a core test holds that every offered method imports and every
+  other is refused.
+- **CLI check:** `spectra wallet methods --chain monero` lists only the two
+  phrase methods; `spectra --json chains --filter peercoin --testnets`
+  includes `importPrivateKey` and `watchAddresses` in `setupMethods`
+  (`scripts/cli-peercoin.py` checks it).
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,083 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-acceptance.sh` (67 checks) and `xcodebuild test` on iPhone 17
+  Pro (131 tests in 29 suites passed).
+
+## 2026-10-06 — An import is on one network
+
+- **Before:** a seed import or a created wallet could tick several chains.
+  `WalletImportRequest.selected_chain_ids` listed them, core planned one
+  wallet per chain, each sealing its own copy of the phrase, refused the whole
+  batch when any one chain failed, and named them "Name 1…N". The request
+  also carried `is_watch_only_import` and `is_private_key_import` flags, which
+  admitted an import that was both, and watched addresses keyed by chain on
+  every import whatever its kind. `spectra wallet import` took `--chain` more
+  than once. The planner kept per-wallet "secret instructions" and a
+  stringly `secret_kind` that nothing read.
+- **After:** `WalletImportRequest` names one `chain` and a
+  `WalletImportKind`: `Phrase`, `PrivateKey`, `WatchAddresses { addresses }`
+  or `WatchAccountXpub { xpub }`. A phrase or key import stores one wallet; a
+  watch import still stores one wallet per address on its chain, numbered
+  after the name asked for. An import carries only the secret its kind names,
+  and a phrase that derives no address on the chain is refused with the chain
+  named. `wallet new`, `wallet import` and `wallet watch` take one `--chain`;
+  a second is a usage error. The app's chain picker selects one chain, and its
+  "Selected" filter and "Clear all" are gone. The planner's unused
+  instructions and `secret_kind` are deleted.
+- **Why:** a wallet already belonged to one network for good, so a batch was
+  N independent imports that failed together. One network per import is what
+  lets every page after the chain choice be specific to that chain. The two
+  flags and the chain-keyed watch map were a second model of what an import
+  is, with invalid states every caller had to refuse.
+- **CLI check:** `spectra wallet import --chain Solana --chain Ethereum`
+  exits 2; `scripts/cli-acceptance.sh` checks it. `spectra wallet watch
+  --chain ethereum --address A --address B` stores two wallets.
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,080 core tests and
+  one transport integration test), `scripts/cli-acceptance.sh` (67 checks)
+  and `xcodebuild test` on iPhone 17 Pro (131 tests in 29 suites passed);
+  the source scans reported 0 except the next change's not-yet-called
+  `wallet_setup_descriptor`.
+
 ## 2026-10-06 — A data reset no longer clears an in-flight history page fetch
 
 - **Before:** `AppState.isLoadingMoreOnChainHistory` had two writers. "Load

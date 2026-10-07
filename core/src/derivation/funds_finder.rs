@@ -1,20 +1,17 @@
-//! Funds Finder — scan many derivation paths from a seed phrase to locate
-//! hidden or lost funds across supported blockchains.
+//! Funds Finder — derive the addresses a phrase could have used, to locate
+//! hidden or lost funds.
 //!
-//! Candidate generation derives addresses without network requests. The core
-//! FundsScan session checks their balances and reports funded candidates.
+//! The candidates are the registry's derivation profiles at the first
+//! accounts: the same profiles a network's setup page offers, so a funded
+//! candidate is a wallet that page can import. Candidate generation derives
+//! addresses without network requests; the core FundsScan session reads them.
 
 use crate::SpectraBridgeError;
-use crate::derivation::types::BitcoinScriptType;
-use crate::derivation::{
-    bitcoin::derive_bitcoin, bitcoin_cash::derive_bitcoin_cash, bitcoin_gold::derive_bitcoin_gold,
-    bitcoin_sv::derive_bitcoin_sv, dash::derive_dash, dogecoin::derive_dogecoin, evm::derive_evm,
-    litecoin::derive_litecoin, polkadot::derive_polkadot, solana::derive_solana,
-    stellar::derive_stellar, tron::derive_tron, xrp::derive_xrp, zcash::derive_zcash,
-};
+use crate::chains::DerivationProfile;
 use crate::registry::Chain;
 
-// ── Public types ─────────────────────────────────────────────────────────────
+/// How many accounts of each profile a scan derives: 0, 1 and 2.
+pub const SCANNED_ACCOUNTS: u32 = 3;
 
 /// Input to the candidate generation step.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -23,435 +20,168 @@ pub struct FundsFinderRequest {
     pub passphrase: Option<String>,
 }
 
-/// A single (chain, derivation path, address) tuple derived from the seed.
+/// A single (chain, profile, account, address) derived from the phrase.
 /// The balance is checked by the core FundsScan session.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
 pub struct FundsFinderCandidate {
     /// The network the candidate was derived for.
-    pub chain_id: crate::registry::Chain,
-    /// Full BIP-32 path used (e.g. `m/84'/0'/0'/0/0`).
+    pub chain_id: Chain,
+    /// The profile the path is, or `None` on a chain that derives without a
+    /// path.
+    pub profile: Option<DerivationProfile>,
+    /// The account index on the profile; 0 on a pathless chain.
+    pub account: u32,
+    /// The full path derived (e.g. `m/84'/0'/1'/0/0`); empty on a pathless
+    /// chain.
     pub derivation_path: String,
-    /// Short human-readable label (e.g. `"BIP84 Native SegWit · Account 0"`).
-    pub path_label: String,
     /// The derived address to check.
     pub address: String,
 }
 
-/// Derive addresses for every (chain, path) combination in the candidate
-/// matrix and return the full list. Pure computation — no network calls.
-///
-/// Derivation errors for individual candidates are silently skipped so that
-/// a bad path for one chain doesn't abort the entire scan.
+/// The candidates across every mainnet that restores a BIP-39 phrase: each
+/// profile at the first [`SCANNED_ACCOUNTS`] accounts, in registry order.
+/// Pure computation — no network calls.
 pub fn generate_funds_finder_candidates(
     request: FundsFinderRequest,
 ) -> Result<Vec<FundsFinderCandidate>, SpectraBridgeError> {
-    let seed = &request.seed_phrase;
-    let pass = request
-        .passphrase
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let mut out: Vec<FundsFinderCandidate> = Vec::new();
-
-    // Four script types × accounts 0-2
-    let btc_variants: &[(BitcoinScriptType, &str, &str)] = &[
-        (
-            BitcoinScriptType::P2wpkh,
-            "m/84'/0'/{a}'/0/0",
-            "BIP84 Native SegWit (bc1q)",
-        ),
-        (
-            BitcoinScriptType::P2pkh,
-            "m/44'/0'/{a}'/0/0",
-            "BIP44 Legacy (1…)",
-        ),
-        (
-            BitcoinScriptType::P2shP2wpkh,
-            "m/49'/0'/{a}'/0/0",
-            "BIP49 Nested SegWit (3…)",
-        ),
-        (
-            BitcoinScriptType::P2tr,
-            "m/86'/0'/{a}'/0/0",
-            "BIP86 Taproot (bc1p)",
-        ),
-    ];
-    for (script, path_tpl, label) in btc_variants {
-        for account in 0u32..3 {
-            let path = path_tpl.replace("{a}", &account.to_string());
-            let label_full = if account == 0 {
-                label.to_string()
-            } else {
-                format!("{label} · Account {account}")
-            };
-            push_candidate(&mut out, Chain::Bitcoin, &path, &label_full, || {
-                derive_bitcoin(
-                    seed.clone(),
-                    path.clone(),
-                    pass.clone(),
-                    *script,
-                    true,
-                    false,
-                    false,
-                )
-            });
-        }
-    }
-
-    // ── Ethereum (address is reused across all EVM chains) ────────────────────
-    // Standard: m/44'/60'/account'/0/address_idx
-    for account in 0u32..3 {
-        for addr_idx in 0u32..3 {
-            let path = format!("m/44'/60'/{}'/0/{}", account, addr_idx);
-            let label = match (account, addr_idx) {
-                (0, 0) => "Standard".to_string(),
-                (a, 0) => format!("Account {a}"),
-                (a, i) => format!("Account {a} · Address {i}"),
-            };
-            push_candidate(&mut out, Chain::Ethereum, &path, &label, || {
-                derive_evm(seed.clone(), path.clone(), pass.clone(), true, false, false)
-            });
-        }
-    }
-    // Legacy truncated paths used by some older wallets (MyEtherWallet, etc.)
-    for (path, label) in [
-        ("m/44'/60'/0'", "Legacy (m/44'/60'/0')"),
-        ("m/44'/60'/0'/0", "Legacy (m/44'/60'/0'/0)"),
-        ("m/44'/60'", "Legacy (m/44'/60')"),
-    ] {
-        push_candidate(&mut out, Chain::Ethereum, path, label, || {
-            derive_evm(
-                seed.clone(),
-                path.to_string(),
-                pass.clone(),
-                true,
-                false,
-                false,
+    Ok(Chain::all()
+        .filter(|chain| {
+            !chain.is_testnet()
+                && chain
+                    .phrase_formats()
+                    .contains(&crate::derivation::setup::WalletSecretFormat::Bip39Phrase)
+        })
+        .flat_map(|chain| {
+            chain_candidates(
+                chain,
+                &request.seed_phrase,
+                request.passphrase.as_deref(),
+                SCANNED_ACCOUNTS,
             )
-        });
-    }
-
-    // ── Solana ────────────────────────────────────────────────────────────────
-    // Standard: m/44'/501'/account'/0'
-    // Legacy:   m/44'/501'/account'
-    for account in 0u32..3 {
-        let std_path = format!("m/44'/501'/{}'/0'", account);
-        let leg_path = format!("m/44'/501'/{}'", account);
-        let std_label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        let leg_label = if account == 0 {
-            "Legacy (m/44'/501'/0')".to_string()
-        } else {
-            format!("Legacy · Account {account}")
-        };
-        push_candidate(&mut out, Chain::Solana, &std_path, &std_label, || {
-            derive_solana(
-                seed.clone(),
-                std_path.clone(),
-                pass.clone(),
-                None,
-                true,
-                false,
-                false,
-            )
-        });
-        push_candidate(&mut out, Chain::Solana, &leg_path, &leg_label, || {
-            derive_solana(
-                seed.clone(),
-                leg_path.clone(),
-                pass.clone(),
-                None,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-
-    // ── Litecoin ──────────────────────────────────────────────────────────────
-    let ltc_variants: &[(BitcoinScriptType, &str, &str)] = &[
-        (
-            BitcoinScriptType::P2wpkh,
-            "m/84'/2'/{a}'/0/0",
-            "BIP84 Native SegWit (ltc1q)",
-        ),
-        (
-            BitcoinScriptType::P2pkh,
-            "m/44'/2'/{a}'/0/0",
-            "BIP44 Legacy (L…/M…)",
-        ),
-        (
-            BitcoinScriptType::P2shP2wpkh,
-            "m/49'/2'/{a}'/0/0",
-            "BIP49 Nested SegWit (M…)",
-        ),
-    ];
-    for (script, path_tpl, label) in ltc_variants {
-        for account in 0u32..2 {
-            let path = path_tpl.replace("{a}", &account.to_string());
-            let label_full = if account == 0 {
-                label.to_string()
-            } else {
-                format!("{label} · Account {account}")
-            };
-            push_candidate(&mut out, Chain::Litecoin, &path, &label_full, || {
-                derive_litecoin(
-                    seed.clone(),
-                    path.clone(),
-                    pass.clone(),
-                    *script,
-                    true,
-                    false,
-                    false,
-                )
-            });
-        }
-    }
-
-    // Peercoin's registered address formats, accounts 0-2.
-    for template in &Chain::Peercoin.entry().derivation_path {
-        let format_label = match template.tag.as_str() {
-            "legacy" => "BIP44 Legacy (P…)",
-            "nestedSegWit" => "BIP49 Nested SegWit (p…)",
-            "nativeSegWit" => "BIP84 Native SegWit (pc1q)",
-            "taproot" => "BIP86 Taproot (pc1p)",
-            other => other,
-        };
-        for account in 0u32..3 {
-            let path = template.path.replace("{account}", &account.to_string());
-            let label = format!("{format_label} · Account {account}");
-            push_candidate(&mut out, Chain::Peercoin, &path, &label, || {
-                crate::derivation::dispatch::derive_for_chain(
-                    Chain::Peercoin,
-                    seed,
-                    &path,
-                    pass.as_deref(),
-                    None,
-                    None,
-                    true,
-                    false,
-                    false,
-                )
-            });
-        }
-    }
-
-    // ── Dogecoin ──────────────────────────────────────────────────────────────
-    for account in 0u32..3 {
-        let path = format!("m/44'/3'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::Dogecoin, &path, &label, || {
-            derive_dogecoin(
-                seed.clone(),
-                path.clone(),
-                pass.clone(),
-                BitcoinScriptType::P2pkh,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-
-    // ── Bitcoin Cash ──────────────────────────────────────────────────────────
-    for account in 0u32..2 {
-        let path = format!("m/44'/145'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::BitcoinCash, &path, &label, || {
-            derive_bitcoin_cash(
-                seed.clone(),
-                path.clone(),
-                pass.clone(),
-                BitcoinScriptType::P2pkh,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-
-    // ── Bitcoin SV ────────────────────────────────────────────────────────────
-    for account in 0u32..2 {
-        let path = format!("m/44'/236'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::BitcoinSV, &path, &label, || {
-            derive_bitcoin_sv(
-                seed.clone(),
-                path.clone(),
-                pass.clone(),
-                BitcoinScriptType::P2pkh,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-
-    // ── XRP Ledger ────────────────────────────────────────────────────────────
-    for account in 0u32..3 {
-        let path = format!("m/44'/144'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::Xrp, &path, &label, || {
-            derive_xrp(seed.clone(), path.clone(), pass.clone(), true, false, false)
-        });
-    }
-
-    // ── Tron ──────────────────────────────────────────────────────────────────
-    for account in 0u32..3 {
-        let path = format!("m/44'/195'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::Tron, &path, &label, || {
-            derive_tron(seed.clone(), path.clone(), pass.clone(), true, false, false)
-        });
-    }
-
-    // ── Stellar ───────────────────────────────────────────────────────────────
-    for account in 0u32..2 {
-        let path = format!("m/44'/148'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::Stellar, &path, &label, || {
-            derive_stellar(
-                seed.clone(),
-                path.clone(),
-                pass.clone(),
-                None,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-    // Legacy Stellar path
-    push_candidate(
-        &mut out,
-        Chain::Stellar,
-        "m/44'/148'",
-        "Legacy (m/44'/148')",
-        || {
-            derive_stellar(
-                seed.clone(),
-                "m/44'/148'".to_string(),
-                pass.clone(),
-                None,
-                true,
-                false,
-                false,
-            )
-        },
-    );
-
-    // ── Polkadot ──────────────────────────────────────────────────────────────
-    // Polkadot uses sr25519 with no path — just one canonical address.
-    push_candidate(
-        &mut out,
-        Chain::Polkadot,
-        "sr25519",
-        "Standard (sr25519)",
-        || derive_polkadot(seed.clone(), pass.clone(), None, true, false, false),
-    );
-
-    // ── Dash ──────────────────────────────────────────────────────────────────
-    for account in 0u32..2 {
-        let path = format!("m/44'/5'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::Dash, &path, &label, || {
-            derive_dash(
-                seed.clone(),
-                path.clone(),
-                pass.clone(),
-                BitcoinScriptType::P2pkh,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-
-    // ── Zcash ─────────────────────────────────────────────────────────────────
-    for account in 0u32..2 {
-        let path = format!("m/44'/133'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::Zcash, &path, &label, || {
-            derive_zcash(seed.clone(), path.clone(), pass.clone(), true, false, false)
-        });
-    }
-
-    // ── Bitcoin Gold ──────────────────────────────────────────────────────────
-    for account in 0u32..2 {
-        let path = format!("m/44'/156'/{}'/0/0", account);
-        let label = if account == 0 {
-            "Standard".to_string()
-        } else {
-            format!("Account {account}")
-        };
-        push_candidate(&mut out, Chain::BitcoinGold, &path, &label, || {
-            derive_bitcoin_gold(
-                seed.clone(),
-                path.clone(),
-                pass.clone(),
-                BitcoinScriptType::P2pkh,
-                true,
-                false,
-                false,
-            )
-        });
-    }
-
-    Ok(out)
+        })
+        .collect())
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
+/// `chain`'s candidates: each of its profiles at accounts `0..accounts`, the
+/// default profile first, or the one pathless address. A path the deriver
+/// refuses is skipped rather than aborting the rest.
+pub(crate) fn chain_candidates(
+    chain: Chain,
+    seed_phrase: &str,
+    passphrase: Option<&str>,
+    accounts: u32,
+) -> Vec<FundsFinderCandidate> {
+    let passphrase = passphrase.filter(|value| !value.is_empty());
+    let profiles = chain.derivation_profiles();
+    let paths: Vec<(Option<DerivationProfile>, u32, String)> = if profiles.is_empty() {
+        vec![(None, 0, String::new())]
+    } else {
+        profiles
+            .into_iter()
+            .flat_map(|profile| {
+                (0..accounts).filter_map(move |account| {
+                    chain
+                        .derivation_profile_path(profile, account)
+                        .map(|path| (Some(profile), account, path))
+                })
+            })
+            .collect()
+    };
+    paths
+        .into_iter()
+        .filter_map(|(profile, account, path)| {
+            let address = crate::derivation::dispatch::derive_for_chain(
+                chain,
+                seed_phrase,
+                &path,
+                passphrase,
+                None,
+                None,
+                true,
+                false,
+                false,
+            )
+            .ok()?
+            .address?;
+            Some(FundsFinderCandidate {
+                chain_id: chain,
+                profile,
+                account,
+                derivation_path: path,
+                address,
+            })
+        })
+        .collect()
+}
 
-fn push_candidate(
-    out: &mut Vec<FundsFinderCandidate>,
-    chain_id: Chain,
-    path: &str,
-    label: &str,
-    derive: impl FnOnce() -> Result<crate::derivation::types::DerivationResult, SpectraBridgeError>,
-) {
-    if let Ok(result) = derive()
-        && let Some(address) = result.address
-    {
-        out.push(FundsFinderCandidate {
-            chain_id,
-            derivation_path: path.to_string(),
-            path_label: label.to_string(),
-            address,
-        });
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+    fn request() -> FundsFinderRequest {
+        FundsFinderRequest {
+            seed_phrase: PHRASE.into(),
+            passphrase: None,
+        }
+    }
+
+    /// The scan is the registry's profiles, nothing of its own: every
+    /// profile of every BIP-39 mainnet at the first accounts, and the one
+    /// address of a pathless chain.
+    #[test]
+    fn candidates_are_the_registrys_profiles_at_the_first_accounts() {
+        let candidates = generate_funds_finder_candidates(request()).unwrap();
+        for chain in Chain::all() {
+            let ours: Vec<_> = candidates.iter().filter(|c| c.chain_id == chain).collect();
+            let reads_bip39 = chain
+                .phrase_formats()
+                .contains(&crate::derivation::setup::WalletSecretFormat::Bip39Phrase);
+            if chain.is_testnet() || !reads_bip39 {
+                assert!(ours.is_empty(), "{chain}");
+                continue;
+            }
+            let profiles = chain.derivation_profiles();
+            let expected = if profiles.is_empty() {
+                1
+            } else {
+                profiles.len() * SCANNED_ACCOUNTS as usize
+            };
+            assert_eq!(ours.len(), expected, "{chain}");
+            for candidate in ours {
+                if let Some(profile) = candidate.profile {
+                    assert_eq!(
+                        crate::derivation::path::derivation_profile_of_path(
+                            chain,
+                            candidate.derivation_path.clone()
+                        ),
+                        Some(crate::derivation::path::DerivationProfileChoice {
+                            profile,
+                            account: candidate.account
+                        })
+                    );
+                }
+            }
+        }
+        // Monero and TON read their own phrases, not this one.
+        assert!(
+            !candidates
+                .iter()
+                .any(|c| matches!(c.chain_id, Chain::Monero | Chain::Ton))
+        );
+    }
+
+    /// Each account is its own wallet, so no two candidates on a chain share
+    /// an address.
+    #[test]
+    fn accounts_and_profiles_derive_distinct_addresses() {
+        for chain in Chain::all().filter(|c| c.uses_derivation_path()) {
+            let candidates = chain_candidates(chain, PHRASE, None, SCANNED_ACCOUNTS);
+            let unique: std::collections::HashSet<_> =
+                candidates.iter().map(|c| &c.address).collect();
+            assert_eq!(unique.len(), candidates.len(), "{chain}");
+        }
     }
 }

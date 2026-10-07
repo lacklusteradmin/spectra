@@ -57,6 +57,9 @@ private struct ReceiveAddressView: View {
     @State private var isShowingShareSheet: Bool = false
     @State private var qrExportMessage: String?
     @State private var qrImageSaver: PhotoLibraryImageSaver?
+    /// What an account on a reserve network must first receive to exist,
+    /// read from the network while the wallet holds nothing.
+    @State private var reserve: AccountReserve?
 
     private var selectedWallet: WalletView? {
         store.receiveEnabledWallets.first(where: { $0.id == store.receiveFlow.walletId })
@@ -101,6 +104,13 @@ private struct ReceiveAddressView: View {
         .task(id: "\(store.receiveFlow.walletId)|\(store.receiveFlow.holdingKey)") {
             await store.refreshReceiveAddress()
         }
+        .task(id: store.receiveFlow.walletId) {
+            reserve = nil
+            guard let wallet = selectedWallet, wallet.chainId.requiresAccountReserve,
+                !wallet.holdings.contains(where: { $0.isNativeCoin && $0.hasBalance })
+            else { return }
+            reserve = try? await store.bridge.ready().accountReserve(chain: wallet.chainId)
+        }
     }
 
     private var receiveAddressHero: some View {
@@ -144,6 +154,15 @@ private struct ReceiveAddressView: View {
                 }
             }
 
+            if let reserve {
+                Label(
+                    AppLocalization.format(
+                        "This account exists once it receives at least %@ %@; a smaller first payment fails.",
+                        reserve.amount, reserve.symbol),
+                    systemImage: "exclamationmark.circle"
+                )
+                .font(.footnote).foregroundStyle(.spectraWarning).multilineTextAlignment(.center)
+            }
             Text(canUseResolvedAddress ? resolvedAddress : (store.receiveFlow.error ?? AppLocalization.string("Loading receive address…")))
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)

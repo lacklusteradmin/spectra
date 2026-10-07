@@ -131,6 +131,16 @@ impl XrplClient {
             .or_decode("account_info: missing or invalid Sequence")
     }
 
+    /// The validated ledger's base reserve, in drops: what an account must
+    /// hold for the ledger to create it.
+    pub(crate) async fn fetch_base_reserve(&self) -> Result<u64, ApiError> {
+        let result = self.call("server_state", json!({})).await?;
+        result
+            .pointer("/state/validated_ledger/reserve_base")
+            .and_then(Value::as_u64)
+            .or_decode("server_state: missing reserve_base")
+    }
+
     pub async fn fetch_fee(&self) -> Result<u64, ApiError> {
         let result = self.call("fee", json!({})).await?;
         result

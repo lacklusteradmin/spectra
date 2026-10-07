@@ -6,11 +6,10 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::derivation::import::{
-    WalletImportCommit, WalletImportOutcome, WalletImportRequest, WalletImportWatchOnlyEntries,
+    WalletImportCommit, WalletImportKind, WalletImportOutcome, WalletImportRequest,
 };
 use spectra_core::registry::Chain;
 use spectra_core::store::state::{StateCommand, WalletState};
-use spectra_core::store::wallet_domain::SeedDerivationPaths;
 use spectra_core::store::wallet_secrets;
 
 use super::resolve_chain;
@@ -39,6 +38,9 @@ pub enum WalletCommand {
         /// Fix the wordlist (`en`, `zh-hans`, `ja`, …) instead of detecting it.
         #[arg(long)]
         language: Option<String>,
+        /// Judge the phrase in this chain's formats; BIP-39 when absent.
+        #[arg(long)]
+        chain: Option<String>,
     },
     /// Core-derived portfolio and signing capabilities.
     Derived,
@@ -48,6 +50,26 @@ pub enum WalletCommand {
     Import(ImportArgs),
     /// Track addresses or a Bitcoin account xpub without its keys.
     Watch(WatchArgs),
+    /// The ways a wallet can be added on a network, and what each accepts.
+    Methods {
+        /// Chain display name or registry id.
+        #[arg(long)]
+        chain: String,
+    },
+    /// What a wallet on a network will do, its limits, and the endpoints its
+    /// first refresh reads from. Contacts nothing.
+    Capabilities {
+        /// Chain display name or registry id.
+        #[arg(long)]
+        chain: String,
+    },
+    /// The least a new account must receive to exist, read from the network
+    /// (XRP and Stellar).
+    Reserve {
+        /// Chain display name or registry id.
+        #[arg(long)]
+        chain: String,
+    },
     /// List stored wallets.
     List,
     /// Show one wallet in detail.
@@ -70,16 +92,25 @@ pub enum WalletCommand {
 
 #[derive(Args)]
 pub struct CreationArgs {
-    /// Chain display name or registry id. Repeat it to import one
-    /// seed across several chains; `new` takes exactly one.
-    #[arg(long, required = true)]
-    chain: Vec<String>,
+    /// Chain display name or registry id. A wallet is on one network; a
+    /// phrase used on another network is a second import.
+    #[arg(long)]
+    chain: String,
     /// Wallet name (default: core assigns an available "Wallet N").
     #[arg(long)]
     name: Option<String>,
-    /// Derivation path (default: the chain's catalog default).
-    #[arg(long)]
+    /// Derivation path, for a path no profile names (default: the chain's
+    /// default profile at account 0).
+    #[arg(long, conflicts_with_all = ["profile", "account"])]
     path: Option<String>,
+    /// Derivation profile, as `wallet methods` lists it: `standard`,
+    /// `legacy`, `nestedSegWit`, `nativeSegWit` or `taproot` (default: the
+    /// chain's first).
+    #[arg(long)]
+    profile: Option<String>,
+    /// Account index on the profile (default 0).
+    #[arg(long)]
+    account: Option<u32>,
     /// JSON file containing raw derivation fields (including exact passphrase text).
     #[arg(long)]
     derivation_input_file: Option<String>,
@@ -92,6 +123,11 @@ pub struct CreationArgs {
     /// Encrypt the seed with a local key stored in this data directory, without a wallet password.
     #[arg(long, conflicts_with_all = ["password_file"])]
     no_password: bool,
+    /// Monero only: the block height the wallet's scan starts from. A new
+    /// wallet starts near now; an import from its Polyseed's birthday, or
+    /// from the start of the chain.
+    #[arg(long)]
+    restore_height: Option<u64>,
 }
 
 impl CreationArgs {
@@ -125,26 +161,36 @@ impl CreationArgs {
 pub struct NewArgs {
     #[command(flatten)]
     creation: CreationArgs,
-    /// Seed phrase length: 12, 15, 18, 21 or 24.
-    #[arg(long, default_value_t = 12)]
-    words: u32,
+    /// Phrase length, one the chain's created format has: 12, 15, 18, 21
+    /// or 24 for BIP-39, 25 for Monero, 24 for TON. Defaults to the shortest.
+    #[arg(long)]
+    words: Option<u32>,
 }
 
 #[derive(Args)]
 pub struct ImportArgs {
     #[command(flatten)]
     creation: CreationArgs,
+    /// Print the address the import would store, and store nothing.
+    #[arg(long)]
+    preview: bool,
+    /// NEAR only: a named account (`alice.near`) the key controls. The
+    /// import confirms on the network that the key is one of its full-access
+    /// keys, and the wallet holds the named account.
+    #[arg(long)]
+    named_account: Option<String>,
     /// Read the seed phrase from this file; `-` means stdin.
     #[arg(long, value_name = "PATH")]
     seed_file: Option<String>,
     /// Read the seed phrase from this environment variable.
     #[arg(long, value_name = "VAR", default_value = "SPECTRA_SEED")]
     seed_env: Option<String>,
-    /// Import a raw private key instead of a phrase. Reads from this file;
+    /// Import a private key instead of a phrase, in hex or the chain's own
+    /// encoding (`wallet methods` lists them). Reads from this file;
     /// `-` means stdin.
     #[arg(long, value_name = "PATH", conflicts_with = "seed_file")]
     private_key_file: Option<String>,
-    /// Import a raw private key instead of a phrase, from this variable.
+    /// Import a private key instead of a phrase, from this variable.
     #[arg(long, value_name = "VAR")]
     private_key_env: Option<String>,
 }
@@ -164,6 +210,9 @@ pub struct WatchArgs {
     /// Wallet name (default: core assigns an available "Wallet N").
     #[arg(long)]
     name: Option<String>,
+    /// Print the addresses the watch would store, and store nothing.
+    #[arg(long)]
+    preview: bool,
 }
 
 #[derive(Args)]
@@ -224,11 +273,13 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
             seed_env,
             words,
             language,
+            chain,
         } => {
             let phrase = std::env::var(&seed_env)
                 .map_err(|_| CliError::usage("Seed environment variable is missing"))?;
+            let chain = chain.as_deref().map(resolve_chain).transpose()?;
             if let Some(code) = &language
-                && !spectra_core::validation::seed_phrase_languages()
+                && !spectra_core::validation::seed_phrase_languages(chain)
                     .iter()
                     .any(|offered| &offered.code == code)
             {
@@ -239,6 +290,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                     words: phrase.split_whitespace().map(str::to_string).collect(),
                     language,
                     word_count: words,
+                    chain,
                 },
             );
             out.emit(serde_json::json!({
@@ -246,8 +298,9 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                 "wordCountInferred": verdict.word_count_inferred,
                 "language": verdict.language.as_ref().map(|l| &l.code),
                 "languageDetected": verdict.language_detected,
+                "format": verdict.format,
                 "isComplete": verdict.is_complete,
-                "checksumValid": verdict.checksum_valid,
+                "isValid": verdict.is_valid,
                 "invalidWordCount": verdict.invalid_words.len(),
                 "problem": verdict.problem,
             }));
@@ -256,13 +309,13 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                     .language
                     .as_ref()
                     .map_or("unknown", |l| l.name.as_str());
-                let state = if verdict.checksum_valid {
+                let state = if verdict.is_valid {
                     "valid"
                 } else {
                     "not valid"
                 };
                 println!("{} words, {language}: {state}", verdict.word_count);
-                if let Some(problem) = verdict.problem {
+                if let Some(problem) = verdict.problem.clone() {
                     println!("{}", super::seed_phrase_problem_text(problem));
                 }
             });
@@ -271,6 +324,23 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
         WalletCommand::New(args) => new(ctx, out, args),
         WalletCommand::Import(args) => import(ctx, out, args),
         WalletCommand::Watch(args) => watch(ctx, out, args),
+        WalletCommand::Methods { chain } => methods(out, &chain),
+        WalletCommand::Capabilities { chain } => capabilities(ctx, out, &chain),
+        WalletCommand::Reserve { chain } => {
+            let chain = resolve_chain(&chain)?;
+            let reserve = ctx
+                .rt
+                .block_on(ctx.service()?.account_reserve(chain))
+                .map_err(CliError::from)?;
+            out.text(|| println!("  {} {}", reserve.amount, reserve.symbol));
+            out.emit(serde_json::json!({
+                "ok": true,
+                "chain": reserve.chain,
+                "amount": reserve.amount,
+                "symbol": reserve.symbol,
+            }));
+            Ok(())
+        }
         WalletCommand::List => list(ctx, out),
         WalletCommand::Derived => {
             let d = ctx
@@ -300,11 +370,34 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
 // ─── Creating ───────────────────────────────────────────────────────────────
 
 fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
-    let chain = only_chain(&args.creation)?;
-    // Core validates the requested BIP-39 length.
-    let seed_phrase = spectra_core::service::generate_mnemonic(args.words)
+    let chain = resolve_chain(&args.creation.chain)?;
+    // Core generates in the chain's own format and validates the length.
+    let words = match args.words {
+        Some(words) => words,
+        None => {
+            let format = spectra_core::derivation::setup::wallet_setup_descriptor(chain)
+                .option(spectra_core::derivation::setup::WalletSetupMethod::CreatePhrase)
+                .and_then(|option| option.formats.first().copied())
+                .ok_or_else(|| CliError::failure("the chain creates no phrase"))?;
+            spectra_core::validation::seed_phrase_lengths(Some(chain))
+                .into_iter()
+                .find(|length| length.format == format)
+                .map(|length| length.word_count)
+                .ok_or_else(|| CliError::failure("the chain's format has no length"))?
+        }
+    };
+    let seed_phrase = spectra_core::service::generate_seed_phrase(chain, words)
         .map_err(|error| CliError::usage(error.to_string()))?;
-    let outcome = seal_and_import(ctx, &args.creation, &[chain], &seed_phrase)?;
+    // A new Monero wallet has no outputs before now, so its scan starts here.
+    let restore_height = match args.creation.restore_height {
+        Some(height) => Some(height),
+        None if chain.mainnet_counterpart() == Chain::Monero => Some(
+            spectra_core::monero_heights::monero_new_wallet_restore_height(chain)
+                .map_err(CliError::from)?,
+        ),
+        None => None,
+    };
+    let outcome = seal_and_import(ctx, &args.creation, chain, &seed_phrase, restore_height)?;
 
     let wallet = first_wallet(&outcome)?;
     out.text(|| {
@@ -329,9 +422,9 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
 }
 
 fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
-    let chains = resolve_chains(&args.creation.chain)?;
+    let chain = resolve_chain(&args.creation.chain)?;
     if args.private_key_file.is_some() || args.private_key_env.is_some() {
-        return import_private_key(ctx, out, args, &chains);
+        return import_private_key(ctx, out, args, chain);
     }
     let env = args
         .seed_env
@@ -343,20 +436,39 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     }
     .resolve("seed phrase", "seed-file")?;
 
-    crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
+    crate::cmd::reject_bad_seed_phrase(Some(chain), &seed_phrase)?;
 
-    let outcome = seal_and_import(ctx, &args.creation, &chains, &seed_phrase)?;
+    let mut commit = phrase_commit(
+        &args.creation,
+        chain,
+        &seed_phrase,
+        args.creation.restore_height,
+    )?;
+    commit.named_account = args.named_account.clone();
+    if args.preview {
+        return preview(ctx, out, commit);
+    }
+    commit.password = args.creation.optional_password()?;
+    let outcome = ctx
+        .rt
+        .block_on(ctx.service()?.import_wallets(commit))
+        .map_err(CliError::from)?;
     let wallet = first_wallet(&outcome)?;
     out.text(|| {
         println!();
         println!(
-            "  {} imported a {}-word phrase",
+            "  {} imported a {}-word phrase{}",
             out::ok_mark(),
-            seed_phrase.split_whitespace().count()
+            seed_phrase.split_whitespace().count(),
+            upgraded_note(&outcome)
         );
         print_wallet(&wallet);
     });
-    out.emit(serde_json::json!({ "ok": true, "wallet": wallet_json(&wallet) }));
+    out.emit(serde_json::json!({
+        "ok": true,
+        "upgraded": outcome.upgraded,
+        "wallet": wallet_json(&wallet),
+    }));
     Ok(())
 }
 
@@ -365,8 +477,13 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
 /// The last wallet operation the CLI could not drive. Core has dispatched
 /// private-key derivation by chain since `derive_from_private_key`, so
 /// what was missing was this command, not the derivation.
-fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -> CliResult<()> {
-    if args.creation.derivation_input_file.is_some() {
+fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> CliResult<()> {
+    let creation = &args.creation;
+    if creation.derivation_input_file.is_some()
+        || creation.path.is_some()
+        || creation.profile.is_some()
+        || creation.account.is_some()
+    {
         return Err(CliError::rejected(
             "Derivation overrides require a mnemonic wallet",
         ));
@@ -380,16 +497,18 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -
         env,
     }
     .resolve("private key", "private-key-file")?;
-    let private_key = private_key.trim().trim_start_matches("0x").to_string();
-    let password = args.creation.optional_password()?;
+    // Core reads the key in any of the chain's own encodings.
+    let private_key = private_key.trim().to_string();
 
-    // Every chain named goes to core, which takes one for a private key and
-    // derives its address before sealing anything.
+    // Core derives the key's address on the chain before sealing anything.
     let name = args.creation.name.clone().unwrap_or_default();
-    let mut commit = commit_for(request_for(chains, &name), SeedDerivationPaths::default());
-    commit.request.is_private_key_import = true;
+    let mut commit = commit_for(request_for(chain, &name, WalletImportKind::PrivateKey));
     commit.private_key = Some(private_key.clone());
-    commit.password = password;
+    commit.named_account = args.named_account.clone();
+    if args.preview {
+        return preview(ctx, out, commit);
+    }
+    commit.password = args.creation.optional_password()?;
 
     let service = ctx.service()?;
     let outcome = ctx.rt.block_on(service.import_wallets(commit))?;
@@ -397,51 +516,53 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chains: &[Chain]) -
     let wallet = first_wallet(&outcome)?;
     out.text(|| {
         println!();
-        println!("  {} imported a private key", out::ok_mark());
+        println!(
+            "  {} imported a private key{}",
+            out::ok_mark(),
+            upgraded_note(&outcome)
+        );
         print_wallet_of_kind(&wallet, Some("private key"));
     });
-    out.emit(serde_json::json!({ "ok": true, "wallet": wallet_json(&wallet) }));
+    out.emit(serde_json::json!({
+        "ok": true,
+        "upgraded": outcome.upgraded,
+        "wallet": wallet_json(&wallet),
+    }));
     Ok(())
 }
 
-/// Sealing first is the safer order: a failure afterwards leaves an orphan
-/// secret under an id no wallet references, where the other order leaves a
-/// wallet that looks spendable and is not.
-/// Every chain the caller named, in the order they named them.
-fn resolve_chains(names: &[String]) -> CliResult<Vec<Chain>> {
-    names.iter().map(|n| resolve_chain(n)).collect()
-}
-
-/// The one chain a command that takes exactly one was given.
-fn only_chain(args: &CreationArgs) -> CliResult<Chain> {
-    let chains = resolve_chains(&args.chain)?;
-    if chains.len() > 1 {
-        return Err(CliError::usage(
-            "this command takes one --chain; repeating it is for `wallet import`",
-        ));
-    }
-    Ok(chains[0])
-}
-
-/// Seal the seed once and import each selected chain.
-/// Core derives the addresses during the import commit.
+/// Import a phrase on `chain`. Core derives the address during the import
+/// commit, and seals the phrase before it stores the wallet: a failure
+/// afterwards leaves an orphan secret under an id no wallet references, where
+/// the other order leaves a wallet that looks spendable and is not.
 fn seal_and_import(
     ctx: &Ctx,
     args: &CreationArgs,
-    chains: &[Chain],
+    chain: Chain,
     seed_phrase: &str,
+    restore_height: Option<u64>,
 ) -> CliResult<WalletImportOutcome> {
-    let password = args.optional_password()?;
+    let mut commit = phrase_commit(args, chain, seed_phrase, restore_height)?;
+    commit.password = args.optional_password()?;
 
+    let service = ctx.service()?;
+    ctx.rt
+        .block_on(service.import_wallets(commit))
+        .map_err(CliError::from)
+}
+
+/// A phrase import on `chain` as the arguments describe it, before a password.
+fn phrase_commit(
+    args: &CreationArgs,
+    chain: Chain,
+    seed_phrase: &str,
+    restore_height: Option<u64>,
+) -> CliResult<WalletImportCommit> {
     let name = args.name.clone().unwrap_or_default();
-    let mut paths = SeedDerivationPaths::default();
-    for c in chains {
-        let path = derivation_path(*c, args.path.as_deref())?;
-        paths.by_chain.insert(c.str_id().to_string(), path);
-    }
-    let mut commit = commit_for(request_for(chains, &name), paths);
+    let mut commit = commit_for(request_for(chain, &name, WalletImportKind::Phrase));
+    commit.derivation_path = derivation_path(chain, args)?;
     commit.seed_phrase = Some(seed_phrase.to_string());
-    commit.password = password;
+    commit.restore_height = restore_height;
     if let Some(path) = &args.derivation_input_file {
         let input = serde_json::from_str(
             &std::fs::read_to_string(path).map_err(|e| CliError::usage(e.to_string()))?,
@@ -450,11 +571,37 @@ fn seal_and_import(
         commit.derivation_overrides =
             spectra_core::derivation::input::parse_wallet_derivation_input(input);
     }
+    Ok(commit)
+}
 
+/// Print what `commit` would store, from core's preview: the planning the
+/// import runs, with nothing sealed or stored.
+fn preview(ctx: &Ctx, out: Out, commit: WalletImportCommit) -> CliResult<()> {
     let service = ctx.service()?;
-    ctx.rt
-        .block_on(service.import_wallets(commit))
-        .map_err(CliError::from)
+    let preview = ctx
+        .rt
+        .block_on(service.preview_wallet_import(commit))
+        .map_err(CliError::from)?;
+    out.text(|| {
+        println!();
+        for address in &preview.addresses {
+            println!("  {}  {address}", out::hint("would store"));
+        }
+        for address in &preview.rejected_addresses {
+            println!("  {}  {address}", out::hint("would refuse"));
+        }
+        if let Some(name) = &preview.upgrades_wallet {
+            println!("  {}  {name}", out::hint("would give keys to"));
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "preview": true,
+        "addresses": preview.addresses,
+        "rejectedAddresses": preview.rejected_addresses,
+        "upgradesWallet": preview.upgrades_wallet,
+    }));
+    Ok(())
 }
 
 fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
@@ -473,21 +620,21 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
 
     // Core mints one id per wallet it plans, which for a watch-only import is
     // one per address entry.
-    let mut request = request_for(&[chain], &name);
-    request.is_watch_only_import = true;
-    request.watch_only_entries = WalletImportWatchOnlyEntries {
-        by_chain_id: if args.address.is_empty() {
-            Default::default()
-        } else {
-            [(chain, args.address)].into_iter().collect()
+    let kind = match args.xpub {
+        Some(xpub) => WalletImportKind::WatchAccountXpub { xpub },
+        None => WalletImportKind::WatchAddresses {
+            addresses: args.address,
         },
-        bitcoin_xpub: args.xpub,
     };
+    let request = request_for(chain, &name, kind);
+    if args.preview {
+        return preview(ctx, out, commit_for(request));
+    }
 
     let service = ctx.service()?;
     let outcome = ctx
         .rt
-        .block_on(service.import_wallets(commit_for(request, SeedDerivationPaths::default())))
+        .block_on(service.import_wallets(commit_for(request)))
         .map_err(CliError::from)?;
 
     // One wallet per address entry, which is what the planner expanded them
@@ -520,6 +667,146 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
 }
 
 // ─── Reading ────────────────────────────────────────────────────────────────
+
+/// Print the network's setup descriptor: what `import_wallets` will accept.
+fn methods(out: Out, chain: &str) -> CliResult<()> {
+    use spectra_core::derivation::setup::{WalletSecretFormat, WalletSetupMethod};
+    let chain = resolve_chain(chain)?;
+    let descriptor = spectra_core::derivation::setup::wallet_setup_descriptor(chain);
+    let method_name = |method: WalletSetupMethod| match method {
+        WalletSetupMethod::CreatePhrase => "create a phrase",
+        WalletSetupMethod::ImportPhrase => "import a phrase",
+        WalletSetupMethod::ImportPrivateKey => "import a private key",
+        WalletSetupMethod::WatchAddresses => "watch addresses",
+        WalletSetupMethod::WatchAccountXpub => "watch an account xpub",
+    };
+    let format_name = |format: WalletSecretFormat| match format {
+        WalletSecretFormat::Bip39Phrase => "BIP-39 phrase (12–24 words)",
+        WalletSecretFormat::MoneroPhrase => "Monero seed (25 words)",
+        WalletSecretFormat::Polyseed => "Polyseed (16 words)",
+        WalletSecretFormat::TonMnemonic => "TON mnemonic (24 words)",
+        WalletSecretFormat::HexSecret32 => "32-byte hex secret",
+        WalletSecretFormat::CardanoExtendedKey => "64-byte extended key (hex)",
+        WalletSecretFormat::Wif => "WIF",
+        WalletSecretFormat::SolanaKeypair => "base58 or JSON keypair",
+        WalletSecretFormat::StellarSecretSeed => "secret seed (S…)",
+        WalletSecretFormat::SuiPrivateKey => "suiprivkey1…",
+        WalletSecretFormat::AptosPrivateKey => "AIP-80 key (ed25519-priv-0x…)",
+        WalletSecretFormat::NearSecretKey => "key string (ed25519:…)",
+        WalletSecretFormat::Address => "address",
+        WalletSecretFormat::AccountXpub => "account xpub",
+    };
+    out.text(|| {
+        println!();
+        println!("  {}", out::tint(&super::chain_name(chain), chain).bold());
+        for option in &descriptor.options {
+            let formats: Vec<&str> = option.formats.iter().map(|f| format_name(*f)).collect();
+            let fields: Vec<&str> = option
+                .fields
+                .iter()
+                .map(|field| match field {
+                    spectra_core::derivation::setup::WalletSetupField::RestoreHeight => {
+                        "--restore-height"
+                    }
+                    spectra_core::derivation::setup::WalletSetupField::NamedAccount => {
+                        "--named-account"
+                    }
+                })
+                .collect();
+            println!(
+                "  {}  {}{}",
+                out::hint(&format!("{:<22}", method_name(option.method))),
+                formats.join(", "),
+                if fields.is_empty() {
+                    String::new()
+                } else {
+                    format!("  {}", out::hint(&format!("[{}]", fields.join(", "))))
+                }
+            );
+            if !option.profiles.is_empty() {
+                // The ids `--profile` takes, default first, each with an
+                // `--account` index.
+                let profiles: Vec<String> = option
+                    .profiles
+                    .iter()
+                    .filter_map(|profile| serde_json::to_value(profile).ok())
+                    .filter_map(|id| id.as_str().map(str::to_string))
+                    .collect();
+                println!(
+                    "  {}  {}",
+                    " ".repeat(22),
+                    out::hint(&format!("--profile {} --account N", profiles.join("|")))
+                );
+            }
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.str_id(),
+        "options": serde_json::to_value(&descriptor.options)
+            .map_err(|e| CliError::failure(e.to_string()))?,
+    }));
+    Ok(())
+}
+
+/// Print core's setup summary for a network: what the setup page's last
+/// step shows before anything is committed.
+fn capabilities(ctx: &Ctx, out: Out, chain: &str) -> CliResult<()> {
+    let chain = resolve_chain(chain)?;
+    let summary = ctx.rt.block_on(ctx.service()?.wallet_setup_summary(chain));
+    out.text(|| {
+        println!();
+        println!("  {}", out::tint(&super::chain_name(chain), chain).bold());
+        let coverage = |c: &spectra_core::service::CapabilityCoverage| {
+            serde_json::to_value(c)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default()
+        };
+        println!(
+            "  {}  {}",
+            out::hint(&format!("{:<16}", "balance")),
+            coverage(&summary.balance)
+        );
+        println!(
+            "  {}  {}",
+            out::hint(&format!("{:<16}", "history")),
+            coverage(&summary.history)
+        );
+        if let Some(tokens) = &summary.token_discovery {
+            println!(
+                "  {}  {}",
+                out::hint(&format!("{:<16}", "token discovery")),
+                coverage(tokens)
+            );
+        }
+        println!(
+            "  {}  {}",
+            out::hint(&format!("{:<16}", "staking")),
+            summary.staking
+        );
+        for limit in &summary.limits {
+            println!("  {}  {:?}", out::hint(&format!("{:<16}", "limit")), limit);
+        }
+        for endpoint in &summary.endpoints {
+            println!(
+                "  {}  {}{}",
+                out::hint(&format!("{:<16}", "reads from")),
+                endpoint.endpoint,
+                if endpoint.is_built_in {
+                    ""
+                } else {
+                    "  (custom)"
+                }
+            );
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "summary": serde_json::to_value(&summary).map_err(|e| CliError::failure(e.to_string()))?,
+    }));
+    Ok(())
+}
 
 fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     let wallets = ctx.state()?.wallets;
@@ -769,41 +1056,64 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 
 // ─── Building an import ─────────────────────────────────────────────────────
 
-/// The derivation path a wallet is created with: the caller's, or the chain's
-/// catalog default resolved by core.
-fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
-    let resolution = spectra_core::derivation::path::resolve_derivation_path(
+/// The derivation path a phrase wallet is created with: `--path` as typed, a
+/// profile's path from core, or `None` for core's default. Core refuses a path
+/// that does not parse, and one on a chain that derives without a path.
+fn derivation_path(chain: Chain, args: &CreationArgs) -> CliResult<Option<String>> {
+    if args.path.is_some() {
+        return Ok(args.path.clone());
+    }
+    if args.profile.is_none() && args.account.is_none() {
+        return Ok(None);
+    }
+    let profile = match &args.profile {
+        Some(name) => serde_json::from_value(serde_json::Value::String(name.clone()))
+            .map_err(|_| CliError::usage(format!("unknown derivation profile {name:?}")))?,
+        None => *chain.derivation_profiles().first().ok_or_else(|| {
+            CliError::rejected(format!(
+                "{} derives without a derivation path",
+                chain.chain_display_name()
+            ))
+        })?,
+    };
+    spectra_core::derivation::path::derivation_profile_path(
         chain,
-        requested.unwrap_or_default().to_string(),
+        profile,
+        args.account.unwrap_or(0),
     )
-    .map_err(CliError::from)?;
-    Ok(resolution)
+    .map(Some)
+    .map_err(CliError::from)
 }
 
-/// An import on `chains`, named `name`. Core mints the wallet ids, derives
-/// the addresses and reads the selected networks itself.
-fn request_for(chains: &[Chain], name: &str) -> WalletImportRequest {
+/// An import on `chain`, named `name`. Core mints the wallet ids and derives
+/// or validates the addresses itself.
+fn request_for(chain: Chain, name: &str, kind: WalletImportKind) -> WalletImportRequest {
     WalletImportRequest {
         wallet_name: name.to_string(),
-        selected_chain_ids: chains.to_vec(),
-        is_watch_only_import: false,
-        is_private_key_import: false,
-        watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        chain,
+        kind,
     }
 }
 
-fn commit_for(
-    request: WalletImportRequest,
-    seed_derivation_paths: SeedDerivationPaths,
-) -> WalletImportCommit {
+fn commit_for(request: WalletImportRequest) -> WalletImportCommit {
     WalletImportCommit {
         password: None,
         request,
-        seed_derivation_preset: Default::default(),
-        seed_derivation_paths,
+        derivation_path: None,
         derivation_overrides: Default::default(),
         seed_phrase: None,
         private_key: None,
+        restore_height: None,
+        named_account: None,
+    }
+}
+
+/// What a signing import that upgraded a watched wallet adds to its line.
+fn upgraded_note(outcome: &WalletImportOutcome) -> &'static str {
+    if outcome.upgraded {
+        " into the watched wallet"
+    } else {
+        ""
     }
 }
 
@@ -870,6 +1180,7 @@ fn wallet_json(wallet: &WalletState) -> serde_json::Value {
             .map(|entry| (entry.chain_id.str_id().to_string(), serde_json::json!(entry.address)))
             .collect::<serde_json::Map<String, serde_json::Value>>(),
         "derivationPath": wallet.derivation_path,
+        "restoreHeight": wallet.restore_height,
         "isWatchOnly": wallet.is_watch_only(),
     })
 }

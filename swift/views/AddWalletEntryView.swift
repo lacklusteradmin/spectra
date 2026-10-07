@@ -1,17 +1,73 @@
 import SwiftUI
+
+/// Add Wallet: choose the network first. Every page after it — the ways of
+/// adding a wallet, the formats they accept, the options they offer — is that
+/// network's own. Funds Finder sits above the list for a phrase whose network
+/// is unknown.
 struct AddWalletEntryView: View {
     let store: AppState
+    private static let descriptors = ChainSelectionDescriptor.popularOrder(Chain.all)
+    @State private var searchText = ""
+    @State private var chosenChain: Chain?
     @State private var isShowingFundsFinder = false
+    var body: some View {
+        AllChainsSelectionView(
+            chainSearchText: $searchText, title: AppLocalization.string("Add Wallet"), descriptors: Self.descriptors,
+            selectedChains: [], accessory: .disclosure, toggleSelection: { chosenChain = $0 }
+        ) {
+            fundsFinderRow
+        }
+        .navigationDestination(item: $chosenChain) { chain in
+            WalletSetupMethodsView(store: store, chain: chain)
+        }
+        .navigationDestination(isPresented: $isShowingFundsFinder) {
+            FundsFinderView(store: store)
+        }
+    }
+    private var fundsFinderRow: some View {
+        Button {
+            isShowingFundsFinder = true
+        } label: {
+            HStack(spacing: SpectraLayout.Space.m) {
+                Image(systemName: "magnifyingglass.circle.fill").font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.tint).frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                    Text(AppLocalization.string("Find Lost Funds")).font(.headline).foregroundStyle(Color.primary)
+                    Text(AppLocalization.string("Check every network's derivation profiles for accounts a phrase has used."))
+                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: SpectraLayout.Space.s)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .spectraRowPadding()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .spectraCardFill()
+    }
+}
+
+/// One network's ways of adding a wallet, as core's setup descriptor lists
+/// them, each with the formats it accepts there.
+struct WalletSetupMethodsView: View {
+    let store: AppState
+    let chain: Chain
+    private var descriptor: WalletSetupDescriptor { walletSetupDescriptor(chain: chain) }
     var body: some View {
         ZStack {
             SpectraBackdrop().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                SpectraRowGroup(data: entries) { entry in
-                    Button(action: entry.action) { entryRow(entry) }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: SpectraLayout.sectionSpacing) {
+                    networkHeader
+                    SpectraRowGroup(data: descriptor.options) { option in
+                        Button { store.beginWalletSetup(chain: chain, method: option.method) } label: {
+                            methodRow(option)
+                        }.buttonStyle(.plain)
+                    }
                 }.spectraScreenPadding()
             }
         }
-        .navigationTitle(AppLocalization.string("Add Wallet")).navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(chain.displayName).navigationBarTitleDisplayMode(.inline)
         .navigationDestination(
             isPresented: Binding(
                 get: { store.walletImport.isPresented && store.walletImport.editingWalletId == nil },
@@ -22,57 +78,87 @@ struct AddWalletEntryView: View {
         ) {
             SetupView(store: store, draft: store.walletImport.draft)
         }
-        .navigationDestination(
-            isPresented: $isShowingFundsFinder
-        ) {
-            FundsFinderView(bridge: store.bridge)
+    }
+    @ViewBuilder
+    private var networkHeader: some View {
+        if let entry = chain.entry {
+            let row = ChainSelectionDescriptor(chain: chain, entry: entry)
+            HStack(spacing: SpectraLayout.Space.m) {
+                CoinBadge(artworkName: row.artworkName, fallbackText: row.symbol, color: row.color, size: 48)
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                    Text(row.title).font(.title2.weight(.bold)).foregroundStyle(Color.primary)
+                    Text(row.tagLine).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
         }
     }
-    private struct Entry: Identifiable {
-        let title: String
-        let subtitle: String
-        let icon: String
-        let action: @MainActor () -> Void
-        var id: String { title }
-    }
-    private var entries: [Entry] {
-        [
-            Entry(
-                title: AppLocalization.string("Create New Wallet"),
-                subtitle: AppLocalization.string("Generate a new seed phrase and set up your wallet."),
-                icon: "plus.circle.fill"
-            ) { store.beginWalletCreation() },
-            Entry(
-                title: AppLocalization.string("Import Seed Phrase"),
-                subtitle: AppLocalization.string("Restore a wallet from its 12 to 24 word recovery phrase."),
-                icon: "arrow.down.circle.fill"
-            ) { store.beginSeedPhraseImport() },
-            Entry(
-                title: AppLocalization.string("Import Private Key"),
-                subtitle: AppLocalization.string("Add one account on one chain from its private key."),
-                icon: "key.circle.fill"
-            ) { store.beginPrivateKeyImport() },
-            Entry(
-                title: AppLocalization.string("Watch Addresses"),
-                subtitle: AppLocalization.string("Track public addresses without adding private keys."),
-                icon: "eye.circle.fill"
-            ) { store.beginWatchAddressesImport() },
-            Entry(
-                title: AppLocalization.string("Find Lost Funds"),
-                subtitle: AppLocalization.string("Scan 150+ derivation paths to locate hidden balances from any wallet app."),
-                icon: "magnifyingglass.circle.fill"
-            ) { isShowingFundsFinder = true },
-        ]
-    }
-    private func entryRow(_ entry: Entry) -> some View {
+    private func methodRow(_ option: WalletSetupOption) -> some View {
         HStack(spacing: SpectraLayout.Space.m) {
-            Image(systemName: entry.icon).font(.system(size: 28, weight: .semibold)).foregroundStyle(.tint).frame(width: 36, height: 36)
+            Image(systemName: option.method.icon).font(.system(size: 28, weight: .semibold)).foregroundStyle(.tint)
+                .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                Text(entry.title).font(.headline).foregroundStyle(Color.primary)
-                Text(entry.subtitle).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                Text(option.method.title).font(.headline).foregroundStyle(Color.primary)
+                Text(option.method.subtitle).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                Text(option.formats.map(\.title).joined(separator: " · ")).font(.caption2.weight(.medium))
+                    .foregroundStyle(.tertiary).multilineTextAlignment(.leading)
             }
             Spacer(minLength: SpectraLayout.Space.s)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }.spectraRowPadding()
+    }
+}
+
+extension WalletSetupOption: Identifiable {
+    public var id: WalletSetupMethod { method }
+}
+
+extension WalletSetupMethod {
+    var title: String {
+        switch self {
+        case .createPhrase: AppLocalization.string("Create New Wallet")
+        case .importPhrase: AppLocalization.string("Import Seed Phrase")
+        case .importPrivateKey: AppLocalization.string("Import Private Key")
+        case .watchAddresses: AppLocalization.string("Watch Addresses")
+        case .watchAccountXpub: AppLocalization.string("Watch Account")
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .createPhrase: AppLocalization.string("Generate a new seed phrase and set up your wallet.")
+        case .importPhrase: AppLocalization.string("Restore a wallet from its recovery phrase.")
+        case .importPrivateKey: AppLocalization.string("Add one account from its private key.")
+        case .watchAddresses: AppLocalization.string("Track public addresses without adding private keys.")
+        case .watchAccountXpub: AppLocalization.string("Track a whole account from its extended public key.")
+        }
+    }
+    var icon: String {
+        switch self {
+        case .createPhrase: "plus.circle.fill"
+        case .importPhrase: "arrow.down.circle.fill"
+        case .importPrivateKey: "key.circle.fill"
+        case .watchAddresses: "eye.circle.fill"
+        case .watchAccountXpub: "binoculars.circle.fill"
+        }
+    }
+}
+
+extension WalletSecretFormat {
+    var title: String {
+        switch self {
+        case .bip39Phrase: AppLocalization.string("BIP-39 phrase, 12 to 24 words")
+        case .moneroPhrase: AppLocalization.string("Monero seed, 25 words")
+        case .polyseed: AppLocalization.string("Polyseed, 16 words")
+        case .tonMnemonic: AppLocalization.string("TON mnemonic, 24 words")
+        case .hexSecret32: AppLocalization.string("32-byte key in hex")
+        case .cardanoExtendedKey: AppLocalization.string("64-byte extended key in hex")
+        case .wif: AppLocalization.string("WIF")
+        case .solanaKeypair: AppLocalization.string("Base58 or JSON keypair")
+        case .stellarSecretSeed: AppLocalization.string("Secret seed (S…)")
+        case .suiPrivateKey: AppLocalization.string("suiprivkey1…")
+        case .aptosPrivateKey: AppLocalization.string("AIP-80 key (ed25519-priv-0x…)")
+        case .nearSecretKey: AppLocalization.string("Key string (ed25519:…)")
+        case .address: AppLocalization.string("Addresses, one per line")
+        case .accountXpub: AppLocalization.string("Account xpub, ypub or zpub")
+        }
     }
 }

@@ -146,6 +146,11 @@ class TokenSendTests(unittest.TestCase):
                         reads = calls.count('/v3/jetton/wallets') + calls.count('/v3/jetton/masters')
                         live['wrong_v3_network'] = True; run(*sign,success=False); live['wrong_v3_network'] = False
                         assert calls.count('/v3/jetton/wallets') + calls.count('/v3/jetton/masters') == reads, calls
+                        # A TON message expires 60 s after it is built, and the
+                        # refusals above can outlast that on a loaded machine;
+                        # the one signed is built fresh.
+                        prepared = run(*direct)['artifact']
+                        sign = ('send','sign',prepared['id'],'--review-digest',prepared['review_digest'],'--endpoint',endpoint)
                     signed = run(*sign)['artifact']
                     assert signed['signed_payload'], signed
                     assert run('send','inspect',signed['id'])['artifact'] == signed

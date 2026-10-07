@@ -17,21 +17,22 @@ struct PresentationCatalogTests {
 
     @Test func peercoinReachesThePickerAndWikiWithItsNativeIdentity() throws {
         let rows = ChainSelectionDescriptor.popularOrder(Chain.all)
-        let mainnetRows = rows.picked(filter: .tag(.utxo), query: "Peercoin", order: .name, selected: [])
+        let mainnetRows = rows.picked(filter: .tag(.utxo), query: "Peercoin", order: .name, showsTestNetworks: false)
         let mainnet = try #require(mainnetRows.first { $0.id == .peercoin })
         #expect(mainnet.symbol == "PPC")
         #expect(mainnet.artworkName == "peercoin")
         #expect(!mainnet.isTestnet)
         #expect(!mainnetRows.contains { $0.id == .peercoinTestnet })
-        let testnetRows = rows.picked(filter: .tag(.testnet), query: "Peercoin", order: .name, selected: [])
+        let testnetRows = rows.picked(filter: .all, query: "Peercoin", order: .name, showsTestNetworks: true)
         let testnet = try #require(testnetRows.first { $0.id == .peercoinTestnet })
         #expect(testnet.isTestnet)
         #expect(testnet.artworkName == "peercoin")
         for chain in [Chain.peercoin, .peercoinTestnet] {
             #expect(chain.nativeDecimals == 6)
             #expect(chain.mainnetCounterpart == .peercoin)
-            #expect(chain.supportsWatchOnlyImport)
-            #expect(chain.derivesFromPrivateKey)
+            let methods = walletSetupDescriptor(chain: chain).options.map(\.method)
+            #expect(methods.contains(.watchAddresses))
+            #expect(methods.contains(.importPrivateKey))
             #expect(chain.hasSendPreview)
         }
         let coin = try #require(CoreReferenceTables.assetWikiEntry(tokenId: "peercoin"))
@@ -45,7 +46,7 @@ struct PresentationCatalogTests {
 
     @Test func newEvmNetworksReachTheChainPickerWithTheirOwnIdentity() throws {
         let rows = ChainSelectionDescriptor.popularOrder(Chain.mainnets)
-            .picked(filter: .tag(.evm), query: "", order: .name, selected: [])
+            .picked(filter: .tag(.evm), query: "", order: .name, showsTestNetworks: false)
         for (chain, id, symbol, artwork) in [
             (Chain.plasma, "plasma", "XPL", "plasma"),
             (.monad, "monad", "MON", "monad"),

@@ -56,27 +56,23 @@ extension WalletView {
     var familyName: String { family.displayName }
 }
 
-extension SeedDerivationPaths {
-    /// Configured derivation path for this exact network, or `""` when the
-    /// chain has no BIP-32 path (Monero) or is not in the catalog. Core keys
-    /// the map by concrete network id: a testnet's path is its own entry,
-    /// even where it matches its mainnet's.
-    func path(for chain: Chain) -> String {
-        byChain[chain.id] ?? ""
+extension DerivationProfile {
+    /// The profile's name. A Bitcoin-family profile is its script type.
+    var title: String {
+        switch self {
+        case .standard: AppLocalization.string("Standard")
+        case .legacy: AppLocalization.string("Legacy")
+        case .nestedSegWit: AppLocalization.string("Nested SegWit")
+        case .nativeSegWit: AppLocalization.string("Native SegWit")
+        case .taproot: AppLocalization.string("Taproot")
+        }
     }
-
-    mutating func setPath(_ path: String, for chain: Chain) {
-        guard !chain.id.isEmpty else { return }
-        byChain[chain.id] = path
-    }
-
-    static var defaults: SeedDerivationPaths { forPreset(.standard) }
-
-    /// Preset paths from the Rust catalog. No fallback table: an empty map
-    /// surfaces a missing catalog path rather than substituting a guessed one.
-    static func forPreset(_ preset: SeedDerivationPreset) -> SeedDerivationPaths {
-        (try? derivationPathsForPreset(preset: preset))
-            ?? SeedDerivationPaths(byChain: [:])
+}
+extension FundsFinderCandidate {
+    /// The profile and account the address is on, or nothing for a network
+    /// that derives without a path.
+    var profileTitle: String? {
+        profile.map { AppLocalization.format("derivation.profile_account_format", $0.title, Int(account)) }
     }
 }
 extension TransactionStatus {

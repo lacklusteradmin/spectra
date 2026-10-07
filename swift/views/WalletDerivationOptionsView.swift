@@ -17,19 +17,18 @@ struct WalletDerivationOptionsView: View {
                         .padding([.horizontal, .top], SpectraLayout.Space.l)
                 }
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                    Text(
-                        AppLocalization.string(
-                            "Control the derivation path used for each selected chain. Pick a testnet from the chain list to use a testnet wallet."
-                        )
-                    ).font(.subheadline).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Control the derivation path this wallet uses."))
+                        .font(.subheadline).foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                        ForEach(draft.selectableDerivationChains) { chain in
+                        // Starts at the chosen profile's path; an edit makes it
+                        // custom, and Reset returns to the profile.
+                        if let profilePath = draft.profileDerivationPath {
                             SeedPathSlotEditor(
-                                title: chain.displayName,
+                                title: "Custom Path",
                                 path: Binding(
-                                    get: { draft.seedDerivationPaths.path(for: chain) },
-                                    set: { draft.seedDerivationPaths.setPath($0, for: chain) }
-                                ), defaultPath: chain.defaultDerivationPath
+                                    get: { draft.derivationPath ?? profilePath },
+                                    set: { draft.customDerivationPath = $0 == profilePath ? "" : $0 }
+                                ), defaultPath: profilePath
                             )
                         }
                         PowerUserOverridesSection(draft: draft)
@@ -56,12 +55,17 @@ extension SeedPhraseLanguage: Identifiable {
 private struct SeedPhraseReadingSection: View {
     @Bindable var entry: SeedPhraseEntry
     private let columns = Array(repeating: GridItem(.flexible(), spacing: SpectraLayout.Space.xs), count: 3)
+    private var wordlists: [SeedPhraseLanguage] { seedPhraseLanguages(chain: entry.chain) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.l) {
             wordCount
-            Divider().opacity(0.4)
-            wordlist
+            // Only BIP-39's lists overlap enough to need choosing; Monero's
+            // and Polyseed's are told apart by their words.
+            if !wordlists.isEmpty {
+                Divider().opacity(0.4)
+                wordlist
+            }
         }
         .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
     }
@@ -73,7 +77,7 @@ private struct SeedPhraseReadingSection: View {
                 chip(AppLocalization.string("Auto"), isSelected: entry.wordCountOverride == nil) {
                     entry.wordCountOverride = nil
                 }
-                ForEach(CoreReferenceTables.standardSeedPhraseLengths, id: \.wordCount) { length in
+                ForEach(entry.lengths, id: \.wordCount) { length in
                     let count = Int(length.wordCount)
                     chip("\(count)", isSelected: entry.wordCountOverride == count) {
                         entry.wordCountOverride = count
@@ -95,7 +99,7 @@ private struct SeedPhraseReadingSection: View {
                 Spacer()
                 Picker(AppLocalization.string("Wordlist"), selection: $entry.language) {
                     Text(autoTitle).tag(String?.none)
-                    ForEach(CoreReferenceTables.seedPhraseWordlists) { language in
+                    ForEach(wordlists) { language in
                         Text(AppLocalization.string(language.name)).tag(String?.some(language.code))
                     }
                 }

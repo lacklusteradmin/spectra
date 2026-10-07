@@ -7,46 +7,52 @@
 
 pub mod address;
 
-/// A BIP-39 phrase length, and the entropy a phrase of that length carries.
+use crate::derivation::phrase::{PhraseProblem, PhraseWordlist};
+use crate::derivation::setup::WalletSecretFormat;
+use crate::registry::Chain;
+
+/// A phrase length a network takes, the format phrases of that length are
+/// read in, and the secret such a phrase carries.
 #[derive(uniffi::Record, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeedPhraseLength {
     pub word_count: u32,
     pub entropy_bits: u32,
+    pub format: WalletSecretFormat,
 }
 
-/// The five lengths BIP-39 defines, shortest first.
+/// The phrase formats a phrase is judged in: the chain's, or BIP-39 for a
+/// phrase on no chain, which is what Funds Finder scans.
+fn formats_for(chain: Option<Chain>) -> Vec<WalletSecretFormat> {
+    chain.map_or_else(
+        || vec![WalletSecretFormat::Bip39Phrase],
+        |chain| chain.phrase_formats(),
+    )
+}
+
+/// The lengths a phrase on `chain` may have, shortest first. A front end
+/// offers these as the word-count choices, and those of the chain's created
+/// format when it generates one.
 #[uniffi::export]
-pub fn seed_phrase_lengths() -> Vec<SeedPhraseLength> {
-    STANDARD_SEED_PHRASE_WORD_COUNTS
-        .iter()
-        .map(|&word_count| SeedPhraseLength {
-            word_count,
-            entropy_bits: entropy_bits_for(word_count),
+pub fn seed_phrase_lengths(chain: Option<Chain>) -> Vec<SeedPhraseLength> {
+    let mut lengths: Vec<SeedPhraseLength> = formats_for(chain)
+        .into_iter()
+        .flat_map(|format| {
+            crate::derivation::phrase::word_counts(format)
+                .iter()
+                .map(move |&word_count| SeedPhraseLength {
+                    word_count,
+                    entropy_bits: crate::derivation::phrase::entropy_bits(format, word_count),
+                    format,
+                })
         })
-        .collect()
-}
-
-/// The entropy `word_count` words carry, or `None` when BIP-39 defines no
-/// phrase of that length.
-///
-/// Checking for `None` is how a caller asks "is this a standard length"
-/// without holding the list. Not exported: a front end reads
-/// [`seed_phrase_lengths`], which answers both questions in one call.
-pub(crate) fn seed_phrase_entropy_bits(word_count: u32) -> Option<u32> {
-    STANDARD_SEED_PHRASE_WORD_COUNTS
-        .contains(&word_count)
-        .then(|| entropy_bits_for(word_count))
+        .collect();
+    lengths.sort_by_key(|length| length.word_count);
+    lengths
 }
 
 pub(crate) const STANDARD_SEED_PHRASE_WORD_COUNTS: [u32; 5] = [12, 15, 18, 21, 24];
 
-/// BIP-39 spends 32 bits of entropy per three words, so the entropy is
-/// derived rather than tabulated: 12 words carry 128 bits, 24 carry 256.
-fn entropy_bits_for(word_count: u32) -> u32 {
-    word_count / 3 * 32
-}
-
-/// One BIP-39 seed-phrase entry, as the user typed it.
+/// One seed-phrase entry, as the user typed it.
 ///
 /// `words` are the raw per-slot entries, blanks included: whether the grid is
 /// finished is part of the verdict, so the caller hands over what it has
@@ -60,9 +66,12 @@ pub struct SeedPhraseCheck {
     pub language: Option<String>,
     /// The length to judge the phrase at, or `None` to infer it.
     pub word_count: Option<u32>,
+    /// The network the phrase is for, whose formats it is judged in, or
+    /// `None` for BIP-39 on no network.
+    pub chain: Option<Chain>,
 }
 
-/// A BIP-39 wordlist, as a picker offers it.
+/// A wordlist, as a picker offers it or a verdict names it.
 #[derive(uniffi::Record, Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SeedPhraseLanguage {
     /// What [`SeedPhraseCheck::language`] takes.
@@ -78,11 +87,10 @@ pub struct SeedPhraseLanguage {
 /// is derived from the same pass so the parts can never disagree.
 #[derive(uniffi::Record, Debug, Clone)]
 pub struct SeedPhraseVerdict {
-    /// The entries normalized the way BIP-39 reads them: trimmed, lowercased,
-    /// blanks dropped.
+    /// The entries normalized: trimmed, lowercased, blanks dropped.
     pub words: Vec<String>,
-    /// The length the entry is judged at: the one fixed, or the shortest
-    /// BIP-39 length that holds every filled slot, at least 12.
+    /// The length the entry is judged at: the one fixed, or the shortest of
+    /// the network's lengths that holds every filled slot.
     pub word_count: u32,
     /// Whether `word_count` was inferred rather than fixed by the caller.
     pub word_count_inferred: bool,
@@ -91,44 +99,68 @@ pub struct SeedPhraseVerdict {
     pub language: Option<SeedPhraseLanguage>,
     /// Whether `language` was detected rather than chosen.
     pub language_detected: bool,
+    /// The format the words are read in, once a list holds any of them.
+    pub format: Option<WalletSecretFormat>,
     /// Normalized words that are not in `language`'s list.
     pub invalid_words: Vec<String>,
     /// Every slot up to `word_count` holds something.
     pub is_complete: bool,
-    /// The phrase parses, with its checksum, in `language`.
-    pub checksum_valid: bool,
+    /// The words are a phrase in one of the network's formats: its checksum
+    /// holds, and nothing in it is a variant this wallet cannot use.
+    pub is_valid: bool,
     /// What is wrong with the entry, or `None` while it is unfinished or
     /// already valid. A front end words it.
     pub problem: Option<SeedPhraseProblem>,
 }
 
 /// Why a seed-phrase entry is not a phrase, once there is something to say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum SeedPhraseProblem {
-    /// The entry is judged at a length BIP-39 does not define: a fixed length
-    /// outside 12, 15, 18, 21 and 24, or more than 24 words typed. No such
-    /// phrase has a checksum that can hold.
-    NonStandardLength { word_count: u32 },
+    /// The entry is judged at a length the network's formats do not have: a
+    /// fixed length outside `allowed`, or more words typed than the longest.
+    /// No such phrase has a checksum that can hold.
+    NonStandardLength { word_count: u32, allowed: Vec<u32> },
     /// More words than the fixed length. They are kept, not cut, so the
     /// phrase is refused rather than silently shortened.
     WrongWordCount { expected: u32 },
     /// Every word is in the list but the checksum does not hold.
     InvalidChecksum,
+    /// Shortened words read as different phrases in two wordlists.
+    AmbiguousLanguage,
+    /// A Polyseed whose secret is masked with a password, which Monero
+    /// imports do not take.
+    EncryptedPolyseed,
+    /// A Polyseed with a feature bit no wallet defines.
+    UnsupportedPolyseed,
 }
 
-/// Every BIP-39 wordlist, English first.
+/// The BIP-39 wordlists, English first, for a network that reads BIP-39; none
+/// for one that reads only its own formats, whose lists are told apart by
+/// their words.
 #[uniffi::export]
-pub fn seed_phrase_languages() -> Vec<SeedPhraseLanguage> {
+pub fn seed_phrase_languages(chain: Option<Chain>) -> Vec<SeedPhraseLanguage> {
+    if !formats_for(chain).contains(&WalletSecretFormat::Bip39Phrase) {
+        return Vec::new();
+    }
     bip39::Language::ALL
         .iter()
-        .map(|&language| seed_phrase_language(language))
+        .map(|&language| language_record(PhraseWordlist::Bip39(language)))
         .collect()
 }
 
-fn seed_phrase_language(language: bip39::Language) -> SeedPhraseLanguage {
+fn language_record(list: PhraseWordlist) -> SeedPhraseLanguage {
+    let (code, name) = list.code_and_name();
+    SeedPhraseLanguage {
+        code: code.to_string(),
+        name: name.to_string(),
+    }
+}
+
+/// The code and English name of a BIP-39 wordlist.
+pub(crate) fn bip39_code_and_name(language: bip39::Language) -> (&'static str, &'static str) {
     use bip39::Language as L;
-    let (code, name) = match language {
+    match language {
         L::English => ("en", "English"),
         L::SimplifiedChinese => ("zh-hans", "Chinese (Simplified)"),
         L::TraditionalChinese => ("zh-hant", "Chinese (Traditional)"),
@@ -139,39 +171,12 @@ fn seed_phrase_language(language: bip39::Language) -> SeedPhraseLanguage {
         L::Korean => ("ko", "Korean"),
         L::Portuguese => ("pt", "Portuguese"),
         L::Spanish => ("es", "Spanish"),
-    };
-    SeedPhraseLanguage {
-        code: code.to_string(),
-        name: name.to_string(),
     }
 }
 
-/// The wordlist that holds the most of `words`, or `None` when none holds
-/// any. A tie goes to a list the phrase parses in, then to `Language::ALL`
-/// order: English and French share about a hundred words, and a phrase made
-/// of the overlap is the one its checksum confirms.
-fn detect_language(words: &[String], complete: bool) -> Option<bip39::Language> {
-    let phrase = words.join(" ");
-    bip39::Language::ALL
-        .iter()
-        .map(|&language| {
-            let held = words
-                .iter()
-                .filter(|w| language.find_word(w).is_some())
-                .count();
-            let parses = complete && bip39::Mnemonic::parse_in(language, &phrase).is_ok();
-            (language, held, parses)
-        })
-        .filter(|&(_, held, _)| held > 0)
-        // `max_by_key` keeps the last of equals; reversing keeps the first.
-        .rev()
-        .max_by_key(|&(_, held, parses)| (held, parses))
-        .map(|(language, _, _)| language)
-}
-
-/// Decide a seed-phrase entry: how long it is, which wordlist it is in,
-/// which words are not in that list, whether the entry is finished, whether
-/// the checksum holds, and what to say.
+/// Decide a seed-phrase entry: how long it is, which format and wordlist it
+/// is in, which words are not in that list, whether the entry is finished,
+/// whether it reads as a phrase, and what to say.
 ///
 /// The order matters and is the reason this is one function. An unfinished
 /// entry says nothing — every phrase is invalid until its last word. Words
@@ -180,14 +185,23 @@ fn detect_language(words: &[String], complete: bool) -> Option<bip39::Language> 
 /// and only then is the checksum worth computing.
 #[uniffi::export]
 pub fn check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
+    use crate::derivation::phrase::{reads, word_counts, wordlists};
+    let formats = formats_for(check.chain);
+    let mut allowed: Vec<u32> = formats
+        .iter()
+        .flat_map(|format| word_counts(*format).iter().copied())
+        .collect();
+    allowed.sort_unstable();
+    allowed.dedup();
     let filled_through = check
         .words
         .iter()
         .rposition(|w| !w.trim().is_empty())
         .map_or(0, |last| last + 1) as u32;
     let word_count = check.word_count.unwrap_or_else(|| {
-        STANDARD_SEED_PHRASE_WORD_COUNTS
-            .into_iter()
+        allowed
+            .iter()
+            .copied()
             .find(|&count| count >= filled_through)
             .unwrap_or(filled_through)
     });
@@ -201,50 +215,118 @@ pub fn check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
         .map(|w| w.trim().to_lowercase())
         .filter(|w| !w.is_empty())
         .collect();
-    let language = match check.language.as_deref() {
-        Some(code) => Some(bip39_language(Some(code))),
-        None => detect_language(&words, is_complete && words.len() == expected),
+    let word_refs: Vec<&str> = words.iter().map(String::as_str).collect();
+    let ready = is_complete && words.len() == expected;
+
+    // The formats of this length; at a length no format has, every format's
+    // lists still say which words are misspelled.
+    let length_formats: Vec<WalletSecretFormat> = formats
+        .iter()
+        .copied()
+        .filter(|format| word_counts(*format).contains(&word_count))
+        .collect();
+    let judged = if length_formats.is_empty() {
+        &formats
+    } else {
+        &length_formats
+    };
+    let chosen = check
+        .language
+        .as_deref()
+        .map(|code| bip39_language(Some(code)));
+    let candidates: Vec<(WalletSecretFormat, PhraseWordlist)> = judged
+        .iter()
+        .flat_map(|&format| {
+            wordlists(format)
+                .into_iter()
+                .map(move |list| (format, list))
+        })
+        .filter(|(_, list)| match (chosen, list) {
+            (Some(language), PhraseWordlist::Bip39(candidate)) => language == *candidate,
+            _ => true,
+        })
+        .collect();
+    // A chosen BIP-39 list is the list, held words or not. Otherwise the list
+    // that holds the most words; a tie goes to one the phrase reads in, then
+    // to the order the lists are offered in.
+    let detected = match (chosen, candidates.as_slice()) {
+        (Some(_), [only]) => Some(*only),
+        _ => candidates
+            .iter()
+            .map(|&(format, list)| {
+                let held = word_refs.iter().filter(|word| list.holds(word)).count();
+                let reads_here = ready
+                    && held == word_refs.len()
+                    && length_formats.contains(&format)
+                    && reads(format, list, &word_refs).is_ok();
+                ((format, list), held, reads_here)
+            })
+            .filter(|&(_, held, _)| held > 0)
+            // `max_by_key` keeps the last of equals; reversing keeps the first.
+            .rev()
+            .max_by_key(|&(_, held, reads_here)| (held, reads_here))
+            .map(|(candidate, _, _)| candidate),
     };
     let invalid_words: Vec<String> = words
         .iter()
-        .filter(|w| language.is_none_or(|language| language.find_word(w).is_none()))
+        .filter(|w| detected.is_none_or(|(_, list)| !list.holds(w)))
         .cloned()
         .collect();
+    let reading = match detected {
+        Some((format, list))
+            if ready && invalid_words.is_empty() && length_formats.contains(&format) =>
+        {
+            Some(reads(format, list, &word_refs))
+        }
+        _ => None,
+    };
+    let is_valid = matches!(reading, Some(Ok(())));
 
-    let checksum_valid = is_complete
-        && invalid_words.is_empty()
-        && words.len() == expected
-        && language
-            .is_some_and(|language| bip39::Mnemonic::parse_in(language, words.join(" ")).is_ok());
-
-    // A fixed length BIP-39 does not define can never hold, so it is named at
-    // once; an inferred one only once the entry is finished.
-    let standard = seed_phrase_entropy_bits(word_count).is_some();
+    // A fixed length the network does not take can never hold, so it is
+    // named at once; an inferred one only once the entry is finished.
+    let standard = allowed.contains(&word_count);
+    let nonstandard = || SeedPhraseProblem::NonStandardLength {
+        word_count,
+        allowed: allowed.clone(),
+    };
     let problem = if !standard && check.word_count.is_some() {
-        Some(SeedPhraseProblem::NonStandardLength { word_count })
+        Some(nonstandard())
     } else if !is_complete || !invalid_words.is_empty() {
         None
     } else if !standard {
-        Some(SeedPhraseProblem::NonStandardLength { word_count })
+        Some(nonstandard())
     } else if words.len() != expected {
         Some(SeedPhraseProblem::WrongWordCount {
             expected: word_count,
         })
-    } else if !checksum_valid {
-        Some(SeedPhraseProblem::InvalidChecksum)
     } else {
-        None
+        match reading {
+            Some(Err(PhraseProblem::AmbiguousLanguage)) => {
+                Some(SeedPhraseProblem::AmbiguousLanguage)
+            }
+            Some(Err(PhraseProblem::EncryptedPolyseed)) => {
+                Some(SeedPhraseProblem::EncryptedPolyseed)
+            }
+            Some(Err(PhraseProblem::UnsupportedPolyseed)) => {
+                Some(SeedPhraseProblem::UnsupportedPolyseed)
+            }
+            Some(Ok(())) => None,
+            Some(Err(PhraseProblem::InvalidChecksum)) | None => {
+                Some(SeedPhraseProblem::InvalidChecksum)
+            }
+        }
     };
 
     SeedPhraseVerdict {
         words,
         word_count,
         word_count_inferred: check.word_count.is_none(),
-        language: language.map(seed_phrase_language),
+        language: detected.map(|(_, list)| language_record(list)),
         language_detected: check.language.is_none(),
+        format: detected.map(|(format, _)| format),
         invalid_words,
         is_complete,
-        checksum_valid,
+        is_valid,
         problem,
     }
 }
@@ -349,8 +431,8 @@ mod seed_phrase_length_tests {
     use super::*;
 
     #[test]
-    fn the_five_lengths_carry_the_entropy_bip39_defines() {
-        let pairs: Vec<(u32, u32)> = seed_phrase_lengths()
+    fn the_five_bip39_lengths_carry_the_entropy_bip39_defines() {
+        let pairs: Vec<(u32, u32)> = seed_phrase_lengths(None)
             .into_iter()
             .map(|length| (length.word_count, length.entropy_bits))
             .collect();
@@ -361,20 +443,17 @@ mod seed_phrase_length_tests {
     }
 
     #[test]
-    fn a_length_bip39_does_not_define_has_no_entropy() {
-        for word_count in [0, 1, 11, 13, 23, 25, 27, 48] {
-            assert_eq!(seed_phrase_entropy_bits(word_count), None, "{word_count}");
-        }
-    }
-
-    #[test]
     fn a_non_standard_length_is_refused_rather_than_substituted() {
         // Twelve words in answer to a request for eighteen is a weaker wallet
         // than the caller asked for.
-        let refusal = crate::service::generate_mnemonic(13).expect_err("13 is not a length");
-        assert!(refusal.to_string().contains("12, 15, 18, 21 or 24"));
-        for length in seed_phrase_lengths() {
-            let phrase = crate::service::generate_mnemonic(length.word_count)
+        let refusal = crate::service::generate_seed_phrase(Chain::Bitcoin, 13)
+            .expect_err("13 is not a length");
+        assert!(
+            refusal.to_string().contains("12, 15, 18, 21, 24"),
+            "{refusal}"
+        );
+        for length in seed_phrase_lengths(Some(Chain::Bitcoin)) {
+            let phrase = crate::service::generate_seed_phrase(Chain::Bitcoin, length.word_count)
                 .expect("a standard length generates");
             assert_eq!(
                 phrase.split_whitespace().count() as u32,
@@ -398,6 +477,7 @@ mod seed_phrase_tests {
             words: words.split(' ').map(str::to_string).collect(),
             language: language.map(str::to_string),
             word_count: Some(expected),
+            chain: None,
         })
     }
 
@@ -407,6 +487,7 @@ mod seed_phrase_tests {
             words: words.split(' ').map(str::to_string).collect(),
             language: None,
             word_count: None,
+            chain: None,
         })
     }
 
@@ -421,7 +502,7 @@ mod seed_phrase_tests {
         assert_eq!(infer("abandon abandon").word_count, 12);
         let twelve = infer(ENGLISH);
         assert_eq!(twelve.word_count, 12);
-        assert!(twelve.word_count_inferred && twelve.checksum_valid);
+        assert!(twelve.word_count_inferred && twelve.is_valid);
         // A gap still counts: the slot after it was filled.
         let mut slots = vec![String::new(); 13];
         slots[12] = "abandon".into();
@@ -429,13 +510,14 @@ mod seed_phrase_tests {
             words: slots,
             language: None,
             word_count: None,
+            chain: None,
         });
         assert_eq!(gapped.word_count, 15);
         assert!(!gapped.is_complete);
         assert_eq!(gapped.problem, None);
         let pasted = infer(&ENGLISH_24.split_whitespace().collect::<Vec<_>>().join(" "));
         assert_eq!(pasted.word_count, 24);
-        assert!(pasted.checksum_valid, "{:?}", pasted.problem);
+        assert!(pasted.is_valid, "{:?}", pasted.problem);
     }
 
     #[test]
@@ -449,7 +531,10 @@ mod seed_phrase_tests {
         assert_eq!(verdict.words.len(), 25);
         assert_eq!(
             verdict.problem,
-            Some(SeedPhraseProblem::NonStandardLength { word_count: 25 })
+            Some(SeedPhraseProblem::NonStandardLength {
+                word_count: 25,
+                allowed: STANDARD_SEED_PHRASE_WORD_COUNTS.to_vec(),
+            })
         );
     }
 
@@ -458,7 +543,7 @@ mod seed_phrase_tests {
         let words = ENGLISH_24.split_whitespace().collect::<Vec<_>>().join(" ");
         let verdict = check(&words, None, 12);
         assert_eq!(verdict.words.len(), 24);
-        assert!(!verdict.checksum_valid);
+        assert!(!verdict.is_valid);
         assert_eq!(
             verdict.problem,
             Some(SeedPhraseProblem::WrongWordCount { expected: 12 })
@@ -478,7 +563,7 @@ mod seed_phrase_tests {
             chinese.language.as_ref().map(|l| l.code.as_str()),
             Some("zh-hans")
         );
-        assert!(chinese.checksum_valid);
+        assert!(chinese.is_valid);
         assert!(infer("").language.is_none());
         assert!(infer("zzzz").language.is_none());
     }
@@ -497,12 +582,12 @@ mod seed_phrase_tests {
         let mixed = ENGLISH.replacen("abandon", "的", 1);
         let verdict = infer(&mixed);
         assert_eq!(verdict.invalid_words, vec!["的".to_string()]);
-        assert!(!verdict.checksum_valid);
+        assert!(!verdict.is_valid);
     }
 
     #[test]
     fn every_wordlist_is_offered_with_a_code_the_check_reads() {
-        let languages = seed_phrase_languages();
+        let languages = seed_phrase_languages(None);
         assert_eq!(languages.len(), bip39::Language::ALL.len());
         assert_eq!(languages[0].code, "en");
         for (offered, language) in languages.iter().zip(bip39::Language::ALL) {
@@ -519,7 +604,7 @@ mod seed_phrase_tests {
     fn a_finished_valid_phrase_has_nothing_to_say() {
         let verdict = check(ENGLISH, Some("en"), 12);
         assert!(verdict.is_complete);
-        assert!(verdict.checksum_valid);
+        assert!(verdict.is_valid);
         assert!(verdict.invalid_words.is_empty());
         assert_eq!(verdict.problem, None);
     }
@@ -531,7 +616,7 @@ mod seed_phrase_tests {
         // still typing.
         let verdict = check("abandon abandon   ", Some("en"), 12);
         assert!(!verdict.is_complete);
-        assert!(!verdict.checksum_valid);
+        assert!(!verdict.is_valid);
         assert_eq!(verdict.problem, None);
     }
 
@@ -552,7 +637,7 @@ mod seed_phrase_tests {
         let broken = ENGLISH.replace("about", "abandon");
         let verdict = check(&broken, Some("en"), 12);
         assert!(verdict.invalid_words.is_empty());
-        assert!(!verdict.checksum_valid);
+        assert!(!verdict.is_valid);
         assert_eq!(verdict.problem, Some(SeedPhraseProblem::InvalidChecksum));
     }
 
@@ -580,7 +665,7 @@ mod seed_phrase_tests {
         assert!(check(chinese, Some("zh-Hans"), 12).invalid_words.is_empty());
         assert_eq!(check(chinese, Some("en"), 12).invalid_words.len(), 12);
         // No language chosen: the phrase is read in whatever language it is.
-        assert!(check(chinese, None, 12).checksum_valid);
+        assert!(check(chinese, None, 12).is_valid);
     }
 
     #[test]
@@ -588,7 +673,10 @@ mod seed_phrase_tests {
         for word_count in [0, 8, 13, 25] {
             assert_eq!(
                 check("abandon", Some("en"), word_count).problem,
-                Some(SeedPhraseProblem::NonStandardLength { word_count }),
+                Some(SeedPhraseProblem::NonStandardLength {
+                    word_count,
+                    allowed: STANDARD_SEED_PHRASE_WORD_COUNTS.to_vec(),
+                }),
             );
         }
         assert_eq!(check(ENGLISH, Some("en"), 12).problem, None);

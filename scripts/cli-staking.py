@@ -383,7 +383,9 @@ def account_case(chain, action):
             args = ('staking','build','--from','Stake','--chain',chain,'--action',action,
                     '--validator' if action=='stake' else '--position',s['target'] if action=='stake' else s['position'],'--amount',amount)
             if action=='stake':
-                run('wallet','watch','--chain',chain,'--name','Observe','--address',s['owner'])
+                # Another address: the owner's is already this store's signing wallet.
+                observed = b58(bytes([0x33])*32) if chain=='solana' else ('33'*32 if chain=='near' else '0x'+'33'*32)
+                run('wallet','watch','--chain',chain,'--name','Observe','--address',observed)
                 run(*(args[:3]+('Observe',)+args[4:]),success=False)
                 s['balance']=0; run(*args, success=False); s['balance']=100*10**{'solana':9,'sui':9,'aptos':8,'near':24}[chain]
                 if chain in ('solana','sui'):

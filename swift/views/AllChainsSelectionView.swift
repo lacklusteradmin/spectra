@@ -1,32 +1,45 @@
 import SwiftUI
 
 /// Every chain in one list, ordered by popularity or name and narrowed by a
-/// tag filter and a search.
+/// tag filter and a search. Test networks join the list behind a switch.
 ///
 /// Self-contained — takes its dependencies as bindings/closures and doesn't
-/// reach into AppState. Callers pass the descriptors in popular order, a
-/// selected set and a toggle; `clearAllSelections` makes it a multi-select.
-struct AllChainsSelectionView: View {
+/// reach into AppState. Callers pass the descriptors in popular order, the
+/// chosen chain, if any, what picking one does, and optionally a header above
+/// the list.
+struct AllChainsSelectionView<Header: View>: View {
     @Binding var chainSearchText: String
+    let title: String
     let descriptors: [ChainSelectionDescriptor]
     let selectedChains: Set<Chain>
+    /// A navigation list marks rows with a chevron; a choice marks the
+    /// chosen row.
+    var accessory: ChainSelectionRow.Accessory = .checkmark
     let toggleSelection: (Chain) -> Void
-    /// Absent when the caller picks one chain rather than a set: the
-    /// "Selected" filter and "Clear all" belong to a multi-select and read as
-    /// noise above a list where exactly one row is always ticked.
-    let clearAllSelections: (() -> Void)?
+    @ViewBuilder var header: () -> Header
     @State private var order: ChainPickerOrder = .popular
     @State private var filter: ChainPickerFilter = .all
+    @State private var showsTestNetworks = false
     @State private var isShowingInfo = false
-    private var allowsMultipleSelection: Bool { clearAllSelections != nil }
     private var trimmedQuery: String { chainSearchText.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var rows: [ChainSelectionDescriptor] {
-        descriptors.picked(filter: filter, query: trimmedQuery, order: order, selected: selectedChains)
+        descriptors.picked(filter: filter, query: trimmedQuery, order: order, showsTestNetworks: showsTestNetworks)
     }
-    /// "All", "Selected" for a multi-select, then every tag some row carries.
+    /// "All", then every tag some row carries. Test networks are the switch's,
+    /// not a filter's.
     private var filters: [ChainPickerFilter] {
-        let tags = ChainTag.pickerOrder.filter { tag in descriptors.contains { $0.tags.contains(tag) } }
-        return [.all] + (allowsMultipleSelection ? [.selected] : []) + tags.map { .tag($0) }
+        let tags = ChainTag.pickerOrder.filter { tag in
+            tag != .testnet && descriptors.contains { $0.tags.contains(tag) }
+        }
+        return [.all] + tags.map { .tag($0) }
+    }
+    private var testNetworkSwitch: some View {
+        Toggle(isOn: $showsTestNetworks) {
+            Label(AppLocalization.string("Show test networks"), systemImage: "testtube.2")
+                .font(.body.weight(.semibold))
+        }
+        .spectraRowPadding()
+        .spectraCardFill()
     }
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -42,13 +55,7 @@ struct AllChainsSelectionView: View {
     }
     @ViewBuilder
     private func filterChip(_ item: ChainPickerFilter) -> some View {
-        let label = HStack(spacing: SpectraLayout.Space.xs) {
-            Text(item.title)
-            if item == .selected, !selectedChains.isEmpty {
-                Text("\(selectedChains.count)").monospacedDigit()
-            }
-        }
-        .font(.subheadline.weight(.semibold))
+        let label = Text(item.title).font(.subheadline.weight(.semibold))
         if filter == item {
             Button { filter = item } label: { label }.buttonStyle(.glassProminent)
         } else {
@@ -60,8 +67,7 @@ struct AllChainsSelectionView: View {
         if !rows.isEmpty {
             SpectraRowGroup(data: rows) { descriptor in
                 ChainSelectionRow(
-                    descriptor: descriptor, isSelected: selectedChains.contains(descriptor.id),
-                    allowsMultipleSelection: allowsMultipleSelection
+                    descriptor: descriptor, isSelected: selectedChains.contains(descriptor.id), accessory: accessory
                 ) { toggleSelection(descriptor.id) }
             }
         } else if !trimmedQuery.isEmpty {
@@ -76,12 +82,6 @@ struct AllChainsSelectionView: View {
             Picker(AppLocalization.string("Sort"), selection: $order) {
                 Label(AppLocalization.string("Popular"), systemImage: "flame").tag(ChainPickerOrder.popular)
                 Label(AppLocalization.string("Name"), systemImage: "textformat").tag(ChainPickerOrder.name)
-            }
-            if let clearAllSelections, !selectedChains.isEmpty {
-                Divider()
-                Button(AppLocalization.string("Clear all"), systemImage: "xmark.circle", role: .destructive) {
-                    clearAllSelections()
-                }
             }
         } label: {
             Image(systemName: "arrow.up.arrow.down")
@@ -159,13 +159,15 @@ struct AllChainsSelectionView: View {
             SpectraBackdrop().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                    header()
                     filterBar.padding(.horizontal, -SpectraLayout.screenHorizontal)
+                    testNetworkSwitch
                     list
                 }
                 .spectraScreenPadding()
             }
         }
-        .navigationTitle(AppLocalization.string("import_flow.all_chains_title"))
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .searchable(
@@ -175,6 +177,7 @@ struct AllChainsSelectionView: View {
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .sensoryFeedback(.selection, trigger: filter)
         .sensoryFeedback(.selection, trigger: order)
+        .sensoryFeedback(.selection, trigger: showsTestNetworks)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { toolbarMenu }
             ToolbarItem(placement: .topBarTrailing) {
@@ -185,5 +188,16 @@ struct AllChainsSelectionView: View {
             }
         }
         .sheet(isPresented: $isShowingInfo) { gasTokenInfoSheet }
+    }
+}
+
+extension AllChainsSelectionView where Header == EmptyView {
+    init(
+        chainSearchText: Binding<String>, title: String, descriptors: [ChainSelectionDescriptor],
+        selectedChains: Set<Chain>, toggleSelection: @escaping (Chain) -> Void
+    ) {
+        self.init(
+            chainSearchText: chainSearchText, title: title, descriptors: descriptors, selectedChains: selectedChains,
+            toggleSelection: toggleSelection, header: { EmptyView() })
     }
 }

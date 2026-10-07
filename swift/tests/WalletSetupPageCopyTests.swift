@@ -7,10 +7,10 @@ import Testing
 struct WalletSetupPageCopyTests {
     @Test func backupQuizRemainsRequiredOnlyForWalletCreation() {
         let draft = WalletImportDraft()
-        draft.selectedChainsStorage = [Chain.ethereum]
+        draft.chain = .ethereum
         draft.seedEntry.paste("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
         #expect(draft.canImportWallet)
-        draft.mode = .createNew
+        draft.mode = .setup(.createPhrase)
         #expect(!draft.canImportWallet)
         draft.backupVerificationWordIndices = [0, 5, 11]
         draft.backupVerificationEntries = ["abandon", "abandon", "about"]
@@ -20,24 +20,20 @@ struct WalletSetupPageCopyTests {
     }
 
     private let content = ImportFlowContent.current
+    private let modes: [WalletDraftMode] = [
+        .edit, .setup(.createPhrase), .setup(.importPhrase), .setup(.importPrivateKey), .setup(.watchAddresses),
+        .setup(.watchAccountXpub),
+    ]
 
-    private func mode(
-        editing: Bool = false, creating: Bool = false, privateKey: Bool = false, watching: Bool = false
-    ) -> WalletSetupMode {
-        WalletSetupMode(
-            isEditingWallet: editing, isCreateMode: creating, isPrivateKeyImport: privateKey, isWatchOnly: watching)
-    }
-
-    /// Nothing may come back blank, in any mode.
+    /// Nothing may come back blank, on any page a flow visits.
     @Test func everyPageNamesItselfInEveryMode() {
-        let pages: [WalletSetupPage] = [
-            .details, .watchAddresses, .seedPhrase, .password, .backupVerification, .walletName,
-        ]
-        let modes = [
-            mode(), mode(editing: true), mode(creating: true), mode(privateKey: true),
-            mode(creating: true, privateKey: true), mode(watching: true),
-        ]
-        let flowPages = [SetupFlow.watchOnly, .seedPhraseImport, .createNewWallet, .editWallet].flatMap(\.pages)
+        let pages: [WalletSetupPage] = [.watchAddresses, .seedPhrase, .password, .backupVerification, .walletName]
+        let flowPages = modes.flatMap { mode -> [WalletSetupPage] in
+            switch mode {
+            case .edit: SetupFlow.editWallet.pages
+            case .setup(let method): SetupFlow.forMethod(method).pages
+            }
+        }
         for page in flowPages {
             #expect(pages.contains(page), "Flow page \(page) is missing from the copy coverage")
         }
@@ -51,11 +47,10 @@ struct WalletSetupPageCopyTests {
     }
 
     @Test func theSecretPageNamesWhichSecretItIsAskingFor() {
-        let cases = [
-            (mode(), content.enterSeedPhraseTitle, content.enterRecoveryPhraseSubtitle),
-            (mode(creating: true), content.recordSeedPhraseTitle, content.saveRecoveryPhraseSubtitle),
-            (mode(privateKey: true), content.enterPrivateKeyTitle, content.privateKeySubtitle),
-            (mode(creating: true, privateKey: true), content.enterPrivateKeyTitle, content.privateKeySubtitle),
+        let cases: [(WalletDraftMode, String, String)] = [
+            (.setup(.importPhrase), content.enterSeedPhraseTitle, content.enterRecoveryPhraseSubtitle),
+            (.setup(.createPhrase), content.recordSeedPhraseTitle, content.saveRecoveryPhraseSubtitle),
+            (.setup(.importPrivateKey), content.enterPrivateKeyTitle, content.privateKeySubtitle),
         ]
         for (mode, title, subtitle) in cases {
             let copy = WalletSetupPage.seedPhrase.copy(content, mode: mode)
@@ -64,21 +59,18 @@ struct WalletSetupPageCopyTests {
         }
     }
 
-    /// An import of one chain asks for one, and says why the list is short.
-    @Test func aSingleChainImportAsksForOneChain() {
-        let many = WalletSetupPage.details.copy(content, mode: mode())
-        let key = WalletSetupPage.details.copy(content, mode: mode(privateKey: true))
-        let watch = WalletSetupPage.details.copy(content, mode: mode(watching: true))
-        #expect(key.title == watch.title)
-        #expect(key.title != many.title)
-        #expect(key.subtitle != watch.subtitle)
+    /// Watching addresses and watching an account ask for different things.
+    @Test func theWatchPageNamesWhatItWatches() {
+        let addresses = WalletSetupPage.watchAddresses.copy(content, mode: .setup(.watchAddresses))
+        let account = WalletSetupPage.watchAddresses.copy(content, mode: .setup(.watchAccountXpub))
+        #expect(addresses.title == content.watchAddressesTitle)
+        #expect(account.title != addresses.title)
     }
 
     /// The editing flow shows its edit heading on the actual name page.
-    @Test func editingNamesTheEditRatherThanTheChainPicker() {
-        #expect(WalletSetupPage.walletName.copy(content, mode: mode(editing: true)).title == content.editWalletTitle)
-        #expect(WalletSetupPage.walletName.copy(content, mode: mode(editing: true)).subtitle == content.editWalletSubtitle)
-        #expect(WalletSetupPage.details.copy(content, mode: mode()).title != content.editWalletTitle)
+    @Test func editingNamesTheEdit() {
+        #expect(WalletSetupPage.walletName.copy(content, mode: .edit).title == content.editWalletTitle)
+        #expect(WalletSetupPage.walletName.copy(content, mode: .edit).subtitle == content.editWalletSubtitle)
+        #expect(WalletSetupPage.walletName.copy(content, mode: .setup(.importPhrase)).title != content.editWalletTitle)
     }
-
 }

@@ -1,0 +1,206 @@
+{
+  "provenance": "monero-python 1.1.1; tevador/polyseed dd998e2 via scripts/polyseed-vectors.c",
+  "electrum": [
+    {
+      "language": "en",
+      "phrase": "eavesdrop knee foiled logic family toenail sulking equip phase second asleep begun cedar necklace batch upper mews utopia nearby nearby emails object womanly zoom logic",
+      "spend_key": "14c832d6963b3395fc399c6467ee9c078d00e88772208963f3b33cafef226b05",
+      "view_key": "85abad3c095ff45db84832da2abbf9c724c50998d24b3292da145a1addb3da00",
+      "address": "429voCDUEW1bda8A6Y4zrMNaveaPDBaDz2oi8GqUtA53Dv9dhVnsDbHEC9WEXFdhsL5rm9Vzp1SRvhwFGHSKVc4WTLzdFYo",
+      "stagenet_address": "52Mxt38Rt77bda8A6Y4zrMNaveaPDBaDz2oi8GqUtA53Dv9dhVnsDbHEC9WEXFdhsL5rm9Vzp1SRvhwFGHSKVc4WTLB5jBm"
+    },
+    {
+      "language": "zh-hans",
+      "phrase": "仿 碰 桂 车 泽 限 堆 承 愿 紧 遵 传 士 吗 复 鼓 放 巴 计 但 介 革 给 治 鼓",
+      "spend_key": "a7e59d09b34634c84b9d3b1558abc550e46dc0c06867c13c5957ac6d28b8f300",
+      "view_key": "66273c2ff994acba51f4d56b6e66db97f84d0d051c1aad6877922ba3d791880f",
+      "address": "43s2YJMji48ScSwEZM4mrUX6Vtj4QVxiuXhqb9nf1aCf3TUWz65AqgTAk2TeZuXEwzTZbQ8qFXS6jJmJ1m7Fxdb29gqzY7u",
+      "stagenet_address": "5454d9GhMfEScSwEZM4mrUX6Vtj4QVxiuXhqb9nf1aCf3TUWz65AqgTAk2TeZuXEwzTZbQ8qFXS6jJmJ1m7Fxdb29gXpTuA"
+    },
+    {
+      "language": "nl",
+      "phrase": "zeef prul ivoor komiek erasmus onzuiver ruis onheilig gekheid bijfiguur vicariaat strobbe cement aorta drama synagoge huilbier sporen valuatie bruid ugandees kagenaar lebberen lefhebber komiek",
+      "spend_key": "25a610bab5873261e3e55cb57181ade68a2f8a27a9633369261031bf694dcc00",
+      "view_key": "2be31829633532ccde481975c38530c7f75e28d1b104b4420ab8cfca688cd500",
+      "address": "43QjBa2WVNvS6J7f4EMu2qQjaSA3G1daL5yiMmwh4HhgCqqGQyj7Rwc2oH5at81rTeABnFdyPYad7cqHgVYx6PJ35YpvVQL",
+      "stagenet_address": "53cmGQwU8z2S6J7f4EMu2qQjaSA3G1daL5yiMmwh4HhgCqqGQyj7Rwc2oH5at81rTeABnFdyPYad7cqHgVYx6PJ35czaBmG"
+    },
+    {
+      "language": "eo",
+      "phrase": "frua araneo aristokrato aventuro fojfoje vemieno gasto ortangulo ardeco tvisto elkovi rebildo bekero gapulo orienta arniko ironio rastruma afusto aromo nanometro laguno fuelo gnuo tvisto",
+      "spend_key": "10a0e600af83359c6577ed5b3956f48331aba8575aa7b44bfe324e91025e6c09",
+      "view_key": "2f2dbf9e31d964e0887fa925c5b6baa096106a23cb9ba1cdd6357118a7da020c",
+      "address": "45s2C77do31Myo7sCP8Bh98pLEnNtLTHNEPZP3mwMv8S1HgPqh4qJLbVRSM7RFkRYYK6n7Ez7WJ2EhKX67T33DncDNYEXef",
+      "stagenet_address": "5654Gx2bSe7Myo7sCP8Bh98pLEnNtLTHNEPZP3mwMv8S1HgPqh4qJLbVRSM7RFkRYYK6n7Ez7WJ2EhKX67T33DncDPcAEQd"
+    },
+    {
+      "language": "fr",
+      "phrase": "ouate rogner pulpe rugby jusque soir cirage tipi histoire poutre balle otarie onze iris levure ronce race griller barque naviguer iris dernier amour aucun histoire",
+      "spend_key": "a93224ee08d79665d48f9a7fd7f200899b199609e89565a99afdbede9f4de706",
+      "view_key": "1ba85641cc5ba0c701d481da9feef0b23bf6c2b23759316124dd5fe68ebcd60f",
+      "address": "4B8LbEN8dB5c5j7CE5q3b8jAfDGYB3CyUeJx7XfNtvDMdV2RV6zMKcfGzGUCmg29mRATzpxAnA5RPbxdVFusqLhWTenRa4k",
+      "stagenet_address": "5BLNg5H6GnBc5j7CE5q3b8jAfDGYB3CyUeJx7XfNtvDMdV2RV6zMKcfGzGUCmg29mRATzpxAnA5RPbxdVFusqLhWTdbYa7f"
+    },
+    {
+      "language": "de",
+      "phrase": "erröten Aderlass Gandhi Silber Einzug Brunnen Dorade Klapprad Magazin Gestade ticken Jaguar Blues Farmhaus Last Isolator Börse hinhören Hülle abfragen Gelage Neuerung Duschbad Empfang Hülle",
+      "spend_key": "e61d1e6813f230e80e4ca61240b41ea4d13c42471d07ee567aebbf7050b3e808",
+      "view_key": "e8d1a6dbf2f277c23798289640368d8f546d849275099a24b92e98d96febd00d",
+      "address": "466FdUzabzEPtYAxWf9KgV3rKPys5F2TxHWTibXUM9DzJ6MnyB2NbXd1Uvdmi7hvo1hpkdaKjG46XNNNaHkDDnKQVqbquv6",
+      "stagenet_address": "56JHiKuYFbLPtYAxWf9KgV3rKPys5F2TxHWTibXUM9DzJ6MnyB2NbXd1Uvdmi7hvo1hpkdaKjG46XNNNaHkDDnKQVnsjk1o"
+    },
+    {
+      "language": "it",
+      "phrase": "ampliare tassello fingere ferrari squadra epidemia grattare vesuvio cactus agenzia monologo scadenza ignoto guscio idea pesce dorato patente socio stancare dovere macchina quercia ridurre agenzia",
+      "spend_key": "1ca7847e6906bc7904973f3145c123360422a10030059057082519720cb26f07",
+      "view_key": "8fdbc5a159361598557da766c9f80e4e43d3d38e4042c06cec48b43e2807e908",
+      "address": "45fJR2TY8ScfB7yS5CKqiLdSoAZGEzeyLZyby923Ny3jFZEaUXb1nTdLCzbVBwL2TJLcMrpXiUxYfUBRiP78mqiGRkKh6iF",
+      "stagenet_address": "55sLVsNVn3ifB7yS5CKqiLdSoAZGEzeyLZyby923Ny3jFZEaUXb1nTdLCzbVBwL2TJLcMrpXiUxYfUBRiP78mqiGRouyugP"
+    },
+    {
+      "language": "jbo",
+      "phrase": "dinju nirna nanla nabmi stali backi denci xirma birti femti carna dasni tabra frati klesi kalci traji pimlu stici xukmi nicfa febvi darsi dinju dasni",
+      "spend_key": "48faaafc2670dd3c71c39123d5708d1bda3dd726f4e8e5c4145f48a39925aa05",
+      "view_key": "0dbd4de5cbf9c06c42a38ee0e10448f35f795192ef393f808f381a50ca555808",
+      "address": "43HbWzPsEAATWhuW5MRaMha2zUt7rMrMCM23Vq21AAFM4hFFirvTbrX9ddwz4ZaL1pg5Kw1F9vsN3UCDQou4gubkKtuzrwL",
+      "stagenet_address": "53VdbqJpsmGTWhuW5MRaMha2zUt7rMrMCM23Vq21AAFM4hFFirvTbrX9ddwz4ZaL1pg5Kw1F9vsN3UCDQou4gubkKrSFyqz"
+    },
+    {
+      "language": "pt",
+      "phrase": "talvez apoteotico quetzal hexagono jujuba enevoar armisticio daguerreotipo happening holograma lugubre icosagono junto rebuscar arbusto acirrar ilharga scherzo joio bavaro vetusto lazer metroviario nulo lugubre",
+      "spend_key": "7b3a5db3bad7d8c1ac6b633628c3bbe31ee6e44ab151265ebdcb15dcb074c40f",
+      "view_key": "cc7d09ba234b71c62f8a067a6857ef088ddcea03315aba115ae3f3f341e35507",
+      "address": "48jhBTzu4DPhRWuM2bdTS6QWRDriad7XPZdwwRXW4GBn23EL7bRmQ7K3YcRsVcEsMV4qxYxKEZsTEeUdVb7tLDWr76VzYc4",
+      "stagenet_address": "58wjGJurhpVhRWuM2bdTS6QWRDriad7XPZdwwRXW4GBn23EL7bRmQ7K3YcRsVcEsMV4qxYxKEZsTEeUdVb7tLDWr7C3ocwP"
+    },
+    {
+      "language": "ru",
+      "phrase": "багаж трогать мойка тундра чайник осень инфекция кошка изменять встреча фронт ритм огурец кетчуп условие вилка орбита хата съезд фильм чума рождение вялый геолог кошка",
+      "spend_key": "9c35a2a7f550bea664aea4f02ce0fbc9dca68f8093023854d4cc320e9bce4802",
+      "view_key": "d623d6a1ddd4e0c1832ce1ceb634ad1824a8687b6f45753628cd8d3026b7a00e",
+      "address": "43TTeBno6frd198PWCHfRq6CLKk85rBrV6bf5oNiKYU9NoGzMp8TUfhVayVoe3dDWxDxxkhvxDotYEfbgBDS7QvDKuGi7MX",
+      "stagenet_address": "53fVj2hkkGxd198PWCHfRq6CLKk85rBrV6bf5oNiKYU9NoGzMp8TUfhVayVoe3dDWxDxxkhvxDotYEfbgBDS7QvDKs4M9fW"
+    },
+    {
+      "language": "es",
+      "phrase": "madera delito fase ánimo pecho mosca oriente contar relato ayuno filial arroz patria perfil circo baúl boda ídolo café gris chivo arado pepino príncipe patria",
+      "spend_key": "a63a0d1bf49e44df4224efb2e9aa17a7eeac136114f9f565f43294bb8e20ad0d",
+      "view_key": "847021294b99a75b4ad1c4bd21b504373ab14308b53bb225d718290200085f0b",
+      "address": "47HaCvUjG6z7SGGBsKbWRQhQYTTbNfuwPa5eHGtGStSjEFPtAMBSqmf3j9VW6T25RzUUCCfVooypYbaUSSt6DRjXSDNWED2",
+      "stagenet_address": "57VcHmPgui67SGGBsKbWRQhQYTTbNfuwPa5eHGtGStSjEFPtAMBSqmf3j9VW6T25RzUUCCfVooypYbaUSSt6DRjXSCkW9m4"
+    }
+  ],
+  "polyseed": [
+    {
+      "language": "en",
+      "phrase": "oppose check shy whisper evidence march candy eternal scissors panel wisdom original tired code render brisk",
+      "key": "c02a989223d9dd47433ae6e4358e4e9f89389ca1f4f15ec09aaeb40af7c581a3",
+      "birthday": 1698881904,
+      "created": 1700000000,
+      "spend_key": "7ee3fdf01bfa25d7e3193a8783cb98ce88389ca1f4f15ec09aaeb40af7c58103",
+      "view_key": "3d845485d8238e60dd66fef14ad22b176217000f2b5a917e5704993e40b17c0e",
+      "address": "42seeTQJH2g9vfnc3M3Fjd8tCgpZNmb4SUg5ksrnVZ1m85nuGDdXY2WGy9xdJDmzziMuEhzwj3MCncRV45HiMVX93eUmqdT",
+      "stagenet_address": "535gjJKFvdn9vfnc3M3Fjd8tCgpZNmb4SUg5ksrnVZ1m85nuGDdXY2WGy9xdJDmzziMuEhzwj3MCncRV45HiMVX93d9uBoi"
+    },
+    {
+      "language": "ja",
+      "phrase": "こうじ　ほえる　あんまり　すのこ　せんい　ほこる　まわり　あたえる　けいけん　にせもの　けんちく　のぞく　せっけん　すわる　ほあん　つつむ",
+      "key": "7db259dc6c4bb20853f7e97b703dd25ec988837547039f94fa1e34bd2f370cbe",
+      "birthday": 1706771142,
+      "created": 1709000000,
+      "spend_key": "4e97c9dd4a09e83f1d3a467bdf803d79c888837547039f94fa1e34bd2f370c0e",
+      "view_key": "1f4740cd6447a597c34ed2db6cf2b06d016c84ab938fbcdac2328f4594321d05",
+      "address": "4723NKwNnA33n6VaTRjGQ6F8CTivqS6LxRWfhqZFqfzCMKLrvaQjNS1SEgvAbETzne8vuES8qcEPVW1t1Et1g96BLPDoHGf",
+      "stagenet_address": "57E5TArLRm93n6VaTRjGQ6F8CTivqS6LxRWfhqZFqfzCMKLrvaQjNS1SEgvAbETzne8vuES8qcEPVW1t1Et1g96BLPuaNsm"
+    },
+    {
+      "language": "ko",
+      "phrase": "찬성 건조 굉장히 문득 잡지 찬성 분석 대한민국 효율적 송아지 경쟁 경계 재정 입력 반죽 배드민턴",
+      "key": "1505b19f84672e00268ead24f7fdaa8713d313e7dc66f61af84c890877643798",
+      "birthday": 1717290126,
+      "created": 1718000000,
+      "spend_key": "c0910c5b97eb88e79c0af9692335d4cb12d313e7dc66f61af84c890877643708",
+      "view_key": "9e37f5eef12977b240117faf9561ecd0edf2591e2892d9e0411456995231620b",
+      "address": "4B2SR6WzqkwbR2gfZ6emAvRvZDUMLERUXStkUYzQvzqiWSsBJPqDtjU2WURxJZRKmDE7ypwMPzq6FGPS2xfNNEWQQrioyZz",
+      "stagenet_address": "5BEUVwRxVN3bR2gfZ6emAvRvZDUMLERUXStkUYzQvzqiWSsBJPqDtjU2WURxJZRKmDE7ypwMPzq6FGPS2xfNNEWQQqG5p1j"
+    },
+    {
+      "language": "es",
+      "phrase": "cola cuento altivo paso tumba caballo cochino nuera almeja fiar derrota umbral marrón música cojo morir",
+      "key": "524e229ef0ef9598bfb6da6487d72edf683abd22711bd1254656f4ca0fb60024",
+      "birthday": 1725179364,
+      "created": 1727000000,
+      "spend_key": "78a636e4bb2971e8127deb1ecae370b5683abd22711bd1254656f4ca0fb60004",
+      "view_key": "90cf281d0aab17fc09312a5c6f974ea80e65417b2929c59f99ce808f65b55b07",
+      "address": "473W7s7fNtAZYPELYu5DPjhq9Vyj7g1K9528DfCyBj49YcmKM33UWiVHti4K44WDBDBjAKamxvZR39ByvXZa7FRt7p6dgBd",
+      "stagenet_address": "57FYCi2d2VGZYPELYu5DPjhq9Vyj7g1K9528DfCyBj49YcmKM33UWiVHti4K44WDBDBjAKamxvZR39ByvXZa7FRt7sfzdy7"
+    },
+    {
+      "language": "fr",
+      "phrase": "couteau rigide pollen onéreux tordre filou saumon munition fleur occuper vorace crier déchirer miracle friction thème",
+      "key": "d1ac94b060694ec18a47dbd562a244798b334b2b541f71a48f4742bccec3707d",
+      "birthday": 1735698348,
+      "created": 1736000000,
+      "spend_key": "56e1db25a8b3cd58aefd15614ccd2be78a334b2b541f71a48f4742bccec3700d",
+      "view_key": "ef3c41442ab5016adec10db3e523888ccd44364c44e71c617bf25782ba1d5601",
+      "address": "4AzKNb7PLnUHCNfrwJpsNPjjAG1oFLvQKLSkMuyECkKnaH2LYsQqrFZ6X5iUYfA4tV6ntCG5asSAkBH9sXKHVTjrBZRXWmb",
+      "stagenet_address": "5BCMTS2LzPaHCNfrwJpsNPjjAG1oFLvQKLSkMuyECkKnaH2LYsQqrFZ6X5iUYfA4tV6ntCG5asSAkBH9sXKHVTjrBYPvNth"
+    },
+    {
+      "language": "it",
+      "phrase": "rinsavito maiolica demenza esteso divano achille maretta snellire risibile voga bubbone rupe lancetta pasticca partire fango",
+      "key": "e1df50c8a35027e87dc6766c689e31fe1ea4f4de9439d0f34b49d330a6712673",
+      "birthday": 1743587586,
+      "created": 1745000000,
+      "spend_key": "6614983deb9aa67fa17cb1f751c9186c1ea4f4de9439d0f34b49d330a6712603",
+      "view_key": "a0c8ab34b1b9da73cf0d0f4b8d30e210875822d3af56fcdcb54814937feee20c",
+      "address": "42FuQ124Q9S1Vc7owwfEFs4Kg5XS2MFkPj3whpY1vm8VVCf7sNEmGEfipJCseaKYx6GQyedGbB1UKP3JUgZTXV6fU82g4Ry",
+      "stagenet_address": "52TwUqw23kY1Vc7owwfEFs4Kg5XS2MFkPj3whpY1vm8VVCf7sNEmGEfipJCseaKYx6GQyedGbB1UKP3JUgZTXV6fUC1Nwgj"
+    },
+    {
+      "language": "cs",
+      "phrase": "nemoc necky kousek docent skoba ironie chrlit poslanec hydrant tuhost dekl logoped chobot letokruh cvaknout legie",
+      "key": "d601f83fc6a815b4d0e0c192046524069ca20ca339c0d872e0eb0a84a7d56d30",
+      "birthday": 1751476824,
+      "created": 1754000000,
+      "spend_key": "0f861629777fdeab4d0adba9687787c79ba20ca339c0d872e0eb0a84a7d56d00",
+      "view_key": "ef2fec155b2e374e85db35b29f64cf6c8ce8f3c991c17b3205f04714d94ac007",
+      "address": "43pMWevnHrYJuYtef2ui25JEHuTrPC16v2bjL1PR2S8DU7DMw4vdXb1SLhviHZRdKiEfUL3aVRW9b5XDwNoLjuV6Mb9KHMu",
+      "stagenet_address": "542PbVqjwTeJuYtef2ui25JEHuTrPC16v2bjL1PR2S8DU7DMw4vdXb1SLhviHZRdKiEfUL3aVRW9b5XDwNoLjuV6MbjYoxA"
+    },
+    {
+      "language": "pt",
+      "phrase": "sazonal magreza gemer axila carimbar ginasta agilizar cabide bochecha ringue avulso rasante bloco pontaria lasanha caixote",
+      "key": "cf25c840f4ddb4099935871190f34d6fe35f056186bb04a21afcfb15a2549b2a",
+      "birthday": 1761995808,
+      "created": 1763000000,
+      "spend_key": "f57ddc86bf179059ecfb97cbd2ff8f45e35f056186bb04a21afcfb15a2549b0a",
+      "view_key": "e717127da2c32436463689f70794c48dc5197edea36630b90f6de41ab46c6101",
+      "address": "497ocugRrEbGM2g3vfx6wMCTRmaqwkNy9gVmaGFFBWBPhc4BQqoEoQb4pYdcazWa7jdbRQaWaMyfAWWmFoUp6EcgGzP8ZAU",
+      "stagenet_address": "59KqhkbPVqhGM2g3vfx6wMCTRmaqwkNy9gVmaGFFBWBPhc4BQqoEoQb4pYdcazWa7jdbRQaWaMyfAWWmFoUp6EcgGzaSjPu"
+    },
+    {
+      "language": "zh-hans",
+      "phrase": "抢 捅 毅 丹 仗 增 设 双 臣 格 输 声 尼 负 扇 县",
+      "key": "bb1eeedf670f7d3e864719196640b42c585cf0ed44b7adf8e68dd5a6c6f08b39",
+      "birthday": 1769885046,
+      "created": 1772000000,
+      "spend_key": "f4a20cc918e6453603713230ca5217ee575cf0ed44b7adf8e68dd5a6c6f08b09",
+      "view_key": "bcfe92730bad0da9f346d4ebbd1ed3e37c6f137d633561e14566bad97d48f608",
+      "address": "4AX43VsWZB9Agt4Dez3tSyQ9dHmDVwjMM76Qr3pk76oohbvBAaeZZn9Az6ZSU7SY5B1bs4bVn1wD3jaohVRLRrbP8qmpUjT",
+      "stagenet_address": "5Aj68LnUCnFAgt4Dez3tSyQ9dHmDVwjMM76Qr3pk76oohbvBAaeZZn9Az6ZSU7SY5B1bs4bVn1wD3jaohVRLRrbP8rAbErU"
+    },
+    {
+      "language": "zh-hant",
+      "phrase": "汪 桂 劃 律 債 桂 餾 何 醫 肥 卡 固 讓 想 駐 瞧",
+      "key": "09d0cf6850d82da5e726bbde6352d8f27757d4451b04f2b8c92dcc6371953d53",
+      "birthday": 1780404030,
+      "created": 1781000000,
+      "spend_key": "68ac0298cce8d1ecb716e5af0a717d8a7757d4451b04f2b8c92dcc6371953d03",
+      "view_key": "e9afbff70a906a52a92c73597de384b57a35e72889bfc794073d19a013a6d005",
+      "address": "49JjGjrvPCxGnvWmAGkdLMCsFVPrtjX8DRqPG6YcmD9QHXmrd85AcPe41CUue8XarUVQgQsuezcYc44UVNr2xRnRM8ZoqFL",
+      "stagenet_address": "59WmMamt2p4GnvWmAGkdLMCsFVPrtjX8DRqPG6YcmD9QHXmrd85AcPe41CUue8XarUVQgQsuezcYc44UVNr2xRnRM8g2NrY"
+    }
+  ],
+  "encrypted_polyseed": "reveal offer sunset holiday smart insect devote arch kitchen cross vacuum hill corn key venture help"
+}

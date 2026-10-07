@@ -82,11 +82,11 @@ mod tests {
             include_in_portfolio_total: true,
             chain_id: crate::registry::Chain::Ethereum,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: vec![],
             addresses: vec![],
+            restore_height: None,
         };
         service
             .apply_state_command(StateCommand::UpsertWallet {

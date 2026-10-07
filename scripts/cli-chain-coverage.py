@@ -25,14 +25,25 @@ with tempfile.TemporaryDirectory(prefix='spectra-chain-coverage-') as directory:
         'aptos', 'aptos-testnet', 'ton', 'ton-testnet', 'near', 'near-testnet', 'internet-computer',
         'polkadot', 'polkadot-westend', 'bittensor']
     for chain in chains:
-        wallet = run('wallet', 'import', '--chain', chain, '--name', chain,
-            '--private-key-env', 'COVERAGE_KEY')['wallet']
+        # A test network's address is watched first; the key then upgrades
+        # that wallet in place rather than adding a second one.
+        is_test_network = 'testnet' in chain or chain in ['bitcoin-signet', 'tron-nile', 'solana-devnet', 'polkadot-westend']
+        if is_test_network:
+            address = run('wallet', 'import', '--chain', chain, '--private-key-env', 'COVERAGE_KEY',
+                          '--preview')['addresses'][0]
+            watched = run('wallet', 'watch', '--chain', chain, '--name', chain, '--address', address)
+            assert watched['wallet']['address'] == address, (chain, watched)
+        imported = run('wallet', 'import', '--chain', chain, '--name', 'key-' + chain,
+            '--private-key-env', 'COVERAGE_KEY')
+        wallet = imported['wallet']
+        assert imported['upgraded'] == is_test_network, (chain, imported)
+        if is_test_network:
+            assert wallet['id'] == watched['wallet']['id'] and wallet['name'] == chain, (chain, wallet)
+        else:
+            run('wallet', 'rename', 'key-' + chain, chain)
         address = wallet['address']
         identity = run('send', 'identity', '--from', chain)
         assert identity['address'] == address, (chain, identity, wallet)
-        if 'testnet' in chain or chain in ['bitcoin-signet', 'tron-nile', 'solana-devnet', 'polkadot-westend']:
-            watched = run('wallet', 'watch', '--chain', chain, '--name', 'watch-' + chain, '--address', address)
-            assert watched['wallet']['address'] == address, (chain, watched)
     public_keys = [
         'tpubDC2Q4xK4XH72FwNnYwkrsSkPfMMZjYWmLL2sD5jNN5ECff1DCnyCq7mrqSRVavcW5WrX2eKcPL5iwVAybPTyNytaAgJ5cE7nhoHZ1KsTbgx',
         'upub5D9ydiUdMxX8SFcabgQu3G8WpKpZvJ3D3MsuWLzZt9Lfm4tpNbdRpV8cXnTx4hhW4gyCAe24UFC2bSqg3SNh6qPUW4TWAy16JfWD5XMU4ya',
@@ -46,4 +57,7 @@ with tempfile.TemporaryDirectory(prefix='spectra-chain-coverage-') as directory:
         receive = run('wallet', 'receive', name)
         assert receive['address'].startswith(('m', 'n', '2', 'tb1')), receive
         run('wallet', 'watch', '--chain', 'bitcoin', '--name', name + '-wrong-network', '--xpub', prefix_key, success=False)
+        # The three prefixes write one account key; watching it again under
+        # another is refused, so each is checked on its own.
+        run('wallet', 'delete', name, '--yes')
 print('network-correct raw keys, signing identities and testnet watch imports passed')

@@ -1,26 +1,27 @@
-//! NEAR: account-id validation (named + implicit hex), BIP-39 + direct-seed
-//! ed25519 derivation, hex address encoding
+//! NEAR: BIP-39 + SLIP-10 ed25519 derivation and hex implicit-account
+//! encoding.
 //!
-//! NEAR uses *direct-seed* ed25519: the BIP-39 seed's first 32 bytes are the
-//! ed25519 private key — no SLIP-10 path walk. Address = hex(public_key).
+//! NEAR's wallets (near-seed-phrase, behind MyNearWallet and Meteor) walk
+//! SLIP-10 along `m/44'/397'/{account}'`; the implicit account is the hex of
+//! the public key.
 
 use crate::derivation::error::DerivationError;
 
-use crate::derivation::primitives::derive_bip39_seed;
+use crate::derivation::primitives::{derive_bip39_seed, derive_slip10_ed25519_key};
 use ed25519_dalek::SigningKey;
-use zeroize::Zeroizing;
 
-/// BIP-39 seed first 32 bytes → ed25519 keypair; NEAR address = hex(pubkey) (no path walk).
+/// BIP-39 seed → SLIP-10 ed25519 key along `derivation_path`; NEAR address =
+/// hex(pubkey).
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
+    derivation_path: &str,
     passphrase: Option<&str>,
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let mut private_key = Zeroizing::new([0u8; 32]);
-    private_key.copy_from_slice(&seed[..32]);
+    let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, None)?;
     let signing_key = SigningKey::from_bytes(&private_key);
     let public_key = signing_key.verifying_key().to_bytes();
 
@@ -39,6 +40,7 @@ use crate::derivation::types::DerivationResult;
 // Shared body for derive_near / derive_near_testnet.
 fn near_internal(
     seed_phrase: String,
+    derivation_path: String,
     passphrase: Option<String>,
     want_address: bool,
     want_public_key: bool,
@@ -46,6 +48,7 @@ fn near_internal(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
         &seed_phrase,
+        &derivation_path,
         passphrase.as_deref(),
         want_address,
         want_public_key,
@@ -61,9 +64,10 @@ fn near_internal(
     })
 }
 
-/// Derive NEAR mainnet keys (direct-seed ed25519; address = hex pubkey).
+/// Derive NEAR mainnet keys (SLIP-10 ed25519; address = hex pubkey).
 pub fn derive_near(
     seed_phrase: String,
+    derivation_path: String,
     passphrase: Option<String>,
     want_address: bool,
     want_public_key: bool,
@@ -71,6 +75,7 @@ pub fn derive_near(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     near_internal(
         seed_phrase,
+        derivation_path,
         passphrase,
         want_address,
         want_public_key,
@@ -81,6 +86,7 @@ pub fn derive_near(
 /// Derive NEAR testnet keys (identical derivation to mainnet).
 pub fn derive_near_testnet(
     seed_phrase: String,
+    derivation_path: String,
     passphrase: Option<String>,
     want_address: bool,
     want_public_key: bool,
@@ -88,6 +94,7 @@ pub fn derive_near_testnet(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     near_internal(
         seed_phrase,
+        derivation_path,
         passphrase,
         want_address,
         want_public_key,

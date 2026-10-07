@@ -57,10 +57,9 @@ struct EndpointCatalogSettingsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
-                    AddCustomEndpointView(store: store, directory: entries)
+                    AddCustomEndpointView(store: store)
                 } label: { Image(systemName: "plus") }
                 .accessibilityLabel(copy.addEndpointTitle)
-                .disabled(entries.isEmpty)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

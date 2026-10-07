@@ -81,13 +81,11 @@ pub enum SendCommand {
         #[arg(long)]
         from: String,
     },
-    /// Scan Monero locally. No view or spend key is sent to the daemon.
+    /// Scan Monero locally, from the restore height the wallet was imported
+    /// with. No view or spend key is sent to the daemon.
     SyncMonero {
         #[command(flatten)]
         identity: IdentityArgs,
-        /// Only valid before the first scan; earlier transfers will not be discovered.
-        #[arg(long)]
-        restore_height: Option<u64>,
         /// Scan one durable batch instead of continuing to the chain tip.
         #[arg(long)]
         once: bool,
@@ -536,7 +534,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         }
         SendCommand::SyncMonero {
             identity: args,
-            mut restore_height,
             once,
         } => {
             let wallet = ctx.find_wallet(&args.from)?;
@@ -552,11 +549,9 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             let service = ctx.service()?;
             service.set_secret_store(ctx.secrets.clone());
             loop {
-                let status = ctx.rt.block_on(service.sync_monero_wallet(
-                    wallet.id.clone(),
-                    password.clone(),
-                    restore_height.take(),
-                ))?;
+                let status = ctx
+                    .rt
+                    .block_on(service.sync_monero_wallet(wallet.id.clone(), password.clone()))?;
                 if once || status.complete {
                     out.emit(serde_json::json!({"sync":status}));
                     break;

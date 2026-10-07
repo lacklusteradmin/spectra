@@ -20,8 +20,6 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/0'/{account}'/0/0" },
   { tag = "nestedSegWit", path = "m/49'/0'/{account}'/0/0" },
   { tag = "taproot", path = "m/86'/0'/{account}'/0/0" },
-  { tag = "electrumLegacy", path = "m/0'/0" },
-  { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 search_keywords = ["Bitcoin", "BTC"]
 popular_rank = 1
@@ -85,7 +83,6 @@ environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/144'/{account}'" },
 ]
 search_keywords = ["XRP Ledger", "XRP"]
 popular_rank = 3
@@ -121,7 +118,6 @@ token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/145'/{account}'/0/0", is_default = true },
   { tag = "legacy", path = "m/44'/0'/{account}'/0/0" },
-  { tag = "electrumLegacy", path = "m/0" },
 ]
 search_keywords = ["Bitcoin Cash", "BCH"]
 popular_rank = 10
@@ -137,8 +133,6 @@ environment = "mainnet"
 token_standards = ["TRC-10", "TRC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/195'/{account}'" },
-  { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
 search_keywords = ["Tron", "TRX"]
 popular_rank = 6
@@ -171,7 +165,6 @@ environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
 ]
 search_keywords = ["Cardano", "ADA"]
 popular_rank = 8
@@ -186,9 +179,7 @@ name = "Polkadot"
 family = "polkadot"
 environment = "mainnet"
 token_standards = []
-derivation_path = [
-  { tag = "standard", path = "m/44'/354'/{account}'", is_default = true },
-]
+derivation_path = []
 search_keywords = ["Polkadot", "DOT"]
 popular_rank = 18
 tags = ["substrate"]
@@ -281,9 +272,7 @@ name = "TON"
 family = "ton"
 environment = "mainnet"
 token_standards = ["TEP-74"]
-derivation_path = [
-  { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
-]
+derivation_path = []
 search_keywords = ["TON", "Gram", "GRAM"]
 popular_rank = 17
 color = "blue"
@@ -727,9 +716,7 @@ name = "Bittensor"
 family = "bittensor"
 environment = "mainnet"
 token_standards = []
-derivation_path = [
-  { tag = "standard", path = "m/44'/1005'/{account}'/0'/0'", is_default = true },
-]
+derivation_path = []
 search_keywords = ["Bittensor", "TAO", "subtensor"]
 popular_rank = 20
 tags = ["substrate"]
@@ -813,8 +800,6 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/1'/{account}'/0/0" },
   { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
   { tag = "taproot", path = "m/86'/1'/{account}'/0/0" },
-  { tag = "electrumLegacy", path = "m/0'/0" },
-  { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
 color = "orange"
@@ -832,8 +817,6 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/1'/{account}'/0/0" },
   { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
   { tag = "taproot", path = "m/86'/1'/{account}'/0/0" },
-  { tag = "electrumLegacy", path = "m/0'/0" },
-  { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 search_keywords = ["Bitcoin Testnet4", "testnet4", "tBTC"]
 color = "orange"
@@ -851,8 +834,6 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/1'/{account}'/0/0" },
   { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
   { tag = "taproot", path = "m/86'/1'/{account}'/0/0" },
-  { tag = "electrumLegacy", path = "m/0'/0" },
-  { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 search_keywords = ["Bitcoin Signet", "signet", "sBTC"]
 color = "orange"
@@ -883,8 +864,6 @@ environment = "testnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/1'/{account}'/0/0" },
-  { tag = "electrumLegacy", path = "m/0" },
 ]
 search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
 color = "orange"
@@ -1238,8 +1217,6 @@ environment = "testnet"
 token_standards = ["TRC-10", "TRC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/195'/{account}'" },
-  { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
 search_keywords = ["Tron Nile", "Nile", "tTRX"]
 color = "red"
@@ -1269,7 +1246,6 @@ environment = "testnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/144'/{account}'" },
 ]
 search_keywords = ["XRP Ledger Testnet", "tXRP"]
 color = "cyan"
@@ -1298,7 +1274,6 @@ environment = "testnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
-  { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
 ]
 search_keywords = ["Cardano Preprod", "Preprod", "tADA"]
 color = "indigo"
@@ -1339,9 +1314,7 @@ name = "TON Testnet"
 family = "ton"
 environment = "testnet"
 token_standards = ["TEP-74"]
-derivation_path = [
-  { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
-]
+derivation_path = []
 search_keywords = ["TON Testnet", "Test Gram", "tGRAM"]
 color = "blue"
 artwork_name = "ton"
@@ -1367,9 +1340,7 @@ name = "Polkadot Westend"
 family = "polkadot"
 environment = "testnet"
 token_standards = []
-derivation_path = [
-  { tag = "standard", path = "m/44'/354'/{account}'", is_default = true },
-]
+derivation_path = []
 search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
 color = "pink"
 artwork_name = "polkadot"

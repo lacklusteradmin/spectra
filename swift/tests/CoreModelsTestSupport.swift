@@ -18,8 +18,7 @@ extension WalletView {
         chainId: Chain,
         addresses: [Chain: String] = [:],
         bitcoinXpub: String? = nil,
-        seedDerivationPreset: SeedDerivationPreset = .standard,
-        seedDerivationPaths: SeedDerivationPaths? = nil,
+        derivationPath: String? = nil,
         derivationOverrides: WalletDerivationOverrides = WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
         holdings: [AssetHolding] = [],
         includeInPortfolioTotal: Bool = true,
@@ -31,12 +30,12 @@ extension WalletView {
                 addresses.map { chain, address in (chain.addressSlot, address) },
                 uniquingKeysWith: { first, _ in first }),
             accountXpub: bitcoinXpub,
-            seedDerivationPreset: seedDerivationPreset,
-            seedDerivationPaths: seedDerivationPaths ?? .forPreset(seedDerivationPreset),
+            derivationPath: derivationPath,
             derivationOverrides: derivationOverrides,
             holdings: holdings,
             includeInPortfolioTotal: includeInPortfolioTotal,
-            signing: signing
+            signing: signing,
+            restoreHeight: nil
         )
     }
 
@@ -59,8 +58,6 @@ extension WalletView {
     /// mapping as core's `WalletView::to_wallet_state`, for seeding a test
     /// through the command the app issues.
     func walletState() -> WalletState {
-        let networkPath = seedDerivationPaths.path(for: chain)
-        let path = networkPath.isEmpty ? nil : networkPath
         // The wallet's own slot first: core reads the first receive address as
         // the primary one.
         let ownSlot = family.addressSlot
@@ -68,7 +65,7 @@ extension WalletView {
         return WalletState(
             id: id, name: name, signing: signing, chainId: chainId,
             includeInPortfolioTotal: includeInPortfolioTotal, xpub: accountXpub,
-            derivationPreset: seedDerivationPreset, derivationPath: path, derivationOverrides: derivationOverrides,
+            derivationPath: derivationPath, derivationOverrides: derivationOverrides,
             holdings: holdings,
             addresses: slots.compactMap { slot in
                 guard let address = addresses[slot] else { return nil }
@@ -79,9 +76,10 @@ extension WalletView {
                     guard let slotOwner = Chain.all.first(where: { $0.addressSlot == slot }) else { return nil }
                     owner = slotOwner
                 }
-                let networkPath = seedDerivationPaths.path(for: owner)
-                return WalletAddress(chainId: owner, address: address, kind: "receive", derivationPath: networkPath.isEmpty ? nil : networkPath)
-            })
+                return WalletAddress(
+                    chainId: owner, address: address, kind: "receive", derivationPath: owner == chain ? derivationPath : nil)
+            },
+            restoreHeight: restoreHeight)
     }
 }
 

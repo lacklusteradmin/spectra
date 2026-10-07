@@ -152,14 +152,13 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 "isTestnet": chain.is_testnet(),
                 "isEvm": chain.is_evm(),
                 "tokenStandards": chain.token_standards(),
-                // The import picker's list, as a column rather than a second
-                // array: a chain is offered for private-key import exactly
-                // when a key derives an address on it.
-                "privateKeyImport": chain.derives_from_private_key(),
-                // Likewise the watch-addresses picker: the app rendered a
-                // hand-written eighteen-section list against this flag and
-                // disagreed with it in both directions.
-                "watchOnlyImport": chain.supports_watch_only_import(),
+                // The ways a wallet can be added on the network: the setup
+                // descriptor the app's network page and `wallet methods` read.
+                "setupMethods": spectra_core::derivation::setup::wallet_setup_descriptor(*chain)
+                    .options
+                    .iter()
+                    .map(|option| option.method)
+                    .collect::<Vec<_>>(),
                 // Whether the staking tab offers this chain.
                 "staking": chain.supports_staking(),
                 "supportsSeparateSigning": chain.supports_sign_only(),
@@ -199,6 +198,10 @@ pub struct EndpointsArgs {
     /// Restrict offline listing to built-in or custom endpoints.
     #[arg(long, requires = "catalog", value_parser = ["built-in", "custom"])]
     source: Option<String>,
+    /// Use only your endpoints on this network (`true`), so the catalog's
+    /// are never contacted, or the catalog's too (`false`). Requires --chain.
+    #[arg(long, requires = "chain", conflicts_with_all = ["catalog", "add"], action = clap::ArgAction::Set)]
+    custom_only: Option<bool>,
 }
 
 /// Check read methods for every API, including testnets and history indexers.
@@ -208,6 +211,19 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         Some(name) => vec![super::resolve_chain(name)?],
         None => Chain::all().collect(),
     };
+    if let Some(value) = args.custom_only {
+        let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
+            update: spectra_core::store::state::AppSettingUpdate::CustomEndpointsOnly {
+                chain_id: chains[0],
+                value,
+            },
+        })?;
+        out.emit(serde_json::json!({
+            "ok": true,
+            "customEndpointsOnly": transition.state.settings.custom_endpoints_only,
+        }));
+        return Ok(());
+    }
     if let Some(url) = args.add {
         let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
             update: spectra_core::store::state::AppSettingUpdate::AddCustomEndpoint {

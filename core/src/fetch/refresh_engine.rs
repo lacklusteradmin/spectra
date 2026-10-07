@@ -660,7 +660,6 @@ mod refresh_entry_tests {
             include_in_portfolio_total: true,
             chain_id: chain,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -673,6 +672,7 @@ mod refresh_entry_tests {
                     derivation_path: None,
                 })
                 .collect(),
+            restore_height: None,
         }
     }
 

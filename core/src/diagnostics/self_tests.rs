@@ -5,6 +5,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 const CANONICAL_MNEMONIC: &str = "test test test test test test test test test test test junk";
+/// The libmonero crate's documented 25-word seed: Monero reads no BIP-39.
+const CANONICAL_MONERO_SEED: &str = "tissue raking haunted huts afraid volcano howls liar egotistic \
+     befit rounded older bluntly imbalance pivot exotic tuxedo amaze mostly lukewarm macro vocal \
+     hounded biplane rounded";
+/// A ton-crypto mnemonic from `ton-mnemonics.json`: TON reads no BIP-39.
+const CANONICAL_TON_MNEMONIC: &str = "tribe trick matter citizen jealous turtle flee evidence \
+     tired milk wisdom eager fancy mother gate worth fly wedding zero ski purchase evidence cycle \
+     public";
+
+/// A public phrase in the chain's own format.
+fn canonical_phrase(chain: Chain) -> &'static str {
+    match chain.mainnet_counterpart() {
+        Chain::Monero => CANONICAL_MONERO_SEED,
+        Chain::Ton => CANONICAL_TON_MNEMONIC,
+        _ => CANONICAL_MNEMONIC,
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
@@ -45,7 +62,7 @@ fn validate(kind: &str, value: &str) -> bool {
 fn derive_one(chain: crate::registry::Chain, path: &str) -> Option<String> {
     crate::derivation::dispatch::derive_for_chain(
         chain,
-        CANONICAL_MNEMONIC,
+        canonical_phrase(chain),
         path,
         None,
         None,

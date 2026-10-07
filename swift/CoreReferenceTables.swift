@@ -15,10 +15,6 @@ enum CoreReferenceTables {
     static let chainWiki: [ChainWikiEntry] = listChainWiki()
     private static let chainWikiById = Dictionary(
         chainWiki.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    /// BIP-39 lengths and entropy as defined by core, one picker chip per entry.
-    static let standardSeedPhraseLengths: [SeedPhraseLength] = seedPhraseLengths()
-    /// Every BIP-39 wordlist, English first, as core names and codes them.
-    static let seedPhraseWordlists: [SeedPhraseLanguage] = seedPhraseLanguages()
     /// What staking means on each chain that stakes, in catalog order.
     static let stakingChains: [StakingChainEntry] = listStakingChains()
     /// The bounds core holds edits to, for the controls that set them.

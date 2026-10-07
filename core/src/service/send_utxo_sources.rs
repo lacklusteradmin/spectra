@@ -16,7 +16,7 @@ fn account_utxo_root_path(
     wallet: &WalletState,
     chain: Chain,
 ) -> Result<String, SpectraBridgeError> {
-    let defaults = crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
+    // An empty path resolves to the chain's default.
     let path = wallet
         .addresses
         .iter()
@@ -27,7 +27,6 @@ fn account_utxo_root_path(
                 .then_some(wallet.derivation_path.as_deref())
                 .flatten()
         })
-        .or_else(|| defaults.path_for(chain))
         .unwrap_or_default();
     crate::derivation::path::resolve_derivation_path(chain, path.into())
 }

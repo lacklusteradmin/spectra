@@ -24,11 +24,11 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         include_in_portfolio_total: true,
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
         addresses: Vec::new(),
+        restore_height: None,
     });
     crate::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state)
         .expect("save");
@@ -82,11 +82,11 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
         include_in_portfolio_total: true,
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
         addresses: Vec::new(),
+        restore_height: None,
     };
 
     let mut state = ResidentState::default();

@@ -63,13 +63,13 @@ struct NewAddressBookContactView: View {
         .navigationDestination(isPresented: $isChoosingChain) {
             AllChainsSelectionView(
                 chainSearchText: $chainSearchText,
+                title: AppLocalization.string("import_flow.all_chains_title"),
                 descriptors: addressBookChainDescriptors,
                 selectedChains: chain.map { Set([$0]) } ?? [],
                 toggleSelection: { picked in
                     chain = picked
                     isChoosingChain = false
-                },
-                clearAllSelections: nil
+                }
             )
         }
     }

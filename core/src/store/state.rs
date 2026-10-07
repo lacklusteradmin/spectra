@@ -58,14 +58,17 @@ pub struct WalletState {
     pub chain_id: crate::registry::Chain,
     pub include_in_portfolio_total: bool,
     pub xpub: Option<String>,
-    pub derivation_preset: crate::store::wallet_domain::SeedDerivationPreset,
-    /// The single path this wallet derives from. A wallet belongs to one chain,
-    /// so it needs one path — not the whole per-chain table.
+    /// The single path this wallet derives from: a profile's or a custom one,
+    /// fixed at import. `None` on a chain that derives without a path.
     pub derivation_path: Option<String>,
     /// Power-user derivation overrides, if the wallet was imported with any.
     pub derivation_overrides: crate::store::wallet_domain::WalletDerivationOverrides,
     pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub addresses: Vec<WalletAddress>,
+    /// The block height a scanning wallet starts from: a Monero wallet's
+    /// restore height, fixed when it is imported. `None` on every other
+    /// chain, which reads balances from a provider instead of scanning.
+    pub restore_height: Option<u64>,
 }
 
 // Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
@@ -101,7 +104,6 @@ impl WalletState {
             chain_id,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_path: derivation_path.clone(),
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -111,6 +113,7 @@ impl WalletState {
                 kind: "receive".to_string(),
                 derivation_path,
             }],
+            restore_height: None,
         }
     }
 
@@ -221,6 +224,9 @@ pub enum TokenPreferenceRejection {
 /// field here that only one front end reads.
 pub struct AppSettings {
     pub custom_endpoints: Vec<crate::service::CustomEndpoint>,
+    /// Networks whose reads and sends use the user's endpoints alone; the
+    /// catalog's are not contacted.
+    pub custom_endpoints_only: Vec<crate::registry::Chain>,
     /// The currency amounts are displayed in.
     pub fiat_currency: FiatCurrency,
     /// Token IDs pinned in display order. An empty list means no pins.
@@ -499,6 +505,7 @@ impl Default for AppSettings {
             fiat_currency: FiatCurrency::Usd,
             pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
             custom_endpoints: Vec::new(),
+            custom_endpoints_only: Vec::new(),
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
             background_sync_profile: BackgroundSyncProfile::Balanced,
             use_price_alerts: default_true(),
@@ -584,6 +591,11 @@ pub enum AppSettingUpdate {
         chain_id: crate::registry::Chain,
         api: String,
         endpoint: String,
+    },
+    /// Use only the user's endpoints on a network, or the catalog's too.
+    CustomEndpointsOnly {
+        chain_id: crate::registry::Chain,
+        value: bool,
     },
     BitcoinStopGap {
         value: u32,
@@ -950,6 +962,14 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
                 return false;
             }
             settings.custom_endpoints.insert(0, endpoint);
+        }
+        AppSettingUpdate::CustomEndpointsOnly { chain_id, value } => {
+            settings
+                .custom_endpoints_only
+                .retain(|chain| *chain != chain_id);
+            if value {
+                settings.custom_endpoints_only.push(chain_id);
+            }
         }
         AppSettingUpdate::BitcoinStopGap { value } => {
             settings.bitcoin_stop_gap = clamp(value, BITCOIN_STOP_GAP_RANGE)
@@ -1430,7 +1450,6 @@ mod tests {
             chain_id: chain,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
             derivation_overrides: Default::default(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             holdings: Vec::new(),
@@ -1440,6 +1459,7 @@ mod tests {
                 kind: "address".to_string(),
                 derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             }],
+            restore_height: None,
         }
     }
 

@@ -15,6 +15,9 @@ import tempfile
 import threading
 import time
 import urllib.request
+# The Monero seed of the wallet the recorded fixtures were made with: Monero
+# reads its own 25-word seed, not BIP-39.
+MONERO_SEED = ('syndrome portents apex vivid flippant dizzy bumper duplex enjoy deodorant bunch pigment wolf muppet tuition wept ailments kiwi roles against today morsel eternal excess wolf')
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--monerod', required=True)
@@ -67,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='spectra-monero-regtest-') as directory:
             def run(*words, success=True):
                 result = subprocess.run([binary, '--data-dir', directory+'/wallet', '--json', *words],
                     capture_output=True, text=True, timeout=180, env={**os.environ,
-                    'SPECTRA_SEED': 'abandon '*11+'about', 'SPECTRA_PASSWORD': 'fixture-password'})
+                    'SPECTRA_SEED': MONERO_SEED, 'SPECTRA_PASSWORD': 'fixture-password'})
                 assert (result.returncode == 0) == success, (words, result.stdout, result.stderr)
                 return json.loads(result.stdout)
             run('wallet', 'import', '--chain', 'monero', '--name', 'LocalXmr')

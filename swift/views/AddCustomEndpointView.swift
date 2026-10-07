@@ -2,7 +2,9 @@ import SwiftUI
 
 struct AddCustomEndpointView: View {
     let store: AppState
-    let directory: [EndpointDirectoryEntry]
+    /// The network the form opens on; the first that takes an endpoint when
+    /// `nil`.
+    var initialChain: Chain?
     @Environment(\.dismiss) private var dismiss
     @State private var chain: Chain?
     @State private var api = ""
@@ -11,23 +13,12 @@ struct AddCustomEndpointView: View {
     @State private var errorMessage: String?
     @State private var isSaving = false
     private let copy = EndpointsContentCopy.current
-    private var availableEntries: [EndpointDirectoryEntry] {
-        directory.filter { !endpointCapabilityOptions(chain: $0.record.chainId, api: $0.record.api).isEmpty }
-    }
-    /// In catalog order.
-    private var networks: [Chain] {
-        let offered = Set(availableEntries.map(\.record.chainId))
-        return Chain.all.filter(offered.contains)
-    }
-    private var types: [String] {
-        Array(Set(availableEntries.filter { $0.record.chainId == chain }.map(\.apiName))).sorted()
-    }
-    private var capabilityOptions: [EndpointCapability] {
-        guard let chain,
-            let type = directory.first(where: { $0.record.chainId == chain && $0.apiName == api })?.record.api
-        else { return [] }
-        return endpointCapabilityOptions(chain: chain, api: type)
-    }
+    /// Every network that takes an endpoint, in catalog order — including one
+    /// with no built-in provider, which is the network that most needs one.
+    private var networks: [Chain] { Chain.all.filter { !endpointApiOptions(chain: $0).isEmpty } }
+    private var options: [EndpointApiOption] { chain.map { endpointApiOptions(chain: $0) } ?? [] }
+    private var types: [String] { options.map(\.id) }
+    private var capabilityOptions: [EndpointCapability] { options.first { $0.id == api }?.capabilities ?? [] }
     var body: some View {
         Form {
             Section {
@@ -69,7 +60,7 @@ struct AddCustomEndpointView: View {
         .navigationBarTitleDisplayMode(.inline)
         .disabled(isSaving)
         .onAppear {
-            if chain == nil { chain = networks.first; api = types.first ?? "" }
+            if chain == nil { chain = initialChain ?? networks.first; api = types.first ?? "" }
         }
         .onChange(of: chain) { _, _ in
             capabilities.removeAll()

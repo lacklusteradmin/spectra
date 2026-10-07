@@ -133,7 +133,7 @@ pub(crate) struct TomlChain {
 
 #[derive(Debug, Deserialize)]
 struct TomlDerivationPathEntry {
-    tag: String,
+    tag: DerivationProfile,
     path: String,
     #[serde(default)]
     is_default: bool,
@@ -197,9 +197,29 @@ fn contract_address_prompt_for(token_standards: &[String]) -> String {
 
 // ── Public serialized shape — exposed to Swift via UniFFI
 
+/// A named way a phrase wallet on a chain derives its account: the script
+/// type on the Bitcoin family, or an older path some wallets still use.
+/// Each chain lists the ones it offers in `chains.toml`; the account index
+/// is the `{account}` segment of the profile's template.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum DerivationProfile {
+    /// The chain's one ordinary BIP-44 (or SLIP-10) account.
+    Standard,
+    /// BIP-44 P2PKH on the Bitcoin family; an older path elsewhere.
+    Legacy,
+    /// BIP-49 P2SH-wrapped SegWit.
+    NestedSegWit,
+    /// BIP-84 native SegWit.
+    NativeSegWit,
+    /// BIP-86 Taproot.
+    Taproot,
+}
+
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainDerivationPathEntry {
-    pub tag: String,
+    pub profile: DerivationProfile,
+    /// The path with `{account}` where the account index goes.
     pub path: String,
     pub is_default: bool,
 }
@@ -277,16 +297,6 @@ pub struct StakingChainEntry {
     pub unbonding_period: String,
     pub minimum_stake: String,
     pub explanation: String,
-}
-
-impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
-    fn from(value: TomlDerivationPathEntry) -> Self {
-        Self {
-            tag: value.tag,
-            path: value.path,
-            is_default: value.is_default,
-        }
-    }
 }
 
 // ── Static catalog
@@ -370,6 +380,30 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 .any(|n| n.id == c.family && n.environment == "mainnet"),
             "unknown network family"
         );
+        // A profile is one template with one account segment, and a chain
+        // that derives along a path has exactly one default.
+        let mut profiles = std::collections::HashSet::new();
+        for entry in &c.derivation_path {
+            assert!(
+                profiles.insert(entry.tag),
+                "{} lists {:?} twice",
+                c.id,
+                entry.tag
+            );
+            assert_eq!(
+                entry.path.matches("{account}").count(),
+                1,
+                "{} {:?} has no single account segment",
+                c.id,
+                entry.tag
+            );
+        }
+        assert!(
+            c.derivation_path.is_empty()
+                || c.derivation_path.iter().filter(|e| e.is_default).count() == 1,
+            "{} needs exactly one default derivation profile",
+            c.id
+        );
     }
     // A testnet's rank and tags are its mainnet's. Resolve mainnet placement
     // independently of the testnet's position in the catalog.
@@ -452,7 +486,7 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                     .derivation_path
                     .iter()
                     .map(|d| ChainDerivationPathEntry {
-                        tag: d.tag.clone(),
+                        profile: d.tag,
                         path: d.path.clone(),
                         is_default: d.is_default,
                     })

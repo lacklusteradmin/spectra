@@ -5,11 +5,17 @@ import SwiftUI
 /// Drawn inside a `SpectraRowGroup`, by the setup page's short list and by the
 /// full list behind it, so the two cannot drift into different shapes.
 struct ChainSelectionRow: View {
+    /// What sits at the end of the row.
+    enum Accessory {
+        /// A choice: the chosen row is ticked.
+        case checkmark
+        /// A way into the chain's own page.
+        case disclosure
+    }
+
     let descriptor: ChainSelectionDescriptor
     let isSelected: Bool
-    /// A multi-select list marks unselected rows with an empty circle, so the
-    /// rows read as toggles; a single choice marks only the chosen row.
-    let allowsMultipleSelection: Bool
+    var accessory: Accessory = .checkmark
     let toggle: () -> Void
 
     var body: some View {
@@ -50,10 +56,13 @@ struct ChainSelectionRow: View {
 
     @ViewBuilder
     private var selectionMark: some View {
-        if isSelected {
-            Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(.tint)
-        } else if allowsMultipleSelection {
-            Image(systemName: "circle").font(.title3).foregroundStyle(.tertiary)
+        switch accessory {
+        case .checkmark:
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(.tint)
+            }
+        case .disclosure:
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
     }
 }

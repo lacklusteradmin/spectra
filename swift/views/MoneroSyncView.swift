@@ -24,12 +24,6 @@ struct MoneroSyncView: View {
                             SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
                                 .spectraInputFieldStyle()
                         }
-                        if status.targetHeight == 0 {
-                            TextField(AppLocalization.string("Restore height (default 0)"), text: $vm.restoreHeight)
-                                .keyboardType(.numberPad).spectraInputFieldStyle()
-                            Text(AppLocalization.string("Use a height before your first receipt. A later height can miss funds."))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
                         Button(AppLocalization.string("Sync Local Wallet")) { vm.begin() }
                             .buttonStyle(.glassProminent)
                     }
@@ -51,9 +45,8 @@ struct MoneroSyncView: View {
         }
         .task(id: vm.requestId) {
             guard let request = vm.requestId else { return }
-            await vm.sync(request: request) { password, height, progress in
-                await store.syncMoneroWallet(
-                    walletId: walletId, password: password, restoreHeight: height, progress: progress)
+            await vm.sync(request: request) { password, progress in
+                await store.syncMoneroWallet(walletId: walletId, password: password, progress: progress)
             }
         }
         .onDisappear { vm.cancel() }

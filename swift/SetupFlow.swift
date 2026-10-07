@@ -23,7 +23,6 @@ struct SetupFlow {
 /// Linear pages for the wallet-setup flow. Lifted out of `SetupView`'s
 /// private enum so `SetupFlow` can reference it.
 enum WalletSetupPage: Hashable {
-    case details
     case watchAddresses
     case seedPhrase
     case password
@@ -32,32 +31,18 @@ enum WalletSetupPage: Hashable {
 }
 
 extension SetupFlow {
-    /// Watch-only import: choose chains, paste watch addresses, name it.
-    static let watchOnly = SetupFlow(pages: [.details, .watchAddresses, .walletName])
-
-    /// Seed-phrase import: chains, secret, password, name.
-    static let seedPhraseImport = SetupFlow(pages: [.details, .seedPhrase, .password, .walletName])
-
-    /// Create new wallet: chains, generated secret, password, backup
-    /// verification, name.
-    static let createNewWallet = SetupFlow(
-        pages: [.details, .seedPhrase, .password, .backupVerification, .walletName]
-    )
+    /// The pages for adding a wallet by `method`. The network was chosen
+    /// before the form opened, so no flow asks for it.
+    static func forMethod(_ method: WalletSetupMethod) -> SetupFlow {
+        switch method {
+        case .createPhrase: SetupFlow(pages: [.seedPhrase, .password, .backupVerification, .walletName])
+        case .importPhrase, .importPrivateKey: SetupFlow(pages: [.seedPhrase, .password, .walletName])
+        case .watchAddresses, .watchAccountXpub: SetupFlow(pages: [.watchAddresses, .walletName])
+        }
+    }
 
     /// Edit existing wallet — single-page (just the name field).
     static let editWallet = SetupFlow(pages: [.walletName])
-}
-
-/// Which setup a page belongs to, as far as its wording is concerned.
-///
-/// The page alone does not decide what it is called — "seed phrase" reads as
-/// *record* one when creating a wallet and *enter* one when importing — so the
-/// copy resolver takes the mode alongside the page.
-struct WalletSetupMode {
-    let isEditingWallet: Bool
-    let isCreateMode: Bool
-    let isPrivateKeyImport: Bool
-    var isWatchOnly: Bool = false
 }
 
 /// What a page calls itself: the heading and the line under it.
@@ -68,10 +53,14 @@ struct WalletSetupPageCopy {
 
 extension WalletSetupPage {
     /// Page wording. Exhaustive so every new page must supply a title.
-    func copy(_ content: ImportFlowContent, mode: WalletSetupMode) -> WalletSetupPageCopy {
+    ///
+    /// The page alone does not decide what it is called — "seed phrase" reads
+    /// as *record* one when creating a wallet and *enter* one when importing —
+    /// so the copy resolver takes the mode alongside the page.
+    func copy(_ content: ImportFlowContent, mode: WalletDraftMode) -> WalletSetupPageCopy {
         switch self {
         case .walletName:
-            if mode.isEditingWallet {
+            if mode == .edit {
                 return WalletSetupPageCopy(title: content.editWalletTitle, subtitle: content.editWalletSubtitle)
             }
             return WalletSetupPageCopy(
@@ -85,31 +74,22 @@ extension WalletSetupPage {
                 title: AppLocalization.string("import_flow.wallet_password_title"),
                 subtitle: AppLocalization.string("import_flow.wallet_password_subtitle"))
         case .watchAddresses:
+            if mode == .setup(.watchAccountXpub) {
+                return WalletSetupPageCopy(
+                    title: AppLocalization.string("Watch Account"),
+                    subtitle: AppLocalization.string("Enter the account's extended public key."))
+            }
             return WalletSetupPageCopy(
                 title: content.watchAddressesTitle, subtitle: content.watchAddressesSubtitle)
         case .seedPhrase:
-            if mode.isPrivateKeyImport {
+            if mode == .setup(.importPrivateKey) {
                 return WalletSetupPageCopy(
                     title: content.enterPrivateKeyTitle, subtitle: content.privateKeySubtitle)
             }
+            let isCreating = mode == .setup(.createPhrase)
             return WalletSetupPageCopy(
-                title: mode.isCreateMode ? content.recordSeedPhraseTitle : content.enterSeedPhraseTitle,
-                subtitle: mode.isCreateMode ? content.saveRecoveryPhraseSubtitle : content.enterRecoveryPhraseSubtitle)
-        case .details:
-            // These imports use one chain, and list only the chains they can.
-            if mode.isPrivateKeyImport {
-                return WalletSetupPageCopy(
-                    title: AppLocalization.string("import_flow.choose_chain"),
-                    subtitle: AppLocalization.string("import_flow.choose_chain_private_key_subtitle"))
-            }
-            if mode.isWatchOnly {
-                return WalletSetupPageCopy(
-                    title: AppLocalization.string("import_flow.choose_chain"),
-                    subtitle: AppLocalization.string("import_flow.choose_chain_watch_subtitle"))
-            }
-            return WalletSetupPageCopy(
-                title: AppLocalization.string("import_flow.choose_chains"),
-                subtitle: AppLocalization.string("import_flow.choose_chains_subtitle"))
+                title: isCreating ? content.recordSeedPhraseTitle : content.enterSeedPhraseTitle,
+                subtitle: isCreating ? content.saveRecoveryPhraseSubtitle : content.enterRecoveryPhraseSubtitle)
         }
     }
 }

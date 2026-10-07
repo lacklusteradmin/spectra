@@ -54,32 +54,28 @@ enum ChainPickerOrder: Hashable {
 /// Which rows the chain picker shows.
 enum ChainPickerFilter: Hashable {
     case all
-    case selected
     case tag(ChainTag)
 
     var title: String {
         switch self {
         case .all: AppLocalization.string("All")
-        case .selected: AppLocalization.string("Selected")
         case .tag(let tag): tag.title
         }
     }
 }
 
 extension [ChainSelectionDescriptor] {
-    /// The rows a picker shows. Testnets appear only under their own filter,
-    /// as a selection, or as a search match under `all`; otherwise they would
-    /// sit among the mainnets sharing their rank.
+    /// The rows a picker shows. Test networks appear only while the picker
+    /// shows them, each after its mainnet.
     func picked(
-        filter: ChainPickerFilter, query: String, order: ChainPickerOrder, selected: Set<Chain>
+        filter: ChainPickerFilter, query: String, order: ChainPickerOrder, showsTestNetworks: Bool
     ) -> [ChainSelectionDescriptor] {
         let rows = self.filter { row in
+            if row.isTestnet, !showsTestNetworks { return false }
             if !query.isEmpty, !row.matches(query) { return false }
             switch filter {
-            case .all: return !row.isTestnet || !query.isEmpty
-            case .selected: return selected.contains(row.id)
-            case .tag(.testnet): return row.isTestnet
-            case .tag(let tag): return !row.isTestnet && row.tags.contains(tag)
+            case .all: return true
+            case .tag(let tag): return row.tags.contains(tag)
             }
         }
         switch order {

@@ -81,6 +81,8 @@ check "a refusal by core is rejected"       $REJECTED \
 section "wallets across processes"
 check "imports a known mnemonic"            $OK \
     with_seed "$SEED" spectra wallet import --chain Solana --name "Acceptance SOL"
+check "an import is on one network"         $USAGE \
+    with_seed "$SEED" spectra wallet import --chain Solana --chain Ethereum --name "Two networks"
 contains "a new process reads back its derived address" \
     "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
     spectra --json wallet show "Acceptance SOL"
@@ -143,7 +145,7 @@ contains "export returns the phrase it sealed" "\"seedPhrase\":\"$SEED\"" \
 check "a wrong password cannot unseal it"   $REJECTED \
     with_password wrong spectra wallet export "Acceptance SOL" --yes
 check "imports without a password"          $OK \
-    with_seed "$SEED" spectra wallet import --chain Solana --name "Open SOL" --no-password
+    with_seed "$SEED" spectra wallet import --chain Solana --account 1 --name "Open SOL" --no-password
 contains "and exports with no password asked" "\"seedPhrase\":\"$SEED\"" \
     spectra --json wallet export "Open SOL" --yes
 # No password is no plaintext: core seals the phrase under its device key, so

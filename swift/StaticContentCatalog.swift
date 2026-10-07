@@ -94,7 +94,6 @@ struct ImportFlowContent {
     var backupVerificationHint: String { AppLocalization.string("import_flow.backupVerificationHint") }
     var addressesToWatchTitle: String { AppLocalization.string("import_flow.addressesToWatchTitle") }
     var addressesToWatchSubtitle: String { AppLocalization.string("import_flow.addressesToWatchSubtitle") }
-    var bitcoinWatchCaption: String { AppLocalization.string("import_flow.bitcoinWatchCaption") }
 }
 
 struct CommonLocalizationContent {

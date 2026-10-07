@@ -177,7 +177,8 @@ impl From<reqwest::Error> for SpectraBridgeError {
 
 mod endpoint_api;
 pub use endpoint_api::{
-    Endpoint, EndpointApi, EndpointCapability, endpoint_capability_id, endpoint_capability_options,
+    Endpoint, EndpointApi, EndpointApiOption, EndpointCapability, endpoint_api_options,
+    endpoint_capability_id, endpoint_capability_options,
 };
 
 pub mod endpoints;
@@ -197,6 +198,7 @@ pub mod derivation;
 pub mod diagnostics;
 pub mod fetch;
 pub mod formatting;
+pub mod monero_heights;
 pub mod registry;
 pub mod send;
 pub mod service;

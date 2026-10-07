@@ -16,7 +16,7 @@ struct SeedPhraseEntryTests {
         #expect(entry.slots.count == 24)
         #expect(entry.verdict.wordCount == 24)
         #expect(entry.verdict.language?.code == "en")
-        #expect(entry.verdict.checksumValid)
+        #expect(entry.verdict.isValid)
         #expect(entry.phrase == zero24)
     }
 
@@ -26,7 +26,7 @@ struct SeedPhraseEntryTests {
         entry.paste(zero24)
         #expect(entry.slots.count == 24)
         #expect(entry.verdict.problem == .wrongWordCount(expected: 12))
-        #expect(!entry.verdict.checksumValid)
+        #expect(!entry.verdict.isValid)
     }
 
     @Test func moreWordsStepsToTheNextStandardLength() {
@@ -46,23 +46,52 @@ struct SeedPhraseEntryTests {
 
     /// Core states the problem; the words are this app's, in its language.
     @Test func everyProblemIsWorded() {
-        for problem: SeedPhraseProblem in [.nonStandardLength(wordCount: 25), .wrongWordCount(expected: 12), .invalidChecksum] {
+        let problems: [SeedPhraseProblem] = [
+            .nonStandardLength(wordCount: 25, allowed: [12, 15]), .wrongWordCount(expected: 12), .invalidChecksum,
+            .ambiguousLanguage, .encryptedPolyseed, .unsupportedPolyseed,
+        ]
+        for problem in problems {
             #expect(!problem.localizedMessage.isEmpty)
         }
         // The lengths named are core's, not a list kept beside them.
-        let message = SeedPhraseProblem.nonStandardLength(wordCount: 25).localizedMessage
-        for length in CoreReferenceTables.standardSeedPhraseLengths {
-            #expect(message.contains(String(length.wordCount)))
+        let message = SeedPhraseProblem.nonStandardLength(wordCount: 25, allowed: [16, 25]).localizedMessage
+        #expect(message.contains("16"))
+    }
+
+    /// The grid takes the network's own lengths: Monero's Polyseed and seed,
+    /// TON's mnemonic.
+    @Test func theGridFollowsTheNetworksFormats() {
+        let entry = SeedPhraseEntry()
+        entry.chain = .monero
+        #expect(entry.slots.count == 16)
+        #expect(entry.nextSlotCount == 25)
+        entry.chain = .ton
+        #expect(entry.slots.count == 24)
+        #expect(entry.nextSlotCount == nil)
+    }
+
+    /// A created phrase is in the format the network's own wallets restore.
+    @Test func createdPhrasesAreInEachNetworksFormat() {
+        let draft = WalletImportDraft()
+        for (chain, words, format) in [
+            (Chain.monero, 25, WalletSecretFormat.moneroPhrase), (.ton, 24, .tonMnemonic), (.bitcoin, 12, .bip39Phrase),
+        ] {
+            draft.configure(chain: chain, method: .createPhrase)
+            #expect(draft.seedPhraseWords.count == words, "\(chain.id)")
+            #expect(draft.seedEntry.verdict.isValid, "\(chain.id)")
+            #expect(draft.seedEntry.verdict.format == format, "\(chain.id)")
         }
+        draft.configure(chain: .monero, method: .createPhrase)
+        #expect(draft.createdLengths.map(\.wordCount) == [25])
     }
 
     /// A created phrase goes through the same entry, judged at the length
     /// it was generated at.
     @Test func aCreatedPhraseIsJudgedAtItsLength() {
         let draft = WalletImportDraft()
-        draft.configureForCreatedWallet()
+        draft.configure(chain: .bitcoin, method: .createPhrase)
         draft.selectedSeedPhraseWordCount = 24
         #expect(draft.seedPhraseWords.count == 24)
-        #expect(draft.seedEntry.verdict.checksumValid)
+        #expect(draft.seedEntry.verdict.isValid)
     }
 }

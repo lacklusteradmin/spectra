@@ -1,10 +1,6 @@
-//! Funds finder: derive every (chain, path) a seed could have used, then look
-//! for balances on them.
-//!
-//! Core derives the candidate matrix — four Bitcoin script types across three
-//! accounts, and the equivalent for every other chain — and says so in its own
-//! doc: "the balance of this address is checked separately by Swift". Which is
-//! the half that had no second implementation.
+//! Funds finder: derive the addresses a seed could have used — every
+//! registry derivation profile at the first accounts — then look for
+//! balances on them.
 
 use clap::Args;
 use colored::Colorize as _;
@@ -45,7 +41,11 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
     }
     .resolve("seed phrase", "seed-file")?;
 
-    crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
+    let chain = args.chain.as_ref().map(|n| resolve_chain(n)).transpose()?;
+    // On one network core judges the phrase in that network's formats.
+    if chain.is_none() {
+        crate::cmd::reject_bad_seed_phrase(None, &seed_phrase)?;
+    }
 
     let service = ctx.service()?;
     let scan = service
@@ -54,19 +54,32 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
                 seed_phrase,
                 passphrase: args.passphrase.clone(),
             },
-            args.chain.as_ref().map(|n| resolve_chain(n)).transpose()?,
+            chain,
         )
         .map_err(CliError::from)?;
     let candidates = scan.candidates();
+    // Named before anything is sent: whom the candidate addresses go to.
+    let endpoints = ctx.rt.block_on(scan.endpoints());
+    let endpoints_json: Vec<_> = endpoints
+        .iter()
+        .map(|endpoint| {
+            serde_json::json!({
+                "chain": endpoint.chain_id,
+                "endpoint": endpoint.endpoint,
+                "capabilities": endpoint.capabilities,
+            })
+        })
+        .collect();
 
     if args.dry_run {
         out.text(|| {
             println!();
             for candidate in &candidates {
                 println!(
-                    "  {}  {:<26} {}",
+                    "  {}  {:<16} {:<22} {}",
                     out::hint("·"),
-                    candidate.path_label,
+                    candidate.chain_id.str_id(),
+                    candidate.derivation_path,
                     out::hint(&candidate.address),
                 );
             }
@@ -80,11 +93,14 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
         out.emit(serde_json::json!({
             "ok": true,
             "checked": false,
+            "endpoints": endpoints_json,
             "candidates": candidates
                 .iter()
                 .map(|candidate| serde_json::json!({
                     "chain": candidate.chain_id,
-                    "label": candidate.path_label,
+                    "profile": candidate.profile,
+                    "account": candidate.account,
+                    "path": candidate.derivation_path,
                     "address": candidate.address,
                 }))
                 .collect::<Vec<_>>(),
@@ -93,6 +109,13 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
     }
 
     out.text(|| {
+        for endpoint in &endpoints {
+            println!(
+                "  {} asks {}",
+                out::hint(endpoint.chain_id.str_id()),
+                endpoint.endpoint
+            );
+        }
         println!(
             "  {} checking {} candidate addresses…",
             out::hint("→"),
@@ -101,6 +124,9 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
     });
 
     let mut funded = Vec::new();
+    // Every read, in the candidates' order: default profile first, accounts
+    // ascending.
+    let mut reads = Vec::new();
     let mut unreachable = 0u32;
     loop {
         let batch = ctx.rt.block_on(scan.next_batch());
@@ -108,10 +134,21 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
             if read.error.is_some() {
                 unreachable += 1;
             }
+            let row = serde_json::json!({
+                "chain": read.candidate.chain_id,
+                "profile": read.candidate.profile,
+                "account": read.candidate.account,
+                "path": read.candidate.derivation_path,
+                "address": read.candidate.address,
+                "amount": read.balance.as_ref().map(|balance| balance.amount_display.clone()),
+                "funded": read.funded,
+                "used": read.used,
+                "error": read.error.as_ref().map(ToString::to_string),
+            });
             if read.funded {
-                let balance = read.balance.unwrap();
-                funded.push(serde_json::json!({ "chain": read.candidate.chain_id, "label": read.candidate.path_label, "address": read.candidate.address, "amount": balance.amount_display }));
+                funded.push(row.clone());
             }
+            reads.push(row);
         }
         if batch.complete {
             break;
@@ -139,7 +176,9 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
         "checked": true,
         "candidateCount": candidates.len(),
         "unreachable": unreachable,
+        "endpoints": endpoints_json,
         "funded": funded,
+        "reads": reads,
     }));
     Ok(())
 }

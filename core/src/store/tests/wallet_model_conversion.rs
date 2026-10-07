@@ -1,24 +1,15 @@
 use crate::registry::Chain;
-use crate::store::wallet_domain::{
-    AssetHolding, SeedDerivationPaths, SeedDerivationPreset, WalletDerivationOverrides, WalletView,
-};
+use crate::store::wallet_domain::{AssetHolding, WalletDerivationOverrides, WalletView};
 use std::collections::HashMap;
 
 fn bitcoin_wallet() -> WalletView {
-    let mut paths = SeedDerivationPaths::default();
-    paths.set_path_for(Chain::Bitcoin, "m/84'/0'/0'/0/0");
-    paths.set_path_for(Chain::BitcoinTestnet4, "m/84'/1'/0'/0/0");
-    paths.set_path_for(Chain::Ethereum, "m/44'/60'/0'/0/0");
-    paths.set_path_for(Chain::Solana, "m/44'/501'/0'");
-
     WalletView {
         id: "w1".to_string(),
         name: "Cold".to_string(),
-        chain_id: crate::registry::Chain::BitcoinTestnet4,
+        chain_id: crate::registry::Chain::Bitcoin,
         addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
         account_xpub: Some("zpub123".to_string()),
-        seed_derivation_preset: SeedDerivationPreset::Account2,
-        seed_derivation_paths: paths,
+        derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
         derivation_overrides: WalletDerivationOverrides {
             passphrase: Some("secret".to_string()),
             ..Default::default()
@@ -37,28 +28,25 @@ fn bitcoin_wallet() -> WalletView {
         signing: crate::store::state::WalletSigning::SeedPhrase {
             password_protected: false,
         },
+        restore_height: None,
     }
 }
 
 #[test]
-fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
+fn keeps_the_path_the_wallet_uses() {
     let summary = bitcoin_wallet().to_wallet_state().unwrap();
-    assert_eq!(summary.derivation_path.as_deref(), Some("m/84'/1'/0'/0/0"));
-    assert_eq!(summary.chain_id, crate::registry::Chain::BitcoinTestnet4);
+    assert_eq!(summary.derivation_path.as_deref(), Some("m/84'/0'/2'/0/0"));
+    assert_eq!(summary.chain_id, crate::registry::Chain::Bitcoin);
 }
 
 #[test]
-fn carries_overrides_xpub_preset_and_holdings() {
+fn carries_overrides_xpub_and_holdings() {
     let summary = bitcoin_wallet().to_wallet_state().unwrap();
     assert_eq!(
         summary.derivation_overrides.passphrase.as_deref(),
         Some("secret")
     );
     assert_eq!(summary.xpub.as_deref(), Some("zpub123"));
-    assert_eq!(
-        summary.derivation_preset,
-        crate::store::wallet_domain::SeedDerivationPreset::Account2
-    );
     assert_eq!(summary.holdings.len(), 1);
     assert_eq!(summary.holdings[0].amount, "1.5");
     assert_eq!(summary.holdings[0].symbol, "BTC");
@@ -77,7 +65,7 @@ fn the_address_gains_its_chain_and_path() {
     );
     assert_eq!(
         summary.addresses[0].derivation_path.as_deref(),
-        Some("m/84'/0'/0'/0/0")
+        Some("m/84'/0'/2'/0/0")
     );
     assert_eq!(summary.primary_address(), Some("bc1qexample"));
 }
@@ -98,6 +86,7 @@ fn network_identity_selects_the_primary_address_in_both_models() {
         Chain::BitcoinTestnet4.address_slot().to_string(),
         "tb1qexample".to_string(),
     );
+    wallet.chain_id = Chain::BitcoinTestnet4;
     assert_eq!(wallet.primary_address(), Some("tb1qexample"));
     let state = wallet.to_wallet_state().unwrap();
     assert_eq!(state.addresses[0].address, "tb1qexample");

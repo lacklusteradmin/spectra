@@ -1,24 +1,30 @@
 import SwiftUI
-enum WalletDraftMode {
-    case importExisting
-    case createNew
-    case editExisting
+/// What a draft is for: adding a wallet one way on one network, or renaming
+/// one. The network and the method are chosen before the form opens.
+enum WalletDraftMode: Equatable {
+    case setup(WalletSetupMethod)
+    case edit
 }
 /// Mutation contract for `WalletImportDraft`:
 ///
-///   * **Derived state is computed, not stored.** `selectedChains` and the
+///   * **Derived state is computed, not stored.** `chain` and the
 ///     verdicts are read from the fields they depend on, so no field needs a
 ///     hook to keep them current and any field may be bound directly.
 ///   * **Fields with a `didSet` reshape other fields** — a created phrase's
 ///     length regenerates it. The phrase grid is `seedEntry`'s, which follows
-///     core's verdict as words land. Chain selection goes through
-///     `toggleChainSelection`, which applies the mode's one-chain rule.
+///     core's verdict as words land.
 @MainActor
 @Observable
 final class WalletImportDraft {
 
-    var mode: WalletDraftMode = .importExisting
-    var isEditingWallet: Bool { mode == .editExisting }
+    var mode: WalletDraftMode = .setup(.importPhrase)
+    /// The network the wallet is added on, chosen before the form opens.
+    var chain: Chain?
+    var isEditingWallet: Bool { mode == .edit }
+    var method: WalletSetupMethod? {
+        if case .setup(let method) = mode { return method }
+        return nil
+    }
     var walletName: String = ""
     /// The phrase grid: typed when importing, generated when creating.
     let seedEntry = SeedPhraseEntry()
@@ -26,53 +32,76 @@ final class WalletImportDraft {
     var seedPhrase: String { seedEntry.phrase }
     var walletPassword: String = ""
     var walletPasswordConfirmation: String = ""
-    /// An import from a raw private key rather than a phrase. Chosen on the
-    /// Add Wallet page, before the chains, because it decides which chains
-    /// the import can use.
-    var importsPrivateKey: Bool = false
     var privateKeyInput: String = ""
-    var seedDerivationPreset: SeedDerivationPreset = .standard
-    var seedDerivationPaths: SeedDerivationPaths = .defaults
+    /// The derivation profile a phrase wallet uses: one of the network's, its
+    /// first by default. `nil` on a network that derives without a path.
+    var derivationProfile: DerivationProfile?
+    /// The account index on the profile.
+    var derivationAccount: UInt32 = 0
+    /// A path typed under Advanced. When set it replaces the profile's.
+    var customDerivationPath: String = ""
     // Power-user derivation overrides (Advanced Options sheet). Each field is
     // a user-entered string; blank/empty-picker means "use chain preset default".
     // These are converted to WalletDerivationOverrides at import time via
     // `resolvedDerivationOverrides`.
     var overridePassphrase: String = ""
     var overrideHmacKey: String = ""
-    /// The length a created phrase is generated at: one of core's lengths.
-    var selectedSeedPhraseWordCount: Int = SeedPhraseEntry.initialSlotCount {
+    /// The length a created phrase is generated at: one of `createdLengths`.
+    var selectedSeedPhraseWordCount: Int = 12 {
         didSet { if selectedSeedPhraseWordCount != oldValue { regenerateSeedPhrase() } }
     }
-    var isWatchOnlyMode: Bool = false
-    /// The watched addresses, one per line, for the one chain a watch-only
-    /// import is on.
+    /// A restored Monero wallet's restore height as typed; blank lets core
+    /// read a Polyseed's birthday or scan a 25-word seed from the start.
+    var restoreHeightInput: String = ""
+    /// The typed restore height, or `nil` when blank. Not a number is not a
+    /// height, and is refused by `isSecretComplete`.
+    var restoreHeight: UInt64? { UInt64(restoreHeightInput.trimmingCharacters(in: .whitespaces)) }
+    var isRestoreHeightValid: Bool {
+        restoreHeightInput.trimmingCharacters(in: .whitespaces).isEmpty || restoreHeight != nil
+    }
+    /// This method's entry in the network's setup descriptor.
+    private var setupOption: WalletSetupOption? {
+        guard let chain, let method else { return nil }
+        return walletSetupDescriptor(chain: chain).options.first { $0.method == method }
+    }
+    /// Whether this method on this network asks for a restore height.
+    var asksRestoreHeight: Bool { setupOption?.fields.contains(.restoreHeight) ?? false }
+    /// A named account the key controls, as typed; blank keeps the key's
+    /// implicit account.
+    var namedAccountInput: String = ""
+    /// Whether this method on this network takes a named account.
+    var asksNamedAccount: Bool { setupOption?.fields.contains(.namedAccount) ?? false }
+    /// The profiles this method offers on the network, default first; empty
+    /// where the network derives without a path.
+    var derivationProfiles: [DerivationProfile] { setupOption?.profiles ?? [] }
+    /// The profile's path at the chosen account, as core renders it.
+    var profileDerivationPath: String? {
+        guard let chain, let derivationProfile else { return nil }
+        return try? derivationProfilePath(chain: chain, profile: derivationProfile, account: derivationAccount)
+    }
+    /// The path the import derives along: the custom one when typed, else the
+    /// profile's. Core refuses one that does not parse.
+    var derivationPath: String? {
+        let custom = customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return custom.isEmpty ? profileDerivationPath : custom
+    }
+    /// The watched addresses, one per line, on the import's chain.
     var watchOnlyInput: String = ""
     /// Not an address: an account xpub stands in for the whole account and
-    /// plans one wallet rather than one per line. Read only on a chain that
-    /// `acceptsAccountXpub`.
-    var bitcoinXpubInput: String = ""
-    /// Every chain ticked, in the order ticked.
-    var selectedChainsStorage: [Chain] = []
+    /// imports one wallet rather than one per line.
+    var accountXpubInput: String = ""
     var backupVerificationWordIndices: [Int] = []
     var backupVerificationEntries: [String] = []
-    /// The chains the import uses: those ticked that this mode can use, all
-    /// of them or only the first where the mode allows one — editing,
-    /// watch-only and private-key imports.
-    var selectedChains: [Chain] {
-        let usable = selectedChainsStorage.filter(offers)
-        return allowsMultipleChainSelection ? usable : Array(usable.prefix(1))
+    var isCreateMode: Bool { method == .createPhrase }
+    var isPrivateKeyImportMode: Bool { method == .importPrivateKey }
+    var isWatchOnlyMode: Bool { method == .watchAddresses || method == .watchAccountXpub }
+    /// The pages this draft's form walks through.
+    var setupFlow: SetupFlow {
+        switch mode {
+        case .edit: .editWallet
+        case .setup(let method): .forMethod(method)
+        }
     }
-    /// Whether this mode's chain picker lists `chain`: a private key derives
-    /// an address on only some chains, and only some chains can be watched.
-    func offers(_ chain: Chain) -> Bool {
-        if isPrivateKeyImportMode { return chain.derivesFromPrivateKey }
-        if isWatchOnlyMode { return chain.supportsWatchOnlyImport }
-        return true
-    }
-    var isCreateMode: Bool { mode == .createNew }
-    var isPrivateKeyImportMode: Bool { mode == .importExisting && !isWatchOnlyMode && importsPrivateKey }
-    var allowsMultipleChainSelection: Bool { !isEditingWallet && !isWatchOnlyMode && !isPrivateKeyImportMode }
-    func isSelected(_ chain: Chain) -> Bool { selectedChainsStorage.contains(chain) }
     /// The phrase as words, as core reads them.
     var seedPhraseWords: [String] { seedEntry.verdict.words }
     /// The password as typed, or `nil` for an empty field: the one way to
@@ -93,49 +122,76 @@ final class WalletImportDraft {
         parseWalletDerivationInput(input: WalletDerivationInput(
             passphrase: overridePassphrase, hmacKey: overrideHmacKey))
     }
-    /// The selected chains, in catalog order rather than selection order.
-    var selectableDerivationChains: [Chain] {
-        let selected = Set(selectedChains)
-        return Chain.all.filter(selected.contains)
-    }
     /// The watched addresses, one per non-blank line.
     var watchOnlyEntries: [String] {
         watchOnlyInput.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
-    /// The watch-only inputs as core reads them, keyed by the chain the import
-    /// is on — the chain core plans the wallets for. Empty outside watch-only
-    /// mode or before a chain is chosen.
-    var watchOnlyImportEntries: WalletImportWatchOnlyEntries {
-        guard isWatchOnlyMode, let chain = selectedChains.first else {
-            return WalletImportWatchOnlyEntries(byChainId: [:], bitcoinXpub: nil)
+    /// How core reads this import. Creating and restoring a phrase are one
+    /// import: core does not need to know the phrase was just generated.
+    var importKind: WalletImportKind {
+        switch method {
+        case .importPrivateKey: .privateKey
+        case .watchAddresses: .watchAddresses(addresses: watchOnlyEntries)
+        case .watchAccountXpub: .watchAccountXpub(xpub: accountXpubInput.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .createPhrase, .importPhrase, nil: .phrase
         }
-        let entries = watchOnlyEntries
-        let trimmedXpub = bitcoinXpubInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return WalletImportWatchOnlyEntries(
-            byChainId: entries.isEmpty ? [:] : [chain: entries],
-            bitcoinXpub: chain.acceptsAccountXpub && !trimmedXpub.isEmpty ? trimmedXpub : nil)
+    }
+    /// The commit core imports from, built from the form as it stands. The
+    /// one place the form becomes a request, so whatever reads it before the
+    /// import sees what the import will.
+    func importCommit(name: String) -> WalletImportCommit? {
+        guard let chain else { return nil }
+        let kind = importKind
+        // A new Monero wallet scans from near now; a restored one from the
+        // height typed, if any.
+        let restoreHeight: UInt64? =
+            isCreateMode ? (try? moneroNewWalletRestoreHeight(chain: chain)) : self.restoreHeight
+        return WalletImportCommit(
+            password: walletPasswordInput,
+            request: WalletImportRequest(walletName: name, chain: chain, kind: kind),
+            derivationPath: kind == .phrase ? derivationPath : nil,
+            derivationOverrides: resolvedDerivationOverrides,
+            seedPhrase: kind == .phrase ? seedPhrase : nil,
+            privateKey: kind == .privateKey ? privateKeyInput : nil,
+            restoreHeight: restoreHeight,
+            namedAccount: asksNamedAccount && !namedAccountInput.trimmingCharacters(in: .whitespaces).isEmpty
+                ? namedAccountInput : nil)
+    }
+    /// The commit an address preview reads: the form's, without the name and
+    /// password, which change no address. `nil` until there is enough to
+    /// derive from — a complete secret, or a line or key to watch.
+    var previewCommit: WalletImportCommit? {
+        switch importKind {
+        case .watchAddresses(let addresses): guard !addresses.isEmpty else { return nil }
+        case .watchAccountXpub(let xpub): guard !xpub.isEmpty else { return nil }
+        case .phrase, .privateKey: guard isSecretComplete else { return nil }
+        }
+        guard var commit = importCommit(name: "") else { return nil }
+        commit.password = nil
+        return commit
     }
     /// Form completeness is view state. Domain validation remains mandatory
     /// in core's import/rename operations even when a client skips this check.
     var canImportWallet: Bool {
         if isEditingWallet { return !walletName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !selectedChains.isEmpty else { return false }
-        if isWatchOnlyMode {
-            let entries = watchOnlyImportEntries
-            return !entries.byChainId.isEmpty || entries.bitcoinXpub != nil
+        guard chain != nil else { return false }
+        switch importKind {
+        case .watchAddresses(let addresses): return !addresses.isEmpty
+        case .watchAccountXpub(let xpub): return !xpub.isEmpty
+        case .phrase, .privateKey: break
         }
         return isSecretComplete && (!requiresBackupVerification || isBackupVerificationComplete)
     }
     /// Whether the secret step — a seed phrase or a private key — is complete
-    /// enough to move on. The one definition both the step and the submit use;
-    /// a private key's single-chain rule is the selection's own.
+    /// enough to move on. The one definition both the step and the submit use.
     var isSecretComplete: Bool {
-        guard !selectedChains.isEmpty else { return false }
+        guard chain != nil else { return false }
         if isPrivateKeyImportMode {
-            return isPrivateKeyHex(rawValue: privateKeyInput)
+            guard let chain else { return false }
+            return isValidPrivateKey(chain: chain, rawValue: privateKeyInput)
         }
-        return seedEntry.verdict.checksumValid
+        return seedEntry.verdict.isValid && isRestoreHeightValid
     }
     var requiresBackupVerification: Bool { isCreateMode }
     var isBackupVerificationComplete: Bool {
@@ -158,31 +214,36 @@ final class WalletImportDraft {
         if backupVerificationWordIndices.isEmpty { return AppLocalization.string("Generate a backup verification challenge to continue.") }
         return ""
     }
-    func configureForNewWallet() {
-        mode = .importExisting
-        reset()
-    }
-    func configureForPrivateKeyImport() {
-        mode = .importExisting
-        reset()
-        importsPrivateKey = true
-    }
-    func configureForWatchAddressesImport() {
-        mode = .importExisting
-        reset()
-        isWatchOnlyMode = true
-    }
-    func configureForCreatedWallet() {
+    /// An empty form, on no network.
+    func clear() {
         // Reset outside create mode: resetting the word count regenerates a
-        // phrase in create mode, and this generates exactly one.
-        mode = .importExisting
+        // phrase in create mode.
+        mode = .setup(.importPhrase)
         reset()
-        mode = .createNew
-        regenerateSeedPhrase()
+    }
+    /// A fresh form for adding a wallet on `chain` by `method`. Creating
+    /// generates exactly one phrase.
+    func configure(chain: Chain, method: WalletSetupMethod) {
+        clear()
+        self.chain = chain
+        // The grid judges the phrase in the network's own formats.
+        seedEntry.chain = chain
+        if let shortest = createdLengths.first { selectedSeedPhraseWordCount = Int(shortest.wordCount) }
+        mode = .setup(method)
+        derivationProfile = derivationProfiles.first
+        if method == .createPhrase { regenerateSeedPhrase() }
+    }
+    /// The lengths a phrase created on the network can have: those of the
+    /// format its setup descriptor creates in — BIP-39's five, Monero's 25,
+    /// TON's 24.
+    var createdLengths: [SeedPhraseLength] {
+        guard let chain else { return [] }
+        let created = walletSetupDescriptor(chain: chain).options.first { $0.method == .createPhrase }?.formats.first
+        return seedEntry.lengths.filter { $0.format == created }
     }
     func configureForEditing(wallet: WalletView) {
-        mode = .editExisting
-        reset()
+        clear()
+        mode = .edit
         walletName = wallet.name
     }
     func reset() {
@@ -190,39 +251,31 @@ final class WalletImportDraft {
         seedEntry.reset()
         walletPassword = ""
         walletPasswordConfirmation = ""
-        importsPrivateKey = false
         privateKeyInput = ""
-        seedDerivationPreset = .standard
-        seedDerivationPaths = .defaults
+        derivationProfile = nil
+        derivationAccount = 0
+        customDerivationPath = ""
         overridePassphrase = ""
         overrideHmacKey = ""
-        selectedSeedPhraseWordCount = SeedPhraseEntry.initialSlotCount
-        isWatchOnlyMode = false
+        selectedSeedPhraseWordCount = 12
         watchOnlyInput = ""
-        bitcoinXpubInput = ""
-        selectedChainsStorage = []
+        accountXpubInput = ""
+        restoreHeightInput = ""
+        namedAccountInput = ""
+        chain = nil
+        seedEntry.chain = nil
         backupVerificationWordIndices = []
         backupVerificationEntries = []
-    }
-    func toggleChainSelection(_ chain: Chain) { setSelectedChain(chain, isEnabled: !isSelected(chain)) }
-    private func setSelectedChain(_ chain: Chain, isEnabled: Bool) {
-        if isEnabled {
-            if allowsMultipleChainSelection {
-                if !selectedChainsStorage.contains(chain) { selectedChainsStorage.append(chain) }
-            } else {
-                selectedChainsStorage = [chain]
-            }
-        } else {
-            selectedChainsStorage.removeAll { $0 == chain }
-        }
     }
     func regenerateSeedPhrase() {
-        guard isCreateMode else { return }
+        guard isCreateMode, let chain else { return }
         backupVerificationWordIndices = []
         backupVerificationEntries = []
-        // The length is one of core's, so generating it cannot be refused;
-        // if it were, the grid shows no phrase rather than a guessed one.
-        let generatedPhrase = (try? generateMnemonic(wordCount: UInt32(selectedSeedPhraseWordCount))) ?? ""
+        // The length is one of core's for the network's created format, so
+        // generating it cannot be refused; if it were, the grid shows no
+        // phrase rather than a guessed one.
+        let generatedPhrase =
+            (try? generateSeedPhrase(chain: chain, wordCount: UInt32(selectedSeedPhraseWordCount))) ?? ""
         let generatedWords = generatedPhrase.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         seedEntry.load(generatedWords, wordCount: selectedSeedPhraseWordCount)
     }

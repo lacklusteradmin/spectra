@@ -6,7 +6,6 @@ import Foundation
 final class MoneroSyncViewModel {
     var status: MoneroSyncStatus?
     var password = ""
-    var restoreHeight = ""
     var error: String?
     private(set) var requestId: UUID?
     var isRunning: Bool { requestId != nil }
@@ -26,7 +25,7 @@ final class MoneroSyncViewModel {
     }
 
     func sync(request: UUID,
-              operation: @MainActor (String?, UInt64?, (MoneroSyncStatus) -> Void) async -> String?) async {
+              operation: @MainActor (String?, (MoneroSyncStatus) -> Void) async -> String?) async {
         guard isCurrent(request) else { return }
         defer {
             if requestId == request {
@@ -34,16 +33,8 @@ final class MoneroSyncViewModel {
                 requestId = nil
             }
         }
-        var height: UInt64?
-        if status?.targetHeight == 0 && !restoreHeight.isEmpty {
-            guard let parsed = UInt64(restoreHeight) else {
-                error = AppLocalization.string("Invalid restore height")
-                return
-            }
-            height = parsed
-        }
         error = nil
-        let failure = await operation(password.isEmpty ? nil : password, height) { status in
+        let failure = await operation(password.isEmpty ? nil : password) { status in
             guard self.isCurrent(request) else { return }
             self.status = status
         }

@@ -33,12 +33,11 @@ struct WalletServiceBridgeTests {
         try bridge.service().setSecretStore(store: secretStore)
         let outcome = try await bridge.ready().importWallets(commit: WalletImportCommit(
             password: nil,
-            request: WalletImportRequest(walletName: "Imported", selectedChainIds: [Chain.ethereum],
-                isWatchOnlyImport: false, isPrivateKeyImport: false,
-                watchOnlyEntries: WalletImportWatchOnlyEntries(byChainId: [:], bitcoinXpub: nil)),
-            seedDerivationPreset: .standard, seedDerivationPaths: .defaults,
+            request: WalletImportRequest(walletName: "Imported", chain: .ethereum, kind: .phrase),
+            derivationPath: nil,
             derivationOverrides: WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
-            seedPhrase: "test test test test test test test test test test test junk", privateKey: nil))
+            seedPhrase: "test test test test test test test test test test test junk", privateKey: nil,
+            restoreHeight: nil, namedAccount: nil))
         #expect(outcome.wallets.count == 1)
         #expect(outcome.wallets[0].signing == .seedPhrase(passwordProtected: false))
         #expect(try bridge.service().revealSeedPhrase(walletId: outcome.wallets[0].id, password: nil) == .phrase(phrase: "test test test test test test test test test test test junk"))
@@ -52,10 +51,11 @@ struct WalletServiceBridgeTests {
                 != .phrase(phrase: "test test test test test test test test test test test junk"))
     }
 
-    /// Core refuses a private key on two chains rather than narrowing it to
-    /// one, and the refusal reaches the reader through the string tables.
-    /// Compared against the table rather than English so it holds in any locale.
-    @Test func aTwoChainPrivateKeyImportIsRefusedInTheReadersLanguage() async throws {
+    /// Core refuses a private key on a chain that cannot derive from one, and
+    /// the refusal reaches the reader through the string tables, with the
+    /// chain named. Compared against the table rather than English so it holds
+    /// in any locale.
+    @Test func aPrivateKeyOnAChainWithoutKeyDerivationIsRefusedInTheReadersLanguage() async throws {
         let secretStore = TestSecretStore()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -66,15 +66,16 @@ struct WalletServiceBridgeTests {
         let error = await #expect(throws: SpectraBridgeError.self) {
             try await bridge.ready().importWallets(commit: WalletImportCommit(
                 password: nil,
-                request: WalletImportRequest(walletName: "Two", selectedChainIds: [Chain.ethereum, Chain.solana],
-                    isWatchOnlyImport: false, isPrivateKeyImport: true,
-                    watchOnlyEntries: WalletImportWatchOnlyEntries(byChainId: [:], bitcoinXpub: nil)),
-                seedDerivationPreset: .standard, seedDerivationPaths: .defaults,
+                request: WalletImportRequest(walletName: "Monero key", chain: .monero, kind: .privateKey),
+                derivationPath: nil,
                 derivationOverrides: WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
-                seedPhrase: nil, privateKey: "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"))
+                seedPhrase: nil, privateKey: "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318",
+                restoreHeight: nil, namedAccount: nil))
         }
         let refusal = try #require(error)
-        #expect(userErrorMessage(refusal) == AppLocalization.string("A private key imports on one chain. Select one chain."))
+        #expect(
+            userErrorMessage(refusal)
+                == AppLocalization.format("%@ cannot derive an address from a private key.", Chain.monero.displayName))
         #expect(try await bridge.ready().portfolioSnapshot().wallets.isEmpty)
     }
 

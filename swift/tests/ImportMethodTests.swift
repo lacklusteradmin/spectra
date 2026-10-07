@@ -3,44 +3,137 @@ import Testing
 
 @testable import Spectra
 
-/// The import method is chosen before the chains, so the picker lists only
-/// the chains that method can use.
+/// The network is chosen first, and its page offers what core's setup
+/// descriptor lists for it. The form then walks the chosen method's pages.
 @MainActor
 struct ImportMethodTests {
-    @Test func aPrivateKeyImportOffersOnlyChainsAKeyDerivesOn() {
-        let draft = WalletImportDraft()
-        draft.configureForPrivateKeyImport()
-        #expect(draft.isPrivateKeyImportMode)
-        #expect(!draft.allowsMultipleChainSelection)
+    private func methods(_ chain: Chain) -> [WalletSetupMethod] {
+        walletSetupDescriptor(chain: chain).options.map(\.method)
+    }
+
+    @Test func everyNetworkOffersAPhraseAndOnlyWhatItSupports() {
         for chain in Chain.all {
-            #expect(draft.offers(chain) == chain.derivesFromPrivateKey, "\(chain.id)")
+            let offered = methods(chain)
+            #expect(offered.starts(with: [.createPhrase, .importPhrase]), "\(chain.id)")
         }
-        #expect(Chain.all.contains { !draft.offers($0) }, "every chain is offered, so nothing is filtered")
+        // Monero needs scan keys: no raw key, and no watching an address alone.
+        #expect(methods(.monero) == [.createPhrase, .importPhrase])
+        #expect(methods(.bitcoin).contains(.watchAccountXpub))
+        #expect(!methods(.litecoin).contains(.watchAccountXpub))
+        #expect(methods(.ethereum).contains(.importPrivateKey))
     }
 
-    @Test func aWatchImportOffersOnlyChainsThatCanBeWatched() {
-        let draft = WalletImportDraft()
-        draft.configureForWatchAddressesImport()
-        for chain in Chain.all {
-            #expect(draft.offers(chain) == chain.supportsWatchOnlyImport, "\(chain.id)")
-        }
+    @Test func eachMethodWalksItsOwnPages() {
+        #expect(SetupFlow.forMethod(.createPhrase).pages == [.seedPhrase, .password, .backupVerification, .walletName])
+        #expect(SetupFlow.forMethod(.importPhrase).pages == [.seedPhrase, .password, .walletName])
+        #expect(SetupFlow.forMethod(.importPrivateKey).pages == [.seedPhrase, .password, .walletName])
+        #expect(SetupFlow.forMethod(.watchAddresses).pages == [.watchAddresses, .walletName])
+        #expect(SetupFlow.forMethod(.watchAccountXpub).pages == [.watchAddresses, .walletName])
     }
 
-    @Test func aSeedPhraseImportOffersEveryChainAndSeveralAtOnce() {
+    /// The draft reads what core imports from the method it was opened for.
+    @Test func theMethodDecidesWhatTheImportCarries() {
         let draft = WalletImportDraft()
-        draft.configureForNewWallet()
-        #expect(!draft.isPrivateKeyImportMode)
-        #expect(draft.allowsMultipleChainSelection)
-        #expect(Chain.all.allSatisfy(draft.offers))
+        draft.configure(chain: .bitcoin, method: .watchAccountXpub)
+        draft.watchOnlyInput = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        draft.accountXpubInput = "  xpub123  "
+        #expect(draft.importKind == .watchAccountXpub(xpub: "xpub123"))
+        draft.configure(chain: .bitcoin, method: .watchAddresses)
+        draft.watchOnlyInput = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\n\n"
+        #expect(draft.importKind == .watchAddresses(addresses: ["bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"]))
+        #expect(draft.canImportWallet)
+        draft.configure(chain: .ethereum, method: .importPrivateKey)
+        #expect(draft.importKind == .privateKey)
+        #expect(draft.chain == .ethereum)
     }
 
-    /// A chain the method cannot use never reaches the import, even if it was
-    /// ticked under another method.
-    @Test func aChainTheMethodCannotUseIsNotSelected() throws {
+    /// A phrase import derives along the network's first profile at account
+    /// 0 unless another is chosen; a custom path replaces both; a network
+    /// that derives without a path offers none and sends none.
+    @Test func theCommitCarriesTheChosenProfileAndAccount() throws {
         let draft = WalletImportDraft()
-        draft.configureForPrivateKeyImport()
-        let unusable = try #require(Chain.all.first { !$0.derivesFromPrivateKey })
-        draft.selectedChainsStorage = [unusable]
-        #expect(draft.selectedChains.isEmpty)
+        draft.configure(chain: .bitcoin, method: .importPhrase)
+        #expect(draft.derivationProfiles == [.nativeSegWit, .legacy, .nestedSegWit, .taproot])
+        #expect(try #require(draft.importCommit(name: "")).derivationPath == "m/84'/0'/0'/0/0")
+        draft.derivationProfile = .taproot
+        draft.derivationAccount = 2
+        #expect(try #require(draft.importCommit(name: "")).derivationPath == "m/86'/0'/2'/0/0")
+        draft.customDerivationPath = "m/84'/0'/9'/0/0"
+        #expect(try #require(draft.importCommit(name: "")).derivationPath == "m/84'/0'/9'/0/0")
+        draft.configure(chain: .monero, method: .importPhrase)
+        #expect(draft.derivationProfiles.isEmpty)
+        #expect(try #require(draft.importCommit(name: "")).derivationPath == nil)
+        draft.configure(chain: .ethereum, method: .importPrivateKey)
+        #expect(try #require(draft.importCommit(name: "")).derivationPath == nil)
+    }
+
+    /// A preview derives only once there is something to derive from, and
+    /// never carries the password, which changes no address.
+    @Test func thePreviewWaitsForACompleteSecretAndLeavesThePasswordOut() throws {
+        let draft = WalletImportDraft()
+        draft.configure(chain: .ethereum, method: .importPrivateKey)
+        draft.walletPassword = "a long enough password"
+        #expect(draft.previewCommit == nil)
+        draft.privateKeyInput = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
+        let commit = try #require(draft.previewCommit)
+        #expect(commit.password == nil && commit.privateKey == draft.privateKeyInput)
+        draft.configure(chain: .bitcoin, method: .watchAddresses)
+        #expect(draft.previewCommit == nil)
+        draft.watchOnlyInput = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        #expect(draft.previewCommit?.request.kind == .watchAddresses(addresses: ["bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"]))
+        draft.configure(chain: .solana, method: .createPhrase)
+        #expect(draft.previewCommit?.seedPhrase == draft.seedPhrase)
+    }
+
+    /// A NEAR key import asks for a named account and carries it; another
+    /// network, and creating, ask for none and send none.
+    @Test func aNamedAccountIsAskedForOnlyWhereTheNetworkHasThem() throws {
+        let draft = WalletImportDraft()
+        draft.configure(chain: .near, method: .importPrivateKey)
+        #expect(draft.asksNamedAccount)
+        draft.namedAccountInput = "alice.near"
+        #expect(try #require(draft.importCommit(name: "")).namedAccount == "alice.near")
+        draft.configure(chain: .near, method: .createPhrase)
+        #expect(!draft.asksNamedAccount)
+        draft.configure(chain: .ethereum, method: .importPhrase)
+        draft.namedAccountInput = "alice.near"
+        #expect(!draft.asksNamedAccount)
+        #expect(try #require(draft.importCommit(name: "")).namedAccount == nil)
+    }
+
+    /// Creating generates exactly one phrase, on the network chosen.
+    @Test func creatingGeneratesOnePhraseOnTheChosenNetwork() {
+        let draft = WalletImportDraft()
+        draft.configure(chain: .solana, method: .createPhrase)
+        #expect(draft.isCreateMode)
+        #expect(draft.chain == .solana)
+        #expect(draft.seedEntry.verdict.isValid)
+        #expect(draft.importKind == .phrase)
+    }
+
+    /// Restoring a Monero wallet asks where its scan starts; a typed height
+    /// must be a block number, and no other network asks.
+    @Test func onlyARestoredMoneroWalletAsksForARestoreHeight() {
+        let draft = WalletImportDraft()
+        draft.configure(chain: .monero, method: .importPhrase)
+        #expect(draft.asksRestoreHeight)
+        draft.restoreHeightInput = "12a"
+        #expect(!draft.isRestoreHeightValid)
+        draft.restoreHeightInput = "3100000"
+        #expect(draft.restoreHeight == 3_100_000)
+        draft.configure(chain: .monero, method: .createPhrase)
+        #expect(!draft.asksRestoreHeight)
+        draft.configure(chain: .bitcoin, method: .importPhrase)
+        #expect(!draft.asksRestoreHeight)
+    }
+
+    /// Clearing a form leaves it on no network, so nothing can be imported
+    /// from a stale choice.
+    @Test func aClearedFormIsOnNoNetwork() {
+        let draft = WalletImportDraft()
+        draft.configure(chain: .ethereum, method: .importPhrase)
+        draft.clear()
+        #expect(draft.chain == nil)
+        #expect(!draft.canImportWallet)
     }
 }

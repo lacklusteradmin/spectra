@@ -10,6 +10,7 @@ struct WalletSecretStep: View {
 
     private let copy = ImportFlowContent.current
     @State private var isShowingDerivationOptions = false
+    @State private var isFindingUsedAccounts = false
 
     private var isCreateMode: Bool { draft.isCreateMode }
     private var isEditingWallet: Bool { draft.isEditingWallet }
@@ -31,6 +32,9 @@ struct WalletSecretStep: View {
         }
         .sheet(isPresented: $isShowingDerivationOptions) {
             WalletDerivationOptionsView(store: store, draft: draft)
+        }
+        .sheet(isPresented: $isFindingUsedAccounts) {
+            UsedAccountsSheet(store: store, draft: draft)
         }
     }
 
@@ -59,9 +63,13 @@ struct WalletSecretStep: View {
                     }.buttonStyle(.glass).tint(.accentColor)
                 }
             }
-            HStack(spacing: SpectraLayout.Space.xs) {
-                ForEach(CoreReferenceTables.standardSeedPhraseLengths, id: \.wordCount) { length in
-                    seedPhraseLengthChip(length)
+            // A network whose created format has one length — Monero's 25,
+            // TON's 24 — has nothing to choose.
+            if draft.createdLengths.count > 1 {
+                HStack(spacing: SpectraLayout.Space.xs) {
+                    ForEach(draft.createdLengths, id: \.wordCount) { length in
+                        seedPhraseLengthChip(length)
+                    }
                 }
             }
         }
@@ -107,7 +115,7 @@ struct WalletSecretStep: View {
                 Capsule(style: .continuous).fill(Color.accentColor.opacity(0.12)))
             Spacer()
             Button {
-                UIPasteboard.general.string = draft.seedPhraseWords.joined(separator: " ")
+                copySecretToPasteboard(draft.seedPhraseWords.joined(separator: " "))
             } label: {
                 Label(AppLocalization.string("Copy"), systemImage: "doc.on.doc").font(.caption.weight(.semibold))
             }.buttonStyle(.glass).tint(.accentColor).disabled(draft.seedPhraseWords.isEmpty)
@@ -139,7 +147,7 @@ struct WalletSecretStep: View {
     @ViewBuilder
     private var privateKeyEditor: some View {
         let trimmed = draft.privateKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isLikelyValid = !trimmed.isEmpty && isPrivateKeyHex(rawValue: draft.privateKeyInput)
+        let isLikelyValid = !trimmed.isEmpty && draft.isSecretComplete
         let isInvalidShape = !trimmed.isEmpty && !isLikelyValid
         let borderColor: Color? =
             isInvalidShape
@@ -155,12 +163,12 @@ struct WalletSecretStep: View {
             }
         }
     }
-    /// The shape is core's to judge (`isPrivateKeyHex`, which also takes a
-    /// `0x` prefix), so this row only describes it; the border and the
-    /// feedback below say whether the input fits.
+    /// The formats the network takes, from its setup descriptor. The shape is
+    /// core's to judge, so this row only names it; the border and the feedback
+    /// below say whether the input fits.
     private var privateKeyMetadataRow: some View {
         HStack(spacing: SpectraLayout.Space.s) {
-            Text(AppLocalization.string("Private key hex (64 or 128 characters)")).font(.caption2).foregroundStyle(.secondary)
+            Text(privateKeyFormats).font(.caption2).foregroundStyle(.secondary)
             Spacer()
             if !draft.privateKeyInput.isEmpty {
                 Button(role: .destructive) { draft.privateKeyInput = "" } label: {
@@ -169,10 +177,15 @@ struct WalletSecretStep: View {
             }
         }
     }
+    private var privateKeyFormats: String {
+        guard let chain = draft.chain else { return "" }
+        let option = walletSetupDescriptor(chain: chain).options.first { $0.method == .importPrivateKey }
+        return (option?.formats ?? []).map(\.title).joined(separator: " · ")
+    }
     private var privateKeyValidationFeedback: (message: String, icon: String, color: Color)? {
         let trimmed = draft.privateKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        if !isPrivateKeyHex(rawValue: draft.privateKeyInput) {
+        if !draft.isSecretComplete {
             return (
                 AppLocalization.string("Enter a valid private key for the selected network."), "exclamationmark.triangle.fill",
                 .red.opacity(0.92)
@@ -191,14 +204,103 @@ struct WalletSecretStep: View {
                 derivationOptionsLink
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+            derivationAccountCard
+            WalletAddressPreviewCard(store: store, draft: draft)
         } else if isPrivateKeyImportMode {
             privateKeyImportFields
                 .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+            namedAccountCard
+            WalletAddressPreviewCard(store: store, draft: draft)
         } else {
             SeedPhraseEntryView(entry: draft.seedEntry)
                 .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+            if draft.asksRestoreHeight { restoreHeightCard }
+            derivationAccountCard
+            namedAccountCard
+            WalletAddressPreviewCard(store: store, draft: draft)
             advancedCard
         }
+    }
+    /// Which account the phrase derives: the network's profile, chosen when
+    /// it has several, and the account index on it — both core's, from the
+    /// setup descriptor. A custom path under Advanced replaces them.
+    @ViewBuilder
+    private var derivationAccountCard: some View {
+        if !draft.derivationProfiles.isEmpty {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                Text(AppLocalization.string("Account")).font(.subheadline.weight(.semibold))
+                if draft.customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if draft.derivationProfiles.count > 1 {
+                        HStack {
+                            Text(AppLocalization.string("Address Type")).font(.subheadline)
+                            Spacer()
+                            Picker(AppLocalization.string("Address Type"), selection: $draft.derivationProfile) {
+                                ForEach(draft.derivationProfiles, id: \.self) { profile in
+                                    Text(profile.title).tag(Optional(profile))
+                                }
+                            }.pickerStyle(.menu).tint(.secondary)
+                        }
+                    }
+                    Stepper(value: $draft.derivationAccount, in: 0...UInt32(Int32.max)) {
+                        Text(AppLocalization.format("Account %lld", Int(draft.derivationAccount))).font(.subheadline)
+                    }
+                } else {
+                    Text(AppLocalization.string("The custom path under Advanced replaces the account."))
+                        .font(.caption).foregroundStyle(.spectraWarning)
+                }
+                if let path = draft.derivationPath {
+                    Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                // Restoring, the phrase may have been used on another account;
+                // a scan finds it, on request.
+                if !isCreateMode, draft.seedEntry.verdict.isValid {
+                    Button {
+                        isFindingUsedAccounts = true
+                    } label: {
+                        Label(AppLocalization.string("Find Used Accounts"), systemImage: "magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                    }.buttonStyle(.glass)
+                }
+            }
+            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+    }
+    /// A named account the key controls, on a network that has them. The
+    /// import confirms on the network that the key is one of its full-access
+    /// keys before the wallet is added.
+    @ViewBuilder
+    private var namedAccountCard: some View {
+        if draft.asksNamedAccount {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                Text(AppLocalization.string("Named Account (Optional)")).font(.subheadline.weight(.semibold))
+                TextField(AppLocalization.string("Named account"), text: $draft.namedAccountInput)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+                Text(AppLocalization.string(
+                    "If this key controls a named account, enter it. Adding the wallet checks on the network that the key is one of its full-access keys."
+                )).font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+    }
+    /// Where a restored Monero wallet's scan starts. Blank reads a Polyseed's
+    /// birthday, or scans a 25-word seed from the start of the chain.
+    private var restoreHeightCard: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+            Text(AppLocalization.string("Restore Height (Optional)")).font(.subheadline.weight(.semibold))
+            TextField(AppLocalization.string("Block height"), text: $draft.restoreHeightInput)
+                .keyboardType(.numberPad).font(.body.monospacedDigit())
+                .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+            if draft.isRestoreHeightValid {
+                Text(AppLocalization.string(
+                    "The scan starts here and cannot find funds received earlier. Leave it blank to use a Polyseed's creation date, or to scan a 25-word seed from the start."
+                )).font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text(AppLocalization.string("A restore height is a whole block number.")).font(.caption)
+                    .foregroundStyle(.red.opacity(0.9))
+            }
+        }
+        .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
     }
     @ViewBuilder
     private var backupVerificationStepSection: some View {
@@ -238,11 +340,8 @@ struct WalletSecretStep: View {
         var names: [String] = []
         if !isCreateMode, draft.seedEntry.wordCountOverride != nil { names.append(AppLocalization.string("Word Count")) }
         if !isCreateMode, draft.seedEntry.language != nil { names.append(AppLocalization.string("Wordlist")) }
-        let presetPaths = SeedDerivationPaths.forPreset(draft.seedDerivationPreset)
-        if draft.selectableDerivationChains.contains(where: {
-            draft.seedDerivationPaths.path(for: $0) != presetPaths.path(for: $0)
-        }) {
-            names.append(AppLocalization.string("Derivation Paths"))
+        if !draft.customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            names.append(AppLocalization.string("Custom Path"))
         }
         if !draft.overridePassphrase.isEmpty { names.append(AppLocalization.string("Passphrase")) }
         if !draft.overrideHmacKey.isEmpty { names.append(AppLocalization.string("HMAC Master Key")) }
@@ -262,7 +361,7 @@ struct WalletSecretStep: View {
         let summary = derivationOptionsSummary
         let verdict = draft.seedEntry.verdict
         let inEffect: String =
-            if verdict.checksumValid, let language = verdict.language {
+            if verdict.isValid, let language = verdict.language {
                 AppLocalization.format(
                     "import_flow.advanced_in_effect_format", Int(verdict.wordCount), AppLocalization.string(language.name))
             } else {

@@ -18,7 +18,7 @@ final class WalletImportSession {
         isBusy = false
         error = nil
         editingWalletId = nil
-        draft.configureForNewWallet()
+        draft.clear()
     }
 
     func begin(editing wallet: WalletView? = nil, configure: (WalletImportDraft) -> Void) {

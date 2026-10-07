@@ -1,17 +1,10 @@
 import Foundation
 import SwiftUI
 extension AppState {
-    func beginSeedPhraseImport() {
-        walletImport.begin { $0.configureForNewWallet() }
-    }
-    func beginPrivateKeyImport() {
-        walletImport.begin { $0.configureForPrivateKeyImport() }
-    }
-    func beginWatchAddressesImport() {
-        walletImport.begin { $0.configureForWatchAddressesImport() }
-    }
-    func beginWalletCreation() {
-        walletImport.begin { $0.configureForCreatedWallet() }
+    /// Open the form for adding a wallet on `chain` by `method`, one the
+    /// network's setup descriptor offers.
+    func beginWalletSetup(chain: Chain, method: WalletSetupMethod) {
+        walletImport.begin { $0.configure(chain: chain, method: method) }
     }
     func cancelWalletImport() { walletImport.close() }
     func beginEditingWallet(_ wallet: WalletView) {
@@ -51,21 +44,15 @@ extension AppState {
         }
         // Snapshot all user input before suspension. The draft may be replaced
         // while core commits, but that must not alter this operation's inputs.
-        let paths = draft.seedDerivationPaths
-        let commit = WalletImportCommit(
-            password: draft.walletPasswordInput,
-            request: WalletImportRequest(
-                walletName: name, selectedChainIds: draft.selectedChains,
-                isWatchOnlyImport: draft.isWatchOnlyMode, isPrivateKeyImport: draft.isPrivateKeyImportMode,
-                watchOnlyEntries: draft.watchOnlyImportEntries),
-            seedDerivationPreset: draft.seedDerivationPreset, seedDerivationPaths: paths,
-            derivationOverrides: draft.resolvedDerivationOverrides,
-            seedPhrase: draft.seedPhrase, privateKey: draft.privateKeyInput)
+        guard let commit = draft.importCommit(name: name) else { return }
         let completed = await walletImport.submit {
             let outcome = try await self.bridge.ready().importWallets(commit: commit)
             // Core's refresh engine reads the new wallets' balances and
             // history itself, and reports them through its observer.
             await self.rebuildWalletDerivedStateFromCore()
+            if outcome.upgraded, let wallet = outcome.wallets.first {
+                return AppLocalization.format("Added keys to the watched wallet “%@”.", wallet.name)
+            }
             return outcome.rejectedAddresses.isEmpty ? nil : AppLocalization.format(
                 "These addresses were not valid and were not imported: %@",
                 outcome.rejectedAddresses.joined(separator: ", "))

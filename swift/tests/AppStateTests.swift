@@ -56,7 +56,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         let store = makeState()
         store.walletImport.draft.walletName = "Catalog Coverage"
         store.walletImport.draft.seedEntry.paste("test test test test test test test test test test test junk")
-        store.walletImport.draft.selectedChainsStorage = [Chain.ethereum]
+        store.walletImport.draft.chain = .ethereum
         await store.importWallet()
         #expect(store.walletImport.error == nil)
         let wallet = try #require(store.wallets.first, "no wallet")
@@ -95,8 +95,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         try await store.seedWalletForTesting(wallet)
         store.beginEditingWallet(wallet)
         store.walletImport.draft.walletName = "Renamed ETH"
-        store.walletImport.draft.selectedChainsStorage = []
-        await store.importWallet()
+                await store.importWallet()
         #expect(store.wallets.count == 1)
         #expect(store.wallets[0].name == "Renamed ETH")
         #expect(store.wallets[0].holdings.count == 1)
@@ -110,7 +109,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         let store = makeState()
         store.walletImport.draft.walletName = "Primary BTC"
         store.walletImport.draft.seedEntry.paste("test test test test test test test test test test test junk")
-        store.walletImport.draft.selectedChainsStorage = [Chain.bitcoin]
+        store.walletImport.draft.chain = .bitcoin
         await store.importWallet()
         #expect(store.walletImport.error == nil)
         #expect(store.wallets.count == 1)
@@ -123,7 +122,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
             try await store.clearWalletsForTesting()
             store.walletImport.draft.walletName = "Import \(chain.id)"
             store.walletImport.draft.seedEntry.paste("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
-            store.walletImport.draft.selectedChainsStorage = [chain]
+            store.walletImport.draft.chain = chain
             await store.importWallet()
             #expect(store.walletImport.error == nil, "\(chain.id)")
             let wallet = try #require(store.wallets.first, "\(chain.id)")
@@ -210,10 +209,9 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
     @Test func watchingAnEvmLayerTwoImportsAWalletOnIt() async throws {
         let store = makeState()
         try await store.clearWalletsForTesting()
-        store.beginWatchAddressesImport()
+        store.beginWalletSetup(chain: .arbitrum, method: .watchAddresses)
         let draft = store.walletImport.draft
         draft.walletName = "Watch Arbitrum"
-        draft.toggleChainSelection(.arbitrum)
         draft.watchOnlyInput = "0x000000000000000000000000000000000000dead"
         #expect(draft.canImportWallet)
         await store.importWallet()
@@ -391,7 +389,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
 
     @Test func importCompletionPreservesAPartialSuccessNotice() async {
         let store = makeState()
-        store.beginWatchAddressesImport()
+        store.beginWalletSetup(chain: .ethereum, method: .watchAddresses)
         await store.walletImport.submit { "Some addresses were refused" }
         // SwiftUI can write the dismissed binding again after completion.
         store.walletImport.isPresented = false

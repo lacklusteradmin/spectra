@@ -9,22 +9,35 @@ import Foundation
 @MainActor
 @Observable
 final class SeedPhraseEntry {
-    /// The grid's length before anything is typed: BIP-39's shortest.
-    static var initialSlotCount: Int { Int(CoreReferenceTables.standardSeedPhraseLengths.first?.wordCount ?? 12) }
+    /// The network the phrase is for, whose own formats core judges it in —
+    /// Monero's 25-word seed or Polyseed, TON's mnemonic, BIP-39 elsewhere.
+    /// `nil` judges BIP-39, which is what the funds finder scans.
+    var chain: Chain? {
+        didSet {
+            guard chain != oldValue else { return }
+            lengths = seedPhraseLengths(chain: chain)
+            reset()
+        }
+    }
+    /// The lengths a phrase on `chain` may have, shortest first, from core.
+    private(set) var lengths: [SeedPhraseLength] = seedPhraseLengths(chain: nil)
+    /// The grid's length before anything is typed: the network's shortest.
+    var initialSlotCount: Int { Int(lengths.first?.wordCount ?? 12) }
 
-    /// The wordlist, from `seedPhraseLanguages()`, or `nil` for core to detect it.
+    /// The wordlist, from `seedPhraseLanguages(chain:)`, or `nil` for core to detect it.
     var language: String?
     /// One of core's lengths, or `nil` for core to infer it from the words.
     var wordCountOverride: Int? {
         didSet { fitSlots(shrinking: true) }
     }
     /// One entry per slot, normalized as typed.
-    private(set) var slots: [String] = Array(repeating: "", count: SeedPhraseEntry.initialSlotCount)
+    private(set) var slots: [String] = Array(repeating: "", count: 12)
 
     /// Everything core has to say about the grid, decided in one pass. One
     /// render reads this several times, so core is asked once per grid.
     var verdict: SeedPhraseVerdict {
-        let check = SeedPhraseCheck(words: slots, language: language, wordCount: wordCountOverride.map(UInt32.init))
+        let check = SeedPhraseCheck(
+            words: slots, language: language, wordCount: wordCountOverride.map(UInt32.init), chain: chain)
         if let cached = verdictCache, cached.check == check { return cached.verdict }
         let verdict = checkSeedPhrase(check: check)
         verdictCache = (check, verdict)
@@ -40,7 +53,7 @@ final class SeedPhraseEntry {
         verdictCache = nil
         language = nil
         wordCountOverride = nil
-        slots = Array(repeating: "", count: Self.initialSlotCount)
+        slots = Array(repeating: "", count: initialSlotCount)
     }
 
     /// Replace the grid with `words`, judged at `wordCount`: a generated
@@ -72,20 +85,20 @@ final class SeedPhraseEntry {
     /// Replace the whole entry with a pasted phrase.
     func paste(_ text: String) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        slots = Array(repeating: "", count: wordCountOverride ?? Self.initialSlotCount)
+        slots = Array(repeating: "", count: wordCountOverride ?? initialSlotCount)
         update(at: 0, with: text)
     }
 
     func clear() {
-        slots = Array(repeating: "", count: wordCountOverride ?? Self.initialSlotCount)
+        slots = Array(repeating: "", count: wordCountOverride ?? initialSlotCount)
     }
 
-    /// The next BIP-39 length past the grid's, or `nil` at the longest.
+    /// The network's next length past the grid's, or `nil` at the longest.
     var nextSlotCount: Int? {
-        CoreReferenceTables.standardSeedPhraseLengths.map { Int($0.wordCount) }.first { $0 > slots.count }
+        lengths.map { Int($0.wordCount) }.first { $0 > slots.count }
     }
 
-    /// Grow the grid to the next BIP-39 length, for a phrase typed past it.
+    /// Grow the grid to the next length, for a phrase typed past it.
     func addSlots() {
         guard let next = nextSlotCount else { return }
         slots.append(contentsOf: Array(repeating: "", count: next - slots.count))
@@ -109,14 +122,19 @@ extension SeedPhraseProblem {
     /// Core says what is wrong; the sentence is this app's to translate.
     var localizedMessage: String {
         switch self {
-        case .nonStandardLength(let wordCount):
-            let lengths = CoreReferenceTables.standardSeedPhraseLengths.map { String($0.wordCount) }
-                .formatted(.list(type: .or).locale(AppLocalization.locale))
+        case .nonStandardLength(let wordCount, let allowed):
+            let lengths = allowed.map(String.init).formatted(.list(type: .or).locale(AppLocalization.locale))
             return AppLocalization.format("That is %lld words. A seed phrase has %@ words.", Int(wordCount), lengths)
         case .wrongWordCount(let expected):
             return AppLocalization.format("Seed phrase must be %lld words.", Int(expected))
         case .invalidChecksum:
             return AppLocalization.string("Invalid seed phrase checksum. Please verify your words.")
+        case .ambiguousLanguage:
+            return AppLocalization.string("These words read as different phrases in two languages. Type them in full.")
+        case .encryptedPolyseed:
+            return AppLocalization.string("This Polyseed is encrypted with a password, which Spectra cannot take for Monero.")
+        case .unsupportedPolyseed:
+            return AppLocalization.string("This Polyseed uses features Spectra does not support.")
         }
     }
 }

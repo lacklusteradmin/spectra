@@ -19,7 +19,7 @@ struct MoneroSyncViewModelTests {
         let oldGate = SuspensionGate<Void>()
         let currentGate = SuspensionGate<Void>()
         let old = Task {
-            await vm.sync(request: oldRequest) { password, _, progress in
+            await vm.sync(request: oldRequest) { password, progress in
                 #expect(password == "old password")
                 await oldGate.wait()
                 progress(self.status(height: 10))
@@ -33,7 +33,7 @@ struct MoneroSyncViewModelTests {
         vm.begin()
         let currentRequest = try #require(vm.requestId)
         let current = Task {
-            await vm.sync(request: currentRequest) { password, _, progress in
+            await vm.sync(request: currentRequest) { password, progress in
                 #expect(password == "new password")
                 progress(self.status(height: 20))
                 await currentGate.wait()
@@ -63,7 +63,7 @@ struct MoneroSyncViewModelTests {
         let request = try #require(vm.requestId)
         vm.cancel()
         var invoked = false
-        await vm.sync(request: request) { _, _, _ in
+        await vm.sync(request: request) { _, _ in
             invoked = true
             return nil
         }

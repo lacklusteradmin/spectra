@@ -11,7 +11,6 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         include_in_portfolio_total: true,
         chain_id: chain,
         xpub: None,
-        derivation_preset: crate::store::wallet_domain::SeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -24,6 +23,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
                 derivation_path: None,
             })
             .collect(),
+        restore_height: None,
     }
 }
 

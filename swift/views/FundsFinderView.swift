@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// One derivation path the scan found funds on.
+/// One account the scan found used: funded, or with history.
 struct FundsFinderHit: Identifiable {
     let id = UUID()
     let candidate: FundsFinderCandidate
-    let balanceDisplay: String
+    /// The balance, or `nil` for an account used and since emptied.
+    let balanceDisplay: String?
 }
 
 /// Scan a seed's derivation paths for funded addresses.
@@ -14,7 +15,7 @@ struct FundsFinderHit: Identifiable {
 /// properties behind six forwarding ones, with a comment claiming
 /// `@Observable` required that shape.
 struct FundsFinderView: View {
-    let bridge: WalletServiceBridge
+    let store: AppState
     /// The same entry the import page reads a phrase with, so a phrase the
     /// import would refuse is not scanned here either.
     @State private var seedEntry = SeedPhraseEntry()
@@ -33,7 +34,7 @@ struct FundsFinderView: View {
     @State private var unreadChains: [Chain: String] = [:]
     @State private var scanTask: Task<Void, Never>?
 
-    private var canStart: Bool { seedEntry.verdict.checksumValid && !isScanning }
+    private var canStart: Bool { seedEntry.verdict.isValid && !isScanning }
 
     var body: some View {
         ZStack {
@@ -82,6 +83,31 @@ struct FundsFinderView: View {
         .onDisappear {
             resetScan()
         }
+        .navigationDestination(
+            isPresented: Binding(
+                get: { store.walletImport.isPresented && store.walletImport.editingWalletId == nil },
+                set: { isPresented in
+                    if !isPresented { store.walletImport.isPresented = false }
+                }
+            )
+        ) {
+            SetupView(store: store, draft: store.walletImport.draft)
+        }
+    }
+
+    /// A found account opens the single-wallet import on its network, with
+    /// the phrase, passphrase, profile and account it was found at.
+    private func importHit(_ hit: FundsFinderHit) {
+        let words = seedEntry.verdict.words
+        let phrasePassphrase = passphrase
+        store.beginWalletSetup(chain: hit.candidate.chainId, method: .importPhrase)
+        let draft = store.walletImport.draft
+        draft.seedEntry.load(words, wordCount: words.count)
+        draft.overridePassphrase = phrasePassphrase
+        if let profile = hit.candidate.profile {
+            draft.derivationProfile = profile
+            draft.derivationAccount = hit.candidate.account
+        }
     }
 
     // MARK: - Scan
@@ -92,7 +118,7 @@ struct FundsFinderView: View {
         isScanning = true
         scanTask = Task { @MainActor in
             do {
-                let service = try bridge.service()
+                let service = try store.bridge.service()
                 let request = FundsFinderRequest(seedPhrase: seedPhrase, passphrase: passphrase)
                 // Deriving every candidate address from the seed is synchronous
                 // work; keep it off the main actor.
@@ -110,9 +136,10 @@ struct FundsFinderView: View {
                         if let error = read.error, unreadChains[read.candidate.chainId] == nil {
                             unreadChains[read.candidate.chainId] = userErrorMessage(error)
                         }
-                        if read.funded, let balance = read.balance {
+                        if read.used {
                             hits.append(FundsFinderHit(
-                                candidate: read.candidate, balanceDisplay: balance.amountDisplay))
+                                candidate: read.candidate,
+                                balanceDisplay: read.funded ? read.balance?.amountDisplay : nil))
                         }
                     }
                     if batch.complete { break }
@@ -157,7 +184,7 @@ struct FundsFinderView: View {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                 Text(AppLocalization.string("Scan All Derivation Paths"))
                     .font(.headline)
-                Text(AppLocalization.string("Enter your seed phrase to scan 150+ derivation paths across Bitcoin, Ethereum, Solana, and 10+ more chains — instantly revealing which paths hold funds."))
+                Text(AppLocalization.string("Enter your seed phrase to check every network's derivation profiles at their first three accounts, revealing which accounts hold funds or have been used."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -302,7 +329,7 @@ struct FundsFinderView: View {
             title: AppLocalization.format("%lld paths with funds found", count: hits.count, hits.count),
             data: hits, dividerInset: SpectraLayout.rowHorizontal
         ) { hit in
-            FundsFinderHitRow(hit: hit)
+            FundsFinderHitRow(hit: hit) { importHit(hit) }
         }
     }
 
@@ -336,6 +363,7 @@ struct FundsFinderView: View {
 
 private struct FundsFinderHitRow: View {
     let hit: FundsFinderHit
+    let importAccount: () -> Void
     @State private var isCopied = false
 
     var body: some View {
@@ -344,12 +372,14 @@ private struct FundsFinderHitRow: View {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
                     Text(hit.candidate.chainName)
                         .font(.subheadline.weight(.semibold))
-                    Text(hit.candidate.pathLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let profile = hit.candidate.profileTitle {
+                        Text(profile)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
-                Text(hit.balanceDisplay)
+                Text(hit.balanceDisplay ?? AppLocalization.string("Used"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.tint)
             }
@@ -382,6 +412,8 @@ private struct FundsFinderHitRow: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+            Button(AppLocalization.string("Import This Account"), action: importAccount)
+                .font(.caption.weight(.semibold)).buttonStyle(.glass)
         }
         .spectraRowPadding()
     }

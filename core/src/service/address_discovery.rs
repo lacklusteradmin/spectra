@@ -391,20 +391,16 @@ impl WalletService {
             wallet
         };
         let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
-        let defaults =
-            crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
-        let imported = wallet.to_wallet_view(&defaults);
+        // An empty path resolves to the chain's default.
         let raw_path = wallet
             .addresses
             .iter()
             .find(|a| a.chain_id == chain)
             .and_then(|a| a.derivation_path.clone())
             .or_else(|| {
-                imported
-                    .seed_derivation_paths
-                    .by_chain
-                    .get(chain.str_id())
-                    .cloned()
+                (wallet.chain_id == chain)
+                    .then(|| wallet.derivation_path.clone())
+                    .flatten()
             })
             .unwrap_or_default();
         let chain_id = chain;

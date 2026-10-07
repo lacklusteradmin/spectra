@@ -229,13 +229,16 @@ struct WalletDetailView: View {
                 ? "••••••" : store.amounts.formattedWalletTotal(walletId: wallet.id)
         )
     }
-    /// The wallet's configured derivation path, when it has one.
+    /// The wallet's derivation path, named by its profile and account when
+    /// core reads it as one.
     private func derivationPathsText(for wallet: WalletView) -> String? {
         guard !isWatchOnly, !isPrivateKeyWallet else { return nil }
         let chain = wallet.chainId
-        let path = wallet.seedDerivationPaths.path(for: chain)
-        guard !path.isEmpty else { return nil }
-        return AppLocalization.format("wallet.detail.chainPath", chain.displayName, path)
+        guard let path = wallet.derivationPath, !path.isEmpty else { return nil }
+        guard let choice = derivationProfileOfPath(chain: chain, path: path) else { return path }
+        return AppLocalization.format(
+            "wallet.detail.chainPath",
+            AppLocalization.format("derivation.profile_account_format", choice.profile.title, Int(choice.account)), path)
     }
     private var watchOnlyBadge: some View {
         Label(AppLocalization.string("Watching"), systemImage: "eye").font(.caption.weight(.semibold)).foregroundStyle(.tint).padding(
@@ -379,6 +382,7 @@ private struct WalletAdvancedDetailsView: View {
     let firstActivityDateText: String
     @Environment(\.scenePhase) private var scenePhase
     @State private var seedReveal = SeedPhraseRevealState()
+    @State private var didCopySeedPhrase = false
     @State private var isShowingDeleteWalletAlert: Bool = false
     private var displayedWallet: WalletView {
         store.wallet(for: wallet.id) ?? wallet
@@ -438,7 +442,7 @@ private struct WalletAdvancedDetailsView: View {
             }
             Section(AppLocalization.string("Details")) {
                 WalletDetailRow(label: "Wallet ID", value: wallet.id)
-                if let derivationPathsText { WalletDetailRow(label: "Derivation Paths", value: derivationPathsText) }
+                if let derivationPathsText { WalletDetailRow(label: "Derivation Path", value: derivationPathsText) }
                 WalletDetailRow(label: "First Activity", value: firstActivityDateText)
             }
             Section {
@@ -530,6 +534,7 @@ private struct WalletAdvancedDetailsView: View {
             isPresented: $seedReveal.isShowingPhraseSheet,
             onDismiss: {
                 seedReveal.clearPhrase()
+                didCopySeedPhrase = false
             }
         ) {
             NavigationStack {
@@ -542,6 +547,19 @@ private struct WalletAdvancedDetailsView: View {
                             ).font(.subheadline).foregroundStyle(.secondary)
                             Text(seedReveal.phrase).font(.body.monospaced()).foregroundStyle(Color.primary).privacySensitive().padding(SpectraLayout.Space.m)
                                 .frame(maxWidth: .infinity, alignment: .leading).spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
+                            // Copying is how one phrase reaches a second
+                            // network's import: each wallet is on one network.
+                            Button {
+                                copySecretToPasteboard(seedReveal.phrase)
+                                didCopySeedPhrase = true
+                            } label: {
+                                Label(
+                                    AppLocalization.string(didCopySeedPhrase ? "Copied" : "Copy"),
+                                    systemImage: didCopySeedPhrase ? "checkmark" : "doc.on.doc"
+                                ).font(.subheadline.weight(.semibold))
+                            }.buttonStyle(.glass).tint(.accentColor).disabled(seedReveal.phrase.isEmpty)
+                            Text(AppLocalization.string("A copied phrase stays on this device and leaves the clipboard after a minute."))
+                                .font(.caption).foregroundStyle(.secondary)
                         }.padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
                             .padding(SpectraLayout.Space.l)
                     }

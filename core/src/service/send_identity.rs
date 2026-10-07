@@ -80,8 +80,6 @@ impl WalletService {
         };
         let (derived, private_key_hex) = match material {
             SigningMaterial::Mnemonic(seed) => {
-                let defaults =
-                    crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
                 let owner = if wallet.chain_id.is_evm() && chain.is_evm() {
                     wallet.chain_id
                 } else {
@@ -95,7 +93,6 @@ impl WalletService {
                             .then_some(wallet.derivation_path.as_deref())
                             .flatten()
                     })
-                    .or_else(|| defaults.path_for(owner))
                     .unwrap_or_default();
                 let path = crate::derivation::path::resolve_derivation_path(id, path.into())?;
                 let overrides = &sensitive_overrides.0;

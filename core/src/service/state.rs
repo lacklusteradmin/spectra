@@ -680,9 +680,7 @@ fn wallets_for_display(
     let wallets = &state.wallets;
     let mut rendered = Vec::with_capacity(wallets.len());
     for wallet in wallets {
-        let defaults =
-            crate::derivation::path::derivation_paths_for_preset(wallet.derivation_preset)?;
-        let mut view = wallet.to_wallet_view(&defaults);
+        let mut view = wallet.to_wallet_view();
         valuation::order_holdings_by_value(state, &mut view.holdings);
         rendered.push(view);
     }
