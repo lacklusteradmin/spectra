@@ -145,9 +145,21 @@ impl WalletService {
             .ok_or_else(|| invalid("derivation returned no sender address"))?;
         let is_named_account = chain.supports_named_sender_accounts()
             && !(from_address.len() == 64 && from_address.bytes().all(|b| b.is_ascii_hexdigit()));
-        if !is_named_account
-            && crate::send::flow::normalize_address(id, derived_address) != from_address
-        {
+        let derived_matches = if chain.has_wallet_versions() {
+            // A TON key holds one account per wallet version, and the
+            // stored address names which; the derived one is the default's.
+            let public: [u8; 32] = derived
+                .public_key_hex
+                .as_deref()
+                .and_then(|key| hex::decode(key).ok())
+                .and_then(|key| key.try_into().ok())
+                .ok_or_else(|| invalid("derivation returned no public key"))?;
+            crate::derivation::ton::TonWalletVersion::of_address(&public, &from_address, chain)
+                .is_some()
+        } else {
+            crate::send::flow::normalize_address(id, derived_address) == from_address
+        };
+        if !is_named_account && !derived_matches {
             return Err(invalid(
                 "stored sender address does not match the wallet signing key",
             ));

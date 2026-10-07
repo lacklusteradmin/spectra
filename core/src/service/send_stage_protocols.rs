@@ -666,7 +666,7 @@ impl WalletService {
                 PreparedPayload::Ton {
                     seqno,
                     amount,
-                    // V4R2 deployment messages sign the all-ones expiry value.
+                    // Deployment messages sign the all-ones expiry value.
                     valid_until: if seqno == 0 {
                         u32::MAX
                     } else {
@@ -1150,32 +1150,35 @@ impl WalletService {
             } => {
                 let key = decode_secret_array::<32>(&signer.private_key_hex)?;
                 let public = seed()?.public_key();
+                // The stored sender names the wallet version this key signs as.
+                let wallet = crate::send::ton::TonSigner::for_sender(
+                    chain,
+                    &stored.view.sender,
+                    &key,
+                    &public,
+                )?;
                 let recipient = crate::derivation::ton::parse_ton_address(&stored.view.recipient)?
                     .for_network(chain.is_testnet())?;
                 let raw = if let Some(plan) = jetton {
                     crate::send::ton::build_jetton_transfer(
+                        &wallet,
                         plan,
                         recipient,
                         crate::derivation::ton::parse_ton_address(&stored.view.sender)?
                             .for_network(chain.is_testnet())?,
                         *amount,
                         *seqno,
-                        &key,
-                        &public,
                         *valid_until,
-                        chain.is_testnet(),
                     )?
                 } else {
                     crate::send::ton::build_transfer_for_address(
+                        &wallet,
                         recipient,
                         u64::try_from(*amount).map_err(|_| {
                             SpectraBridgeError::invalid("TON native amount exceeds protocol range")
                         })?,
                         *seqno,
                         None,
-                        &key,
-                        &public,
-                        698_983_191,
                         *valid_until,
                         3,
                     )?

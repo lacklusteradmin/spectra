@@ -123,6 +123,7 @@ fn commit(chain: crate::registry::Chain) -> WalletImportCommit {
         private_key: None,
         restore_height: None,
         named_account: None,
+        ton_wallet_version: None,
     }
 }
 

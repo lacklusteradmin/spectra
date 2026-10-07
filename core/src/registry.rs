@@ -1541,6 +1541,12 @@ impl Chain {
         matches!(self.mainnet_counterpart(), Self::Xrp | Self::Stellar)
     }
 
+    /// Whether a key holds one account per wallet contract version (TON's
+    /// W5 and v4R2), so a wallet is a key and the version it signs as.
+    pub fn has_wallet_versions(self) -> bool {
+        self.mainnet_counterpart() == Self::Ton
+    }
+
     /// Whether a wallet's balance and history come from scanning blocks on
     /// the device through a daemon, rather than from a provider's index.
     pub fn scans_for_balance(self) -> bool {

@@ -334,6 +334,21 @@ fn plan_import(
         }
     };
     let mut named_account_key = None;
+    // A TON key holds one account per wallet contract version; the import
+    // names which, W5 unless it says otherwise.
+    let ton_wallet = if chain.has_wallet_versions()
+        && matches!(
+            commit.request.kind,
+            WalletImportKind::Phrase | WalletImportKind::PrivateKey
+        ) {
+        Some(commit.ton_wallet_version.unwrap_or_default())
+    } else if commit.ton_wallet_version.is_some() {
+        return Err(SpectraBridgeError::invalid(
+            "Only a TON key import takes a wallet version.",
+        ));
+    } else {
+        None
+    };
     // A phrase in a format the chain's own wallets do not write — BIP-39
     // on Monero or TON — restores nothing those wallets would, so it is
     // refused here rather than read another way.
@@ -363,7 +378,9 @@ fn plan_import(
     let imported = match &commit.request.kind {
         WalletImportKind::Phrase | WalletImportKind::PrivateKey => {
             // The secret was matched to its kind above.
-            let derived = if commit.request.kind == WalletImportKind::PrivateKey {
+            let derived = if let Some(version) = ton_wallet {
+                crate::derivation::import::derive_ton_import_address(&commit, version)?
+            } else if commit.request.kind == WalletImportKind::PrivateKey {
                 crate::derivation::import::derive_private_key_import_address(
                     commit.private_key.as_deref().unwrap_or_default(),
                     chain,

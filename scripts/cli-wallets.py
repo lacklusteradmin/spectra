@@ -203,9 +203,16 @@ class WalletsTests(unittest.TestCase):
             assert wallet['address'] == polyseed['address'], wallet
             # The birthday's checkpoint: before the wallet was made, after Polyseed's epoch.
             assert 2_480_000 <= wallet['restoreHeight'] < 2_480_000 + (polyseed['created'] - 1_635_000_000) // 120, wallet
+            # W5 unless the import names another version; ton-mnemonics.json
+            # records each mnemonic's v4R2 account, ton-w5.json its W5 one.
             mnemonic = ton['mnemonics'][0]
+            w5 = json.loads((fixtures / 'ton-w5.json').read_text())['addresses'][0]
+            assert w5['mnemonic'] == mnemonic['mnemonic'], w5
             wallet = run('wallet', 'import', '--chain', 'ton', '--name', 'TON', '--no-password',
                          phrase=mnemonic['mnemonic'])['wallet']
+            assert wallet['address'] == w5['mainnet'], wallet
+            wallet = run('wallet', 'import', '--chain', 'ton', '--name', 'TON v4R2', '--no-password',
+                         '--ton-wallet', 'v4R2', phrase=mnemonic['mnemonic'])['wallet']
             assert wallet['address'] == mnemonic['address'], wallet
             for chain, words in [('monero', 25), ('ton', 24)]:
                 created = run('wallet', 'new', '--chain', chain, '--name', 'New ' + chain, '--no-password')
@@ -507,6 +514,55 @@ class WalletsTests(unittest.TestCase):
                     assert not journal.read_text(), journal.read_text()
         finally:
             server.shutdown(); server.server_close(); worker.join()
+
+    def test_ton_wallet_versions_are_separate_accounts_of_one_key(self):
+        """A TON key imports as W5 or v4R2, each its own account, and signs as the version stored."""
+        fixtures = pathlib.Path(__file__).resolve().parents[1] / 'core/tests/fixtures'
+        fixture = json.loads((fixtures / 'ton-w5.json').read_text())
+        mnemonic = json.loads((fixtures / 'ton-mnemonics.json').read_text())['mnemonics'][0]
+        raw = lambda address: '0:' + __import__('base64').urlsafe_b64decode(address + '==')[2:34].hex()
+        with tempfile.TemporaryDirectory(prefix='spectra-ton-versions-') as directory:
+            def run(*args, success=True):
+                p = subprocess.run([binary, '--data-dir', directory, '--json', *args],
+                                   capture_output=True, text=True, timeout=60,
+                                   env={**os.environ, 'TON_KEY': '01' * 32, 'SPECTRA_SEED': mnemonic['mnemonic'],
+                                        'SPECTRA_PASSWORD': 'versions-password'})
+                assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
+                return json.loads(p.stdout) if success else p
+            key = ('--private-key-env', 'TON_KEY')
+            options = run('wallet', 'methods', '--chain', 'ton')['options']
+            asking = sorted(o['method'] for o in options if 'tonWalletVersion' in o['fields'])
+            assert asking == ['importPhrase', 'importPrivateKey'], options
+            for chain, network in [('ton', 'mainnet'), ('ton-testnet', 'testnet')]:
+                preview = run('wallet', 'import', '--chain', chain, *key, '--preview')
+                assert preview['addresses'] == [fixture['key_address'][network]], preview
+            w5 = fixture['key_address']['mainnet']
+            v4r2 = run('wallet', 'import', '--chain', 'ton', *key, '--ton-wallet', 'v4R2',
+                       '--preview')['addresses'][0]
+            # The v4R2 account the v4R2 send vectors sign from.
+            assert raw(v4r2) == '0:efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5', v4r2
+            # A watched v4R2 account takes the key in place; W5 is another wallet.
+            run('wallet', 'watch', '--chain', 'ton', '--name', 'Old', '--address', v4r2)
+            old = run('wallet', 'import', '--chain', 'ton', '--name', 'Ignored', *key, '--ton-wallet', 'v4R2')
+            assert old['upgraded'] and old['wallet']['name'] == 'Old', old
+            new = run('wallet', 'import', '--chain', 'ton', '--name', 'New', *key)
+            assert not new['upgraded'] and new['wallet']['address'] == w5, new
+            for name, address in [('Old', v4r2), ('New', w5)]:
+                assert run('send', 'identity', '--from', name)['address'] == address, name
+            refused = run('wallet', 'import', '--chain', 'ton', '--name', 'Again', *key, '--ton-wallet', 'w5',
+                          success=False)
+            assert refused.returncode == 3 and '“New”' in json.loads(refused.stdout)['error'], refused
+            refused = run('wallet', 'import', '--chain', 'solana', *key, '--ton-wallet', 'w5', '--preview',
+                          success=False)
+            assert refused.returncode == 3 and 'Only a TON key import' in json.loads(refused.stdout)['error'], refused
+            unknown = run('wallet', 'import', '--chain', 'ton', *key, '--ton-wallet', 'v3R2', '--preview',
+                          success=False)
+            assert unknown.returncode == 2, unknown
+            assert len(run('wallet', 'list')['wallets']) == 2
+            # Finding a phrase's used accounts reads each version's, W5 first.
+            listed = run('rescan', '--chain', 'ton', '--dry-run')['candidates']
+            assert [(c['tonWallet'], c['address']) for c in listed] == [
+                ('w5', fixture['addresses'][0]['mainnet']), ('v4R2', mnemonic['address'])], listed
 
     def test_a_near_named_account_and_reserves_are_read_from_the_network(self):
         """A NEAR named account is stored once its key is confirmed full-access; XRP and Stellar reserves are the network's."""

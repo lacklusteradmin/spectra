@@ -23,12 +23,16 @@ fn replace_strings(value: &mut Value, replacements: &[(String, String)]) {
 
 #[tokio::test]
 async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_message() {
-    for seqno in [0, 7] {
+    use crate::derivation::ton::TonWalletVersion;
+    for (version, seqno) in TonWalletVersion::ALL
+        .into_iter()
+        .flat_map(|version| [(version, 0), (version, 7)])
+    {
         let chain = Chain::Ton;
         let public = ed25519_dalek::SigningKey::from_bytes(&[1; 32])
             .verifying_key()
             .to_bytes();
-        let sender = crate::derivation::ton::derive_ton_v4r2_address(&public).unwrap();
+        let sender = version.address(&public, chain).unwrap();
         let server = MockServer::start().await;
         Mock::given(any())
             .respond_with(move |request: &Request| {
@@ -143,11 +147,19 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
             offset = start + length + refs * 2;
         }
         let body = cells[*cells[0].1.last().unwrap()].0;
-        assert_eq!(
-            u32::from_be_bytes(body[68..72].try_into().unwrap()),
-            declared
-        );
-        assert_eq!(u32::from_be_bytes(body[72..76].try_into().unwrap()), seqno);
+        let word = |at: usize| u32::from_be_bytes(body[at..at + 4].try_into().unwrap());
+        // The wallet's own layout: v4R2 signs in front of its wallet id; W5
+        // opens with the signed-external opcode and signs at the tail.
+        let expiry_at = match version {
+            TonWalletVersion::V4R2 => 68,
+            TonWalletVersion::W5 => {
+                assert_eq!(word(0), 0x7369_676e);
+                assert_eq!(word(4), version.wallet_id(chain).unwrap());
+                8
+            }
+        };
+        assert_eq!(word(expiry_at), declared, "{version:?}");
+        assert_eq!(word(expiry_at + 4), seqno, "{version:?}");
     }
 }
 
@@ -158,19 +170,23 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
         let public = ed25519_dalek::SigningKey::from_bytes(&[1; 32])
             .verifying_key()
             .to_bytes();
-        let sender = crate::derivation::ton::derive_ton_v4r2_address(&public).unwrap();
+        let version = crate::derivation::ton::TonWalletVersion::default();
+        let sender = version.address(&public, chain).unwrap();
         let parsed = crate::derivation::ton::parse_ton_address(&sender).unwrap();
         let owner_raw = format!("{}:{}", parsed.workchain, hex::encode(parsed.account_id));
         let recipient = format!("0:{}", "33".repeat(32));
         let expiry = crate::store::now_unix() as u32 - 60;
         let raw = crate::send::ton::build_transfer_for_address(
+            &crate::send::ton::TonSigner {
+                version,
+                chain,
+                private_key: &[1; 32],
+                public_key: &public,
+            },
             crate::derivation::ton::parse_ton_address(&recipient).unwrap(),
             50_000_000,
             7,
             None,
-            &[1; 32],
-            &public,
-            698_983_191,
             expiry,
             3,
         )

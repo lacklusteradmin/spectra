@@ -17,6 +17,81 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-07 — A rate-limited read waits out the window
+
+- **Before:** every retryable failure, a 429 included, retried after the
+  profile's short delay (350 ms, then 700 ms for a chain read), with no
+  jitter although the code said it had some. Reads refused together
+  retried together inside the same window, so a burst against TON Center's
+  anonymous limit — the used-account search reading both TON wallet
+  versions at once — failed all three attempts.
+- **After:** after a 429 the next attempt waits at least a second, then two
+  (`RetryProfile::delay_for_attempt`), and every retry delay carries up to
+  20% jitter. Transport failures and 5xx keep the short delays.
+- **Why:** a 429 says the window is full; retrying inside it spends another
+  request where it cannot succeed.
+- **CLI check:** `SPECTRA_SEED=<a TON mnemonic> spectra rescan --chain ton`
+  against the default TON Center endpoint reads both versions' balances,
+  where before one or both reads ended in "all 3 attempts failed: HTTP 429";
+  `a_rate_limit_waits_longer_than_a_failure` pins the delays.
+- **Verification:** see the TON entry below; the same run covers both.
+
+## 2026-10-07 — A previewed address wraps without a hyphen it does not hold
+
+- **Before:** the import page's address preview let text layout hyphenate a
+  long address where it wrapped, so a TON address could read with a `-` it
+  does not contain — a character TON addresses do use — and the preview
+  exists to be compared character by character.
+- **After:** the preview breaks the address anywhere without a hyphen
+  (`breakableAnywhere`, moved from the transaction detail page to
+  `SpectraLayout.swift`) and is no longer selectable, since a copy would
+  carry the break marks.
+- **Why:** an address shown for checking must be exactly the address.
+- **CLI check:** none applies; the preview is the app's. Checked on the
+  iPhone 17 Pro simulator with a TON W5 address that wraps.
+- **Verification:** see the TON entry below.
+
+## 2026-10-07 — TON wallets are W5 by default, and v4R2 on request
+
+- **Before:** TON derived only the v4R2 wallet contract. Every created
+  wallet, phrase and key held its v4R2 account and signed v4R2 messages, so a
+  wallet restored from Tonkeeper or MyTonWallet, which create W5, showed an
+  empty account that was not the user's. The used-account search refused TON
+  as deriving one account.
+- **After:** `TonWalletVersion` names W5 (wallet v5r1) and v4R2. W5 is the
+  default: created wallets and imports hold its account unless the commit's
+  `ton_wallet_version` names v4R2. TON's phrase and private-key methods ask
+  (`WalletSetupField::TonWalletVersion`), and the address preview shows the
+  chosen version's account. W5 folds the network's global id into its wallet
+  id, so its testnet account differs from its mainnet one. Nothing stores the
+  version: send identity and signing take the version whose account the
+  stored address is for the key (`TonWalletVersion::of_address`), build that
+  contract's message (W5: signed-external opcode, out-action list, signature
+  at the tail) and refuse an address no version gives the key. The
+  used-account search reads both versions' accounts, W5 first, and choosing
+  one sets the import's version. `spectra wallet import --ton-wallet
+  w5|v4R2` chooses; `spectra rescan --chain ton` lists both.
+- **Why:** current TON wallets create W5, so restoring one has to reach it,
+  and a new wallet should be what those wallets would restore. The version
+  is a fact of the address — the account is the hash of the version's code
+  and the key — so reading it back from the stored address cannot disagree
+  with what was imported, where a stored field could. The version is not a
+  derivation profile: profiles are paths, and TON has none.
+- **CLI check:** for the `01`×32 key, `wallet import --chain ton
+  --private-key-env K --preview` prints `EQCdHhhDYkxNF1ppWowt6KWmHwO5MzboyqThZL9su6sgXsq8`
+  (W5, as @ton/ton computes it) and `--ton-wallet v4R2` the v4R2 account
+  `0:efaff4ba…afa5`; a watched v4R2 address takes the key with `--ton-wallet
+  v4R2` in place, `send identity` returns each stored address, the same
+  version again exits 3 naming the wallet, `--ton-wallet` on Solana exits 3
+  and `--ton-wallet v3R2` exits 2 (`scripts/cli-wallets.py`); jetton
+  transfers build, sign and resolve from both versions against a loopback
+  TON Center (`scripts/cli-send-tokens.py`).
+- **Verification:** `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `cargo test --workspace` (1,118 core tests and
+  one transport integration test), every source scan at 0,
+  `scripts/cli-acceptance.sh` (67 checks) and `xcodebuild test` on iPhone 17
+  Pro (138 tests in 30 suites passed).
+
 ## 2026-10-06 — NEAR imports hold named accounts; XRP and Stellar say their reserve
 
 - **Before:** a NEAR key imported only as its implicit hex account, although

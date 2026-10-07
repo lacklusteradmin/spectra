@@ -4,17 +4,16 @@
 //!   base64url user-friendly addresses.
 //! - `derive_ton_seed`: TON's own 24-word mnemonic (ton-crypto / Tonkeeper /
 //!   Tonhub), checked before it is expanded.
-//! - The v4R2 path computes the wallet's account id from the embedded
-//!   wallet code BOC + a freshly-built data cell. Correctness is locked
-//!   by `v4r2_code_hash_and_depth`'s self-test against the published
-//!   v4R2 code hash.
+//! - `TonWalletVersion`: the wallet contracts a key can hold an account
+//!   under. Each version's account id is the hash of its embedded code BOC
+//!   and a freshly built data cell; the code is checked against its
+//!   published hash before any address is computed from it.
 
 use crate::derivation::error::DerivationError;
+use crate::registry::Chain;
 
 use super::ton_cell::Cell;
 use ed25519_dalek::SigningKey;
-use pbkdf2::pbkdf2_hmac;
-use sha2::Sha512;
 use zeroize::Zeroizing;
 
 /// A checked TON address retains routing flags until the send is encoded.
@@ -112,7 +111,7 @@ fn ton_entropy(mnemonic: &str, password: &str) -> Result<Zeroizing<[u8; 64]>, De
 
 fn pbkdf2_first_byte(entropy: &[u8; 64], salt: &str, iterations: u32) -> u8 {
     let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(entropy, salt.as_bytes(), iterations, &mut *seed);
+    crate::kdf::pbkdf2_sha512(entropy, salt.as_bytes(), iterations, &mut *seed);
     seed[0]
 }
 
@@ -214,7 +213,7 @@ pub(crate) fn derive_ton_seed(
     check_ton_mnemonic(mnemonic, password)?;
     let entropy = ton_entropy(mnemonic, password)?;
     let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
+    crate::kdf::pbkdf2_sha512(
         &*entropy,
         b"TON default seed",
         TON_PBKDF_ITERATIONS,
@@ -223,11 +222,11 @@ pub(crate) fn derive_ton_seed(
     Ok(seed)
 }
 
-// ── v4R2 wallet contract code (embedded BOC) ─────────────────────────────
-// The wallet contract bytes-of-code, copied from ton-core's
-// `WalletContractV4R2.js`. Correctness is locked by a self-test that
-// asserts the recomputed root cell hash matches the well-known public
-// constant `feb5ff6820e2ff0d9483e7e0d62c817d846789fb4ae580c878866d959dabd5c0`.
+// ── Wallet contract code (embedded BOCs) ─────────────────────────────────
+// Each version's code, copied from @ton/ton's `WalletContractV4.js` and
+// `WalletContractV5R1.js`. Decoding checks the recomputed root cell hash
+// against the version's published code hash, so a damaged constant or a
+// parser fault refuses rather than deriving a stranger's address.
 
 const V4R2_CODE_BOC_HEX: &str = "b5ee9c7241021401000\
 2d4000114ff00f4a413f4bcf2c80b010201200203020148040504f8f28308d71820\
@@ -253,15 +252,155 @@ f1df6a26840106b90eb858fc0006ed207fa00d4d422f90005c8ca0715cbffc9d077\
 8fa00d33f305224810108f459f2a782106473747270748018c8cb05cb025005cf16\
 5003fa0213cb6acb1f12cb3fc973fb00000af400c9ed54696225e5";
 
-const V4R2_KNOWN_CODE_HASH: [u8; 32] = [
-    0xfe, 0xb5, 0xff, 0x68, 0x20, 0xe2, 0xff, 0x0d, 0x94, 0x83, 0xe7, 0xe0, 0xd6, 0x2c, 0x81, 0x7d,
-    0x84, 0x67, 0x89, 0xfb, 0x4a, 0xe5, 0x80, 0xc8, 0x78, 0x86, 0x6d, 0x95, 0x9d, 0xab, 0xd5, 0xc0,
-];
+const V4R2_CODE_HASH: &str = "feb5ff6820e2ff0d9483e7e0d62c817d846789fb4ae580c878866d959dabd5c0";
 
-// Default subwallet id for v4 on the basic workchain (0). Hardcoded in
-// every popular wallet (tonkeeper, tonhub, tonweb) so anyone generating
-// a v4R2 address from the same mnemonic produces the same address.
-const V4R2_DEFAULT_WALLET_ID: u32 = 698983191;
+// From ton-blockchain/wallet-contract-v5's `wallet_v5.compiled.json`.
+const W5_CODE_BOC_HEX: &str = "b5ee9c7241021401000\
+281000114ff00f4a413f4bcf2c80b01020120020d020148030402dcd020d749c12\
+0915b8f6320d70b1f2082106578746ebd21821073696e74bdb0925f03e08210657\
+8746eba8eb48020d72101d074d721fa4030fa44f828fa443058bd915be0ed44d08\
+10141d721f4058307f40e6fa1319130e18040d721707fdb3ce03120d749810280b\
+99130e070e2100f020120050c020120060902016e07080019adce76a2684020eb9\
+0eb85ffc00019af1df6a2684010eb90eb858fc00201480a0b0017b325fb51341c7\
+5c875c2c7e00011b262fb513435c280200019be5f0f6a2684080a0eb90fa02c010\
+2f20e011e20d70b1f82107369676ebaf2e08a7f0f01e68ef0eda2edfb218308d72\
+2028308d723208020d721d31fd31fd31fed44d0d200d31f20d31fd3ffd70a000af\
+90140ccf9109a28945f0adb31e1f2c087df02b35007b0f2d0845125baf2e085503\
+6baf2e086f823bbf2d0882292f800de01a47fc8ca00cb1f01cf16c9ed542092f80\
+fde70db3cd81003f6eda2edfb02f404216e926c218e4c0221d73930709421c700b\
+38e2d01d72820761e436c20d749c008f2e09320d74ac002f2e09320d71d06c712c\
+2005230b0f2d089d74cd7393001a4e86c128407bbf2e093d74ac000f2e093ed55e\
+2d20001c000915be0ebd72c08142091709601d72c081c12e25210b1e30f20d74a1\
+11213009601fa4001fa44f828fa443058baf2e091ed44d0810141d718f405049d7\
+fc8ca0040048307f453f2e08b8e14038307f45bf2e08c22d70a00216e01b3b0f2d\
+090e2c85003cf1612f400c9ed54007230d72c08248e2d21f2e092d200ed44d0d20\
+05113baf2d08f54503091319c01810140d721d70a00f2e08ee2c8ca0058cf16c9e\
+d5493f2c08de20010935bdb31e1d74cd0b4d6c35e";
+
+const W5_CODE_HASH: &str = "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f";
+
+/// The wallet contract a TON key holds an account under. One key has a
+/// different account, and so a different address and balance, under each
+/// version, and a wallet signs in the message format of its own.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    uniffi::Enum,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum TonWalletVersion {
+    /// Wallet v5r1, "W5": what current wallets (Tonkeeper, MyTonWallet)
+    /// create.
+    #[default]
+    W5,
+    /// Wallet v4r2: what most wallets created before 2024 hold.
+    V4R2,
+}
+
+impl TonWalletVersion {
+    pub const ALL: [Self; 2] = [Self::W5, Self::V4R2];
+
+    fn code(self) -> Result<Cell, DerivationError> {
+        use std::sync::OnceLock;
+        static V4R2: OnceLock<Result<Cell, DerivationError>> = OnceLock::new();
+        static W5: OnceLock<Result<Cell, DerivationError>> = OnceLock::new();
+        let (cell, boc, hash) = match self {
+            Self::V4R2 => (&V4R2, V4R2_CODE_BOC_HEX, V4R2_CODE_HASH),
+            Self::W5 => (&W5, W5_CODE_BOC_HEX, W5_CODE_HASH),
+        };
+        cell.get_or_init(|| {
+            let (cells, root) = parse_boc(&hex::decode(boc).map_err(DerivationError::invalid)?)?;
+            let code = cell_from_rows(&cells, root)?;
+            if hex::encode(code.hash_depth().0) != hash {
+                return Err(DerivationError::Internal(
+                    "TON: embedded wallet code does not match its published hash".into(),
+                ));
+            }
+            Ok(code)
+        })
+        .clone()
+    }
+
+    /// The subwallet id this version signs with on `chain`. v4R2 uses one id
+    /// on every network; W5 folds the network's global id into its own, so a
+    /// key's W5 account on testnet is not its mainnet one.
+    pub(crate) fn wallet_id(self, chain: Chain) -> Result<u32, DerivationError> {
+        match self {
+            // Hardcoded in every v4 wallet for the basic workchain.
+            Self::V4R2 => Ok(698_983_191),
+            Self::W5 => {
+                let (global_id, _, _) = chain
+                    .ton_first_block()
+                    .ok_or_else(|| DerivationError::Invalid("TON: not a TON network".into()))?;
+                // The client context: flag 1, workchain 0, version 0,
+                // subwallet 0 — then XOR with the network's global id.
+                Ok((global_id as i32 as u32) ^ 0x8000_0000)
+            }
+        }
+    }
+
+    /// The account's initial state: its code and the data cell a fresh
+    /// wallet holds (seqno 0, its subwallet id and the key).
+    pub(crate) fn state_init(
+        self,
+        public_key: &[u8; 32],
+        chain: Chain,
+    ) -> Result<Cell, DerivationError> {
+        let mut data = Cell::default();
+        if self == Self::W5 {
+            // Signature authentication allowed.
+            data.uint(1, 1)?;
+        }
+        data.uint(0, 32)?
+            .uint(u64::from(self.wallet_id(chain)?), 32)?
+            .bytes(public_key)?
+            // No plugins (v4R2) or extensions (W5).
+            .uint(0, 1)?;
+        let mut init = Cell::default();
+        init.uint(0b00110, 5)?
+            .reference(self.code()?)?
+            .reference(data)?;
+        Ok(init)
+    }
+
+    /// The account this version gives `public_key` on `chain`, as a
+    /// bounceable user-friendly address on the basic workchain.
+    pub(crate) fn address(
+        self,
+        public_key: &[u8; 32],
+        chain: Chain,
+    ) -> Result<String, DerivationError> {
+        let account_id = self.state_init(public_key, chain)?.hash_depth().0;
+        // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
+        let mut buf = [0u8; 36];
+        buf[0] = 0x11;
+        buf[1] = 0x00;
+        buf[2..34].copy_from_slice(&account_id);
+        let crc = crc16_xmodem(&buf[..34]);
+        buf[34..36].copy_from_slice(&crc.to_be_bytes());
+        use base64::Engine;
+        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf))
+    }
+
+    /// The version whose account on `chain` `address` is for `public_key`,
+    /// if any: how a stored wallet names the contract it signs as.
+    pub(crate) fn of_address(public_key: &[u8; 32], address: &str, chain: Chain) -> Option<Self> {
+        let parsed = parse_ton_address(address).ok()?;
+        Self::ALL.into_iter().find(|version| {
+            parsed.workchain == 0
+                && version
+                    .state_init(public_key, chain)
+                    .is_ok_and(|init| init.hash_depth().0 == parsed.account_id)
+        })
+    }
+}
 
 #[derive(Clone)]
 struct ParsedCell {
@@ -371,51 +510,6 @@ fn cell_from_rows(cells: &[ParsedCell], i: usize) -> Result<Cell, DerivationErro
     )
 }
 
-/// Decode only the embedded code and verify its independently published hash.
-fn v4r2_code() -> Result<Cell, DerivationError> {
-    use std::sync::OnceLock;
-    static CODE: OnceLock<Result<Cell, DerivationError>> = OnceLock::new();
-    CODE.get_or_init(|| {
-        let (cells, root) =
-            parse_boc(&hex::decode(V4R2_CODE_BOC_HEX).map_err(DerivationError::invalid)?)?;
-        let code = cell_from_rows(&cells, root)?;
-        if code.hash_depth().0 != V4R2_KNOWN_CODE_HASH {
-            return Err(DerivationError::Internal(
-                "TON: invalid V4R2 code hash".into(),
-            ));
-        }
-        Ok(code)
-    })
-    .clone()
-}
-
-#[cfg(test)]
-pub(crate) fn v4r2_code_hash_and_depth() -> Result<([u8; 32], u16), DerivationError> {
-    Ok(v4r2_code()?.hash_depth())
-}
-
-pub(crate) fn v4r2_state_init(
-    public_key: &[u8; 32],
-    wallet_id: u32,
-) -> Result<Cell, DerivationError> {
-    let mut data = Cell::default();
-    data.uint(0, 32)?
-        .uint(u64::from(wallet_id), 32)?
-        .bytes(public_key)?
-        .uint(0, 1)?;
-    let mut init = Cell::default();
-    init.uint(0b00110, 5)?
-        .reference(v4r2_code()?)?
-        .reference(data)?;
-    Ok(init)
-}
-
-fn v4r2_state_init_account_id(public_key: &[u8; 32]) -> Result<[u8; 32], DerivationError> {
-    Ok(v4r2_state_init(public_key, V4R2_DEFAULT_WALLET_ID)?
-        .hash_depth()
-        .0)
-}
-
 /// CRC-16/XMODEM (poly=0x1021, init=0x0000, no reflection, no xor-out),
 /// as required by TON user-friendly address checksums.
 pub(crate) fn crc16_xmodem(bytes: &[u8]) -> u16 {
@@ -423,36 +517,33 @@ pub(crate) fn crc16_xmodem(bytes: &[u8]) -> u16 {
     CRC.checksum(bytes)
 }
 
-// Build the TON v4R2 bounceable user-friendly address from a public key via state_init cell hash.
-pub(crate) fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, DerivationError> {
-    let account_id = v4r2_state_init_account_id(public_key)?;
-    // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
-    let mut buf = [0u8; 36];
-    buf[0] = 0x11;
-    buf[1] = 0x00;
-    buf[2..34].copy_from_slice(&account_id);
-    let crc = crc16_xmodem(&buf[..34]);
-    buf[34..36].copy_from_slice(&crc.to_be_bytes());
-    use base64::Engine;
-    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf))
+/// The ed25519 key pair a TON mnemonic (and its password) holds.
+pub(crate) fn ton_key_pair(
+    seed_phrase: &str,
+    passphrase: Option<&str>,
+) -> Result<(Zeroizing<[u8; 32]>, [u8; 32]), DerivationError> {
+    let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""))?;
+    let mut private_key = Zeroizing::new([0u8; 32]);
+    private_key.copy_from_slice(&seed[..32]);
+    let public_key = SigningKey::from_bytes(&private_key)
+        .verifying_key()
+        .to_bytes();
+    Ok((private_key, public_key))
 }
 
-/// Derive a TON V4R2 bounceable mainnet address from a TON-style mnemonic.
+/// Derive a TON wallet from a TON mnemonic: the address is the default
+/// version's account on `chain`.
 pub(crate) fn derive_ton_standard(
+    chain: Chain,
     seed_phrase: &str,
     passphrase: Option<&str>,
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""))?;
-    let mut private_key = [0u8; 32];
-    private_key.copy_from_slice(&seed[..32]);
-    let signing_key = SigningKey::from_bytes(&private_key);
-    let public_key = signing_key.verifying_key().to_bytes();
-
+    let (private_key, public_key) = ton_key_pair(seed_phrase, passphrase)?;
     let address = if want_address {
-        Some(derive_ton_v4r2_address(&public_key)?)
+        Some(TonWalletVersion::default().address(&public_key, chain)?)
     } else {
         None
     };
@@ -460,7 +551,7 @@ pub(crate) fn derive_ton_standard(
     Ok((
         address,
         want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(private_key)),
+        want_private_key.then(|| hex::encode(*private_key)),
     ))
 }
 
@@ -470,8 +561,9 @@ use crate::SpectraBridgeError;
 use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::DerivationResult;
 
-// Shared derivation logic for all TON networks (mainnet and testnet addresses are identical).
+// Shared derivation logic for all TON networks.
 fn ton_internal(
+    chain: Chain,
     seed_phrase: String,
     passphrase: Option<String>,
     want_address: bool,
@@ -479,6 +571,7 @@ fn ton_internal(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (address, public_key_hex, private_key_hex) = derive_ton_standard(
+        chain,
         &seed_phrase,
         passphrase.as_deref(),
         want_address,
@@ -495,7 +588,8 @@ fn ton_internal(
     })
 }
 
-/// Derive TON mainnet wallet (v4R2 bounceable address) from a seed phrase.
+/// Derive a TON mainnet wallet (the default version's address) from a seed
+/// phrase.
 pub fn derive_ton(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -504,6 +598,7 @@ pub fn derive_ton(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     ton_internal(
+        Chain::Ton,
         seed_phrase,
         passphrase,
         want_address,
@@ -512,7 +607,8 @@ pub fn derive_ton(
     )
 }
 
-/// Derive TON testnet wallet from a seed phrase (same derivation as mainnet).
+/// Derive a TON testnet wallet from a seed phrase: the same key as on
+/// mainnet, and the default version's testnet account.
 pub fn derive_ton_testnet(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -521,6 +617,7 @@ pub fn derive_ton_testnet(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     ton_internal(
+        Chain::TonTestnet,
         seed_phrase,
         passphrase,
         want_address,

@@ -179,6 +179,10 @@ pub struct ImportArgs {
     /// keys, and the wallet holds the named account.
     #[arg(long)]
     named_account: Option<String>,
+    /// TON only: the wallet contract the key's account is under, `w5`
+    /// (default) or `v4R2` for a wallet created before 2024.
+    #[arg(long, value_name = "VERSION")]
+    ton_wallet: Option<String>,
     /// Read the seed phrase from this file; `-` means stdin.
     #[arg(long, value_name = "PATH")]
     seed_file: Option<String>,
@@ -445,6 +449,7 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
         args.creation.restore_height,
     )?;
     commit.named_account = args.named_account.clone();
+    commit.ton_wallet_version = ton_wallet_version(args.ton_wallet.as_deref())?;
     if args.preview {
         return preview(ctx, out, commit);
     }
@@ -505,6 +510,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     let mut commit = commit_for(request_for(chain, &name, WalletImportKind::PrivateKey));
     commit.private_key = Some(private_key.clone());
     commit.named_account = args.named_account.clone();
+    commit.ton_wallet_version = ton_wallet_version(args.ton_wallet.as_deref())?;
     if args.preview {
         return preview(ctx, out, commit);
     }
@@ -710,6 +716,9 @@ fn methods(out: Out, chain: &str) -> CliResult<()> {
                     }
                     spectra_core::derivation::setup::WalletSetupField::NamedAccount => {
                         "--named-account"
+                    }
+                    spectra_core::derivation::setup::WalletSetupField::TonWalletVersion => {
+                        "--ton-wallet"
                     }
                 })
                 .collect();
@@ -1085,6 +1094,17 @@ fn derivation_path(chain: Chain, args: &CreationArgs) -> CliResult<Option<String
     .map_err(CliError::from)
 }
 
+/// The TON wallet version `--ton-wallet` names, by its serialized name.
+fn ton_wallet_version(
+    name: Option<&str>,
+) -> CliResult<Option<spectra_core::derivation::ton::TonWalletVersion>> {
+    name.map(|name| {
+        serde_json::from_value(serde_json::Value::String(name.to_string()))
+            .map_err(|_| CliError::usage(format!("unknown TON wallet version {name:?}")))
+    })
+    .transpose()
+}
+
 /// An import on `chain`, named `name`. Core mints the wallet ids and derives
 /// or validates the addresses itself.
 fn request_for(chain: Chain, name: &str, kind: WalletImportKind) -> WalletImportRequest {
@@ -1105,6 +1125,7 @@ fn commit_for(request: WalletImportRequest) -> WalletImportCommit {
         private_key: None,
         restore_height: None,
         named_account: None,
+        ton_wallet_version: None,
     }
 }
 

@@ -17,8 +17,8 @@ use crate::derivation::primitives::derive_substrate_sr25519_material;
 use crate::derivation::solana::derive_solana;
 use crate::derivation::stellar::derive_stellar;
 use crate::derivation::sui::derive_sui;
+use crate::derivation::ton::crc16_xmodem;
 use crate::derivation::ton::derive_ton;
-use crate::derivation::ton::{crc16_xmodem, v4r2_code_hash_and_depth};
 use crate::derivation::tron::derive_tron;
 use crate::derivation::types::BitcoinScriptType;
 use crate::derivation::xrp::derive_xrp;
@@ -383,7 +383,7 @@ fn near_follows_near_seed_phrase() {
 fn ton_mnemonic_structure() {
     // TON mnemonic scheme: entropy = HMAC-SHA512(mnemonic, passphrase);
     // seed = PBKDF2(entropy, "TON default seed", 100_000, 64); priv = seed[0..32].
-    // derive_ton always returns V4R2 bounceable mainnet format.
+    // derive_ton returns the default version's bounceable mainnet address.
     let result = derive_ton(TON_MNEMONIC.into(), None, true, true, true).expect("ton derive");
     let priv_hex = result.private_key_hex.expect("ton priv");
     let pub_hex = result.public_key_hex.expect("ton pub");
@@ -395,12 +395,12 @@ fn ton_mnemonic_structure() {
     priv_arr.copy_from_slice(&priv_bytes);
     let expected_pub = hex::encode(SigningKey::from_bytes(&priv_arr).verifying_key().to_bytes());
     assert_eq!(pub_hex, expected_pub);
-    // V4R2 bounceable mainnet: "EQ" prefix, exactly 48 base64url chars.
+    // Bounceable mainnet: "EQ" prefix, exactly 48 base64url chars.
     assert!(
         address.starts_with("EQ"),
-        "expected V4R2 bounceable address, got: {address}"
+        "expected a bounceable address, got: {address}"
     );
-    assert_eq!(address.len(), 48, "V4R2 must be 48 chars: {address}");
+    assert_eq!(address.len(), 48, "a TON address is 48 chars: {address}");
 }
 
 #[test]
@@ -737,68 +737,60 @@ fn monero_base58_encodes_known_length_pattern() {
     assert!(encoded.chars().all(|c| c == '1'));
 }
 
+/// Each wallet version's account for one key, on each network, as @ton/ton
+/// computes it (`ton-w5.json`), and the version a stored address names.
 #[test]
-fn ton_v4r2_code_hash_matches_known_constant() {
-    // Ensures the embedded BOC + our parser produce the canonical v4R2
-    // root hash. If either changes, every v4R2 address we emit is wrong.
-    let (hash, _depth) = v4r2_code_hash_and_depth().expect("v4r2 code hash");
+fn ton_wallet_versions_match_independent_vectors() {
+    use crate::derivation::ton::TonWalletVersion;
+    use crate::registry::Chain;
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/ton-w5.json")).unwrap();
+    let public: [u8; 32] = hex::decode(fixture["public_key"].as_str().unwrap())
+        .unwrap()
+        .try_into()
+        .unwrap();
+    for (chain, network) in [(Chain::Ton, "mainnet"), (Chain::TonTestnet, "testnet")] {
+        assert_eq!(
+            u64::from(TonWalletVersion::W5.wallet_id(chain).unwrap()),
+            fixture["wallet_id"][network].as_u64().unwrap()
+        );
+        let w5 = fixture["key_address"][network].as_str().unwrap();
+        // The default version is what a raw key imports as.
+        let derived = crate::derivation::dispatch::derive_from_private_key(
+            chain,
+            "01".repeat(32),
+            true,
+            false,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(derived.address.as_deref(), Some(w5), "{network}");
+        assert_eq!(
+            TonWalletVersion::of_address(&public, w5, chain),
+            Some(TonWalletVersion::W5)
+        );
+        let v4r2 = TonWalletVersion::V4R2.address(&public, chain).unwrap();
+        assert_eq!(
+            TonWalletVersion::of_address(&public, &v4r2, chain),
+            Some(TonWalletVersion::V4R2)
+        );
+        // Another key's account names no version of this one.
+        let other = ed25519_dalek::SigningKey::from_bytes(&[2; 32])
+            .verifying_key()
+            .to_bytes();
+        assert_eq!(TonWalletVersion::of_address(&other, w5, chain), None);
+    }
+    // v4R2 signs with one subwallet id everywhere; W5 binds the network.
     assert_eq!(
-        hex::encode(hash),
-        "feb5ff6820e2ff0d9483e7e0d62c817d846789fb4ae580c878866d959dabd5c0"
-    );
-}
-
-#[test]
-fn ton_v4r2_address_structure_and_determinism() {
-    // User-friendly base64url addresses are exactly 48 chars (36 bytes
-    // → 48 chars under base64url-no-pad). v4R2 bounceable mainnet
-    // addresses all start with "EQ" because tag=0x11, workchain=0x00
-    // decodes to base64 `EQ`.
-    let a = derive_ton(TON_MNEMONIC.into(), None, true, false, false)
-        .expect("ton v4r2")
-        .address
-        .expect("address");
-    let b = derive_ton(TON_MNEMONIC.into(), None, true, false, false)
-        .expect("ton v4r2 again")
-        .address
-        .expect("address");
-    assert_eq!(a, b, "v4r2 address must be deterministic");
-    assert_eq!(a.len(), 48, "v4r2 address must be 48 chars: {a}");
-    assert!(a.starts_with("EQ"), "v4r2 bounceable-mainnet prefix: {a}");
-    // Must not contain '+' or '/' (base64url uses '-' and '_' instead).
-    assert!(!a.contains('+'));
-    assert!(!a.contains('/'));
-}
-
-#[test]
-fn ton_v4r2_diverges_from_raw_account_id() {
-    // The V4R2 smart-contract address differs from the raw "0:<pubkey_hex>" form.
-    let result = derive_ton(TON_MNEMONIC.into(), None, true, true, false).expect("ton derive");
-    let v4_addr = result.address.expect("v4r2 address");
-    let pub_hex = result.public_key_hex.expect("pub key");
-    let raw_addr = format!("0:{pub_hex}");
-    assert_ne!(raw_addr, v4_addr);
-}
-
-#[test]
-fn ton_v4r2_changes_with_mnemonic() {
-    let addr_a = derive_ton(TON_MNEMONIC.into(), None, true, false, false)
-        .expect("a")
-        .address
-        .expect("a addr");
-    let addr_b = derive_ton(
-        crate::derivation::ton::generate_ton_mnemonic()
+        TonWalletVersion::V4R2.address(&public, Chain::Ton).unwrap(),
+        TonWalletVersion::V4R2
+            .address(&public, Chain::TonTestnet)
             .unwrap()
-            .to_string(),
-        None,
-        true,
-        false,
-        false,
-    )
-    .expect("b")
-    .address
-    .expect("b addr");
-    assert_ne!(addr_a, addr_b);
+    );
+    assert_ne!(
+        fixture["key_address"]["mainnet"],
+        fixture["key_address"]["testnet"]
+    );
 }
 
 #[test]

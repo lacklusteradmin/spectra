@@ -176,7 +176,7 @@ fn read_blob(
 /// `Zeroizing` so the key is wiped rather than left in the caller's frame.
 fn derive_master_key(password: &str, salt: &[u8]) -> Zeroizing<[u8; 32]> {
     let mut key = Zeroizing::new([0u8; 32]);
-    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
+    crate::kdf::pbkdf2_sha256(
         password.trim().as_bytes(),
         salt,
         PBKDF2_ITERATIONS,

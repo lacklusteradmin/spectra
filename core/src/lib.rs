@@ -198,6 +198,7 @@ pub mod derivation;
 pub mod diagnostics;
 pub mod fetch;
 pub mod formatting;
+mod kdf;
 pub mod monero_heights;
 pub mod registry;
 pub mod send;

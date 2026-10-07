@@ -63,6 +63,7 @@ async fn imported_wallet(service: &WalletService, password: Option<&str>) -> Str
         private_key: None,
         restore_height: None,
         named_account: None,
+        ton_wallet_version: None,
     };
     service.import_wallets(commit).await.unwrap().wallets[0]
         .id

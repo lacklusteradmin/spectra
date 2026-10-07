@@ -32,6 +32,9 @@ pub struct FundsFinderCandidate {
     pub profile: Option<DerivationProfile>,
     /// The account index on the profile; 0 on a pathless chain.
     pub account: u32,
+    /// The wallet contract the address is the account of, on a chain whose
+    /// key holds one per version (TON); `None` elsewhere.
+    pub ton_wallet_version: Option<crate::derivation::ton::TonWalletVersion>,
     /// The full path derived (e.g. `m/84'/0'/1'/0/0`); empty on a pathless
     /// chain.
     pub derivation_path: String,
@@ -64,8 +67,9 @@ pub fn generate_funds_finder_candidates(
 }
 
 /// `chain`'s candidates: each of its profiles at accounts `0..accounts`, the
-/// default profile first, or the one pathless address. A path the deriver
-/// refuses is skipped rather than aborting the rest.
+/// default profile first; on TON each wallet version's account, the default
+/// first; or the one pathless address. A path the deriver refuses is skipped
+/// rather than aborting the rest.
 pub(crate) fn chain_candidates(
     chain: Chain,
     seed_phrase: &str,
@@ -73,6 +77,24 @@ pub(crate) fn chain_candidates(
     accounts: u32,
 ) -> Vec<FundsFinderCandidate> {
     let passphrase = passphrase.filter(|value| !value.is_empty());
+    if chain.has_wallet_versions() {
+        let Ok((_, public)) = crate::derivation::ton::ton_key_pair(seed_phrase, passphrase) else {
+            return Vec::new();
+        };
+        return crate::derivation::ton::TonWalletVersion::ALL
+            .into_iter()
+            .filter_map(|version| {
+                Some(FundsFinderCandidate {
+                    chain_id: chain,
+                    profile: None,
+                    account: 0,
+                    ton_wallet_version: Some(version),
+                    derivation_path: String::new(),
+                    address: version.address(&public, chain).ok()?,
+                })
+            })
+            .collect();
+    }
     let profiles = chain.derivation_profiles();
     let paths: Vec<(Option<DerivationProfile>, u32, String)> = if profiles.is_empty() {
         vec![(None, 0, String::new())]
@@ -108,6 +130,7 @@ pub(crate) fn chain_candidates(
                 chain_id: chain,
                 profile,
                 account,
+                ton_wallet_version: None,
                 derivation_path: path,
                 address,
             })

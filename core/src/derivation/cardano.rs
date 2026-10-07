@@ -13,8 +13,6 @@
 use crate::derivation::error::DerivationError;
 
 use crate::derivation::primitives::{mnemonic_entropy, parse_mnemonic};
-use pbkdf2::pbkdf2_hmac;
-use sha2::Sha512;
 use zeroize::Zeroizing;
 
 // ── Address validation + decoding (preserved) ────────────────────────────
@@ -147,7 +145,7 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
         iteration_count
     };
     let mut xprv = Zeroizing::new([0u8; 96]);
-    pbkdf2_hmac::<Sha512>(passphrase.as_bytes(), &entropy, iterations, &mut *xprv);
+    crate::kdf::pbkdf2_sha512(passphrase.as_bytes(), &entropy, iterations, &mut *xprv);
     xprv[0] &= 0b1111_1000;
     xprv[31] &= 0b0001_1111;
     xprv[31] |= 0b0100_0000;

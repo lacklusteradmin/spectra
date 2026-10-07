@@ -34,6 +34,13 @@ and the older coin type 0; Solana `m/44'/501'/{account}'/0'` and the older
 `m/44'/501'/{account}'`; every other chain with a path its one standard
 profile. NEAR walks SLIP-10 along `m/44'/397'/{account}'` as near-seed-phrase
 does. Monero, TON, Polkadot and Bittensor derive without a path and refuse one.
+A TON phrase or key holds one account per wallet contract: W5 (wallet v5r1,
+the default and what a created wallet uses) or v4R2, chosen at import and
+found by the used-account search. W5 folds the network's global id into its
+wallet id, so its testnet account is not its mainnet one; v4R2's is the same
+on both. Nothing stores the version: a send signs as the version whose
+account the stored address is for the key, and refuses an address no version
+gives it.
 Every profile is checked at two accounts against independent implementations.
 A NEAR phrase or key may hold a named account instead of its implicit one,
 once a verified node lists the key among the account's full-access keys.

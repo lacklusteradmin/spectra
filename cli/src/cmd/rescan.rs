@@ -1,6 +1,6 @@
 //! Funds finder: derive the addresses a seed could have used — every
-//! registry derivation profile at the first accounts — then look for
-//! balances on them.
+//! registry derivation profile at the first accounts, or TON's wallet
+//! versions — then look for balances on them.
 
 use clap::Args;
 use colored::Colorize as _;
@@ -79,7 +79,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
                     "  {}  {:<16} {:<22} {}",
                     out::hint("·"),
                     candidate.chain_id.str_id(),
-                    candidate.derivation_path,
+                    position(candidate),
                     out::hint(&candidate.address),
                 );
             }
@@ -101,6 +101,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
                     "profile": candidate.profile,
                     "account": candidate.account,
                     "path": candidate.derivation_path,
+                    "tonWallet": candidate.ton_wallet_version,
                     "address": candidate.address,
                 }))
                 .collect::<Vec<_>>(),
@@ -139,6 +140,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
                 "profile": read.candidate.profile,
                 "account": read.candidate.account,
                 "path": read.candidate.derivation_path,
+                "tonWallet": read.candidate.ton_wallet_version,
                 "address": read.candidate.address,
                 "amount": read.balance.as_ref().map(|balance| balance.amount_display.clone()),
                 "funded": read.funded,
@@ -181,4 +183,15 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
         "reads": reads,
     }));
     Ok(())
+}
+
+/// Where a candidate sits: its path, or on TON its wallet version.
+fn position(candidate: &spectra_core::derivation::funds_finder::FundsFinderCandidate) -> String {
+    match candidate.ton_wallet_version {
+        Some(version) => serde_json::to_value(version)
+            .ok()
+            .and_then(|name| name.as_str().map(str::to_string))
+            .unwrap_or_default(),
+        None => candidate.derivation_path.clone(),
+    }
 }
