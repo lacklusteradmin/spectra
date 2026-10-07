@@ -155,3 +155,70 @@ fn the_descriptor_lists_only_formats_this_reads() {
         }
     }
 }
+
+/// Each chain's export encoding is the one its own SDK writes for the key.
+#[test]
+fn keys_export_as_their_chains_sdks_write_them() {
+    let fixtures = fixtures();
+    for vector in fixtures["wif"].as_array().unwrap() {
+        let chain = Chain::from_str_id(&text(vector, "chain")).unwrap();
+        assert_eq!(
+            export_format(chain),
+            Some(WalletSecretFormat::Wif),
+            "{chain}"
+        );
+        let written = encode_private_key(chain, WalletSecretFormat::Wif, &text(vector, "key"));
+        assert_eq!(*written.unwrap(), text(vector, "compressed"), "{chain}");
+    }
+    for (chain, format, field) in [
+        (Chain::Solana, WalletSecretFormat::SolanaKeypair, "base58"),
+        (
+            Chain::Stellar,
+            WalletSecretFormat::StellarSecretSeed,
+            "secret",
+        ),
+        (Chain::Sui, WalletSecretFormat::SuiPrivateKey, "secret"),
+        (Chain::Aptos, WalletSecretFormat::AptosPrivateKey, "secret"),
+        (Chain::Near, WalletSecretFormat::NearSecretKey, "secret"),
+    ] {
+        let vector = &fixtures[chain.str_id()];
+        assert_eq!(export_format(chain), Some(format), "{chain}");
+        let written = encode_private_key(chain, format, &text(vector, "key")).unwrap();
+        assert_eq!(*written, text(vector, field), "{chain}");
+    }
+}
+
+/// On every chain that takes a key, the exported key reads back as itself
+/// and derives the address the key does.
+#[test]
+fn every_exported_key_reads_back_as_itself() {
+    for chain in Chain::all() {
+        let Some(format) = export_format(chain) else {
+            assert!(chain.private_key_formats().is_empty(), "{chain}");
+            continue;
+        };
+        let key = if format == WalletSecretFormat::CardanoExtendedKey {
+            let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
+            crate::derivation::dispatch::derive_for_chain(
+                chain,
+                crate::derivation::phrase::test_phrase(chain),
+                &path,
+                None,
+                None,
+                None,
+                false,
+                false,
+                true,
+            )
+            .unwrap()
+            .private_key_hex
+            .unwrap()
+        } else {
+            "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string()
+        };
+        let written = encode_private_key(chain, format, &key).unwrap();
+        let read = parse_private_key(chain, &written).unwrap();
+        assert_eq!(*read, key, "{chain} {format:?}");
+        assert_eq!(address(chain, &read), address(chain, &key), "{chain}");
+    }
+}

@@ -29,6 +29,9 @@ fn bitcoin_wallet() -> WalletView {
             password_protected: false,
         },
         restore_height: None,
+        hidden_holdings: Vec::new(),
+        icp_principal: None,
+        near_account_key: None,
     }
 }
 

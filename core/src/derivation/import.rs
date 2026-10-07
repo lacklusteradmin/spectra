@@ -86,6 +86,10 @@ pub struct WalletImportCommit {
     /// one. Nothing stores it: the address stored is the version's account,
     /// and a send reads the version back from that address and the key.
     pub ton_wallet_version: Option<crate::derivation::ton::TonWalletVersion>,
+    /// The watched wallet a signing import is for, by id. The import must
+    /// give that wallet its keys: a secret that holds another address is
+    /// refused rather than added as a wallet of its own, and so is a watch.
+    pub upgrade_wallet_id: Option<String>,
 }
 
 impl WalletImportCommit {
@@ -325,11 +329,52 @@ pub(crate) enum ImportedAddress {
 /// Each is on the import's network for good: there is no switching it later.
 /// A name is the one asked for, numbered when a watch import made several; a
 /// blank one is filled in from the stored wallets when the import commits.
+/// An ICP signing import's principal, from its key: the identity the
+/// account identifier it stores derives from, which ICRC tokens and the NNS
+/// address. `None` for every other import.
+fn icp_principal_for(commit: &WalletImportCommit) -> Option<String> {
+    let chain = commit.request.chain;
+    if chain.mainnet_counterpart() != Chain::Icp {
+        return None;
+    }
+    let public_hex = match commit.request.kind {
+        WalletImportKind::PrivateKey => {
+            crate::derivation::dispatch::derive_from_private_key(
+                chain,
+                commit.private_key.clone()?,
+                false,
+                true,
+            )
+            .ok()??
+            .public_key_hex
+        }
+        WalletImportKind::Phrase => {
+            crate::derivation::dispatch::derive_for_chain(
+                chain,
+                commit.seed_phrase.as_deref()?,
+                commit.derivation_path.as_deref().unwrap_or_default(),
+                commit.derivation_overrides.passphrase.as_deref(),
+                commit.derivation_overrides.hmac_key.as_deref(),
+                None,
+                false,
+                true,
+                false,
+            )
+            .ok()?
+            .public_key_hex
+        }
+        _ => None,
+    }?;
+    let public: [u8; 32] = hex::decode(public_hex).ok()?.try_into().ok()?;
+    Some(candid::Principal::from_slice(&crate::derivation::icp::principal(&public)).to_text())
+}
+
 pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     addresses: Vec<ImportedAddress>,
     restore_height: Option<u64>,
 ) -> Vec<crate::store::wallet_domain::WalletView> {
+    let icp_principal = icp_principal_for(commit);
     let chain = commit.request.chain;
     let name = commit.request.wallet_name.trim();
     let count = addresses.len();
@@ -360,6 +405,11 @@ pub(crate) fn wallets_for_import(
                 include_in_portfolio_total: true,
                 signing: commit.signing(),
                 restore_height,
+                hidden_holdings: Vec::new(),
+                icp_principal: icp_principal.clone(),
+                // A named NEAR account's key is set where the import
+                // confirmed it.
+                near_account_key: None,
             }
         })
         .collect()
@@ -368,6 +418,67 @@ pub(crate) fn wallets_for_import(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The principal and account @dfinity/identity give the key of 32 0x01
+    /// bytes (`icp-staking-vectors.json`); a phrase records its own; a watch
+    /// records none.
+    #[test]
+    fn an_icp_key_import_records_the_principal_its_account_derives_from() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/icp-staking-vectors.json"
+        ))
+        .unwrap();
+        let commit = |kind| WalletImportCommit {
+            password: None,
+            request: WalletImportRequest {
+                wallet_name: String::new(),
+                chain: Chain::Icp,
+                kind,
+            },
+            derivation_path: None,
+            derivation_overrides: Default::default(),
+            seed_phrase: None,
+            private_key: Some("01".repeat(32)),
+            restore_height: None,
+            named_account: None,
+            ton_wallet_version: None,
+            upgrade_wallet_id: None,
+        };
+        let key = commit(WalletImportKind::PrivateKey);
+        assert_eq!(
+            icp_principal_for(&key).as_deref(),
+            fixtures["controller"].as_str()
+        );
+        assert_eq!(
+            derive_private_key_import_address(&"01".repeat(32), Chain::Icp).unwrap(),
+            fixtures["owner"].as_str().unwrap()
+        );
+        let mut phrase = commit(WalletImportKind::Phrase);
+        phrase.private_key = None;
+        phrase.seed_phrase = Some(crate::derivation::phrase::test_phrase(Chain::Icp).into());
+        phrase.derivation_path =
+            crate::derivation::path::import_derivation_path(Chain::Icp, None).unwrap();
+        let principal = icp_principal_for(&phrase).unwrap();
+        let account = derive_import_address(
+            phrase.seed_phrase.as_deref().unwrap(),
+            Chain::Icp,
+            phrase.derivation_path.as_deref().unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let principal_bytes = candid::Principal::from_text(&principal).unwrap();
+        assert_eq!(
+            hex::encode(crate::derivation::icp::account_from_principal(
+                principal_bytes.as_slice()
+            )),
+            account
+        );
+        let mut watch = commit(WalletImportKind::WatchAddresses {
+            addresses: vec![account],
+        });
+        watch.private_key = None;
+        assert_eq!(icp_principal_for(&watch), None);
+    }
 
     fn request(chain: Chain, kind: WalletImportKind) -> WalletImportRequest {
         WalletImportRequest {
@@ -392,6 +503,7 @@ mod tests {
             restore_height: None,
             named_account: None,
             ton_wallet_version: None,
+            upgrade_wallet_id: None,
         }
     }
 

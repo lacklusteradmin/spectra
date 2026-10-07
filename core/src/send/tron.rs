@@ -8,6 +8,13 @@ use crate::send::error::SendError;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+/// The most energy a TRC-20 transfer may burn, in sun: the `fee_limit` every
+/// token transfer is signed with.
+pub(crate) const TRC20_FEE_LIMIT_SUN: u64 = 100_000_000;
+/// What a TRC-20 transfer usually burns when the account has no energy, in
+/// sun: the preview's static estimate, under the limit above.
+pub(crate) const TRC20_TYPICAL_FEE_SUN: u64 = 15_000_000;
+
 pub(crate) enum Transfer<'a> {
     Native {
         to: &'a str,

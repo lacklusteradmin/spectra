@@ -186,6 +186,155 @@ foundation; the rest build on them and need not land together.
   accounts reads both versions. CLI import, send and refusal checks cover
   it.
 
+## Wallet details
+
+The details page shows a total, holdings and an address; everything else is
+a level down under Advanced or elsewhere in the app. Staking is its own tab
+with a wallet picker, and Monero's sync sits inside Send. Make the page the
+wallet's home: what any wallet can do and what its network adds, each with a
+short note on what it does. The first two items are the foundation; the rest
+build on them one at a time and need not land together. Advertise an action
+only once core owns it end to end and the CLI proves it; a watch-only wallet
+lists only what needs no key. An action that signs or reveals a secret needs
+independent vectors, CLI acceptance of its refusal paths and `make verify`.
+Customisation stays functional: no colours, icons or other decoration.
+
+- [x] **Derive the page's actions in core.** One per-wallet action
+  descriptor, modelled on the setup descriptor, lists what the wallet offers
+  from its network, signing kind and live state, with each action's note.
+  The CLI prints it (`wallet actions <wallet>`) and Swift renders it
+  generically; no network-specific action is decided in Swift. It starts
+  with what exists: send and receive from this wallet, this wallet's history,
+  rename, revealing the phrase and deletion. The notes reuse the registry's
+  capability and limit summary the setup page shows: account reserves, a
+  single address, transparent-only, a custom indexer. A core test keeps the
+  descriptor honest, as the setup descriptor's does.
+- [x] **Start actions from the wallet; delete the Staking tab.** A wallet on
+  a network with a staking adapter shows its positions on its page and starts
+  every staking action there. Delete the Staking tab with its network list
+  and wallet picker (`StakingView`, `ChainStakingDetailView`,
+  `MainAppTab.staking`), so staking has one way in: its wallet. Record the
+  removal in BEHAVIOUR-CHANGES.md. Monero's sync and its restore height move
+  from Send to the wallet's page.
+- [x] **Add this wallet's key to another network.** A wallet stays on one
+  network, but its secret often belongs on several, most of all the EVM
+  networks that share one address. From the wallet's page, after Face ID and
+  the wallet password, core reads the sealed secret and runs the target
+  network's ordinary import with it; the secret never crosses to Swift. The
+  new wallet seals its own copy and stands alone, as every setup does. Core
+  lists the targets that read the same secret: a BIP-39 phrase on any
+  BIP-39 network, along that network's profile and with the source's
+  passphrase; a Monero or TON phrase only within its family; a key on the
+  networks with its curve and key form. A watch-only wallet offers the
+  networks that read its address, such as an EVM address on other EVM
+  networks. Each target previews its address before anything is sealed, and
+  duplicate refusal and the watch-only upgrade apply as in any setup. Prove
+  through the CLI that the copy signs, that deleting either wallet leaves the
+  other intact, and that a target with another phrase format or curve is
+  refused.
+- [x] **Upgrade a watched wallet from its page.** Core already upgrades a
+  watch-only wallet in place when a signing setup derives its address, but
+  the only way in is an ordinary Add Wallet. Give the watched wallet's page
+  the entry: it opens its network's phrase or key method bound to that
+  wallet, and the preview shows whether the input derives the watched address.
+  A secret that derives another address is refused rather than added as a new
+  wallet. Prove the refusal through the CLI, and that the wallet stays watched
+  after it.
+- [x] **Open the address in an explorer.** `core/data/explorers.toml` holds
+  only transaction templates. Add an address template per network, test
+  networks included, checked against each explorer's live address page, and
+  link it from the page.
+- [x] **Export keys in the network's own formats.** A wallet can reveal only
+  its phrase. Add the private key in the encoding its network's import reads
+  (WIF, Solana's base58 keypair, Stellar's `S…` seed and the others; Monero's
+  spend and view keys), and what another wallet needs to watch it: Bitcoin's
+  account xpub and Monero's address with its private view key. The xpub and
+  the view key expose the whole history, so every export sits behind Face ID
+  and the wallet password. Copy uses the phrase's local-only, expiring
+  pasteboard item. Core tests round-trip each export through Spectra's import
+  and through vectors from a reference wallet.
+- [x] **Sign a message to prove an address.** Sign a plain-text message with
+  the wallet's key in its network's scheme: BIP-322 on Bitcoin-family SegWit
+  and Taproot addresses and the legacy signed message on P2PKH, EIP-191
+  `personal_sign` on EVM, Solana's off-chain message, and the native forms on
+  the other networks that define one. Verify a signature against an address
+  as well. Refuse anything that is not a message: EIP-712 typed data, since a
+  permit authorises spending, and any payload that parses as a transaction on
+  the network. Prove signing, verification and refusal against reference
+  vectors and through the CLI.
+- [x] **Sign messages on the remaining networks.** Stellar's SEP-53,
+  Cardano's CIP-8 COSE signatures, Kaspa's and Monero's own message
+  signatures, each checked against the network's own SDK. The dapp-bound
+  formats (NEAR's NEP-413, Aptos's AIP-62, TON's proof) are not plain
+  messages: each signs a dapp's domain and nonce, and without a dapp
+  connection there is nothing to supply them. They belong with connecting
+  to dapps, not with proving an address.
+- [x] **Hide assets from a wallet's holdings.** Discovery lists whatever an
+  indexer returns, spam airdrops included. Let a wallet hide a holding, kept
+  in core with the wallet and listed again under hidden assets. A hidden
+  asset leaves the wallet's total and the home page's aggregate but stays
+  sendable. Prove persistence across reopening and the totals through the
+  CLI.
+- [x] **Bitcoin family: the addresses and coins behind the balance.** On the
+  networks with account discovery (BTC, BCH, BSV, LTC, DOGE and PPC), list
+  owned receive and change addresses with their use and balance, the next
+  unused receive address, and the unspent outputs with their confirmations.
+  Peercoin also shows the minting rewards still maturing, which its total
+  includes and a send cannot spend. Read-only; freezing outputs belongs to
+  coin selection in [FUTURE_PLANS.md](FUTURE_PLANS.md).
+- [x] **EVM: token approvals and names.** List the ERC-20 allowances the
+  address has granted, from an indexer's `Approval` events confirmed by a
+  live `allowance` read, and revoke one with `approve(spender, 0)` through the
+  ordinary send stages. A network without an indexer says so rather than
+  showing an empty list. On Ethereum, show the address's ENS primary name
+  only when the name resolves forward to the same address.
+- [x] **Solana: close empty token accounts.** Each token account holds rent.
+  List the wallet's empty SPL and Token-2022 accounts with the SOL each
+  returns, and close them in one reviewed transaction. Refuse a non-empty
+  account, one whose close authority is not the wallet, and a Token-2022
+  account with withheld fees. Prove the instruction bytes and the refusals
+  with vectors and through the CLI.
+- [x] **Tron: account resources.** Show Bandwidth and Energy, what a TRX or
+  TRC-20 transfer burns without them, and whether the account is activated.
+  Stake 2.0 freezing and voting is a staking adapter under
+  [Staking coverage](#staking-coverage).
+- [x] **XRP and Stellar: reserves and closing the account.** Show the
+  reserve split into the base reserve and what the account's objects or
+  subentries hold, read from the network. Offer closing the account into
+  another one to recover the reserve: XRP `AccountDelete` and Stellar
+  `AccountMerge`. Both are irreversible: core checks every prerequisite the
+  network enforces before signing, and the review names what is given up.
+  Prove the transactions with vectors and each refusal through the CLI.
+- [x] **TON: contract state.** Show the wallet contract version and the
+  account's state (uninitialised, active or frozen), and explain that an
+  uninitialised account deploys its contract on its first send.
+- [x] **NEAR: access keys.** List the account's full-access and function-call
+  keys, each function-call key with its receiver and allowance, marking the
+  key Spectra signs with. Delete a function-call key through the send stages.
+  Full-access keys are listed only, and deleting the wallet's own key is
+  refused. Show the storage the account's balance must cover.
+- [x] **Sui: merge coin objects.** A balance spread over many `Coin<T>`
+  objects costs more gas to spend. Show each type's object count and merge a
+  type's objects in one reviewed transaction, keeping the SUI gas coin
+  separate. Prove the transaction with vectors and through the CLI.
+- [x] **Polkadot and Bittensor: what the balance holds.** Split the balance
+  into free, reserved and frozen, and show the existential deposit below
+  which the account is reaped. Bittensor subnet staking is a staking adapter
+  under [Staking coverage](#staking-coverage).
+- [x] **ICP: principal and account identifier.** The stored address is the
+  default ledger account identifier. Show the principal it derives from as
+  well, and which form each kind of recipient expects: the ICP ledger, ICRC
+  tokens and the NNS.
+- [x] **Monero: prove a payment.** Keep each outgoing transfer's tx key with
+  its history row and offer, from the transaction's detail, the proof that
+  monero-wallet-cli's `check_tx_key` verifies. Owned subaddresses are under
+  [Wallet import and address recovery](#wallet-import-and-address-recovery).
+- [x] **Test networks: where to get coins.** A test network's page links its
+  faucet from the registry, checked for the concrete network. Dogecoin
+  testnet, Decred testnet and Kaspa TN10 have none yet: re-check
+  faucet.decred.org, faucet.doge.toys and faucet-tn10.kaspanet.io and add
+  them to `chains.toml` and the audit once they serve their network.
+
 ## Supported chain scope
 
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) defines supported protocols, import formats,
@@ -210,6 +359,30 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   vectors and CLI inspection of the signed transaction. See
   [address decoding](../core/src/derivation/decred.rs) and
   [transfer construction](../core/src/send/decred.rs).
+- [ ] **Derive Cardano base addresses.** Spectra derives a CIP-19
+  enterprise address from the payment key at `m/1852'/1815'/{account}'/0/0`,
+  with no stake credential. Mainstream Cardano wallets derive base addresses
+  that add the stake key at `m/1852'/1815'/{account}'/2/0`, so a phrase
+  imported from one of them lands on a different address and that wallet's
+  funds go unseen. Derive the base address for phrase wallets, read balance,
+  UTXOs and history there and send change back to it; spending still needs
+  only the payment key's witness. A raw-key wallet holds no stake key and
+  keeps its enterprise address. The used-account search reads base
+  addresses too. Prove the address against independent vectors and against
+  a reference wallet's restore of the same phrase, and prove transfers
+  through the CLI. Record the address change in BEHAVIOUR-CHANGES.md and
+  update CHAIN-SUPPORT.md. The wallet page can then show the stake address
+  and its reward balance; delegation is a staking adapter under
+  [Staking coverage](#staking-coverage). See
+  [derivation](../core/src/derivation/cardano.rs).
+- [ ] **Send XRP destination tags and Stellar memos.** XRP payments carry no
+  `DestinationTag` and Stellar payments no memo, so a send to an exchange's
+  shared deposit address cannot say whose deposit it is. Take a tag or memo
+  in the send flow, bind it into the review digest, and refuse a send to an
+  account that requires one without it: XRP's `lsfRequireDestTag` and
+  Stellar's SEP-29 `config.memo_required`. Account closing refuses those
+  destinations today for the same reason. Prove the encodings against the
+  networks' SDKs and the refusals through the CLI.
 
 ### Asset and privacy protocols
 

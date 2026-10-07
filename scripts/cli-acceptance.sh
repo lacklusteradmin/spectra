@@ -91,6 +91,14 @@ check "creates a wallet"                    $OK \
 check "renames it"                          $OK \
     spectra wallet rename "Acceptance BTC" "Renamed BTC"
 contains "the rename survives reopening"    '"name":"Renamed BTC"' spectra --json wallet list
+contains "a wallet's page offers what its network adds" '"action":"stake"' \
+    spectra --json wallet actions "Acceptance SOL"
+check "a network that keeps only a balance has no account to show" $REJECTED \
+    spectra wallet account "Acceptance SOL"
+check "a transaction this device did not sign as Monero has no payment proof" $USAGE \
+    spectra wallet prove-payment "Acceptance SOL" --txid 00
+contains "a test network names its faucet" '"faucet":"https://sepolia-faucet.pk910.de/"' \
+    spectra --json chains --testnets --filter Sepolia
 
 # Incompatible stored records must refuse loading without changing the bytes.
 section "stored data integrity"
@@ -144,6 +152,14 @@ contains "export returns the phrase it sealed" "\"seedPhrase\":\"$SEED\"" \
     spectra --json wallet export "Acceptance SOL" --yes
 check "a wrong password cannot unseal it"   $REJECTED \
     with_password wrong spectra wallet export "Acceptance SOL" --yes
+contains "a Solana key exports as the keypair its wallets import" '"format":"solanaKeypair"' \
+    spectra --json wallet export "Acceptance SOL" --key private-key --yes
+contains "a Bitcoin account exports its zpub" '"accountKey":"zpub' \
+    spectra --json wallet export "Renamed BTC" --key account-key --yes
+check "but no one key for its many addresses" $REJECTED \
+    spectra wallet export "Renamed BTC" --key private-key --yes
+check "a key export asks for --yes"         $USAGE \
+    spectra wallet export "Acceptance SOL" --key private-key
 check "imports without a password"          $OK \
     with_seed "$SEED" spectra wallet import --chain Solana --account 1 --name "Open SOL" --no-password
 contains "and exports with no password asked" "\"seedPhrase\":\"$SEED\"" \
@@ -170,6 +186,13 @@ contains "imports a key from a file and derives its address" \
         --name "PK Wallet" --private-key-file "$DATA_DIR/pk.hex"
 contains "export returns the key it sealed" '"privateKey":"4c0883a6' \
     with_password "correct horse" spectra --json wallet export "PK Wallet" --yes
+# The key @dfinity/identity's vectors use: 32 bytes of 0x01.
+printf '01%.0s' $(seq 32) > "$DATA_DIR/icp.hex"
+check "imports an ICP key"                  $OK \
+    spectra wallet import --chain internet-computer --name "ICP Key" \
+        --private-key-file "$DATA_DIR/icp.hex" --no-password
+contains "and a new process reads back its principal" '"icpPrincipal":"wf3fv-4c4nr-7ks2b' \
+    spectra --json wallet show "ICP Key"
 # Core refuses before sealing: a refusal after sealing would leave a key stored
 # under an id no wallet references.
 SECRETS_BEFORE="$(secret_files)"
@@ -177,6 +200,46 @@ check "refuses a chain that cannot derive from a key" $REJECTED \
     with_password "correct horse" spectra wallet import --chain Cardano \
         --name "No PK" --private-key-file "$DATA_DIR/pk.hex"
 pass_if "and seals no key on the way to refusing" '[[ "$(secret_files)" == "$SECRETS_BEFORE" ]]'
+
+section "adding a wallet to another network"
+contains "a phrase wallet lists the networks its phrase restores on" '"sui"' \
+    spectra --json wallet copy-targets "Acceptance SOL"
+check "a copy needs the source's password"  $REJECTED \
+    with_password wrong spectra wallet copy "Acceptance SOL" --chain sui --name "Copied SUI"
+check "a network of another phrase format is refused" $REJECTED \
+    spectra wallet copy "Acceptance SOL" --chain monero --name "Copied XMR"
+lacks "neither stored a wallet"             '"Copied' spectra --json wallet list
+check "adds the phrase to another network"  $OK \
+    spectra wallet copy "Acceptance SOL" --chain sui --name "Copied SUI"
+pass_if "the copy is sealed in its own file" \
+    '[[ -f "$DATA_DIR/secrets/seed/$(spectra --json wallet show "Copied SUI" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"wallet\"][\"id\"])")%2Eseed" ]]'
+check "and signs under the source's password" $OK spectra send identity --from "Copied SUI"
+
+section "giving a watched wallet its keys"
+check "watches an address"                  $OK \
+    spectra wallet watch --chain ethereum --name "Watched ETH" \
+        --address 0x58a57ed9d8d624cbd12e2c467d34787555bb1b25
+contains "its page offers to add its keys"  '"action":"addKeys"' spectra --json wallet actions "Watched ETH"
+check "a phrase that does not hold it is refused" $REJECTED \
+    with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+        spectra wallet import --chain ethereum --upgrade "Watched ETH"
+contains "the phrase that holds it gives it its keys" '"upgraded":true' \
+    with_seed "$SEED" spectra --json wallet import --chain ethereum --upgrade "Watched ETH"
+contains "and it keeps its name"            '"isWatchOnly":false' spectra --json wallet show "Watched ETH"
+
+section "proving an address"
+readonly SOL_ADDRESS="BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX"
+SOL_SIGNATURE="$(spectra --json wallet sign-message "Acceptance SOL" --message "Spectra acceptance" \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["signature"])')"
+check "a Solana wallet's signature verifies for its address" $OK \
+    spectra address verify-message --chain solana --address "$SOL_ADDRESS" \
+        --message "Spectra acceptance" --signature "$SOL_SIGNATURE"
+check "and for no other message"            $REJECTED \
+    spectra address verify-message --chain solana --address "$SOL_ADDRESS" \
+        --message "Spectra acceptance!" --signature "$SOL_SIGNATURE"
+check "EIP-712 typed data is not signed as a message" $REJECTED \
+    spectra wallet sign-message "Watched ETH" \
+        --message '{"domain":{},"types":{},"primaryType":"Permit","message":{}}'
 
 # ── Confirmation gates ──────────────────────────────────────────────────────
 #
@@ -228,6 +291,7 @@ suite "complete mined OP Stack fees and durable outcomes"       cli-receipt-fees
 suite "Litecoin SegWit recovery and durable signing"            cli-litecoin.py
 suite "Peercoin recovery, mature rewards and durable signing"   cli-peercoin.py
 suite "XRP signing and protocol validation"                     cli-send-xrp.py
+suite "wallet operations: closing accounts, deleting keys"         cli-wallet-operations.py
 suite "TRC-10 discovery, signing and execution receipts"        cli-trc10.py
 suite "owned staking preparation, execution and durable recovery" cli-staking.py
 suite "ICP neuron ownership, explicit review and certified refusal" cli-icp-staking.py

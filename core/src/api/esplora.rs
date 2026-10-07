@@ -114,6 +114,22 @@ impl EsploraClient {
         .await
     }
 
+    /// The height of the chain's tip: `GET /blocks/tip/height`, a bare number.
+    pub async fn fetch_tip_height(&self) -> Result<u64, ApiError> {
+        let http = self.http.clone();
+        race(&self.endpoints, |base| {
+            let http = http.clone();
+            async move {
+                http.get_json(
+                    &format!("{base}/blocks/tip/height"),
+                    RetryProfile::ChainRead,
+                )
+                .await
+            }
+        })
+        .await
+    }
+
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         let addr = address.to_string();
         let http = self.http.clone();

@@ -512,7 +512,7 @@ impl UtxoDerivation {
         Ok(indices)
     }
 
-    fn account_private_key(
+    pub(crate) fn account_private_key(
         chain: Chain,
         phrase: &str,
         base_path: &str,

@@ -5,6 +5,7 @@ pub mod ethereum;
 mod evm_overrides;
 pub mod flow;
 pub mod keys;
+pub mod message;
 
 pub mod payload;
 pub mod preview_decode;

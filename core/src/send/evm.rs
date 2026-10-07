@@ -415,6 +415,15 @@ fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
 
 /// Encode a `transfer(address,uint256)` call.
 pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, SendError> {
+    encode_address_amount(SEL_TRANSFER, to, amount)
+}
+
+/// Encode an `approve(address,uint256)` call: `amount` 0 revokes.
+pub(crate) fn encode_erc20_approve(spender: &str, amount: u128) -> Result<Vec<u8>, SendError> {
+    encode_address_amount(crate::api::evm_json_rpc::SEL_APPROVE, spender, amount)
+}
+
+fn encode_address_amount(selector: [u8; 4], to: &str, amount: u128) -> Result<Vec<u8>, SendError> {
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
         return Err(SendError::Invalid(
@@ -422,7 +431,7 @@ pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, S
         ));
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
-    out.extend_from_slice(&SEL_TRANSFER);
+    out.extend_from_slice(&selector);
     out.extend_from_slice(&[0u8; 12]);
     out.extend_from_slice(&to_bytes);
     let mut amount_bytes = [0u8; 32];

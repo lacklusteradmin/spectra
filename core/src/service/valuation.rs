@@ -155,12 +155,12 @@ pub(super) fn portfolio_valuation(state: &ResidentState) -> PortfolioValuation {
                 .wallets
                 .iter()
                 .filter(|w| w.include_in_portfolio_total)
-                .flat_map(|w| &w.holdings),
+                .flat_map(|w| w.counted_holdings()),
         ),
         wallets: state
             .wallets
             .iter()
-            .map(|wallet| (wallet.id.clone(), total(state, wallet.holdings.iter())))
+            .map(|wallet| (wallet.id.clone(), total(state, wallet.counted_holdings())))
             .collect(),
     }
 }

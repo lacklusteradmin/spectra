@@ -8,6 +8,8 @@
 # `popular_rank` and authored `tags` belong on mainnets only; testnets inherit both.
 # Ranks order the picker, 1..=n without gaps. Picker and wiki share the same tags.
 # `layer-1`, `evm` and `testnet` are derived from the registry and refused here.
+# `faucet` is a test network's faucet page, checked live to name that exact
+# network (docs/audits/testnet-faucets-2026-10-07.json); testnets only.
 
 [[chains]]
 id = "bitcoin"
@@ -794,6 +796,7 @@ id = "bitcoin-testnet"
 name = "Bitcoin Testnet 3"
 family = "bitcoin"
 environment = "testnet"
+faucet = "https://coinfaucet.eu/en/btc-testnet/"
 token_standards = []
 derivation_path = [
   { tag = "nativeSegWit", path = "m/84'/1'/{account}'/0/0", is_default = true },
@@ -811,6 +814,7 @@ id = "bitcoin-testnet-4"
 name = "Bitcoin Testnet 4"
 family = "bitcoin"
 environment = "testnet"
+faucet = "https://coinfaucet.eu/en/btc-testnet4/"
 token_standards = []
 derivation_path = [
   { tag = "nativeSegWit", path = "m/84'/1'/{account}'/0/0", is_default = true },
@@ -828,6 +832,7 @@ id = "bitcoin-signet"
 name = "Bitcoin Signet"
 family = "bitcoin"
 environment = "testnet"
+faucet = "https://alt.signetfaucet.com/"
 token_standards = []
 derivation_path = [
   { tag = "nativeSegWit", path = "m/84'/1'/{account}'/0/0", is_default = true },
@@ -845,6 +850,7 @@ id = "litecoin-testnet"
 name = "Litecoin Testnet"
 family = "litecoin"
 environment = "testnet"
+faucet = "https://cypherfaucet.com/ltc-testnet"
 token_standards = []
 derivation_path = [
   { tag = "legacy", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -861,6 +867,7 @@ id = "bitcoin-cash-testnet"
 name = "Bitcoin Cash Testnet"
 family = "bitcoin-cash"
 environment = "testnet"
+faucet = "https://tbch.googol.cash/"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -875,6 +882,7 @@ id = "bitcoin-sv-testnet"
 name = "Bitcoin SV Testnet"
 family = "bitcoin-sv"
 environment = "testnet"
+faucet = "https://bsvfaucet.com/"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -903,6 +911,7 @@ id = "zcash-testnet"
 name = "Zcash Testnet"
 family = "zcash"
 environment = "testnet"
+faucet = "https://faucet.testnet.valargroup.dev/"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -945,6 +954,7 @@ id = "dash-testnet"
 name = "Dash Testnet"
 family = "dash"
 environment = "testnet"
+faucet = "https://faucet.testnet.networks.dash.org/"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -959,6 +969,7 @@ id = "peercoin-testnet"
 name = "Peercoin Testnet"
 family = "peercoin"
 environment = "testnet"
+faucet = "https://faucet.peercoinexplorer.net/"
 token_standards = []
 derivation_path = [
   { tag = "legacy", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -976,6 +987,7 @@ id = "ethereum-sepolia"
 name = "Ethereum Sepolia"
 family = "ethereum"
 environment = "testnet"
+faucet = "https://sepolia-faucet.pk910.de/"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -990,6 +1002,7 @@ id = "ethereum-hoodi"
 name = "Ethereum Hoodi"
 family = "ethereum"
 environment = "testnet"
+faucet = "https://hoodi-faucet.pk910.de/"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1004,6 +1017,7 @@ id = "arbitrum-sepolia"
 name = "Arbitrum Sepolia"
 family = "arbitrum"
 environment = "testnet"
+faucet = "https://www.alchemy.com/faucets/arbitrum-sepolia"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1018,6 +1032,7 @@ id = "optimism-sepolia"
 name = "Optimism Sepolia"
 family = "optimism"
 environment = "testnet"
+faucet = "https://console.optimism.io/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1032,6 +1047,7 @@ id = "base-sepolia"
 name = "Base Sepolia"
 family = "base"
 environment = "testnet"
+faucet = "https://portal.cdp.coinbase.com/products/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1046,6 +1062,7 @@ id = "bnb-testnet"
 name = "BNB Smart Chain Testnet"
 family = "bnb"
 environment = "testnet"
+faucet = "https://www.bnbchain.org/en/testnet-faucet"
 token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1060,6 +1077,7 @@ id = "avalanche-fuji"
 name = "Avalanche Fuji C"
 family = "avalanche"
 environment = "testnet"
+faucet = "https://core.app/tools/testnet-faucet/?subnet=c&token=c"
 token_standards = ["ERC-20", "ARC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1074,6 +1092,7 @@ id = "polygon-amoy"
 name = "Polygon Amoy"
 family = "polygon"
 environment = "testnet"
+faucet = "https://www.alchemy.com/faucets/polygon-amoy"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1088,6 +1107,7 @@ id = "hyperliquid-testnet"
 name = "HyperEVM Testnet"
 family = "hyperliquid"
 environment = "testnet"
+faucet = "https://faucet.quicknode.com/hyperliquid/testnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1102,6 +1122,7 @@ id = "linea-sepolia"
 name = "Linea Sepolia"
 family = "linea"
 environment = "testnet"
+faucet = "https://ethfaucet.com/networks/linea"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1116,6 +1137,7 @@ id = "celo-sepolia"
 name = "Celo Sepolia"
 family = "celo"
 environment = "testnet"
+faucet = "https://faucet.celo.org/celo-sepolia"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1130,6 +1152,7 @@ id = "cronos-testnet"
 name = "Cronos EVM Testnet"
 family = "cronos"
 environment = "testnet"
+faucet = "https://faucet.cronos.com/"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1144,6 +1167,7 @@ id = "zksync-era-sepolia"
 name = "ZKsync Era Sepolia"
 family = "zksync-era"
 environment = "testnet"
+faucet = "https://www.alchemy.com/faucets/zksync-sepolia"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1158,6 +1182,7 @@ id = "sonic-testnet"
 name = "Sonic Testnet"
 family = "sonic"
 environment = "testnet"
+faucet = "https://testnet.soniclabs.com/account"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1172,6 +1197,7 @@ id = "ink-sepolia"
 name = "Ink Sepolia"
 family = "ink"
 environment = "testnet"
+faucet = "https://console.optimism.io/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1186,6 +1212,7 @@ id = "x-layer-testnet"
 name = "X Layer Testnet"
 family = "x-layer"
 environment = "testnet"
+faucet = "https://web3.okx.com/xlayer/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -1200,6 +1227,7 @@ id = "ethereum-classic-mordor"
 name = "Ethereum Classic Mordor"
 family = "ethereum-classic"
 environment = "testnet"
+faucet = "https://faucet.etcmc-monitor.org/"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true },
@@ -1214,6 +1242,7 @@ id = "tron-nile"
 name = "Tron Nile"
 family = "tron"
 environment = "testnet"
+faucet = "https://nileex.io/join/getJoinPage"
 token_standards = ["TRC-10", "TRC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
@@ -1228,6 +1257,7 @@ id = "solana-devnet"
 name = "Solana Devnet"
 family = "solana"
 environment = "testnet"
+faucet = "https://faucet.solana.com/"
 token_standards = ["SPL"]
 derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
@@ -1243,6 +1273,7 @@ id = "xrp-testnet"
 name = "XRP Ledger Testnet"
 family = "xrp"
 environment = "testnet"
+faucet = "https://xrpl.org/resources/dev-tools/xrp-faucets"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
@@ -1257,6 +1288,7 @@ id = "stellar-testnet"
 name = "Stellar Testnet"
 family = "stellar"
 environment = "testnet"
+faucet = "https://lab.stellar.org/account/fund"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
@@ -1271,6 +1303,7 @@ id = "cardano-preprod"
 name = "Cardano Preprod"
 family = "cardano"
 environment = "testnet"
+faucet = "https://docs.cardano.org/cardano-testnets/tools/faucet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
@@ -1285,6 +1318,7 @@ id = "sui-testnet"
 name = "Sui Testnet"
 family = "sui"
 environment = "testnet"
+faucet = "https://faucet.sui.io/?network=testnet"
 token_standards = ["Sui Coin"]
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
@@ -1299,6 +1333,7 @@ id = "aptos-testnet"
 name = "Aptos Testnet"
 family = "aptos"
 environment = "testnet"
+faucet = "https://aptos.dev/network/faucet"
 token_standards = ["Aptos Coin", "AIP-21"]
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
@@ -1313,6 +1348,7 @@ id = "ton-testnet"
 name = "TON Testnet"
 family = "ton"
 environment = "testnet"
+faucet = "https://t.me/testgiver_ton_bot"
 token_standards = ["TEP-74"]
 derivation_path = []
 search_keywords = ["TON Testnet", "Test Gram", "tGRAM"]
@@ -1325,6 +1361,7 @@ id = "near-testnet"
 name = "NEAR Testnet"
 family = "near"
 environment = "testnet"
+faucet = "https://docs.near.org/getting-started/faucet"
 token_standards = ["NEP-141"]
 derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
@@ -1339,6 +1376,7 @@ id = "polkadot-westend"
 name = "Polkadot Westend"
 family = "polkadot"
 environment = "testnet"
+faucet = "https://faucet.polkadot.io/westend?parachain=1000"
 token_standards = []
 derivation_path = []
 search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
@@ -1351,6 +1389,7 @@ id = "monero-stagenet"
 name = "Monero Stagenet"
 family = "monero"
 environment = "testnet"
+faucet = "https://cypherfaucet.com/xmr-stagenet"
 token_standards = []
 derivation_path = []
 search_keywords = ["Monero Stagenet", "Stagenet", "tXMR"]

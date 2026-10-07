@@ -37,6 +37,40 @@ pub struct StellarSendResult {
 
 // ── Horizon API response types
 
+/// A Stellar account's reserve inputs, in stroops and counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarReserveState {
+    pub exists: bool,
+    pub balance_stroops: u64,
+    pub subentries: u64,
+    pub sponsoring: u64,
+    pub sponsored: u64,
+    pub base_reserve: u64,
+}
+
+/// What merging an account depends on, from one node's latest ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarMergeState {
+    /// `None` when the account does not exist.
+    pub source: Option<StellarMergeableAccount>,
+    /// Whether the destination asks for a memo (SEP-29); `None` when it
+    /// does not exist.
+    pub destination_memo_required: Option<bool>,
+    pub ledger: u32,
+    pub base_reserve: u64,
+}
+
+/// The account being merged, as the latest ledger holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarMergeableAccount {
+    pub balance_stroops: u64,
+    pub sequence: u64,
+    pub subentries: u64,
+    pub sponsoring: u64,
+    pub sponsored: u64,
+    pub auth_immutable: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct HorizonAccount {
     pub(crate) balances: Vec<HorizonBalance>,
@@ -209,6 +243,148 @@ impl HorizonClient {
         page.pointer("/_embedded/records/0/base_reserve_in_stroops")
             .and_then(serde_json::Value::as_u64)
             .or_decode("ledgers: missing base_reserve_in_stroops")
+    }
+
+    /// An account's reserve as the latest ledger holds it, from one verified
+    /// node: whether it exists, its native balance, the subentries and
+    /// sponsorships its minimum balance counts, and the base reserve.
+    pub(crate) async fn fetch_reserve_state(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<StellarReserveState, ApiError> {
+        #[derive(Deserialize)]
+        struct Account {
+            balances: Vec<HorizonBalance>,
+            subentry_count: u64,
+            #[serde(default)]
+            num_sponsoring: u64,
+            #[serde(default)]
+            num_sponsored: u64,
+        }
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let base_reserve = node.fetch_base_reserve().await?;
+            let account = match node.get::<Account>(&format!("/accounts/{address}")).await {
+                Err(ApiError::Status { status: 404, .. }) => None,
+                read => Some(read?),
+            };
+            Ok(match account {
+                None => StellarReserveState {
+                    exists: false,
+                    balance_stroops: 0,
+                    subentries: 0,
+                    sponsoring: 0,
+                    sponsored: 0,
+                    base_reserve,
+                },
+                Some(account) => StellarReserveState {
+                    exists: true,
+                    balance_stroops: u64::try_from(parse_stellar_amount(
+                        &account
+                            .balances
+                            .iter()
+                            .find(|balance| balance.asset_type == "native")
+                            .or_decode("no native balance")?
+                            .balance,
+                    )?)
+                    .map_err(|_| ApiError::decode("negative native balance"))?,
+                    subentries: account.subentry_count,
+                    sponsoring: account.num_sponsoring,
+                    sponsored: account.num_sponsored,
+                    base_reserve,
+                },
+            })
+        })
+        .await
+    }
+
+    /// What merging `address` into `destination` depends on, from one
+    /// verified node: both accounts, the latest ledger and its base reserve.
+    pub(crate) async fn fetch_merge_state(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+        destination: &str,
+    ) -> Result<StellarMergeState, ApiError> {
+        #[derive(Deserialize)]
+        struct Flags {
+            #[serde(default)]
+            auth_immutable: bool,
+        }
+        #[derive(Deserialize)]
+        struct Account {
+            balances: Vec<HorizonBalance>,
+            sequence: String,
+            subentry_count: u64,
+            #[serde(default)]
+            num_sponsoring: u64,
+            #[serde(default)]
+            num_sponsored: u64,
+            flags: Flags,
+            #[serde(default)]
+            data: std::collections::HashMap<String, String>,
+        }
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let account = |address: String| {
+                let node = &node;
+                async move {
+                    match node.get::<Account>(&format!("/accounts/{address}")).await {
+                        Err(ApiError::Status { status: 404, .. }) => Ok(None),
+                        read => read.map(Some),
+                    }
+                }
+            };
+            let ledger: serde_json::Value = node.get("/ledgers?order=desc&limit=1").await?;
+            let latest = |field: &str| {
+                ledger
+                    .pointer(&format!("/_embedded/records/0/{field}"))
+                    .and_then(serde_json::Value::as_u64)
+                    .or_decode("ledgers: missing latest ledger")
+            };
+            let source = match account(address.to_string()).await? {
+                None => None,
+                Some(account) => Some(StellarMergeableAccount {
+                    balance_stroops: u64::try_from(parse_stellar_amount(
+                        &account
+                            .balances
+                            .iter()
+                            .find(|balance| balance.asset_type == "native")
+                            .or_decode("no native balance")?
+                            .balance,
+                    )?)
+                    .map_err(|_| ApiError::decode("negative native balance"))?,
+                    sequence: account
+                        .sequence
+                        .parse()
+                        .map_err(|e| ApiError::Decode(format!("sequence parse: {e}")))?,
+                    subentries: account.subentry_count,
+                    sponsoring: account.num_sponsoring,
+                    sponsored: account.num_sponsored,
+                    auth_immutable: account.flags.auth_immutable,
+                }),
+            };
+            // SEP-29: an account that needs a memo says so in a data entry
+            // whose value is "1".
+            let destination_memo_required =
+                account(destination.to_string()).await?.map(|account| {
+                    account
+                        .data
+                        .get("config.memo_required")
+                        .is_some_and(|value| value == "MQ==")
+                });
+            Ok(StellarMergeState {
+                source,
+                destination_memo_required,
+                ledger: u32::try_from(latest("sequence")?)
+                    .map_err(|_| ApiError::decode("ledgers: sequence out of range"))?,
+                base_reserve: latest("base_reserve_in_stroops")?,
+            })
+        })
+        .await
     }
 
     pub async fn fetch_base_fee(&self) -> Result<u64, ApiError> {

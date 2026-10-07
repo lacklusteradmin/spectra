@@ -9,6 +9,7 @@ mod address_book;
 mod built_in_tokens;
 mod dashboard_groups;
 mod feed_state_follows_commands;
+mod hidden_holdings;
 mod import_address_validation;
 mod keypool;
 mod network_token_identity;

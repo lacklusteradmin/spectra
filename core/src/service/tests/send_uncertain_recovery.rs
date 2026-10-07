@@ -298,6 +298,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
                 asset: "TON".into(),
                 symbol: "TON".into(),
                 staking: None,
+                operation: None,
                 created_at: f64::from(expiry) - 60.0,
                 review_digest: String::new(),
                 review: SendArtifactReview::default(),

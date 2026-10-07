@@ -544,31 +544,19 @@ impl WalletService {
                     quote.budget,
                     u32::from(chain.native_decimals()),
                 ));
-                let public_key: [u8; 32] = if sender.len() == 64
-                    && sender.bytes().all(|b| b.is_ascii_hexdigit())
-                {
-                    hex::decode(sender)?
-                        .try_into()
-                        .map_err(|_| SpectraBridgeError::failure("Invalid NEAR public key"))?
-                } else {
-                    let response = client.call("query", json!({"request_type":"view_access_key_list","finality":"final","account_id":sender})).await?;
-                    let keys: Vec<_> = response["keys"]
-                        .as_array()
-                        .ok_or_else(|| SpectraBridgeError::failure("Missing NEAR keys"))?
-                        .iter()
-                        .filter(|k| k["access_key"]["permission"] == "FullAccess")
-                        .collect();
-                    if keys.len() != 1 {
-                        return Err(crate::SpectraBridgeError::failure(
-                            "Named NEAR sender requires one unambiguous full-access signing key",
-                        ));
-                    }
-                    let key = keys[0]["public_key"]
-                        .as_str()
-                        .and_then(|k| k.strip_prefix("ed25519:"))
-                        .ok_or_else(|| SpectraBridgeError::failure("Unsupported NEAR key"))?;
-                    crate::derivation::solana::decode_b58_32(key)?
-                };
+                let public_key: [u8; 32] =
+                    if sender.len() == 64 && sender.bytes().all(|b| b.is_ascii_hexdigit()) {
+                        hex::decode(sender)?
+                            .try_into()
+                            .map_err(|_| SpectraBridgeError::failure("Invalid NEAR public key"))?
+                    } else {
+                        // A named account signs with the key recorded at import,
+                        // whichever other full-access keys it has.
+                        super::wallet_near_keys::near_signing_key(
+                            &self.stored_wallet(&request.wallet_id).await?,
+                            sender,
+                        )?
+                    };
                 let nonce = client
                     .fetch_full_access_key_nonce(sender, &bs58::encode(public_key).into_string())
                     .await?
@@ -837,7 +825,7 @@ impl WalletService {
                         contract,
                         to,
                         amount,
-                        fee_limit: 100_000_000,
+                        fee_limit: crate::send::tron::TRC20_FEE_LIMIT_SUN,
                     },
                     None => Transfer::Native {
                         to,
@@ -986,6 +974,29 @@ impl WalletService {
         let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
         let mut resources = Vec::new();
         let (payload, field, hash) = match &stored.prepared {
+            PreparedPayload::NearDeleteKey(p) => {
+                if !NearClient::new(eps)
+                    .transaction_block_is_valid(chain, &p.block_hash)
+                    .await?
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "NEAR block reference is stale; review again",
+                    ));
+                }
+                let (raw, hash) = p.sign(&seed()?)?;
+                resources.push(format!(
+                    "{}:{}:{}:nonce:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    hex::encode(p.public_key),
+                    p.nonce
+                ));
+                (
+                    json!({"signed_tx_b64":STANDARD.encode(raw)}).to_string(),
+                    "txid",
+                    Some(hash),
+                )
+            }
             PreparedPayload::NearFunctionCall(p) => {
                 if !NearClient::new(eps)
                     .transaction_block_is_valid(chain, &p.block_hash)
@@ -1300,6 +1311,75 @@ impl WalletService {
                 ));
                 (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
             }
+            PreparedPayload::XrpAccountDelete {
+                sequence,
+                fee_drops,
+            } => {
+                // Every prerequisite again: the account or its destination
+                // may have changed since the review.
+                let (fresh, ..) = self
+                    .account_closing(chain, &stored.view.sender, &stored.view.recipient)
+                    .await?;
+                if !matches!(fresh, PreparedPayload::XrpAccountDelete { sequence: s, .. } if s == *sequence)
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "XRP sequence changed; build and review again",
+                    ));
+                }
+                let key = decode_private_key(&signer.private_key_hex)?;
+                let public = signer
+                    .public_key_hex
+                    .as_deref()
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing XRP public key"))?;
+                let blob = crate::send::xrp::build_signed_account_delete(
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    *fee_drops,
+                    *sequence,
+                    &key,
+                    public,
+                )?;
+                resources.push(format!(
+                    "{}:{}:sequence:{sequence}",
+                    chain.str_id(),
+                    stored.view.sender
+                ));
+                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+            }
+            PreparedPayload::StellarAccountMerge {
+                sequence,
+                fee_stroops,
+            } => {
+                let (fresh, ..) = self
+                    .account_closing(chain, &stored.view.sender, &stored.view.recipient)
+                    .await?;
+                if !matches!(fresh, PreparedPayload::StellarAccountMerge { sequence: s, .. } if s == *sequence)
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Stellar sequence changed; build and review again",
+                    ));
+                }
+                let (key, public) = stellar_signing_key(&signer.private_key_hex)?;
+                let raw = crate::send::stellar::build_signed_account_merge_xdr(
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    *fee_stroops,
+                    *sequence,
+                    chain.stellar_network_passphrase()?.as_bytes(),
+                    &key,
+                    &public,
+                )?;
+                resources.push(format!(
+                    "{}:{}:sequence:{sequence}",
+                    chain.str_id(),
+                    stored.view.sender
+                ));
+                (
+                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
+                    "txid",
+                    None,
+                )
+            }
             PreparedPayload::Stellar {
                 sequence,
                 fee_stroops,
@@ -1315,19 +1395,7 @@ impl WalletService {
                         "Stellar sequence changed; build and review again",
                     ));
                 }
-                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
-                if !matches!(bytes.len(), 32 | 64) {
-                    return Err(SpectraBridgeError::failure("Invalid Stellar signing key"));
-                }
-                let seed: &[u8; 32] = bytes[..32]
-                    .try_into()
-                    .map_err(|_| SpectraBridgeError::failure("Invalid Stellar seed"))?;
-                let public = ed25519_dalek::SigningKey::from_bytes(seed)
-                    .verifying_key()
-                    .to_bytes();
-                let mut key = zeroize::Zeroizing::new([0u8; 64]);
-                key[..32].copy_from_slice(seed);
-                key[32..].copy_from_slice(&public);
+                let (key, public) = stellar_signing_key(&signer.private_key_hex)?;
                 let raw = crate::send::stellar::build_signed_payment_xdr(
                     &stored.view.sender,
                     &stored.view.recipient,
@@ -1465,6 +1533,29 @@ impl WalletService {
                 let hash = crate::send::payload::bitcoin_transaction_id(&raw);
                 (raw, "txid", hash)
             }
+            PreparedPayload::SolanaAccountClosure(closure) => {
+                let p = &closure.transaction;
+                let valid = SolanaClient::new(eps)
+                    .call(
+                        "isBlockhashValid",
+                        json!([p.blockhash, {"commitment":"confirmed"}]),
+                    )
+                    .await?;
+                if valid["value"].as_bool() != Some(true) {
+                    return Err(SpectraBridgeError::failure(
+                        "Solana blockhash expired; build and review again",
+                    ));
+                }
+                for (account, _) in &closure.accounts {
+                    resources.push(format!("{}:token-account:{account}", chain.str_id()));
+                }
+                let raw = p.sign(&seed()?)?;
+                (
+                    STANDARD.encode(&raw),
+                    "signature",
+                    Some(bs58::encode(&raw[1..65]).into_string()),
+                )
+            }
             PreparedPayload::Solana(p) => {
                 if let Some(staking) = &stored.view.staking {
                     let account = if let Some(seed) = &p.account_seed {
@@ -1526,6 +1617,27 @@ impl WalletService {
                     json!({"signed_body_json":body}).to_string(),
                     "txid",
                     Some(hash),
+                )
+            }
+            PreparedPayload::SuiMerge(merge) => {
+                let p = &merge.transaction;
+                resources = p
+                    .objects
+                    .iter()
+                    .map(|c| {
+                        format!(
+                            "{}:object:{}:{}",
+                            chain.str_id(),
+                            hex::encode(c.id),
+                            c.version
+                        )
+                    })
+                    .collect();
+                let (bytes, signature) = p.clone().sign(&seed()?)?;
+                (
+                    json!({"tx_bytes_b64":bytes,"sig_b64":signature}).to_string(),
+                    "digest",
+                    Some(p.transaction_digest()),
                 )
             }
             PreparedPayload::Sui(p) => {
@@ -1701,6 +1813,11 @@ impl WalletService {
                     .transaction_block_is_valid(chain, &p.block_hash)
                     .await?
             }
+            PreparedPayload::NearDeleteKey(p) => {
+                !NearClient::new(endpoints)
+                    .transaction_block_is_valid(chain, &p.block_hash)
+                    .await?
+            }
             PreparedPayload::Tron(p) => p.body["raw_data"]["expiration"]
                 .as_u64()
                 .is_none_or(|expiry| now * 1000.0 >= expiry as f64),
@@ -1721,6 +1838,16 @@ impl WalletService {
                     .as_bool()
                     != Some(true)
             }
+            PreparedPayload::SolanaAccountClosure(p) => {
+                SolanaClient::new(endpoints)
+                    .call(
+                        "isBlockhashValid",
+                        json!([p.transaction.blockhash, {"commitment":"confirmed"}]),
+                    )
+                    .await?["value"]
+                    .as_bool()
+                    != Some(true)
+            }
             _ => false,
         };
         if expired {
@@ -1730,4 +1857,25 @@ impl WalletService {
         }
         Ok(())
     }
+}
+
+/// A Stellar signer's 64-byte key and its public half, from a 32-byte seed
+/// or a 64-byte keypair.
+fn stellar_signing_key(
+    private_key_hex: &str,
+) -> Result<(zeroize::Zeroizing<[u8; 64]>, [u8; 32]), SpectraBridgeError> {
+    let bytes = zeroize::Zeroizing::new(hex::decode(private_key_hex)?);
+    if !matches!(bytes.len(), 32 | 64) {
+        return Err(SpectraBridgeError::failure("Invalid Stellar signing key"));
+    }
+    let seed: &[u8; 32] = bytes[..32]
+        .try_into()
+        .map_err(|_| SpectraBridgeError::failure("Invalid Stellar seed"))?;
+    let public = ed25519_dalek::SigningKey::from_bytes(seed)
+        .verifying_key()
+        .to_bytes();
+    let mut key = zeroize::Zeroizing::new([0u8; 64]);
+    key[..32].copy_from_slice(seed);
+    key[32..].copy_from_slice(&public);
+    Ok((key, public))
 }

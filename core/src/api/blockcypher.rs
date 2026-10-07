@@ -88,6 +88,15 @@ impl BlockcypherClient {
         Ok(info.n_tx > 0 || info.unconfirmed_n_tx > 0)
     }
 
+    /// The height of the chain's tip, from the chain's own resource.
+    pub(crate) async fn fetch_tip_height(&self) -> Result<u64, ApiError> {
+        #[derive(Deserialize)]
+        struct Chain {
+            height: u64,
+        }
+        Ok(self.get::<Chain>("").await?.height)
+    }
+
     /// The confirmed balance and the mempool's net change to it.
     pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         let info: BlockcypherBalance = self.get(&format!("/addrs/{address}/balance")).await?;

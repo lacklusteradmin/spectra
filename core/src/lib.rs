@@ -188,7 +188,7 @@ pub use donations::{DonationDestination, donation_destinations};
 
 mod explorers;
 pub use explorers::{
-    TransactionExplorer, TransactionExplorerLink, transaction_explorer_link, transaction_explorers,
+    Explorer, ExplorerLink, address_explorer_link, explorers, transaction_explorer_link,
 };
 
 pub mod api;

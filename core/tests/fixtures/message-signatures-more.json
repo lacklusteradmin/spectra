@@ -1,0 +1,63 @@
+{
+  "provenance": "@emurgo/cardano-message-signing-nodejs 1.1.0, @emurgo/cardano-serialization-lib-nodejs 15.0.3, kaspa-wasm 0.13.0, monero-ts 0.11.20",
+  "cardano": [
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "key": "105d2ef2192150655a926bca9cccf5e2f6e496efa9580508192e1f4a790e6f53de06529129511d1cacb0664bcf04853fdc0055a47cc6d2c6d205127020760652",
+      "message": "Hello World",
+      "signature": "{\"signature\":\"84582aa201276761646472657373581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42a166686173686564f44b48656c6c6f20576f726c6458400351be05b24b02694f731483f78b7ae735e4122239b6347223b5b5f754f0fc5370d7d673279e61396dc6eb37a37660adb63a6f17c329c7e76c638cbfc0d9cd03\",\"key\":\"a40101032720062158207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a\"}"
+    },
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "key": "105d2ef2192150655a926bca9cccf5e2f6e496efa9580508192e1f4a790e6f53de06529129511d1cacb0664bcf04853fdc0055a47cc6d2c6d205127020760652",
+      "message": "Spectra 证明 ✓\nline two",
+      "signature": "{\"signature\":\"84582aa201276761646472657373581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42a166686173686564f4581b5370656374726120e8af81e6988e20e29c930a6c696e652074776f58406db92361f1cd3dd3fc6d5bc905dc25bb2cf921696f85dcd9f69ba8d79ce6d837601dcde96b5de3f0cd6fe1162423e7a0d8869639d52b30bfeb0f1c65649d5b0d\",\"key\":\"a40101032720062158207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a\"}"
+    },
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "key": "105d2ef2192150655a926bca9cccf5e2f6e496efa9580508192e1f4a790e6f53de06529129511d1cacb0664bcf04853fdc0055a47cc6d2c6d205127020760652",
+      "message": "",
+      "signature": "{\"signature\":\"84582aa201276761646472657373581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42a166686173686564f440584052bb3ebcd9ebdacc212983977be8a565fdd1e05037091088535fef84151d9252c2558a406c165ec4cc258e7d4e1a5dd66ce7cb6f93467841999d8ffb53020d00\",\"key\":\"a40101032720062158207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a\"}"
+    }
+  ],
+  "kaspa": [
+    {
+      "address": "kaspa:qqdcf32k0vfxgsyet5ldt246q4jaw8scx3sysx0lnstlt6w4m5rc72kqpk9q3",
+      "key": "0101010101010101010101010101010101010101010101010101010101010101",
+      "message": "Hello World",
+      "signature": "7eb0ae9972ab2f1d7ec61d756db4c5e7826884f09db5c86e58e9a1f00c39b8cdc75f824d894eaba5a7f9f07f64f4a5e1aecf6bf8a08a40f9e51da129c2e83365"
+    },
+    {
+      "address": "kaspa:qqdcf32k0vfxgsyet5ldt246q4jaw8scx3sysx0lnstlt6w4m5rc72kqpk9q3",
+      "key": "0101010101010101010101010101010101010101010101010101010101010101",
+      "message": "Spectra 证明 ✓\nline two",
+      "signature": "a0c3c81c8b6be96c5fd6756f172586ad58a48777ef0a3d82bd5373846c379ad3c5b9dddfef8e29e88eb7eff5f6137f0ad019c0dcdd861792d52ad4e7ff3b453d"
+    },
+    {
+      "address": "kaspa:qqdcf32k0vfxgsyet5ldt246q4jaw8scx3sysx0lnstlt6w4m5rc72kqpk9q3",
+      "key": "0101010101010101010101010101010101010101010101010101010101010101",
+      "message": "",
+      "signature": "cc1d5f10c351ce8d6cfd613a0135d5bc4aa11e145579bd1bdcd6b1db00e61f378e48877d8ae16458ad5616bd2d2ff3d7e76272df1391f0754a04ca81a26fe286"
+    }
+  ],
+  "monero": [
+    {
+      "address": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "key": "42c18561a04b8de73b2f0d08229fe28664f5c453ccb85e70811aaed6f6da5f01ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "message": "Hello World",
+      "signature": "SigV2Wb32B9crERXD2Gdz6dD5paM6xkdpvN7J5FaNQyh896KCdkYqGpy14gwVZko7M4hNoEDaPhafJUGAaYurZF1Dk5Ly"
+    },
+    {
+      "address": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "key": "42c18561a04b8de73b2f0d08229fe28664f5c453ccb85e70811aaed6f6da5f01ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "message": "Spectra 证明 ✓\nline two",
+      "signature": "SigV2Zni6BQVus5VZLt47mLDpm1VaMRuZWPnUEjF7z1NeakkdU4y9vH122T1HounsXG7xXnFJ2EYq7TyhLQ3UYS7wBRrZ"
+    },
+    {
+      "address": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "key": "42c18561a04b8de73b2f0d08229fe28664f5c453ccb85e70811aaed6f6da5f01ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "message": "",
+      "signature": "SigV24aix3ghEVbYL5ZHrsPtxcZjeDcspUogLrZgtC1GmGrYbdeoSNJGLoyf8JEAz91g8b23qMzhhS9gEXE1hdWkyXTv7"
+    }
+  ]
+}

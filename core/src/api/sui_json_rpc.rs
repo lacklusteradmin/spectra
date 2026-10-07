@@ -275,6 +275,64 @@ impl SuiClient {
             .and_then(|d| crate::api::checked_token_decimals(u128::from(d)).ok())
     }
 
+    /// Each coin type the address holds, SUI included: its type, how many
+    /// objects hold it and their total, as the node reports them.
+    pub(crate) async fn fetch_coin_object_counts(
+        &self,
+        address: &str,
+    ) -> Result<Vec<(String, u64, u128)>, ApiError> {
+        self.call("suix_getAllBalances", json!([address]))
+            .await?
+            .as_array()
+            .or_decode("suix_getAllBalances: missing list")?
+            .iter()
+            .map(|entry| {
+                Ok((
+                    entry["coinType"]
+                        .as_str()
+                        .or_decode("suix_getAllBalances: missing coin type")?
+                        .to_string(),
+                    entry["coinObjectCount"]
+                        .as_u64()
+                        .or_decode("suix_getAllBalances: missing object count")?,
+                    entry["totalBalance"]
+                        .as_str()
+                        .and_then(|total| total.parse().ok())
+                        .or_decode("suix_getAllBalances: missing total")?,
+                ))
+            })
+            .collect()
+    }
+
+    /// What a transaction would cost, from a dry run: computation, storage
+    /// and the storage rebate, in MIST. Refuses one that would not succeed.
+    pub(crate) async fn dry_run_gas(&self, bytes: &[u8]) -> Result<(u64, u64, u64), ApiError> {
+        use base64::Engine;
+        let result = self
+            .call(
+                "sui_dryRunTransactionBlock",
+                json!([base64::engine::general_purpose::STANDARD.encode(bytes)]),
+            )
+            .await?;
+        if result["effects"]["status"]["status"].as_str() != Some("success") {
+            return Err(ApiError::invalid(format!(
+                "Sui dry run refused: {}",
+                result["effects"]["status"]
+            )));
+        }
+        let cost = |field: &str| {
+            result["effects"]["gasUsed"][field]
+                .as_str()
+                .and_then(|value| value.parse().ok())
+                .or_decode("Sui dry run: missing gas used")
+        };
+        Ok((
+            cost("computationCost")?,
+            cost("storageCost")?,
+            cost("storageRebate")?,
+        ))
+    }
+
     /// Every coin type the address holds, as the node reports it.
     ///
     /// `suix_getAllBalances` returns coin types and totals but no decimals; a

@@ -120,6 +120,9 @@ mod tests {
                 amount: "1".into(),
             }],
             restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
         });
         s.quotes.prices.insert("ethereum:native".into(), 1000.0);
         s

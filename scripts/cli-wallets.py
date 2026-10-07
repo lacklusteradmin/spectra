@@ -631,6 +631,128 @@ class WalletsTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); worker.join()
 
+class ApprovalsTests(unittest.TestCase):
+    def test_approvals_are_confirmed_live_and_revoked_through_the_send_stages(self):
+        """Logged approvals are shown only while a live read says they stand; a
+        revocation is approve(spender, 0), signed and broadcast as a send; an
+        Ethereum name shows only when it resolves back; no indexer is refused."""
+        phrase = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+        owner = '0x9858effd232b4033e47d90003d41ec34ecaeda94'
+        token, other = '0x' + 'aa' * 20, '0x' + 'bb' * 20
+        unlimited, spent, nft = '0x' + '11' * 20, '0x' + '22' * 20, '0x' + '33' * 20
+        resolver = '0x' + '44' * 20
+        state = {'ens': owner}
+        submitted, seen = [], []
+        word = lambda hex_: '0x' + hex_.removeprefix('0x').rjust(64, '0')
+        abi_string = lambda text: '0x' + format(32, '064x') + format(len(text), '064x') + text.encode().hex().ljust(64, '0')
+        def log(token_, spender, fourth=None):
+            return {'address': token_, 'blockNumber': '0x10', 'data': word('0'), 'logIndex': hex(len(seen)),
+                    'transactionHash': '0x' + os.urandom(32).hex(), 'timeStamp': '0x1',
+                    'topics': ['0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925',
+                               word(owner), word(spender), fourth]}
+        directory_holder = {}
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def reply(self, value):
+                data = json.dumps(value).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(data)))
+                self.end_headers(); self.wfile.write(data)
+            def do_GET(self):
+                query = dict(part.split('=', 1) for part in self.path.split('?', 1)[1].split('&'))
+                assert query['module'] == 'logs' and query['action'] == 'getLogs', self.path
+                assert query['topic1'] == word(owner), query
+                rows = [log(token, unlimited), log(token, spent), log(other, nft, word('7')), log(token, unlimited)]
+                self.reply({'status': '1', 'message': 'OK', 'result': rows})
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                def answer(call):
+                    method = call['method']; seen.append(method)
+                    if method == 'eth_call':
+                        data = call['params'][0]['data'][2:]
+                        selector, to = data[:8], call['params'][0]['to']
+                        if selector == 'dd62ed3e':
+                            result = word('f' * 64) if data[-40:] == unlimited[2:] else word('0')
+                        elif selector == '313ce567':
+                            result = word('12')
+                        elif selector == '95d89b41':
+                            result = abi_string('TKA')
+                        elif selector == '0178b8bf':
+                            result = word(resolver)
+                        elif selector == '691f3431':
+                            assert to == resolver, call
+                            result = abi_string('spectra.eth')
+                        elif selector == '3b3b57de':
+                            result = word(state['ens'])
+                        else:
+                            raise AssertionError(call)
+                        return {'jsonrpc': '2.0', 'id': call['id'], 'result': result}
+                    if method == 'eth_sendRawTransaction':
+                        submitted.append(call['params'][0])
+                        with sqlite3.connect(pathlib.Path(directory_holder['path']) / 'spectra.sqlite') as db:
+                            artifacts = [json.loads(row[0]) for row in db.execute('SELECT payload FROM send_artifacts')]
+                        artifact = next(a for a in artifacts if a['submission'] and a['submission']['payload'] == call['params'][0])
+                        return {'jsonrpc': '2.0', 'id': call['id'], 'result': artifact['view']['transaction_hash']}
+                    values = {'eth_chainId': '0x1', 'eth_getBalance': hex(10 * 10**18), 'eth_getCode': '0x',
+                              'eth_getTransactionCount': '0x3', 'eth_estimateGas': '0xb000', 'eth_gasPrice': '0xb2d05e00',
+                              'eth_blockNumber': '0x20',
+                              'eth_feeHistory': {'baseFeePerGas': ['0x3b9aca00'], 'reward': [['0x77359400']]}}
+                    assert method in values, method
+                    return {'jsonrpc': '2.0', 'id': call['id'], 'result': values[method]}
+                self.reply(list(map(answer, body)) if isinstance(body, list) else answer(body))
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        endpoint = f'http://127.0.0.1:{server.server_port}'
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-approvals-') as directory:
+                directory_holder['path'] = directory
+                journal = pathlib.Path(directory) / 'network.jsonl'
+                def run(*args, success=True):
+                    p = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True,
+                                       text=True, timeout=60,
+                                       env={**os.environ, 'SPECTRA_LOOPBACK_ONLY': str(journal), 'SPECTRA_SEED': phrase})
+                    assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
+                    return json.loads(p.stdout) if success else p.returncode
+                run('wallet', 'import', '--chain', 'ethereum', '--name', 'Approver', '--no-password')
+                for chain in ['ethereum', 'bnb']:
+                    run('endpoints', '--chain', chain, '--api', 'evm-json-rpc', '--capabilities',
+                        'balance,fee,broadcast,verification,token-balance', '--add', endpoint)
+                    run('endpoints', '--chain', chain, '--custom-only', 'true')
+                # No indexer: refused, not an empty list.
+                run('wallet', 'import', '--chain', 'bnb', '--name', 'NoIndexer', '--no-password')
+                assert run('wallet', 'approvals', 'NoIndexer', success=False) == 3
+                run('endpoints', '--chain', 'ethereum', '--api', 'blockscout', '--capabilities', 'history', '--add', endpoint)
+                approvals = run('wallet', 'approvals', 'Approver')['approvals']
+                assert approvals['complete'], approvals
+                # The spent approval is gone; the NFT one is not ERC-20's.
+                assert [(a['token'], a['spender'], a['symbol'], a['unlimited']) for a in approvals['approvals']] == \
+                    [(token, unlimited, 'TKA', True)], approvals
+                assert run('wallet', 'revoke', 'Approver', '--token', token, '--spender', spent, success=False) == 3
+                built = run('wallet', 'revoke', 'Approver', '--token', token, '--spender', unlimited)['artifact']
+                revocation = built['operation']
+                assert revocation['kind'] == 'revoke_approval', built
+                assert (revocation['token'], revocation['spender']) == (token, unlimited), built
+                # 0xb000 gas plus Ethereum's 20% buffer (54068), at 2 × 1 gwei
+                # base + 2 gwei tip.
+                assert revocation['network_fee'] == '0.000216272', revocation
+                prepared = json.loads(built['prepared_details'])['Evm']
+                assert prepared['to'] == token and prepared['value_wei'] == 0, prepared
+                assert bytes(prepared['data']).hex() == '095ea7b3' + unlimited[2:].rjust(64, '0') + '0' * 64, prepared
+                # The reopened artifact signs and broadcasts as any send does.
+                signed = run('send', 'sign', built['id'], '--review-digest', built['review_digest'],
+                             '--endpoint', endpoint)['artifact']
+                run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
+                assert len(submitted) == 1, submitted
+                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                    kinds = [json.loads(row[0])['kind'] for row in db.execute('SELECT payload FROM history_records')]
+                assert kinds == ['revokeApproval'], kinds
+                assert run('wallet', 'ens', 'Approver')['name'] == 'spectra.eth'
+                state['ens'] = '0x' + '55' * 20
+                assert run('wallet', 'ens', 'Approver')['name'] is None
+                assert not journal.exists() or not journal.read_text().strip(), journal.read_text()
+        finally:
+            server.shutdown()
+
+
 if __name__ == '__main__':
     if not __debug__:
         raise SystemExit('Run without -O or PYTHONOPTIMIZE: assertions must remain enabled.')

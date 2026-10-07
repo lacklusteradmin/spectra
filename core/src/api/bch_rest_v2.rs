@@ -113,6 +113,11 @@ impl BchRestClient {
         self.client.get_path(&self.endpoints, path).await
     }
 
+    /// The height of the chain's tip: `GET /blockchain/getBlockCount`.
+    pub(crate) async fn fetch_tip_height(&self) -> Result<u64, ApiError> {
+        self.get("/blockchain/getBlockCount").await
+    }
+
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         let details: AddressDetails = self.get(&format!("/address/details/{address}")).await?;
         Ok(details.tx_appearances > 0 || details.unconfirmed_tx_appearances > 0)

@@ -303,6 +303,7 @@ mod query_tests {
                 asset: "ICP".into(),
                 symbol: "ICP".into(),
                 staking: None,
+                operation: None,
                 created_at: 1.0,
                 review_digest: String::new(),
                 review: SendArtifactReview::default(),

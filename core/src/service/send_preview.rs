@@ -431,10 +431,14 @@ impl WalletService {
             .map_err(|_| SpectraBridgeError::failure("invalid TRC-20 balance"))?;
         let token_balance = crate::decimal::from_units(raw, u32::from(token.decimals));
 
-        let fee_limit_sun: i64 = 15_000_000;
+        // The estimate is what a transfer usually burns; the limit is the
+        // most the signed transaction lets it burn.
         Ok(json!({
-            "estimated_fee_trx": crate::decimal::from_units(fee_limit_sun as u128, u32::from(Chain::Tron.native_decimals())),
-            "fee_limit_sun": fee_limit_sun,
+            "estimated_fee_trx": crate::decimal::from_units(
+                u128::from(crate::send::tron::TRC20_TYPICAL_FEE_SUN),
+                u32::from(Chain::Tron.native_decimals()),
+            ),
+            "fee_limit_sun": crate::send::tron::TRC20_FEE_LIMIT_SUN,
             "spendable_balance": token_balance,
             "max_sendable": token_balance,
             "fee_rate_description": "Static energy estimate",

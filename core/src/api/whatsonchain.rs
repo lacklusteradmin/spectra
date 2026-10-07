@@ -124,6 +124,15 @@ impl WhatsonchainClient {
 // enrichment), and tx status.
 
 impl WhatsonchainClient {
+    /// The height of the chain's tip: `GET /chain/info`'s block count.
+    pub(crate) async fn fetch_tip_height(&self) -> Result<u64, ApiError> {
+        #[derive(serde::Deserialize)]
+        struct Info {
+            blocks: u64,
+        }
+        Ok(self.get::<Info>("/chain/info").await?.blocks)
+    }
+
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         let balance = self.fetch_balance(address).await?;
         if balance.confirmed_sats > 0 || balance.unconfirmed_sats != 0 {

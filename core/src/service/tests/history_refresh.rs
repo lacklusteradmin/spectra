@@ -24,6 +24,9 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
             })
             .collect(),
         restore_height: None,
+        hidden_holdings: Vec::new(),
+        icp_principal: None,
+        near_account_key: None,
     }
 }
 

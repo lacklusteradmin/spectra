@@ -735,7 +735,9 @@ fn derive_wallet_state(
                 unique_price_request_coins.push(holding.clone());
             }
 
-            if wallet.include_in_portfolio_total {
+            // A hidden holding stays sendable but counts in no total.
+            if wallet.include_in_portfolio_total && !wallet.hidden_holdings.contains(&identity_key)
+            {
                 included_portfolio_holdings.push(holding.clone());
                 if !grouped_totals.contains_key(&identity_key) {
                     grouped_order.push(identity_key.clone());

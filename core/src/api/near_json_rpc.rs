@@ -38,6 +38,56 @@ pub struct NearClient {
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
+/// One access key on a NEAR account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NearAccessKeyEntry {
+    /// `ed25519:…`.
+    pub public_key: String,
+    /// `None` for a full-access key.
+    pub function_call: Option<NearFunctionCallPermission>,
+}
+
+/// What a function-call key may do: call `receiver_id`, only `method_names`
+/// where any are named, paying gas from `allowance` (`None`: unlimited).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NearFunctionCallPermission {
+    pub receiver_id: String,
+    pub method_names: Vec<String>,
+    pub allowance: Option<u128>,
+}
+
+/// What a NEAR account's balance must cover, in yoctoNEAR and bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NearStorageState {
+    pub amount: u128,
+    /// Stake locked in the account, which counts toward its storage.
+    pub locked: u128,
+    pub storage_usage: u64,
+    pub cost_per_byte: u128,
+}
+
+impl NearStorageState {
+    /// What the liquid balance must keep for storage: none for an account
+    /// within the free allowance, otherwise its bytes' cost beyond the
+    /// locked stake.
+    pub(crate) fn storage_reserve(&self) -> Result<u128, ApiError> {
+        let reserve = u128::from(self.storage_usage)
+            .checked_mul(self.cost_per_byte)
+            .or_decode("NEAR storage reserve overflow")?;
+        Ok(
+            if self.storage_usage
+                <= crate::registry::Chain::Near
+                    .near_zero_balance_storage_limit()
+                    .unwrap_or(0)
+            {
+                0
+            } else {
+                reserve.saturating_sub(self.locked)
+            },
+        )
+    }
+}
+
 impl NearClient {
     pub(crate) async fn verify_network(
         &self,
@@ -409,7 +459,12 @@ impl NearClient {
         })
     }
 
-    pub(crate) async fn fetch_spendable_balance(&self, owner: &str) -> Result<u128, ApiError> {
+    /// An account's balance, the stake locked in it, the bytes it stores and
+    /// what the network charges a byte, in yoctoNEAR.
+    pub(crate) async fn fetch_storage_state(
+        &self,
+        owner: &str,
+    ) -> Result<NearStorageState, ApiError> {
         let account = self
             .call(
                 "query",
@@ -420,7 +475,7 @@ impl NearClient {
             .as_str()
             .and_then(|s| s.parse::<u128>().ok())
             .or_decode("NEAR account: invalid native balance")?;
-        let usage = account["storage_usage"]
+        let storage_usage = account["storage_usage"]
             .as_u64()
             .or_decode("NEAR account: missing storage usage")?;
         let locked = account["locked"]
@@ -430,23 +485,65 @@ impl NearClient {
         let config = self
             .call("EXPERIMENTAL_protocol_config", json!({"finality":"final"}))
             .await?;
-        let cost = config["runtime_config"]["storage_amount_per_byte"]
+        let cost_per_byte = config["runtime_config"]["storage_amount_per_byte"]
             .as_str()
             .and_then(|s| s.parse::<u128>().ok())
             .or_decode("NEAR account: missing storage cost")?;
-        let reserve = u128::from(usage)
-            .checked_mul(cost)
-            .or_decode("NEAR storage reserve overflow")?;
-        let reserve = if usage
-            <= crate::registry::Chain::Near
-                .near_zero_balance_storage_limit()
-                .unwrap()
-        {
-            0
-        } else {
-            reserve.saturating_sub(locked)
+        Ok(NearStorageState {
+            amount,
+            locked,
+            storage_usage,
+            cost_per_byte,
+        })
+    }
+
+    pub(crate) async fn fetch_spendable_balance(&self, owner: &str) -> Result<u128, ApiError> {
+        let state = self.fetch_storage_state(owner).await?;
+        Ok(state.amount.saturating_sub(state.storage_reserve()?))
+    }
+
+    /// The account's access keys, from one verified node.
+    pub(crate) async fn fetch_access_keys(
+        &self,
+        chain: crate::registry::Chain,
+        account_id: &str,
+    ) -> Result<Vec<NearAccessKeyEntry>, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let result = node
+                .call(
+                    "query",
+                    json!({"request_type": "view_access_key_list", "finality": "final", "account_id": account_id}),
+                )
+                .await?;
+            result["keys"]
+                .as_array()
+                .or_decode("view_access_key_list: missing keys")?
+                .iter()
+                .map(parse_access_key)
+                .collect()
+        })
+        .await
+    }
+
+    /// The most deleting one of the signer's own keys costs, in yoctoNEAR.
+    pub(crate) async fn delete_key_fee_budget(&self) -> Result<u128, ApiError> {
+        let (config, price) = self.fetch_fee_inputs().await?;
+        let fees = &config["runtime_config"]["transaction_costs"];
+        let parts = [
+            &fees["action_receipt_creation_config"],
+            &fees["action_creation_config"]["delete_key_cost"],
+        ];
+        let sum = |field: &str| {
+            parts.iter().try_fold(0u128, |total, part| {
+                total
+                    .checked_add(near_protocol_integer(&part[field])?)
+                    .or_decode("NEAR protocol gas overflow")
+            })
         };
-        Ok(amount.saturating_sub(reserve))
+        // The account is its own receiver.
+        near_prepayment_fee(&config, price, sum("send_sir")?, sum("execution")?)
     }
 
     pub(crate) async fn transfer_fee_budget(
@@ -489,6 +586,49 @@ impl NearClient {
             .await?;
         Ok((config, price))
     }
+}
+
+/// One entry of `view_access_key_list`.
+fn parse_access_key(entry: &Value) -> Result<NearAccessKeyEntry, ApiError> {
+    let public_key = entry["public_key"]
+        .as_str()
+        .filter(|key| key.starts_with("ed25519:") || key.starts_with("secp256k1:"))
+        .or_decode("view_access_key_list: missing public key")?
+        .to_string();
+    let permission = &entry["access_key"]["permission"];
+    let function_call = if permission == "FullAccess" {
+        None
+    } else {
+        let call = permission
+            .get("FunctionCall")
+            .or_decode("view_access_key_list: unknown permission")?;
+        Some(NearFunctionCallPermission {
+            receiver_id: call["receiver_id"]
+                .as_str()
+                .or_decode("view_access_key_list: missing receiver")?
+                .to_string(),
+            method_names: call["method_names"]
+                .as_array()
+                .or_decode("view_access_key_list: missing method names")?
+                .iter()
+                .map(|name| name.as_str().map(str::to_string))
+                .collect::<Option<_>>()
+                .or_decode("view_access_key_list: invalid method name")?,
+            allowance: match &call["allowance"] {
+                Value::Null => None,
+                allowance => Some(
+                    allowance
+                        .as_str()
+                        .and_then(|value| value.parse().ok())
+                        .or_decode("view_access_key_list: invalid allowance")?,
+                ),
+            },
+        })
+    };
+    Ok(NearAccessKeyEntry {
+        public_key,
+        function_call,
+    })
 }
 
 fn near_protocol_integer(v: &Value) -> Result<u128, ApiError> {

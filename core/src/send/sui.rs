@@ -183,7 +183,46 @@ pub(crate) async fn prepare_token_transfer(
     prepare_coin_transfer(from, to, amount, gas_budget, gas_price, &gas, &tokens)
 }
 
-async fn select_coins(
+/// The first `limit` of `owner`'s objects of `coin_type` the node lists,
+/// largest first.
+pub(crate) async fn owned_coins(
+    client: &SuiClient,
+    owner: &str,
+    coin_type: &str,
+    limit: usize,
+) -> Result<Vec<GasCoin>, SendError> {
+    let mut coins = Vec::new();
+    let mut cursor = None;
+    let mut cursors = std::collections::HashSet::new();
+    loop {
+        let page = client
+            .fetch_coins_page(owner, coin_type, cursor.as_deref())
+            .await?;
+        for coin in page.coins {
+            coins.push(GasCoin {
+                id: bcs::address(&coin.object_id)?,
+                version: coin.version,
+                digest: coin.digest,
+                balance: coin.balance,
+            });
+        }
+        if coins.len() >= limit {
+            break;
+        }
+        let Some(next) = page.next_cursor else {
+            break;
+        };
+        if !cursors.insert(next.clone()) {
+            return Err(SendError::invalid("repeated Sui coin cursor"));
+        }
+        cursor = Some(next);
+    }
+    coins.truncate(limit);
+    coins.sort_by_key(|coin| std::cmp::Reverse(coin.balance));
+    Ok(coins)
+}
+
+pub(crate) async fn select_coins(
     client: &SuiClient,
     owner: &str,
     coin_type: &str,
@@ -310,6 +349,146 @@ pub(crate) fn prepare_coin_transfer(
         sender,
         bytes,
         objects: gas.iter().chain(tokens).cloned().collect(),
+        gas_budget,
+    })
+}
+
+/// A coin type's objects merged into one, and what the transaction was built
+/// from, so it can be rebuilt and compared before signing.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedSuiMerge {
+    pub coin_type: String,
+    pub gas: Vec<GasCoin>,
+    /// Empty when the merged type is SUI, whose coins all pay gas.
+    pub merged: Vec<GasCoin>,
+    pub gas_price: u64,
+    pub transaction: PreparedSuiTransfer,
+}
+
+impl PreparedSuiMerge {
+    pub(crate) fn prepare(
+        from: &str,
+        coin_type: &str,
+        gas_budget: u64,
+        gas_price: u64,
+        gas: Vec<GasCoin>,
+        merged: Vec<GasCoin>,
+    ) -> Result<Self, SendError> {
+        let transaction = prepare_coin_merge(from, gas_budget, gas_price, &gas, &merged)?;
+        Ok(Self {
+            coin_type: coin_type.into(),
+            gas,
+            merged,
+            gas_price,
+            transaction,
+        })
+    }
+
+    /// How many objects the transaction merges into one.
+    pub(crate) fn object_count(&self) -> usize {
+        if self.merged.is_empty() {
+            self.gas.len()
+        } else {
+            self.merged.len()
+        }
+    }
+
+    /// Whether the bytes are exactly this merge, from `from`.
+    pub(crate) fn is_exact(&self, from: &str) -> bool {
+        prepare_coin_merge(
+            from,
+            self.transaction.gas_budget,
+            self.gas_price,
+            &self.gas,
+            &self.merged,
+        )
+        .is_ok_and(|rebuilt| rebuilt.bytes == self.transaction.bytes)
+    }
+}
+
+/// The most SUI coins one transaction merges: Sui pays gas with at most 256
+/// objects, and a SUI merge pays with all of them.
+pub(crate) const MAX_SUI_MERGE: usize = 256;
+/// The most objects of another type one transaction merges, kept well under
+/// a command's argument limit.
+pub(crate) const MAX_TOKEN_MERGE: usize = 500;
+
+/// Merge a coin type's objects into one. With `merged` empty, SUI itself:
+/// gas is paid with every coin in `gas`, which Sui smashes into the first,
+/// and the transaction keeps that gas coin (`TransferObjects([GasCoin],
+/// sender)`). Otherwise `merged` are another type's objects, merged into the
+/// first (`MergeCoins`), and `gas` stays separate.
+pub(crate) fn prepare_coin_merge(
+    from: &str,
+    gas_budget: u64,
+    gas_price: u64,
+    gas: &[GasCoin],
+    merged: &[GasCoin],
+) -> Result<PreparedSuiTransfer, SendError> {
+    let sender = bcs::address(from)?;
+    let native = merged.is_empty();
+    let merging = if native { gas } else { merged };
+    if gas_budget == 0
+        || gas_price == 0
+        || gas.is_empty()
+        || merging.len() < 2
+        || gas.len() > MAX_SUI_MERGE
+        || merged.len() > MAX_TOKEN_MERGE
+    {
+        return Err(SendError::invalid("Invalid Sui coin merge or gas objects"));
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut gas_total = 0u64;
+    for coin in gas.iter().chain(merged) {
+        if !seen.insert(coin.id) {
+            return Err(SendError::invalid("duplicate Sui object"));
+        }
+    }
+    for coin in gas {
+        gas_total = gas_total
+            .checked_add(coin.balance)
+            .ok_or_else(|| SendError::invalid("Sui balance overflow"))?;
+    }
+    if gas_total < gas_budget {
+        return Err(SendError::InsufficientFunds(
+            "Insufficient SUI for the gas budget".into(),
+        ));
+    }
+    let mut bytes = vec![0, 0];
+    if native {
+        bcs::uleb(1, &mut bytes); // inputs: Pure(sender)
+        bytes.push(0);
+        bcs::bytes(&sender, &mut bytes);
+        bcs::uleb(1, &mut bytes);
+        bytes.extend([1, 1, 0]); // TransferObjects([GasCoin], Input(0))
+        input(0, &mut bytes);
+    } else {
+        bcs::uleb(merged.len(), &mut bytes);
+        for coin in merged {
+            bytes.extend([1, 0]); // CallArg::Object(ObjectArg::ImmOrOwnedObject)
+            object_ref(coin, &mut bytes);
+        }
+        bcs::uleb(1, &mut bytes);
+        bytes.push(3);
+        input(0, &mut bytes); // MergeCoins(Input(0), [Input(1)..])
+        bcs::uleb(merged.len() - 1, &mut bytes);
+        for index in 1..merged.len() {
+            input(index as u16, &mut bytes);
+        }
+    }
+    bytes.extend_from_slice(&sender);
+    bcs::uleb(gas.len(), &mut bytes);
+    for coin in gas {
+        object_ref(coin, &mut bytes);
+    }
+    bytes.extend_from_slice(&sender);
+    bytes.extend_from_slice(&gas_price.to_le_bytes());
+    bytes.extend_from_slice(&gas_budget.to_le_bytes());
+    bytes.push(0);
+    Ok(PreparedSuiTransfer {
+        sender,
+        bytes,
+        objects: gas.iter().chain(merged).cloned().collect(),
         gas_budget,
     })
 }
@@ -453,6 +632,78 @@ fn object_ref(coin: &GasCoin, bytes: &mut Vec<u8>) {
 #[cfg(test)]
 mod token_tests {
     use super::*;
+    /// Both merges exactly as the Sui SDK builds and signs them.
+    #[test]
+    fn coin_merges_match_the_official_sdk() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/sui-merge.json")).unwrap();
+        let key = Ed25519Seed::from_hex(fixture["seed"].as_str().unwrap()).unwrap();
+        let sender = fixture["sender"].as_str().unwrap();
+        let coin = |id, version| GasCoin {
+            id: [id; 32],
+            version,
+            digest: [0; 32],
+            balance: 4_000_000,
+        };
+        for vector in fixture["vectors"].as_array().unwrap() {
+            let prepared = match vector["name"].as_str().unwrap() {
+                "token" => prepare_coin_merge(
+                    sender,
+                    5_000_000,
+                    1000,
+                    &[GasCoin {
+                        balance: 9_000_000,
+                        ..coin(0x33, 7)
+                    }],
+                    &[coin(0x44, 8), coin(0x55, 9), coin(0x66, 10)],
+                ),
+                _ => prepare_coin_merge(
+                    sender,
+                    5_000_000,
+                    1000,
+                    &[coin(0x33, 7), coin(0x44, 8), coin(0x55, 9)],
+                    &[],
+                ),
+            }
+            .unwrap();
+            assert_eq!(
+                hex::encode(&prepared.bytes),
+                vector["raw"].as_str().unwrap()
+            );
+            assert_eq!(
+                prepared.transaction_digest(),
+                vector["transaction_digest"].as_str().unwrap()
+            );
+            assert_eq!(
+                prepared.sign(&key).unwrap().1,
+                vector["signature"].as_str().unwrap()
+            );
+        }
+        // One object is not a merge; gas must cover the budget; an object
+        // cannot be both gas and merged.
+        assert!(prepare_coin_merge(sender, 5_000_000, 1000, &[coin(0x33, 7)], &[]).is_err());
+        assert!(
+            prepare_coin_merge(
+                sender,
+                5_000_000,
+                1000,
+                &[coin(0x33, 7)],
+                &[coin(0x44, 8), coin(0x55, 9)]
+            )
+            .is_err()
+        );
+        assert!(
+            prepare_coin_merge(
+                sender,
+                1_000_000,
+                1000,
+                &[coin(0x33, 7)],
+                &[coin(0x33, 7), coin(0x55, 9)]
+            )
+            .is_err()
+        );
+    }
+
     #[test]
     fn coin_transfers_match_official_sdk_for_single_and_merged_inputs() {
         let fixtures: serde_json::Value =

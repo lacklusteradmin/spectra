@@ -312,6 +312,7 @@ impl WalletService {
                         | PreparedPayload::Aptos(_)
                         | PreparedPayload::Near { .. }
                         | PreparedPayload::NearFunctionCall(_)
+                        | PreparedPayload::NearDeleteKey(_)
                 ))
         {
             let crate::registry::PendingStatusPoll::TransactionStatus(api) =
@@ -380,7 +381,9 @@ impl WalletService {
         if stored.view.attempts.is_empty()
             || matches!(
                 &stored.prepared,
-                PreparedPayload::Near { .. } | PreparedPayload::NearFunctionCall(_)
+                PreparedPayload::Near { .. }
+                    | PreparedPayload::NearFunctionCall(_)
+                    | PreparedPayload::NearDeleteKey(_)
             )
         {
             if stored.view.staking.is_some() {
@@ -416,6 +419,21 @@ impl WalletService {
         history.id = stored.view.id.clone();
         if let Some(intent) = &stored.view.staking {
             history.kind = intent.action.transaction_kind();
+        }
+        match &stored.view.operation {
+            Some(crate::send::stages::WalletOperation::RevokeApproval { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::RevokeApproval;
+            }
+            Some(crate::send::stages::WalletOperation::DeleteAccessKey { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::DeleteAccessKey;
+            }
+            Some(crate::send::stages::WalletOperation::MergeCoins { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::MergeCoins;
+            }
+            Some(crate::send::stages::WalletOperation::CloseTokenAccounts { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::CloseTokenAccounts;
+            }
+            Some(crate::send::stages::WalletOperation::CloseAccount { .. }) | None => {}
         }
         history.created_at_unix = stored.view.created_at;
         if icp_staking {
@@ -750,6 +768,7 @@ impl WalletService {
                 )
                 .0,
                 staking: None,
+                operation: None,
                 created_at: crate::store::now_unix().floor(),
                 review_digest: String::new(),
                 review,

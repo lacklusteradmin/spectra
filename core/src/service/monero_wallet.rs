@@ -336,6 +336,86 @@ impl WalletService {
     }
 }
 
+/// What proves a Monero payment to its recipient: the transaction, its
+/// key and the address it paid, which monero-wallet-cli checks with
+/// `check_tx_key <txid> <tx key> <address>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct MoneroPaymentProof {
+    pub txid: String,
+    /// The transaction key `r`, hex. It shows whoever holds it what the
+    /// transaction paid the address, and nothing else.
+    pub tx_key: String,
+    pub address: String,
+    /// What the proof shows the address received, as an exact decimal of
+    /// XMR.
+    pub amount: String,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    /// The proof of a payment the wallet sent, derived again from the
+    /// transaction's stored plan and checked against its signed bytes before
+    /// it is shown. `None` for a transaction this device did not sign.
+    pub async fn monero_payment_proof(
+        &self,
+        wallet_id: String,
+        txid: String,
+    ) -> Result<Option<MoneroPaymentProof>, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let wallet = this.stored_wallet(&wallet_id).await?;
+            let chain = wallet.chain_id;
+            if chain.mainnet_counterpart() != Chain::Monero {
+                return Ok(None);
+            }
+            let db = this.bound_database().await?;
+            let id = wallet_id.clone();
+            let sends = tokio::task::spawn_blocking(move || {
+                crate::wallet_db::signed_sends_for_wallet(&db, chain, &id)
+            })
+            .await??;
+            let Some((prepared, raw)) = sends.into_iter().find_map(|stored| {
+                let crate::send::stages::PreparedPayload::Monero(prepared) = stored.prepared else {
+                    return None;
+                };
+                let submission = stored.submission?;
+                (submission.transaction_hash.as_deref() == Some(txid.as_str()))
+                    .then_some((prepared, submission.payload))
+            }) else {
+                return Ok(None);
+            };
+            let (_, _, key) = this.load_monero(&wallet_id).await?;
+            let tx_key = prepared.transaction_key(&key)?;
+            let raw = hex::decode(raw)?;
+            let transaction = ::monero_wallet::transaction::Transaction::read(&mut raw.as_slice())
+                .map_err(SpectraBridgeError::failure)?;
+            if hex::encode(transaction.hash()) != txid {
+                return Err(SpectraBridgeError::failure(
+                    "The stored Monero transaction is not the one asked for",
+                ));
+            }
+            let address = MoneroAddress::from_str_with_unchecked_network(&prepared.recipient)
+                .map_err(SpectraBridgeError::failure)?;
+            let received = monero_local::received_with_tx_key(&transaction, &tx_key, &address)?;
+            // A key that does not prove the payment is not shown as its proof.
+            if !received.contains(&prepared.amount) {
+                return Err(SpectraBridgeError::failure(
+                    "The Monero transaction key does not prove this payment",
+                ));
+            }
+            let total: u128 = received.iter().map(|amount| u128::from(*amount)).sum();
+            Ok(Some(MoneroPaymentProof {
+                txid,
+                tx_key: hex::encode(*tx_key),
+                address: prepared.recipient,
+                amount: crate::decimal::from_units(total, u32::from(chain.native_decimals())),
+            }))
+        })
+        .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,5 +472,74 @@ mod tests {
         locked.next_height = locked.restore_height + 1;
         assert_eq!(locked.balance().unwrap(), 0);
         assert!(prepared.sign(&private, &key, &locked).is_err());
+    }
+
+    /// The key derived from the stored plan is the one the daemon-accepted
+    /// transaction was built with, and proves exactly the payment.
+    #[test]
+    fn the_tx_key_proves_the_payment_the_daemon_accepted() {
+        use curve25519_dalek::{constants::ED25519_BASEPOINT_TABLE, scalar::Scalar as Dalek};
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/monero-local.json")).unwrap();
+        let private = crate::derivation::monero::derive_monero(
+            crate::derivation::phrase::test_phrase(crate::registry::Chain::Monero).into(),
+            true,
+            true,
+            true,
+        )
+        .unwrap()
+        .private_key_hex
+        .unwrap();
+        let key = cache_key(
+            fixture["wallet_id"].as_str().unwrap(),
+            &hex::decode(&private).unwrap()[32..],
+        );
+        let prepared: PreparedMoneroTransaction =
+            serde_json::from_value(fixture["prepared"].clone()).unwrap();
+        let tx_key = prepared.transaction_key(&key).unwrap();
+        let raw = hex::decode(fixture["accepted_raw"].as_str().unwrap()).unwrap();
+        let accepted =
+            ::monero_wallet::transaction::Transaction::read(&mut raw.as_slice()).unwrap();
+        let recipient =
+            MoneroAddress::from_str_with_unchecked_network(&prepared.recipient).unwrap();
+        // Its public half is the transaction's own key; no additional keys.
+        let (keys, additional) =
+            ::monero_wallet::extra::Extra::read(&mut accepted.prefix().extra.as_slice())
+                .unwrap()
+                .keys()
+                .unwrap();
+        assert!(additional.is_none());
+        let r = Dalek::from_canonical_bytes(*tx_key).unwrap();
+        let public = if recipient.is_subaddress() {
+            r * recipient.spend().into()
+        } else {
+            &r * ED25519_BASEPOINT_TABLE
+        };
+        assert_eq!(keys[0].compress().to_bytes(), public.compress().to_bytes());
+        // The fixture pays its own address: the payment and the change both
+        // go to it, and the payment is one of them.
+        assert_eq!(prepared.sender, prepared.recipient);
+        let received =
+            crate::send::monero_local::received_with_tx_key(&accepted, &tx_key, &recipient)
+                .unwrap();
+        assert_eq!(received.len(), 2);
+        assert!(received.contains(&prepared.amount));
+        // Another address received nothing, and another key proves nothing.
+        let other_address = MoneroAddress::from_str_with_unchecked_network(
+            "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A",
+        )
+        .unwrap();
+        assert!(
+            crate::send::monero_local::received_with_tx_key(&accepted, &tx_key, &other_address)
+                .unwrap()
+                .is_empty()
+        );
+        let mut other = *tx_key;
+        other[0] ^= 1;
+        assert!(
+            crate::send::monero_local::received_with_tx_key(&accepted, &other, &recipient)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

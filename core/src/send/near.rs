@@ -1,5 +1,5 @@
-//! NEAR send: BORSH-encoded Transfer + FunctionCall transaction builders and
-//! Ed25519 signer.
+//! NEAR send: BORSH-encoded Transfer, FunctionCall and DeleteKey
+//! transaction builders and Ed25519 signer.
 
 use crate::send::error::SendError;
 
@@ -275,6 +275,97 @@ impl PreparedNearFunctionCall {
     }
 }
 
+/// A transaction deleting one of the signer's access keys: its own receiver,
+/// one `DeleteKey` action.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedNearDeleteKey {
+    pub signer: String,
+    pub public_key: [u8; 32],
+    pub nonce: u64,
+    pub deleted_key: [u8; 32],
+    pub block_hash: [u8; 32],
+    pub message: Vec<u8>,
+    /// The most the transaction costs, in yoctoNEAR.
+    pub fee_budget: String,
+}
+
+impl PreparedNearDeleteKey {
+    pub(crate) fn prepare(
+        signer: &str,
+        public_key: [u8; 32],
+        nonce: u64,
+        deleted_key: [u8; 32],
+        block_hash: [u8; 32],
+        fee_budget: u128,
+    ) -> Result<Self, SendError> {
+        if deleted_key == public_key {
+            return Err(SendError::invalid(
+                "NEAR: a transaction cannot delete the key that signs it",
+            ));
+        }
+        Ok(Self {
+            signer: signer.into(),
+            public_key,
+            nonce,
+            deleted_key,
+            block_hash,
+            message: borsh_encode_delete_key(signer, &public_key, nonce, &deleted_key, &block_hash),
+            fee_budget: fee_budget.to_string(),
+        })
+    }
+
+    pub(crate) fn sign(
+        &self,
+        key: &crate::send::keys::Ed25519Seed,
+    ) -> Result<(Vec<u8>, String), SendError> {
+        use sha2::{Digest, Sha256};
+        key.require_public_key(&self.public_key)?;
+        if self.deleted_key == self.public_key
+            || borsh_encode_delete_key(
+                &self.signer,
+                &self.public_key,
+                self.nonce,
+                &self.deleted_key,
+                &self.block_hash,
+            ) != self.message
+        {
+            return Err(SendError::invalid(
+                "NEAR key deletion differs from the reviewed message",
+            ));
+        }
+        let digest = Sha256::digest(&self.message);
+        let mut raw = self.message.clone();
+        raw.push(0);
+        raw.extend(key.sign(&digest));
+        Ok((raw, bs58::encode(digest).into_string()))
+    }
+}
+
+/// BORSH-encode a transaction deleting `deleted_key` from the signer's own
+/// account.
+fn borsh_encode_delete_key(
+    signer_id: &str,
+    public_key: &[u8; 32],
+    nonce: u64,
+    deleted_key: &[u8; 32],
+    block_hash: &[u8; 32],
+) -> Vec<u8> {
+    let mut out = Vec::new();
+    borsh_string(&mut out, signer_id);
+    out.push(0); // ED25519
+    out.extend_from_slice(public_key);
+    out.extend_from_slice(&nonce.to_le_bytes());
+    // The account deletes its own key: it is the receiver.
+    borsh_string(&mut out, signer_id);
+    out.extend_from_slice(block_hash);
+    out.extend_from_slice(&1u32.to_le_bytes());
+    // Action::DeleteKey = variant 6, then the key: type ED25519 + bytes.
+    out.push(6u8);
+    out.push(0);
+    out.extend_from_slice(deleted_key);
+    out
+}
+
 #[cfg(test)]
 mod protocol_tests {
     use super::*;
@@ -321,6 +412,44 @@ mod protocol_tests {
                 vector["hash"].as_str().unwrap()
             );
         }
+        // DeleteKey as @near-js/transactions builds and signs it.
+        let deletion: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/near-delete-key.json"))
+                .unwrap();
+        let text = |key: &str| deletion[key].as_str().unwrap().to_string();
+        let bytes32 =
+            |key: &str| -> [u8; 32] { hex::decode(text(key)).unwrap().try_into().unwrap() };
+        let deleted: [u8; 32] = bs58::decode(text("deleted_key").strip_prefix("ed25519:").unwrap())
+            .into_vec()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let prepared = PreparedNearDeleteKey::prepare(
+            &text("signer"),
+            bytes32("public_key"),
+            deletion["nonce"].as_u64().unwrap(),
+            deleted,
+            bytes32("block_hash"),
+            0,
+        )
+        .unwrap();
+        let seed = crate::send::keys::Ed25519Seed::from_hex(&text("seed")).unwrap();
+        let (raw, hash) = prepared.sign(&seed).unwrap();
+        assert_eq!(hex::encode(&raw), text("signed_hex"));
+        assert_eq!(hash, text("hash"));
+        assert_eq!(signed_transaction_hash(&raw).unwrap(), text("hash"));
+        // The signing key cannot delete itself.
+        assert!(
+            PreparedNearDeleteKey::prepare(
+                "alice.near",
+                bytes32("public_key"),
+                1,
+                bytes32("public_key"),
+                [2; 32],
+                0
+            )
+            .is_err()
+        );
         assert!(
             build_near_transfer_tx(
                 "alice.near",

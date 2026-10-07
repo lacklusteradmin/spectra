@@ -28,3 +28,34 @@ fn refuses_native_amounts_that_would_corrupt_asset_flags() {
     assert!(validate_drops(1).is_ok());
     assert!(validate_drops(100_000_000_000_000_000).is_ok());
 }
+
+#[test]
+fn signed_account_delete_matches_official_xrpl_codec_and_signature() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/account-closing.json")).unwrap();
+    let vector = &fixture["xrp_account_delete"];
+    let tx = &vector["transaction"];
+    let key = hex::decode(vector["key"].as_str().unwrap()).unwrap();
+    let signed = build_signed_account_delete(
+        tx["Account"].as_str().unwrap(),
+        tx["Destination"].as_str().unwrap(),
+        tx["Fee"].as_str().unwrap().parse().unwrap(),
+        tx["Sequence"].as_u64().unwrap().try_into().unwrap(),
+        &key,
+        tx["SigningPubKey"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(signed, vector["signed_hex"]);
+    // Into itself is no deletion.
+    assert!(
+        build_signed_account_delete(
+            tx["Account"].as_str().unwrap(),
+            tx["Account"].as_str().unwrap(),
+            200_000,
+            1,
+            &key,
+            tx["SigningPubKey"].as_str().unwrap(),
+        )
+        .is_err()
+    );
+}

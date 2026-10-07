@@ -260,6 +260,22 @@ impl SolanaClient {
     }
 }
 
+/// One token account, as a closure checks it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SolanaTokenAccount {
+    pub address: String,
+    pub program: String,
+    pub mint: String,
+    pub owner: String,
+    pub amount: u128,
+    /// The rent it holds, which closing returns.
+    pub lamports: u64,
+    pub close_authority: Option<String>,
+    pub frozen: bool,
+    /// Token-2022 transfer fees withheld in it, which block closing.
+    pub withheld: u128,
+}
+
 // Solana fetch paths: native balance, SPL balances, recent blockhash,
 // unified history, account existence.
 
@@ -317,6 +333,71 @@ impl SolanaClient {
             )
             .await?;
         validate_transfer_mint(&result["value"])
+    }
+
+    /// Every token account the owner holds under either token program, as
+    /// one confirmed read each: what closing them depends on.
+    pub(crate) async fn fetch_token_accounts(
+        &self,
+        owner: &str,
+    ) -> Result<Vec<SolanaTokenAccount>, ApiError> {
+        let mut out = Vec::new();
+        for program in crate::send::solana::TOKEN_PROGRAMS {
+            let value = self
+                .call(
+                    "getTokenAccountsByOwner",
+                    json!([owner, {"programId": program}, {"encoding": "jsonParsed", "commitment": "confirmed"}]),
+                )
+                .await?;
+            for entry in value["value"]
+                .as_array()
+                .or_decode("getTokenAccountsByOwner: missing account list")?
+            {
+                let info = entry
+                    .pointer("/account/data/parsed/info")
+                    .or_decode("token account: not parsed")?;
+                let text = |field: &str| info[field].as_str().map(str::to_string);
+                let withheld = info["extensions"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|extension| extension["extension"] == "transferFeeAmount")
+                    .map(|extension| {
+                        extension["state"]["withheldAmount"]
+                            .as_u64()
+                            .map(u128::from)
+                            .or_else(|| {
+                                extension["state"]["withheldAmount"]
+                                    .as_str()
+                                    .and_then(|amount| amount.parse().ok())
+                            })
+                            .or_decode("token account: invalid withheld amount")
+                    })
+                    .sum::<Result<u128, ApiError>>()?;
+                out.push(SolanaTokenAccount {
+                    address: entry["pubkey"]
+                        .as_str()
+                        .or_decode("token account: missing address")?
+                        .to_string(),
+                    program: program.to_string(),
+                    mint: text("mint").or_decode("token account: missing mint")?,
+                    owner: text("owner").or_decode("token account: missing owner")?,
+                    amount: info
+                        .pointer("/tokenAmount/amount")
+                        .and_then(Value::as_str)
+                        .and_then(|amount| amount.parse().ok())
+                        .or_decode("token account: missing amount")?,
+                    lamports: entry
+                        .pointer("/account/lamports")
+                        .and_then(Value::as_u64)
+                        .or_decode("token account: missing lamports")?,
+                    close_authority: text("closeAuthority"),
+                    frozen: info["state"] == "frozen",
+                    withheld,
+                });
+            }
+        }
+        Ok(out)
     }
 
     pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, ApiError> {

@@ -1,4 +1,5 @@
-//! XRP send: build + sign Payment transactions (binary codec).
+//! XRP send: build + sign Payment and AccountDelete transactions (binary
+//! codec).
 
 use crate::send::error::SendError;
 
@@ -15,7 +16,17 @@ pub(crate) fn validate_drops(drops: u128) -> Result<(), SendError> {
     Ok(())
 }
 
-// ── XRP binary codec (minimal — Payment only)
+// ── XRP binary codec (minimal — Payment and AccountDelete)
+
+/// The transaction types Spectra signs, by their `TransactionType` code.
+#[derive(Clone, Copy)]
+enum XrpTransaction {
+    /// Moves `Amount` drops to `Destination`.
+    Payment { amount_drops: u64 },
+    /// Deletes the account and sends everything it holds, less the fee, to
+    /// `Destination`.
+    AccountDelete,
+}
 
 /// Build and sign an XRP Payment transaction.
 /// Returns the signed tx blob as an uppercase hex string.
@@ -28,23 +39,69 @@ pub fn build_signed_payment(
     private_key_bytes: &[u8],
     public_key_hex: &str,
 ) -> Result<String, SendError> {
-    use secp256k1::{Message, Secp256k1, SecretKey};
-
-    // Build signing payload (canonical field order per XRPL spec).
-    let signing_prefix = hex::decode("53545800").unwrap(); // "STX\x00"
-
-    let unsigned_fields = encode_payment_fields(
+    build_signed(
+        XrpTransaction::Payment { amount_drops },
         from,
         to,
-        amount_drops,
         fee_drops,
         sequence,
+        private_key_bytes,
         public_key_hex,
-        None,
-    )?;
+    )
+}
 
-    let mut signing_payload = signing_prefix.clone();
-    signing_payload.extend_from_slice(&unsigned_fields);
+/// Build and sign an XRP AccountDelete transaction: the account `from` is
+/// removed and its balance, less the fee, goes to `to`. The network charges
+/// at least the owner reserve as its fee.
+pub fn build_signed_account_delete(
+    from: &str,
+    to: &str,
+    fee_drops: u64,
+    sequence: u32,
+    private_key_bytes: &[u8],
+    public_key_hex: &str,
+) -> Result<String, SendError> {
+    if from == to {
+        return Err(SendError::Invalid(
+            "XRP: an account cannot be deleted into itself".into(),
+        ));
+    }
+    build_signed(
+        XrpTransaction::AccountDelete,
+        from,
+        to,
+        fee_drops,
+        sequence,
+        private_key_bytes,
+        public_key_hex,
+    )
+}
+
+fn build_signed(
+    transaction: XrpTransaction,
+    from: &str,
+    to: &str,
+    fee_drops: u64,
+    sequence: u32,
+    private_key_bytes: &[u8],
+    public_key_hex: &str,
+) -> Result<String, SendError> {
+    use secp256k1::{Message, Secp256k1, SecretKey};
+
+    let fields = |signature: Option<&[u8]>| {
+        encode_fields(
+            transaction,
+            from,
+            to,
+            fee_drops,
+            sequence,
+            public_key_hex,
+            signature,
+        )
+    };
+    // Signing payload: "STX\0" and the canonical unsigned fields.
+    let mut signing_payload = b"STX\0".to_vec();
+    signing_payload.extend_from_slice(&fields(None)?);
 
     let msg_hash = sha512_half(&signing_payload);
     let secp = Secp256k1::new();
@@ -54,45 +111,40 @@ pub fn build_signed_payment(
         .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
     let sig = secp.sign_ecdsa(&msg, &secret_key);
     let der_sig = sig.serialize_der();
-    // TxnSignature is a Blob (type 7, field 4), before AccountID fields.
-    let signed_fields = encode_payment_fields(
-        from,
-        to,
-        amount_drops,
-        fee_drops,
-        sequence,
-        public_key_hex,
-        Some(der_sig.as_ref()),
-    )?;
-
-    Ok(hex::encode_upper(&signed_fields))
+    Ok(hex::encode_upper(fields(Some(der_sig.as_ref()))?))
 }
 
-/// Encode the canonical Payment STObject, optionally including its signature.
-fn encode_payment_fields(
+/// Encode the canonical STObject, optionally including its signature.
+/// Fields go in type-code then field-code order.
+fn encode_fields(
+    transaction: XrpTransaction,
     from: &str,
     to: &str,
-    amount_drops: u64,
     fee_drops: u64,
     sequence: u32,
     public_key_hex: &str,
     signature: Option<&[u8]>,
 ) -> Result<Vec<u8>, SendError> {
-    validate_drops(u128::from(amount_drops))?;
     validate_drops(u128::from(fee_drops))?;
     let mut out = Vec::new();
-    // TransactionType = 0 (Payment), field 2, type 1 (UInt16)
-    out.extend_from_slice(&[0x12, 0x00, 0x00]);
+    // TransactionType, field 2, type 1 (UInt16): Payment 0, AccountDelete 21.
+    let code: u16 = match transaction {
+        XrpTransaction::Payment { .. } => 0,
+        XrpTransaction::AccountDelete => 21,
+    };
+    out.push(0x12);
+    out.extend_from_slice(&code.to_be_bytes());
     // Flags, field 2, type 2 (UInt32) = 0
     out.extend_from_slice(&[0x22, 0x00, 0x00, 0x00, 0x00]);
     // Sequence, field 4, type 2
     out.push(0x24);
     out.extend_from_slice(&sequence.to_be_bytes());
-    // Amount, field 1, type 6 (Amount)
-    out.push(0x61);
-    // XRP amount: 0x4000000000000000 | drops
-    let amount_encoded: u64 = 0x4000_0000_0000_0000 | amount_drops;
-    out.extend_from_slice(&amount_encoded.to_be_bytes());
+    if let XrpTransaction::Payment { amount_drops } = transaction {
+        validate_drops(u128::from(amount_drops))?;
+        // Amount, field 1, type 6 (Amount); XRP is 0x4000000000000000 | drops.
+        out.push(0x61);
+        out.extend_from_slice(&(0x4000_0000_0000_0000 | amount_drops).to_be_bytes());
+    }
     // Fee, field 8, type 6
     out.push(0x68);
     let fee_encoded: u64 = 0x4000_0000_0000_0000 | fee_drops;

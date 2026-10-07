@@ -207,7 +207,7 @@ pub(crate) fn check_offered(chain: Chain, kind: &WalletImportKind) -> Result<(),
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::derivation::import::{WalletImportCommit, WalletImportRequest};
     use crate::service::WalletService;
@@ -229,10 +229,11 @@ mod tests {
             restore_height: None,
             named_account: None,
             ton_wallet_version: None,
+            upgrade_wallet_id: None,
         }
     }
 
-    async fn service() -> (std::sync::Arc<WalletService>, std::path::PathBuf) {
+    pub(crate) async fn service() -> (std::sync::Arc<WalletService>, std::path::PathBuf) {
         let directory = std::env::temp_dir().join(crate::store::new_event_id());
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new(vec![]).unwrap();
@@ -248,7 +249,7 @@ mod tests {
 
     /// A phrase in the chain's own format: BIP-39 for most, a documented
     /// Monero seed, a ton-crypto mnemonic.
-    fn phrase(chain: Chain) -> &'static str {
+    pub(crate) fn phrase(chain: Chain) -> &'static str {
         match chain.mainnet_counterpart() {
             Chain::Monero => {
                 "tissue raking haunted huts afraid volcano howls liar egotistic befit rounded \
@@ -266,7 +267,7 @@ mod tests {
     /// The fixture for each method on `chain`, derived from one phrase so
     /// every network has one: the phrase itself, the key and address it
     /// derives, and for an account-xpub network the account's public key.
-    fn fixture(chain: Chain, method: WalletSetupMethod) -> WalletImportCommit {
+    pub(crate) fn fixture(chain: Chain, method: WalletSetupMethod) -> WalletImportCommit {
         let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
         let derived = crate::derivation::dispatch::derive_for_chain(
             chain,

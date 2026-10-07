@@ -16,6 +16,14 @@ pub enum TransactionKind {
     Unstake,
     Withdraw,
     ClaimRewards,
+    /// Setting an ERC-20 allowance the wallet gave back to zero.
+    RevokeApproval,
+    /// Deleting one of a NEAR account's function-call keys.
+    DeleteAccessKey,
+    /// Merging a Sui coin type's objects into one.
+    MergeCoins,
+    /// Closing empty Solana token accounts, returning their rent.
+    CloseTokenAccounts,
 }
 impl TransactionKind {
     pub fn as_raw(self) -> &'static str {
@@ -26,6 +34,10 @@ impl TransactionKind {
             Self::Unstake => "unstake",
             Self::Withdraw => "withdraw",
             Self::ClaimRewards => "claimRewards",
+            Self::RevokeApproval => "revokeApproval",
+            Self::DeleteAccessKey => "deleteAccessKey",
+            Self::MergeCoins => "mergeCoins",
+            Self::CloseTokenAccounts => "closeTokenAccounts",
         }
     }
     pub fn is_submitted(self) -> bool {
@@ -51,7 +63,12 @@ pub fn transaction_kind_direction(kind: TransactionKind) -> TransactionDirection
         TransactionKind::Receive | TransactionKind::Withdraw | TransactionKind::ClaimRewards => {
             TransactionDirection::Incoming
         }
-        TransactionKind::Unstake => TransactionDirection::Neutral,
+        // A revocation or a key deletion moves nothing but its fee.
+        TransactionKind::Unstake
+        | TransactionKind::RevokeApproval
+        | TransactionKind::DeleteAccessKey
+        | TransactionKind::MergeCoins
+        | TransactionKind::CloseTokenAccounts => TransactionDirection::Neutral,
     }
 }
 #[uniffi::export]
@@ -307,6 +324,14 @@ pub struct WalletView {
     pub signing: crate::store::state::WalletSigning,
     /// A Monero wallet's restore height; `None` on other chains.
     pub restore_height: Option<u64>,
+    /// The deployment ids of the holdings the user hid from the wallet's
+    /// total and the portfolio.
+    pub hidden_holdings: Vec<String>,
+    /// An ICP wallet's principal; `None` elsewhere.
+    pub icp_principal: Option<String>,
+    /// The key a NEAR named account signs with, as `ed25519:…`; `None`
+    /// elsewhere, and for an implicit account, whose address is its key.
+    pub near_account_key: Option<String>,
 }
 
 impl WalletView {
@@ -382,6 +407,9 @@ impl WalletView {
                     .collect()
             },
             restore_height: self.restore_height,
+            hidden_holdings: self.hidden_holdings.clone(),
+            icp_principal: self.icp_principal.clone(),
+            near_account_key: self.near_account_key.clone(),
         })
     }
 }
@@ -418,6 +446,9 @@ impl crate::store::state::WalletState {
             include_in_portfolio_total: self.include_in_portfolio_total,
             signing: self.signing,
             restore_height: self.restore_height,
+            hidden_holdings: self.hidden_holdings.clone(),
+            icp_principal: self.icp_principal.clone(),
+            near_account_key: self.near_account_key.clone(),
         }
     }
 }

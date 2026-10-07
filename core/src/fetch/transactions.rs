@@ -130,6 +130,10 @@ fn kind_from_raw(raw: &str) -> TransactionKind {
         "unstake" => TransactionKind::Unstake,
         "withdraw" => TransactionKind::Withdraw,
         "claimRewards" => TransactionKind::ClaimRewards,
+        "revokeApproval" => TransactionKind::RevokeApproval,
+        "deleteAccessKey" => TransactionKind::DeleteAccessKey,
+        "mergeCoins" => TransactionKind::MergeCoins,
+        "closeTokenAccounts" => TransactionKind::CloseTokenAccounts,
         _ => TransactionKind::Receive,
     }
 }

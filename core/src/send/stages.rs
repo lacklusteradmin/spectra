@@ -46,6 +46,7 @@ pub(crate) enum PreparedPayload {
         fee_budget: String,
     },
     NearFunctionCall(super::near::PreparedNearFunctionCall),
+    NearDeleteKey(super::near::PreparedNearDeleteKey),
     Ton {
         seqno: u32,
         #[serde(with = "units_u128")]
@@ -69,6 +70,16 @@ pub(crate) enum PreparedPayload {
         fee_stroops: u64,
         amount_stroops: i64,
     },
+    /// Deletes the sender's XRP account into the artifact's recipient.
+    XrpAccountDelete {
+        sequence: u32,
+        fee_drops: u64,
+    },
+    /// Merges the sender's Stellar account into the artifact's recipient.
+    StellarAccountMerge {
+        sequence: u64,
+        fee_stroops: u64,
+    },
     Substrate(super::polkadot::PreparedPolkadotTransaction),
     Cardano {
         inputs: Vec<(String, u32, u64)>,
@@ -78,9 +89,11 @@ pub(crate) enum PreparedPayload {
     },
     Bitcoin(super::bitcoin::PreparedBitcoinTransaction),
     Solana(super::solana::PreparedSolanaTransaction),
+    SolanaAccountClosure(super::solana::PreparedSolanaAccountClosure),
     Tron(super::tron::PreparedTronTransfer),
     Aptos(super::aptos::PreparedAptosTransfer),
     Sui(super::sui::PreparedSuiTransfer),
+    SuiMerge(super::sui::PreparedSuiMerge),
 }
 
 /// Protocol amounts larger than JSON's integer range stay exact in artifacts
@@ -130,6 +143,64 @@ pub struct SendArtifactReview {
     pub staking: Option<crate::staking::StakingReview>,
 }
 
+/// What a transaction built from a wallet's page does when it is not a
+/// transfer. Each is bound into the review digest, and `StoredSend::validate`
+/// checks the prepared payload is exactly that operation and nothing else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum WalletOperation {
+    /// Sets an ERC-20 allowance back to zero: `recipient` and `asset` are
+    /// the token, and the prepared call is `approve(spender, 0)` on it.
+    RevokeApproval {
+        token: String,
+        spender: String,
+        /// The prepared call's fee ceiling, as an exact decimal of the
+        /// native coin.
+        network_fee: String,
+    },
+    /// Closes the account: it is removed and everything it holds, less the
+    /// fee, goes to `destination`, the artifact's recipient; `amount` is
+    /// what it held at the build, less the fee.
+    CloseAccount {
+        destination: String,
+        /// The reserve the account held, which goes to the destination with
+        /// the rest, as an exact decimal of the native coin.
+        reserve: String,
+        /// Objects the network deletes with the account: offers, tickets, a
+        /// signer list. Always none on Stellar, which refuses to merge them.
+        removed_objects: u64,
+        network_fee: String,
+    },
+    /// Closes empty token accounts into their owner, returning their rent:
+    /// the owner is the recipient and `amount` the rent.
+    CloseTokenAccounts {
+        /// The closed accounts.
+        accounts: Vec<String>,
+        /// The rent they return, as an exact decimal of SOL.
+        rent: String,
+        network_fee: String,
+    },
+    /// Merges a Sui coin type's objects into one: the account is the
+    /// recipient and nothing leaves it.
+    MergeCoins {
+        coin_type: String,
+        /// How many objects become one.
+        objects: u64,
+        /// The gas budget, the most the merge costs, as an exact decimal of
+        /// SUI; a merge often refunds more storage than it spends.
+        network_fee: String,
+    },
+    /// Deletes one of a NEAR account's function-call keys: the account is
+    /// the recipient, and the dapp the key could call loses that access.
+    DeleteAccessKey {
+        /// The deleted key, as `ed25519:…`.
+        public_key: String,
+        /// The contract the key could call.
+        receiver: String,
+        network_fee: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct SendArtifact {
     pub id: String,
@@ -146,6 +217,9 @@ pub struct SendArtifact {
     /// token's symbol, or the contract when no known token claims it.
     pub symbol: String,
     pub staking: Option<crate::staking::StakingRequest>,
+    /// What the transaction does when it is a wallet operation rather than
+    /// a transfer.
+    pub operation: Option<WalletOperation>,
     pub created_at: f64,
     /// Fingerprint of the complete immutable prepared content, confirmed by Sign.
     pub review_digest: String,
@@ -182,6 +256,7 @@ impl StoredSend {
             &self.view.asset,
             &self.view.symbol,
             &self.view.staking,
+            &self.view.operation,
             &self.view.review,
         ))?;
         Ok(hex::encode(sha2::Sha256::digest(bytes)))
@@ -250,6 +325,7 @@ impl StoredSend {
         }) {
             return Err(SendError::invalid("Staking wallet or network was altered"));
         }
+        self.validate_operation()?;
         if self.view.prepared_details != serde_json::to_string_pretty(&self.prepared)?
             || self.submission_digest()? != self.signed_digest
         {
@@ -268,6 +344,120 @@ impl StoredSend {
                     "Transaction stage does not match its signed content".into(),
                 ));
             }
+        }
+        Ok(())
+    }
+}
+
+impl StoredSend {
+    /// The operation is exactly what the prepared payload does, and a
+    /// payload only an operation builds carries one.
+    fn validate_operation(&self) -> Result<(), SendError> {
+        let fee_is = |fee: &str, units: u128| {
+            fee == crate::decimal::from_units(
+                units,
+                u32::from(self.view.chain_id.native_decimals()),
+            )
+        };
+        let Some(operation) = &self.view.operation else {
+            return match self.prepared {
+                PreparedPayload::XrpAccountDelete { .. }
+                | PreparedPayload::StellarAccountMerge { .. }
+                | PreparedPayload::NearDeleteKey(_)
+                | PreparedPayload::SuiMerge(_)
+                | PreparedPayload::SolanaAccountClosure(_) => {
+                    Err(SendError::invalid("The wallet operation was altered"))
+                }
+                _ => Ok(()),
+            };
+        };
+        let exact = self.view.staking.is_none()
+            && match (operation, &self.prepared) {
+                // `approve(spender, 0)` on its token, with no value: anything
+                // else signed under its name would be another call.
+                (
+                    WalletOperation::RevokeApproval {
+                        token,
+                        spender,
+                        network_fee,
+                    },
+                    PreparedPayload::Evm(prepared),
+                ) => {
+                    prepared.to.eq_ignore_ascii_case(token)
+                        && self.view.recipient.eq_ignore_ascii_case(token)
+                        && prepared.value_wei == 0
+                        && prepared.data == super::evm::encode_erc20_approve(spender, 0)?
+                        && fee_is(network_fee, prepared.maximum_fee_wei()?)
+                }
+                (
+                    WalletOperation::CloseAccount {
+                        destination,
+                        network_fee,
+                        ..
+                    },
+                    PreparedPayload::XrpAccountDelete { fee_drops: fee, .. }
+                    | PreparedPayload::StellarAccountMerge {
+                        fee_stroops: fee, ..
+                    },
+                ) => self.view.recipient == *destination && fee_is(network_fee, u128::from(*fee)),
+                (
+                    WalletOperation::CloseTokenAccounts {
+                        accounts,
+                        network_fee,
+                        ..
+                    },
+                    PreparedPayload::SolanaAccountClosure(prepared),
+                ) => {
+                    self.view.recipient == self.view.sender
+                        && prepared
+                            .accounts
+                            .iter()
+                            .map(|(account, _)| account)
+                            .eq(accounts.iter())
+                        && prepared.is_exact(&self.view.sender)
+                        && prepared
+                            .transaction
+                            .network_fee
+                            .is_some_and(|fee| fee_is(network_fee, u128::from(fee)))
+                }
+                (
+                    WalletOperation::MergeCoins {
+                        coin_type,
+                        objects,
+                        network_fee,
+                    },
+                    PreparedPayload::SuiMerge(prepared),
+                ) => {
+                    self.view.recipient == self.view.sender
+                        && prepared.coin_type == *coin_type
+                        && prepared.object_count() as u64 == *objects
+                        && prepared.is_exact(&self.view.sender)
+                        && fee_is(network_fee, u128::from(prepared.transaction.gas_budget))
+                }
+                (
+                    WalletOperation::DeleteAccessKey {
+                        public_key,
+                        network_fee,
+                        ..
+                    },
+                    PreparedPayload::NearDeleteKey(prepared),
+                ) => {
+                    self.view.recipient == self.view.sender
+                        && prepared.signer == self.view.sender
+                        && *public_key
+                            == format!(
+                                "ed25519:{}",
+                                bs58::encode(prepared.deleted_key).into_string()
+                            )
+                        && fee_is(
+                            network_fee,
+                            prepared.fee_budget.parse().map_err(SendError::invalid)?,
+                        )
+                }
+                _ => false,
+            };
+        if !exact {
+            return Err(SendError::invalid("The wallet operation was altered"));
         }
         Ok(())
     }
