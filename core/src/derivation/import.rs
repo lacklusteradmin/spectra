@@ -81,6 +81,11 @@ pub struct WalletImportCommit {
     /// has confirmed on the network that the key is one of its full-access
     /// keys. Any other chain or kind refuses one.
     pub named_account: Option<String>,
+    /// The wallet contract a TON key import holds its account under. `None`
+    /// takes the default (W5); a watch import, and any other chain, refuses
+    /// one. Nothing stores it: the address stored is the version's account,
+    /// and a send reads the version back from that address and the key.
+    pub ton_wallet_version: Option<crate::derivation::ton::TonWalletVersion>,
 }
 
 impl WalletImportCommit {
@@ -122,6 +127,34 @@ pub fn derive_private_key_import_address(
             [chain.chain_display_name()],
         )
     })
+}
+
+/// The account a TON key import stores: the one `version` gives the key the
+/// commit's mnemonic (with its password) or raw private key holds.
+pub(crate) fn derive_ton_import_address(
+    commit: &WalletImportCommit,
+    version: crate::derivation::ton::TonWalletVersion,
+) -> Result<String, DerivationError> {
+    let public = if commit.request.kind == WalletImportKind::PrivateKey {
+        let key = zeroize::Zeroizing::new(
+            hex::decode(commit.private_key.as_deref().unwrap_or_default())
+                .map_err(DerivationError::invalid)?,
+        );
+        let key: &[u8; 32] = key
+            .as_slice()
+            .try_into()
+            .map_err(|_| DerivationError::invalid("Private key must be exactly 32 bytes"))?;
+        ed25519_dalek::SigningKey::from_bytes(key)
+            .verifying_key()
+            .to_bytes()
+    } else {
+        crate::derivation::ton::ton_key_pair(
+            commit.seed_phrase.as_deref().unwrap_or_default(),
+            commit.derivation_overrides.passphrase.as_deref(),
+        )?
+        .1
+    };
+    version.address(&public, commit.request.chain)
 }
 
 /// The address a phrase import stores on its chain, along `path` (empty on a
@@ -358,6 +391,7 @@ mod tests {
             private_key: None,
             restore_height: None,
             named_account: None,
+            ton_wallet_version: None,
         }
     }
 

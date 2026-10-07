@@ -65,7 +65,7 @@ pub(super) fn derive(
                 Chain::Stellar => super::stellar::address_from_public_key(&public),
                 Chain::Sui => super::sui::address_from_public_key(&public),
                 Chain::Aptos => super::aptos::address_from_public_key(&public),
-                Chain::Ton => super::ton::derive_ton_v4r2_address(&public)?,
+                Chain::Ton => super::ton::TonWalletVersion::default().address(&public, chain)?,
                 Chain::Near => hex::encode(public),
                 Chain::Icp => hex::encode(super::icp::account_from_principal(
                     &super::icp::principal(&public),

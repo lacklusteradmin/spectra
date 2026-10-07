@@ -90,6 +90,9 @@ pub enum WalletSetupField {
     /// the network at import. Optional: without it the wallet is the key's
     /// implicit account.
     NamedAccount,
+    /// The wallet contract a TON key holds its account under. Optional: W5
+    /// unless the wallet being restored is an older version.
+    TonWalletVersion,
 }
 
 /// One method a network offers, with the formats it accepts there, the
@@ -133,9 +136,12 @@ pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
     } else {
         Vec::new()
     };
-    // A key may control a named account as well as its implicit one.
+    // A key may control a named account as well as its implicit one, and a
+    // TON key one account per wallet version.
     let key_fields = if chain.supports_named_sender_accounts() {
         vec![WalletSetupField::NamedAccount]
+    } else if chain.has_wallet_versions() {
+        vec![WalletSetupField::TonWalletVersion]
     } else {
         Vec::new()
     };
@@ -222,6 +228,7 @@ mod tests {
             private_key: None,
             restore_height: None,
             named_account: None,
+            ton_wallet_version: None,
         }
     }
 

@@ -2,10 +2,8 @@
 //!
 //! Core-owned versioned verifier using fixed PBKDF2 parameters.
 
-use pbkdf2::pbkdf2_hmac;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 use zeroize::Zeroize;
 
 const CURRENT_VERSION: u32 = 1;
@@ -43,7 +41,7 @@ pub fn create_verifier(
     rand::thread_rng().fill_bytes(&mut salt);
 
     let mut digest = vec![0u8; DERIVED_KEY_LENGTH];
-    pbkdf2_hmac::<Sha256>(normalized.as_bytes(), &salt, DEFAULT_ROUNDS, &mut digest);
+    crate::kdf::pbkdf2_sha256(normalized.as_bytes(), &salt, DEFAULT_ROUNDS, &mut digest);
 
     let envelope = PasswordVerifierEnvelope {
         version: CURRENT_VERSION,
@@ -79,7 +77,7 @@ pub fn verify(password: &str, verifier_data: &[u8]) -> bool {
     }
 
     let mut candidate = vec![0u8; DERIVED_KEY_LENGTH];
-    pbkdf2_hmac::<Sha256>(
+    crate::kdf::pbkdf2_sha256(
         normalized.as_bytes(),
         &envelope.salt,
         envelope.rounds,

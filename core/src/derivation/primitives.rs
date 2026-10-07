@@ -4,7 +4,6 @@ use blake2::Blake2b;
 use blake2::digest::Digest;
 use blake2::digest::consts::U64;
 use hmac::{Hmac, Mac};
-use pbkdf2::pbkdf2_hmac;
 use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
@@ -119,7 +118,7 @@ pub(crate) fn derive_bip39_seed(
         normalized_passphrase.as_str()
     ));
     let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
+    crate::kdf::pbkdf2_sha512(
         normalized_mnemonic.as_bytes(),
         salt.as_bytes(),
         iterations,
@@ -182,7 +181,7 @@ pub(crate) fn derive_substrate_mini_secret(
         iteration_count
     };
     let mut buf = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(&entropy, salt.as_bytes(), iterations, &mut *buf);
+    crate::kdf::pbkdf2_sha512(&entropy, salt.as_bytes(), iterations, &mut *buf);
     let mut out = Zeroizing::new([0u8; 32]);
     out.copy_from_slice(&buf[..32]);
     Ok(out)

@@ -223,14 +223,16 @@ impl HttpClient {
         }
         let max_attempts = profile.max_attempts();
         let mut last_err = String::new();
+        let mut rate_limited = false;
 
         for attempt in 0..max_attempts {
             if attempt > 0 {
-                sleep(profile.delay_for_attempt(attempt)).await;
+                sleep(profile.delay_for_attempt(attempt, rate_limited)).await;
             }
             match build(&self.get_client()).send().await {
                 Err(e) => {
                     last_err = format_reqwest_error(&e);
+                    rate_limited = e.status() == Some(StatusCode::TOO_MANY_REQUESTS);
                     if !profile.is_retryable_error(&e) {
                         break;
                     }
@@ -239,6 +241,7 @@ impl HttpClient {
                     let status = resp.status();
                     if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
                         last_err = format!("HTTP {status}");
+                        rate_limited = status == StatusCode::TOO_MANY_REQUESTS;
                         continue;
                     }
                     if !status.is_success() {
@@ -408,18 +411,25 @@ impl RetryProfile {
         }
     }
 
-    /// Delay before `attempt` (0-indexed; attempt 0 has no delay).
-    pub fn delay_for_attempt(self, attempt: usize) -> Duration {
-        // Base delay doubles each retry (exponential backoff with jitter).
+    /// Delay before `attempt` (0-indexed; attempt 0 has no delay): the
+    /// profile's base, doubling each retry, and after a 429 at least a
+    /// second, doubling too — a rate limit's window is a second or more
+    /// (TON Center's anonymous one is), so an earlier retry only spends
+    /// another request inside it. Up to 20% jitter keeps requests refused
+    /// together from retrying together.
+    pub fn delay_for_attempt(self, attempt: usize, rate_limited: bool) -> Duration {
         let (base_ms, max_ms) = match self {
             Self::ChainRead => (350, 2000),
             Self::ChainWrite => (250, 1000),
             Self::Diagnostics => (200, 800),
         };
         let raw = base_ms * 2_u64.saturating_pow(attempt as u32 - 1);
-        let clamped = raw.min(max_ms);
-        // Add 0-20% jitter.
-        Duration::from_millis(clamped)
+        let mut clamped = raw.min(max_ms);
+        if rate_limited {
+            clamped = clamped.max(1000 << (attempt - 1).min(3));
+        }
+        let jitter = rand::Rng::gen_range(&mut rand::thread_rng(), 0..=clamped / 5);
+        Duration::from_millis(clamped + jitter)
     }
 
     /// Whether the given reqwest error warrants a retry.
@@ -557,6 +567,37 @@ mod tests {
             .await
             .expect("ok");
         assert_eq!((status, body.as_slice()), (202, b"ok".as_slice()));
+    }
+
+    /// A 429 waits out the window — a second, then two — where any other
+    /// retryable failure takes the profile's short doubling delay; jitter
+    /// adds at most a fifth.
+    #[test]
+    fn a_rate_limit_waits_longer_than_a_failure() {
+        let within =
+            |delay: Duration, ms: u64| (ms..=ms + ms / 5).contains(&(delay.as_millis() as u64));
+        for _ in 0..20 {
+            assert!(within(
+                RetryProfile::ChainRead.delay_for_attempt(1, false),
+                350
+            ));
+            assert!(within(
+                RetryProfile::ChainRead.delay_for_attempt(2, false),
+                700
+            ));
+            assert!(within(
+                RetryProfile::ChainRead.delay_for_attempt(1, true),
+                1000
+            ));
+            assert!(within(
+                RetryProfile::ChainRead.delay_for_attempt(2, true),
+                2000
+            ));
+            assert!(within(
+                RetryProfile::Diagnostics.delay_for_attempt(1, true),
+                1000
+            ));
+        }
     }
 
     /// A refusal is the service's answer and keeps its status; only transport

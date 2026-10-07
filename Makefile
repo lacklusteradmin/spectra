@@ -44,9 +44,12 @@ test:
 test-cli:
 	scripts/cli-acceptance.sh
 
+# No sysdiagnose: a failing test's own output says what failed, and the
+# collection can wait out a ten-minute timeout on a simulator another tool is
+# attached to, even after every test passed.
 test-ios:
 	xcodebuild test -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" \
-		-destination "$(IOS_TEST_DEST)" \
+		-destination "$(IOS_TEST_DEST)" -collect-test-diagnostics never \
 		$(if $(IOS_TEST_DERIVED_DATA),-derivedDataPath "$(IOS_TEST_DERIVED_DATA)")
 
 # ── Builds ──────────────────────────────────────────────────────────

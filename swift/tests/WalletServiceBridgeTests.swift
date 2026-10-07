@@ -37,7 +37,7 @@ struct WalletServiceBridgeTests {
             derivationPath: nil,
             derivationOverrides: WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
             seedPhrase: "test test test test test test test test test test test junk", privateKey: nil,
-            restoreHeight: nil, namedAccount: nil))
+            restoreHeight: nil, namedAccount: nil, tonWalletVersion: nil))
         #expect(outcome.wallets.count == 1)
         #expect(outcome.wallets[0].signing == .seedPhrase(passwordProtected: false))
         #expect(try bridge.service().revealSeedPhrase(walletId: outcome.wallets[0].id, password: nil) == .phrase(phrase: "test test test test test test test test test test test junk"))
@@ -70,7 +70,7 @@ struct WalletServiceBridgeTests {
                 derivationPath: nil,
                 derivationOverrides: WalletDerivationOverrides(passphrase: nil, hmacKey: nil),
                 seedPhrase: nil, privateKey: "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318",
-                restoreHeight: nil, namedAccount: nil))
+                restoreHeight: nil, namedAccount: nil, tonWalletVersion: nil))
         }
         let refusal = try #require(error)
         #expect(

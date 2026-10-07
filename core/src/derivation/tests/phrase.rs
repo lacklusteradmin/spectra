@@ -178,18 +178,49 @@ fn a_bip39_phrase_is_not_a_monero_phrase() {
     );
 }
 
+/// The W5 accounts of the `ton-mnemonics.json` wallets, by mnemonic.
+fn w5_addresses() -> serde_json::Value {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/ton-w5.json")).unwrap();
+    fixture["addresses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| (text(entry, "mnemonic"), entry.clone()))
+        .collect::<serde_json::Map<_, _>>()
+        .into()
+}
+
+/// ton-crypto's keys, the v4R2 account `ton-mnemonics.json` records, and the
+/// W5 accounts on both networks that `ton-w5.json` does — W5 being the
+/// default a mnemonic derives.
 #[test]
-fn ton_mnemonics_restore_ton_cryptos_keys_and_v4r2_addresses() {
+fn ton_mnemonics_restore_ton_cryptos_keys_and_every_wallet_version() {
+    use crate::derivation::ton::TonWalletVersion;
     let fixtures = ton_fixtures();
+    let w5 = w5_addresses();
     for vector in fixtures["mnemonics"].as_array().unwrap() {
         let mnemonic = text(vector, "mnemonic");
         let judged = verdict(Chain::Ton, &mnemonic);
         assert!(judged.is_valid, "{:?}", judged.problem);
         assert_eq!(judged.format, Some(WalletSecretFormat::TonMnemonic));
         let keys = derive(Chain::Ton, &mnemonic, None);
-        assert_eq!(keys.public_key_hex.unwrap(), text(vector, "public_key"));
+        assert_eq!(
+            keys.public_key_hex.as_deref(),
+            Some(&*text(vector, "public_key"))
+        );
         assert_eq!(keys.private_key_hex.unwrap(), text(vector, "private_key"));
-        assert_eq!(keys.address.unwrap(), text(vector, "address"));
+        assert_eq!(keys.address.unwrap(), text(&w5[&mnemonic], "mainnet"));
+        let testnet = derive(Chain::TonTestnet, &mnemonic, None);
+        assert_eq!(testnet.address.unwrap(), text(&w5[&mnemonic], "testnet"));
+        let public: [u8; 32] = hex::decode(keys.public_key_hex.unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(
+            TonWalletVersion::V4R2.address(&public, Chain::Ton).unwrap(),
+            text(vector, "address")
+        );
     }
 }
 
@@ -201,7 +232,10 @@ fn a_password_protected_ton_mnemonic_needs_its_password() {
     assert!(verdict(Chain::Ton, &mnemonic).is_valid);
     let keys = derive(Chain::Ton, &mnemonic, Some(&password));
     assert_eq!(keys.public_key_hex.unwrap(), text(vector, "public_key"));
-    assert_eq!(keys.address.unwrap(), text(vector, "address"));
+    assert_eq!(
+        keys.address.unwrap(),
+        text(&w5_addresses()[&mnemonic], "mainnet")
+    );
     assert!(check_phrase(Chain::Ton, &mnemonic, None).is_err());
     assert!(check_phrase(Chain::Ton, &mnemonic, Some("wrong")).is_err());
     assert!(check_phrase(Chain::Ton, &mnemonic, Some(&password)).is_ok());

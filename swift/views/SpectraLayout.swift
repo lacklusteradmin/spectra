@@ -69,6 +69,15 @@ extension ShapeStyle where Self == Color {
     static var spectraWarning: Color { .orange }
 }
 
+/// `text` with a zero-width space after every character, for display only.
+/// Text hyphenates an unbroken run to wrap it, and a hyphen inside a hash,
+/// payload or address reads as part of it (a TON address can hold a real
+/// one); with a break allowed everywhere, lines wrap at the edge without one.
+/// Copying must go through the original string.
+func breakableAnywhere(_ text: String) -> String {
+    text.map(String.init).joined(separator: "\u{200B}")
+}
+
 extension View {
     /// The screen inset every scrolling page uses, top-level tab or detail.
     func spectraScreenPadding() -> some View {

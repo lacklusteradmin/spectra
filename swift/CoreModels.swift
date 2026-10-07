@@ -68,11 +68,22 @@ extension DerivationProfile {
         }
     }
 }
+extension TonWalletVersion: CaseIterable {
+    public static var allCases: [TonWalletVersion] { [.w5, .v4r2] }
+    /// The version's name as TON wallets print it.
+    var title: String {
+        switch self {
+        case .w5: AppLocalization.string("W5")
+        case .v4r2: AppLocalization.string("v4R2")
+        }
+    }
+}
 extension FundsFinderCandidate {
-    /// The profile and account the address is on, or nothing for a network
-    /// that derives without a path.
+    /// The profile and account the address is on, the wallet version on TON,
+    /// or nothing for a network that derives one account.
     var profileTitle: String? {
-        profile.map { AppLocalization.format("derivation.profile_account_format", $0.title, Int(account)) }
+        if let tonWalletVersion { return tonWalletVersion.title }
+        return profile.map { AppLocalization.format("derivation.profile_account_format", $0.title, Int(account)) }
     }
 }
 extension TransactionStatus {

@@ -565,10 +565,3 @@ private func emphasizedEnds(_ identifier: String) -> AttributedString {
     return text
 }
 
-/// `text` with a zero-width space after every character, for display only.
-/// Text hyphenates an unbroken run to wrap it, and a hyphen inside a hash or
-/// payload reads as part of it; with a break allowed everywhere, lines wrap
-/// at the edge without one. Copying goes through the original string.
-private func breakableAnywhere(_ text: String) -> String {
-    text.map(String.init).joined(separator: "\u{200B}")
-}

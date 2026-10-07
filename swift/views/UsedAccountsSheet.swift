@@ -2,9 +2,10 @@ import SwiftUI
 
 /// Find the accounts a phrase has used on the chosen network: core scans the
 /// network's derivation profiles at the first accounts, reading balance and
-/// history. The addresses go to a provider before any wallet exists, so the
-/// sheet names the endpoints first and scans only when asked. Choosing a
-/// used account sets the import's profile and account.
+/// history, or on TON each wallet version's account. The addresses go to a
+/// provider before any wallet exists, so the sheet names the endpoints first
+/// and scans only when asked. Choosing a used account sets the import's
+/// profile and account, or its wallet version.
 struct UsedAccountsSheet: View {
     let store: AppState
     @Bindable var draft: WalletImportDraft
@@ -76,10 +77,16 @@ struct UsedAccountsSheet: View {
 
     private func readRow(_ read: FundsScanRead) -> some View {
         Button {
-            guard read.used, let profile = read.candidate.profile else { return }
-            draft.derivationProfile = profile
-            draft.derivationAccount = read.candidate.account
-            draft.customDerivationPath = ""
+            guard read.used else { return }
+            if let version = read.candidate.tonWalletVersion {
+                draft.tonWalletVersion = version
+            } else if let profile = read.candidate.profile {
+                draft.derivationProfile = profile
+                draft.derivationAccount = read.candidate.account
+                draft.customDerivationPath = ""
+            } else {
+                return
+            }
             dismiss()
         } label: {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {

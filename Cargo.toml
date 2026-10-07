@@ -2,6 +2,15 @@
 members = ["core", "ffi", "cli", "tools/uniffi-bindgen"]
 resolver = "3"
 
+# Dependencies are optimized even in debug and test builds. Key stretching
+# (PBKDF2 through ring, see core/src/kdf.rs), curve arithmetic and hashing run
+# in dependency code, which unoptimized made each password unlock in a debug
+# CLI, app or test take about three seconds instead of under a tenth. Our own
+# crates stay unoptimized, so an edit rebuilds as fast as before; a
+# dependency is compiled once.
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 lto = true
 codegen-units = 1

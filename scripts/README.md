@@ -122,6 +122,14 @@ SDK versions and installation/run commands.
 | `generate-icp-staking-vectors.cjs` | DFINITY 3.4.3 Candid, ingress IDs and update/read-state signatures; owned and queued-maturity responses. |
 | `generate-protocol-vectors.cjs` | Generates protocol reference data using the TON and NEAR SDKs. |
 | `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
+| `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton) token-transfer references from the official SDKs. |
+| `generate-xrp-payment-vector.cjs` | XRPL payment signing reference from the official XRPL packages. |
+| `generate-derivation-profile-vectors.cjs` | Addresses for every registry derivation profile at accounts 0 and 1, from independent libraries. |
+| `generate-private-key-vectors.cjs` | Each chain's own private-key encodings, from the chains' SDKs. |
+| `generate-ton-mnemonic-vectors.cjs` | ton-crypto 24-word mnemonics, their keys and v4R2 accounts. |
+| `generate-ton-w5-vectors.cjs` | @ton/ton W5 (wallet v5r1) accounts on both networks, transfers and jetton transfers. |
+| `generate-monero-phrase-vectors.py` | Monero 25-word seeds and Polyseeds from two independent implementations (with `polyseed-vectors.c`). |
+| `generate-monero-checkpoints.py` | Monero height/timestamp checkpoints for `core/data/monero-checkpoints.json`. |
 
 ## Test organisation
 

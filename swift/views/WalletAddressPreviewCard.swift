@@ -29,9 +29,12 @@ struct WalletAddressPreviewCard: View {
                 case .ready(let addresses, let rejected, let upgrades):
                     Text(AppLocalization.string(addresses.count == 1 ? "Address" : "Addresses"))
                         .font(.subheadline.weight(.semibold))
+                    // Wrapped without a layout hyphen, which a TON address
+                    // could hold for real; not selectable, since a copy would
+                    // carry the break marks.
                     ForEach(addresses, id: \.self) { address in
-                        Text(address).font(.footnote.monospaced()).foregroundStyle(Color.primary)
-                            .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        Text(verbatim: breakableAnywhere(address)).font(.footnote.monospaced())
+                            .foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
                     }
                     Text(caption).font(.caption).foregroundStyle(.secondary)
                     if let upgrades {

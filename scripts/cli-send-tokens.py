@@ -18,7 +18,9 @@ BINARY = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else 'target/debug/sp
 TOKEN_BALANCE = 223456789
 RECEIVER = '22' * 32
 ASSET = '44' * 32
-OWNER_TON = '0:efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5'
+# The 0x01 * 32 key's TON accounts, by wallet version.
+OWNER_TON = {'w5': '0:9d1e1843624c4d175a695a8c2de8a5a61f03b93336e8caa4e164bf6cbbab205e',
+             'v4R2': '0:efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5'}
 
 
 class TokenSendTests(unittest.TestCase):
@@ -26,14 +28,17 @@ class TokenSendTests(unittest.TestCase):
         cases = [('sui', 'sui-json-rpc', 'Sui Coin', '0x' + ASSET + '::coins::USD'),
                  ('aptos', 'aptos-rest', 'Aptos Coin', '0x' + ASSET + '::coins::USD'),
                  ('aptos', 'aptos-rest', 'AIP-21', '0x' + ASSET),
-                 ('ton', 'toncenter-v2', 'TEP-74', '0:' + ASSET),
+                 ('ton', 'toncenter-v2', 'TEP-74', '0:' + ASSET, 'w5'),
+                 ('ton', 'toncenter-v2', 'TEP-74', '0:' + ASSET, 'v4R2'),
                  ('ethereum-classic', 'evm-json-rpc', 'ERC-20', '0x' + '44' * 20),
                  ('ethereum-classic-mordor', 'evm-json-rpc', 'ERC-20', '0x' + '44' * 20),
                  ('hyperliquid', 'evm-json-rpc', 'ERC-20', '0x' + '44' * 20),
                  ('hyperliquid-testnet', 'evm-json-rpc', 'ERC-20', '0x' + '44' * 20)]
-        for chain, api, standard, contract in cases:
+        for chain, api, standard, contract, *version in cases:
             if os.environ.get('SPECTRA_TOKEN_CASE') and chain != os.environ['SPECTRA_TOKEN_CASE']: continue
-            with self.subTest(chain=chain, contract=contract), tempfile.TemporaryDirectory(prefix='spectra-token-send-') as directory:
+            # A TON key signs as the wallet version it was imported under.
+            ton_wallet = version[0] if version else None
+            with self.subTest(chain=chain, contract=contract, version=ton_wallet), tempfile.TemporaryDirectory(prefix='spectra-token-send-') as directory:
                 live = dict(decimals=6, version=8, seqno=7, wrong_owner=False, native_balance=10000000000, token_balance=TOKEN_BALANCE)
                 calls = []
                 chain_ids = {'ethereum-classic':61, 'ethereum-classic-mordor':63, 'hyperliquid':999, 'hyperliquid-testnet':998}
@@ -59,7 +64,7 @@ class TokenSendTests(unittest.TestCase):
                             assert query['msg_hash'] == [base64.b64decode(live['external_hash']).hex()], query
                             self.reply(live['trace_response'])
                         elif path == '/v3/jetton/wallets':
-                            owner = query.get('owner_address', [OWNER_TON])[0]
+                            owner = query.get('owner_address', [OWNER_TON[ton_wallet]])[0]
                             if live['wrong_owner']: owner = '0:' + '55' * 32
                             self.reply({'jetton_wallets':[{'address':'0:'+'33'*32,'owner':owner,'jetton':contract,'balance':str(live['token_balance'])}], 'metadata':{contract:{'token_info':[{'type':'jetton_masters','extra':{'decimals':str(live['decimals'])}}]}}})
                         else: raise AssertionError(self.path)
@@ -104,7 +109,8 @@ class TokenSendTests(unittest.TestCase):
                         assert (result.returncode == 0) == success, (args,result.stdout,result.stderr)
                         return json.loads(result.stdout)
                     endpoint = f'http://127.0.0.1:{server.server_port}'
-                    run('wallet','import','--chain',chain,'--name','Token','--private-key-env','SPECTRA_PRIVATE_KEY')
+                    run('wallet','import','--chain',chain,'--name','Token','--private-key-env','SPECTRA_PRIVATE_KEY',
+                        *(('--ton-wallet',ton_wallet) if ton_wallet else ()))
                     run('endpoints','--chain',chain,'--api',api,'--capabilities','balance,fee,verification,token-balance,broadcast','--add',endpoint)
                     if chain == 'ton': run('endpoints','--chain',chain,'--api','toncenter-v3','--capabilities','verification,token-balance,token-discovery','--add',endpoint+'/v3')
                     destination = ('0:'+RECEIVER) if chain == 'ton' else ('0x'+(RECEIVER[:40] if chain in chain_ids else RECEIVER))
@@ -166,7 +172,7 @@ class TokenSendTests(unittest.TestCase):
                         assert live['external_hash'], signed
                         fixture = json.loads((pathlib.Path(__file__).resolve().parents[1]/'core/tests/fixtures/ton-status-v3.json').read_text())
                         details = fixture['traces'][0]['actions'][0]['details']
-                        replacements = {details['sender']:OWNER_TON, details['receiver']:destination,
+                        replacements = {details['sender']:OWNER_TON[ton_wallet], details['receiver']:destination,
                             details['asset']:contract, details['sender_jetton_wallet']:'0:'+'33'*32,
                             details['receiver_jetton_wallet']:'0:'+'55'*32,
                             fixture['traces'][0]['external_hash']:live['external_hash']}

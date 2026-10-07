@@ -177,10 +177,14 @@ foundation; the rest build on them and need not land together.
   named account, and XRP and Stellar show their activation reserve before
   the first receive; Polkadot and Bittensor junction paths wait on their own
   item below.
-- [ ] **Offer TON's wallet contract version.** TON derives only v4R2. Implement
-  W5 (wallet v5r1) beside it — address, state init, external message and
-  signing — against ton-core vectors, then offer the version on TON's page as
-  a derivation profile, with CLI import, send and refusal checks.
+- [x] **Offer TON's wallet contract version.** TON derived only v4R2. W5
+  (wallet v5r1) now stands beside it — address, state init, external message
+  and signing, checked against @ton/ton vectors — and is the default. TON's
+  phrase and key imports ask for the version as a wallet version rather than
+  a derivation profile: TON has no path, and the version is a fact of the
+  stored address, which a send reads back with the key. Finding used
+  accounts reads both versions. CLI import, send and refusal checks cover
+  it.
 
 ## Supported chain scope
 

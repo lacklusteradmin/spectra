@@ -7,7 +7,6 @@ publish = false
 [dependencies]
 bip39 = { version = "2", features = ["all-languages"] }
 unicode-normalization = "0.1"
-pbkdf2 = "0.12"
 secp256k1 = { version = "0.29", features = ["alloc", "global-context", "hashes", "recovery", "rand"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "digest", "fast", "pkcs8", "rand_core", "zeroize"] }
 curve25519-dalek = { version = "4", default-features = false, features = ["alloc", "precomputed-tables", "zeroize"] }
@@ -23,6 +22,8 @@ ic-certificate-verification = "3.2.0"
 num-bigint = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
+# PBKDF2 (`kdf.rs`); already built for rustls.
+ring = "0.17"
 bs58 = { version = "0.5", features = ["check"] }
 bech32 = "0.11"
 ripemd = "0.1"

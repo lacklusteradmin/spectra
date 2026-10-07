@@ -71,6 +71,10 @@ final class WalletImportDraft {
     var namedAccountInput: String = ""
     /// Whether this method on this network takes a named account.
     var asksNamedAccount: Bool { setupOption?.fields.contains(.namedAccount) ?? false }
+    /// The wallet contract a TON key's account is under.
+    var tonWalletVersion: TonWalletVersion = .w5
+    /// Whether this method on this network asks which wallet version to hold.
+    var asksTonWalletVersion: Bool { setupOption?.fields.contains(.tonWalletVersion) ?? false }
     /// The profiles this method offers on the network, default first; empty
     /// where the network derives without a path.
     var derivationProfiles: [DerivationProfile] { setupOption?.profiles ?? [] }
@@ -156,7 +160,8 @@ final class WalletImportDraft {
             privateKey: kind == .privateKey ? privateKeyInput : nil,
             restoreHeight: restoreHeight,
             namedAccount: asksNamedAccount && !namedAccountInput.trimmingCharacters(in: .whitespaces).isEmpty
-                ? namedAccountInput : nil)
+                ? namedAccountInput : nil,
+            tonWalletVersion: asksTonWalletVersion ? tonWalletVersion : nil)
     }
     /// The commit an address preview reads: the form's, without the name and
     /// password, which change no address. `nil` until there is enough to
@@ -262,6 +267,7 @@ final class WalletImportDraft {
         accountXpubInput = ""
         restoreHeightInput = ""
         namedAccountInput = ""
+        tonWalletVersion = .w5
         chain = nil
         seedEntry.chain = nil
         backupVerificationWordIndices = []

@@ -58,7 +58,7 @@ impl WalletService {
         let candidates = match chain_id {
             Some(chain) => {
                 // One account per phrase has nothing to find among.
-                if chain.derivation_profiles().is_empty() {
+                if chain.derivation_profiles().is_empty() && !chain.has_wallet_versions() {
                     return Err(crate::derivation::error::DerivationError::refused(
                         "%@ derives one account from a phrase; there are no others to find.",
                         [chain.chain_display_name()],
@@ -221,6 +221,51 @@ mod tests {
 mod scan_tests {
     use super::*;
     use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::method};
+
+    /// A TON mnemonic holds one account per wallet version, the default
+    /// first, each the fixture's; a chain with one account per phrase still
+    /// has nothing to find.
+    #[test]
+    fn a_ton_phrase_is_scanned_as_each_wallet_version() {
+        use crate::derivation::ton::TonWalletVersion;
+        use crate::registry::Chain;
+        let mnemonics: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/ton-mnemonics.json")).unwrap();
+        let w5: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/ton-w5.json")).unwrap();
+        let mnemonic = mnemonics["mnemonics"][0]["mnemonic"].as_str().unwrap();
+        let service = WalletService::new(Vec::new()).unwrap();
+        let request = || FundsFinderRequest {
+            seed_phrase: mnemonic.into(),
+            passphrase: None,
+        };
+        let candidates = service
+            .begin_funds_scan(request(), Some(Chain::Ton))
+            .unwrap()
+            .candidates();
+        let found: Vec<_> = candidates
+            .iter()
+            .map(|c| (c.ton_wallet_version, c.address.as_str(), c.profile))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (
+                    Some(TonWalletVersion::W5),
+                    w5["addresses"][0]["mainnet"].as_str().unwrap(),
+                    None
+                ),
+                (
+                    Some(TonWalletVersion::V4R2),
+                    mnemonics["mnemonics"][0]["address"].as_str().unwrap(),
+                    None
+                ),
+            ]
+        );
+        for chain in [Chain::Polkadot, Chain::Monero] {
+            assert!(service.begin_funds_scan(request(), Some(chain)).is_err());
+        }
+    }
     #[tokio::test]
     async fn scan_reports_failed_reads_separately_and_finishes_batches() {
         let server = MockServer::start().await;
@@ -260,6 +305,7 @@ mod scan_tests {
                         chain_id: crate::registry::Chain::Ethereum,
                         profile: None,
                         account: 0,
+                        ton_wallet_version: None,
                         derivation_path: "fixture".into(),
                         address: format!("0x{n:040x}"),
                     })
@@ -339,6 +385,7 @@ mod scan_tests {
                 chain_id: chain,
                 profile: Some(crate::chains::DerivationProfile::Standard),
                 account: u32::from(n) - 1,
+                ton_wallet_version: None,
                 derivation_path: format!("m/44'/60'/{}'/0/0", n - 1),
                 address: address(n),
             })

@@ -210,6 +210,7 @@ struct WalletSecretStep: View {
             privateKeyImportFields
                 .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
             namedAccountCard
+            tonWalletVersionCard
             WalletAddressPreviewCard(store: store, draft: draft)
         } else {
             SeedPhraseEntryView(entry: draft.seedEntry)
@@ -217,6 +218,7 @@ struct WalletSecretStep: View {
             if draft.asksRestoreHeight { restoreHeightCard }
             derivationAccountCard
             namedAccountCard
+            tonWalletVersionCard
             WalletAddressPreviewCard(store: store, draft: draft)
             advancedCard
         }
@@ -251,18 +253,22 @@ struct WalletSecretStep: View {
                 if let path = draft.derivationPath {
                     Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                 }
-                // Restoring, the phrase may have been used on another account;
-                // a scan finds it, on request.
-                if !isCreateMode, draft.seedEntry.verdict.isValid {
-                    Button {
-                        isFindingUsedAccounts = true
-                    } label: {
-                        Label(AppLocalization.string("Find Used Accounts"), systemImage: "magnifyingglass")
-                            .font(.subheadline.weight(.semibold))
-                    }.buttonStyle(.glass)
-                }
+                findUsedAccountsButton
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+    }
+    /// Restoring, the phrase may have been used on another account or wallet
+    /// version; a scan finds it, on request.
+    @ViewBuilder
+    private var findUsedAccountsButton: some View {
+        if !isCreateMode, !isPrivateKeyImportMode, draft.seedEntry.verdict.isValid {
+            Button {
+                isFindingUsedAccounts = true
+            } label: {
+                Label(AppLocalization.string("Find Used Accounts"), systemImage: "magnifyingglass")
+                    .font(.subheadline.weight(.semibold))
+            }.buttonStyle(.glass)
         }
     }
     /// A named account the key controls, on a network that has them. The
@@ -279,6 +285,26 @@ struct WalletSecretStep: View {
                 Text(AppLocalization.string(
                     "If this key controls a named account, enter it. Adding the wallet checks on the network that the key is one of its full-access keys."
                 )).font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+    }
+    /// The wallet contract a restored TON key's account is under. Each
+    /// version is a different address, which the preview below shows.
+    @ViewBuilder
+    private var tonWalletVersionCard: some View {
+        if draft.asksTonWalletVersion {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                Text(AppLocalization.string("Wallet Version")).font(.subheadline.weight(.semibold))
+                Picker(AppLocalization.string("Wallet Version"), selection: $draft.tonWalletVersion) {
+                    ForEach(TonWalletVersion.allCases, id: \.self) { version in
+                        Text(version.title).tag(version)
+                    }
+                }.pickerStyle(.segmented)
+                Text(AppLocalization.string(
+                    "Each version is a different address for the same key. Wallets created before 2024 usually use v4R2."
+                )).font(.caption).foregroundStyle(.secondary)
+                findUsedAccountsButton
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
         }
