@@ -48,26 +48,52 @@ struct AddWalletEntryView: View {
 }
 
 /// One network's ways of adding a wallet, as core's setup descriptor lists
-/// them, each with the formats it accepts there.
+/// them, each with the formats it accepts there. Opened from a watched
+/// wallet's page, the ways of giving that wallet its keys instead, as core
+/// offers them for it.
 struct WalletSetupMethodsView: View {
     let store: AppState
     let chain: Chain
+    /// The watched wallet the methods give their keys to, and what doing so
+    /// means, when the page was opened from that wallet's page.
+    var upgrading: (wallet: WalletView, note: String)? = nil
+    @Environment(\.dismiss) private var dismiss
+    @State private var upgradeMethods: [WalletSetupMethod] = []
     private var descriptor: WalletSetupDescriptor { walletSetupDescriptor(chain: chain) }
+    private var options: [WalletSetupOption] {
+        guard upgrading != nil else { return descriptor.options }
+        return descriptor.options.filter { upgradeMethods.contains($0.method) }
+    }
+    private var upgradedIsWatchOnly: Bool? {
+        upgrading.flatMap { store.wallet(for: $0.wallet.id)?.signing.isWatchOnly }
+    }
     var body: some View {
         ZStack {
             SpectraBackdrop().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SpectraLayout.sectionSpacing) {
                     networkHeader
-                    SpectraRowGroup(data: descriptor.options) { option in
-                        Button { store.beginWalletSetup(chain: chain, method: option.method) } label: {
+                    if let upgrading {
+                        Text(AppLocalization.string(upgrading.note)).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    SpectraRowGroup(data: options) { option in
+                        Button { begin(option.method) } label: {
                             methodRow(option)
                         }.buttonStyle(.plain)
                     }
                 }.spectraScreenPadding()
             }
         }
-        .navigationTitle(chain.displayName).navigationBarTitleDisplayMode(.inline)
+        .task(id: upgrading?.wallet.id) {
+            guard let id = upgrading?.wallet.id else { return }
+            upgradeMethods = (try? await store.bridge.ready().walletUpgradeMethods(walletId: id)) ?? []
+        }
+        // Once the wallet has its keys there is nothing left to give it.
+        .onChange(of: upgradedIsWatchOnly) { _, isWatchOnly in
+            if isWatchOnly == false { dismiss() }
+        }
+        .navigationTitle(upgrading == nil ? chain.displayName : WalletAction.addKeys.title)
+        .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(
             isPresented: Binding(
                 get: { store.walletImport.isPresented && store.walletImport.editingWalletId == nil },
@@ -77,6 +103,13 @@ struct WalletSetupMethodsView: View {
             )
         ) {
             SetupView(store: store, draft: store.walletImport.draft)
+        }
+    }
+    private func begin(_ method: WalletSetupMethod) {
+        if let upgrading {
+            store.beginWalletUpgrade(walletId: upgrading.wallet.id, chain: chain, method: method)
+        } else {
+            store.beginWalletSetup(chain: chain, method: method)
         }
     }
     @ViewBuilder

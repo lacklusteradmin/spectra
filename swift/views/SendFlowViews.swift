@@ -198,7 +198,6 @@ struct SendView: View {
         switch currentStep {
         case .from:
             SendFromPage(store: store)
-            MoneroSyncView(store: store, walletId: store.sendFlow.walletId).id(store.sendFlow.walletId)
             if !store.sendFlow.savedArtifacts.isEmpty {
                 DisclosureGroup(AppLocalization.string("Resume a transaction")) {
                     VStack(spacing: 0) {

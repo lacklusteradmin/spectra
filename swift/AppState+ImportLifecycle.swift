@@ -6,6 +6,11 @@ extension AppState {
     func beginWalletSetup(chain: Chain, method: WalletSetupMethod) {
         walletImport.begin { $0.configure(chain: chain, method: method) }
     }
+    /// Open the form that gives the watched wallet `walletId` its keys, by
+    /// one of the methods core offers it.
+    func beginWalletUpgrade(walletId: String, chain: Chain, method: WalletSetupMethod) {
+        walletImport.begin { $0.configure(chain: chain, method: method, upgrading: walletId) }
+    }
     func cancelWalletImport() { walletImport.close() }
     func beginEditingWallet(_ wallet: WalletView) {
         walletImport.begin(editing: wallet) { $0.configureForEditing(wallet: wallet) }
@@ -58,6 +63,14 @@ extension AppState {
                 outcome.rejectedAddresses.joined(separator: ", "))
         }
         if completed { isShowingAddWalletEntry = false }
+    }
+    /// Add a wallet's key, or watched address, to another network as a
+    /// wallet of its own. Core reads the secret and seals the copy; the app
+    /// adopts the new wallet as it does an import's.
+    func copyWallet(_ commit: WalletCopyCommit) async throws -> WalletImportOutcome {
+        let outcome = try await bridge.ready().copyWalletToNetwork(commit: commit)
+        await rebuildWalletDerivedStateFromCore()
+        return outcome
     }
     func renameWallet(id: String, to newName: String) async {
         let completed = await walletImport.submit {

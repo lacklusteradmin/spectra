@@ -69,11 +69,33 @@ pub struct WalletState {
     /// restore height, fixed when it is imported. `None` on every other
     /// chain, which reads balances from a provider instead of scanning.
     pub restore_height: Option<u64>,
+    /// The deployment ids of the holdings the user hid, sorted: left out of
+    /// the wallet's total and the portfolio, listed apart, still sendable.
+    pub hidden_holdings: Vec<String>,
+    /// An ICP wallet's principal, the identity its ledger account derives
+    /// from, recorded at import from the key. `None` on every other chain
+    /// and on a watched ICP account, whose principal its address cannot give.
+    pub icp_principal: Option<String>,
+    /// The key a NEAR named account signs with, as `ed25519:…`, recorded at
+    /// import once the network confirmed it is a full-access key of the
+    /// account. `None` elsewhere, and for an implicit account, whose address
+    /// is its key.
+    pub near_account_key: Option<String>,
 }
 
 // Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
 // domain helpers; the FFI surface stays the record's fields.
 impl WalletState {
+    /// The holdings the wallet's total and the portfolio count: all but the
+    /// hidden ones.
+    pub(crate) fn counted_holdings(
+        &self,
+    ) -> impl Iterator<Item = &crate::store::wallet_domain::AssetHolding> {
+        self.holdings
+            .iter()
+            .filter(|holding| !self.hidden_holdings.contains(&holding.deployment_id()))
+    }
+
     /// Build a summary for a wallet with one address on one chain.
     ///
     /// This is the shape most chains produce: a single derived address, no
@@ -114,6 +136,9 @@ impl WalletState {
                 derivation_path,
             }],
             restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
         }
     }
 
@@ -656,6 +681,13 @@ pub enum StateCommand {
         wallet_id: String,
         included: bool,
     },
+    /// Hide one of a wallet's holdings from its total and the portfolio, or
+    /// show it again. Only a holding the wallet has can be hidden.
+    SetHoldingHidden {
+        wallet_id: String,
+        deployment_id: String,
+        hidden: bool,
+    },
     UpsertWallet {
         wallet: WalletState,
     },
@@ -1056,6 +1088,27 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             {
                 wallet.include_in_portfolio_total = included;
                 events.push(StateEvent::WalletUpdated { wallet_id });
+            }
+        }
+        StateCommand::SetHoldingHidden {
+            wallet_id,
+            deployment_id,
+            hidden,
+        } => {
+            if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
+                let listed = wallet.hidden_holdings.contains(&deployment_id);
+                let holds = wallet
+                    .holdings
+                    .iter()
+                    .any(|holding| holding.deployment_id() == deployment_id);
+                if hidden && !listed && holds {
+                    wallet.hidden_holdings.push(deployment_id);
+                    wallet.hidden_holdings.sort();
+                    events.push(StateEvent::WalletUpdated { wallet_id });
+                } else if !hidden && listed {
+                    wallet.hidden_holdings.retain(|id| *id != deployment_id);
+                    events.push(StateEvent::WalletUpdated { wallet_id });
+                }
             }
         }
         StateCommand::UpsertWallet { wallet } => {
@@ -1460,6 +1513,9 @@ mod tests {
                 derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             }],
             restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
         }
     }
 

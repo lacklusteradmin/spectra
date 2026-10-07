@@ -202,6 +202,7 @@ impl WalletService {
                     asset: chain.coin_symbol().into(),
                     symbol: chain.coin_symbol().into(),
                     staking: Some(request),
+                    operation: None,
                     created_at: crate::store::now_unix().floor(),
                     review_digest: String::new(),
                     review: SendArtifactReview {
@@ -366,7 +367,7 @@ impl WalletService {
     }
 }
 impl WalletService {
-    async fn staking_owner(
+    pub(super) async fn staking_owner(
         &self,
         wallet_id: &str,
         chain: Chain,

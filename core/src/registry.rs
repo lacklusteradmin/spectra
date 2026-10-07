@@ -274,6 +274,20 @@ const ALL_CHAINS: &[Chain] = &[
     Chain::MoneroStagenet,
 ];
 
+/// The signature scheme a chain's raw private key belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyScheme {
+    /// A secp256k1 scalar: the Bitcoin family, every EVM network, Tron, XRP,
+    /// Kaspa and Decred.
+    Secp256k1,
+    /// A 32-byte Ed25519 seed.
+    Ed25519,
+    /// A Substrate sr25519 mini secret.
+    Sr25519,
+    /// Cardano's 64-byte BIP32-Ed25519 extended key.
+    Ed25519Extended,
+}
+
 /// Where an EVM chain's transaction history can be read from.
 ///
 /// Only keyless explorer sources are configured.
@@ -346,6 +360,28 @@ impl Chain {
             _ if self.is_evm() => Chain::Ethereum.str_id(),
             _ => self.str_id(),
         }
+    }
+
+    /// The signature scheme a raw key on this chain is a secret of, or `None`
+    /// where a key alone yields no address. Two chains with one scheme read
+    /// the same key as the same secret; across schemes the same bytes are a
+    /// different key, which a wallet's key must not become.
+    pub fn key_scheme(self) -> Option<KeyScheme> {
+        if !self.derives_from_private_key() {
+            return None;
+        }
+        Some(match self.mainnet_counterpart() {
+            Self::Cardano => KeyScheme::Ed25519Extended,
+            Self::Polkadot | Self::Bittensor => KeyScheme::Sr25519,
+            Self::Solana
+            | Self::Stellar
+            | Self::Sui
+            | Self::Aptos
+            | Self::Ton
+            | Self::Near
+            | Self::Icp => KeyScheme::Ed25519,
+            _ => KeyScheme::Secp256k1,
+        })
     }
 
     /// Whether a raw private key yields an address on this chain.
@@ -685,6 +721,12 @@ impl Chain {
     /// Returns `true` for chains that are testnets.
     pub fn is_testnet(self) -> bool {
         crate::chains::declared(self).environment == "testnet"
+    }
+
+    /// A test network's faucet page, where its coins are free; `None` on
+    /// mainnets and on test networks without a working one.
+    pub fn faucet_url(self) -> Option<&'static str> {
+        crate::chains::declared(self).faucet.as_deref()
     }
 
     /// Maps a testnet variant to its mainnet counterpart. Returns `self` for mainnets.
@@ -2561,4 +2603,11 @@ impl Chain {
             HistoryRefreshKind::Normalized
         }
     }
+}
+
+/// A test network's faucet page, or `None` on a mainnet and on a test
+/// network without a working faucet.
+#[uniffi::export]
+pub fn chain_faucet_url(chain: Chain) -> Option<String> {
+    chain.faucet_url().map(str::to_string)
 }

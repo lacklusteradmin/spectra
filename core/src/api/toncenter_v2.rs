@@ -95,6 +95,39 @@ impl ToncenterV2Client {
         Ok(TonBalance { nanotons })
     }
 
+    /// A wallet account's state (`active`, `uninitialized`, `frozen`) and,
+    /// once deployed, the wallet contract the node recognizes, from one
+    /// verified node.
+    pub async fn fetch_wallet_state(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<(String, Option<String>), ApiError> {
+        #[derive(Deserialize)]
+        struct Info {
+            account_state: String,
+            #[serde(default)]
+            wallet_type: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            result: Info,
+        }
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let response: Resp = node
+                .get(&format!("/getWalletInformation?address={address}"))
+                .await?;
+            if !response.ok {
+                return Err(ApiError::rejected("TON wallet information refused"));
+            }
+            Ok((response.result.account_state, response.result.wallet_type))
+        })
+        .await
+    }
+
     pub async fn fetch_seqno(&self, address: &str) -> Result<u32, ApiError> {
         use serde_json::{Value, json};
         // A failed read is not an undeployed wallet. Only a positive state

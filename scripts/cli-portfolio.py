@@ -123,6 +123,40 @@ class PortfolioTests(unittest.TestCase):
             valuation = run('portfolio','--stored')['valuation']
             assert valuation['portfolio']['fiatTotal'] is None, valuation
 
+    def test_hidden_holdings(self):
+        """A hidden holding leaves both totals, stays listed apart and survives reopening."""
+        with tempfile.TemporaryDirectory(prefix='spectra-hidden-') as directory:
+            def run(*args, code=0):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60)
+                assert result.returncode == code, (args, result.stdout, result.stderr)
+                return json.loads(result.stdout) if code == 0 else None
+            run('wallet', 'watch', '--chain', 'ethereum', '--address', '0x'+'22'*20, '--name', 'Spam')
+            dbpath = pathlib.Path(directory)/'spectra.sqlite'
+            with sqlite3.connect(dbpath) as db:
+                wid, raw = db.execute('SELECT id,payload FROM wallets').fetchone()
+                wallet = json.loads(raw)
+                native = dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum', tokenStandard='Native', contractAddress=None, amount='2')
+                usdc = dict(name='USD Coin', symbol='USDC', coingeckoId='usd-coin', chainId='ethereum', tokenStandard='ERC-20', contractAddress='0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', amount='100')
+                wallet['holdings'] = [native, usdc]
+                db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet),wid))
+                db.execute('INSERT OR REPLACE INTO app_state_meta VALUES (?,?)', ('quotes',json.dumps({'prices':{'ethereum:native':3000,'ethereum:erc-20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48':1}})))
+            def totals():
+                valuation = run('portfolio', '--stored')['valuation']
+                return valuation['portfolio']['total'], valuation['wallets'][wid]['total']
+            assert totals() == (6100.0, 6100.0), totals()
+            run('wallet', 'hide', 'Spam', 'USDC')
+            # Each command is a new process: the flag is stored, not held.
+            assert run('wallet', 'show', 'Spam')['wallet']['hiddenHoldings'] == ['ethereum:erc-20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48']
+            assert totals() == (6000.0, 6000.0), totals()
+            groups = run('portfolio', '--stored')['groups']
+            # A pinned row stays, holding nothing.
+            usdc_rows = [group for group in groups if group['identity']['symbol'] == 'USDC']
+            assert all(row['holdings'] == [] and row['totalAmount'] == '0' for row in usdc_rows), groups
+            run('wallet', 'hide', 'Spam', 'DAI', code=3)
+            run('wallet', 'unhide', 'Spam', 'USDC')
+            assert run('wallet', 'show', 'Spam')['wallet']['hiddenHoldings'] == []
+            assert totals() == (6100.0, 6100.0), totals()
+
     def test_live_portfolio_is_core_valuation(self):
         """Live totals are core's valuation after core's refreshes; the CLI multiplies nothing."""
         import time

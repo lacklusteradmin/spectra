@@ -74,6 +74,16 @@ private struct HistoryPresentationSection: Identifiable {
 }
 struct HistoryView: View {
     let store: AppState
+    var body: some View {
+        NavigationStack { HistoryListView(store: store) }
+    }
+}
+/// Every wallet's history, or one wallet's: the History tab, and the list a
+/// wallet's page opens.
+struct HistoryListView: View {
+    let store: AppState
+    /// The one wallet the list shows; `nil` lets the filter choose.
+    private let fixedWalletId: String?
     @State private var selectedFilter: HistoryQueryFilter = .all
     @State private var selectedSortOrder: HistorySortOrder = .newest
     @State private var selectedWalletId: String?
@@ -89,91 +99,96 @@ struct HistoryView: View {
     /// Rows the next reload adds beyond those on screen; cleared once a reload lands.
     @State private var pendingGrowth = 0
     @State private var isRetrying = false
+    init(store: AppState, walletId: String? = nil) {
+        self.store = store
+        fixedWalletId = walletId
+        _selectedWalletId = State(initialValue: walletId)
+    }
     var body: some View {
-        NavigationStack {
-            ZStack {
-                SpectraBackdrop().ignoresSafeArea()
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: SpectraLayout.sectionSpacing) {
-                        if let error = historyError {
-                            VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                                Label(AppLocalization.string("Unable to load history"), systemImage: "exclamationmark.triangle")
-                                    .font(.headline)
-                                Text(error).font(.subheadline).foregroundStyle(.secondary)
-                                Button(AppLocalization.string("Retry")) {
-                                    isRetrying = true
-                                    Task {
-                                        await store.refreshTransactionProjection()
-                                        await loadPage(reset: true)
-                                        await store.performUserInitiatedRefresh()
-                                        isRetrying = false
-                                    }
-                                }.buttonStyle(.glass).disabled(isRetrying)
-                            }.padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading).spectraCardFill()
-                        }
-                        if visibleTransactions.isEmpty && historyError == nil {
-                            historyEmptyStateCard
-                        }
-                        ForEach(groupedSections) { section in
+        ZStack {
+            SpectraBackdrop().ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: SpectraLayout.sectionSpacing) {
+                    if let error = historyError {
+                        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                            Label(AppLocalization.string("Unable to load history"), systemImage: "exclamationmark.triangle")
+                                .font(.headline)
+                            Text(error).font(.subheadline).foregroundStyle(.secondary)
+                            Button(AppLocalization.string("Retry")) {
+                                isRetrying = true
+                                Task {
+                                    await store.refreshTransactionProjection()
+                                    await loadPage(reset: true)
+                                    await store.performUserInitiatedRefresh()
+                                    isRetrying = false
+                                }
+                            }.buttonStyle(.glass).disabled(isRetrying)
+                        }.padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading).spectraCardFill()
+                    }
+                    if visibleTransactions.isEmpty && historyError == nil {
+                        historyEmptyStateCard
+                    }
+                    ForEach(groupedSections) { section in
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Text(AppLocalization.format("history.section.titleCount", section.title, section.rows.count))
+                                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                                    Spacer()
+                                }.padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.cardHeaderVertical)
+                                Divider().opacity(0.25)
                                 VStack(spacing: 0) {
-                                    HStack {
-                                        Text(AppLocalization.format("history.section.titleCount", section.title, section.rows.count))
-                                            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                                        Spacer()
-                                    }.padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.cardHeaderVertical)
-                                    Divider().opacity(0.25)
-                                    VStack(spacing: 0) {
-                                        ForEach(Array(section.rows.enumerated()), id: \.element.id) { index, row in
-                                            NavigationLink {
-                                                TransactionDetailView(store: store, transaction: row.transaction)
-                                            } label: {
-                                                HistoryTransactionRowView(row: row).equatable()
-                                                    .padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.rowVertical)
-                                            }.buttonStyle(.plain).contextMenu {
-                                                if row.transaction.actions.recheckUnavailableReason == nil {
-                                                    Button {
-                                                        spectraHaptic(.light)
-                                                        Task { _ = await store.retryUTXOTransactionStatus(for: row.transaction.id) }
-                                                    } label: {
-                                                        Label(AppLocalization.string("Recheck"), systemImage: "arrow.clockwise")
-                                                    }
-                                                }
-                                                if row.transaction.actions.rebroadcastUnavailableReason == nil {
-                                                    Button {
-                                                        spectraHaptic(.light)
-                                                        Task { _ = await store.rebroadcastSignedTransaction(for: row.transaction.id) }
-                                                    } label: {
-                                                        Label(AppLocalization.string("Rebroadcast"), systemImage: "dot.radiowaves.up.forward")
-                                                    }
+                                    ForEach(Array(section.rows.enumerated()), id: \.element.id) { index, row in
+                                        NavigationLink {
+                                            TransactionDetailView(store: store, transaction: row.transaction)
+                                        } label: {
+                                            HistoryTransactionRowView(row: row).equatable()
+                                                .padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.rowVertical)
+                                        }.buttonStyle(.plain).contextMenu {
+                                            if row.transaction.actions.recheckUnavailableReason == nil {
+                                                Button {
+                                                    spectraHaptic(.light)
+                                                    Task { _ = await store.retryUTXOTransactionStatus(for: row.transaction.id) }
+                                                } label: {
+                                                    Label(AppLocalization.string("Recheck"), systemImage: "arrow.clockwise")
                                                 }
                                             }
-                                            if index < section.rows.count - 1 { Divider().padding(.leading, SpectraLayout.rowDividerInset).opacity(0.25) }
+                                            if row.transaction.actions.rebroadcastUnavailableReason == nil {
+                                                Button {
+                                                    spectraHaptic(.light)
+                                                    Task { _ = await store.rebroadcastSignedTransaction(for: row.transaction.id) }
+                                                } label: {
+                                                    Label(AppLocalization.string("Rebroadcast"), systemImage: "dot.radiowaves.up.forward")
+                                                }
+                                            }
                                         }
-                                    }.padding(.vertical, SpectraLayout.Space.xs)
-                                }.frame(maxWidth: .infinity).glassEffect(
-                                    .regular.tint(SpectraLayout.GlassTint.content).interactive(),
-                                    in: .rect(cornerRadius: SpectraLayout.Radius.card))
-                            }
-                        if shouldShowPagingControls { historyPagingControls }
-                    }.spectraScreenPadding()
-                }.refreshable {
-                    await store.performUserInitiatedRefresh()
-                }.scrollBounceBehavior(.always)
-            }.searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
-                         prompt: AppLocalization.string("Search wallet, asset, symbol, or address"))
-            .textInputAutocapitalization(.never).autocorrectionDisabled()
-            .navigationTitle(AppLocalization.string("History")).navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { historyFilterMenu }
-            }.task(id: queryKey) { await loadPage(reset: true) }
-        }
+                                        if index < section.rows.count - 1 { Divider().padding(.leading, SpectraLayout.rowDividerInset).opacity(0.25) }
+                                    }
+                                }.padding(.vertical, SpectraLayout.Space.xs)
+                            }.frame(maxWidth: .infinity).glassEffect(
+                                .regular.tint(SpectraLayout.GlassTint.content).interactive(),
+                                in: .rect(cornerRadius: SpectraLayout.Radius.card))
+                        }
+                    if shouldShowPagingControls { historyPagingControls }
+                }.spectraScreenPadding()
+            }.refreshable {
+                await store.performUserInitiatedRefresh()
+            }.scrollBounceBehavior(.always)
+        }.searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                     prompt: AppLocalization.string("Search wallet, asset, symbol, or address"))
+        .textInputAutocapitalization(.never).autocorrectionDisabled()
+        .navigationTitle(AppLocalization.string("History")).navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { historyFilterMenu }
+        }.task(id: queryKey) { await loadPage(reset: true) }
     }
     private var historyFilterMenu: some View {
         Menu {
-            Picker(AppLocalization.string("Wallet"), selection: $selectedWalletId) {
-                Text(AppLocalization.string("All Wallets")).tag(Optional<String>.none)
-                ForEach(store.wallets) { wallet in Text(wallet.name).tag(Optional(wallet.id)) }
+            if fixedWalletId == nil {
+                Picker(AppLocalization.string("Wallet"), selection: $selectedWalletId) {
+                    Text(AppLocalization.string("All Wallets")).tag(Optional<String>.none)
+                    ForEach(store.wallets) { wallet in Text(wallet.name).tag(Optional(wallet.id)) }
+                }
             }
             Picker(AppLocalization.string("Type"), selection: $selectedFilter) {
                 ForEach(HistoryQueryFilter.allCases) { filter in Text(filter.localizedTitle).tag(filter) }

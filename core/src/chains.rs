@@ -129,6 +129,9 @@ pub(crate) struct TomlChain {
     artwork_name: String,
     #[serde(default)]
     address_prefix_hint: String,
+    /// A test network's faucet page, where its coins are free. Testnets only.
+    #[serde(default)]
+    pub(crate) faucet: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -379,6 +382,15 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 .iter()
                 .any(|n| n.id == c.family && n.environment == "mainnet"),
             "unknown network family"
+        );
+        assert!(
+            c.faucet.is_none()
+                || c.environment == "testnet"
+                    && c.faucet
+                        .as_deref()
+                        .is_some_and(|url| url.starts_with("https://")),
+            "{} faucet must be an https page on a testnet",
+            c.id
         );
         // A profile is one template with one account segment, and a chain
         // that derives along a path has exactly one default.
@@ -734,6 +746,45 @@ mod explicit_network_catalog {
     #[should_panic(expected = "unknown network family")]
     fn unknown_network_families_are_rejected() {
         load_catalog_text(&CHAINS_TOML.replacen("family = \"bitcoin\"", "family = \"unknown\"", 1));
+    }
+
+    /// Every test network's faucet is the one the audit checked live, and
+    /// only test networks have one.
+    #[test]
+    fn faucets_are_the_audited_ones() {
+        let audit: serde_json::Value = serde_json::from_str(include_str!(
+            "../../docs/audits/testnet-faucets-2026-10-07.json"
+        ))
+        .unwrap();
+        let audited: std::collections::HashMap<&str, Option<&str>> = audit["faucets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| (row["chain"].as_str().unwrap(), row["url"].as_str()))
+            .collect();
+        for chain in crate::registry::Chain::all() {
+            if chain.is_testnet() {
+                assert_eq!(
+                    chain.faucet_url(),
+                    *audited
+                        .get(chain.str_id())
+                        .unwrap_or_else(|| panic!("{chain} unaudited")),
+                    "{chain}"
+                );
+            } else {
+                assert_eq!(chain.faucet_url(), None, "{chain}");
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "faucet must be an https page on a testnet")]
+    fn a_mainnet_has_no_faucet() {
+        load_catalog_text(&CHAINS_TOML.replacen(
+            "environment = \"mainnet\"",
+            "environment = \"mainnet\"\nfaucet = \"https://example.com\"",
+            1,
+        ));
     }
 
     #[test]

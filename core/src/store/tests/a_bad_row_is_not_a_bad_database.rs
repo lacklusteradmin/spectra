@@ -29,6 +29,9 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         holdings: Vec::new(),
         addresses: Vec::new(),
         restore_height: None,
+        hidden_holdings: Vec::new(),
+        icp_principal: None,
+        near_account_key: None,
     });
     crate::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state)
         .expect("save");
@@ -87,6 +90,9 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
         holdings: Vec::new(),
         addresses: Vec::new(),
         restore_height: None,
+        hidden_holdings: Vec::new(),
+        icp_principal: None,
+        near_account_key: None,
     };
 
     let mut state = ResidentState::default();

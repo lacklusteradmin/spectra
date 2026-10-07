@@ -1,11 +1,16 @@
 import Foundation
 import SwiftUI
 extension AppState {
-    /// Open with no wallet selected unless there is only one to choose.
-    func beginReceive() {
+    /// Open on `walletId`, or with no wallet selected unless there is only
+    /// one to choose.
+    func beginReceive(walletId: String? = nil) {
         let wallets = receiveEnabledWallets
         guard !wallets.isEmpty else { return }
-        receiveFlow.walletId = wallets.count == 1 ? wallets[0].id : ""
+        if let walletId, wallets.contains(where: { $0.id == walletId }) {
+            receiveFlow.walletId = walletId
+        } else {
+            receiveFlow.walletId = wallets.count == 1 ? wallets[0].id : ""
+        }
         syncReceiveAssetSelection()
         receiveFlow.isPresented = true
     }

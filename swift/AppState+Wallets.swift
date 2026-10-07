@@ -6,7 +6,7 @@ extension AppState {
     /// password goes to core as typed; core applies its password rule and
     /// says why a phrase was not revealed.
     func revealSeedPhrase(for wallet: WalletView, password: String? = nil) async throws -> String {
-        if let failure = await authenticate(.revealSeedPhrase,
+        if let failure = await authenticate(.secretMaterial,
             reason: AppLocalization.format("Authenticate to view seed phrase for %@", wallet.name)) {
             throw SeedPhraseRevealError.authenticationFailed(failure)
         }

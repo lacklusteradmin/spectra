@@ -1,66 +1,24 @@
 import SwiftUI
 
-struct StakingView: View {
-    @Bindable var store: AppState
-
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                    VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-                        Label(AppLocalization.string("Staking"), systemImage: "link.circle.fill")
-                            .font(.title3.weight(.bold))
-                        Text(AppLocalization.string("staking.intro"))
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    .padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading)
-                    .spectraElevatedFill()
-                    SpectraRowGroup(
-                        title: AppLocalization.string("Supported Chains"),
-                        trailing: "\(CoreReferenceTables.stakingChains.count)",
-                        data: CoreReferenceTables.stakingChains
-                    ) { entry in
-                        NavigationLink(value: entry.chain) {
-                            HStack(spacing: SpectraLayout.Space.m) {
-                                CoinBadge(
-                                    artworkName: AssetPresentationCatalog.artwork(
-                                        deploymentId: entry.chain.entry?.nativeDeploymentId),
-                                    fallbackText: entry.chain.gasTokenSymbol,
-                                    color: entry.chain.entry?.color.color ?? .accentColor, size: 36)
-                                Text(entry.chain.displayName).font(.headline).foregroundStyle(.primary)
-                                Spacer(minLength: SpectraLayout.Space.s)
-                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                            }.spectraRowPadding()
-                        }.buttonStyle(.plain)
-                    }
-                }.spectraScreenPadding()
-            }
-            .background(SpectraBackdrop().ignoresSafeArea())
-            .navigationTitle(AppLocalization.string("Staking"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .navigationDestination(for: Chain.self) { ChainStakingDetailView(chain: $0, store: store) }
-        }
-    }
-}
-
-extension StakingChainEntry: Identifiable { public var id: Chain { chain } }
-
-struct ChainStakingDetailView: View {
+/// One wallet's staking: its positions, and staking from it. A wallet's page
+/// opens it where core offers staking for the wallet's network; there is no
+/// other way in.
+struct WalletStakingView: View {
     let chain: Chain
+    let walletId: String
     @Bindable var store: AppState
     @State private var vm: StakingViewModel
     @State private var showsValidators = false
     @State private var confirmsSigning = false
     @State private var confirmsBroadcast = false
 
-    init(chain: Chain, store: AppState) {
-        self.chain = chain
+    init(store: AppState, wallet: WalletView) {
+        chain = wallet.chain
+        walletId = wallet.id
         self.store = store
-        _vm = State(wrappedValue: StakingViewModel(chain: chain, bridge: store.bridge))
+        _vm = State(wrappedValue: StakingViewModel(chain: wallet.chain, bridge: store.bridge))
     }
 
-    private var wallets: [WalletView] { store.wallets.filter { $0.address(on: chain) != nil } }
     private var wallet: WalletView? { store.wallet(for: vm.walletId) }
     private var requiresPassword: Bool { wallet?.signing.requiresPassword ?? true }
 
@@ -68,7 +26,9 @@ struct ChainStakingDetailView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                 if let entry = CoreReferenceTables.stakingEntry(for: chain) { mechanics(entry) }
-                walletPicker
+                if wallet?.signing.isWatchOnly == true {
+                    Text(AppLocalization.string("staking.watch_only")).font(.caption).foregroundStyle(.secondary)
+                }
                 if !vm.walletId.isEmpty {
                     if let artifact = vm.session.artifact {
                         StakingTransactionView(
@@ -90,10 +50,10 @@ struct ChainStakingDetailView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(SpectraBackdrop().ignoresSafeArea())
-        .navigationTitle(chain.displayName).navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(AppLocalization.string("Staking")).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task {
-            if vm.walletId.isEmpty, let first = wallets.first { vm.selectWallet(first.id) }
+            vm.selectWallet(walletId)
             await vm.loadValidators()
         }
         .task(id: vm.walletId) { await vm.loadWalletData() }
@@ -162,30 +122,6 @@ struct ChainStakingDetailView: View {
                 .padding(.top, SpectraLayout.Space.s)
             }
         }.padding(SpectraLayout.cardPadding).spectraElevatedFill()
-    }
-
-    private var walletPicker: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            if wallets.isEmpty {
-                Text(AppLocalization.string("staking.no_wallet")).font(.subheadline).foregroundStyle(
-                    .secondary)
-            } else {
-                Picker(
-                    AppLocalization.string("Wallet"),
-                    selection: Binding(get: { vm.walletId }, set: { vm.selectWallet($0) })
-                ) {
-                    ForEach(wallets) { wallet in Text(wallet.name).tag(wallet.id) }
-                }.disabled(vm.isBusy)
-                if let wallet, let address = wallet.address(on: chain) {
-                    Text(verbatim: address).font(.caption.monospaced()).foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    if wallet.signing.isWatchOnly {
-                        Text(AppLocalization.string("staking.watch_only")).font(.caption).foregroundStyle(
-                            .secondary)
-                    }
-                }
-            }
-        }.padding(SpectraLayout.cardPadding).spectraCardFill()
     }
 
     private var preparation: some View {

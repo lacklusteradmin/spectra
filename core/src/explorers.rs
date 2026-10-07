@@ -1,4 +1,4 @@
-//! Transaction explorers, embedded from `explorers.toml`.
+//! Explorers, embedded from `explorers.toml`.
 //!
 //! An explorer is a page the app opens, never a service it requests, so it has
 //! no API, capabilities or health probe. Those belong to `endpoints.toml`.
@@ -11,31 +11,37 @@ static EXPLORERS_TOML: &str = include_str!("../data/explorers.toml");
 
 /// Where a transaction's hash goes in `tx_url`.
 const HASH_PLACEHOLDER: &str = "{hash}";
+/// Where an address goes in `address_url`.
+const ADDRESS_PLACEHOLDER: &str = "{address}";
 
-/// A network's transaction explorer.
+/// A network's explorer: the pages its transactions and addresses open in.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, uniffi::Record)]
 #[serde(deny_unknown_fields)]
-pub struct TransactionExplorer {
+pub struct Explorer {
     pub chain_id: crate::registry::Chain,
     /// What the explorer calls itself, such as "Etherscan".
     pub name: String,
     /// The transaction page, with `{hash}` where the hash goes.
     pub tx_url: String,
+    /// The address page, with `{address}` where the address goes, or `None`
+    /// where the explorer has none (Monero's, which cannot see one).
+    #[serde(default)]
+    pub address_url: Option<String>,
 }
 
-/// One transaction's page on its network's explorer.
+/// One page on a network's explorer.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct TransactionExplorerLink {
+pub struct ExplorerLink {
     pub name: String,
     pub url: String,
 }
 
-impl TransactionExplorer {
-    fn link(&self, transaction_hash: &str) -> Option<TransactionExplorerLink> {
-        let hash = transaction_hash.trim();
-        (!hash.is_empty()).then(|| TransactionExplorerLink {
+impl Explorer {
+    fn link(&self, template: &str, placeholder: &str, value: &str) -> Option<ExplorerLink> {
+        let value = value.trim();
+        (!value.is_empty()).then(|| ExplorerLink {
             name: self.name.clone(),
-            url: self.tx_url.replace(HASH_PLACEHOLDER, hash),
+            url: template.replace(placeholder, value),
         })
     }
 }
@@ -43,18 +49,21 @@ impl TransactionExplorer {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TomlFile {
-    explorers: Vec<TransactionExplorer>,
+    explorers: Vec<Explorer>,
 }
 
-static EXPLORERS: LazyLock<Vec<TransactionExplorer>> = LazyLock::new(|| {
+static EXPLORERS: LazyLock<Vec<Explorer>> = LazyLock::new(|| {
     load(EXPLORERS_TOML).unwrap_or_else(|error| panic!("explorers.toml: {error}"))
 });
 
-fn load(text: &str) -> Result<Vec<TransactionExplorer>, String> {
+fn load(text: &str) -> Result<Vec<Explorer>, String> {
     let explorers = toml::from_str::<TomlFile>(text)
         .map_err(|e| e.to_string())?
         .explorers;
     let mut seen = std::collections::HashSet::new();
+    let template = |url: &str, placeholder: &str| {
+        url.starts_with("https://") && url.matches(placeholder).count() == 1
+    };
     for explorer in &explorers {
         let id = explorer.chain_id;
         if !seen.insert(id) {
@@ -63,11 +72,16 @@ fn load(text: &str) -> Result<Vec<TransactionExplorer>, String> {
         if explorer.name.trim().is_empty() {
             return Err(format!("{id}: empty name"));
         }
-        if !explorer.tx_url.starts_with("https://")
-            || explorer.tx_url.matches(HASH_PLACEHOLDER).count() != 1
-        {
+        if !template(&explorer.tx_url, HASH_PLACEHOLDER) {
             return Err(format!(
                 "{id}: tx_url must be HTTPS with exactly one {HASH_PLACEHOLDER}"
+            ));
+        }
+        if let Some(url) = &explorer.address_url
+            && !template(url, ADDRESS_PLACEHOLDER)
+        {
+            return Err(format!(
+                "{id}: address_url must be HTTPS with exactly one {ADDRESS_PLACEHOLDER}"
             ));
         }
     }
@@ -75,18 +89,15 @@ fn load(text: &str) -> Result<Vec<TransactionExplorer>, String> {
 }
 
 impl Chain {
-    pub fn transaction_explorer(self) -> Option<&'static TransactionExplorer> {
+    pub fn explorer(self) -> Option<&'static Explorer> {
         EXPLORERS.iter().find(|e| e.chain_id == self)
     }
 }
 
-/// Every network's transaction explorer, in registry order.
+/// Every network's explorer, in registry order.
 #[uniffi::export]
-pub fn transaction_explorers() -> Vec<TransactionExplorer> {
-    Chain::all()
-        .filter_map(Chain::transaction_explorer)
-        .cloned()
-        .collect()
+pub fn explorers() -> Vec<Explorer> {
+    Chain::all().filter_map(Chain::explorer).cloned().collect()
 }
 
 /// The explorer page for one transaction, or `None` when the network has no
@@ -95,8 +106,24 @@ pub fn transaction_explorers() -> Vec<TransactionExplorer> {
 pub fn transaction_explorer_link(
     chain_id: crate::registry::Chain,
     transaction_hash: String,
-) -> Option<TransactionExplorerLink> {
-    chain_id.transaction_explorer()?.link(&transaction_hash)
+) -> Option<ExplorerLink> {
+    let explorer = chain_id.explorer()?;
+    explorer.link(&explorer.tx_url, HASH_PLACEHOLDER, &transaction_hash)
+}
+
+/// The explorer page for one address, or `None` when the network's explorer
+/// has no address page or there is no address to show.
+#[uniffi::export]
+pub fn address_explorer_link(
+    chain_id: crate::registry::Chain,
+    address: String,
+) -> Option<ExplorerLink> {
+    let explorer = chain_id.explorer()?;
+    explorer.link(
+        explorer.address_url.as_deref()?,
+        ADDRESS_PLACEHOLDER,
+        &address,
+    )
 }
 
 #[cfg(test)]
@@ -105,14 +132,28 @@ mod tests {
 
     #[test]
     fn the_embedded_file_loads_one_explorer_per_listed_network() {
-        assert_eq!(transaction_explorers().len(), EXPLORERS.len());
+        assert_eq!(explorers().len(), EXPLORERS.len());
+    }
+
+    /// Every explorer has an address page but Monero's, which cannot see
+    /// one: its addresses are not on its chain.
+    #[test]
+    fn every_explorer_but_moneros_has_an_address_page() {
+        for explorer in explorers() {
+            assert_eq!(
+                explorer.address_url.is_none(),
+                explorer.chain_id.mainnet_counterpart() == Chain::Monero,
+                "{}",
+                explorer.chain_id
+            );
+        }
     }
 
     #[test]
     fn the_hash_is_placed_where_the_template_says() {
         assert_eq!(
             transaction_explorer_link(crate::registry::Chain::Ethereum, " 0xabc ".into()),
-            Some(TransactionExplorerLink {
+            Some(ExplorerLink {
                 name: "Etherscan".into(),
                 url: "https://etherscan.io/tx/0xabc".into()
             })
@@ -140,21 +181,40 @@ mod tests {
     }
 
     #[test]
+    fn the_address_is_placed_where_the_template_says() {
+        assert_eq!(
+            address_explorer_link(Chain::Solana, " So1 ".into()).map(|l| l.url),
+            Some("https://solscan.io/account/So1".into())
+        );
+        assert_eq!(
+            address_explorer_link(Chain::SolanaDevnet, "So1".into()).map(|l| l.url),
+            Some("https://solscan.io/account/So1?cluster=devnet".into())
+        );
+        assert_eq!(address_explorer_link(Chain::Ethereum, " ".into()), None);
+        assert_eq!(address_explorer_link(Chain::Monero, "4A".into()), None);
+    }
+
+    #[test]
     fn malformed_files_are_refused() {
         let row = |chain: &str, url: &str| {
             format!("[[explorers]]\nchain_id = \"{chain}\"\nname = \"X\"\ntx_url = \"{url}\"\n")
         };
+        let ok = row("bitcoin", "https://x.example/{hash}");
         for text in [
             row("nowhere", "https://x.example/{hash}"),
             row("bitcoin", "https://x.example/tx/"),
             row("bitcoin", "http://x.example/{hash}"),
             row("bitcoin", "https://x.example/{hash}/{hash}"),
-            row("bitcoin", "https://x.example/{hash}") + &row("bitcoin", "https://y.example/{hash}"),
-            row("bitcoin", "https://x.example/{hash}") + "label = \"Open\"\n",
+            ok.clone() + &row("bitcoin", "https://y.example/{hash}"),
+            ok.clone() + "label = \"Open\"\n",
+            ok.clone() + "address_url = \"https://x.example/a/\"\n",
+            ok.clone() + "address_url = \"http://x.example/{address}\"\n",
+            ok.clone() + "address_url = \"https://x.example/{hash}\"\n",
             "[[explorers]]\nchain_id = \"bitcoin\"\nname = \" \"\ntx_url = \"https://x.example/{hash}\"\n".into(),
         ] {
             assert!(load(&text).is_err(), "accepted {text}");
         }
-        assert!(load(&row("bitcoin", "https://x.example/{hash}")).is_ok());
+        assert!(load(&ok).is_ok());
+        assert!(load(&(ok + "address_url = \"https://x.example/a/{address}\"\n")).is_ok());
     }
 }

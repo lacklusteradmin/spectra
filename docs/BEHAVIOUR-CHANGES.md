@@ -17,6 +17,662 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-07 — Stellar, Cardano, Kaspa and Monero wallets sign messages
+
+- **Before:** Sign Message and Verify Message existed only on the Bitcoin
+  family, EVM, Tron, Solana, Sui and Substrate networks.
+- **After:** four more schemes in `send::message`
+  (`message_schemes.rs`): Stellar's SEP-53 (Ed25519 over SHA-256 of
+  `Stellar Signed Message:\n` and the text, base64); Cardano's CIP-8 data
+  signature as CIP-30's `signData` returns it (a COSE_Sign1 whose protected
+  header names EdDSA and the address, signed with the extended payment key,
+  and the COSE_Key, in a `{"signature","key"}` object), for addresses whose
+  payment credential is a key; Kaspa's personal message (BIP-340 Schnorr
+  over Blake2b keyed `PersonalMessageSigningHash`, hex) for Schnorr
+  addresses; Monero's `SigV2` (wallet2's spend-key signature over the hash
+  bound to the address's keys). Verification checks the address too: the
+  Cardano key must hash to the address's payment credential and the
+  protected header must name the address; the Kaspa address must be on the
+  wallet's network; a Monero signature verifies by either key, as wallet2's
+  does. A key that is not the address's is refused rather than signed with.
+  NEAR's NEP-413, Aptos's AIP-62 and TON's proof are left out: they sign a
+  dapp's domain and nonce, which nothing in Spectra supplies.
+- **Why:** proving an address is wanted on every network that has a
+  standard for it, and each of these four has one its wallets check.
+- **CLI check:** `spectra wallet sign-message` and `spectra address
+  verify-message` on those networks; a Monero and a Kaspa signature made by
+  the CLI were verified by monero-ts and kaspa-wasm on 2026-10-07, and a
+  changed message was rejected.
+- **Verification:** SEP-53 byte for byte against the Stellar SDK for
+  Python 16.1.0 and CIP-8 byte for byte against
+  @emurgo/cardano-message-signing 1.1.0; kaspa-wasm 0.13.0 and monero-ts
+  0.11.20 signatures verify in core and core's verify there
+  (`send::message::tests`); the action-descriptor test over every network.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A Monero send can be proved to its recipient
+
+- **Before:** a Monero payment sent from Spectra could not be proved: the
+  transaction key a recipient checks was never derived or shown, so a
+  disputed payment had no answer but the transaction id.
+- **After:** `monero_payment_proof` (`spectra wallet prove-payment <wallet>
+  --txid …`, Prove Payment on a Monero send's transaction page) gives the
+  transaction id, its key `r` and the recipient's address, the three
+  monero-wallet-cli's `check_tx_key` takes. Nothing new is stored: the key
+  is derived again from the send's encrypted plan, which already holds the
+  outgoing view key and inputs monero-wallet's `TransactionKeys` derives it
+  from, and is opened with the wallet's local cache key, no password. Before
+  showing it, core reads the signed transaction, checks it is the one asked
+  for, and runs `check_tx_key` itself (`received_with_tx_key`: derivation
+  `8·r·A`, output keys `Hs(derivation ‖ i)·G + B`, compact amounts
+  decrypted); a key that does not prove the payment is not shown. A
+  transaction this device did not sign has no proof.
+- **Why:** proving a payment is the one thing a Monero sender is routinely
+  asked for, and the key needed to do it is already on the device.
+- **CLI check:** `wallet prove-payment` on a wallet with no signed Monero
+  send exits 2 (acceptance). The proof itself needs a signed Monero
+  transaction, covered by the fixture test below; `cli-monero-regtest.py`
+  drives a real daemon where one is installed.
+- **Verification:** `service::monero_wallet::tests::the_tx_key_proves_the_payment_the_daemon_accepted`:
+  on the real-daemon-accepted transaction in `monero-local.json`, the key
+  derived from the stored plan is the transaction's own public key's
+  secret, proves the payment's amount among the address's outputs, and
+  another key or address proves nothing; `make ios` passed. Not checked
+  against monero-wallet-cli itself, which is not installed here.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A Solana wallet closes its empty token accounts for their rent
+
+- **Before:** every SPL or Token-2022 account a Solana address had held kept
+  its rent (about 0.002 SOL each) after the tokens left, and nothing in
+  Spectra showed or recovered it.
+- **After:** `wallet_empty_token_accounts` (`spectra wallet token-accounts`,
+  the page's Token Accounts on Solana and devnet) lists the wallet's empty
+  accounts under both token programs with the rent each returns, and says
+  why the network would refuse any of them: tokens still in it, another
+  owner, another close authority, frozen by the issuer, or Token-2022
+  transfer fees withheld. `build_token_account_closure` (`spectra wallet
+  close-token-accounts [--account …]`) closes the named accounts, or every
+  closable one, at most 20 per transaction, with one `CloseAccount` each
+  returning the rent to the owner, priced by `getFeeForMessage`
+  (`PreparedSolanaAccountClosure`, `WalletOperation::CloseTokenAccounts`,
+  recompiled and compared byte for byte by `StoredSend::validate`). It signs
+  after an `isBlockhashValid` check, broadcasts through the ordinary stages,
+  reserves the closed accounts, and is recorded as
+  `TransactionKind::CloseTokenAccounts` with the rent as its amount.
+- **Why:** the rent is the owner's SOL, left behind by an ordinary use of
+  tokens; a refused closure would still cost its fee, so every refusal
+  comes first.
+- **CLI check:** `cli-wallet-operations.py`: against a loopback Solana node,
+  `wallet token-accounts` lists four empty accounts with two closable
+  (0.00411336 SOL reclaimable); each blocked or held account exits 3 and
+  builds nothing; closing builds both closable ones for a 0.000005 SOL fee,
+  signs exactly the reviewed message, broadcasts and is recorded as
+  `closeTokenAccounts`.
+- **Verification:** the closure compiled and signed byte for byte against
+  @solana/web3.js 1.98.4 (`scripts/generate-solana-close-accounts-vector.cjs`)
+  in `send::solana`; the refusal reasons in
+  `service::wallet_token_accounts::tests`; the action-descriptor test;
+  `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A test network's wallet links its faucet
+
+- **Before:** a wallet on a test network gave no hint where its coins come
+  from.
+- **After:** `chains.toml` carries `faucet` on 37 of the 40 test networks
+  (`Chain::faucet_url`, exported as `chain_faucet_url`, and `faucet` in
+  `spectra chains --testnets`), each checked live on 2026-10-07 to name that
+  exact network: testnet4 rather than testnet3, Westend Asset Hub, Celo
+  Sepolia rather than Alfajores, Sonic Testnet 14601, Kaspa TN10 and so on
+  (`docs/audits/testnet-faucets-2026-10-07.json`, with who runs each, what
+  it asks for and what on the page confirmed it). The wallet page offers
+  Get Test Coins wherever one exists. Dogecoin testnet, Decred testnet and
+  Kaspa TN10 have none: their faucets were down or could not be read, and a
+  guessed URL is not recorded. The catalog refuses a faucet on a mainnet or
+  one that is not https, and a test compares every faucet with the audit.
+- **Why:** test coins are the first thing a test-network wallet needs, and
+  the page that gives them is a fact about the network.
+- **CLI check:** `spectra --json chains --testnets --filter Sepolia` shows
+  the Sepolia faucet (acceptance); `wallet actions` on a test-network wallet
+  lists `getTestCoins`.
+- **Verification:** `chains::tests::faucets_are_the_audited_ones` and
+  `a_mainnet_has_no_faucet`; the action-descriptor test over every network;
+  `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A Sui wallet shows its coin objects and merges them
+
+- **Before:** a Sui balance spread over many `Coin<T>` objects was shown
+  only as a total; each send had to name every object it spent, costing
+  more gas, and nothing in Spectra could join them.
+- **After:** `wallet_coin_objects` (`spectra wallet objects`, the page's
+  Coin Objects on Sui and Sui testnet) lists each coin type the wallet
+  holds with its object count and total, SUI first. `build_coin_merge`
+  (`spectra wallet merge --coin-type …`) merges a type's objects into one:
+  SUI by paying gas with every coin, which the network joins into the gas
+  coin, and keeping it (`TransferObjects([GasCoin], sender)`); another type
+  with `MergeCoins`, gas paid apart in SUI. At most 256 SUI coins or 500
+  objects of another type per transaction, largest first; a single object
+  is refused. A dry run prices it: the budget is its computation and
+  storage plus a fifth, at least 2000 × the reference gas price. The
+  artifact (`PreparedSuiMerge`, `WalletOperation::MergeCoins`) is rebuilt
+  and compared byte for byte by `StoredSend::validate`, signs and
+  broadcasts through the ordinary stages, reserves its objects like any Sui
+  send, and is recorded as `TransactionKind::MergeCoins`.
+- **Why:** fragmentation makes every later send cost more, and on Sui the
+  merge itself is usually paid for by the storage rebate of the objects it
+  deletes.
+- **CLI check:** `cli-wallet-operations.py`: against a loopback Sui node,
+  `wallet objects` lists the types; a single-object type exits 3; a token
+  merge pays gas with one SUI coin and merges three objects, a SUI merge
+  pays with all three coins; both carry the 0.0036 SUI budget from the dry
+  run, sign, broadcast and are recorded as `mergeCoins`.
+- **Verification:** both merges byte for byte against @mysten/sui 1.45.2
+  (`scripts/generate-sui-merge-vectors.cjs`) in `send::sui::token_tests`;
+  the action-descriptor test; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A NEAR wallet lists its access keys and deletes function-call keys; a named account signs with its own key
+
+- **Before:** nothing showed which keys could act for a NEAR account, and a
+  function-call key a dapp added at sign-in could be removed only from
+  another wallet. A named-account wallet stored no key: each send listed
+  the account's keys and refused unless exactly one was full-access, so an
+  account with a second full-access key (a Ledger, a recovery key) could not
+  send from Spectra at all.
+- **After:** `wallet_access_keys` (`spectra wallet keys`, the page's Access
+  Keys on NEAR and NEAR testnet) lists every key from a verified node:
+  full-access keys, and function-call keys with their contract, methods
+  and allowance, the key Spectra signs with first and marked.
+  `build_access_key_deletion` (`spectra wallet delete-key --key ed25519:…`)
+  builds a `DeleteKey` transaction on the account itself
+  (`PreparedNearDeleteKey`, `WalletOperation::DeleteAccessKey` with the key,
+  its contract and the fee budget from the protocol's `delete_key_cost`),
+  checked against the account's keys: full-access keys, the signing key, a
+  key the account does not hold and non-Ed25519 keys are refused. It signs
+  and broadcasts through the ordinary stages, with NEAR's reference-block
+  checks, and is recorded as `TransactionKind::DeleteAccessKey`. A named
+  import records the key its secret derives (`near_account_key`, set once
+  the network confirms it is a full-access key) and every send signs with
+  it, whatever other keys the account has. The storage the balance must
+  cover is on the Network Account page.
+- **Why:** a function-call key outlives the dapp session it was made for
+  and keeps spending its gas allowance on the owner's behalf; the owner
+  should see and end it where the wallet lives. Guessing the signing key
+  from the account's key list was both fragile and unnecessary: the import
+  already knew it.
+- **CLI check:** `cli-wallet-operations.py`: against a loopback NEAR node,
+  `wallet keys` orders and marks the keys; deleting a full-access key, the
+  signing key or an unknown key exits 3 and builds nothing; deleting a
+  function-call key builds one `DeleteKey` action, signs, broadcasts and
+  records `deleteAccessKey`; a named account with two full-access keys marks
+  the one its phrase derives. Reset a database from before the change: the
+  history kinds and the wallet record changed.
+- **Verification:** the DeleteKey vector from @near-js/transactions
+  (`scripts/generate-near-key-deletion-vector.cjs`) in
+  `send::near::protocol_tests`; the action-descriptor test; `make ios`
+  passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — An XRP or Stellar account can be closed to recover its reserve
+
+- **Before:** the reserve an XRP or Stellar account locks could not be
+  recovered from Spectra: a send moves only what is above it.
+- **After:** `build_account_closing` (`spectra wallet close <wallet> --to
+  <account>`, the Network Account page's Close Account) builds XRP
+  `AccountDelete` or Stellar `AccountMerge` into an existing account. Core
+  reads every prerequisite the network enforces and refuses before building
+  and again before signing: the account exists; on XRP no deletion blockers
+  (`account_objects` with `deletion_blockers_only`), at most 1000 objects
+  deleted with it, `Sequence` and any minted-NFT sequence at least 256
+  ledgers behind the validated ledger, a destination without
+  `lsfRequireDestTag` or `lsfDepositAuth`, a fee of one owner reserve; on
+  Stellar no subentries, no sponsorships given, no `AUTH_IMMUTABLE`, a
+  sequence below the ledger's starting sequence, a destination without
+  SEP-29 `config.memo_required`; both refuse a missing destination, the
+  account itself and a balance that does not cover the fee. Spectra sends no
+  destination tags or memos, so destinations that need one are refused
+  rather than paid untagged. The artifact carries the closing
+  (`WalletOperation::CloseAccount`: destination, reserve freed, objects
+  deleted with the account, fee), bound into the review digest;
+  `StoredSend::validate` requires a closing payload and a closing operation
+  together, so nothing else is signed under its name. The approval
+  revocation's own field became `WalletOperation::RevokeApproval` in the
+  same `SendArtifact::operation`, one model for every operation a wallet's
+  page builds. It signs and broadcasts through the ordinary
+  stages and is recorded as a send of the balance less the fee. The app's
+  sheet asks the user to confirm the account is deleted before it signs; the
+  approval-revocation sheet and this one share their sign and broadcast
+  sections. A missing tag/memo feature is recorded under Transfer
+  correctness.
+- **Why:** on these networks the reserve is real money the owner can
+  recover only by closing the account; a closing that fails on the network
+  still costs its fee (0.2 XRP), so every refusal belongs before signing.
+- **CLI check:** `cli-wallet-operations.py`: against loopback XRPL and Horizon
+  nodes, each prerequisite exits 3 and builds nothing; a blocker that
+  appears after the build refuses the signature; an XRP closing signs
+  `AccountDelete` with fee 0.2 XRP and no amount and is recorded as a send
+  of 24.8 XRP; the Stellar closing's envelope equals the Stellar SDK's;
+  Solana and watched wallets are refused.
+- **Verification:** XRP `AccountDelete` and Stellar `AccountMerge` vectors
+  from ripple-binary-codec and @stellar/stellar-base
+  (`scripts/generate-account-closing-vectors.cjs`); the prerequisite cases in
+  `service::wallet_closing::tests`; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A wallet shows what its network account holds beyond a balance
+
+- **Before:** a Tron, XRP, Stellar, TON, Polkadot, Bittensor or NEAR wallet
+  showed one balance. Bandwidth and energy, the XRP and Stellar reserve, a
+  TON contract's state, the reserved and frozen parts of a Substrate balance
+  and a NEAR account's storage were each read only inside a send, if at all,
+  and never shown. A TRC-20 send preview reported a `fee_limit_sun` of
+  15 TRX while the transaction it built signed a 100 TRX limit.
+- **After:** `wallet_network_account` (`spectra wallet account`, the page's
+  Network Account on those networks and their test networks) reads one
+  verified node and returns, with the coin's symbol: Tron's available and
+  total bandwidth and energy, their prices, whether the account is
+  activated, and what a TRX transfer burns without bandwidth (its own bytes,
+  measured by building one) and a TRC-20 transfer without energy (the usual
+  15 TRX and the 100 TRX ceiling); XRP's and Stellar's balance, base reserve,
+  owned-object reserve, total and what is spendable above it (Stellar per
+  CAP-33: two base reserves, plus subentries and sponsorings, less
+  sponsored entries), including for an account the network has not created;
+  a TON wallet's state (active, not deployed, frozen) and contract (`W5`,
+  `v4R2`); a Substrate account's free, reserved and frozen balance, the
+  existential deposit and what a keep-alive transfer can move; a NEAR
+  account's stored bytes, price per byte, locked stake and what the balance
+  keeps for storage. Any other network is refused (`A %@ account holds only
+  its balance.`) rather than shown an empty page. The TRC-20 preview now
+  reports the limit the transaction signs (`TRC20_FEE_LIMIT_SUN`), with the
+  15 TRX typical burn as its estimate; NEAR's spendable balance reads the
+  same storage state the page shows.
+- **Why:** on these networks the balance alone misleads: part of it cannot
+  move, or a send costs what the account lacks. The figures were already
+  computed for sends; the owner should see them where the wallet lives, and
+  a preview should state the ceiling it signs.
+- **CLI check:** `spectra wallet account <wallet>` prints the fields; on a
+  Solana wallet it exits 3. Live on 2026-10-07 through the default nodes:
+  Tron (a TRX transfer burns 0.256 TRX without bandwidth), XRP (1 XRP base,
+  0.2 per object), Stellar, TON, NEAR, Polkadot Asset Hub (existential
+  deposit 0.01 DOT) and Bittensor (0.0000005 TAO).
+- **Verification:** the reserve, sponsorship and TON-state cases in
+  `service::wallet_network_account::tests`; the action-descriptor test; the
+  acceptance refusal; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — An EVM wallet lists and revokes its token approvals; Ethereum shows its ENS name
+
+- **Before:** nothing showed which contracts an EVM wallet had let spend its
+  tokens, and the only way to take an allowance back was another wallet.
+  An Ethereum wallet's ENS name appeared nowhere.
+- **After:** `wallet_token_approvals` (`spectra wallet approvals`, the
+  page's Token Approvals on every EVM network) reads the wallet's ERC-20
+  `Approval` logs from its address indexer (`BlockscoutClient::fetch_approval_logs`,
+  Etherscan-compatible `getLogs` paged by block, ERC-721 approvals left out)
+  and confirms each token and spender with a live `allowance` call, so a
+  spent or replaced approval is not shown; symbols and decimals come in one
+  batch. A network with no indexer is refused with a message rather than
+  answered with an empty list. `build_approval_revocation`
+  (`spectra wallet revoke`) prepares `approve(spender, 0)` on the token as a
+  send under its own operation (`SendArtifact::operation`, bound into the
+  review digest and checked on every reopening: the call, the zero value and
+  the fee ceiling it shows); it signs and broadcasts through the ordinary
+  stages and is recorded as `TransactionKind::RevokeApproval`, which counts
+  in EVM nonce reservation. An allowance already zero is not built.
+  `wallet_ens_name` (`spectra wallet ens`) reads an Ethereum wallet's primary
+  name from the ENS registry over its own nodes and shows it only when the
+  name resolves back to the address and is already a normalized ASCII name.
+  The history table admits the new kind: reset a database from before it.
+- **Why:** an unlimited allowance outlives the dapp it was given to, and the
+  owner should see and end it where the wallet lives; a reverse record alone
+  is anyone's to set, so only a round trip names the wallet.
+- **CLI check:** against a loopback indexer and node, `wallet approvals`
+  lists only the allowance a live read confirms, `wallet revoke` on it
+  builds `095ea7b3…` with a zero amount, `send sign` and `send
+  broadcast-signed --yes` submit it and history records `revokeApproval`; a
+  zero allowance and a network without an indexer exit 3; `wallet ens`
+  answers a name only while it resolves back. Live on 2026-10-07, `wallet
+  ens` on 0xd8dA…6045 answered `vitalik.eth` through the default Ethereum
+  nodes.
+- **Verification:** `cli-wallets.py`'s `ApprovalsTests`; EIP-137 namehash
+  vectors and the `approve` encoding in `service::wallet_approvals::tests`;
+  the action-descriptor test; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — An ICP wallet shows its principal beside its account ID
+
+- **Before:** an ICP wallet stored and showed only its default ledger
+  account identifier, a hash of the principal it could not be reversed into.
+  ICRC tokens and the NNS address the principal, so the wallet could not say
+  where those should be sent.
+- **After:** a phrase or key import on ICP records the principal its key
+  makes (`WalletState::icp_principal`), and the wallet page shows it under
+  the account ID with which kind of sender uses which: exchanges and ICP
+  ledger transfers pay the account ID, ICRC tokens and the NNS the
+  principal. A watched ICP account, whose principal its address cannot
+  give, records none. The wallet record carries the new field: reset a
+  database from before it.
+- **Why:** the principal is the wallet's identity everywhere on ICP but the
+  ledger, and only the key can give it.
+- **CLI check:** importing the key of 32 0x01 bytes on `internet-computer`
+  prints principal `wf3fv-4c4nr-7ks2b-…`, and `wallet show --json` reads it
+  back in a new process as `icpPrincipal`.
+- **Verification:** `an_icp_key_import_records_the_principal_its_account_derives_from`
+  against @dfinity/identity 3.4.3's principal and account for that key, and
+  a phrase's principal hashing to its stored account; CLI acceptance;
+  `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A UTXO wallet lists the addresses and coins behind its balance
+
+- **Before:** a Bitcoin-family wallet with account discovery showed one
+  address and a total; the addresses it had handed out, which of them held
+  what, and the outputs behind the total were visible only through `pool`
+  diagnostics and a send's input selection. Peercoin's maturing rewards
+  were in the total with nothing saying a send could not spend them.
+- **After:** `WalletService::wallet_coins` (`spectra wallet coins`, the
+  page's Addresses and Coins on BTC, BCH, BSV, LTC, DOGE and PPC) reads each
+  owned address — receive or change and its index where the keypool
+  recorded it — whether it has received and what it holds, the next
+  receive address, and every unspent output with its confirmations against
+  the indexer's tip (`UtxoClient::fetch_tip_height`: Esplora's
+  `/blocks/tip/height`, Blockbook's `bestHeight`, BlockCypher's chain
+  `height`, WhatsOnChain's `blocks`, the BCH REST `getBlockCount`). On
+  Peercoin each output says whether it can be spent, from the same
+  verified-transaction check the send uses (`fetch_peercoin_outputs`, which
+  `fetch_peercoin_inputs` now filters), and the page totals what is still
+  maturing. A reserved receive address found used is moved past, as a
+  refresh would, so the next receive address shown is unused.
+- **Why:** a UTXO wallet's balance is its addresses' coins; hiding them hid
+  what a send would spend and what privacy a reused address gave away.
+- **CLI check:** `spectra --json wallet coins <ltc wallet>` lists receive 7
+  and change 3 after recovery finds them, each output with its
+  confirmations; on Peercoin `maturing` is the immature rewards' total.
+- **Verification:** `cli-litecoin.py` and `cli-peercoin.py` against loopback
+  Blockbook nodes; each tip endpoint answered a read-only request on
+  2026-10-07 (mempool.space, BlockCypher DOGE, blockbook.peercoin.net,
+  WhatsOnChain BSV, rest.bch.actorforth.org, the BCH Blockbook); the
+  action-descriptor test; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A wallet can hide a holding from its totals
+
+- **Before:** every holding discovery found counted: a spam airdrop with a
+  quote inflated the wallet's total and the portfolio, and sat on the
+  dashboard beside real assets.
+- **After:** a wallet keeps the deployment ids of the holdings the user hid
+  (`WalletState::hidden_holdings`, set by `StateCommand::SetHoldingHidden`;
+  only a holding the wallet has can be hidden). A hidden holding counts in
+  neither the wallet's total nor the portfolio's and has no dashboard row,
+  but stays sendable; the wallet page lists it under Hidden Assets with a
+  way to show it again, and a holding row's menu hides it. A watched wallet
+  that takes its keys keeps its hidden list. The wallet record carries the
+  new field, so a database written before this change does not load: reset
+  it (prelaunch, Rule 0).
+- **Why:** discovery reports what an indexer returns, and only the user can
+  say an asset is junk.
+- **CLI check:** `spectra wallet hide <wallet> USDC` leaves USDC out of
+  `spectra --json portfolio --stored`'s wallet and portfolio totals and
+  lists it in `wallet show`'s `hiddenHoldings`; `wallet unhide` restores
+  both; hiding an asset the wallet does not hold exits 3.
+- **Verification:** `store::tests::hidden_holdings` (totals, dashboard rows,
+  sendability, reopening); `cli-portfolio.py`'s
+  `test_hidden_holdings` across processes; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A wallet signs a message to prove its address
+
+- **Before:** nothing signed a message; proving an address meant moving funds.
+- **After:** core signs a plain-text message with the key a wallet sends with,
+  for the address it shows (`sign_wallet_message`), and checks a signature
+  against an address with no wallet at all (`verify_message`), in the
+  network's own scheme (`send::message::MessageScheme`): the Bitcoin family's
+  `signmessage` for P2PKH addresses with each network's magic (Bitcoin, BCH,
+  BSV, Litecoin, Dogecoin, Dash, Bitcoin Gold, Peercoin); BIP-322 simple
+  signatures for Bitcoin's SegWit, nested SegWit and Taproot addresses;
+  EIP-191 on every EVM network; TIP-191 on Tron; Solana's `signMessage`;
+  Sui's personal message; and Substrate's `<Bytes>` sr25519 on Polkadot and
+  Bittensor. Every scheme prefixes or wraps the text, so a signature cannot
+  authorise a transaction; Solana, which signs the bytes as they are,
+  refuses a message that reads as a transaction, and EVM networks refuse
+  EIP-712 typed data. A signing wallet's page offers Sign Message
+  (`WalletAction::SignMessage`), a watched one Verify Message. Networks
+  whose message format has no reference implementation to check against, or
+  binds a dapp's domain or nonce, have no scheme yet: Stellar (SEP-53),
+  Cardano (CIP-8), Aptos, NEAR (NEP-413), TON, XRP, ICP, Kaspa, Decred, Zcash
+  and Monero; the follow-up is in OPEN-ITEMS.md.
+- **Why:** proving control of an address — to an exchange, an auditor or a
+  counterparty — is a wallet's job and needs no transaction.
+- **CLI check:** `spectra --json wallet sign-message <wallet> --message <text>`
+  prints the signature; `spectra address verify-message --chain <chain>
+  --address <address> --message <text> --signature <signature>` exits 0 for
+  it and 3 for any other message.
+- **Verification:** signatures equal the SDKs' byte for byte where the scheme
+  is deterministic and verify both ways where it is randomized
+  ([vectors](../core/tests/fixtures/message-signatures.json) from bitcoinjs-message,
+  bip322-js, ethers, tronweb, @mysten/sui and @polkadot/keyring), BIP-322's
+  own vectors verify, and every network's signing wallet verifies its own
+  signature (`every_scheme_signs_what_its_address_verifies`); CLI acceptance
+  covers signing, verifying and the typed-data refusal; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — Keys export in the encoding their network's wallets import
+
+- **Before:** a phrase wallet could reveal only its phrase, and only the CLI
+  printed a key-imported wallet's key, as the bare hex it was sealed in —
+  not the WIF, keypair or `S…` seed its network's wallets read. Nothing
+  exported what another wallet needs to watch this one.
+- **After:** core lists and writes a wallet's exports
+  (`wallet_key_exports`, `export_wallet_key`): its private key in the
+  network's own encoding (`key_formats::encode_private_key`, the inverse of
+  the import's parser — WIF compressed, Solana's base58 keypair, Stellar's
+  `S…`, `suiprivkey1…`, AIP-80, NEAR's `ed25519:…`, hex elsewhere); Monero's
+  spend and view keys; and a Bitcoin account's public key as the
+  xpub/ypub/zpub (tpub/upub/vpub) its script reads as. A phrase spread over
+  many addresses (the account-discovery UTXO chains) exports no single key,
+  and Taproot and paths no profile names export no account key, since no
+  encoding carries their script. The wallet page's Advanced page offers
+  Export Keys (`WalletAction::ExportKeys`): each export after device
+  authentication and the password, copied as the phrase is (this device,
+  one minute), with a QR for keys that cannot spend. `spectra wallet export`
+  without `--key` prints a key wallet's key in that encoding instead of hex.
+- **Why:** a key that leaves Spectra only as hex has to be re-encoded by hand
+  before any other wallet takes it, and a wallet imported from a key could
+  not leave at all.
+- **CLI check:** `spectra --json wallet export <btc wallet> --key account-key
+  --yes` prints a `zpub`; `--key private-key` on the same wallet exits 3;
+  `--key private-key` on a Solana wallet prints `"format":"solanaKeypair"`.
+- **Verification:** encodings equal the chains' SDK vectors
+  (`keys_export_as_their_chains_sdks_write_them`); every export on every
+  network reads back through Spectra's import as the same wallet
+  (`every_export_reads_back_as_the_same_wallet`); Monero's keys equal
+  monero-python's and the native SegWit account key BIP-84's own vector;
+  CLI acceptance covers the refusals; `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A wallet's address opens on its explorer; dead explorers replaced
+
+- **Before:** explorers held only a transaction page (`TransactionExplorer`,
+  `transaction_explorers`), so a wallet's address could not be opened
+  anywhere. Zcash's explorer (zcashblockexplorer.com) and Bitcoin Gold's
+  (explorer.bitcoingold.org) no longer answered, so every transaction link
+  on those two networks was dead.
+- **After:** every explorer but Monero's has an address page
+  (`Explorer::address_url`, `address_explorer_link`); Monero's chain does not
+  show addresses, so it has none. A wallet's page offers Explorer
+  (`WalletAction::OpenInExplorer`) where its network's explorer has an
+  address page. Zcash now opens in mainnet.zcashexplorer.app and Bitcoin Gold
+  in btgexplorer.com, for transactions and addresses. The settings list shows
+  both templates.
+- **Why:** the address is the wallet's identity on its network; and a link
+  that opens nothing is worse than none.
+- **CLI check:** `spectra explorers --chain solana --address <address>` prints
+  the page; `--chain monero --address …` says the explorer has no address
+  page; `spectra explorers --chain zcash` shows the new explorer.
+- **Verification:** [dated probes](audits/explorer-addresses-2026-10-07.json)
+  of every address page with an address the CLI derived: 200 or rendered in
+  a browser for 67, down at the time for 2 (testnet.dcrdata.org,
+  seitrace.com), rate limited for 1, and 17 not confirmed live because bot
+  protection refused both the probe and a browser (the Etherscan-family ones
+  share a route confirmed on their siblings); `cargo test -p spectra_core
+  --lib explorers`, the action-descriptor test and `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A watched wallet takes its keys from its own page
+
+- **Before:** a watched wallet was given its keys only by an ordinary Add
+  Wallet import whose address happened to match; a phrase that held another
+  address silently became a wallet of its own. A Bitcoin wallet watched by
+  its account key was never matched by a phrase import, though the setup
+  item said it was: only Litecoin and Peercoin phrase plans carried the
+  account key the match compares.
+- **After:** a watched wallet's page offers Add Keys (`WalletAction::AddKeys`)
+  with the methods core gives it (`wallet_upgrade_methods`: a phrase always,
+  a key where it watches an address rather than an account). The form it
+  opens binds the import to the wallet (`WalletImportCommit::upgrade_wallet_id`):
+  the import gives that wallet its keys, keeping its id, name and history, or
+  is refused and stores nothing — a secret holding another address, a watch,
+  a wallet that already signs. A phrase on Bitcoin and its test networks now
+  meets a watched account key at placement, through the key its path derives
+  (not stored on the wallet), so the upgrade the setup item described holds.
+- **Why:** upgrading was reachable only by chance from the wrong page, and a
+  near miss produced a second wallet instead of an error.
+- **CLI check:** `spectra wallet import --chain ethereum --upgrade <wallet>`
+  exits 3 for a phrase that does not hold the watched address and leaves it
+  watched; with the right phrase it prints `"upgraded":true` and keeps the
+  name.
+- **Verification:** `a_bound_import_upgrades_its_wallet_or_is_refused`; the
+  action-descriptor test previews a bound import for every watched fixture,
+  the Bitcoin account key included; CLI acceptance covers the refusal and
+  the upgrade; `make ios` passed and the simulator offers Add Keys on a
+  watched XRP wallet with its two methods.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A wallet's key can be added to another network from its page
+
+- **Before:** a phrase reached a second network only by revealing it,
+  copying it and importing it again; a raw key, which Spectra never shows,
+  could not reach a second network at all, and a watched address had to be
+  typed again.
+- **After:** `WalletAction::AddToNetwork` opens Add to Another Network. Core
+  lists the targets (`wallet_copy_targets`): a phrase's networks are those
+  that restore its format (BIP-39, Monero or TON) with the wallet's
+  derivation overrides; a key's are those whose key is of the same signature
+  scheme (`Chain::key_scheme`: secp256k1, Ed25519, sr25519 or Cardano's
+  extended key), never another; a watched address goes only where it names
+  the same account — the EVM networks, or another network of its chain — and
+  an account key where it validates. After device authentication and the
+  wallet's password, core reads the secret and runs the target's ordinary
+  import (`preview_wallet_copy`, `copy_wallet_to_network`), so the secret
+  never reaches Swift; the copy is sealed under the same password and stands
+  alone, and duplicate refusal and the watch-only upgrade apply as in any
+  setup. The device-authentication case for this, for revealing a phrase and
+  for exporting a key is one, `secretMaterial`, which no preference disables.
+- **Why:** one wallet per network made the same secret on several networks a
+  re-entry chore, and for a raw key an impossibility; core holding the secret
+  is the only way to copy it without showing it.
+- **CLI check:** `spectra wallet copy-targets <wallet>` lists the targets;
+  `spectra wallet copy <wallet> --chain base` adds it (`--preview` shows the
+  address); a wrong password, a network of another phrase format and a key
+  on another scheme exit 3 and store nothing.
+- **Verification:** `every_listed_network_takes_the_copy_and_every_other_refuses_it`
+  previews every network from a source of each phrase format, key scheme
+  and watch kind; `a_copy_signs_and_stands_alone` signs after deleting
+  either side; the CLI acceptance section covers the refusals and the copy's
+  own seal; `make ios` passed and the simulator previews a watched XRP
+  address on XRP Ledger Testnet.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — Staking and the Monero scan live on the wallet's page
+
+- **Before:** staking was its own tab: a list of the six staking networks,
+  each opening a page with a picker over every wallet on that network. Monero's
+  scan card sat on Send's first page, under the wallet chooser, and was the only
+  way to scan.
+- **After:** the Staking tab is gone (`StakingView`, `MainAppTab.staking`, the
+  network list and the wallet picker, and the strings only they used). A
+  wallet's page lists Staking where core offers it (`WalletAction::Stake`:
+  mainnet Solana, Sui, Aptos, NEAR, Polkadot and ICP) and opens that wallet's
+  positions and staking (`WalletStakingView`); a watched wallet sees its
+  positions and cannot sign. A signing Monero wallet's page lists Sync Local
+  Wallet (`WalletAction::ScanBlocks`), which shows its restore height and runs
+  the scan; Send no longer shows the card, and building a Monero send before a
+  scan still says to sync first.
+- **Why:** staking and scanning are things one wallet does, and the tab was a
+  second way to choose the wallet the page already had. One way in keeps one
+  model of which wallet is staking.
+- **CLI check:** `spectra wallet actions <wallet>` lists `stake` for a
+  Solana wallet and `scanBlocks` for a signing Monero wallet, and neither
+  elsewhere; staking itself was always `spectra staking … --wallet`.
+- **Verification:** `cargo test -p spectra_core --lib wallet_actions`,
+  `make lint` and `make ios` passed; on the iPhone 17 Pro simulator the tab bar
+  has Home, History and Settings, and a watched XRP wallet's page offers
+  Receive and History.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
+## 2026-10-07 — A wallet's page offers what core says the wallet does
+
+- **Before:** the wallet page showed a total, holdings and an address. Its
+  Advanced page decided in Swift which rows to show (the phrase row for a
+  wallet neither watched nor key-imported). Send and Receive opened from the
+  home page on whichever wallet came first.
+- **After:** core lists what a wallet offers (`WalletService::wallet_actions`):
+  each `WalletAction` with its section and a note on what it does, and the
+  network's setup summary. The page renders it: Send, Receive and History
+  buttons that open on this wallet (History scoped to it,
+  `HistoryListView(walletId:)`), the network's actions as rows with their
+  notes, and an About This Network card with the limits and the reads that
+  need the user's endpoint. Advanced shows Name, Show Seed Phrase and Delete
+  as core lists them. A watched wallet lists only what needs no key.
+- **Why:** what a wallet can do is a domain fact; the page had no way in to
+  anything a network adds, and Swift held its own rule for the phrase row.
+- **CLI check:** `spectra wallet actions <wallet>` prints the list, notes and
+  limits; `--json` carries the same record.
+- **Verification:** `every_listed_action_is_performed_and_every_other_refused`
+  imports every network by every method and asks each operation itself;
+  `make lint` and `make ios` passed.
+  Full `make verify` after the last of these changes, 2026-10-07: lint
+  clean, 1169 workspace tests, 93 acceptance checks (with the
+  wallet-operations suite) and 138 iOS tests passed.
+
 ## 2026-10-07 — A rate-limited read waits out the window
 
 - **Before:** every retryable failure, a 429 included, retried after the

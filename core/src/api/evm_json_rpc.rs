@@ -14,6 +14,14 @@ pub(crate) const SEL_BALANCE_OF: [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceO
 pub(crate) const SEL_DECIMALS: [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
 pub(crate) const SEL_SYMBOL: [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
 pub(crate) const SEL_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(address,uint256)
+pub(crate) const SEL_APPROVE: [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
+pub(crate) const SEL_ALLOWANCE: [u8; 4] = [0xdd, 0x62, 0xed, 0x3e]; // allowance(address,address)
+
+// ── ENS: the registry and the resolver methods a primary name is read with
+const ENS_REGISTRY: &str = "0x00000000000c2e074ec69a0dfb2997ba6c7d2e1e";
+const SEL_ENS_RESOLVER: [u8; 4] = [0x01, 0x78, 0xb8, 0xbf]; // resolver(bytes32)
+const SEL_ENS_NAME: [u8; 4] = [0x69, 0x1f, 0x34, 0x31]; // name(bytes32)
+const SEL_ENS_ADDR: [u8; 4] = [0x3b, 0x3b, 0x57, 0xde]; // addr(bytes32)
 
 // ── Internal helpers shared by derive/fetch/send
 
@@ -682,6 +690,161 @@ impl EvmClient {
             .unwrap_or_default();
         Ok(Erc20Metadata { symbol, decimals })
     }
+}
+
+impl EvmClient {
+    /// What `owner` lets each `(token, spender)` pair move, live: one
+    /// `allowance` call per pair, batched, each answering on its own.
+    pub async fn fetch_erc20_allowances(
+        &self,
+        owner: &str,
+        pairs: &[(String, String)],
+    ) -> Result<Vec<Result<num_bigint::BigUint, ApiError>>, ApiError> {
+        let word = |address: &str| {
+            format!(
+                "{:0>64}",
+                address.trim_start_matches("0x").to_ascii_lowercase()
+            )
+        };
+        let mut answers = Vec::with_capacity(pairs.len());
+        for chunk in pairs.chunks(50) {
+            let requests = chunk
+                .iter()
+                .map(|(token, spender)| {
+                    (
+                        "eth_call",
+                        json!([{
+                            "to": token,
+                            "data": format!("0x{}{}{}", hex::encode(SEL_ALLOWANCE), word(owner), word(spender)),
+                        }, "latest"]),
+                    )
+                })
+                .collect();
+            for answer in self.call_batch_each(requests).await? {
+                answers.push(answer.and_then(|value| {
+                    let bytes = decode_hex(value.as_str().or_decode("allowance: expected hex")?)?;
+                    if bytes.len() != 32 {
+                        return Err(ApiError::Decode("allowance: not one word".into()));
+                    }
+                    Ok(num_bigint::BigUint::from_bytes_be(&bytes))
+                }));
+            }
+        }
+        Ok(answers)
+    }
+
+    /// Each token's symbol and decimals, batched, `None` for a contract that
+    /// does not answer as an ERC-20.
+    pub async fn fetch_erc20_metadata_many(
+        &self,
+        contracts: &[String],
+    ) -> Result<Vec<Option<Erc20Metadata>>, ApiError> {
+        let mut answers = Vec::with_capacity(contracts.len());
+        for chunk in contracts.chunks(25) {
+            let requests = chunk
+                .iter()
+                .flat_map(|contract| {
+                    [SEL_DECIMALS, SEL_SYMBOL].map(|selector| {
+                        (
+                            "eth_call",
+                            json!([{"to": contract, "data": format!("0x{}", hex::encode(selector))}, "latest"]),
+                        )
+                    })
+                })
+                .collect();
+            let replies = self.call_batch_each(requests).await?;
+            for pair in replies.chunks(2) {
+                let decimals = pair[0]
+                    .as_ref()
+                    .ok()
+                    .and_then(|value| value.as_str())
+                    .and_then(|hex| parse_hex_u128(hex).ok())
+                    .and_then(|raw| crate::api::checked_token_decimals(raw).ok());
+                let symbol = pair[1]
+                    .as_ref()
+                    .ok()
+                    .and_then(|value| value.as_str())
+                    .and_then(decode_abi_string_or_bytes32)
+                    .unwrap_or_default();
+                answers.push(decimals.map(|decimals| Erc20Metadata { symbol, decimals }));
+            }
+        }
+        Ok(answers)
+    }
+
+    /// The ENS primary name `address` claims, shown only when that name
+    /// resolves back to `address`: the reverse record alone is anyone's to
+    /// set. Read from the registry on Ethereum, through this client's nodes.
+    /// `None` where there is no name, it does not resolve back, or it is not
+    /// already a normalized ASCII name.
+    pub async fn fetch_ens_primary_name(&self, address: &str) -> Result<Option<String>, ApiError> {
+        let address = address.trim_start_matches("0x").to_ascii_lowercase();
+        let reverse = ens_namehash(&format!("{address}.addr.reverse"));
+        let Some(resolver) = self.ens_resolver(&reverse).await? else {
+            return Ok(None);
+        };
+        let name = self
+            .call(
+                "eth_call",
+                json!([{"to": resolver, "data": format!("0x{}{}", hex::encode(SEL_ENS_NAME), hex::encode(reverse))}, "latest"]),
+            )
+            .await?;
+        let Some(name) = name.as_str().and_then(decode_abi_string_or_bytes32) else {
+            return Ok(None);
+        };
+        let normalized = name.len() <= 255
+            && name.contains('.')
+            && name.split('.').all(|label| {
+                !label.is_empty()
+                    && label
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            });
+        if !normalized {
+            return Ok(None);
+        }
+        let forward = ens_namehash(&name);
+        let Some(resolver) = self.ens_resolver(&forward).await? else {
+            return Ok(None);
+        };
+        let resolved = self
+            .call(
+                "eth_call",
+                json!([{"to": resolver, "data": format!("0x{}{}", hex::encode(SEL_ENS_ADDR), hex::encode(forward))}, "latest"]),
+            )
+            .await?;
+        let resolved = decode_hex(resolved.as_str().or_decode("addr: expected hex")?)?;
+        Ok((resolved.len() == 32 && hex::encode(&resolved[12..]) == address).then_some(name))
+    }
+
+    /// The resolver the ENS registry names for `node`, or `None` for none.
+    async fn ens_resolver(&self, node: &[u8; 32]) -> Result<Option<String>, ApiError> {
+        let answer = self
+            .call(
+                "eth_call",
+                json!([{"to": ENS_REGISTRY, "data": format!("0x{}{}", hex::encode(SEL_ENS_RESOLVER), hex::encode(node))}, "latest"]),
+            )
+            .await?;
+        let bytes = decode_hex(answer.as_str().or_decode("resolver: expected hex")?)?;
+        if bytes.len() != 32 || bytes[12..].iter().all(|b| *b == 0) {
+            return Ok(None);
+        }
+        Ok(Some(format!("0x{}", hex::encode(&bytes[12..]))))
+    }
+}
+
+/// EIP-137's namehash: from the root, each label's hash folded in, last
+/// label first.
+pub(crate) fn ens_namehash(name: &str) -> [u8; 32] {
+    use sha3::{Digest, Keccak256};
+    name.rsplit('.')
+        .filter(|label| !label.is_empty())
+        .fold([0u8; 32], |node, label| {
+            let mut hasher = Keccak256::new();
+            hasher.update(node);
+            hasher.update(Keccak256::digest(label.as_bytes()));
+            hasher.finalize().into()
+        })
 }
 
 // ── ERC-20 ABI helpers (shared with send.rs)

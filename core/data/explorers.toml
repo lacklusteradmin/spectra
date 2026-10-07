@@ -1,6 +1,9 @@
-# Transaction explorers: the web page a transaction's detail screen links to,
-# at most one per network. `chain_id` references a concrete chains.id in
-# chains.toml; `{hash}` in `tx_url` is replaced by the transaction hash.
+# Explorers: the web pages a transaction's detail screen and a wallet's page
+# link to, at most one explorer per network. `chain_id` references a concrete
+# chains.id in chains.toml; `{hash}` in `tx_url` is replaced by the
+# transaction hash, and `{address}` in `address_url` by the wallet's address.
+# A network whose explorer has no address page (Monero's, by design) has no
+# `address_url`.
 #
 # Spectra never requests these pages. Anything it does request is an API and
 # belongs in endpoints.toml.
@@ -9,76 +12,91 @@
 chain_id = "bitcoin"
 name = "Mempool"
 tx_url = "https://mempool.space/tx/{hash}"
+address_url = "https://mempool.space/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-cash"
 name = "Blockchair"
 tx_url = "https://blockchair.com/bitcoin-cash/transaction/{hash}"
+address_url = "https://blockchair.com/bitcoin-cash/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-sv"
 name = "WhatsOnChain"
 tx_url = "https://whatsonchain.com/tx/{hash}"
+address_url = "https://whatsonchain.com/address/{address}"
 
 [[explorers]]
 chain_id = "litecoin"
 name = "LitecoinSpace"
 tx_url = "https://litecoinspace.org/tx/{hash}"
+address_url = "https://litecoinspace.org/address/{address}"
 
 [[explorers]]
 chain_id = "dogecoin"
 name = "Dogechain"
 tx_url = "https://dogechain.info/tx/{hash}"
+address_url = "https://dogechain.info/address/{address}"
 
 [[explorers]]
 chain_id = "solana"
 name = "Solscan"
 tx_url = "https://solscan.io/tx/{hash}"
+address_url = "https://solscan.io/account/{address}"
 
 [[explorers]]
 chain_id = "tron"
 name = "TronScan"
 tx_url = "https://tronscan.org/#/transaction/{hash}"
+address_url = "https://tronscan.org/#/address/{address}"
 
 [[explorers]]
 chain_id = "xrp"
 name = "XRP Explorer"
 tx_url = "https://livenet.xrpl.org/transactions/{hash}"
+address_url = "https://livenet.xrpl.org/accounts/{address}"
 
 [[explorers]]
 chain_id = "cardano"
 name = "Cardano Explorer"
 tx_url = "https://cexplorer.io/tx/{hash}"
+address_url = "https://cexplorer.io/address/{address}"
 
 [[explorers]]
 chain_id = "sui"
 name = "Suiscan"
 tx_url = "https://suiscan.xyz/mainnet/tx/{hash}"
+address_url = "https://suiscan.xyz/mainnet/account/{address}"
 
 [[explorers]]
 chain_id = "aptos"
 name = "Aptos Explorer"
 tx_url = "https://explorer.aptoslabs.com/txn/{hash}?network=mainnet"
+address_url = "https://explorer.aptoslabs.com/account/{address}?network=mainnet"
 
 [[explorers]]
 chain_id = "ton"
 name = "Tonviewer"
 tx_url = "https://tonviewer.com/{hash}"
+address_url = "https://tonviewer.com/{address}"
 
 [[explorers]]
 chain_id = "near"
 name = "NearBlocks"
 tx_url = "https://nearblocks.io/txns/{hash}"
+address_url = "https://nearblocks.io/address/{address}"
 
 [[explorers]]
 chain_id = "polkadot"
 name = "Subscan"
 tx_url = "https://assethub-polkadot.subscan.io/extrinsic/{hash}"
+address_url = "https://assethub-polkadot.subscan.io/account/{address}"
 
 [[explorers]]
 chain_id = "stellar"
 name = "Stellar Expert"
 tx_url = "https://stellar.expert/explorer/public/tx/{hash}"
+address_url = "https://stellar.expert/explorer/public/account/{address}"
 
 [[explorers]]
 chain_id = "monero"
@@ -89,166 +107,199 @@ tx_url = "https://xmrchain.net/tx/{hash}"
 chain_id = "internet-computer"
 name = "ICP Dashboard"
 tx_url = "https://dashboard.internetcomputer.org/transaction/{hash}"
+address_url = "https://dashboard.internetcomputer.org/account/{address}"
 
 [[explorers]]
 chain_id = "ethereum"
 name = "Etherscan"
 tx_url = "https://etherscan.io/tx/{hash}"
+address_url = "https://etherscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "ethereum-classic"
 name = "Blockscout"
 tx_url = "https://blockscout.com/etc/mainnet/tx/{hash}"
+address_url = "https://blockscout.com/etc/mainnet/address/{address}"
 
 [[explorers]]
 chain_id = "arbitrum"
 name = "Arbiscan"
 tx_url = "https://arbiscan.io/tx/{hash}"
+address_url = "https://arbiscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "optimism"
 name = "Optimism Etherscan"
 tx_url = "https://optimistic.etherscan.io/tx/{hash}"
+address_url = "https://optimistic.etherscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "bnb"
 name = "BscScan"
 tx_url = "https://bscscan.com/tx/{hash}"
+address_url = "https://bscscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "avalanche"
 name = "Snowtrace"
 tx_url = "https://snowtrace.io/tx/{hash}"
+address_url = "https://snowtrace.io/address/{address}"
 
 [[explorers]]
 chain_id = "hyperliquid"
 name = "Hyperliquid Explorer"
 tx_url = "https://app.hyperliquid.xyz/explorer/tx/{hash}"
+address_url = "https://app.hyperliquid.xyz/explorer/address/{address}"
 
 [[explorers]]
 chain_id = "base"
 name = "BaseScan"
 tx_url = "https://basescan.org/tx/{hash}"
+address_url = "https://basescan.org/address/{address}"
 
 [[explorers]]
 chain_id = "linea"
 name = "LineaScan"
 tx_url = "https://lineascan.build/tx/{hash}"
+address_url = "https://lineascan.build/address/{address}"
 
 [[explorers]]
 chain_id = "scroll"
 name = "ScrollScan"
 tx_url = "https://scrollscan.com/tx/{hash}"
+address_url = "https://scrollscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "blast"
 name = "BlastScan"
 tx_url = "https://blastscan.io/tx/{hash}"
+address_url = "https://blastscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "mantle"
 name = "MantleScan"
 tx_url = "https://mantlescan.xyz/tx/{hash}"
+address_url = "https://mantlescan.xyz/address/{address}"
 
 [[explorers]]
 chain_id = "polygon"
 name = "PolygonScan"
 tx_url = "https://polygonscan.com/tx/{hash}"
+address_url = "https://polygonscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "zcash"
-name = "Zcash Block Explorer"
-tx_url = "https://zcashblockexplorer.com/transactions/{hash}"
+name = "Zcash Explorer"
+tx_url = "https://mainnet.zcashexplorer.app/transactions/{hash}"
+address_url = "https://mainnet.zcashexplorer.app/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-gold"
 name = "BTG Explorer"
-tx_url = "https://explorer.bitcoingold.org/insight/tx/{hash}"
+tx_url = "https://btgexplorer.com/tx/{hash}"
+address_url = "https://btgexplorer.com/address/{address}"
 
 [[explorers]]
 chain_id = "decred"
 name = "dcrdata"
 tx_url = "https://dcrdata.decred.org/tx/{hash}"
+address_url = "https://dcrdata.decred.org/address/{address}"
 
 [[explorers]]
 chain_id = "kaspa"
 name = "Kaspa Explorer"
 tx_url = "https://explorer.kaspa.org/txs/{hash}"
+address_url = "https://explorer.kaspa.org/addresses/{address}"
 
 [[explorers]]
 chain_id = "sei"
 name = "Seitrace"
 tx_url = "https://seitrace.com/tx/{hash}"
+address_url = "https://seitrace.com/address/{address}"
 
 [[explorers]]
 chain_id = "celo"
 name = "CeloScan"
 tx_url = "https://celoscan.io/tx/{hash}"
+address_url = "https://celoscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "cronos"
 name = "CronoScan"
 tx_url = "https://cronoscan.com/tx/{hash}"
+address_url = "https://cronoscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "opbnb"
 name = "opBNBScan"
 tx_url = "https://opbnbscan.com/tx/{hash}"
+address_url = "https://opbnbscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "zksync-era"
 name = "zkSync Explorer"
 tx_url = "https://explorer.zksync.io/tx/{hash}"
+address_url = "https://explorer.zksync.io/address/{address}"
 
 [[explorers]]
 chain_id = "sonic"
 name = "SonicScan"
 tx_url = "https://sonicscan.org/tx/{hash}"
+address_url = "https://sonicscan.org/address/{address}"
 
 [[explorers]]
 chain_id = "berachain"
 name = "BeraScan"
 tx_url = "https://berascan.com/tx/{hash}"
+address_url = "https://berascan.com/address/{address}"
 
 [[explorers]]
 chain_id = "unichain"
 name = "UniScan"
 tx_url = "https://uniscan.xyz/tx/{hash}"
+address_url = "https://uniscan.xyz/address/{address}"
 
 [[explorers]]
 chain_id = "ink"
 name = "Ink Explorer"
 tx_url = "https://explorer.inkonchain.com/tx/{hash}"
+address_url = "https://explorer.inkonchain.com/address/{address}"
 
 [[explorers]]
 chain_id = "dash"
 name = "Dash Insight"
 tx_url = "https://insight.dash.org/insight/tx/{hash}"
+address_url = "https://insight.dash.org/insight/address/{address}"
 
 [[explorers]]
 chain_id = "x-layer"
 name = "OKX X Layer Explorer"
 tx_url = "https://www.okx.com/web3/explorer/xlayer/tx/{hash}"
+address_url = "https://www.okx.com/web3/explorer/xlayer/address/{address}"
 
 [[explorers]]
 chain_id = "bittensor"
 name = "Taostats"
 tx_url = "https://taostats.io/extrinsic/{hash}"
+address_url = "https://taostats.io/account/{address}"
 
 [[explorers]]
 chain_id = "plasma"
 name = "PlasmaScan"
 tx_url = "https://plasmascan.to/tx/{hash}"
+address_url = "https://plasmascan.to/address/{address}"
 
 [[explorers]]
 chain_id = "monad"
 name = "Monadscan"
 tx_url = "https://monadscan.com/tx/{hash}"
+address_url = "https://monadscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "world-chain"
 name = "Worldscan"
 tx_url = "https://worldscan.org/tx/{hash}"
+address_url = "https://worldscan.org/address/{address}"
 
 # Testnets
 
@@ -256,186 +307,223 @@ tx_url = "https://worldscan.org/tx/{hash}"
 chain_id = "bitcoin-testnet"
 name = "Mempool"
 tx_url = "https://mempool.space/testnet/tx/{hash}"
+address_url = "https://mempool.space/testnet/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-testnet-4"
 name = "Mempool"
 tx_url = "https://mempool.space/testnet4/tx/{hash}"
+address_url = "https://mempool.space/testnet4/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-signet"
 name = "Mempool"
 tx_url = "https://mempool.space/signet/tx/{hash}"
+address_url = "https://mempool.space/signet/address/{address}"
 
 [[explorers]]
 chain_id = "litecoin-testnet"
 name = "LitecoinSpace"
 tx_url = "https://litecoinspace.org/testnet/tx/{hash}"
+address_url = "https://litecoinspace.org/testnet/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-cash-testnet"
 name = "Loping"
 tx_url = "https://tbch.loping.net/tx/{hash}"
+address_url = "https://tbch.loping.net/address/{address}"
 
 [[explorers]]
 chain_id = "bitcoin-sv-testnet"
 name = "WhatsOnChain"
 tx_url = "https://test.whatsonchain.com/tx/{hash}"
+address_url = "https://test.whatsonchain.com/address/{address}"
 
 [[explorers]]
 chain_id = "dogecoin-testnet"
 name = "Blockexplorer.one"
 tx_url = "https://blockexplorer.one/dogecoin/testnet/tx/{hash}"
+address_url = "https://blockexplorer.one/dogecoin/testnet/address/{address}"
 
 [[explorers]]
 chain_id = "zcash-testnet"
 name = "Zcash Explorer"
 tx_url = "https://testnet.zcashexplorer.app/transactions/{hash}"
+address_url = "https://testnet.zcashexplorer.app/address/{address}"
 
 [[explorers]]
 chain_id = "decred-testnet"
 name = "dcrdata"
 tx_url = "https://testnet.dcrdata.org/tx/{hash}"
+address_url = "https://testnet.dcrdata.org/address/{address}"
 
 [[explorers]]
 chain_id = "dash-testnet"
 name = "Dash Insight"
 tx_url = "https://insight.testnet.networks.dash.org/insight/tx/{hash}"
+address_url = "https://insight.testnet.networks.dash.org/insight/address/{address}"
 
 [[explorers]]
 chain_id = "ethereum-sepolia"
 name = "Etherscan"
 tx_url = "https://sepolia.etherscan.io/tx/{hash}"
+address_url = "https://sepolia.etherscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "ethereum-hoodi"
 name = "Etherscan"
 tx_url = "https://hoodi.etherscan.io/tx/{hash}"
+address_url = "https://hoodi.etherscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "arbitrum-sepolia"
 name = "Arbiscan"
 tx_url = "https://sepolia.arbiscan.io/tx/{hash}"
+address_url = "https://sepolia.arbiscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "optimism-sepolia"
 name = "Optimism Etherscan"
 tx_url = "https://sepolia-optimism.etherscan.io/tx/{hash}"
+address_url = "https://sepolia-optimism.etherscan.io/address/{address}"
 
 [[explorers]]
 chain_id = "base-sepolia"
 name = "BaseScan"
 tx_url = "https://sepolia.basescan.org/tx/{hash}"
+address_url = "https://sepolia.basescan.org/address/{address}"
 
 [[explorers]]
 chain_id = "bnb-testnet"
 name = "BscScan"
 tx_url = "https://testnet.bscscan.com/tx/{hash}"
+address_url = "https://testnet.bscscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "avalanche-fuji"
 name = "Snowtrace"
 tx_url = "https://testnet.snowtrace.io/tx/{hash}"
+address_url = "https://testnet.snowtrace.io/address/{address}"
 
 [[explorers]]
 chain_id = "polygon-amoy"
 name = "PolygonScan"
 tx_url = "https://amoy.polygonscan.com/tx/{hash}"
+address_url = "https://amoy.polygonscan.com/address/{address}"
 
 [[explorers]]
 chain_id = "hyperliquid-testnet"
 name = "Hyperliquid Explorer"
 tx_url = "https://app.hyperliquid-testnet.xyz/explorer/tx/{hash}"
+address_url = "https://app.hyperliquid-testnet.xyz/explorer/address/{address}"
 
 [[explorers]]
 chain_id = "linea-sepolia"
 name = "LineaScan"
 tx_url = "https://sepolia.lineascan.build/tx/{hash}"
+address_url = "https://sepolia.lineascan.build/address/{address}"
 
 [[explorers]]
 chain_id = "celo-sepolia"
 name = "Blockscout"
 tx_url = "https://celo-sepolia.blockscout.com/tx/{hash}"
+address_url = "https://celo-sepolia.blockscout.com/address/{address}"
 
 [[explorers]]
 chain_id = "cronos-testnet"
 name = "Cronos Explorer"
 tx_url = "https://explorer.cronos.org/testnet/tx/{hash}"
+address_url = "https://explorer.cronos.org/testnet/address/{address}"
 
 [[explorers]]
 chain_id = "zksync-era-sepolia"
 name = "zkSync Explorer"
 tx_url = "https://sepolia.explorer.zksync.io/tx/{hash}"
+address_url = "https://sepolia.explorer.zksync.io/address/{address}"
 
 [[explorers]]
 chain_id = "sonic-testnet"
 name = "SonicScan"
 tx_url = "https://testnet.sonicscan.org/tx/{hash}"
+address_url = "https://testnet.sonicscan.org/address/{address}"
 
 [[explorers]]
 chain_id = "ink-sepolia"
 name = "Ink Explorer"
 tx_url = "https://explorer-sepolia.inkonchain.com/tx/{hash}"
+address_url = "https://explorer-sepolia.inkonchain.com/address/{address}"
 
 [[explorers]]
 chain_id = "x-layer-testnet"
 name = "OKX X Layer Explorer"
 tx_url = "https://www.okx.com/web3/explorer/xlayer-test/tx/{hash}"
+address_url = "https://www.okx.com/web3/explorer/xlayer-test/address/{address}"
 
 [[explorers]]
 chain_id = "ethereum-classic-mordor"
 name = "Blockscout"
 tx_url = "https://etc-mordor.blockscout.com/tx/{hash}"
+address_url = "https://etc-mordor.blockscout.com/address/{address}"
 
 [[explorers]]
 chain_id = "tron-nile"
 name = "TronScan"
 tx_url = "https://nile.tronscan.org/#/transaction/{hash}"
+address_url = "https://nile.tronscan.org/#/address/{address}"
 
 [[explorers]]
 chain_id = "solana-devnet"
 name = "Solscan"
 tx_url = "https://solscan.io/tx/{hash}?cluster=devnet"
+address_url = "https://solscan.io/account/{address}?cluster=devnet"
 
 [[explorers]]
 chain_id = "xrp-testnet"
 name = "XRP Explorer"
 tx_url = "https://testnet.xrpl.org/transactions/{hash}"
+address_url = "https://testnet.xrpl.org/accounts/{address}"
 
 [[explorers]]
 chain_id = "stellar-testnet"
 name = "Stellar Expert"
 tx_url = "https://stellar.expert/explorer/testnet/tx/{hash}"
+address_url = "https://stellar.expert/explorer/testnet/account/{address}"
 
 [[explorers]]
 chain_id = "cardano-preprod"
 name = "Cardano Explorer"
 tx_url = "https://preprod.cexplorer.io/tx/{hash}"
+address_url = "https://preprod.cexplorer.io/address/{address}"
 
 [[explorers]]
 chain_id = "sui-testnet"
 name = "Suiscan"
 tx_url = "https://suiscan.xyz/testnet/tx/{hash}"
+address_url = "https://suiscan.xyz/testnet/account/{address}"
 
 [[explorers]]
 chain_id = "aptos-testnet"
 name = "Aptos Explorer"
 tx_url = "https://explorer.aptoslabs.com/txn/{hash}?network=testnet"
+address_url = "https://explorer.aptoslabs.com/account/{address}?network=testnet"
 
 [[explorers]]
 chain_id = "ton-testnet"
 name = "Tonviewer"
 tx_url = "https://testnet.tonviewer.com/{hash}"
+address_url = "https://testnet.tonviewer.com/{address}"
 
 [[explorers]]
 chain_id = "near-testnet"
 name = "NearBlocks"
 tx_url = "https://testnet.nearblocks.io/txns/{hash}"
+address_url = "https://testnet.nearblocks.io/address/{address}"
 
 [[explorers]]
 chain_id = "polkadot-westend"
 name = "Subscan"
 tx_url = "https://assethub-westend.subscan.io/extrinsic/{hash}"
+address_url = "https://assethub-westend.subscan.io/account/{address}"
 
 [[explorers]]
 chain_id = "monero-stagenet"
@@ -446,8 +534,10 @@ tx_url = "https://stagenet.xmrchain.net/tx/{hash}"
 chain_id = "peercoin"
 name = "Peercoin Blockbook"
 tx_url = "https://blockbook.peercoin.net/tx/{hash}"
+address_url = "https://blockbook.peercoin.net/address/{address}"
 
 [[explorers]]
 chain_id = "peercoin-testnet"
 name = "Peercoin Testnet Blockbook"
 tx_url = "https://tblockbook.peercoin.net/tx/{hash}"
+address_url = "https://tblockbook.peercoin.net/address/{address}"

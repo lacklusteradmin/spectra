@@ -35,7 +35,10 @@ extension WalletView {
             holdings: holdings,
             includeInPortfolioTotal: includeInPortfolioTotal,
             signing: signing,
-            restoreHeight: nil
+            restoreHeight: nil,
+            hiddenHoldings: [],
+            icpPrincipal: nil,
+            nearAccountKey: nil
         )
     }
 
@@ -79,7 +82,10 @@ extension WalletView {
                 return WalletAddress(
                     chainId: owner, address: address, kind: "receive", derivationPath: owner == chain ? derivationPath : nil)
             },
-            restoreHeight: restoreHeight)
+            restoreHeight: restoreHeight,
+            hiddenHoldings: hiddenHoldings,
+            icpPrincipal: icpPrincipal,
+            nearAccountKey: nearAccountKey)
     }
 }
 

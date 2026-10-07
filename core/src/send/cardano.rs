@@ -51,7 +51,11 @@ pub fn build_signed_ada_tx(
 /// Cardano's extended Ed25519 key is kL || kR, not a seed. kL is the
 /// derived scalar and kR is the nonce prefix; hashing kL as a seed changes
 /// the public key and produces an invalid payment witness.
-fn sign_extended(key: &[u8; 64], public: &[u8; 32], message: &[u8]) -> Result<[u8; 64], SendError> {
+pub(crate) fn sign_extended(
+    key: &[u8; 64],
+    public: &[u8; 32],
+    message: &[u8],
+) -> Result<[u8; 64], SendError> {
     use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT, scalar::Scalar};
     use sha2::{Digest, Sha512};
     use zeroize::Zeroizing;

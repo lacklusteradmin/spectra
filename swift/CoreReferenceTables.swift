@@ -15,11 +15,10 @@ enum CoreReferenceTables {
     static let chainWiki: [ChainWikiEntry] = listChainWiki()
     private static let chainWikiById = Dictionary(
         chainWiki.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    /// What staking means on each chain that stakes, in catalog order.
-    static let stakingChains: [StakingChainEntry] = listStakingChains()
     /// The bounds core holds edits to, for the controls that set them.
     static let bounds: InputBounds = inputBounds()
-    private static let stakingByChain = Dictionary(uniqueKeysWithValues: stakingChains.map { ($0.chain, $0) })
+    /// What staking means on each chain that stakes.
+    private static let stakingByChain = Dictionary(uniqueKeysWithValues: listStakingChains().map { ($0.chain, $0) })
 
     static func assetWikiEntry(tokenId: String) -> AssetWikiEntry? { assetWikiByTokenId[tokenId] }
     static func chainWikiEntry(id: String) -> ChainWikiEntry? { chainWikiById[id] }

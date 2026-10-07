@@ -15,6 +15,9 @@ struct TransactionDetailView: View {
     @State private var endpoints: TransactionEndpoints?
     /// Folded by default: gas, paths and payload are for the reader who asks.
     @State private var isShowingTechnicalDetails = false
+    /// A Monero send's payment proof, from core; `nil` for anything else.
+    @State private var paymentProof: MoneroPaymentProof?
+    @State private var isShowingPaymentProof = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(store: AppState, transaction: TransactionRecord) {
         self.store = store
@@ -37,6 +40,19 @@ struct TransactionDetailView: View {
         }.navigationTitle(AppLocalization.string("Transaction")).navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .task(id: refreshKey) { await rebuildDisplayedTransactionState() }
+            .task(id: transaction.id) { await loadPaymentProof() }
+            .sheet(isPresented: $isShowingPaymentProof) {
+                if let paymentProof {
+                    NavigationStack { MoneroPaymentProofView(proof: paymentProof) }
+                }
+            }
+    }
+    /// Only a Monero payment this device signed has a proof; core answers
+    /// `nil` for every other transaction.
+    private func loadPaymentProof() async {
+        guard transaction.kind == .send, let walletId = transaction.walletId,
+              let hash = transaction.transactionHash else { return }
+        paymentProof = try? await store.bridge.ready().moneroPaymentProof(walletId: walletId, txid: hash)
     }
     /// What moved, from which wallet on which network, and where it stands.
     /// The amount is signed and coloured as the history row draws it, so the
@@ -137,6 +153,17 @@ struct TransactionDetailView: View {
                 CopyableValueRow(value: hash) {
                     TransactionDetailRow(systemImage: "number", label: "Transaction Hash", value: hash, isIdentifier: true)
                 }
+            }
+            if paymentProof != nil {
+                Divider().opacity(0.4)
+                Button { isShowingPaymentProof = true } label: {
+                    HStack(spacing: SpectraLayout.Space.s) {
+                        Image(systemName: "checkmark.seal").font(.subheadline.weight(.semibold)).frame(width: 22)
+                        Text(AppLocalization.string("Prove Payment")).font(.subheadline.weight(.semibold))
+                        Spacer(minLength: SpectraLayout.Space.m)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain)
             }
             if let explorer = tx.explorerLink {
                 Divider().opacity(0.4)

@@ -354,6 +354,83 @@ fn token_transfer_data(amount: u64, decimals: u8, transfer_fee_extension: bool) 
     data
 }
 
+/// The SPL Token and Token-2022 programs, which own token accounts.
+pub(crate) const TOKEN_PROGRAMS: [&str; 2] = [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+];
+/// The most token accounts one transaction closes, well inside a legacy
+/// transaction's 1232 bytes.
+pub(crate) const MAX_CLOSED_ACCOUNTS: usize = 20;
+
+/// Empty token accounts closed into their owner, and what the message was
+/// compiled from, so it can be compiled again and compared before signing.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedSolanaAccountClosure {
+    /// Each closed account and the token program that owns it, base58.
+    pub accounts: Vec<(String, String)>,
+    pub transaction: PreparedSolanaTransaction,
+}
+
+impl PreparedSolanaAccountClosure {
+    pub(crate) fn prepare(
+        owner: &str,
+        accounts: Vec<(String, String)>,
+        blockhash: &str,
+        network_fee: u64,
+    ) -> Result<Self, SendError> {
+        let message = close_accounts_message(owner, &accounts, blockhash)?;
+        Ok(Self {
+            transaction: PreparedSolanaTransaction {
+                payer: decode_b58_32(owner)?,
+                blockhash: blockhash.into(),
+                message,
+                account_seed: None,
+                network_fee: Some(network_fee),
+                stake_rent: None,
+            },
+            accounts,
+        })
+    }
+
+    /// Whether the message is exactly these closures, from `owner`.
+    pub(crate) fn is_exact(&self, owner: &str) -> bool {
+        close_accounts_message(owner, &self.accounts, &self.transaction.blockhash)
+            .is_ok_and(|message| message == self.transaction.message)
+    }
+}
+
+/// One SPL `CloseAccount` (9) per account: the account, its rent's
+/// destination (the owner) and the owner signing.
+fn close_accounts_message(
+    owner: &str,
+    accounts: &[(String, String)],
+    blockhash: &str,
+) -> Result<Vec<u8>, SendError> {
+    if accounts.is_empty() || accounts.len() > MAX_CLOSED_ACCOUNTS {
+        return Err(SendError::invalid(
+            "Invalid number of Solana accounts to close",
+        ));
+    }
+    let payer = decode_b58_32(owner)?;
+    let mut metas = vec![(payer, true)];
+    let mut instructions = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (account, program) in accounts {
+        if !TOKEN_PROGRAMS.contains(&program.as_str()) {
+            return Err(SendError::invalid("Not a token program"));
+        }
+        let account = decode_b58_32(account)?;
+        if account == payer || !seen.insert(account) {
+            return Err(SendError::invalid("Invalid Solana account to close"));
+        }
+        metas.push((account, true));
+        metas.push((decode_b58_32(program)?, false));
+        instructions.push((metas.len() - 1, vec![metas.len() - 2, 0, 0], vec![9]));
+    }
+    compile_message(&payer, &metas, &instructions, blockhash)
+}
+
 pub(crate) fn compile_message(
     payer: &[u8; 32],
     account_metas: &[([u8; 32], bool)],
@@ -416,6 +493,71 @@ fn compact_u16(val: usize) -> Vec<u8> {
 #[cfg(test)]
 mod token_transfer_data_tests {
     use super::*;
+
+    /// Closing an SPL and a Token-2022 account, as @solana/web3.js compiles
+    /// and signs it.
+    #[test]
+    fn closing_token_accounts_matches_web3_js() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/solana-close-accounts.json"
+        ))
+        .unwrap();
+        let text = |value: &serde_json::Value| value.as_str().unwrap().to_string();
+        let accounts: Vec<(String, String)> = fixture["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| (text(&row["account"]), text(&row["program"])))
+            .collect();
+        let owner = text(&fixture["owner"]);
+        let prepared = PreparedSolanaAccountClosure::prepare(
+            &owner,
+            accounts.clone(),
+            &text(&fixture["blockhash"]),
+            5000,
+        )
+        .unwrap();
+        assert_eq!(
+            hex::encode(&prepared.transaction.message),
+            text(&fixture["message"])
+        );
+        assert!(prepared.is_exact(&owner));
+        let key = Ed25519Seed::from_hex(&text(&fixture["seed"])).unwrap();
+        assert_eq!(
+            hex::encode(prepared.transaction.sign(&key).unwrap()),
+            text(&fixture["signed"])
+        );
+        // Not a token program, the owner itself, or one account twice.
+        let blockhash = text(&fixture["blockhash"]);
+        let system = "11111111111111111111111111111111".to_string();
+        assert!(
+            PreparedSolanaAccountClosure::prepare(
+                &owner,
+                vec![(accounts[0].0.clone(), system)],
+                &blockhash,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            PreparedSolanaAccountClosure::prepare(
+                &owner,
+                vec![(owner.clone(), accounts[0].1.clone())],
+                &blockhash,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            PreparedSolanaAccountClosure::prepare(
+                &owner,
+                vec![accounts[0].clone(), accounts[0].clone()],
+                &blockhash,
+                0
+            )
+            .is_err()
+        );
+    }
 
     /// Byte layouts from spl-token-2022's `TokenInstruction::TransferChecked`
     /// and `TransferFeeInstruction::TransferCheckedWithFee` packing.

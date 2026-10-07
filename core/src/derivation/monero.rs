@@ -111,6 +111,27 @@ pub(crate) fn monero_base58_encode(data: &[u8]) -> String {
     out
 }
 
+/// The inverse of [`monero_base58_encode`] for whole 8-byte blocks, which
+/// is all a signature or key needs; `None` for anything else, an unknown
+/// character or a block that overflows.
+pub(crate) fn monero_base58_decode(text: &str) -> Option<Vec<u8>> {
+    const ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let text = text.as_bytes();
+    if !text.len().is_multiple_of(11) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(text.len() / 11 * 8);
+    for block in text.chunks(11) {
+        let mut value: u128 = 0;
+        for character in block {
+            let digit = ALPHABET.iter().position(|a| a == character)?;
+            value = value * 58 + digit as u128;
+        }
+        out.extend(u64::try_from(value).ok()?.to_be_bytes());
+    }
+    Some(out)
+}
+
 /// The spend key a Monero phrase stands for: 25 words are a Monero seed, 16
 /// a Polyseed, and anything else is refused.
 pub(crate) fn spend_key_from_phrase(

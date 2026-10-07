@@ -35,6 +35,8 @@ class Node(http.server.BaseHTTPRequestHandler):
             rows = funds.get(address, [])
             result = dict(balance=str(sum(int(r['value']) for r in rows if r['confirmations'] > 0)),
                           unconfirmedBalance='0', txs=len(rows), unconfirmedTxs=0)
+        elif path == '/api/v2':
+            result = {'blockbook': {'bestHeight': 100}, 'backend': {'blocks': 100}}
         elif path == '/api/v2/estimatefee/3':
             result = {'result': '0.00001'}  # 1 litoshi/vB
         else:
@@ -166,6 +168,19 @@ try:
                     assert discovered['chain'] == chain, discovered
                     pool = run('pool', 'show', name)
                     assert pool['nextExternalIndex'] == 28 and pool['nextChangeIndex'] == 4, pool
+                    # Each address in its place, with what it holds; every
+                    # output one block deep at a tip of 100.
+                    coins = run('wallet', 'coins', name, password=None)['coins']
+                    places = {row['address']: (row['branch'], row['index'], row['balance'], row['used'])
+                              for row in coins['addresses']}
+                    assert places[root] == ('receive', 0, '0.001', True), coins
+                    assert places[recovered[0]] == ('receive', 7, '0.003', True), coins
+                    assert places[recovered[2]] == ('change', 3, '0.005', True), coins
+                    # The reserved address has received, so the next is past
+                    # every used one.
+                    assert coins['nextReceiveAddress'] == address_at(chain, path + '/0/28'), coins
+                    assert len(coins['outputs']) == 5 and all(o['confirmations'] == 100 for o in coins['outputs']), coins
+                    assert coins['outputs'][0]['amount'] == '0.005' and coins['maturing'] == '0', coins
 
                 balance = run('balance', name, password=None)
                 total = 1_500_000 if purpose == 84 else 300_000

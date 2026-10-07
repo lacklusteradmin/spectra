@@ -31,6 +31,9 @@ fn summary() -> WalletState {
             derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
         }],
         restore_height: None,
+        hidden_holdings: Vec::new(),
+        icp_principal: None,
+        near_account_key: None,
     }
 }
 

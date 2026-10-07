@@ -37,6 +37,7 @@ when tests finish. The environment must allow binding local ports.
 | `cli-send-icp-zcash.py` | ICP and Zcash send stages against loopback providers. |
 | `cli-trc10.py` | Mainnet/Nile TRC-10 metadata, discovery/history, exact token signing and durable success/failure; wrong identity/precision/funds refuse early. |
 | `cli-staking.py` | Four account chains and DOT nomination pools, ownership/funds checks, fresh-process receipts, same-payload retries and finalized outcomes. |
+| `cli-wallet-operations.py` | Operations a wallet's page builds, against loopback nodes: closing XRP and Stellar accounts, NEAR access keys, Sui coin merges and Solana token-account closures, each prerequisite refused before anything is built and each transaction signed and broadcast through the send stages. |
 | `cli-icp-staking.py` | Controller-only neurons, explicit lock/fee review, independent Candid responses and refusal of forged execution certificates before funding. |
 | `cli-send-near.py` | Mainnet/testnet native and NEP-141 protocol fee budgets, implicit-account costs, storage reserves and fee/funds changes before signing or pending retries. |
 | `cli-send-monero.py` | Monero ownership and network guards; the signature fixture runs in Rust. |
@@ -124,6 +125,12 @@ SDK versions and installation/run commands.
 | `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
 | `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton) token-transfer references from the official SDKs. |
 | `generate-xrp-payment-vector.cjs` | XRPL payment signing reference from the official XRPL packages. |
+| `generate-more-message-signature-vectors.cjs` | Cardano CIP-8 data signatures, Kaspa personal messages and Monero `SigV2`, from each network's SDK. |
+| `generate-stellar-message-vectors.py` | Stellar SEP-53 message signatures from the Stellar SDK for Python. |
+| `generate-near-key-deletion-vector.cjs` | A NEAR `DeleteKey` transaction from @near-js/transactions. |
+| `generate-sui-merge-vectors.cjs` | Sui coin merges, a token type's and SUI's own, from @mysten/sui. |
+| `generate-solana-close-accounts-vector.cjs` | Closing SPL and Token-2022 accounts, compiled and signed by @solana/web3.js. |
+| `generate-account-closing-vectors.cjs` | XRP AccountDelete and Stellar AccountMerge, built and signed by the official XRPL packages and the Stellar SDK. |
 | `generate-derivation-profile-vectors.cjs` | Addresses for every registry derivation profile at accounts 0 and 1, from independent libraries. |
 | `generate-private-key-vectors.cjs` | Each chain's own private-key encodings, from the chains' SDKs. |
 | `generate-ton-mnemonic-vectors.cjs` | ton-crypto 24-word mnemonics, their keys and v4R2 accounts. |

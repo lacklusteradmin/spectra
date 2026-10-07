@@ -151,7 +151,8 @@ class Node(http.server.BaseHTTPRequestHandler):
         assert chain in ('peercoin', 'peercoin-testnet'), self.path
         requests.append((chain, path))
         if path == '/api/v2':
-            return self.reply(dict(blockbook=dict(coin='Peercoin Testnet' if chain.endswith('testnet') else 'Peercoin', decimals=6),
+            return self.reply(dict(blockbook=dict(coin='Peercoin Testnet' if chain.endswith('testnet') else 'Peercoin', decimals=6,
+                                                  bestHeight=900000),
                                    backend=dict(chain='testnet' if chain.endswith('testnet') else 'livenet', blocks=900000)))
         if path.startswith('/api/v2/utxo/'):
             return self.reply(funds.get((chain, path.removeprefix('/api/v2/utxo/')), []))
@@ -365,6 +366,14 @@ try:
             reward_inputs, _, stacks, _, size = decode_transaction(signed['signed_payload'])
             assert len(reward_inputs) == 1 and len(reward_inputs[0][1]) < 76 and not stacks[0]
             assert prepared['fee'] >= max(1_000, size * 10)
+            # The wallet's coins name the rewards still maturing, which its
+            # total holds and its sends cannot spend.
+            coins = run('wallet', 'coins', raw_name)['coins']
+            assert coins['maturing'] == '5' and coins['tipHeight'] == 900000, coins
+            spendable = {row['txid']: row['spendable'] for row in coins['outputs']}
+            assert spendable[mature['txid']] and not spendable[immature['txid']], coins
+            assert [row['amount'] for row in coins['outputs']] == ['3', '2', '1'], coins
+            assert coins['addresses'][0]['address'] == sender and coins['addresses'][0]['balance'] == '6', coins
 
         # Catalog market identities drive the stored valuation without a live
         # quote request; production price-provider URLs stay outside this test.

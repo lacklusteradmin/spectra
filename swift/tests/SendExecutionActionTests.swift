@@ -8,7 +8,7 @@ struct SendExecutionActionTests {
         SendArtifact(id: "send-action", revision: 1, stage: stage, walletId: "wallet", chainId: .ethereum,
             sender: "0x1111111111111111111111111111111111111111",
             recipient: "0x2222222222222222222222222222222222222222",
-            amount: "1.000000000000000001", asset: "token-contract", symbol: "USDC", staking: nil, createdAt: 0,
+            amount: "1.000000000000000001", asset: "token-contract", symbol: "USDC", staking: nil, operation: nil, createdAt: 0,
             reviewDigest: "digest", review: SendArtifactReview(warnings: [], recipientWarnings: [], requiresSelfSendConfirmation: false, staking: nil),
             preparedDetails: "", signingPayloadHex: "02", signedPayload: stage == .signed ? "02" : nil,
             transactionHash: nil, attempts: outcome.map {

@@ -157,6 +157,20 @@ impl UtxoClient {
         .await
     }
 
+    /// The height of the chain's tip, which an output's confirmations count to.
+    pub async fn fetch_tip_height(&self) -> Result<u64, ApiError> {
+        self.race(|adapter| async move {
+            match adapter {
+                Adapter::Esplora(c) => c.fetch_tip_height().await,
+                Adapter::Blockbook(c) => c.fetch_tip_height().await,
+                Adapter::Blockcypher(c) => c.fetch_tip_height().await,
+                Adapter::Whatsonchain(c) => c.fetch_tip_height().await,
+                Adapter::BchRest(c) => c.fetch_tip_height().await,
+            }
+        })
+        .await
+    }
+
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         self.race(|adapter| async move {
             match adapter {
@@ -165,6 +179,21 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.fetch_utxos(address).await,
                 Adapter::Whatsonchain(c) => c.fetch_utxos(address).await,
                 Adapter::BchRest(c) => c.fetch_utxos(address).await,
+            }
+        })
+        .await
+    }
+
+    pub(crate) async fn fetch_peercoin_outputs(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::blockbook::PeercoinOutput>, ApiError> {
+        self.race(|adapter| async move {
+            match adapter {
+                Adapter::Blockbook(client) => client.fetch_peercoin_outputs(address).await,
+                _ => Err(ApiError::InvalidInput(
+                    "Peercoin reads require a Blockbook indexer".into(),
+                )),
             }
         })
         .await

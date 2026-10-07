@@ -20,6 +20,10 @@ final class WalletImportDraft {
     var mode: WalletDraftMode = .setup(.importPhrase)
     /// The network the wallet is added on, chosen before the form opens.
     var chain: Chain?
+    /// The watched wallet this form gives its keys to, when it was opened
+    /// from that wallet's page. Core refuses a secret that does not hold its
+    /// address rather than adding a wallet.
+    var upgradeWalletId: String?
     var isEditingWallet: Bool { mode == .edit }
     var method: WalletSetupMethod? {
         if case .setup(let method) = mode { return method }
@@ -161,7 +165,8 @@ final class WalletImportDraft {
             restoreHeight: restoreHeight,
             namedAccount: asksNamedAccount && !namedAccountInput.trimmingCharacters(in: .whitespaces).isEmpty
                 ? namedAccountInput : nil,
-            tonWalletVersion: asksTonWalletVersion ? tonWalletVersion : nil)
+            tonWalletVersion: asksTonWalletVersion ? tonWalletVersion : nil,
+            upgradeWalletId: upgradeWalletId)
     }
     /// The commit an address preview reads: the form's, without the name and
     /// password, which change no address. `nil` until there is enough to
@@ -228,9 +233,10 @@ final class WalletImportDraft {
     }
     /// A fresh form for adding a wallet on `chain` by `method`. Creating
     /// generates exactly one phrase.
-    func configure(chain: Chain, method: WalletSetupMethod) {
+    func configure(chain: Chain, method: WalletSetupMethod, upgrading walletId: String? = nil) {
         clear()
         self.chain = chain
+        upgradeWalletId = walletId
         // The grid judges the phrase in the network's own formats.
         seedEntry.chain = chain
         if let shortest = createdLengths.first { selectedSeedPhraseWordCount = Int(shortest.wordCount) }
@@ -252,6 +258,7 @@ final class WalletImportDraft {
         walletName = wallet.name
     }
     func reset() {
+        upgradeWalletId = nil
         walletName = ""
         seedEntry.reset()
         walletPassword = ""

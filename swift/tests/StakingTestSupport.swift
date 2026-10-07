@@ -15,7 +15,7 @@ enum StakingTestSupport {
             staking: StakingRequest(
                 walletId: "wallet", chainId: chain, action: .stake,
                 validatorId: "validator", positionId: nil, amount: "1.234567891", lockupSeconds: nil),
-            createdAt: 0, reviewDigest: "immutable-review",
+            operation: nil, createdAt: 0, reviewDigest: "immutable-review",
             review: SendArtifactReview(
                 warnings: [], recipientWarnings: [], requiresSelfSendConfirmation: false,
                 staking: StakingReview(

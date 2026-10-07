@@ -82,6 +82,33 @@ fn etherscan_result_rows(
     }
 }
 
+/// `keccak256("Approval(address,address,uint256)")`, the topic an ERC-20
+/// approval (and an ERC-721 one, which indexes a fourth topic) is logged
+/// under.
+pub(crate) const APPROVAL_TOPIC: &str =
+    "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925";
+
+/// The most rows one `getLogs` answer holds; a full page means there may be
+/// more from its last block on.
+const LOG_PAGE: usize = 1000;
+/// How many pages one scan reads before saying it stopped short.
+const LOG_PAGES: usize = 20;
+
+/// An ERC-20 approval an owner gave: the token and the spender it named.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalLog {
+    pub token: String,
+    pub spender: String,
+}
+
+/// The approvals an owner has logged, oldest first, and whether the scan
+/// reached the end of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalLogs {
+    pub logs: Vec<ApprovalLog>,
+    pub complete: bool,
+}
+
 pub struct BlockscoutClient {
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
@@ -97,6 +124,87 @@ impl BlockscoutClient {
         Self {
             client: HttpClient::shared(),
         }
+    }
+
+    /// Every ERC-20 `Approval` log `owner` emitted, through the explorer's
+    /// Etherscan-compatible `getLogs`, paged by block. An ERC-721 approval,
+    /// which indexes its token id as a fourth topic, is not one.
+    pub async fn fetch_approval_logs(
+        &self,
+        owner: &str,
+        source: EvmHistorySource<'_>,
+    ) -> Result<ApprovalLogs, ApiError> {
+        #[derive(Deserialize)]
+        struct ApiResp {
+            status: String,
+            #[serde(default)]
+            message: String,
+            result: Value,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Log {
+            address: String,
+            topics: Vec<Option<String>>,
+            block_number: String,
+            transaction_hash: String,
+            log_index: String,
+        }
+        let owner_topic = format!(
+            "0x{:0>64}",
+            owner.trim_start_matches("0x").to_ascii_lowercase()
+        );
+        let mut logs = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut from_block = 0u64;
+        for _ in 0..LOG_PAGES {
+            let url = explorer_query_url(
+                source,
+                &format!(
+                    "module=logs&action=getLogs&fromBlock={from_block}&toBlock=latest\
+                     &topic0={APPROVAL_TOPIC}&topic1={owner_topic}&topic0_1_opr=and"
+                ),
+            )?;
+            let response: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
+            let rows = etherscan_result_rows(&response.status, &response.message, response.result)?;
+            let full = rows.len() >= LOG_PAGE;
+            let mut last_block = from_block;
+            for row in rows {
+                let log: Log = serde_json::from_value(row)
+                    .map_err(|e| ApiError::Decode(format!("approval log: {e}")))?;
+                last_block = crate::api::evm_json_rpc::parse_hex_u64(&log.block_number)?;
+                if !seen.insert((log.transaction_hash.clone(), log.log_index.clone())) {
+                    continue;
+                }
+                let topic = |index: usize| log.topics.get(index).cloned().flatten();
+                if topic(0).as_deref() != Some(APPROVAL_TOPIC)
+                    || topic(1).as_deref() != Some(owner_topic.as_str())
+                    || topic(3).is_some()
+                {
+                    continue;
+                }
+                let Some(spender) = topic(2).filter(|t| t.len() == 66) else {
+                    continue;
+                };
+                logs.push(ApprovalLog {
+                    token: log.address.to_ascii_lowercase(),
+                    spender: format!("0x{}", &spender[26..]).to_ascii_lowercase(),
+                });
+            }
+            if !full {
+                return Ok(ApprovalLogs {
+                    logs,
+                    complete: true,
+                });
+            }
+            // A full page may cut its last block short: read from that block
+            // again, and the seen set drops what repeats.
+            from_block = last_block;
+        }
+        Ok(ApprovalLogs {
+            logs,
+            complete: false,
+        })
     }
 
     pub async fn fetch_history(

@@ -10,7 +10,6 @@ use spectra_core::derivation::import::{
 };
 use spectra_core::registry::Chain;
 use spectra_core::store::state::{StateCommand, WalletState};
-use spectra_core::store::wallet_secrets;
 
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource, wallet_address};
@@ -74,8 +73,14 @@ pub enum WalletCommand {
     List,
     /// Show one wallet in detail.
     Show(SelectArgs),
+    /// What a wallet's page offers, with what each action does, and its
+    /// network's capabilities and limits. Contacts nothing.
+    Actions(SelectArgs),
     /// Show a wallet's receive address.
     Receive(SelectArgs),
+    /// The addresses an account-discovery UTXO wallet has handed out and the
+    /// coins they hold, read from the network.
+    Coins(SelectArgs),
     /// Rename a wallet.
     Rename(RenameArgs),
     /// Include or exclude a wallet from portfolio totals.
@@ -84,9 +89,61 @@ pub enum WalletCommand {
         #[arg(action = clap::ArgAction::Set)]
         included: bool,
     },
+    /// Hide one of a wallet's holdings from its total and the portfolio; it
+    /// stays sendable.
+    Hide(HoldingArgs),
+    /// Show a hidden holding again.
+    Unhide(HoldingArgs),
+    /// Sign a plain-text message with a wallet's key, in its network's
+    /// scheme, to prove it holds its address.
+    SignMessage(SignMessageArgs),
+    /// The ERC-20 allowances an EVM wallet has granted that still stand,
+    /// from its indexer's approval logs and a live read of each.
+    Approvals(SelectArgs),
+    /// Build the transaction that sets an allowance back to zero; sign and
+    /// broadcast it with `send sign` and `send broadcast-signed`.
+    Revoke(RevokeArgs),
+    /// An Ethereum wallet's ENS primary name, where it resolves back.
+    Ens(SelectArgs),
+    /// What the wallet's account on its network holds and needs: Tron's
+    /// resources, XRP's and Stellar's reserve, a TON contract's state, a
+    /// Substrate balance's parts, NEAR's storage.
+    Account(SelectArgs),
+    /// Build the transaction that closes an XRP or Stellar account into
+    /// another existing account, recovering its reserve: everything it
+    /// holds goes there and the account is deleted. Sign and broadcast it
+    /// with `send sign` and `send broadcast-signed`.
+    Close(CloseArgs),
+    /// A NEAR account's access keys, the one Spectra signs with marked.
+    Keys(SelectArgs),
+    /// Build the transaction that deletes one of a NEAR account's
+    /// function-call keys; sign and broadcast it with `send sign` and
+    /// `send broadcast-signed`.
+    DeleteKey(DeleteKeyArgs),
+    /// A Sui wallet's coin types and how many objects hold each.
+    Objects(SelectArgs),
+    /// Build the transaction that merges a Sui coin type's objects into
+    /// one; sign and broadcast it with `send sign` and `send
+    /// broadcast-signed`.
+    Merge(MergeArgs),
+    /// A Solana wallet's empty token accounts and the rent each returns.
+    TokenAccounts(SelectArgs),
+    /// The proof of a Monero payment this wallet sent: the transaction key
+    /// monero-wallet-cli's `check_tx_key` verifies.
+    ProvePayment(ProvePaymentArgs),
+    /// Build the transaction that closes empty Solana token accounts for
+    /// their rent: the named ones, or every closable one (at most 20); sign
+    /// and broadcast it with `send sign` and `send broadcast-signed`.
+    CloseTokenAccounts(CloseTokenAccountsArgs),
+    /// The networks a wallet's key, or watched address, can be added to.
+    CopyTargets(SelectArgs),
+    /// Add a wallet's key, or watched address, to another network as a
+    /// wallet of its own, sealed under the same password.
+    Copy(CopyArgs),
     /// Delete a wallet, its history and its secrets.
     Delete(DeleteArgs),
-    /// Decrypt and print a wallet's seed phrase or private key.
+    /// Decrypt and print a wallet's seed phrase or private key, or with
+    /// `--key` one of its keys as other wallets import it.
     Export(ExportArgs),
 }
 
@@ -183,6 +240,11 @@ pub struct ImportArgs {
     /// (default) or `v4R2` for a wallet created before 2024.
     #[arg(long, value_name = "VERSION")]
     ton_wallet: Option<String>,
+    /// Give this watched wallet (id, name or address) its keys. The import
+    /// must hold its address: anything else is refused rather than added as
+    /// a wallet of its own.
+    #[arg(long, value_name = "WALLET")]
+    upgrade: Option<String>,
     /// Read the seed phrase from this file; `-` means stdin.
     #[arg(long, value_name = "PATH")]
     seed_file: Option<String>,
@@ -234,6 +296,125 @@ pub struct RenameArgs {
 }
 
 #[derive(Args)]
+pub struct RevokeArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The token contract.
+    #[arg(long)]
+    token: String,
+    /// The spender whose allowance goes to zero.
+    #[arg(long)]
+    spender: String,
+}
+
+#[derive(Args)]
+pub struct CloseArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The existing account that receives everything.
+    #[arg(long)]
+    to: String,
+}
+
+#[derive(Args)]
+pub struct ProvePaymentArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The transaction's id.
+    #[arg(long)]
+    txid: String,
+}
+
+#[derive(Args)]
+pub struct CloseTokenAccountsArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// A token account to close; repeat for several. None: every closable
+    /// empty one.
+    #[arg(long = "account")]
+    accounts: Vec<String>,
+}
+
+#[derive(Args)]
+pub struct MergeArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The coin type, such as `0x2::sui::SUI`.
+    #[arg(long)]
+    coin_type: String,
+}
+
+#[derive(Args)]
+pub struct DeleteKeyArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The function-call key, as `ed25519:…`.
+    #[arg(long)]
+    key: String,
+}
+
+#[derive(Args)]
+pub struct HoldingArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The holding: its deployment id (`ethereum:erc-20:0x…`) or a symbol
+    /// only one of the wallet's holdings has.
+    asset: String,
+}
+
+#[derive(Args)]
+pub struct SignMessageArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The message, as text.
+    #[arg(long)]
+    message: String,
+    /// Read the wallet password from this file; `-` means stdin.
+    #[arg(long, value_name = "PATH")]
+    password_file: Option<String>,
+    /// Read the wallet password from this environment variable.
+    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
+    password_env: Option<String>,
+}
+
+#[derive(Args)]
+pub struct CopyArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The network to add it to, as `wallet copy-targets` lists them.
+    #[arg(long)]
+    chain: String,
+    /// The new wallet's name (default: core assigns an available "Wallet N").
+    #[arg(long)]
+    name: Option<String>,
+    /// A phrase's derivation path on the new network, for a path no profile
+    /// names (default: the network's default profile at account 0).
+    #[arg(long, conflicts_with_all = ["profile", "account"])]
+    path: Option<String>,
+    /// A phrase's derivation profile on the new network.
+    #[arg(long)]
+    profile: Option<String>,
+    /// Account index on the profile (default 0).
+    #[arg(long)]
+    account: Option<u32>,
+    /// Monero only: where the new wallet's scan starts.
+    #[arg(long)]
+    restore_height: Option<u64>,
+    /// TON only: the wallet contract, `w5` (default) or `v4R2`.
+    #[arg(long, value_name = "VERSION")]
+    ton_wallet: Option<String>,
+    /// Print the address the copy would store, and store nothing.
+    #[arg(long)]
+    preview: bool,
+    /// Read the source wallet's password from this file; `-` means stdin.
+    #[arg(long, value_name = "PATH")]
+    password_file: Option<String>,
+    /// Read the source wallet's password from this environment variable.
+    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
+    password_env: Option<String>,
+}
+
+#[derive(Args)]
 pub struct DeleteArgs {
     /// Wallet id, name or address.
     wallet: String,
@@ -246,6 +427,11 @@ pub struct DeleteArgs {
 pub struct ExportArgs {
     /// Wallet id, name or address.
     wallet: String,
+    /// The key to print, in the encoding its network's wallets import:
+    /// `private-key`, `spend-key` or `view-key` (Monero), or `account-key`
+    /// (an account's public key). `wallet actions` lists what a wallet has.
+    #[arg(long, value_name = "KIND")]
+    key: Option<String>,
     /// Confirm printing the wallet's secret in plain text.
     #[arg(long)]
     yes: bool,
@@ -355,7 +541,9 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
             Ok(())
         }
         WalletCommand::Show(args) => show(ctx, out, args),
+        WalletCommand::Actions(args) => actions(ctx, out, args),
         WalletCommand::Receive(args) => receive(ctx, out, args),
+        WalletCommand::Coins(args) => coins(ctx, out, args),
         WalletCommand::Rename(args) => rename(ctx, out, args),
         WalletCommand::Inclusion { wallet, included } => {
             let wallet = ctx.find_wallet(&wallet)?;
@@ -366,6 +554,292 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
             out.emit(serde_json::json!({"ok":true}));
             Ok(())
         }
+        WalletCommand::SignMessage(args) => sign_message(ctx, out, args),
+        WalletCommand::Approvals(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let approvals = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_token_approvals(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!();
+                for approval in &approvals.approvals {
+                    println!(
+                        "  {} {}  {}  {}",
+                        out::info(&approval.token),
+                        approval.symbol,
+                        out::hint(&approval.spender),
+                        if approval.unlimited {
+                            "unlimited".to_string()
+                        } else {
+                            approval.allowance.clone()
+                        }
+                    );
+                }
+                if !approvals.complete {
+                    println!(
+                        "  {}",
+                        out::hint("the indexer scan stopped short; more may stand")
+                    );
+                }
+            });
+            out.emit(serde_json::json!({
+                "ok": true,
+                "approvals": serde_json::to_value(&approvals).map_err(|e| CliError::failure(e.to_string()))?,
+            }));
+            Ok(())
+        }
+        WalletCommand::Revoke(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.build_approval_revocation(
+                    wallet.id,
+                    args.token,
+                    args.spender,
+                ))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!(
+                    "{} {:?}\n{}\n{}",
+                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
+                )
+            });
+            out.emit(serde_json::json!({ "artifact": artifact }));
+            Ok(())
+        }
+        WalletCommand::Ens(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let name = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_ens_name(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| println!("  {}", name.as_deref().unwrap_or("-")));
+            out.emit(serde_json::json!({ "ok": true, "name": name }));
+            Ok(())
+        }
+        WalletCommand::Account(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let account = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_network_account(wallet.id))
+                .map_err(CliError::from)?;
+            let value = serde_json::to_value(&account.account)
+                .map_err(|e| CliError::failure(e.to_string()))?;
+            out.text(|| {
+                println!();
+                println!(
+                    "  {}  {}",
+                    out::hint(&format!("{:<22}", "symbol")),
+                    account.symbol
+                );
+                println!(
+                    "  {}  {}",
+                    out::hint(&format!("{:<22}", "closable")),
+                    account.closable
+                );
+                if let Some(fields) = value.as_object() {
+                    for (name, field) in fields {
+                        let text = field
+                            .as_str()
+                            .map_or_else(|| field.to_string(), str::to_string);
+                        println!("  {}  {text}", out::hint(&format!("{name:<22}")));
+                    }
+                }
+            });
+            out.emit(serde_json::json!({
+                "ok": true,
+                "symbol": account.symbol,
+                "closable": account.closable,
+                "account": value,
+            }));
+            Ok(())
+        }
+        WalletCommand::Keys(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let keys = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_access_keys(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!();
+                for key in &keys.keys {
+                    let access = match &key.receiver {
+                        None => "full access".to_string(),
+                        Some(receiver) => format!(
+                            "calls {receiver}{}, allowance {}",
+                            if key.method_names.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" ({})", key.method_names.join(", "))
+                            },
+                            key.allowance.as_deref().unwrap_or("unlimited")
+                        ),
+                    };
+                    let mark = if key.signs {
+                        " (Spectra signs with it)"
+                    } else {
+                        ""
+                    };
+                    println!("  {}  {access}{mark}", key.public_key);
+                }
+            });
+            out.emit(serde_json::json!({ "ok": true, "keys": keys }));
+            Ok(())
+        }
+        WalletCommand::Objects(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let types = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_coin_objects(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!();
+                for entry in &types {
+                    println!(
+                        "  {:<8} {:>6} objects  {}  {}",
+                        entry.symbol, entry.objects, entry.balance, entry.coin_type
+                    );
+                }
+            });
+            out.emit(serde_json::json!({ "ok": true, "types": types }));
+            Ok(())
+        }
+        WalletCommand::ProvePayment(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let proof = ctx
+                .rt
+                .block_on(ctx.service()?.monero_payment_proof(wallet.id, args.txid))
+                .map_err(CliError::from)?
+                .ok_or_else(|| {
+                    CliError::usage("this device did not sign that Monero transaction")
+                })?;
+            out.text(|| {
+                println!();
+                println!(
+                    "  check_tx_key {} {} {}",
+                    proof.txid, proof.tx_key, proof.address
+                );
+                println!(
+                    "  {}",
+                    out::hint(&format!("proves {} XMR received", proof.amount))
+                );
+            });
+            out.emit(serde_json::json!({ "ok": true, "proof": proof }));
+            Ok(())
+        }
+        WalletCommand::TokenAccounts(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let empty = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_empty_token_accounts(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!();
+                for account in &empty.accounts {
+                    println!(
+                        "  {}  {:<8} {} SOL  {}",
+                        account.address,
+                        account.symbol,
+                        account.rent,
+                        account.blocked.as_deref().unwrap_or("closable")
+                    );
+                }
+                println!("  reclaimable  {} SOL", empty.reclaimable);
+            });
+            out.emit(serde_json::json!({ "ok": true, "empty": empty }));
+            Ok(())
+        }
+        WalletCommand::CloseTokenAccounts(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(
+                    ctx.service()?
+                        .build_token_account_closure(wallet.id, args.accounts),
+                )
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!(
+                    "{} {:?}\n{}\n{}",
+                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
+                )
+            });
+            out.emit(serde_json::json!({ "artifact": artifact }));
+            Ok(())
+        }
+        WalletCommand::Merge(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.build_coin_merge(wallet.id, args.coin_type))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!(
+                    "{} {:?}\n{}\n{}",
+                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
+                )
+            });
+            out.emit(serde_json::json!({ "artifact": artifact }));
+            Ok(())
+        }
+        WalletCommand::DeleteKey(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(
+                    ctx.service()?
+                        .build_access_key_deletion(wallet.id, args.key),
+                )
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!(
+                    "{} {:?}\n{}\n{}",
+                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
+                )
+            });
+            out.emit(serde_json::json!({ "artifact": artifact }));
+            Ok(())
+        }
+        WalletCommand::Close(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.build_account_closing(wallet.id, args.to))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                if let Some(spectra_core::send::stages::WalletOperation::CloseAccount {
+                    destination,
+                    reserve,
+                    removed_objects,
+                    network_fee,
+                }) = &artifact.operation
+                {
+                    println!();
+                    println!(
+                        "  {}  closing deletes {} on the network; this cannot be undone",
+                        out::accent("!").bold(),
+                        artifact.sender
+                    );
+                    println!("  to          {destination}");
+                    println!("  amount      {} {}", artifact.amount, artifact.symbol);
+                    println!("  reserve     {reserve} {}", artifact.symbol);
+                    println!("  objects     {removed_objects}");
+                    println!("  fee         {network_fee} {}", artifact.symbol);
+                    println!();
+                }
+                println!(
+                    "{} {:?}\n{}\n{}",
+                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
+                )
+            });
+            out.emit(serde_json::json!({ "artifact": artifact }));
+            Ok(())
+        }
+        WalletCommand::CopyTargets(args) => copy_targets(ctx, out, args),
+        WalletCommand::Copy(args) => copy(ctx, out, args),
+        WalletCommand::Hide(args) => set_hidden(ctx, out, args, true),
+        WalletCommand::Unhide(args) => set_hidden(ctx, out, args, false),
         WalletCommand::Delete(args) => delete(ctx, out, args),
         WalletCommand::Export(args) => export(ctx, out, args),
     }
@@ -450,6 +924,7 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     )?;
     commit.named_account = args.named_account.clone();
     commit.ton_wallet_version = ton_wallet_version(args.ton_wallet.as_deref())?;
+    commit.upgrade_wallet_id = upgrade_target(ctx, args.upgrade.as_deref())?;
     if args.preview {
         return preview(ctx, out, commit);
     }
@@ -511,6 +986,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     commit.private_key = Some(private_key.clone());
     commit.named_account = args.named_account.clone();
     commit.ton_wallet_version = ton_wallet_version(args.ton_wallet.as_deref())?;
+    commit.upgrade_wallet_id = upgrade_target(ctx, args.upgrade.as_deref())?;
     if args.preview {
         return preview(ctx, out, commit);
     }
@@ -880,6 +1356,46 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     Ok(())
 }
 
+/// Print core's action descriptor for a wallet: what its page offers.
+fn actions(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let actions = ctx
+        .rt
+        .block_on(ctx.service()?.wallet_actions(wallet.id.clone()))
+        .map_err(CliError::from)?;
+    // The names `--json` carries, so the two outputs agree.
+    let name = |value: serde_json::Result<serde_json::Value>| {
+        value
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string))
+            .unwrap_or_default()
+    };
+    out.text(|| {
+        println!();
+        println!(
+            "  {}  {}",
+            wallet.name.bold(),
+            out::tint(&super::chain_name(wallet.chain_id), wallet.chain_id).bold()
+        );
+        for offer in &actions.actions {
+            println!(
+                "  {}  {}  {}",
+                out::hint(&format!("{:<9}", name(serde_json::to_value(offer.section)))),
+                format!("{:<13}", name(serde_json::to_value(offer.action))).bold(),
+                offer.note
+            );
+        }
+        for limit in &actions.summary.limits {
+            println!("  {}  {:?}", out::hint(&format!("{:<9}", "limit")), limit);
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "actions": serde_json::to_value(&actions).map_err(|e| CliError::failure(e.to_string()))?,
+    }));
+    Ok(())
+}
+
 /// Ask core for the receive address on the wallet's network.
 /// Core reserves UTXO indices and registers derived addresses as owned.
 /// Repeated calls reuse the reserved index.
@@ -917,6 +1433,56 @@ fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     Ok(())
 }
 
+fn coins(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let coins = ctx
+        .rt
+        .block_on(ctx.service()?.wallet_coins(wallet.id.clone()))
+        .map_err(CliError::from)?;
+    out.text(|| {
+        println!();
+        for address in &coins.addresses {
+            let place = match (address.branch, address.index) {
+                (Some(spectra_core::service::AddressBranch::Receive), Some(i)) => {
+                    format!("receive {i}")
+                }
+                (Some(spectra_core::service::AddressBranch::Change), Some(i)) => {
+                    format!("change {i}")
+                }
+                _ => "seen".to_string(),
+            };
+            println!(
+                "  {}  {}  {} {}{}",
+                out::hint(&format!("{place:<11}")),
+                out::info(&address.address),
+                address.balance,
+                coins.symbol,
+                if address.used { "" } else { "  (unused)" }
+            );
+        }
+        if let Some(next) = &coins.next_receive_address {
+            out::field("next", &out::info(next).to_string());
+        }
+        println!();
+        for output in &coins.outputs {
+            println!(
+                "  {}:{}  {} {}  {} conf{}",
+                output.txid,
+                output.vout,
+                output.amount,
+                coins.symbol,
+                output.confirmations,
+                if output.spendable { "" } else { "  maturing" }
+            );
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "coins": serde_json::to_value(&coins).map_err(|e| CliError::failure(e.to_string()))?,
+    }));
+    Ok(())
+}
+
 // ─── Mutating ───────────────────────────────────────────────────────────────
 
 fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
@@ -947,6 +1513,219 @@ fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
     Ok(())
 }
 
+fn sign_message(ctx: &Ctx, out: Out, args: SignMessageArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let password = if wallet.signing.requires_password() {
+        let env = args
+            .password_env
+            .clone()
+            .filter(|name| std::env::var_os(name).is_some());
+        Some(
+            SecretSource {
+                file: args.password_file.clone(),
+                env,
+            }
+            .resolve("password", "password-file")?,
+        )
+    } else {
+        None
+    };
+    let service = ctx.service()?;
+    service.set_secret_store(ctx.secrets.clone());
+    let signed = ctx
+        .rt
+        .block_on(service.sign_wallet_message(wallet.id.clone(), args.message, password))
+        .map_err(CliError::from)?;
+    let scheme =
+        serde_json::to_value(signed.scheme).map_err(|e| CliError::failure(e.to_string()))?;
+    out.text(|| {
+        println!();
+        out::field("address", &out::info(&signed.address).to_string());
+        out::field("scheme", scheme.as_str().unwrap_or_default());
+        out::field("signature", &signed.signature.bold().to_string());
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "address": signed.address,
+        "scheme": scheme,
+        "message": signed.message,
+        "signature": signed.signature,
+    }));
+    Ok(())
+}
+
+fn copy_targets(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let targets = ctx
+        .rt
+        .block_on(ctx.service()?.wallet_copy_targets(wallet.id.clone()))
+        .map_err(CliError::from)?;
+    out.text(|| {
+        println!();
+        for chain in &targets {
+            println!(
+                "  {}  {}",
+                out::tint(&super::chain_name(*chain), *chain),
+                out::hint(chain.str_id())
+            );
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "targets": targets.iter().map(|chain| chain.str_id()).collect::<Vec<_>>(),
+    }));
+    Ok(())
+}
+
+fn copy(ctx: &Ctx, out: Out, args: CopyArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let chain = resolve_chain(&args.chain)?;
+    let path = if args.path.is_some() {
+        args.path.clone()
+    } else if args.profile.is_some() || args.account.is_some() {
+        let profile = match &args.profile {
+            Some(name) => serde_json::from_value(serde_json::Value::String(name.clone()))
+                .map_err(|_| CliError::usage(format!("unknown derivation profile {name:?}")))?,
+            None => *chain.derivation_profiles().first().ok_or_else(|| {
+                CliError::rejected(format!(
+                    "{} derives without a derivation path",
+                    chain.chain_display_name()
+                ))
+            })?,
+        };
+        Some(
+            spectra_core::derivation::path::derivation_profile_path(
+                chain,
+                profile,
+                args.account.unwrap_or(0),
+            )
+            .map_err(CliError::from)?,
+        )
+    } else {
+        None
+    };
+    // The source's password opens its seal and seals the copy; a watched
+    // wallet has neither.
+    let password = if wallet.signing.requires_password() {
+        let env = args
+            .password_env
+            .clone()
+            .filter(|name| std::env::var_os(name).is_some());
+        Some(
+            SecretSource {
+                file: args.password_file.clone(),
+                env,
+            }
+            .resolve("password", "password-file")?,
+        )
+    } else {
+        None
+    };
+    let commit = spectra_core::service::WalletCopyCommit {
+        source_wallet_id: wallet.id.clone(),
+        chain,
+        wallet_name: args.name.clone().unwrap_or_default(),
+        password,
+        derivation_path: path,
+        restore_height: args.restore_height,
+        ton_wallet_version: ton_wallet_version(args.ton_wallet.as_deref())?,
+    };
+    let service = ctx.service()?;
+    service.set_secret_store(ctx.secrets.clone());
+    if args.preview {
+        let preview = ctx
+            .rt
+            .block_on(service.preview_wallet_copy(commit))
+            .map_err(CliError::from)?;
+        out.text(|| {
+            for address in &preview.addresses {
+                println!("  {}", address.bold());
+            }
+        });
+        out.emit(serde_json::json!({
+            "ok": true,
+            "chain": chain.str_id(),
+            "addresses": preview.addresses,
+            "upgradesWallet": preview.upgrades_wallet,
+        }));
+        return Ok(());
+    }
+    let outcome = ctx
+        .rt
+        .block_on(service.copy_wallet_to_network(commit))
+        .map_err(CliError::from)?;
+    let copied = first_wallet(&outcome)?;
+    out.text(|| {
+        println!();
+        println!(
+            "  {} added to {}{}",
+            out::ok_mark(),
+            out::tint(&super::chain_name(chain), chain).bold(),
+            upgraded_note(&outcome)
+        );
+        println!();
+        print_wallet(&copied);
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "wallet": wallet_json(&copied),
+        "upgraded": outcome.upgraded,
+    }));
+    Ok(())
+}
+
+fn set_hidden(ctx: &Ctx, out: Out, args: HoldingArgs, hidden: bool) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let asset = args.asset.trim();
+    let mut matches: Vec<String> = wallet
+        .holdings
+        .iter()
+        .map(|holding| holding.deployment_id())
+        .filter(|id| id == asset)
+        .collect();
+    if matches.is_empty() {
+        matches = wallet
+            .holdings
+            .iter()
+            .filter(|holding| holding.symbol.eq_ignore_ascii_case(asset))
+            .map(|holding| holding.deployment_id())
+            .collect();
+    }
+    // Showing a holding again names it by the id it was hidden under.
+    if matches.is_empty() && !hidden && wallet.hidden_holdings.iter().any(|id| id == asset) {
+        matches.push(asset.to_string());
+    }
+    let deployment_id = match matches.as_slice() {
+        [one] => one.clone(),
+        [] => {
+            return Err(CliError::rejected(format!(
+                "\"{}\" holds no {asset}",
+                wallet.name
+            )));
+        }
+        _ => {
+            return Err(CliError::usage(format!(
+                "more than one holding is {asset}; name it by its deployment id"
+            )));
+        }
+    };
+    ctx.apply(StateCommand::SetHoldingHidden {
+        wallet_id: wallet.id,
+        deployment_id: deployment_id.clone(),
+        hidden,
+    })?;
+    out.text(|| {
+        println!(
+            "  {} {} {}",
+            out::ok_mark(),
+            if hidden { "hid" } else { "showed" },
+            deployment_id
+        )
+    });
+    out.emit(serde_json::json!({ "ok": true, "deploymentId": deployment_id, "hidden": hidden }));
+    Ok(())
+}
+
 fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     if !args.yes {
@@ -972,22 +1751,36 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
 }
 
 fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
+    use spectra_core::service::WalletKeyKind as Kind;
     let wallet = ctx.find_wallet(&args.wallet)?;
-    if wallet.is_watch_only() {
-        return Err(CliError::rejected(
-            "a watch-only wallet has no signing material to export",
-        ));
-    }
-    // A wallet imported from a raw key has no phrase; the wallet records which
-    // it signs with.
-    let is_private_key = matches!(
-        wallet.signing,
-        spectra_core::store::state::WalletSigning::PrivateKey { .. }
-    );
-    let what = if is_private_key {
-        "private key"
-    } else {
-        "seed phrase"
+    // A wallet imported from a raw key has no phrase: its export is its key,
+    // written as its network's wallets read it.
+    let key = match args.key.as_deref() {
+        Some("private-key") => Some(Kind::PrivateKey),
+        Some("spend-key") => Some(Kind::MoneroSpendKey),
+        Some("view-key") => Some(Kind::MoneroViewKey),
+        Some("account-key") => Some(Kind::AccountPublicKey),
+        Some(other) => return Err(CliError::usage(format!("unknown key kind {other:?}"))),
+        None if matches!(
+            wallet.signing,
+            spectra_core::store::state::WalletSigning::PrivateKey { .. }
+        ) =>
+        {
+            Some(Kind::PrivateKey)
+        }
+        None if wallet.is_watch_only() => {
+            return Err(CliError::rejected(
+                "a watch-only wallet has no signing material to export",
+            ));
+        }
+        None => None,
+    };
+    let what = match key {
+        None => "seed phrase",
+        Some(Kind::PrivateKey) => "private key",
+        Some(Kind::MoneroSpendKey) => "spend key",
+        Some(Kind::MoneroViewKey) => "view key",
+        Some(Kind::AccountPublicKey) => "account key",
     };
     if !args.yes {
         return Err(CliError::usage(format!(
@@ -1011,19 +1804,17 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
     } else {
         None
     };
+    let service = ctx.service()?;
+    service.set_secret_store(ctx.secrets.clone());
 
-    // The key a private-key wallet was imported from is the only copy this
-    // side holds. Sealing one the CLI could never return would make it a lost
-    // key, so export handles both — behind the same gate and the same password.
-    if is_private_key {
-        let key = wallet_secrets::load_private_key(
-            ctx.secrets.as_ref(),
-            &wallet.id,
-            password.as_deref(),
-        )?;
+    if let Some(kind) = key {
+        let export = ctx
+            .rt
+            .block_on(service.export_wallet_key(wallet.id.clone(), kind, password))
+            .map_err(CliError::from)?;
         out.text(|| {
             println!();
-            println!("  {}", key.bold());
+            println!("  {}", export.value.bold());
             println!();
             println!(
                 "  {} {}",
@@ -1031,13 +1822,22 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
                 "store this securely and clear your terminal".bold()
             );
         });
-        out.emit(serde_json::json!({ "ok": true, "privateKey": *key }));
+        let field = match kind {
+            Kind::PrivateKey => "privateKey",
+            Kind::MoneroSpendKey => "spendKey",
+            Kind::MoneroViewKey => "viewKey",
+            Kind::AccountPublicKey => "accountKey",
+        };
+        out.emit(serde_json::json!({
+            "ok": true,
+            field: export.value,
+            "format": serde_json::to_value(export.format)
+                .map_err(|e| CliError::failure(e.to_string()))?,
+        }));
         return Ok(());
     }
 
     // Core answers why a phrase is not revealed; the words are the CLI's.
-    let service = ctx.service()?;
-    service.set_secret_store(ctx.secrets.clone());
     use spectra_core::service::SeedPhraseReveal as Reveal;
     let seed_phrase = match service.reveal_seed_phrase(wallet.id.clone(), password)? {
         Reveal::Phrase { phrase } => phrase,
@@ -1094,6 +1894,13 @@ fn derivation_path(chain: Chain, args: &CreationArgs) -> CliResult<Option<String
     .map_err(CliError::from)
 }
 
+/// The watched wallet `--upgrade` names, by id.
+fn upgrade_target(ctx: &Ctx, wallet: Option<&str>) -> CliResult<Option<String>> {
+    wallet
+        .map(|wallet| ctx.find_wallet(wallet).map(|wallet| wallet.id))
+        .transpose()
+}
+
 /// The TON wallet version `--ton-wallet` names, by its serialized name.
 fn ton_wallet_version(
     name: Option<&str>,
@@ -1126,6 +1933,7 @@ fn commit_for(request: WalletImportRequest) -> WalletImportCommit {
         restore_height: None,
         named_account: None,
         ton_wallet_version: None,
+        upgrade_wallet_id: None,
     }
 }
 
@@ -1172,6 +1980,9 @@ fn print_wallet_of_kind(wallet: &WalletState, signing: Option<&str>) {
         out::field("path", &out::hint(path).to_string());
     }
     out::field("address", &out::info(wallet_address(wallet)).to_string());
+    if let Some(principal) = &wallet.icp_principal {
+        out::field("principal", &out::info(principal).to_string());
+    }
 }
 
 fn print_words(seed_phrase: &str) {
@@ -1202,6 +2013,8 @@ fn wallet_json(wallet: &WalletState) -> serde_json::Value {
             .collect::<serde_json::Map<String, serde_json::Value>>(),
         "derivationPath": wallet.derivation_path,
         "restoreHeight": wallet.restore_height,
+        "hiddenHoldings": wallet.hidden_holdings,
+        "icpPrincipal": wallet.icp_principal,
         "isWatchOnly": wallet.is_watch_only(),
     })
 }

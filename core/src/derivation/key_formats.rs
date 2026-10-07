@@ -183,6 +183,86 @@ fn near_secret_key(input: &str) -> Option<Result<Zeroizing<String>, DerivationEr
     (bytes.len() == 64).then(|| ed25519_pair(&bytes))
 }
 
+/// The encoding a key on `chain` is exported in: the chain's own, where its
+/// wallets have one, or hex. `None` where a key alone yields no address.
+pub(crate) fn export_format(chain: Chain) -> Option<WalletSecretFormat> {
+    let formats = chain.private_key_formats();
+    formats
+        .iter()
+        .copied()
+        .find(|format| *format != WalletSecretFormat::HexSecret32)
+        .or_else(|| formats.first().copied())
+}
+
+/// `key_hex` written in `format` for `chain`: the inverse of
+/// [`parse_private_key`], so an exported key reads back as itself.
+pub(crate) fn encode_private_key(
+    chain: Chain,
+    format: WalletSecretFormat,
+    key_hex: &str,
+) -> Result<Zeroizing<String>, DerivationError> {
+    let key = Zeroizing::new(hex::decode(key_hex).map_err(DerivationError::invalid)?);
+    let seed = || -> Result<Zeroizing<[u8; 32]>, DerivationError> {
+        let seed: [u8; 32] = key
+            .as_slice()
+            .try_into()
+            .map_err(|_| DerivationError::invalid("Private key must be exactly 32 bytes"))?;
+        Ok(Zeroizing::new(seed))
+    };
+    // An ed25519 keypair as wallets write it: the secret, then its public key.
+    let pair = || -> Result<Zeroizing<Vec<u8>>, DerivationError> {
+        let seed = seed()?;
+        let mut pair = Zeroizing::new(seed.to_vec());
+        pair.extend_from_slice(SigningKey::from_bytes(&seed).verifying_key().as_bytes());
+        Ok(pair)
+    };
+    Ok(Zeroizing::new(match format {
+        WalletSecretFormat::HexSecret32 => hex::encode(*seed()?),
+        WalletSecretFormat::CardanoExtendedKey if key.len() == 64 => hex::encode(&*key),
+        WalletSecretFormat::Wif => {
+            let version = chain.wif_version().ok_or_else(|| {
+                DerivationError::refused(
+                    "This is not a private key %@ takes.",
+                    [chain.chain_display_name()],
+                )
+            })?;
+            // Compressed: the key Spectra signs with owns the compressed
+            // key's address.
+            let mut payload = Zeroizing::new(vec![version]);
+            payload.extend_from_slice(&*seed()?);
+            payload.push(0x01);
+            bs58::encode(&*payload).with_check().into_string()
+        }
+        WalletSecretFormat::SolanaKeypair => bs58::encode(&*pair()?).into_string(),
+        WalletSecretFormat::NearSecretKey => {
+            format!("ed25519:{}", bs58::encode(&*pair()?).into_string())
+        }
+        WalletSecretFormat::StellarSecretSeed => {
+            const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
+            let mut payload = Zeroizing::new(vec![18 << 3]);
+            payload.extend_from_slice(&*seed()?);
+            let checksum = CRC.checksum(&payload).to_le_bytes();
+            payload.extend_from_slice(&checksum);
+            data_encoding::BASE32_NOPAD.encode(&payload)
+        }
+        WalletSecretFormat::SuiPrivateKey => {
+            let mut payload = Zeroizing::new(vec![0x00]);
+            payload.extend_from_slice(&*seed()?);
+            bech32::encode::<bech32::Bech32>(bech32::Hrp::parse_unchecked("suiprivkey"), &payload)
+                .map_err(DerivationError::invalid)?
+        }
+        WalletSecretFormat::AptosPrivateKey => {
+            format!("ed25519-priv-0x{}", hex::encode(*seed()?))
+        }
+        _ => {
+            return Err(DerivationError::refused(
+                "This is not a private key %@ takes.",
+                [chain.chain_display_name()],
+            ));
+        }
+    }))
+}
+
 #[cfg(test)]
 #[path = "tests/key_formats.rs"]
 mod tests;

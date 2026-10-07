@@ -1,10 +1,20 @@
-//! Stellar send: XDR Payment builder (native XLM) and Ed25519 signer.
+//! Stellar send: XDR Payment (native XLM) and AccountMerge builders and
+//! Ed25519 signer.
 
 use crate::send::error::SendError;
 
 use crate::derivation::stellar::decode_stellar_address;
 
 // ── XDR transaction builder
+
+/// The one operation a Spectra transaction carries.
+enum StellarOperation<'a> {
+    /// PAYMENT of native XLM.
+    Payment { to: &'a [u8; 32], stroops: i64 },
+    /// ACCOUNT_MERGE: the source account is removed and its balance, less
+    /// the fee, goes to `to`.
+    AccountMerge { to: &'a [u8; 32] },
+}
 
 /// Build a signed Stellar Payment transaction for native XLM.
 #[allow(clippy::too_many_arguments)]
@@ -18,17 +28,62 @@ pub fn build_signed_payment_xdr(
     private_key: &[u8; 64],
     public_key: &[u8; 32],
 ) -> Result<Vec<u8>, SendError> {
+    let _from_bytes = decode_stellar_address(from)?;
+    let to = decode_stellar_address(to)?;
+    build_signed(
+        StellarOperation::Payment { to: &to, stroops },
+        base_fee,
+        sequence,
+        network_passphrase,
+        private_key,
+        public_key,
+    )
+}
+
+/// Build a signed Stellar AccountMerge transaction: the account `from` is
+/// removed and everything it holds, less the fee, goes to `to`.
+pub fn build_signed_account_merge_xdr(
+    from: &str,
+    to: &str,
+    base_fee: u64,
+    sequence: u64,
+    network_passphrase: &[u8],
+    private_key: &[u8; 64],
+    public_key: &[u8; 32],
+) -> Result<Vec<u8>, SendError> {
+    let from = decode_stellar_address(from)?;
+    let to = decode_stellar_address(to)?;
+    if from == to {
+        return Err(SendError::Invalid(
+            "Stellar: an account cannot be merged into itself".into(),
+        ));
+    }
+    build_signed(
+        StellarOperation::AccountMerge { to: &to },
+        base_fee,
+        sequence,
+        network_passphrase,
+        private_key,
+        public_key,
+    )
+}
+
+fn build_signed(
+    operation: StellarOperation<'_>,
+    base_fee: u64,
+    sequence: u64,
+    network_passphrase: &[u8],
+    private_key: &[u8; 64],
+    public_key: &[u8; 32],
+) -> Result<Vec<u8>, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
-
-    let _from_bytes = decode_stellar_address(from)?;
-    let to_bytes = decode_stellar_address(to)?;
 
     // Network hash prefix for transaction signing.
     let network_hash: [u8; 32] = Sha256::digest(network_passphrase).into();
 
     // TransactionV0/Transaction XDR encoding (manual).
-    let tx_xdr = encode_payment_tx(&to_bytes, stroops, base_fee, sequence, public_key);
+    let tx_xdr = encode_tx(&operation, base_fee, sequence, public_key);
 
     // Signing payload: sha256(network_hash || ENVELOPE_TYPE_TX(2) || tx_xdr)
     let mut payload = Vec::new();
@@ -58,9 +113,8 @@ pub fn build_signed_payment_xdr(
     Ok(envelope)
 }
 
-fn encode_payment_tx(
-    to: &[u8; 32],
-    stroops: i64,
+fn encode_tx(
+    operation: &StellarOperation<'_>,
     base_fee: u64,
     sequence: u64,
     public_key: &[u8; 32],
@@ -78,16 +132,26 @@ fn encode_payment_tx(
     tx.extend_from_slice(&0u32.to_be_bytes());
     // operations: array of 1
     tx.extend_from_slice(&1u32.to_be_bytes());
-    // Operation: sourceAccount optional=0, type=PAYMENT(1)
-    tx.extend_from_slice(&0u32.to_be_bytes()); // no source account override
-    tx.extend_from_slice(&1u32.to_be_bytes()); // PAYMENT op type
-    // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
+    // Operation: sourceAccount optional=0 (no override)
     tx.extend_from_slice(&0u32.to_be_bytes());
-    tx.extend_from_slice(to);
-    // ASSET_TYPE_NATIVE = 0
-    tx.extend_from_slice(&0u32.to_be_bytes());
-    // amount: Int64
-    tx.extend_from_slice(&stroops.to_be_bytes());
+    match operation {
+        StellarOperation::Payment { to, stroops } => {
+            tx.extend_from_slice(&1u32.to_be_bytes()); // PAYMENT op type
+            // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
+            tx.extend_from_slice(&0u32.to_be_bytes());
+            tx.extend_from_slice(*to);
+            // ASSET_TYPE_NATIVE = 0
+            tx.extend_from_slice(&0u32.to_be_bytes());
+            // amount: Int64
+            tx.extend_from_slice(&stroops.to_be_bytes());
+        }
+        StellarOperation::AccountMerge { to } => {
+            tx.extend_from_slice(&8u32.to_be_bytes()); // ACCOUNT_MERGE op type
+            // destination: MuxedAccount KEY_TYPE_ED25519 + key
+            tx.extend_from_slice(&0u32.to_be_bytes());
+            tx.extend_from_slice(*to);
+        }
+    }
     // ext: 0
     tx.extend_from_slice(&0u32.to_be_bytes());
     tx
@@ -148,5 +212,48 @@ mod tests {
         key.verifying_key()
             .verify_strict(&Sha256::digest(payload), &signature)
             .unwrap();
+    }
+
+    /// AccountMerge exactly as the Stellar SDK builds and signs it.
+    #[test]
+    fn account_merge_matches_the_stellar_sdk() {
+        use base64::Engine;
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/account-closing.json"))
+                .unwrap();
+        let vector = &fixture["stellar_account_merge"];
+        let seed: [u8; 32] = hex::decode(vector["seed"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let key = SigningKey::from_bytes(&seed);
+        let public = key.verifying_key().to_bytes();
+        let source = vector["source"].as_str().unwrap();
+        let envelope = build_signed_account_merge_xdr(
+            source,
+            vector["destination"].as_str().unwrap(),
+            vector["fee"].as_str().unwrap().parse().unwrap(),
+            vector["sequence"].as_str().unwrap().parse().unwrap(),
+            vector["network_passphrase"].as_str().unwrap().as_bytes(),
+            &key.to_keypair_bytes(),
+            &public,
+        )
+        .unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD.encode(envelope),
+            vector["envelope_b64"].as_str().unwrap()
+        );
+        assert!(
+            build_signed_account_merge_xdr(
+                source,
+                source,
+                100,
+                1,
+                b"Test SDF Network ; September 2015",
+                &key.to_keypair_bytes(),
+                &public,
+            )
+            .is_err()
+        );
     }
 }

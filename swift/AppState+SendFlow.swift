@@ -1,9 +1,11 @@
 import Foundation
 import SwiftUI
 extension AppState {
-    func beginSend() {
-        guard let firstWallet = sendEnabledWallets.first else { return }
-        sendFlow.walletId = firstWallet.id
+    /// Open the composer on `walletId`, or on the first wallet that can send.
+    func beginSend(walletId: String? = nil) {
+        let wallets = sendEnabledWallets
+        guard let wallet = wallets.first(where: { $0.id == walletId }) ?? wallets.first else { return }
+        sendFlow.walletId = wallet.id
         sendFlow.holdingKey = availableSendCoins(for: sendFlow.walletId).first?.holdingKey ?? ""
         sendFlow.resetComposer()
         syncSendAssetSelection()

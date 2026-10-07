@@ -22,6 +22,25 @@ pub enum AddressCommand {
     /// Who holds an address on a wallet's network: that wallet, another of
     /// yours, or a saved contact.
     Holder(HolderArgs),
+    /// Check that a message was signed by an address, in its network's
+    /// scheme. Exits 3 when it was not.
+    VerifyMessage(VerifyMessageArgs),
+}
+
+#[derive(Args)]
+pub struct VerifyMessageArgs {
+    /// Chain display name or registry id.
+    #[arg(long)]
+    chain: String,
+    /// The address that signed.
+    #[arg(long)]
+    address: String,
+    /// The message, as text.
+    #[arg(long)]
+    message: String,
+    /// The signature, as the signing wallet wrote it.
+    #[arg(long)]
+    signature: String,
 }
 
 #[derive(Args)]
@@ -77,6 +96,28 @@ pub struct BookRemoveArgs {
 pub fn run(ctx: &Ctx, out: Out, command: AddressCommand) -> CliResult<()> {
     match command {
         AddressCommand::Validate(args) => validate(out, args),
+        AddressCommand::VerifyMessage(args) => {
+            let chain = resolve_chain(&args.chain)?;
+            let valid = spectra_core::send::message::verify_message(
+                chain,
+                args.address,
+                args.message,
+                args.signature,
+            );
+            out.text(|| {
+                if valid {
+                    println!("  {} signed by this address", out::ok_mark());
+                }
+            });
+            out.emit(serde_json::json!({ "ok": valid, "valid": valid }));
+            if valid {
+                Ok(())
+            } else {
+                Err(CliError::rejected(
+                    "the signature is not this address's over this message",
+                ))
+            }
+        }
         AddressCommand::Book(BookCommand::List) => book_list(ctx, out),
         AddressCommand::Book(BookCommand::Add(args)) => book_add(ctx, out, args),
         AddressCommand::Book(BookCommand::Remove(args)) => book_remove(ctx, out, args),

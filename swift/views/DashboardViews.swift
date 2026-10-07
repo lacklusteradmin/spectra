@@ -200,7 +200,7 @@ struct DashboardView: View {
                         totalValueText: store.preferences.hideBalances
                             ? "••••••"
                             : store.amounts.formattedWalletTotal(walletId: wallet.id),
-                        assetCountText: assetCountText(wallet.holdings.filter(\.hasBalance).count),
+                        assetCountText: assetCountText(wallet.shownHoldings.count),
                         isWatchOnly: wallet.signing.isWatchOnly, badgeArtworkName: badge.0,
                         badgeMark: wallet.familyName, badgeColor: badge.1
                     )

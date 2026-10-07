@@ -144,7 +144,11 @@ pub(crate) fn transaction_endpoints_for(
         .or_else(|| counterparty.clone().filter(|a| is_mine(a)));
     let (from, to) = match record.kind {
         crate::store::wallet_domain::TransactionKind::Send
-        | crate::store::wallet_domain::TransactionKind::Stake => {
+        | crate::store::wallet_domain::TransactionKind::Stake
+        | crate::store::wallet_domain::TransactionKind::RevokeApproval
+        | crate::store::wallet_domain::TransactionKind::DeleteAccessKey
+        | crate::store::wallet_domain::TransactionKind::MergeCoins
+        | crate::store::wallet_domain::TransactionKind::CloseTokenAccounts => {
             let to = counterparty.filter(|c| !same(&Some(c.clone()), &source));
             (source, to)
         }

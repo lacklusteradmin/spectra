@@ -150,6 +150,7 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 "nativeDeploymentId": chain.entry().native_deployment_id,
                 "family": chain.entry().family,
                 "isTestnet": chain.is_testnet(),
+                "faucet": chain.faucet_url(),
                 "isEvm": chain.is_evm(),
                 "tokenStandards": chain.token_standards(),
                 // The ways a wallet can be added on the network: the setup
@@ -385,28 +386,47 @@ pub struct ExplorersArgs {
     #[arg(long)]
     chain: Option<String>,
     /// Print the explorer page for this transaction hash.
-    #[arg(long, requires = "chain")]
+    #[arg(long, requires = "chain", conflicts_with = "address")]
     tx: Option<String>,
+    /// Print the explorer page for this address.
+    #[arg(long, requires = "chain")]
+    address: Option<String>,
 }
 
-/// The pages a transaction's detail screen links to. Nothing is requested.
+/// The pages a transaction's detail screen and a wallet's page link to.
+/// Nothing is requested.
 pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
     let chain = args.chain.as_deref().map(resolve_chain).transpose()?;
-    if let (Some(chain), Some(hash)) = (chain, args.tx) {
-        if chain.transaction_explorer().is_none() {
+    if let Some(chain) = chain
+        && (args.tx.is_some() || args.address.is_some())
+    {
+        let Some(explorer) = chain.explorer() else {
             return Err(CliError::failure(format!(
-                "{} has no transaction explorer",
+                "{} has no explorer",
                 chain.chain_display_name()
             )));
+        };
+        let url = match (args.tx, args.address) {
+            (Some(hash), _) => spectra_core::transaction_explorer_link(chain, hash)
+                .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?,
+            (_, Some(address)) => {
+                if explorer.address_url.is_none() {
+                    return Err(CliError::failure(format!(
+                        "{}'s explorer has no address page",
+                        chain.chain_display_name()
+                    )));
+                }
+                spectra_core::address_explorer_link(chain, address)
+                    .ok_or_else(|| CliError::usage("--address needs an address"))?
+            }
+            (None, None) => unreachable!("one of --tx and --address is given"),
         }
-        let url = spectra_core::transaction_explorer_link(chain, hash)
-            .map(|link| link.url)
-            .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?;
+        .url;
         out.text(|| println!("{url}"));
         out.emit(serde_json::json!({"ok": true, "chainId": chain.str_id(), "url": url}));
         return Ok(());
     }
-    let explorers: Vec<_> = spectra_core::transaction_explorers()
+    let explorers: Vec<_> = spectra_core::explorers()
         .into_iter()
         .filter(|e| chain.is_none_or(|chain| chain == e.chain_id))
         .collect();
@@ -426,6 +446,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
         "ok": true,
         "explorers": explorers.iter().map(|e| serde_json::json!({
             "chainId": e.chain_id, "name": e.name, "txUrl": e.tx_url,
+            "addressUrl": e.address_url,
         })).collect::<Vec<_>>(),
     }));
     Ok(())

@@ -116,6 +116,9 @@ mod send_chain_tests {
             holdings: Vec::new(),
             addresses: Vec::new(),
             restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
         }
     }
 
@@ -197,6 +200,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
             asset: "GRAM".into(),
             symbol: "GRAM".into(),
             staking: None,
+            operation: None,
             created_at: 0.0,
             review_digest: String::new(),
             review: SendArtifactReview::default(),

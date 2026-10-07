@@ -54,6 +54,10 @@ extension WalletView {
     var family: Chain { chain.mainnetCounterpart }
     /// The family's name, for text a person reads.
     var familyName: String { family.displayName }
+    /// Whether the user hid `holding` from this wallet's total.
+    func hides(_ holding: AssetHolding) -> Bool { hiddenHoldings.contains(holding.holdingKey) }
+    /// The holdings with a balance the wallet shows and counts.
+    var shownHoldings: [AssetHolding] { holdings.filter { $0.hasBalance && !hides($0) } }
 }
 
 extension DerivationProfile {
@@ -161,6 +165,10 @@ extension TransactionRecord: Identifiable {
         case .unstake: return AppLocalization.string("staking.unstake") + " " + symbol
         case .withdraw: return AppLocalization.string("staking.withdraw") + " " + symbol
         case .claimRewards: return AppLocalization.string("staking.claim_rewards") + " " + symbol
+        case .revokeApproval: return AppLocalization.format("Revoke %@ Approval", symbol)
+        case .deleteAccessKey: return AppLocalization.string("Delete Access Key")
+        case .mergeCoins: return AppLocalization.format("Merge %@ Coins", symbol)
+        case .closeTokenAccounts: return AppLocalization.string("Close Token Accounts")
         }
     }
     /// Name the network and wallet, prefixing the asset name for token transfers.
@@ -176,7 +184,7 @@ extension TransactionRecord: Identifiable {
         switch kind {
         case .send, .stake: return .red
         case .receive, .withdraw, .claimRewards: return .green
-        case .unstake: return .secondary
+        case .unstake, .revokeApproval, .deleteAccessKey, .mergeCoins, .closeTokenAccounts: return .secondary
         }
     }
     var isSubmittedOperation: Bool { transactionKindIsSubmitted(kind: kind) }

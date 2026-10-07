@@ -23,6 +23,15 @@ struct BlockbookUtxo {
     height: Option<u64>,
 }
 
+/// A Peercoin unspent output, verified against its transaction.
+pub(crate) struct PeercoinOutput {
+    pub(crate) input: VerifiedUtxoInput,
+    pub(crate) confirmations: u64,
+    /// Whether a minting or coinstake reward is old enough to spend; any
+    /// other output always is.
+    pub(crate) mature: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BlockbookAddress {
@@ -174,6 +183,20 @@ impl BlockbookClient {
 
     /// Has this address ever been used on chain? Blockbook's `details=basic`
     /// answers with counts, without transaction bodies.
+    /// The height of the chain's tip, as Blockbook's status reports it.
+    pub(crate) async fn fetch_tip_height(&self) -> Result<u64, ApiError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Indexer {
+            best_height: u64,
+        }
+        #[derive(Deserialize)]
+        struct Status {
+            blockbook: Indexer,
+        }
+        Ok(self.get::<Status>("/api/v2").await?.blockbook.best_height)
+    }
+
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         let address = self.normalize_address(address);
         let info: BlockbookActivity = self
@@ -220,13 +243,29 @@ impl BlockbookClient {
             .collect::<Result<_, ApiError>>()
     }
 
-    /// Peercoin reward outputs need maturity checks, and coinstake commonly
-    /// pays P2PK rather than the P2PKH script represented by its address.
-    /// Derive each input's value and script from the hash-verified transaction.
+    /// The spendable outputs among [`Self::fetch_peercoin_outputs`]: the
+    /// mature ones.
     pub(crate) async fn fetch_peercoin_inputs(
         &self,
         address: &str,
     ) -> Result<Vec<VerifiedUtxoInput>, ApiError> {
+        Ok(self
+            .fetch_peercoin_outputs(address)
+            .await?
+            .into_iter()
+            .filter(|output| output.mature)
+            .map(|output| output.input)
+            .collect())
+    }
+
+    /// Peercoin reward outputs need maturity checks, and coinstake commonly
+    /// pays P2PK rather than the P2PKH script represented by its address.
+    /// Derive each output's value and script from the hash-verified
+    /// transaction, and say whether a reward has matured enough to spend.
+    pub(crate) async fn fetch_peercoin_outputs(
+        &self,
+        address: &str,
+    ) -> Result<Vec<PeercoinOutput>, ApiError> {
         use futures::{StreamExt, TryStreamExt};
         let maturity = self
             .chain
@@ -288,15 +327,16 @@ impl BlockbookClient {
                 && tx.output.len() >= 2
                 && tx.output[0].value.to_sat() == 0
                 && tx.output[0].script_pubkey.is_empty();
-            if (tx.is_coinbase() || coinstake) && *confirmations < u64::from(maturity) {
-                continue;
-            }
-            inputs.push((
-                output.txid,
-                output.vout,
-                txout.value.to_sat(),
-                txout.script_pubkey.to_bytes(),
-            ));
+            inputs.push(PeercoinOutput {
+                input: (
+                    output.txid,
+                    output.vout,
+                    txout.value.to_sat(),
+                    txout.script_pubkey.to_bytes(),
+                ),
+                confirmations: *confirmations,
+                mature: !(tx.is_coinbase() || coinstake) || *confirmations >= u64::from(maturity),
+            });
         }
         Ok(inputs)
     }

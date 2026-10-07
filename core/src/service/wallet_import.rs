@@ -226,7 +226,7 @@ impl WalletService {
 /// it — the phrase canonical, the key in hex, the path resolved — the wallets
 /// it builds and the typed addresses it refused. The preview and the import
 /// both start here, so the address a page shows is the one the import stores.
-struct ImportPlan {
+pub(super) struct ImportPlan {
     commit: crate::derivation::import::WalletImportCommit,
     wallets: Vec<crate::store::wallet_domain::WalletView>,
     rejected_addresses: Vec<String>,
@@ -235,7 +235,7 @@ struct ImportPlan {
     named_account_key: Option<(String, String)>,
 }
 
-fn plan_import(
+pub(super) fn plan_import(
     mut commit: crate::derivation::import::WalletImportCommit,
 ) -> Result<ImportPlan, SpectraBridgeError> {
     // One validation rule for every address, derived or typed, applied
@@ -464,6 +464,17 @@ fn plan_import(
     };
     let mut wallets =
         crate::derivation::import::wallets_for_import(&commit, imported, restore_height);
+    // A named account signs with the key its secret derives, whatever other
+    // keys the account holds; the import confirms it is a full-access one.
+    if let Some((_, key_hex)) = &named_account_key {
+        let key: [u8; 32] = hex::decode(key_hex)?
+            .try_into()
+            .map_err(|_| SpectraBridgeError::failure("Invalid NEAR public key"))?;
+        let key = format!("ed25519:{}", bs58::encode(key).into_string());
+        for wallet in &mut wallets {
+            wallet.near_account_key = Some(key.clone());
+        }
+    }
     if let Some(seed) = commit
         .seed_phrase
         .as_deref()
@@ -548,9 +559,28 @@ fn place_import(
             )
         })
         .collect();
+    // A phrase on a network that watches account keys holds the key of the
+    // account it derives along, though only the account-UTXO networks store
+    // it on the wallet; a watched account key meets it here either way.
+    let phrase_account_key = (plan.commit.request.kind == WalletImportKind::Phrase
+        && chain.accepts_account_xpub())
+    .then(|| {
+        super::address_discovery::UtxoDerivation::account_xpub(
+            chain,
+            plan.commit.seed_phrase.as_deref()?,
+            plan.commit.derivation_path.as_deref()?,
+            &plan.commit.derivation_overrides,
+        )
+        .ok()
+    })
+    .flatten();
     let holder = |wallet: &crate::store::wallet_domain::WalletView| {
         let address = preview_address(wallet).ok();
-        let key = wallet.account_xpub.as_deref().and_then(account_key);
+        let key = wallet
+            .account_xpub
+            .as_deref()
+            .or(phrase_account_key.as_deref())
+            .and_then(account_key);
         held.iter()
             .find(|(_, addresses, stored_key)| {
                 address.as_ref().is_some_and(|a| addresses.contains(a))
@@ -561,9 +591,40 @@ fn place_import(
     let refused = |held_by: &crate::store::state::WalletState| -> SpectraBridgeError {
         DerivationError::refused("This is already in the wallet “%@”.", [&held_by.name]).into()
     };
+    // An import bound to a watched wallet gives that wallet its keys or is
+    // refused; it never becomes a wallet of its own.
+    let bound = match plan.commit.upgrade_wallet_id.as_deref() {
+        None => None,
+        Some(id) => {
+            let wallet = stored
+                .iter()
+                .find(|wallet| wallet.id == id)
+                .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
+            if !wallet.is_watch_only() {
+                return Err(DerivationError::refused(
+                    "The wallet “%@” already has its keys.",
+                    [&wallet.name],
+                )
+                .into());
+            }
+            Some(wallet)
+        }
+    };
     match plan.commit.request.kind {
         WalletImportKind::Phrase | WalletImportKind::PrivateKey => {
-            let Some(existing) = holder(&plan.wallets[0]) else {
+            let holds_bound = |existing: Option<&crate::store::state::WalletState>| {
+                bound.is_none_or(|bound| existing.is_some_and(|e| e.id == bound.id))
+            };
+            let existing = holder(&plan.wallets[0]);
+            if !holds_bound(existing) {
+                let bound = bound.map(|bound| bound.name.clone()).unwrap_or_default();
+                return Err(DerivationError::refused(
+                    "This secret does not hold the address the wallet “%@” watches.",
+                    [&bound],
+                )
+                .into());
+            }
+            let Some(existing) = existing else {
                 return Ok(Placed {
                     plan,
                     upgrade: None,
@@ -577,11 +638,19 @@ fn place_import(
             upgraded.name = existing.name.clone();
             upgraded.include_in_portfolio_total = existing.include_in_portfolio_total;
             upgraded.holdings = existing.holdings.clone();
+            upgraded.hidden_holdings = existing.hidden_holdings.clone();
             plan.wallets = vec![upgraded.to_wallet_view()];
             Ok(Placed {
                 plan,
                 upgrade: Some(upgraded),
             })
+        }
+        WalletImportKind::WatchAddresses { .. } | WalletImportKind::WatchAccountXpub { .. }
+            if bound.is_some() =>
+        {
+            Err(SpectraBridgeError::invalid(
+                "Only a phrase or a key gives a watched wallet its keys.",
+            ))
         }
         WalletImportKind::WatchAddresses { .. } => {
             let mut kept: Vec<crate::store::wallet_domain::WalletView> = Vec::new();

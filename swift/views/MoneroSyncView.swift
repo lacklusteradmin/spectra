@@ -52,3 +52,29 @@ struct MoneroSyncView: View {
         .onDisappear { vm.cancel() }
     }
 }
+
+/// A scanning wallet's page for its scan: where the scan started, set when
+/// the wallet was added, and the scan itself.
+struct WalletBlockScanView: View {
+    let store: AppState
+    let wallet: WalletView
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                if let height = wallet.restoreHeight {
+                    HStack {
+                        Text(AppLocalization.string("Restore Height")).font(.subheadline)
+                        Spacer()
+                        Text(verbatim: "\(height)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .padding(SpectraLayout.cardPadding).spectraCardFill()
+                }
+                MoneroSyncView(store: store, walletId: wallet.id)
+            }.spectraScreenPadding()
+        }
+        .background(SpectraBackdrop().ignoresSafeArea())
+        .navigationTitle(WalletAction.scanBlocks.title).navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+    }
+}

@@ -182,6 +182,47 @@ pub struct TronHttpClient {
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
+/// An account's resources and their burn prices, as a node reports them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TronAccountResources {
+    pub activated: bool,
+    pub free_bandwidth_limit: u64,
+    pub free_bandwidth_used: u64,
+    pub staked_bandwidth_limit: u64,
+    pub staked_bandwidth_used: u64,
+    pub energy_limit: u64,
+    pub energy_used: u64,
+    /// Sun burned per bandwidth point a transaction lacks.
+    pub bandwidth_price_sun: u64,
+    /// Sun burned per energy unit a contract call lacks.
+    pub energy_price_sun: u64,
+}
+
+/// One `getchainparameters` value by name, refused when absent or repeated.
+fn chain_parameter(parameters: &Value, name: &str) -> Result<u64, ApiError> {
+    let rows = parameters
+        .get("chainParameter")
+        .and_then(Value::as_array)
+        .or_decode("Tron fee parameters missing")?;
+    let mut values = rows
+        .iter()
+        .filter(|row| row.get("key").and_then(Value::as_str) == Some(name));
+    let row = values
+        .next()
+        .or_decode("Tron required fee parameter missing")?;
+    if values.next().is_some() {
+        return Err(ApiError::decode("Duplicate Tron fee parameter"));
+    }
+    // Protobuf omits the default integer zero.
+    match row.get("value") {
+        None => Ok(0),
+        Some(value) => value
+            .as_u64()
+            .filter(|n| *n <= i64::MAX as u64)
+            .or_decode("Invalid Tron fee parameter"),
+    }
+}
+
 impl TronHttpClient {
     pub(crate) async fn transfer_reference_for(
         &self,
@@ -355,29 +396,7 @@ impl TronHttpClient {
                 .into_iter()
                 .find(|(asset_id, _)| asset_id == id)
                 .map_or(0, |(_, balance)| balance);
-            let rows = parameters
-                .get("chainParameter")
-                .and_then(Value::as_array)
-                .or_decode("Tron fee parameters missing")?;
-            let parameter = |name: &str| {
-                let mut values = rows
-                    .iter()
-                    .filter(|row| row.get("key").and_then(Value::as_str) == Some(name));
-                let row = values
-                    .next()
-                    .or_decode("Tron required fee parameter missing")?;
-                if values.next().is_some() {
-                    return Err(ApiError::decode("Duplicate Tron fee parameter"));
-                }
-                // Protobuf omits the default integer zero.
-                match row.get("value") {
-                    None => Ok(0),
-                    Some(value) => value
-                        .as_u64()
-                        .filter(|n| *n <= i64::MAX as u64)
-                        .or_decode("Invalid Tron fee parameter"),
-                }
-            };
+            let parameter = |name: &str| chain_parameter(&parameters, name);
             let recipient = if let Some(receiver) = receiver {
                 let value = node.account_at(receiver).await?;
                 let (_, recipient_held) = trc10_account(&value, receiver)?;
@@ -425,6 +444,42 @@ impl TronHttpClient {
                 native_balance,
                 fee_budget_sun,
                 recipient_balance,
+            })
+        })
+        .await
+    }
+
+    /// An account's bandwidth and energy and the prices the network burns
+    /// TRX at without them, read from one verified node.
+    pub(crate) async fn fetch_account_resources(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<TronAccountResources, ApiError> {
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let resource_query = json!({"address": address, "visible": true});
+            let empty = json!({});
+            let (account, resources, parameters) = tokio::try_join!(
+                node.account_at(address),
+                node.post("/wallet/getaccountresource", &resource_query),
+                node.post("/wallet/getchainparameters", &empty)
+            )?;
+            // Protobuf omits a zero.
+            let count = |name: &str| resources.get(name).and_then(Value::as_u64).unwrap_or(0);
+            Ok(TronAccountResources {
+                activated: account
+                    .as_object()
+                    .is_some_and(|account| !account.is_empty()),
+                free_bandwidth_limit: count("freeNetLimit"),
+                free_bandwidth_used: count("freeNetUsed"),
+                staked_bandwidth_limit: count("NetLimit"),
+                staked_bandwidth_used: count("NetUsed"),
+                energy_limit: count("EnergyLimit"),
+                energy_used: count("EnergyUsed"),
+                bandwidth_price_sun: chain_parameter(&parameters, "getTransactionFee")?,
+                energy_price_sun: chain_parameter(&parameters, "getEnergyFee")?,
             })
         })
         .await

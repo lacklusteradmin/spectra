@@ -87,6 +87,9 @@ mod tests {
             holdings: vec![],
             addresses: vec![],
             restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
         };
         service
             .apply_state_command(StateCommand::UpsertWallet {

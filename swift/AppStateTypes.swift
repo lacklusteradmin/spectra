@@ -37,7 +37,6 @@ struct DisplayedError: LocalizedError {
 enum MainAppTab: Hashable {
     case home
     case history
-    case staking
     case settings
 }
 

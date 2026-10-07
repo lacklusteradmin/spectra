@@ -23,7 +23,7 @@ struct SendStagesViewTests: IsolatedAppStateSuite {
             walletId: "fixture", chainId: Chain.ethereumSepolia,
             sender: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
             recipient: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-            amount: "0.25", asset: "ETH", symbol: "ETH", staking: nil, createdAt: 0, reviewDigest: "reviewed-content",
+            amount: "0.25", asset: "ETH", symbol: "ETH", staking: nil, operation: nil, createdAt: 0, reviewDigest: "reviewed-content",
             review: SendArtifactReview(warnings: [.newAddress], recipientWarnings: [], requiresSelfSendConfirmation: true, staking: nil),
             preparedDetails: "Nonce: 7\nMaximum gas: 25200", signingPayloadHex: "02",
             signedPayload: stage == .prepared ? nil : "0x02…", transactionHash: hasSubmission ? hash : nil,
@@ -78,7 +78,7 @@ struct SendStagesViewTests: IsolatedAppStateSuite {
             walletId: "fixture", chainId: Chain.ethereumSepolia,
             sender: "0x1111111111111111111111111111111111111111",
             recipient: "0x2222222222222222222222222222222222222222",
-            amount: "2.5", asset: contract, symbol: "USDC", staking: nil, createdAt: 0, reviewDigest: "reviewed-content",
+            amount: "2.5", asset: contract, symbol: "USDC", staking: nil, operation: nil, createdAt: 0, reviewDigest: "reviewed-content",
             review: SendArtifactReview(warnings: [], recipientWarnings: [], requiresSelfSendConfirmation: false, staking: nil),
             preparedDetails: "", signingPayloadHex: "", signedPayload: nil, transactionHash: nil,
             attempts: [], selectedEndpoints: [])

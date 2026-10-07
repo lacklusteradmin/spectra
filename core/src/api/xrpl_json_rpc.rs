@@ -41,6 +41,41 @@ pub struct XrplClient {
     client: std::sync::Arc<HttpClient>,
 }
 
+/// An XRP account's reserve, in drops.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct XrpReserveState {
+    pub exists: bool,
+    pub balance_drops: u64,
+    pub owner_count: u64,
+    pub reserve_base: u64,
+    pub reserve_increment: u64,
+}
+
+/// What deleting an account depends on, from one node's validated ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct XrpDeletionState {
+    /// `None` when the account does not exist.
+    pub source: Option<XrpDeletableAccount>,
+    /// The destination's flags; `None` when it does not exist.
+    pub destination_flags: Option<u32>,
+    pub ledger_index: u32,
+    pub reserve_base: u64,
+    pub reserve_increment: u64,
+}
+
+/// The account being deleted, as the validated ledger holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct XrpDeletableAccount {
+    pub balance_drops: u64,
+    pub sequence: u32,
+    pub owner_count: u64,
+    /// `FirstNFTokenSequence + MintedNFTokens`, where the account has minted.
+    pub minted_nft_sequence: Option<u64>,
+    /// Objects in its owner directory the network will not delete with it:
+    /// trust lines, escrows, payment channels, checks and the like.
+    pub blockers: u64,
+}
+
 impl XrplClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
@@ -139,6 +174,137 @@ impl XrplClient {
             .pointer("/state/validated_ledger/reserve_base")
             .and_then(Value::as_u64)
             .or_decode("server_state: missing reserve_base")
+    }
+
+    /// An account's reserve as the validated ledger holds it, from one
+    /// verified node: whether the account exists, its balance, how many
+    /// objects it owns, and the base and per-object reserves, in drops.
+    pub(crate) async fn fetch_reserve_state(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<XrpReserveState, ApiError> {
+        use crate::api::http::race;
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint.clone()]));
+            node.verify_network(chain).await?;
+            let state = node.call("server_state", json!({})).await?;
+            let reserve = |field: &str| {
+                state
+                    .pointer(&format!("/state/validated_ledger/{field}"))
+                    .and_then(Value::as_u64)
+                    .or_decode("server_state: missing reserve")
+            };
+            let (exists, balance_drops, owner_count) =
+                match node.account_root(&endpoint, address).await? {
+                    None => (false, 0, 0),
+                    Some(root) => (true, balance_of(&root)?, owner_count_of(&root)?),
+                };
+            Ok(XrpReserveState {
+                exists,
+                balance_drops,
+                owner_count,
+                reserve_base: reserve("reserve_base")?,
+                reserve_increment: reserve("reserve_inc")?,
+            })
+        })
+        .await
+    }
+
+    /// What deleting `address` into `destination` depends on, from one
+    /// verified node's validated ledger: both accounts, the objects that
+    /// would block the deletion, the ledger index and the reserves.
+    pub(crate) async fn fetch_deletion_state(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+        destination: &str,
+    ) -> Result<XrpDeletionState, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint.clone()]));
+            node.verify_network(chain).await?;
+            let state = node.call("server_state", json!({})).await?;
+            let validated = |field: &str| {
+                state
+                    .pointer(&format!("/state/validated_ledger/{field}"))
+                    .and_then(Value::as_u64)
+                    .or_decode("server_state: missing validated ledger")
+            };
+            let source = match node.account_root(&endpoint, address).await? {
+                None => None,
+                Some(root) => {
+                    let field = |name: &str| root.get(name).and_then(Value::as_u64);
+                    let blockers = node
+                        .call(
+                            "account_objects",
+                            json!({
+                                "account": address,
+                                "ledger_index": "validated",
+                                "deletion_blockers_only": true,
+                                "limit": 10,
+                            }),
+                        )
+                        .await?
+                        .get("account_objects")
+                        .and_then(Value::as_array)
+                        .or_decode("account_objects: missing list")?
+                        .len();
+                    Some(XrpDeletableAccount {
+                        balance_drops: balance_of(&root)?,
+                        sequence: field("Sequence")
+                            .and_then(|sequence| u32::try_from(sequence).ok())
+                            .or_decode("account_info: missing Sequence")?,
+                        owner_count: owner_count_of(&root)?,
+                        minted_nft_sequence: field("MintedNFTokens")
+                            .map(|minted| minted + field("FirstNFTokenSequence").unwrap_or(0)),
+                        blockers: blockers as u64,
+                    })
+                }
+            };
+            let destination_flags = match node.account_root(&endpoint, destination).await? {
+                None => None,
+                Some(root) => Some(
+                    root.get("Flags")
+                        .and_then(Value::as_u64)
+                        .and_then(|flags| u32::try_from(flags).ok())
+                        .or_decode("account_info: missing Flags")?,
+                ),
+            };
+            Ok(XrpDeletionState {
+                source,
+                destination_flags,
+                ledger_index: u32::try_from(validated("seq")?)
+                    .map_err(|_| ApiError::decode("server_state: ledger index out of range"))?,
+                reserve_base: validated("reserve_base")?,
+                reserve_increment: validated("reserve_inc")?,
+            })
+        })
+        .await
+    }
+
+    /// An account's root as the validated ledger holds it on `endpoint`, or
+    /// `None` when the ledger has no such account. The unfunded case is an
+    /// `actNotFound` error, read here before generic decoding turns it into
+    /// a refusal.
+    async fn account_root(&self, endpoint: &str, address: &str) -> Result<Option<Value>, ApiError> {
+        let body = json!({"method": "account_info", "params": [{"account": address, "ledger_index": "validated"}]});
+        let response: Value = self
+            .client
+            .post_json(endpoint, &body, crate::api::http::RetryProfile::ChainRead)
+            .await?;
+        let result = response
+            .get("result")
+            .or_decode("account_info: missing result")?;
+        match result.get("error").and_then(Value::as_str) {
+            Some("actNotFound") => Ok(None),
+            Some(error) => Err(ApiError::rejected(format!("account_info: {error}"))),
+            None => Ok(Some(
+                result
+                    .get("account_data")
+                    .cloned()
+                    .or_decode("account_info: missing account_data")?,
+            )),
+        }
     }
 
     pub async fn fetch_fee(&self) -> Result<u64, ApiError> {
@@ -371,6 +537,19 @@ impl XrplClient {
             tx_blob_hex: tx_blob_hex.to_string(),
         })
     }
+}
+
+fn balance_of(root: &Value) -> Result<u64, ApiError> {
+    root.get("Balance")
+        .and_then(Value::as_str)
+        .and_then(|drops| drops.parse().ok())
+        .or_decode("account_info: missing Balance")
+}
+
+fn owner_count_of(root: &Value) -> Result<u64, ApiError> {
+    root.get("OwnerCount")
+        .and_then(Value::as_u64)
+        .or_decode("account_info: missing OwnerCount")
 }
 
 #[cfg(test)]

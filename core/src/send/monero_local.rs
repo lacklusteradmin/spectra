@@ -15,6 +15,63 @@ use monero_wallet::{
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+/// The outputs `tx_key` proves pay `address` in `tx`, each amount in
+/// piconeros, as monero-wallet-cli's `check_tx_key` finds them (it reports
+/// their sum): the derivation `8·r·A` with the address's view key `A`, each
+/// output whose key is `Hs(derivation ‖ i)·G + B` paying the address, its
+/// amount decrypted with that shared secret.
+pub(crate) fn received_with_tx_key(
+    tx: &monero_wallet::transaction::Transaction,
+    tx_key: &[u8; 32],
+    address: &MoneroAddress,
+) -> Result<Vec<u64>, SendError> {
+    use curve25519_dalek::{constants::ED25519_BASEPOINT_TABLE, scalar::Scalar as Dalek};
+    use monero_wallet::{ringct::EncryptedAmount, transaction::Transaction};
+    let r = Option::<Dalek>::from(Dalek::from_canonical_bytes(*tx_key))
+        .ok_or_else(|| SendError::invalid("Not a Monero transaction key"))?;
+    let derivation = (r * address.view().into()).mul_by_cofactor().compress();
+    let Transaction::V2 {
+        prefix,
+        proofs: Some(proofs),
+    } = tx
+    else {
+        return Err(SendError::invalid("Not a RingCT Monero transaction"));
+    };
+    let mut received = Vec::new();
+    for (index, output) in prefix.outputs.iter().enumerate() {
+        let mut hashed = derivation.to_bytes().to_vec();
+        // The output index as a Monero varint.
+        let mut value = index;
+        loop {
+            let byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value == 0 {
+                hashed.push(byte);
+                break;
+            }
+            hashed.push(byte | 0x80);
+        }
+        let shared = Dalek::from_bytes_mod_order(monero_wallet::primitives::keccak256(&hashed));
+        let expected = (&shared * ED25519_BASEPOINT_TABLE + address.spend().into()).compress();
+        if output.key.to_bytes() != expected.to_bytes() {
+            continue;
+        }
+        let Some(EncryptedAmount::Compact { amount }) = proofs.base.encrypted_amounts.get(index)
+        else {
+            return Err(SendError::invalid("Monero output without a compact amount"));
+        };
+        let mut masked = b"amount".to_vec();
+        masked.extend(shared.to_bytes());
+        let mask = monero_wallet::primitives::keccak256(&masked);
+        let mut plain = [0u8; 8];
+        for (byte, (value, key)) in plain.iter_mut().zip(amount.iter().zip(mask)) {
+            *byte = value ^ key;
+        }
+        received.push(u64::from_le_bytes(plain));
+    }
+    Ok(received)
+}
+
 #[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct LocalOutput {
     pub encoded: String,
@@ -372,6 +429,46 @@ pub(crate) async fn prepare(
 }
 
 impl PreparedMoneroTransaction {
+    /// The transaction key `r` the plan's transaction is built with, the
+    /// one monero-wallet-cli's `check_tx_key` takes: the first key
+    /// monero-wallet's `TransactionKeys` derives from the plan's outgoing
+    /// view key and inputs. Spectra pays one address plus change, so the
+    /// transaction carries no additional keys.
+    pub(crate) fn transaction_key(
+        &self,
+        encryption_key: &[u8],
+    ) -> Result<Zeroizing<[u8; 32]>, SendError> {
+        use std::io::Read;
+        let json = Zeroizing::new(crate::store::seed_envelope::decrypt(
+            self.encrypted_plan.as_bytes(),
+            encryption_key,
+        )?);
+        let plan: PrivatePlan = serde_json::from_str(&json)?;
+        let raw = Zeroizing::new(hex::decode(&plan.encoded)?);
+        // SignableTransaction::write: the RingCT type, the outgoing view
+        // key, then the inputs.
+        let mut reader = raw
+            .get(1..)
+            .ok_or_else(|| SendError::invalid("Empty Monero plan"))?;
+        let mut outgoing = Zeroizing::new([0u8; 32]);
+        reader
+            .read_exact(outgoing.as_mut())
+            .map_err(SendError::invalid)?;
+        let inputs = monero_wallet::io::read_vec(OutputWithDecoys::read, None, &mut reader)
+            .map_err(SendError::invalid)?;
+        let mut keys = monero_wallet::send::TransactionKeys::new(
+            &outgoing,
+            inputs
+                .iter()
+                .map(|input| (input.key(), input.commitment().commit()))
+                .collect(),
+        );
+        let key = keys
+            .next()
+            .ok_or_else(|| SendError::Internal("no Monero transaction key".into()))?;
+        Ok(Zeroizing::new((*key).into().to_bytes()))
+    }
+
     pub(crate) fn sign(
         &self,
         private: &str,

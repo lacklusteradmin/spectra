@@ -12,10 +12,10 @@ struct DeviceAuthenticationTests {
         #expect(DeviceAuthenticationAction.send.requiresAuthentication(useFaceId: true, authenticateSends: true))
     }
 
-    @Test func revealingASeedPhraseAlwaysRequiresAuthentication() {
+    @Test func usingSecretMaterialAlwaysRequiresAuthentication() {
         for useFaceId in [true, false] {
             for authenticateSends in [true, false] {
-                #expect(DeviceAuthenticationAction.revealSeedPhrase.requiresAuthentication(
+                #expect(DeviceAuthenticationAction.secretMaterial.requiresAuthentication(
                     useFaceId: useFaceId, authenticateSends: authenticateSends))
             }
         }
