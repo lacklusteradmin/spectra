@@ -1,0 +1,80 @@
+{
+  "provenance": "@emurgo/cardano-serialization-lib-nodejs 17.0.0, bip39 3.1.0",
+  "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "phrase_vectors": [
+    {
+      "chain": "cardano",
+      "account": 0,
+      "address": "addr1qy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mq4afdhv",
+      "stake_address": "stake1u8j40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzaskqlx2l"
+    },
+    {
+      "chain": "cardano",
+      "account": 1,
+      "address": "addr1q9kjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gk9jlajcx98yc9g8rxgw0zrdsprlkkjl4l2s9ls6hvxlsqj9j8fm",
+      "stake_address": "stake1uytze07evrznjvz5r3ny883pkcq3lmtf06l4gzlcdtkr0cqwlxrdw"
+    },
+    {
+      "chain": "cardano-preprod",
+      "account": 0,
+      "address": "addr_test1qq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mqkt5dmn",
+      "stake_address": "stake_test1urj40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzas324ywz"
+    },
+    {
+      "chain": "cardano-preprod",
+      "account": 1,
+      "address": "addr_test1qpkjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gk9jlajcx98yc9g8rxgw0zrdsprlkkjl4l2s9ls6hvxlsq3n089y",
+      "stake_address": "stake_test1uqtze07evrznjvz5r3ny883pkcq3lmtf06l4gzlcdtkr0cqf4vpfn"
+    }
+  ],
+  "address_vectors": [
+    {
+      "address": "addr1qy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mq4afdhv",
+      "stake_address": "stake1u8j40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzaskqlx2l"
+    },
+    {
+      "address": "addr1zyrswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurswpl927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mqy97evv",
+      "stake_address": "stake1u8j40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzaskqlx2l"
+    },
+    {
+      "address": "addr1yy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ssfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyys32nemx",
+      "stake_address": "stake17yysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzghmcv8t"
+    },
+    {
+      "address": "addr1xyrswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurswpcfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysqjydqx",
+      "stake_address": "stake17yysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzghmcv8t"
+    },
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "stake_address": null
+    },
+    {
+      "address": "addr1gy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7s5pnz75xxcr2g99pn",
+      "stake_address": null
+    },
+    {
+      "address": "addr_test1qq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mqkt5dmn",
+      "stake_address": "stake_test1urj40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzas324ywz"
+    },
+    {
+      "address": "addr_test1zqrswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurswpl927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mq8nreqn",
+      "stake_address": "stake_test1urj40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzas324ywz"
+    },
+    {
+      "address": "addr_test1yq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ssfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjuwehe",
+      "stake_address": "stake_test17qysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgs3jwrk"
+    },
+    {
+      "address": "addr_test1xqrswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurswpcfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysryedve",
+      "stake_address": "stake_test17qysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgs3jwrk"
+    },
+    {
+      "address": "addr_test1vq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss9hjl0y",
+      "stake_address": null
+    },
+    {
+      "address": "addr_test1gq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7s5pnz75xxcr9xcvdp",
+      "stake_address": null
+    }
+  ]
+}

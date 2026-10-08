@@ -78,6 +78,9 @@ fn ton_states_and_contracts_take_their_wallet_names() {
 
 #[test]
 fn only_networks_that_keep_more_than_a_balance_have_an_account() {
+    let wallet = |chain, address: &str| {
+        crate::store::state::WalletState::single_address("w", "W", chain, address, None, false)
+    };
     for chain in [
         Chain::Tron,
         Chain::Xrp,
@@ -87,9 +90,23 @@ fn only_networks_that_keep_more_than_a_balance_have_an_account() {
         Chain::Bittensor,
         Chain::Near,
     ] {
-        assert!(has_network_account(chain), "{chain}");
+        assert!(has_network_account(&wallet(chain, "address")), "{chain}");
     }
     for chain in [Chain::Bitcoin, Chain::Ethereum, Chain::Solana, Chain::Sui] {
-        assert!(!has_network_account(chain), "{chain}");
+        assert!(!has_network_account(&wallet(chain, "address")), "{chain}");
     }
+    // Cardano: a base address names its stake key; a raw key's enterprise
+    // address names none.
+    assert!(has_network_account(&wallet(
+        Chain::Cardano,
+        "addr1qy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mq4afdhv"
+    )));
+    assert!(has_network_account(&wallet(
+        Chain::CardanoPreprod,
+        "addr_test1qq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mqkt5dmn"
+    )));
+    assert!(!has_network_account(&wallet(
+        Chain::Cardano,
+        "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp"
+    )));
 }

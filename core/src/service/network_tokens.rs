@@ -86,7 +86,7 @@ impl WalletService {
     /// The URLs of an indexer `api` that lists holdings on `chain`: the
     /// catalog's and custom ones under the catalog transport, only custom
     /// ones under an explicit override, which names every service it means.
-    async fn listing_endpoints(
+    pub(super) async fn listing_endpoints(
         &self,
         chain: Chain,
         api: crate::EndpointApi,

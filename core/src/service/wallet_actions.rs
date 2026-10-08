@@ -48,6 +48,9 @@ pub enum WalletAction {
     NetworkAccount,
     /// A NEAR account's access keys, and deleting a function-call key.
     AccessKeys,
+    /// The storage deposits NEAR token contracts hold for the account, and
+    /// getting them back from tokens it no longer holds.
+    TokenStorage,
     /// A Sui wallet's coin objects, and merging a type's objects into one.
     CoinObjects,
     /// A Solana wallet's empty token accounts, and closing them for their
@@ -103,6 +106,7 @@ impl WalletAction {
             | Self::MwebFunds
             | Self::NetworkAccount
             | Self::AccessKeys
+            | Self::TokenStorage
             | Self::CoinObjects
             | Self::GetTestCoins
             | Self::TokenAccounts
@@ -144,6 +148,9 @@ impl WalletAction {
             }
             Self::AccessKeys => {
                 "The keys that can act for this account, and removing the ones dapps were given."
+            }
+            Self::TokenStorage => {
+                "Get back the NEAR token contracts hold for this account's storage, from tokens it no longer holds."
             }
             Self::NetworkAccount => {
                 "What this wallet's account on its network holds and needs beyond its balance."
@@ -238,12 +245,16 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
             WalletAction::MwebFunds,
         ),
         (
-            super::wallet_network_account::has_network_account(chain),
+            super::wallet_network_account::has_network_account(wallet),
             WalletAction::NetworkAccount,
         ),
         (
             chain.mainnet_counterpart() == Chain::Near,
             WalletAction::AccessKeys,
+        ),
+        (
+            chain.mainnet_counterpart() == Chain::Near,
+            WalletAction::TokenStorage,
         ),
         (
             chain.mainnet_counterpart() == Chain::Sui,

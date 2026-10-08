@@ -319,6 +319,17 @@ pub enum WalletOperation {
         receiver: String,
         network_fee: String,
     },
+    /// Unregisters a NEAR account from a token contract it holds none of
+    /// (NEP-145 `storage_unregister`, never with `force`), returning the
+    /// storage deposit the contract held: the account is the recipient and
+    /// `amount` the deposit.
+    RefundTokenStorage {
+        /// The token contract, which the transaction calls.
+        contract: String,
+        /// The deposit returned, as an exact decimal of NEAR.
+        refund: String,
+        network_fee: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
@@ -519,6 +530,11 @@ impl StoredSend {
                 | PreparedPayload::SolanaAccountClosure(_)
                 | PreparedPayload::XrpTrustSet(_)
                 | PreparedPayload::StellarChangeTrust(_) => {
+                    Err(SendError::invalid("The wallet operation was altered"))
+                }
+                // Staking builds a NEAR call too; anything else is an
+                // operation's.
+                PreparedPayload::NearFunctionCall(_) if self.view.staking.is_none() => {
                     Err(SendError::invalid("The wallet operation was altered"))
                 }
                 _ => Ok(()),
@@ -726,6 +742,25 @@ impl StoredSend {
                             prepared.fee_budget.parse().map_err(SendError::invalid)?,
                         )
                 }
+                // The account unregistering itself from the token it names,
+                // with no `force` and the one yoctoNEAR; the deposit returns
+                // to it.
+                (
+                    WalletOperation::RefundTokenStorage {
+                        contract,
+                        refund,
+                        network_fee,
+                    },
+                    PreparedPayload::NearFunctionCall(prepared),
+                ) => {
+                    self.view.recipient == self.view.sender
+                        && prepared.is_storage_unregister(&self.view.sender, contract)
+                        && self.view.amount == *refund
+                        && fee_is(
+                            network_fee,
+                            prepared.fee_budget.parse().map_err(SendError::invalid)?,
+                        )
+                }
                 _ => false,
             };
         if !exact {
@@ -742,3 +777,7 @@ mod nft_tests;
 #[cfg(test)]
 #[path = "tests/zcash_shielded_stages.rs"]
 mod zcash_shielded_tests;
+
+#[cfg(test)]
+#[path = "tests/near_storage_refund.rs"]
+mod near_storage_refund_tests;

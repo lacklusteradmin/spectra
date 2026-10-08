@@ -451,6 +451,9 @@ impl WalletService {
             Some(crate::send::stages::WalletOperation::CloseTokenAccounts { .. }) => {
                 history.kind = crate::store::wallet_domain::TransactionKind::CloseTokenAccounts;
             }
+            Some(crate::send::stages::WalletOperation::RefundTokenStorage { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::RefundTokenStorage;
+            }
             Some(crate::send::stages::WalletOperation::TrustAsset { .. }) => {
                 history.kind = crate::store::wallet_domain::TransactionKind::TrustAsset;
             }

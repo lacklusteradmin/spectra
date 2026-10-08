@@ -24,6 +24,9 @@ pub enum TransactionKind {
     MergeCoins,
     /// Closing empty Solana token accounts, returning their rent.
     CloseTokenAccounts,
+    /// Unregistering a NEAR account from a token it holds none of,
+    /// returning the storage deposit.
+    RefundTokenStorage,
     /// Opening a trust line so the account can hold an issued asset.
     TrustAsset,
     /// Removing an empty trust line, freeing its reserve.
@@ -44,6 +47,7 @@ impl TransactionKind {
             Self::DeleteAccessKey => "deleteAccessKey",
             Self::MergeCoins => "mergeCoins",
             Self::CloseTokenAccounts => "closeTokenAccounts",
+            Self::RefundTokenStorage => "refundTokenStorage",
             Self::TrustAsset => "trustAsset",
             Self::RemoveTrustLine => "removeTrustLine",
             Self::Shield => "shield",
@@ -84,6 +88,7 @@ pub fn transaction_kind_direction(kind: TransactionKind) -> TransactionDirection
         | TransactionKind::DeleteAccessKey
         | TransactionKind::MergeCoins
         | TransactionKind::CloseTokenAccounts
+        | TransactionKind::RefundTokenStorage
         | TransactionKind::TrustAsset
         | TransactionKind::RemoveTrustLine
         | TransactionKind::Shield => TransactionDirection::Neutral,

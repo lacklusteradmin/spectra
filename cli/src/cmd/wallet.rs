@@ -145,7 +145,8 @@ pub enum WalletCommand {
     Ens(SelectArgs),
     /// What the wallet's account on its network holds and needs: Tron's
     /// resources, XRP's and Stellar's reserve, a TON contract's state, a
-    /// Substrate balance's parts, NEAR's storage.
+    /// Substrate balance's parts, NEAR's storage, a Cardano base address's
+    /// stake address with its rewards and delegation.
     Account(SelectArgs),
     /// Build the transaction that closes an XRP or Stellar account into
     /// another existing account, recovering its reserve: everything it
@@ -158,6 +159,13 @@ pub enum WalletCommand {
     /// function-call keys; sign and broadcast it with `send sign` and
     /// `send broadcast-signed`.
     DeleteKey(DeleteKeyArgs),
+    /// The NEAR token contracts holding a storage deposit the account can
+    /// have back: registered, with none of their token left in it.
+    TokenStorage(SelectArgs),
+    /// Build the transaction that unregisters a NEAR account from a token
+    /// contract it holds none of, returning the storage deposit; sign and
+    /// broadcast it with `send sign` and `send broadcast-signed`.
+    RefundStorage(RefundStorageArgs),
     /// A Sui wallet's coin types and how many objects hold each.
     Objects(SelectArgs),
     /// Build the transaction that merges a Sui coin type's objects into
@@ -483,6 +491,15 @@ pub struct DeleteKeyArgs {
     /// The function-call key, as `ed25519:…`.
     #[arg(long)]
     key: String,
+}
+
+#[derive(Args)]
+pub struct RefundStorageArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The token contract, such as `usdt.tether-token.near`.
+    #[arg(long)]
+    contract: String,
 }
 
 #[derive(Args)]
@@ -1047,6 +1064,37 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                 }
             });
             out.emit(serde_json::json!({ "ok": true, "keys": keys }));
+            Ok(())
+        }
+        WalletCommand::TokenStorage(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let storage = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_token_storage(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!();
+                for deposit in &storage.deposits {
+                    println!(
+                        "  {}  {:<8} {} NEAR",
+                        deposit.contract, deposit.symbol, deposit.refund
+                    );
+                }
+                println!("  refundable  {} NEAR", storage.refundable);
+            });
+            out.emit(serde_json::json!({ "ok": true, "storage": storage }));
+            Ok(())
+        }
+        WalletCommand::RefundStorage(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(
+                    ctx.service()?
+                        .build_token_storage_refund(wallet.id, args.contract),
+                )
+                .map_err(CliError::from)?;
+            super::tx::emit_artifact(out, &artifact);
             Ok(())
         }
         WalletCommand::Objects(args) => {

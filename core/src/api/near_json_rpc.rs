@@ -579,6 +579,43 @@ impl NearClient {
         near_function_call_fee(&config, price, signer == receiver, calls)
     }
 
+    /// What a NEP-145 contract holds for `account`: `storage_balance_of`'s
+    /// `total`, in yoctoNEAR, or `None` when it has not registered the
+    /// account. A contract that does not answer the query, with an execution
+    /// error or a result that carries no balance, implements no NEP-145 and
+    /// is `Rejected`.
+    pub(crate) async fn fetch_storage_balance(
+        &self,
+        contract: &str,
+        account: &str,
+    ) -> Result<Option<u128>, ApiError> {
+        let unanswered = || {
+            ApiError::rejected(format!(
+                "{contract} does not answer NEP-145 storage queries"
+            ))
+        };
+        let bytes = match self
+            .view_function(
+                contract,
+                "storage_balance_of",
+                &json!({"account_id": account}),
+            )
+            .await
+        {
+            Ok(bytes) => bytes,
+            Err(ApiError::Rejected(_) | ApiError::Decode(_)) => return Err(unanswered()),
+            Err(error) => return Err(error),
+        };
+        match serde_json::from_slice::<Value>(&bytes).map_err(|_| unanswered())? {
+            Value::Null => Ok(None),
+            balance => balance["total"]
+                .as_str()
+                .and_then(|total| total.parse().ok())
+                .map(Some)
+                .ok_or_else(unanswered),
+        }
+    }
+
     /// What a NEP-145 token contract asks before it holds `account`'s
     /// balance: `None` once it has registered the account, else the least
     /// deposit that registers it, `storage_balance_bounds().min`. A contract
@@ -594,29 +631,23 @@ impl NearClient {
                 "This token's contract does not answer NEP-145 storage queries, so Spectra cannot tell whether the recipient can hold it.",
             )
         };
+        match self.fetch_storage_balance(contract, account).await {
+            Ok(Some(_)) => return Ok(None),
+            Ok(None) => {}
+            Err(ApiError::Rejected(_)) => return Err(refused()),
+            Err(error) => return Err(error),
+        }
         // A contract without the method answers with an execution error, or
         // with a result that carries no bytes.
-        let answer = |read: Result<Vec<u8>, ApiError>| match read {
-            Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(|_| refused()),
-            Err(ApiError::Rejected(_) | ApiError::Decode(_)) => Err(refused()),
-            Err(error) => Err(error),
+        let bounds: Value = match self
+            .view_function(contract, "storage_balance_bounds", &json!({}))
+            .await
+        {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_| refused())?,
+            Err(ApiError::Rejected(_) | ApiError::Decode(_)) => return Err(refused()),
+            Err(error) => return Err(error),
         };
-        match answer(
-            self.view_function(
-                contract,
-                "storage_balance_of",
-                &json!({"account_id": account}),
-            )
-            .await,
-        )? {
-            Value::Null => {}
-            Value::Object(balance) if balance.contains_key("total") => return Ok(None),
-            _ => return Err(refused()),
-        }
-        answer(
-            self.view_function(contract, "storage_balance_bounds", &json!({}))
-                .await,
-        )?["min"]
+        bounds["min"]
             .as_str()
             .and_then(|min| min.parse::<u128>().ok())
             .map(Some)

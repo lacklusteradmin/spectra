@@ -16,6 +16,12 @@ pub(crate) fn nep145_registration_args(account: &str) -> Result<Vec<u8>, SendErr
     )?)
 }
 
+/// NEP-145 `storage_unregister`'s method and arguments. The arguments are
+/// empty, so `force` is never passed: a contract still holding the account's
+/// tokens refuses rather than burns them.
+pub(crate) const STORAGE_UNREGISTER: &str = "storage_unregister";
+pub(crate) const STORAGE_UNREGISTER_ARGS: &[u8] = b"{}";
+
 /// One FunctionCall action: a contract method, its JSON arguments, the gas
 /// it may burn and the yoctoNEAR it attaches.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -317,6 +323,43 @@ impl PreparedNearFunctionCall {
             fee_budget: "0".into(),
         }
     }
+    /// `storage_unregister` on `contract`, unregistering the signer with the
+    /// one yoctoNEAR NEP-145 requires; `fee_budget` is the most it costs.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn storage_unregister(
+        signer: &str,
+        public_key: [u8; 32],
+        nonce: u64,
+        contract: &str,
+        gas: u64,
+        block_hash: [u8; 32],
+        fee_budget: u128,
+    ) -> Self {
+        let mut prepared = Self::prepare(
+            signer,
+            public_key,
+            nonce,
+            contract,
+            STORAGE_UNREGISTER,
+            STORAGE_UNREGISTER_ARGS.to_vec(),
+            gas,
+            1,
+            block_hash,
+        );
+        prepared.fee_budget = fee_budget.to_string();
+        prepared
+    }
+
+    /// Whether this is exactly `signer` unregistering itself from
+    /// `contract`: no other method, arguments or deposit.
+    pub(crate) fn is_storage_unregister(&self, signer: &str, contract: &str) -> bool {
+        self.signer == signer
+            && self.receiver == contract
+            && self.method == STORAGE_UNREGISTER
+            && self.args == STORAGE_UNREGISTER_ARGS
+            && self.deposit == "1"
+    }
+
     pub(crate) fn sign(
         &self,
         key: &crate::send::keys::Ed25519Seed,
@@ -336,7 +379,7 @@ impl PreparedNearFunctionCall {
         );
         if expected != self.message {
             return Err(SendError::invalid(
-                "NEAR staking fields differ from reviewed message",
+                "NEAR call fields differ from the reviewed message",
             ));
         }
         let digest = Sha256::digest(&self.message);
@@ -554,6 +597,42 @@ mod protocol_tests {
                 signed_transaction_hash(&raw).unwrap(),
                 registration[case]["hash"].as_str().unwrap()
             );
+        }
+        // storage_unregister as @near-js/transactions builds and signs it:
+        // empty arguments, one yoctoNEAR.
+        let unregister: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/near-storage-unregister.json"
+        ))
+        .unwrap();
+        let text = |key: &str| unregister[key].as_str().unwrap().to_string();
+        let prepared = PreparedNearFunctionCall::storage_unregister(
+            &text("signer"),
+            hex::decode(text("public_key")).unwrap().try_into().unwrap(),
+            unregister["nonce"].as_u64().unwrap(),
+            &text("token"),
+            text("gas").parse().unwrap(),
+            hex::decode(text("block_hash")).unwrap().try_into().unwrap(),
+            0,
+        );
+        assert!(prepared.is_storage_unregister(&text("signer"), &text("token")));
+        assert!(!prepared.is_storage_unregister(&text("signer"), "other.near"));
+        let seed = crate::send::keys::Ed25519Seed::from_hex(&text("seed")).unwrap();
+        let (raw, hash) = prepared.sign(&seed).unwrap();
+        assert_eq!(hex::encode(&raw), text("signed_hex"));
+        assert_eq!(hash, text("hash"));
+        // A call with `force`, or with no deposit, is not the reviewed one.
+        for altered in [
+            PreparedNearFunctionCall {
+                args: br#"{"force":true}"#.to_vec(),
+                ..prepared.clone()
+            },
+            PreparedNearFunctionCall {
+                deposit: "0".into(),
+                ..prepared.clone()
+            },
+        ] {
+            assert!(!altered.is_storage_unregister(&text("signer"), &text("token")));
+            assert!(altered.sign(&seed).is_err());
         }
         assert!(
             build_near_transfer_tx(

@@ -62,6 +62,8 @@ pub(super) fn near_signing_key(
     )?)
 }
 
+const NOT_NEAR: &str = "Only a NEAR account has access keys.";
+
 fn ed25519_text(key: &[u8; 32]) -> String {
     format!("ed25519:{}", bs58::encode(key).into_string())
 }
@@ -76,7 +78,7 @@ impl WalletService {
     ) -> Result<NearAccessKeys, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
-            let (wallet, chain, account) = this.near_account(&wallet_id).await?;
+            let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
             let signing = near_signing_key(&wallet, &account)
                 .ok()
                 .map(|key| ed25519_text(&key));
@@ -136,7 +138,7 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
-            let (wallet, chain, account) = this.near_account(&wallet_id).await?;
+            let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
             if wallet.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
                     "a watch-only wallet cannot send",
@@ -255,17 +257,17 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// A NEAR wallet, its network and its account, or a refusal.
-    async fn near_account(
+    /// A NEAR wallet, its network and its account, or `refusal` for a wallet
+    /// on another network.
+    pub(super) async fn near_account(
         &self,
         wallet_id: &str,
+        refusal: &'static str,
     ) -> Result<(crate::store::state::WalletState, Chain, String), SpectraBridgeError> {
         let wallet = self.stored_wallet(wallet_id).await?;
         let chain = wallet.chain_id;
         if chain.mainnet_counterpart() != Chain::Near {
-            return Err(SpectraBridgeError::invalid(
-                "Only a NEAR account has access keys.",
-            ));
+            return Err(SpectraBridgeError::invalid(refusal));
         }
         let account = wallet
             .address_on(chain)

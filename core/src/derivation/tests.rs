@@ -472,6 +472,74 @@ fn cardano_addresses_match_cip19() {
         derive_cardano_shelley_enterprise_address(&payment, false).unwrap(),
         "addr_test1vz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzerspjrlsz"
     );
+    // The reward addresses (type 14) of the same stake key.
+    for (base, stake) in [
+        (
+            cardano_base_address(&payment, &stake, true).unwrap(),
+            "stake1uyehkck0lajq8gr28t9uxnuvgcqrc6070x3k9r8048z8y5gh6ffgw",
+        ),
+        (
+            cardano_base_address(&payment, &stake, false).unwrap(),
+            "stake_test1uqehkck0lajq8gr28t9uxnuvgcqrc6070x3k9r8048z8y5gssrtvn",
+        ),
+    ] {
+        assert_eq!(
+            crate::derivation::cardano::cardano_stake_address(&base).unwrap(),
+            Some(stake.to_string())
+        );
+    }
+}
+
+/// The stake address behind a phrase's base address and behind every
+/// credential mix, as cardano-serialization-lib names them; enterprise,
+/// pointer and Byron addresses have none.
+#[test]
+fn cardano_stake_addresses_match_serialization_lib() {
+    use crate::derivation::cardano::cardano_stake_address;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/cardano-stake-addresses.json"
+    ))
+    .unwrap();
+    for vector in fixture["phrase_vectors"].as_array().unwrap() {
+        let account = vector["account"].as_u64().unwrap();
+        let path = format!("m/1852'/1815'/{account}'/0/0");
+        let derive = if vector["chain"] == "cardano" {
+            derive_cardano
+        } else {
+            crate::derivation::cardano::derive_cardano_preprod
+        };
+        let address = derive(MNEMONIC.into(), Some(path), None, true, false, false)
+            .unwrap()
+            .address
+            .unwrap();
+        assert_eq!(address, vector["address"].as_str().unwrap());
+        assert_eq!(
+            cardano_stake_address(&address).unwrap().as_deref(),
+            vector["stake_address"].as_str(),
+            "{vector}"
+        );
+    }
+    for vector in fixture["address_vectors"].as_array().unwrap() {
+        assert_eq!(
+            cardano_stake_address(vector["address"].as_str().unwrap())
+                .unwrap()
+                .as_deref(),
+            vector["stake_address"].as_str(),
+            "{vector}"
+        );
+    }
+    // Byron, and a base address whose header names the other network.
+    assert_eq!(
+        cardano_stake_address("Ae2tdPwUPEZFRbyhz3cpfC2CumGzNkFBN2L42rcUc2yjQpEkxDbkPodpMAi")
+            .unwrap(),
+        None
+    );
+    let base = fixture["phrase_vectors"][0]["address"].as_str().unwrap();
+    let (_, mut data) = bech32::decode(base).unwrap();
+    data[0] = 0x00;
+    let mislabelled =
+        bech32::encode::<bech32::Bech32>(bech32::Hrp::parse("addr").unwrap(), &data).unwrap();
+    assert!(cardano_stake_address(&mislabelled).is_err());
 }
 
 /// A base address needs the account's stake key, which only a CIP-1852

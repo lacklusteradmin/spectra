@@ -78,11 +78,17 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
                     .is_err_and(|error| error.to_string().contains("Only an EVM wallet"))
         }
         // The account is read from a node; a test asks only for the refusal
-        // of a network whose account is a balance.
-        WalletAction::NetworkAccount => !service
-            .wallet_network_account(id)
-            .await
-            .is_err_and(|error| error.to_string().contains("holds only its balance")),
+        // of a network whose account is a balance, and of a Cardano address
+        // with no stake key.
+        WalletAction::NetworkAccount => {
+            !service
+                .wallet_network_account(id)
+                .await
+                .is_err_and(|error| {
+                    let error = error.to_string();
+                    error.contains("holds only its balance") || error.contains("names no stake key")
+                })
+        }
         WalletAction::TokenAccounts => !service
             .wallet_empty_token_accounts(id)
             .await
@@ -105,6 +111,10 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
             .is_err_and(|error| error.to_string().contains("Only a Sui wallet")),
         WalletAction::AccessKeys => !service
             .wallet_access_keys(id)
+            .await
+            .is_err_and(|error| error.to_string().contains("Only a NEAR account")),
+        WalletAction::TokenStorage => !service
+            .wallet_token_storage(id)
             .await
             .is_err_and(|error| error.to_string().contains("Only a NEAR account")),
         WalletAction::SignMessage => service
@@ -152,7 +162,7 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
     }
 }
 
-const ACTIONS: [WalletAction; 25] = [
+const ACTIONS: [WalletAction; 26] = [
     WalletAction::Send,
     WalletAction::Receive,
     WalletAction::History,
@@ -167,6 +177,7 @@ const ACTIONS: [WalletAction; 25] = [
     WalletAction::MwebFunds,
     WalletAction::NetworkAccount,
     WalletAction::AccessKeys,
+    WalletAction::TokenStorage,
     WalletAction::CoinObjects,
     WalletAction::TokenAccounts,
     WalletAction::TrustLines,
@@ -199,17 +210,18 @@ fn position(action: WalletAction) -> usize {
         WalletAction::MwebFunds => 11,
         WalletAction::NetworkAccount => 12,
         WalletAction::AccessKeys => 13,
-        WalletAction::CoinObjects => 14,
-        WalletAction::TokenAccounts => 15,
-        WalletAction::TrustLines => 16,
-        WalletAction::GetTestCoins => 17,
-        WalletAction::SignMessage => 18,
-        WalletAction::VerifyMessage => 19,
-        WalletAction::AddToNetwork => 20,
-        WalletAction::Rename => 21,
-        WalletAction::RevealPhrase => 22,
-        WalletAction::ExportKeys => 23,
-        WalletAction::Delete => 24,
+        WalletAction::TokenStorage => 14,
+        WalletAction::CoinObjects => 15,
+        WalletAction::TokenAccounts => 16,
+        WalletAction::TrustLines => 17,
+        WalletAction::GetTestCoins => 18,
+        WalletAction::SignMessage => 19,
+        WalletAction::VerifyMessage => 20,
+        WalletAction::AddToNetwork => 21,
+        WalletAction::Rename => 22,
+        WalletAction::RevealPhrase => 23,
+        WalletAction::ExportKeys => 24,
+        WalletAction::Delete => 25,
     }
 }
 
