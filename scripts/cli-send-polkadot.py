@@ -216,7 +216,24 @@ try:
         assert failed_record['failureReason']['kind'] == 'executionFailed', failed_record
         assert artifact(failed_signed['id'])['substrate_verified_through'] == 166
         assert run('txs', '--maintenance')['chains'] == []
+        # A wallet on a soft junction path signs as polkadot.js's account
+        # for it, with the expanded key no seed gives.
+        vector = next(v for v in json.loads((ROOT / 'core/tests/fixtures/substrate-paths.json').read_text())['vectors']
+                      if v['path'] == '//polkadot//0/1')
+        junction = run('wallet', 'import', '--chain', CHAIN, '--name', 'Junction', '--path', '//polkadot//0/1',
+                       '--no-password')['wallet']
+        assert junction['address'] == vector['substrate' if FINNEY else 'polkadot'], junction
+        with sqlite3.connect(db_path) as db:
+            wid, payload = db.execute("SELECT id,payload FROM wallets WHERE json_extract(payload,'$.name')='Junction'").fetchone()
+            wallet = json.loads(payload); wallet['holdings'] = [dict(name=CHAIN, symbol=SYMBOL, coingeckoId=CHAIN, chainId=CHAIN,
+                                      tokenStandard='Native', contractAddress=None, amount='10')]
+            db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
+        junction_prepared = run('send', 'build', '--from', 'Junction', '--to', recipient, '--amount', '1',
+                                '--endpoint', endpoint)['artifact']
+        junction_raw = json.loads(sign(junction_prepared)['artifact']['signed_payload'])['extrinsic_hex']
+        _, junction_body = read_compact(bytes.fromhex(junction_raw[2:]))
+        assert junction_body[2:34].hex() == vector['publicKey'], junction_body[2:34].hex()
         assert all(url.startswith('http://127.0.0.1:') for url in [endpoint])
-        print(CHAIN + ' offline CLI: identity, metadata, keep-alive/freeze budgets, fees, staged sr25519 and finalized success/failure passed')
+        print(CHAIN + ' offline CLI: identity, metadata, keep-alive/freeze budgets, fees, staged sr25519 on root and junction-path keys and finalized success/failure passed')
 finally:
     server.shutdown(); server.server_close(); worker.join()

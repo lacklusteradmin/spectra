@@ -1,0 +1,141 @@
+{
+  "provenance": "@polkadot/util-crypto 14.0.3, @polkadot/keyring 14.0.3, @polkadot/wasm-crypto 7.5.4 (scripts/generate-substrate-path-vectors.cjs)",
+  "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "vectors": [
+    {
+      "path": "",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972",
+      "secretKey": "701936e0e7d812861f173d366507a35056421839bda656a94ebf9eb70b1d666b14a2ddb1ef1df4adba49f3a4d8c0f6205117907265f09a53ccf07a4e8616dfd8",
+      "polkadot": "13KVd4f2a4S5pLp4gTTFezyXdPWx27vQ9vS6xBXJ9yWVd7xo",
+      "substrate": "5EPCUjPxiHAcNooYipQFWr9NmmXJKpNG5RhcntXwbtUySrgH"
+    },
+    {
+      "path": "//polkadot",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "1254bc913cfc8d181e2d80641c4206144c06f813f26ca5bc13ca57f9a0a49470",
+      "secretKey": "f8befd73a07186be3d9a3708c25dc6cc78ac5d434a03d704e536005e4e849b472bf3a389a52120b68d1674c67c5bc1c3802fc7264df155ba2da36b01ed86f570",
+      "polkadot": "1R32yD5X8qHzvAP6x2NGV2HwrZGMpFHhwqEHvxmBLzkx8r1",
+      "substrate": "5CUjtdx1fMZpZP9s9JyN8LC96EZcfWh9dT6k8dyQdFyEmrQP"
+    },
+    {
+      "path": "//0",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "5244eb2b8a9f975c603485c5a76eeec41fdad88aa6ef204b7c56691940ad1671",
+      "secretKey": "208c2ccf218c793ecd08f6f9ce0698524e536f5d19103fe584bf6d7fffb7f87d7ce29f7eb4d9309652f2118481a2c1d9909a6f267baf7152ea4f2d2de4a1bdc4",
+      "polkadot": "12rsQBSiizNCu3dZDshfkVwB34XDwiqyVQJP6URvGo31YGdp",
+      "substrate": "5DvaFrBesD6jTWd3GEefcM72BSXaFRHqQuZtwBSZii1VMnuP"
+    },
+    {
+      "path": "//1",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "367af3b0d5bae948f910bf5365da6cb7639b0e4b6c3b0131f7d36637556a833f",
+      "secretKey": "500c854bdd091eef5397a75e606dd7075a70f61ad96af90fe71d344b6574066ce19b87e354585c808fc714ddd0464e850bf20d7e177e6e166fa22bda5edee71e",
+      "polkadot": "12ES7PTE9a3DKbs9mCsRA6Wge2DS1XK1xFgbTkp47nPV53yG",
+      "substrate": "5DJ8y4CAHnmjt4rdoZpR1wgXnQDnKDksskx7JTphZhMxthiG"
+    },
+    {
+      "path": "/0",
+      "passphrase": "",
+      "hardOnly": false,
+      "publicKey": "0c4f096369eaeea12066045a810c9e5ea73b81d420c1b606324050ec477ab676",
+      "secretKey": "f88bdf08b4d8be4bc493661b1d88fc1fdfa2911f30ed48b5373fd7d1c9e27522",
+      "polkadot": "1H946gSKhhSKfnXR8ekj9EDH4DCzfSB8zAVfG3GtfauiuaQ",
+      "substrate": "5CLqumRNTvRxt8n1TVbkazQ4RSDZJMt34VS1Vy3vLaZPYJom"
+    },
+    {
+      "path": "//polkadot//0",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "68852a8ff5ad05623064600d5c02f33fc6546a30e698127fcc05f987d9e4ca38",
+      "secretKey": "401e9149591f46c69e017aa11c9b934b4de4e193c2c0fc0e9ae6692fc32064741fde894a2d3ce875619c3e49cc78e0e23da60d4f2dcc0e1d2f24de00426e9f00",
+      "polkadot": "13N3YF2JiKJsHjoEkAesZgiSGa19RgDrzvzx7pJvhR9UAiCH",
+      "substrate": "5ERkPumErY3PrCninXbsRXtHQx1VjNfivSGTxXKa9L7wzPfD"
+    },
+    {
+      "path": "//polkadot//0/1",
+      "passphrase": "",
+      "hardOnly": false,
+      "publicKey": "245211db8e3bb1ec0ae73433a6518e8b3dfaa87fc526c70cf42d55100f79f70d",
+      "secretKey": "f8513619d103831a9a42a81861281a1ebc7ab3c5548e56ddef806c9461a8347f",
+      "polkadot": "1pd71iCMEzYWRPwz2fz6zstZoF5agMG9hmn12XRmM1etU2c",
+      "substrate": "5CtKxgT8VTj54tPS2Pcyxr3jiBFRtNo85D3HqjY5DFz8hv2e"
+    },
+    {
+      "path": "/soft//hard",
+      "passphrase": "",
+      "hardOnly": false,
+      "publicKey": "22a4b002522d29238e8b228ed863c57e50d958ad1d6987be5dbd7263a5ac716d",
+      "secretKey": "30b0e1c54c19289e5dd107186b9d935fb046e71158ad4eb28729d1fb3bd4c145",
+      "polkadot": "1nRYvsXYkUCCZKKtDci4qMF3BmYx96xQyMxRDVfiafkK37D",
+      "substrate": "5Cr8QbcTgyCim2JovaZhvgX6BZmuFqYpLUdUFvWKAVeE8bYJ"
+    },
+    {
+      "path": "//007",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "8a17b815957a7bc193758bca7df1043602d03dfd44bc52eb5f4c83cd4bce8037",
+      "secretKey": "b8d9e4042077b46b53079580f1ecf2fda90636d9eca6f9a24fabc5bf5221cc5f2c9e2ad5bd1899c4a38addbd65413ccfddaac43950fe468a43c21336395f438c",
+      "polkadot": "1484ewV8tuCbWfptoPZMrw4vNRydo64CQNwBXhuvH5fAWHnj",
+      "substrate": "5FBmWcE537w858pNqkWMinEmWoyz6nW4KtChNQvZizdeKxob"
+    },
+    {
+      "path": "//18446744073709551615",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "bae807e0a062fe7c4f503530fe1f3547b68114d27475206429d86af5ee87970e",
+      "secretKey": "f04b5e400c73254054a243746418b6993cdd96b1e6816318c69e91e4edf4864e98a4c06be2a33b2bda9828b50c88672889d280d60dfea6db255a0e69f5999c7c",
+      "polkadot": "15E4qNtGe5Jen8Co3BgYZF8qKduxLy5z9VhvJ9ckEC1whr9r",
+      "substrate": "5GHmh3dCnJ3BLbCH5YdYR6JgU1vJefXr4zyS8rdPg6zRXdM2"
+    },
+    {
+      "path": "//my account",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "8099cc1a286d6c2963f49be3d79f9db5755c68b3e851fd666d7dfc7d97d6dd0b",
+      "secretKey": "60ff3f3120243384c47fc963e9a0ab43b7bd70413001ce58193276041005b068ebd9f6f7ce6c93bd1fd9000fb80fb446c9670df2d963ea1b95aeb151c61da449",
+      "polkadot": "13ucpMxiJJsKBQ3oeAQ9zwPLarJbRVSUevCQQEDJ5L7tsgVN",
+      "substrate": "5EyKg2heSXbqjs3HgXM9rnZBjEJwjBtLaRTvEwDwXF6Nh5tr"
+    },
+    {
+      "path": "//钱包",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "068b86225a14ede1c071d5a90974e10c0e9b12972d0e6bfb73abbd25f95ac135",
+      "secretKey": "28bb7ab845cac45318fee6c7c4340577c5d76c2c3beaba6736b9752699cfb061fa9ef14444947deeff06e36674e58be3827be0b58d0a4dc70405850850f3bc59",
+      "polkadot": "19ajc8p8FqHxqLgpYy9HBkHFEMSiiFipyaYic1MRaYCcEzz",
+      "substrate": "5CDHbGskGUZpXJLAruv992v8PcMo2QhakUr4ZK1zsVWgRzgP"
+    },
+    {
+      "path": "//0xabc",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "78f085816782f782f5979b1a27497e1025f9814f3c242b2043469a8b921c2c54",
+      "secretKey": "600262452199b422c2549985bf6a9f200c6447ed77669447725ac07f5eaeef6054019bcd198caf6d8df3f417515f2d88526d51b165f5a9dead3d6d16b4ecab73",
+      "polkadot": "13jaCNGH7gioVCd6FbfsVpH5JXL8u626GhmMLzv8PQEEvfwr",
+      "substrate": "5EoH431DFuTL3fcaHxcsMfSvSuLVCnTxCD2sBhvmqKCikGcP"
+    },
+    {
+      "path": "//a junction name longer than thirty-two bytes",
+      "passphrase": "",
+      "hardOnly": true,
+      "publicKey": "3e0e377679fb584f13d7224aaf4a890f70b9391e2a0f6f5e7e244206ded6ed00",
+      "secretKey": "30d794570b2a1ee90e514f53e43c499b490bda047c3d1e30df79c8408ed9616e5e96050bc0a4d5f5ee18040d8acf2dc442d1a80f2e56634a3c3c46916ccbb016",
+      "polkadot": "12QNC99z2U9YfD4X5jQbnPrPKijXLFkpVyNWLBytjnboUdsK",
+      "substrate": "5DU53otvAgt5Dg4186MbeF2EU6jsdxCgRUe2AtzYBhaHJ9uH"
+    },
+    {
+      "path": "//polkadot",
+      "passphrase": "secret",
+      "hardOnly": true,
+      "publicKey": "408d849ebead4adede3404d40121453eddfdcab802898813e39f6c15b298c918",
+      "secretKey": "084b549df3260a0261536db2db2bd12fae6affe8be0a80ac5826246a84d9b94cbfbf14d107ab709a8bac45e6a0dff835bbc8b83cbe0edc6393503366e346717d",
+      "polkadot": "12Te73jpZZKG9CAsN1ABuaN5pCyG5JJ9Wa538TCcJAxaFj57",
+      "substrate": "5DXLxiUkhn3nhfAMQN7BmRXvxaycNzk1S5LYyADFk5w45P8o"
+    }
+  ]
+}

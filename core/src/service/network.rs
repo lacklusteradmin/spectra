@@ -17,14 +17,11 @@ impl WalletService {
 
     // `execute_send` lives in `service/send_execution.rs`.
 
-    // `bitcoin_xpub_balance` lives in the plain-impl block below: it returns a
-    // typed `HdXpubBalance` to Rust callers only, not across the FFI.
-
     // `fetch_evm_history_page` lives in the plain-impl block below: it is
     // called by `history_refresh`, not across the FFI.
 
-    // `fetch_utxo_fee_preview_json` and `broadcast_raw` live in the plain-impl
-    // block below (JSON shuttles — kept internal, not exported to Swift).
+    // `broadcast_raw` lives in the plain-impl block below (a JSON shuttle —
+    // kept internal, not exported to Swift).
 
     // `fetch_evm_send_preview_json` / `fetch_tron_send_preview_json_on_chain` /
     // `fetch_simple_chain_send_preview_json` live in the plain-impl block below

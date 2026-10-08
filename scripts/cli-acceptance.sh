@@ -292,6 +292,8 @@ suite "UTXO recipients preserve output script types"            cli-send-utxo.py
 suite "complete mined OP Stack fees and durable outcomes"       cli-receipt-fees.py
 suite "Litecoin SegWit recovery and durable signing"            cli-litecoin.py
 suite "Peercoin recovery, mature rewards and durable signing"   cli-peercoin.py
+suite "account recovery and multi-address signing on every UTXO network" cli-account-utxo.py
+suite "2-of-3 multisig PSBTs across cosigners and a coordinator"  cli-multisig-psbt.py
 suite "XRP signing and protocol validation"                     cli-send-xrp.py
 suite "XRP destination tags and Stellar memos, required and signed" cli-payment-memos.py
 suite "wallet operations: closing accounts, deleting keys"         cli-wallet-operations.py

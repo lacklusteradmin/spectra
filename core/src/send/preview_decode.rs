@@ -36,45 +36,8 @@ fn obj_decimal(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Optio
     }
 }
 
-fn obj_u64(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<u64> {
-    o.get(k).and_then(|v| {
-        v.as_u64()
-            .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
-    })
-}
-
 fn obj_str(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<String> {
     o.get(k).and_then(|v| v.as_str().map(|s| s.to_string()))
-}
-
-/// Every UTXO chain this previews counts in eight-decimal units.
-const UTXO_DECIMALS: u32 = 8;
-
-fn coins(sat: u64) -> String {
-    crate::decimal::from_units(u128::from(sat), UTXO_DECIMALS)
-}
-
-/// The fields of core's UTXO capacity quote, in satoshis.
-struct UtxoQuote {
-    fee_rate_sat_vb: u64,
-    fee_sat: u64,
-    tx_bytes: i64,
-    input_count: i64,
-    spendable_sat: u64,
-    max_sendable_sat: u64,
-}
-
-fn utxo_quote(json: &str) -> Option<UtxoQuote> {
-    let v: serde_json::Value = serde_json::from_str(json).ok()?;
-    let o = v.as_object()?;
-    Some(UtxoQuote {
-        fee_rate_sat_vb: obj_u64(o, "fee_rate_svb").unwrap_or(1),
-        fee_sat: obj_u64(o, "estimated_fee_sat").unwrap_or(0),
-        tx_bytes: obj_u64(o, "estimated_tx_bytes").unwrap_or(0) as i64,
-        input_count: obj_u64(o, "selected_input_count").unwrap_or(0) as i64,
-        spendable_sat: obj_u64(o, "spendable_balance_sat").unwrap_or(0),
-        max_sendable_sat: obj_u64(o, "max_sendable_sat").unwrap_or(0),
-    })
 }
 
 /// Which decode shape a shared-path preview comes back in.
@@ -113,73 +76,6 @@ pub fn build_evm_send_preview_record(
         spendableBalance: d.spendable_balance,
         feeRateDescription: d.fee_rate_description,
         maxSendable: d.max_sendable,
-    })
-}
-
-pub fn build_utxo_send_preview_record(
-    json: String,
-) -> Option<crate::send::preview_types::BitcoinSendPreview> {
-    let q = utxo_quote(&json)?;
-    if q.spendable_sat == 0 {
-        return None;
-    }
-    Some(crate::send::preview_types::BitcoinSendPreview {
-        estimatedFeeRateSatVb: q.fee_rate_sat_vb,
-        estimatedNetworkFee: coins(q.fee_sat),
-        feeRateDescription: Some(format!("{} sat/vB", q.fee_rate_sat_vb)),
-        spendableBalance: Some(coins(q.spendable_sat)),
-        estimatedTransactionBytes: Some(q.tx_bytes),
-        selectedInputCount: Some(q.input_count),
-        usesChangeOutput: None,
-        maxSendable: Some(coins(q.max_sendable_sat)),
-    })
-}
-
-/// The Bitcoin HD send preview, from the two numbers it actually needs. The
-/// rate is a node's float estimate; it is rounded up to whole sat/vB here,
-/// and everything after that is integer satoshis.
-pub fn build_bitcoin_hd_send_preview_record(
-    confirmed_sats: u64,
-    sats_per_vbyte: f64,
-) -> Option<crate::send::preview_types::BitcoinSendPreview> {
-    let rate = sats_per_vbyte.ceil().max(1.0) as u64;
-    let bytes: u64 = 250;
-    let fee_sat = rate.checked_mul(bytes)?;
-    Some(crate::send::preview_types::BitcoinSendPreview {
-        estimatedFeeRateSatVb: rate,
-        estimatedNetworkFee: coins(fee_sat),
-        feeRateDescription: Some(format!("{rate} sat/vB")),
-        spendableBalance: Some(coins(confirmed_sats)),
-        estimatedTransactionBytes: Some(bytes as i64),
-        selectedInputCount: None,
-        usesChangeOutput: None,
-        maxSendable: Some(coins(confirmed_sats.saturating_sub(fee_sat))),
-    })
-}
-
-/// `requested_amount` is the exact amount typed; it decides only whether the
-/// send leaves change.
-pub fn build_dogecoin_send_preview_record(
-    json: String,
-    requested_amount: &str,
-) -> Option<crate::send::preview_types::DogecoinSendPreview> {
-    let q = utxo_quote(&json)?;
-    if q.spendable_sat == 0 {
-        return None;
-    }
-    let requested_sat =
-        u64::try_from(crate::decimal::to_units(requested_amount, UTXO_DECIMALS)?).ok()?;
-    let uses_change = q.spendable_sat > requested_sat.saturating_add(q.fee_sat);
-    Some(crate::send::preview_types::DogecoinSendPreview {
-        estimatedNetworkFee: coins(q.fee_sat),
-        // sat/vB × 1000 is satoshis per kB.
-        estimatedFeeRateDogePerKb: coins(q.fee_rate_sat_vb.checked_mul(1000)?),
-        estimatedTransactionBytes: q.tx_bytes,
-        selectedInputCount: q.input_count,
-        usesChangeOutput: uses_change,
-        spendableBalance: coins(q.spendable_sat),
-        feeRateDescription: Some(format!("{} sat/vB", q.fee_rate_sat_vb)),
-        maxSendable: coins(q.max_sendable_sat),
     })
 }
 
@@ -383,44 +279,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> Option<Si
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn utxo_amounts_are_exact_coins() {
-        let json = r#"{"fee_rate_svb":5,"estimated_fee_sat":1000,"estimated_tx_bytes":200,"selected_input_count":2,"spendable_balance_sat":500000001,"max_sendable_sat":499999001}"#;
-        let d = build_utxo_send_preview_record(json.into()).unwrap();
-        assert_eq!(d.estimatedFeeRateSatVb, 5);
-        assert_eq!(d.feeRateDescription.as_deref(), Some("5 sat/vB"));
-        assert_eq!(d.estimatedNetworkFee, "0.00001");
-        assert_eq!(d.spendableBalance.as_deref(), Some("5.00000001"));
-        assert_eq!(d.maxSendable.as_deref(), Some("4.99999001"));
-        assert_eq!(d.selectedInputCount, Some(2));
-    }
-
-    #[test]
-    fn bitcoin_hd_rounds_the_rate_up_then_counts_satoshis() {
-        let d = build_bitcoin_hd_send_preview_record(100_000, 2.3).unwrap();
-        assert_eq!(d.estimatedFeeRateSatVb, 3);
-        assert_eq!(d.estimatedTransactionBytes, Some(250));
-        // 100000 - 3*250
-        assert_eq!(d.maxSendable.as_deref(), Some("0.0009925"));
-    }
-
-    #[test]
-    fn dogecoin_change_and_rate_per_kb() {
-        let json = r#"{"fee_rate_svb":1,"estimated_fee_sat":1000,"estimated_tx_bytes":200,"selected_input_count":1,"spendable_balance_sat":1000000000,"max_sendable_sat":999999000}"#;
-        let d = build_dogecoin_send_preview_record(json.into(), "1").unwrap();
-        assert!(d.usesChangeOutput);
-        assert_eq!(d.estimatedFeeRateDogePerKb, "0.00001");
-        assert_eq!(d.maxSendable, "9.99999");
-        // The whole spendable amount leaves nothing to change.
-        assert!(
-            !build_dogecoin_send_preview_record(json.into(), "9.99999")
-                .unwrap()
-                .usesChangeOutput
-        );
-        // An amount finer than a satoshi is not quoted.
-        assert!(build_dogecoin_send_preview_record(json.into(), "0.000000001").is_none());
-    }
 
     #[test]
     fn tron_reads_exact_decimals_and_refuses_floats() {

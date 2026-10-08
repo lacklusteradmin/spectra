@@ -1,0 +1,154 @@
+{
+  "provenance": "monero-ts 0.11.15, wallet2 compiled to WebAssembly (scripts/generate-monero-subaddress-vectors.cjs)",
+  "phrase": "syndrome portents apex vivid flippant dizzy bumper duplex enjoy deodorant bunch pigment wolf muppet tuition wept ailments kiwi roles against today morsel eternal excess wolf",
+  "networks": [
+    {
+      "chain": "monero",
+      "primary": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "public_spend_key": "b6f75638d24ce77e6c62f7a5aaf921660289b356e99272c622f0faeba2f13430",
+      "private_view_key": "ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "public_view_key": "bb1be388c49beb808807327ea3a0400ca4fbd5b4cd7e7d5039523dda5c5dd110",
+      "subaddresses": [
+        {
+          "account": 0,
+          "address": 0,
+          "encoded": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi"
+        },
+        {
+          "account": 0,
+          "address": 1,
+          "encoded": "86UHQmCPTwE36c9dyS8Fb18MyVdWLrowFeuog1jeR21LgobXFuwnXECCCJqtN1oCc5PH2XBZ2erGoRL5UnyP6BxyKtUVWks"
+        },
+        {
+          "account": 0,
+          "address": 2,
+          "encoded": "84iHp4jcRhg6JxXDA3aj1gGFG4psBFPZZbbT5ruSaFtaJneqog3PbQcj3ZcmuFhukRfZkaFH6BiQGdqH9KCzj1HqLvu34BC"
+        },
+        {
+          "account": 0,
+          "address": 199,
+          "encoded": "89McwNAsSHoAReKNwNx3wcQ7eKfxTBmALXS6C6UQVhdD5crbFDGHogE6hE9XqZziqzJdn8oneDv226C8qd4FCTBqGF7gT8C"
+        },
+        {
+          "account": 0,
+          "address": 200,
+          "encoded": "88buHzTEeB7WPg1m8N9pzhYhQsjBmriQF7hBsyG8PvJfMt9S9eL99eFCAfErK2SxvAcZVtYYEUaQcXMp5d33hxi2Jh48pfR"
+        },
+        {
+          "account": 1,
+          "address": 0,
+          "encoded": "84USLgrhLfVPTgPNsFt6Akggan7W2RxgYETzJor5Qone3uL3oL6j7W3bT3R9N3hAwT1DdzEBoxaNx8GwA3dTtdH4JF47bkU"
+        },
+        {
+          "account": 1,
+          "address": 1,
+          "encoded": "84t9TUMr1kH55uzwyYDkF2gsgHseAZzgKC28qRb5dQLjUzUNpUFkFhER3HbtqF6f577o7gTfq7uGVP4CJTGHrHVq8WaWy5Z"
+        },
+        {
+          "account": 2,
+          "address": 7,
+          "encoded": "88B5gjpJoxsbbVacqVVXKiJxo3bM4sz8RbGadmLW8bGTFcRbu2YPDs1MFALnrA4QfMKV6Z1RFP4DH7XdsLZeoqw44uhJd5w"
+        },
+        {
+          "account": 49,
+          "address": 0,
+          "encoded": "867NVE3adJwGvh7WRQSXy7HxdfnFrr8RuT44KMisGd7W9zkc5VDABX3dQedj2t4DBVGgkVrBvYD6rERRacrzCgTELs2Uov3"
+        },
+        {
+          "account": 49,
+          "address": 199,
+          "encoded": "83ooNdJLvoxPTcDfhqraDB573SkWaU1vjEzf2fJUNRqPAdSJAshAqNfYrL7cq4e8zj58YffRrsWCQD4dMKVJt1NY7XdiUjG"
+        },
+        {
+          "account": 50,
+          "address": 0,
+          "encoded": "8BFg2nkY3FoDC55ho7usLPSJw19Q4kUa7XiUei9Tj9uqXUFeJCwhW2k7AW623Wo4VDUbDbh1dC3D451xW7FYD1H6TBhgLLS"
+        },
+        {
+          "account": 0,
+          "address": 300,
+          "encoded": "86M2N5gYivNaxToq6eEuJG99CicrtUk6GejCgwbdaaoUML93HGecGy7B9bJkkVzxtrYVgWGXcdFaja5at9mmgYdYAv5HFtJ"
+        },
+        {
+          "account": 3,
+          "address": 70000,
+          "encoded": "87htqNgixq1dbTLw7Yb45DCrrW47WjPimKWnwshQWCjWe57QjatWmbdTcUsy9DHHWqZXmMLLxobaFMXUAgXnoWELPWaSCS9"
+        }
+      ]
+    },
+    {
+      "chain": "monero-stagenet",
+      "primary": "58mHxS6HCmtN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282uJv8Tm",
+      "public_spend_key": "b6f75638d24ce77e6c62f7a5aaf921660289b356e99272c622f0faeba2f13430",
+      "private_view_key": "ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "public_view_key": "bb1be388c49beb808807327ea3a0400ca4fbd5b4cd7e7d5039523dda5c5dd110",
+      "subaddresses": [
+        {
+          "account": 0,
+          "address": 0,
+          "encoded": "58mHxS6HCmtN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282uJv8Tm"
+        },
+        {
+          "account": 0,
+          "address": 1,
+          "encoded": "76GFKvHRpL836c9dyS8Fb18MyVdWLrowFeuog1jeR21LgobXFuwnXECCCJqtN1oCc5PH2XBZ2erGoRL5UnyP6BxyKsbHkeQ"
+        },
+        {
+          "account": 0,
+          "address": 2,
+          "encoded": "74WFjDpen6a6JxXDA3aj1gGFG4psBFPZZbbT5ruSaFtaJneqog3PbQcj3ZcmuFhukRfZkaFH6BiQGdqH9KCzj1HqLrxwg1k"
+        },
+        {
+          "account": 0,
+          "address": 199,
+          "encoded": "799arXFunghAReKNwNx3wcQ7eKfxTBmALXS6C6UQVhdD5crbFDGHogE6hE9XqZziqzJdn8oneDv226C8qd4FCTBqGHNkgYc"
+        },
+        {
+          "account": 0,
+          "address": 200,
+          "encoded": "78PsD9YGza1WPg1m8N9pzhYhQsjBmriQF7hBsyG8PvJfMt9S9eL99eFCAfErK2SxvAcZVtYYEUaQcXMp5d33hxi2JcmcjaZ"
+        },
+        {
+          "account": 1,
+          "address": 0,
+          "encoded": "74GQFqwjh4PPTgPNsFt6Akggan7W2RxgYETzJor5Qone3uL3oL6j7W3bT3R9N3hAwT1DdzEBoxaNx8GwA3dTtdH4JCukrKk"
+        },
+        {
+          "account": 1,
+          "address": 1,
+          "encoded": "74g7NdStN9B55uzwyYDkF2gsgHseAZzgKC28qRb5dQLjUzUNpUFkFhER3HbtqF6f577o7gTfq7uGVP4CJTGHrHVq8X4TzZP"
+        },
+        {
+          "account": 2,
+          "address": 7,
+          "encoded": "77y3btuMAMmbbVacqVVXKiJxo3bM4sz8RbGadmLW8bGTFcRbu2YPDs1MFALnrA4QfMKV6Z1RFP4DH7XdsLZeoqw44tAvWi1"
+        },
+        {
+          "account": 49,
+          "address": 0,
+          "encoded": "75uLQP8cyhqGvh7WRQSXy7HxdfnFrr8RuT44KMisGd7W9zkc5VDABX3dQedj2t4DBVGgkVrBvYD6rERRacrzCgTELxA3ukS"
+        },
+        {
+          "account": 49,
+          "address": 199,
+          "encoded": "73bmHnPPHCrPTcDfhqraDB573SkWaU1vjEzf2fJUNRqPAdSJAshAqNfYrL7cq4e8zj58YffRrsWCQD4dMKVJt1NY7TrCHY5"
+        },
+        {
+          "account": 50,
+          "address": 0,
+          "encoded": "7B3dwwqaPehDC55ho7usLPSJw19Q4kUa7XiUei9Tj9uqXUFeJCwhW2k7AW623Wo4VDUbDbh1dC3D451xW7FYD1H6TDzihrf"
+        },
+        {
+          "account": 0,
+          "address": 300,
+          "encoded": "768zHEmb5KGaxToq6eEuJG99CicrtUk6GejCgwbdaaoUML93HGecGy7B9bJkkVzxtrYVgWGXcdFaja5at9mmgYdYAuXibub"
+        },
+        {
+          "account": 3,
+          "address": 70000,
+          "encoded": "77VrkXmmKDudbTLw7Yb45DCrrW47WjPimKWnwshQWCjWe57QjatWmbdTcUsy9DHHWqZXmMLLxobaFMXUAgXnoWELPVCVWuC"
+        }
+      ]
+    }
+  ]
+}

@@ -84,7 +84,7 @@ impl WalletService {
         let rate_fee = request
             .fee_rate_svb
             .as_deref()
-            .map(|rate| litecoin_fee_for_vsize(rate, vsize))
+            .map(|rate| fee_for_vsize(rate, vsize))
             .transpose()?;
         let mut fee = match request.fee_sat {
             Some(whole) => {
@@ -304,8 +304,8 @@ fn sign_inputs(
 }
 
 /// Exact decimal sat/vB multiplication, rounded up once to whole satoshis.
-pub(super) fn litecoin_fee_for_vsize(rate: &str, vsize: u64) -> Result<u64, SpectraBridgeError> {
-    let invalid = || SpectraBridgeError::invalid("Invalid Litecoin fee rate");
+pub(super) fn fee_for_vsize(rate: &str, vsize: u64) -> Result<u64, SpectraBridgeError> {
+    let invalid = || SpectraBridgeError::invalid("Invalid fee rate");
     let rate = crate::decimal::canonical(rate)
         .filter(|rate| rate != "0")
         .ok_or_else(invalid)?;

@@ -80,7 +80,7 @@ pub fn scheme_for(chain: Chain, address: &str) -> Option<MessageScheme> {
         _ if magic(chain).is_some() => {
             if is_p2pkh(chain, address) {
                 Some(MessageScheme::SignedMessage)
-            } else if chain.accepts_account_xpub() && bitcoin_script(chain, address).is_some() {
+            } else if chain.proves_with_bip322() && bitcoin_script(chain, address).is_some() {
                 Some(MessageScheme::Bip322)
             } else {
                 None
@@ -215,8 +215,9 @@ fn is_solana_transaction(bytes: &[u8]) -> bool {
 }
 
 /// Sign `message` with the key behind `address`, in `chain`'s scheme.
-/// `key_hex` is the 32-byte secret (an Ed25519 seed, an sr25519 mini
-/// secret or a secp256k1 scalar) the wallet signs transactions with.
+/// `key_hex` is the secret the wallet signs transactions with: a 32-byte
+/// Ed25519 seed or secp256k1 scalar, an sr25519 seed or a soft junction's
+/// 64-byte expanded key, or Cardano's 64-byte extended key.
 pub(crate) fn sign_message(
     chain: Chain,
     address: &str,
@@ -239,6 +240,18 @@ pub(crate) fn sign_message(
                 .ok_or_else(|| SendError::Invalid("Cardano key must be 64 bytes".into()))?,
         );
         return Ok((scheme, schemes::cardano::sign(&extended, address, message)?));
+    }
+    // sr25519 signs with the account's own keypair, whichever expansion or
+    // junction gave it.
+    if scheme == MessageScheme::SubstrateBytes {
+        let public = crate::derivation::primitives::decode_ss58(address, None)
+            .map_err(|e| SendError::Invalid(format!("sr25519 address: {e}").into()))?
+            .1;
+        let pair = crate::derivation::substrate_path::signing_keypair(&key, &public)
+            .map_err(|e| SendError::Invalid(e.to_string().into()))?;
+        let signature =
+            pair.sign(schnorrkel::signing_context(b"substrate").bytes(&substrate_wrapped(message)));
+        return Ok((scheme, format!("0x{}", hex::encode(signature.to_bytes()))));
     }
     let seed: zeroize::Zeroizing<[u8; 32]> = zeroize::Zeroizing::new(
         key.get(..32)
@@ -282,19 +295,13 @@ pub(crate) fn sign_message(
             bytes.extend_from_slice(key.verifying_key().as_bytes());
             base64_encode(&bytes)
         }
-        MessageScheme::SubstrateBytes => {
-            let pair = schnorrkel::MiniSecretKey::from_bytes(&*seed)
-                .map_err(|e| SendError::Invalid(format!("sr25519 key: {e}").into()))?
-                .expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
-            let signature = pair
-                .sign(schnorrkel::signing_context(b"substrate").bytes(&substrate_wrapped(message)));
-            format!("0x{}", hex::encode(signature.to_bytes()))
+        MessageScheme::CardanoDataSignature | MessageScheme::SubstrateBytes => {
+            unreachable!("signed with the whole key above")
         }
         MessageScheme::StellarSignedMessage => schemes::stellar::sign(&seed, message),
         MessageScheme::KaspaPersonalMessage => schemes::kaspa::sign(&seed, message)?,
         // A Monero key is the spend key and then the view key.
         MessageScheme::MoneroSignature => schemes::monero::sign(&seed, address, message)?,
-        MessageScheme::CardanoDataSignature => unreachable!("signed with the extended key above"),
     };
     Ok((scheme, signature))
 }

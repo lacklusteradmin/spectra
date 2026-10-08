@@ -1,5 +1,10 @@
 use super::*;
+use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash;
+use bitcoin::script::{Builder, PushBytesBuf};
+use bitcoin::secp256k1::Message;
 use bitcoin::secp256k1::ecdsa::Signature;
+use bitcoin::{Amount, OutPoint, Transaction, TxIn, TxOut, Witness};
 use sha2::{Digest, Sha256};
 
 fn public_key(key: &[u8]) -> CompressedPublicKey {
@@ -20,6 +25,7 @@ fn address(chain: Chain, kind: InputKind, key: &[u8]) -> String {
                 .script_hash()
                 .to_byte_array(),
         ),
+        InputKind::P2tr => unreachable!("Litecoin wallets hold no Taproot key"),
         InputKind::P2wpkh => {
             return bech32::segwit::encode(
                 bech32::Hrp::parse(chain.fixed_utxo_segwit_hrp().unwrap()).unwrap(),

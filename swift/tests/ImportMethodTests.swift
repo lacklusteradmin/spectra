@@ -17,9 +17,15 @@ struct ImportMethodTests {
             #expect(offered.starts(with: [.createPhrase, .importPhrase]), "\(chain.id)")
         }
         // Monero needs scan keys: no raw key, and no watching an address alone.
-        #expect(methods(.monero) == [.createPhrase, .importPhrase])
+        #expect(methods(.monero) == [.createPhrase, .importPhrase, .watchViewKey])
+        #expect(!methods(.bitcoin).contains(.watchViewKey))
+        #expect(methods(.bitcoin).contains(.watchMultisig))
+        #expect(methods(.bitcoinSignet).contains(.watchMultisig))
+        #expect(!methods(.litecoin).contains(.watchMultisig))
         #expect(methods(.bitcoin).contains(.watchAccountXpub))
-        #expect(!methods(.litecoin).contains(.watchAccountXpub))
+        #expect(methods(.litecoin).contains(.watchAccountXpub))
+        #expect(methods(.kaspa).contains(.watchAccountXpub))
+        #expect(!methods(.ethereum).contains(.watchAccountXpub))
         #expect(methods(.ethereum).contains(.importPrivateKey))
     }
 
@@ -29,10 +35,12 @@ struct ImportMethodTests {
         #expect(SetupFlow.forMethod(.importPrivateKey).pages == [.seedPhrase, .password, .walletName])
         #expect(SetupFlow.forMethod(.watchAddresses).pages == [.watchAddresses, .walletName])
         #expect(SetupFlow.forMethod(.watchAccountXpub).pages == [.watchAddresses, .walletName])
+        #expect(SetupFlow.forMethod(.watchViewKey).pages == [.watchAddresses, .walletName])
+        #expect(SetupFlow.forMethod(.watchMultisig).pages == [.watchAddresses, .walletName])
     }
 
     /// The draft reads what core imports from the method it was opened for.
-    @Test func theMethodDecidesWhatTheImportCarries() {
+    @Test func theMethodDecidesWhatTheImportCarries() throws {
         let draft = WalletImportDraft()
         draft.configure(chain: .bitcoin, method: .watchAccountXpub)
         draft.watchOnlyInput = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
@@ -45,6 +53,23 @@ struct ImportMethodTests {
         draft.configure(chain: .ethereum, method: .importPrivateKey)
         #expect(draft.importKind == .privateKey)
         #expect(draft.chain == .ethereum)
+        // A view key is watched with its wallet's address and a restore
+        // height that must be a block number.
+        draft.configure(chain: .monero, method: .watchViewKey)
+        draft.watchOnlyInput = " 48ZFs… "
+        #expect(!draft.canImportWallet)
+        draft.viewKeyInput = " ab5e… "
+        #expect(draft.importKind == .watchViewKey(address: "48ZFs…", viewKey: "ab5e…"))
+        #expect(draft.canImportWallet)
+        draft.restoreHeightInput = "12a"
+        #expect(!draft.canImportWallet)
+        draft.restoreHeightInput = "3000000"
+        #expect(try #require(draft.importCommit(name: "")).restoreHeight == 3_000_000)
+        draft.configure(chain: .bitcoin, method: .watchMultisig)
+        #expect(!draft.canImportWallet)
+        draft.descriptorInput = "\n wsh(sortedmulti(2,…)) \n"
+        #expect(draft.importKind == .watchMultisig(descriptor: "wsh(sortedmulti(2,…))"))
+        #expect(draft.canImportWallet)
     }
 
     /// A phrase import derives along the network's first profile at account

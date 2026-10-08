@@ -44,9 +44,11 @@ pub struct WalletKeyExport {
 /// it exports its account's public key where the network takes one, and
 /// otherwise only its phrase. Nor does a Cardano phrase wallet's payment
 /// key: its base address names the account's stake key too, so it exports
-/// only its phrase. An account key is exported where its encoding
-/// names the script the wallet uses: not for Taproot, which has none, nor
-/// for a path no profile names.
+/// only its phrase. Nor does a Substrate phrase wallet whose path has a soft
+/// junction, which derives a key no seed gives (`derives_importable_seed`).
+/// An account key is exported where its network has an encoding for the
+/// script the wallet uses: not for Taproot, which has none, nor for a path
+/// no profile names.
 pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
     let chain = wallet.chain_id;
     match wallet.signing {
@@ -64,8 +66,13 @@ pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
         WalletSigning::SeedPhrase { .. } => [
             (
                 crate::derivation::key_formats::export_format(chain).is_some()
-                    && !chain.supports_deep_utxo_discovery()
-                    && !chain.phrase_address_has_stake_key(),
+                    && !chain.uses_account_utxo()
+                    && !chain.phrase_address_has_stake_key()
+                    && (!chain.derives_along_junctions()
+                        || crate::derivation::substrate_path::derives_importable_seed(
+                            wallet.derivation_path.as_deref().unwrap_or_default(),
+                            wallet.derivation_overrides.hmac_key.as_deref() == Some("uniform"),
+                        )),
                 WalletKeyKind::PrivateKey,
             ),
             (
@@ -79,27 +86,21 @@ pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
     }
 }
 
-/// The SLIP-132 version an account key on `wallet`'s path is written with:
-/// xpub for legacy, ypub for nested SegWit, zpub for native SegWit, and their
-/// test-network forms. `None` where the network takes no account key or the
-/// path's script has no such version.
+/// The version an account key on `wallet`'s path is written with: its
+/// network's first encoding for the script the path's profile pays
+/// (`Chain::account_key_versions`). `None` where the network takes no
+/// account key, the path is no profile's, or the script has no encoding, as
+/// for Taproot.
 fn account_key_version(wallet: &WalletState) -> Option<[u8; 4]> {
-    use crate::chains::DerivationProfile;
     let chain = wallet.chain_id;
-    if !chain.accepts_account_xpub() {
-        return None;
-    }
     let path = wallet.derivation_path.clone()?;
-    let profile = crate::derivation::path::derivation_profile_of_path(chain, path)?.profile;
-    Some(match (profile, chain.is_testnet()) {
-        (DerivationProfile::Legacy, false) => crate::derivation::bitcoin::XPUB_VERSION_MAINNET,
-        (DerivationProfile::Legacy, true) => crate::derivation::bitcoin::XPUB_VERSION_TESTNET,
-        (DerivationProfile::NestedSegWit, false) => [0x04, 0x9d, 0x7c, 0xb2],
-        (DerivationProfile::NestedSegWit, true) => [0x04, 0x4a, 0x52, 0x62],
-        (DerivationProfile::NativeSegWit, false) => [0x04, 0xb2, 0x47, 0x46],
-        (DerivationProfile::NativeSegWit, true) => [0x04, 0x5f, 0x1c, 0xf6],
-        _ => return None,
-    })
+    crate::derivation::path::derivation_profile_of_path(chain, path.clone())?;
+    let script = crate::derivation::dispatch::script_type_for_path(&path);
+    chain
+        .account_key_versions()
+        .iter()
+        .find(|version| version.script == script)
+        .map(|version| version.version)
 }
 
 #[uniffi::export(async_runtime = "tokio")]

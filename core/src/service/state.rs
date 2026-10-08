@@ -70,10 +70,11 @@ impl WalletService {
                     .await
                     .err();
                 let source = database.clone();
-                let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
+                let (loaded, keypool, owned, discovered) = tokio::task::spawn_blocking(move || {
                     let loaded = crate::wallet_db::app_state_load(&source)?;
                     let keypool = crate::wallet_db::keypool_load_all(&source)?;
                     let owned = crate::wallet_db::address_load_all_chains(&source)?;
+                    let discovered = crate::wallet_db::discovery_load_all(&source)?;
                     let is_new = source.with_connection(|conn| {
                         conn.query_row(
                             "SELECT NOT EXISTS(SELECT 1 FROM app_state_meta)",
@@ -85,7 +86,7 @@ impl WalletService {
                     if is_new {
                         crate::wallet_db::app_state_save(&source, &loaded)?;
                     }
-                    Ok::<_, SpectraBridgeError>((loaded, keypool, owned))
+                    Ok::<_, SpectraBridgeError>((loaded, keypool, owned, discovered))
                 })
                 .await
                 .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
@@ -123,7 +124,15 @@ impl WalletService {
                 }
                 service.history_pagination.bind(database.clone())?;
                 // Publish only after every fallible initialization step succeeds.
-                service.keypool.write().await.load(keypool, by_chain);
+                let discovered = discovered
+                    .into_iter()
+                    .map(|(wallet, chain)| keypool_key(&wallet, chain))
+                    .collect();
+                service
+                    .keypool
+                    .write()
+                    .await
+                    .load(keypool, by_chain, discovered);
                 let state = service.publish_state(state).await;
                 service.state_binding.bind(database).await;
                 service.reconcile_transport(&state.settings, false);
@@ -627,11 +636,11 @@ mod utxo_discovery_is_the_registrys_chain_set {
     /// Every UTXO testnet is in the discovery set its mainnet is in.
     #[test]
     fn the_testnets_are_in_the_set_their_mainnets_are_in() {
-        assert!(Chain::Bitcoin.supports_deep_utxo_discovery());
+        assert!(Chain::Bitcoin.uses_account_utxo());
         for chain in Chain::all() {
             assert_eq!(
-                chain.supports_deep_utxo_discovery(),
-                chain.mainnet_counterpart().supports_deep_utxo_discovery(),
+                chain.uses_account_utxo(),
+                chain.mainnet_counterpart().uses_account_utxo(),
                 "{chain:?} walks the same addresses its mainnet does"
             );
         }

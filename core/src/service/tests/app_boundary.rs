@@ -13,17 +13,8 @@ fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletServ
 }
 
 #[tokio::test]
-async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
+async fn bitcoin_testnet_status_uses_the_selected_network() {
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/address/sender/utxo"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {"txid":"ab","vout":0,"value":100000,"status":{"confirmed":true}},
-            {"txid":"cd","vout":0,"value":1,"status":{"confirmed":false}}
-        ])))
-        .expect(1)
-        .mount(&server)
-        .await;
     Mock::given(method("GET"))
         .and(path("/tx/hash/status"))
         .respond_with(
@@ -33,19 +24,6 @@ async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
         .mount(&server)
         .await;
     let svc = service(Chain::BitcoinTestnet4, &server);
-    let preview = svc
-        .fetch_utxo_fee_preview(
-            Chain::BitcoinTestnet4,
-            "sender".into(),
-            2,
-            "destination".into(),
-        )
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(preview.selectedInputCount, Some(1), "dust is not spendable");
-    assert_eq!(preview.estimatedNetworkFee, "0.00000384");
-    assert_eq!(preview.maxSendable.as_deref(), Some("0.00099616"));
     let status = svc
         .fetch_utxo_tx_status(Chain::BitcoinTestnet4, "hash".into())
         .await
@@ -124,32 +102,6 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
             .await
             .is_err()
     );
-}
-
-#[tokio::test]
-async fn dogecoin_preview_excludes_spent_outputs_and_preserves_requested_amount() {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/addrs/sender"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"txrefs":[
-            {"tx_hash":"a","tx_output_n":0,"value":200_000_000,"spent":false},
-            {"tx_hash":"b","tx_output_n":0,"value":900_000_000,"spent":true}
-        ]})))
-        .mount(&server)
-        .await;
-    let preview = service(crate::registry::Chain::Dogecoin, &server)
-        .fetch_dogecoin_send_preview("sender".into(), "1".into())
-        .await
-        .unwrap()
-        .unwrap();
-    // 2 DOGE unspent, less the fee: more than the 1 asked for, and it leaves change.
-    assert!(
-        preview.maxSendable.starts_with("1.99"),
-        "{}",
-        preview.maxSendable
-    );
-    assert!(preview.usesChangeOutput);
-    assert_eq!(preview.selectedInputCount, 1);
 }
 
 #[test]

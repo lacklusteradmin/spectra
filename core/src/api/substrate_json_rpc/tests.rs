@@ -198,6 +198,34 @@ async fn asset_hub_signing_uses_genesis_and_all_current_extensions_and_rechecks_
         .unwrap();
     assert_eq!(&bytes[99..104], &[0, 28, 0, 0, 0]);
     assert!(prepared.sign(&[8; 32], &pair.public.to_bytes()).is_err());
+    // A soft junction's 64-byte expanded key signs as its own account, and
+    // as no other.
+    let (soft, _) = crate::derivation::substrate_path::derive(
+        &key,
+        schnorrkel::ExpansionMode::Ed25519,
+        &crate::derivation::substrate_path::parse("//polkadot/0").unwrap(),
+    )
+    .unwrap();
+    let soft_public = soft.to_public().to_bytes();
+    let mut soft_prepared = prepared.clone();
+    soft_prepared.sender = soft_public;
+    let soft_raw = soft_prepared.sign(&soft.to_bytes(), &soft_public).unwrap();
+    let mut soft_body = soft_raw.as_slice();
+    Compact::<u32>::decode(&mut soft_body).unwrap();
+    assert_eq!(soft_body[2..34], soft_public);
+    schnorrkel::PublicKey::from_bytes(&soft_public)
+        .unwrap()
+        .verify_simple(
+            b"substrate",
+            &soft_prepared.signing_payload().unwrap(),
+            &schnorrkel::Signature::from_bytes(&soft_body[35..99]).unwrap(),
+        )
+        .unwrap();
+    assert!(
+        prepared
+            .sign(&soft.to_bytes(), &pair.public.to_bytes())
+            .is_err()
+    );
     prepared
         .validate_for_signing(&client, Chain::Polkadot, &sender)
         .await

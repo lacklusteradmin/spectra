@@ -142,7 +142,22 @@ async fn account_utxo_import_refuses_wrong_network_paths_before_storing() {
             .open_state(directory.join("state.db").to_string_lossy().into_owned())
             .await
             .unwrap();
-        for path in ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0'/0", "m/84'/0'/0'/2/0"] {
+        // The other network's coin type (Kaspa's test network shares its
+        // mainnet's, so no coin type is the other's there), a hardened
+        // address index, and a branch past change.
+        let default = crate::derivation::path::default_path_from_catalog(chain).unwrap();
+        let segments: Vec<&str> = default.split('/').collect();
+        let purpose = segments[1];
+        let coin: u32 = segments[2].trim_end_matches('\'').parse().unwrap();
+        let other_coin = if chain.is_testnet() { 0 } else { 1 };
+        let wrong_network = format!("m/{purpose}/{other_coin}'/0'/0/0");
+        let paths = [
+            (other_coin != coin).then_some(wrong_network),
+            Some(format!("m/{purpose}/{coin}'/0'/0'/0")),
+            Some(format!("m/{purpose}/{coin}'/0'/2/0")),
+        ];
+        for path in paths.into_iter().flatten() {
+            let path = path.as_str();
             let mut input = commit(chain);
             input.derivation_path = Some(path.into());
             assert!(
@@ -660,12 +675,15 @@ async fn testnet_paths_survive_reopen_and_signing() {
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
     service.open_state(db.clone()).await.unwrap();
-    // Custom mainnet and testnet paths must not overwrite each other. An
-    // explicitly selected mainnet-style path on a testnet remains valid user
-    // input; network defaults must never rewrite it.
+    // Each network's account paths, chosen or its default, survive reopening
+    // and sign. A mainnet coin type on a test network names no account of
+    // it, and is refused rather than stored as one.
+    let mut mainnet_style = commit(Chain::BitcoinSignet);
+    mainnet_style.derivation_path = Some("m/84'/0'/9'/0/0".into());
+    assert!(service.import_wallets(mainnet_style).await.is_err());
     for (chain, path) in [
         (Chain::BitcoinTestnet4, Some("m/84'/1'/3'/0/0")),
-        (Chain::BitcoinSignet, Some("m/84'/0'/9'/0/0")),
+        (Chain::BitcoinSignet, Some("m/84'/1'/9'/0/0")),
         (Chain::BitcoinTestnet, None),
         (Chain::Bitcoin, Some("m/84'/0'/2'/0/0")),
     ] {
@@ -682,7 +700,7 @@ async fn testnet_paths_survive_reopen_and_signing() {
     service.open_state(db).await.unwrap();
     for (chain, path) in [
         (Chain::BitcoinTestnet4, "m/84'/1'/3'/0/0"),
-        (Chain::BitcoinSignet, "m/84'/0'/9'/0/0"),
+        (Chain::BitcoinSignet, "m/84'/1'/9'/0/0"),
         (Chain::BitcoinTestnet, "m/84'/1'/0'/0/0"),
         (Chain::Bitcoin, "m/84'/0'/2'/0/0"),
     ] {

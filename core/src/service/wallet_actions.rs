@@ -17,6 +17,9 @@ use crate::store::state::{WalletSigning, WalletState};
 pub enum WalletAction {
     /// Send from this wallet.
     Send,
+    /// A multisig wallet's spends: PSBTs to create, read, sign, finish and
+    /// broadcast with its cosigners.
+    Psbts,
     /// Show the address this wallet receives at.
     Receive,
     /// This wallet's transactions.
@@ -94,9 +97,12 @@ pub enum WalletActionSection {
 impl WalletAction {
     pub fn section(self) -> WalletActionSection {
         match self {
-            Self::Send | Self::Receive | Self::History | Self::OpenInExplorer | Self::AddKeys => {
-                WalletActionSection::Everyday
-            }
+            Self::Send
+            | Self::Psbts
+            | Self::Receive
+            | Self::History
+            | Self::OpenInExplorer
+            | Self::AddKeys => WalletActionSection::Everyday,
             Self::Stake
             | Self::ScanBlocks
             | Self::Coins
@@ -126,6 +132,9 @@ impl WalletAction {
     pub fn note(self) -> &'static str {
         match self {
             Self::Send => "Send from this wallet.",
+            Self::Psbts => {
+                "Spend from this multisig wallet: create a PSBT or read one a cosigner sent, sign it, and broadcast it once enough cosigners have."
+            }
             Self::Receive => "Show the address this wallet receives at.",
             Self::History => "This wallet's transactions.",
             Self::OpenInExplorer => "Open this wallet's address on the network's explorer.",
@@ -214,7 +223,11 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
         .address_on(chain)
         .and_then(|address| crate::send::message::scheme_for(chain, address));
     [
-        (signs, WalletAction::Send),
+        (
+            signs && wallet.multisig_descriptor.is_none(),
+            WalletAction::Send,
+        ),
+        (wallet.multisig_descriptor.is_some(), WalletAction::Psbts),
         (true, WalletAction::Receive),
         (true, WalletAction::History),
         (
@@ -231,9 +244,10 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
             !chain.is_testnet() && chain.supports_staking(),
             WalletAction::Stake,
         ),
-        // The scan reads with the wallet's own keys.
-        (signs && chain.scans_for_balance(), WalletAction::ScanBlocks),
-        (chain.supports_deep_utxo_discovery(), WalletAction::Coins),
+        // The scan reads with the wallet's own keys, or a view-only
+        // wallet's view key.
+        (chain.scans_for_balance(), WalletAction::ScanBlocks),
+        (chain.lists_account_coins(), WalletAction::Coins),
         (chain.is_evm(), WalletAction::TokenApprovals),
         (chain.is_evm(), WalletAction::Nfts),
         (
@@ -308,7 +322,12 @@ pub(crate) fn upgrade_methods(wallet: &WalletState) -> Vec<WalletSetupMethod> {
     ]
     .into_iter()
     .filter(|method| descriptor.option(*method).is_some())
-    .filter(|method| *method == WalletSetupMethod::ImportPhrase || wallet.xpub.is_none())
+    // A key holds one address; a watched account, single-key or multisig,
+    // takes a phrase.
+    .filter(|method| {
+        *method == WalletSetupMethod::ImportPhrase
+            || (wallet.xpub.is_none() && wallet.multisig_descriptor.is_none())
+    })
     .collect()
 }
 

@@ -428,16 +428,19 @@ impl WalletService {
                     )
                     .await?,
             }),
-            Chain::Bitcoin => {
-                if let Some(xpub) = wallet.xpub.as_ref().filter(|x| !x.trim().is_empty()) {
-                    self.fetch_bitcoin_hd_send_preview(chain, xpub.clone(), 20, 20)
-                        .await?
-                } else {
-                    self.fetch_utxo_fee_preview(chain, address, 0, destination)
-                        .await?
-                }
-                .map(|preview| SendPreview::Utxo { preview })
-            }
+            Chain::Bitcoin
+            | Chain::BitcoinCash
+            | Chain::BitcoinSV
+            | Chain::Dogecoin
+            | Chain::BitcoinGold
+            | Chain::Dash
+            | Chain::Zcash
+            | Chain::Decred
+            | Chain::Kaspa => Some(SendPreview::Utxo {
+                preview: self
+                    .preview_account_send(chain, &wallet_id, &amount, &destination)
+                    .await?,
+            }),
             Chain::Litecoin => self
                 .preview_litecoin_owned_send(chain, &wallet_id, &amount, &destination)
                 .await?
@@ -447,16 +450,6 @@ impl WalletService {
                     .preview_peercoin_owned_send(chain, &wallet_id, &amount, &destination)
                     .await?,
             }),
-            Chain::BitcoinCash | Chain::BitcoinSV => self
-                .fetch_utxo_fee_preview(chain, address, 0, destination)
-                .await?
-                .map(|preview| SendPreview::Utxo { preview }),
-            Chain::Dogecoin => {
-                // This legacy provider preview accepts a display amount; signing parses the exact input separately.
-                self.fetch_dogecoin_send_preview(address, amount.clone())
-                    .await?
-                    .map(|preview| SendPreview::Dogecoin { preview })
-            }
             Chain::Tron => crate::send::preview_decode::build_tron_send_preview_record(
                 self.fetch_tron_send_preview_json_on_chain(
                     chain,
@@ -500,7 +493,6 @@ impl SendPreview {
     fn network_fee(&self) -> &str {
         match self {
             Self::Utxo { preview } => &preview.estimatedNetworkFee,
-            Self::Dogecoin { preview } => &preview.estimatedNetworkFee,
             Self::Ethereum { preview } => &preview.estimatedNetworkFee,
             Self::Tron { preview } => &preview.estimatedNetworkFee,
             Self::Solana { preview } => &preview.estimatedNetworkFee,
@@ -655,9 +647,6 @@ impl WalletService {
                 ) =>
             {
                 Some(preview.estimatedFeeRateSatVb.to_string())
-            }
-            Some(SendPreview::Dogecoin { preview }) => {
-                Some(preview.estimatedFeeRateDogePerKb.clone())
             }
             _ => None,
         };
@@ -857,7 +846,7 @@ impl WalletService {
                 self.owned_addresses_for_wallet(wallet.id.clone(), Some(chain))
                     .await,
             );
-            if chain.supports_deep_utxo_discovery() && wallet.chain_id == chain {
+            if chain.uses_account_utxo() && wallet.chain_id == chain {
                 owned.extend(self.known_utxo_addresses(wallet.id.clone(), chain).await?);
             }
         }

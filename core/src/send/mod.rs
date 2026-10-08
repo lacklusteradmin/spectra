@@ -16,6 +16,7 @@ pub mod transfer;
 pub mod verification;
 
 // Per-chain write-path: build / sign / broadcast transaction methods.
+pub(crate) mod account_utxo;
 pub(crate) mod accounting;
 pub mod aptos;
 #[cfg(test)]
@@ -23,18 +24,14 @@ pub mod aptos;
 mod audit_tests;
 mod bcs;
 pub mod bitcoin;
-pub mod bitcoin_cash;
-pub mod bitcoin_gold;
-pub mod bitcoin_sv;
 pub(crate) mod bitcoin_wire;
 pub mod cardano;
-pub mod dash;
 pub mod decred;
-pub mod dogecoin;
 pub mod evm;
 pub(crate) mod icp_stages;
 pub(crate) mod icp_staking;
 pub mod kaspa;
+pub(crate) mod legacy_p2pkh;
 pub mod litecoin;
 pub(crate) mod litecoin_mweb;
 pub(crate) mod litecoin_quote;
@@ -43,6 +40,7 @@ pub mod near;
 pub mod peercoin;
 pub mod polkadot;
 pub mod polkadot_pools;
+pub(crate) mod psbt;
 pub mod solana;
 pub(crate) mod solana_token;
 pub mod stellar;

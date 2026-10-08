@@ -38,7 +38,8 @@ extension WalletView {
             restoreHeight: nil,
             hiddenHoldings: [],
             icpPrincipal: nil,
-            nearAccountKey: nil
+            nearAccountKey: nil,
+            multisigDescriptor: nil
         )
     }
 
@@ -85,7 +86,7 @@ extension WalletView {
             restoreHeight: restoreHeight,
             hiddenHoldings: hiddenHoldings,
             icpPrincipal: icpPrincipal,
-            nearAccountKey: nearAccountKey)
+            nearAccountKey: nearAccountKey, multisigDescriptor: multisigDescriptor)
     }
 }
 

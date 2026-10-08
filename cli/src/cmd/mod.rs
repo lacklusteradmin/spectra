@@ -6,6 +6,7 @@ pub mod alert;
 pub mod chain;
 pub mod diagnostics;
 pub mod market;
+pub mod psbt;
 pub mod refresh;
 pub mod rescan;
 pub mod settings;

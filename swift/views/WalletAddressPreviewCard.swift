@@ -61,7 +61,8 @@ struct WalletAddressPreviewCard: View {
     private var caption: String {
         switch draft.method {
         case .createPhrase: AppLocalization.string("Your new wallet receives at this address.")
-        case .watchAddresses, .watchAccountXpub: AppLocalization.string("Spectra will watch what is listed here.")
+        case .watchAddresses, .watchAccountXpub, .watchViewKey, .watchMultisig:
+            AppLocalization.string("Spectra will watch what is listed here.")
         default: AppLocalization.string("Check that it matches the wallet you are restoring before you continue.")
         }
     }

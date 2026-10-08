@@ -70,24 +70,33 @@ const PERSONAL_TX_PREVOUTS: &[u8] = b"ZTxIdPrevoutHash";
 const PERSONAL_TX_SEQUENCE: &[u8] = b"ZTxIdSequencHash";
 const PERSONAL_TX_SIG_DIGEST: &[u8] = b"Zcash___TxInHash";
 
+/// Sign a transparent V5 transaction spending `utxos`, each with the key of
+/// the same index in `private_keys`, whose P2PKH script it must pay.
 pub(crate) fn sign_transaction(
     utxos: &[(String, u32, u64, Vec<u8>)],
+    private_keys: &[&[u8]],
     outputs: &[(Vec<u8>, u64)],
     expiry_height: u32,
-    private_key_bytes: &[u8],
     network_upgrade: ZcashNetworkUpgrade,
 ) -> Result<(Vec<u8>, String), SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
-    let key = SecretKey::from_slice(private_key_bytes).map_err(SendError::invalid)?;
-    let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &key).serialize();
-    let expected_script = p2pkh_script(&crate::derivation::bitcoin::hash160(&pubkey_bytes));
-    if utxos.is_empty() || utxos.iter().any(|u| u.3 != expected_script) {
+    if utxos.is_empty() || utxos.len() != private_keys.len() {
         return Err(SendError::Invalid(
             "Zcash input does not belong to the signing key".into(),
         ));
     }
-    let secret_key = key;
+    let mut keys = Vec::with_capacity(utxos.len());
+    for (utxo, private_key) in utxos.iter().zip(private_keys) {
+        let key = SecretKey::from_slice(private_key).map_err(SendError::invalid)?;
+        let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &key).serialize();
+        if utxo.3 != p2pkh_script(&crate::derivation::bitcoin::hash160(&pubkey_bytes)) {
+            return Err(SendError::Invalid(
+                "Zcash input does not belong to the signing key".into(),
+            ));
+        }
+        keys.push((key, pubkey_bytes));
+    }
     // Per-tx digests that are constant across all inputs.
     let prevouts_digest = compute_prevouts_digest(utxos)?;
     let amounts_digest = compute_amounts_digest(utxos);
@@ -99,7 +108,8 @@ pub(crate) fn sign_transaction(
     let orchard_digest = compute_empty_orchard_digest();
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::with_capacity(utxos.len());
-    for (txid, vout, value, script_pubkey) in utxos {
+    for ((txid, vout, value, script_pubkey), (secret_key, pubkey_bytes)) in utxos.iter().zip(&keys)
+    {
         let txin_sig_digest = compute_txin_sig_digest(txid, *vout, *value, script_pubkey)?;
         let transparent_digest = compute_transparent_sig_digest(
             &prevouts_digest,
@@ -118,7 +128,7 @@ pub(crate) fn sign_transaction(
         );
 
         let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
-        let sig = secp.sign_ecdsa(&msg, &secret_key);
+        let sig = secp.sign_ecdsa(&msg, secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL as u8);
 
@@ -127,7 +137,7 @@ pub(crate) fn sign_transaction(
         script_sig.push(der.len() as u8);
         script_sig.extend_from_slice(&der);
         script_sig.push(pubkey_bytes.len() as u8);
-        script_sig.extend_from_slice(&pubkey_bytes);
+        script_sig.extend_from_slice(pubkey_bytes);
 
         let mut inp = Vec::new();
         inp.extend_from_slice(&decode_txid_le(txid)?);
@@ -329,6 +339,89 @@ mod expiry_tests {
 #[cfg(test)]
 mod zip244_tests {
     use super::*;
+
+    /// Three inputs on two keys: each signature is its own key's, over the
+    /// ZIP-244 digest of its own input (the digest the reference vector
+    /// below pins), and a key that does not own its input signs nothing.
+    #[test]
+    fn each_input_signs_with_the_key_of_the_address_it_pays() {
+        let secp = secp256k1::Secp256k1::new();
+        let keys = [[3u8; 32], [4u8; 32]];
+        let public: Vec<[u8; 33]> = keys
+            .iter()
+            .map(|key| {
+                secp256k1::PublicKey::from_secret_key(
+                    &secp,
+                    &secp256k1::SecretKey::from_slice(key).unwrap(),
+                )
+                .serialize()
+            })
+            .collect();
+        let script =
+            |owner: usize| p2pkh_script(&crate::derivation::bitcoin::hash160(&public[owner]));
+        let owners = [0usize, 1, 0];
+        let inputs: Vec<_> = owners
+            .iter()
+            .enumerate()
+            .map(|(index, owner)| {
+                (
+                    format!("{index:02x}").repeat(32),
+                    index as u32,
+                    100_000,
+                    script(*owner),
+                )
+            })
+            .collect();
+        let outputs = vec![(script(1), 150_000), (script(0), 140_000)];
+        let signing: Vec<&[u8]> = owners.iter().map(|owner| keys[*owner].as_slice()).collect();
+        let upgrade = ZcashNetworkUpgrade::NU5;
+        let (raw, _) = sign_transaction(&inputs, &signing, &outputs, 2_000_040, upgrade).unwrap();
+        // Header 20 bytes, then the input count.
+        let mut at = 21;
+        for (index, owner) in owners.iter().enumerate() {
+            at += 36;
+            let script_len = usize::from(raw[at]);
+            let script_sig = &raw[at + 1..at + 1 + script_len];
+            let der_len = usize::from(script_sig[0]);
+            let der = &script_sig[1..der_len];
+            assert_eq!(script_sig[der_len], SIGHASH_ALL as u8);
+            assert_eq!(&script_sig[der_len + 2..], public[*owner]);
+            let transparent = compute_transparent_sig_digest(
+                &compute_prevouts_digest(&inputs).unwrap(),
+                &compute_amounts_digest(&inputs),
+                &compute_scripts_digest(&inputs),
+                &compute_sequence_digest(inputs.len()),
+                &compute_outputs_digest(&outputs),
+                &compute_txin_sig_digest(
+                    &inputs[index].0,
+                    inputs[index].1,
+                    inputs[index].2,
+                    &inputs[index].3,
+                )
+                .unwrap(),
+            );
+            let digest = compute_zip244_txid_digest(
+                &compute_header_digest(2_000_040, upgrade),
+                &transparent,
+                &compute_empty_sapling_digest(),
+                &compute_empty_orchard_digest(),
+                upgrade,
+            );
+            secp.verify_ecdsa(
+                &secp256k1::Message::from_digest(digest),
+                &secp256k1::ecdsa::Signature::from_der(der).unwrap(),
+                &secp256k1::PublicKey::from_slice(&public[*owner]).unwrap(),
+            )
+            .unwrap();
+            at += 1 + script_len + 4;
+        }
+        let swapped: Vec<&[u8]> = owners
+            .iter()
+            .map(|owner| keys[1 - owner].as_slice())
+            .collect();
+        assert!(sign_transaction(&inputs, &swapped, &outputs, 2_000_040, upgrade).is_err());
+        assert!(sign_transaction(&inputs, &signing[..2], &outputs, 2_000_040, upgrade).is_err());
+    }
     #[test]
     fn transparent_signature_and_txid_match_official_python_reference() {
         // Generated with zcash/zcash-test-vectors zip_0244.py signature_digest
@@ -340,9 +433,9 @@ mod zip244_tests {
         let outputs = vec![(script.clone(), 100_000), (script, 890_000)];
         let (raw, txid) = sign_transaction(
             &inputs,
+            &[&key],
             &outputs,
             3_400_040,
-            &key,
             ZcashNetworkUpgrade {
                 version_group_id: 0x26a7_270a,
                 consensus_branch_id: 0x5437_f330,
@@ -374,9 +467,9 @@ mod zip244_tests {
         assert!(
             sign_transaction(
                 &inputs,
+                &[&[2; 32]],
                 &outputs,
                 3_400_040,
-                &[2; 32],
                 ZcashNetworkUpgrade::NU5
             )
             .is_err()

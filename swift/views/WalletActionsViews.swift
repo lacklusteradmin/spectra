@@ -7,6 +7,7 @@ extension WalletAction {
     var title: String {
         switch self {
         case .send: AppLocalization.string("Send")
+        case .psbts: AppLocalization.string("PSBTs")
         case .receive: AppLocalization.string("Receive")
         case .history: AppLocalization.string("History")
         case .openInExplorer: AppLocalization.string("Explorer")
@@ -38,6 +39,7 @@ extension WalletAction {
     var systemImage: String {
         switch self {
         case .send: "arrow.up"
+        case .psbts: "signature"
         case .receive: "arrow.down"
         case .history: "clock.arrow.circlepath"
         case .openInExplorer: "safari"

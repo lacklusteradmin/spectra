@@ -47,7 +47,8 @@ pub enum WalletCommand {
     New(NewArgs),
     /// Import a wallet from a seed phrase or raw private key.
     Import(ImportArgs),
-    /// Track addresses or a Bitcoin account xpub without its keys.
+    /// Track addresses, an account public key, or a Monero wallet's address
+    /// with its view key, without the keys that spend.
     Watch(WatchArgs),
     /// The ways a wallet can be added on a network, and what each accepts.
     Methods {
@@ -212,7 +213,8 @@ pub struct CreationArgs {
     #[arg(long)]
     name: Option<String>,
     /// Derivation path, for a path no profile names (default: the chain's
-    /// default profile at account 0).
+    /// default profile at account 0). On Polkadot and Bittensor, Substrate
+    /// junctions such as `//polkadot//0/1` (default: the root key).
     #[arg(long, conflicts_with_all = ["profile", "account"])]
     path: Option<String>,
     /// Derivation profile, as `wallet methods` lists it: `standard`,
@@ -324,11 +326,24 @@ pub struct WatchArgs {
     chain: String,
     /// Address to track. Repeat it to watch several: an import creates one
     /// wallet per address, which is what the app's multi-line input does.
-    #[arg(long, required_unless_present = "xpub", conflicts_with = "xpub")]
+    #[arg(long, required_unless_present_any = ["xpub", "descriptor"], conflicts_with = "xpub")]
     address: Vec<String>,
-    /// Bitcoin account public key: xpub/ypub/zpub or testnet tpub/upub/vpub.
-    #[arg(long, required_unless_present = "address", conflicts_with = "address")]
+    /// Account public key, in an encoding the network's wallets write
+    /// (`wallet methods --chain` lists them): xpub/ypub/zpub, Ltub, dgub, kpub….
+    #[arg(long, required_unless_present_any = ["address", "descriptor"], conflicts_with = "address")]
     xpub: Option<String>,
+    /// A Monero wallet's private view key, with its primary address as
+    /// `--address`: the wallet scans what it receives and cannot spend.
+    #[arg(long, requires = "address", conflicts_with = "xpub")]
+    view_key: Option<String>,
+    /// A Bitcoin multisig account's wsh(sortedmulti(…)) descriptor, keys
+    /// with their origins. A cosigner's phrase imported with `--upgrade`
+    /// lets the wallet sign its share.
+    #[arg(long, conflicts_with_all = ["address", "xpub", "view_key"])]
+    descriptor: Option<String>,
+    /// Block height a view-only Monero wallet's scan starts at.
+    #[arg(long, requires = "view_key")]
+    restore_height: Option<u64>,
     /// Wallet name (default: core assigns an available "Wallet N").
     #[arg(long)]
     name: Option<String>,
@@ -537,7 +552,8 @@ pub struct CopyArgs {
     #[arg(long)]
     name: Option<String>,
     /// A phrase's derivation path on the new network, for a path no profile
-    /// names (default: the network's default profile at account 0).
+    /// names (default: the network's default profile at account 0). On
+    /// Polkadot and Bittensor, Substrate junctions (default: the root key).
     #[arg(long, conflicts_with_all = ["profile", "account"])]
     path: Option<String>,
     /// A phrase's derivation profile on the new network.
@@ -1510,7 +1526,11 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     // app's watch-addresses picker is built from, so the two answer alike, and
     // "core considered it and said no" is exit 3 rather than the exit 1 an
     // error escaping the planner produced.
-    if !chain.supports_watch_only_import() {
+    if args.view_key.is_none()
+        && args.xpub.is_none()
+        && args.descriptor.is_none()
+        && !chain.supports_watch_only_import()
+    {
         return Err(CliError::rejected(format!(
             "{} cannot be watched without its keys",
             chain.chain_display_name()
@@ -1520,21 +1540,31 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
 
     // Core mints one id per wallet it plans, which for a watch-only import is
     // one per address entry.
-    let kind = match args.xpub {
-        Some(xpub) => WalletImportKind::WatchAccountXpub { xpub },
-        None => WalletImportKind::WatchAddresses {
+    let kind = match (args.xpub, args.view_key) {
+        _ if args.descriptor.is_some() => WalletImportKind::WatchMultisig {
+            descriptor: args.descriptor.unwrap_or_default(),
+        },
+        (Some(xpub), _) => WalletImportKind::WatchAccountXpub { xpub },
+        (None, Some(view_key)) => {
+            let [address] = <[String; 1]>::try_from(args.address).map_err(|_| {
+                CliError::rejected("A view key watches one address: its wallet's primary address")
+            })?;
+            WalletImportKind::WatchViewKey { address, view_key }
+        }
+        (None, None) => WalletImportKind::WatchAddresses {
             addresses: args.address,
         },
     };
-    let request = request_for(chain, &name, kind);
+    let mut commit = commit_for(request_for(chain, &name, kind));
+    commit.restore_height = args.restore_height;
     if args.preview {
-        return preview(ctx, out, commit_for(request));
+        return preview(ctx, out, commit);
     }
 
     let service = ctx.service()?;
     let outcome = ctx
         .rt
-        .block_on(service.import_wallets(commit_for(request)))
+        .block_on(service.import_wallets(commit))
         .map_err(CliError::from)?;
 
     // One wallet per address entry, which is what the planner expanded them
@@ -1578,8 +1608,15 @@ fn methods(out: Out, chain: &str) -> CliResult<()> {
         WalletSetupMethod::ImportPhrase => "import a phrase",
         WalletSetupMethod::ImportPrivateKey => "import a private key",
         WalletSetupMethod::WatchAddresses => "watch addresses",
-        WalletSetupMethod::WatchAccountXpub => "watch an account xpub",
+        WalletSetupMethod::WatchAccountXpub => "watch an account key",
+        WalletSetupMethod::WatchViewKey => "watch with a view key",
+        WalletSetupMethod::WatchMultisig => "watch a multisig",
     };
+    // An account key is named by the prefixes this network writes it with.
+    let account_key = format!(
+        "account public key ({})",
+        chain.account_key_prefixes().join(", ")
+    );
     let format_name = |format: WalletSecretFormat| match format {
         WalletSecretFormat::Bip39Phrase => "BIP-39 phrase (12–24 words)",
         WalletSecretFormat::MoneroPhrase => "Monero seed (25 words)",
@@ -1594,7 +1631,9 @@ fn methods(out: Out, chain: &str) -> CliResult<()> {
         WalletSecretFormat::AptosPrivateKey => "AIP-80 key (ed25519-priv-0x…)",
         WalletSecretFormat::NearSecretKey => "key string (ed25519:…)",
         WalletSecretFormat::Address => "address",
-        WalletSecretFormat::AccountXpub => "account xpub",
+        WalletSecretFormat::AccountXpub => account_key.as_str(),
+        WalletSecretFormat::MoneroViewKey => "private view key (64 hex)",
+        WalletSecretFormat::MultisigDescriptor => "wsh(sortedmulti(…)) descriptor",
     };
     out.text(|| {
         println!();
@@ -1613,6 +1652,9 @@ fn methods(out: Out, chain: &str) -> CliResult<()> {
                     }
                     spectra_core::derivation::setup::WalletSetupField::TonWalletVersion => {
                         "--ton-wallet"
+                    }
+                    spectra_core::derivation::setup::WalletSetupField::JunctionPath => {
+                        "--path //hard/soft"
                     }
                 })
                 .collect();
@@ -1648,6 +1690,7 @@ fn methods(out: Out, chain: &str) -> CliResult<()> {
         "chain": chain.str_id(),
         "options": serde_json::to_value(&descriptor.options)
             .map_err(|e| CliError::failure(e.to_string()))?,
+        "account_key_prefixes": chain.account_key_prefixes(),
     }));
     Ok(())
 }
@@ -1998,30 +2041,12 @@ fn copy_targets(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 fn copy(ctx: &Ctx, out: Out, args: CopyArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&args.chain)?;
-    let path = if args.path.is_some() {
-        args.path.clone()
-    } else if args.profile.is_some() || args.account.is_some() {
-        let profile = match &args.profile {
-            Some(name) => serde_json::from_value(serde_json::Value::String(name.clone()))
-                .map_err(|_| CliError::usage(format!("unknown derivation profile {name:?}")))?,
-            None => *chain.derivation_profiles().first().ok_or_else(|| {
-                CliError::rejected(format!(
-                    "{} derives without a derivation path",
-                    chain.chain_display_name()
-                ))
-            })?,
-        };
-        Some(
-            spectra_core::derivation::path::derivation_profile_path(
-                chain,
-                profile,
-                args.account.unwrap_or(0),
-            )
-            .map_err(CliError::from)?,
-        )
-    } else {
-        None
-    };
+    let path = chosen_path(
+        chain,
+        args.path.as_deref(),
+        args.profile.as_deref(),
+        args.account,
+    )?;
     // The source's password opens its seal and seals the copy; a watched
     // wallet has neither.
     let password = if wallet.signing.requires_password() {
@@ -2287,29 +2312,48 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 /// profile's path from core, or `None` for core's default. Core refuses a path
 /// that does not parse, and one on a chain that derives without a path.
 fn derivation_path(chain: Chain, args: &CreationArgs) -> CliResult<Option<String>> {
-    if args.path.is_some() {
-        return Ok(args.path.clone());
+    chosen_path(
+        chain,
+        args.path.as_deref(),
+        args.profile.as_deref(),
+        args.account,
+    )
+}
+
+/// The path `--path`, or `--profile` and `--account`, name on `chain`;
+/// `None` takes the chain's default. Core judges a typed path.
+fn chosen_path(
+    chain: Chain,
+    path: Option<&str>,
+    profile: Option<&str>,
+    account: Option<u32>,
+) -> CliResult<Option<String>> {
+    if let Some(path) = path {
+        return Ok(Some(path.to_string()));
     }
-    if args.profile.is_none() && args.account.is_none() {
+    if profile.is_none() && account.is_none() {
         return Ok(None);
     }
-    let profile = match &args.profile {
-        Some(name) => serde_json::from_value(serde_json::Value::String(name.clone()))
+    let profile = match profile {
+        Some(name) => serde_json::from_value(serde_json::Value::String(name.to_string()))
             .map_err(|_| CliError::usage(format!("unknown derivation profile {name:?}")))?,
         None => *chain.derivation_profiles().first().ok_or_else(|| {
-            CliError::rejected(format!(
-                "{} derives without a derivation path",
-                chain.chain_display_name()
-            ))
+            CliError::rejected(if chain.derives_along_junctions() {
+                format!(
+                    "{} derives along a junction path (--path //hard/soft), not a profile",
+                    chain.chain_display_name()
+                )
+            } else {
+                format!(
+                    "{} derives without a derivation path",
+                    chain.chain_display_name()
+                )
+            })
         })?,
     };
-    spectra_core::derivation::path::derivation_profile_path(
-        chain,
-        profile,
-        args.account.unwrap_or(0),
-    )
-    .map(Some)
-    .map_err(CliError::from)
+    spectra_core::derivation::path::derivation_profile_path(chain, profile, account.unwrap_or(0))
+        .map(Some)
+        .map_err(CliError::from)
 }
 
 /// The watched wallet `--upgrade` names, by id.

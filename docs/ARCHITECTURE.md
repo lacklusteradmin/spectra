@@ -219,11 +219,16 @@ panic when broken, since a broken embedded file is a build defect.
   format, which `send::litecoin_mweb` builds with. It depends on nothing
   above it; `fetch`, `send`, `staking` and `service` call it.
 - `service/network.rs` owns endpoint health and status probes. Its siblings
-  `network_balance`, `network_tokens`, `network_history`, `network_hd` and
+  `network_balance`, `network_tokens`, `network_history` and
   `network_prices` own the corresponding reads and dispatch.
-- `service/history_bitcoin.rs` selects wallet/network/HD scope and persists
-  results. `fetch/bitcoin_history.rs` owns provider pagination and buffered
-  block-cohort aggregation; a display limit never means provider exhaustion.
+- `service/history_refresh.rs` reads an account UTXO wallet's history over
+  every address its account is known to hold. `fetch/bitcoin_history.rs`
+  owns provider pagination and buffered block-cohort aggregation; a display
+  limit never means provider exhaustion.
+- `derivation/multisig.rs` reads a multisig account's descriptor into its
+  policy; `send/psbt.rs` builds, reviews, signs, combines and finalizes its
+  PSBTs without I/O; `service/psbt.rs` keeps the sessions (`psbt_sessions`)
+  and reads the indexer before a signature or a broadcast.
 - `send/bitcoin_wire.rs` contains only Bitcoin-format serialization.
   Other UTXO protocols must establish byte compatibility before reusing it.
   Kaspa owns its own hash preimage encoding. Solana compiles a unique account

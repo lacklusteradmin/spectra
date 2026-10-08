@@ -81,26 +81,16 @@ impl PreparedPolkadotTransaction {
         self.extrinsic([0; 64])
     }
 
-    pub fn sign(
-        &self,
-        private_key: &[u8; 32],
-        public_key: &[u8; 32],
-    ) -> Result<Vec<u8>, SendError> {
-        let mini =
-            schnorrkel::MiniSecretKey::from_bytes(private_key).map_err(SendError::invalid)?;
-        let pair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
-        let pair = if pair.public.to_bytes() == self.sender {
-            pair
-        } else {
-            // The derivation API also offers Uniform expansion. Select it
-            // only when its derived public key equals the reviewed account.
-            mini.expand_to_keypair(schnorrkel::ExpansionMode::Uniform)
-        };
-        if pair.public.to_bytes() != self.sender || *public_key != self.sender {
+    /// Sign with `private_key`, the sender's sr25519 seed or a soft
+    /// junction's expanded key (`substrate_path::signing_keypair`).
+    pub fn sign(&self, private_key: &[u8], public_key: &[u8; 32]) -> Result<Vec<u8>, SendError> {
+        if *public_key != self.sender {
             return Err(SendError::invalid(
                 "sr25519 key does not match the reviewed sender",
             ));
         }
+        let pair = crate::derivation::substrate_path::signing_keypair(private_key, &self.sender)
+            .map_err(|_| SendError::invalid("sr25519 key does not match the reviewed sender"))?;
         let payload = self.signing_payload()?;
         let input = if payload.len() > 256 {
             blake2b_256(&payload).to_vec()

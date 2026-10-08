@@ -134,11 +134,7 @@ fn signed_transaction_pays_the_script_each_address_names() {
             ),
             (from_script.clone(), 40_000),
         ];
-        let prepared = PreparedDecredTransaction {
-            inputs: inputs.clone(),
-            outputs: outputs.clone(),
-        };
-        let raw = hex::decode(prepared.sign(&key).unwrap()).unwrap();
+        let raw = sign_dcr_tx(&inputs, &outputs, &[&key]).unwrap();
         let (decoded, scripts) = decode(&raw);
         assert_eq!(
             decoded,
@@ -168,46 +164,102 @@ fn signed_transaction_pays_the_script_each_address_names() {
 }
 
 /// A recipient on the other network, or of a form these sends cannot pay, is
-/// refused before the node is asked for anything: this client has no node.
-#[tokio::test]
-async fn refuses_a_recipient_before_reading_inputs() {
-    let client = InsightClient::new(std::sync::Arc::new(Vec::new()));
-    for (chain, sender, recipient) in [
-        (
-            Chain::Decred,
-            "DsUZxxoHJSty8DCfwfartwTYbuhmVct7tJu",
-            "TccWLgcquqvwrfBocq5mcK5kBiyw8MvyvCi",
-        ),
-        (
-            Chain::DecredTestnet,
-            "Tso2MVTUeVrjHTBFedFhiyM7yVTbieqp91h",
-            "DcuQKx8BES9wU7C6Q5VmLBjw436r27hayjS",
-        ),
+/// refused from its address alone, and so is a script-hash sender.
+#[test]
+fn refuses_a_recipient_before_reading_inputs() {
+    for (chain, recipient) in [
+        (Chain::Decred, "TccWLgcquqvwrfBocq5mcK5kBiyw8MvyvCi"),
+        (Chain::DecredTestnet, "DcuQKx8BES9wU7C6Q5VmLBjw436r27hayjS"),
         // dcrd's Schnorr pubkey-hash vector: a valid address on the network,
         // whose script this send does not build.
-        (
-            Chain::Decred,
-            "DsUZxxoHJSty8DCfwfartwTYbuhmVct7tJu",
-            "DSXcZv4oSRiEoWL2a9aD8sgfptRo1YEXNKj",
-        ),
+        (Chain::Decred, "DSXcZv4oSRiEoWL2a9aD8sgfptRo1YEXNKj"),
     ] {
         assert!(!flow::is_valid_send_address(chain, recipient.to_string()));
-        let error = prepare_transfer(&client, chain, sender, recipient, 1_000, 100, None)
-            .await
-            .unwrap_err();
+        let error = recipient_script(chain, recipient).unwrap_err();
         assert!(matches!(error, SendError::Derivation(_)), "{error:?}");
     }
     // A script hash cannot be the sender: the wallet's key signs P2PKH.
-    let error = prepare_transfer(
-        &client,
-        Chain::Decred,
-        "DcuQKx8BES9wU7C6Q5VmLBjw436r27hayjS",
-        "DsUZxxoHJSty8DCfwfartwTYbuhmVct7tJu",
-        1_000,
-        100,
-        None,
-    )
-    .await
-    .unwrap_err();
+    let error = sender_script(Chain::Decred, "DcuQKx8BES9wU7C6Q5VmLBjw436r27hayjS").unwrap_err();
     assert!(matches!(error, SendError::Derivation(_)), "{error:?}");
+    assert!(sender_script(Chain::Decred, "DsUZxxoHJSty8DCfwfartwTYbuhmVct7tJu").is_ok());
+}
+
+/// Three inputs on two keys: each signature script carries its own input's
+/// key and signs its own input's dcrd signature hash; a key that does not
+/// own its input signs nothing.
+#[test]
+fn each_input_signs_with_the_key_of_the_address_it_pays() {
+    let secp = secp256k1::Secp256k1::new();
+    let keys = [[5u8; 32], [6u8; 32]];
+    let public: Vec<_> = keys
+        .iter()
+        .map(|key| {
+            secp256k1::PublicKey::from_secret_key(
+                &secp,
+                &secp256k1::SecretKey::from_slice(key).unwrap(),
+            )
+        })
+        .collect();
+    let script = |owner: usize| {
+        ParsedUtxoAddress::P2pkh(crate::derivation::decred::dcr_hash160(
+            &public[owner].serialize(),
+        ))
+        .script_pubkey()
+    };
+    let owners = [0usize, 1, 0];
+    let utxos: Vec<(String, u32, u64, Vec<u8>)> = owners
+        .iter()
+        .enumerate()
+        .map(|(index, owner)| {
+            (
+                format!("{index:02x}").repeat(32),
+                index as u32,
+                100_000,
+                script(*owner),
+            )
+        })
+        .collect();
+    let outputs = vec![(script(1), 150_000), (script(0), 140_000)];
+    let signing: Vec<_> = utxos
+        .iter()
+        .zip(owners)
+        .map(|(utxo, owner)| DecredSigningInput {
+            utxo,
+            private_key: &keys[owner],
+        })
+        .collect();
+    let raw = sign(&signing, &outputs).unwrap();
+    let (_, scripts) = decode(&raw);
+    let inputs: Vec<DcrInputBuild> = utxos
+        .iter()
+        .map(|utxo| DcrInputBuild {
+            outpoint_txid: decode_txid_le(&utxo.0).unwrap(),
+            vout: utxo.1,
+            tree: TX_TREE_REGULAR,
+            sequence: 0xFFFF_FFFF,
+            amount: utxo.2,
+            script_pubkey: utxo.3.clone(),
+        })
+        .collect();
+    let prefix_hash = blake256(&serialize_prefix(&inputs, &outputs, 0, 0));
+    for (index, owner) in owners.iter().enumerate() {
+        let sig_script = &scripts[index];
+        let der_length = usize::from(sig_script[0]);
+        assert_eq!(&sig_script[der_length + 2..], public[*owner].serialize());
+        secp.verify_ecdsa(
+            &secp256k1::Message::from_digest(signature_hash(&inputs, &prefix_hash, index)),
+            &secp256k1::ecdsa::Signature::from_der(&sig_script[1..der_length]).unwrap(),
+            &public[*owner],
+        )
+        .unwrap();
+    }
+    let swapped: Vec<_> = utxos
+        .iter()
+        .zip(owners)
+        .map(|(utxo, owner)| DecredSigningInput {
+            utxo,
+            private_key: &keys[1 - owner],
+        })
+        .collect();
+    assert!(sign(&swapped, &outputs).is_err());
 }

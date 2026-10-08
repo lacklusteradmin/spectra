@@ -17,6 +17,321 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-08 — Bitcoin multisig accounts and their PSBTs
+
+- **Before:** every wallet was one key's: no multisig account could be
+  watched or signed for, and no PSBT read or written. A custom Bitcoin
+  indexer could not broadcast at all, since nothing checked its network.
+- **After:** `WalletImportKind::WatchMultisig { descriptor }`
+  (`WalletSetupMethod::WatchMultisig`, `WalletSecretFormat::MultisigDescriptor`,
+  `Chain::supports_multisig` on Bitcoin and its test networks; CLI
+  `wallet watch --descriptor`) stores the policy
+  (`derivation::multisig::MultisigPolicy`) canonically, with its BIP-380
+  checksum, as `WalletState::multisig_descriptor`. Refused before storing:
+  another network's keys, keys without origins or whose depth is not their
+  origin's, a threshold past the keys or above 20 keys, a repeated key, a
+  wrong checksum and every script but `wsh(sortedmulti)`. Its addresses are
+  derived by `UtxoDerivation`'s multisig shape, so discovery, balance,
+  history and rotation are an account's. A direct send is refused and not
+  offered; the `Psbts` action and `spectra psbt create|import|sign|show|list|finalize|broadcast|discard`
+  are its spends, kept in `psbt_sessions`. `send::psbt` builds BIP-174 PSBTs
+  with every key origin, and reviews any PSBT before anything is signed or
+  kept: each input the wallet's script at the place its origins name, change
+  the wallet's script, every signature valid, `SIGHASH_ALL` only; a copy of
+  another transaction is refused rather than combined. A cosigner's phrase
+  imported with `--upgrade` (the app's Add Keys) gives the watched wallet
+  that cosigner's signature (`cosigner_of_phrase`); signing names the review
+  digest and first reads each input from the indexer. A custom Bitcoin
+  indexer is checked by its genesis hash before it broadcasts, like
+  Litecoin's (`Chain::genesis_block_hash`, which replaces
+  `litecoin_genesis`).
+- **Why:** the open item asked for core-owned signing policy, cosigner and
+  script identity, partial signatures, review and finalization, proven
+  against independent PSBTs and refusing foreign inputs, mismatched scripts
+  and changed outputs. The genesis check removes the one gap between the
+  two indexed families that kept a custom Bitcoin endpoint from
+  broadcasting.
+- **CLI check:** `python3 scripts/cli-multisig-psbt.py target/debug/spectra`:
+  a coordinator, cosigner A and cosigner B in three data directories against
+  one loopback Esplora; discovery finds `0/2` and `1/0`, the balance sums
+  three addresses, a direct send is refused; the PSBT spends the two largest
+  outputs with change to `1/1`; A and B sign after their phrases upgrade
+  their copies (an outsider's phrase is refused), a wrong digest, a keyless
+  wallet, another wallet's PSBT, a spent input and an early broadcast are
+  refused; the coordinator joins both copies, and the broadcast transaction
+  carries two signatures and the script on every input.
+- **Verification:** `multisig-psbt.json` from
+  `scripts/generate-multisig-psbt-vectors.cjs` (bitcoinjs-lib 7.0.2, bip32
+  5.0.1, bip39 3.1.0): the 2-of-3's receive and change addresses on mainnet
+  and testnet; its unsigned PSBT reviews and rebuilds to the same unsigned
+  transaction; signed here as A and combined with bitcoinjs-lib's B in
+  either order, the final transaction is bitcoinjs-lib's byte for byte; BIP-380's
+  `raw(deadbeef)#89f8spxm` pins the checksum and the published genesis
+  hashes pin the network check.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1274
+  passed, `scripts/cli-acceptance.sh` 100 passed, `make test-ios` 142 passed
+  on an iPhone simulator.
+
+## 2026-10-08 — A Monero wallet can be watched from its view key
+
+- **Before:** a Monero wallet came only from its phrase. Watch-only was
+  refused, since an address alone cannot scan, and a scan unsealed the
+  spend key every time.
+- **After:** `WalletImportKind::WatchViewKey { address, view_key }`, offered
+  on Monero and its stagenet as `WalletSetupMethod::WatchViewKey` (formats
+  `Address` and `MoneroViewKey`, field `RestoreHeight`), and in the CLI as
+  `wallet watch --address A --view-key K [--restore-height H]`.
+  `derivation::monero::view_keys` refuses before storing: an address of
+  another network, a subaddress or an integrated address, a key that is not
+  64 hex digits of a canonical scalar, and a key whose public point is not
+  the address's view key. The view key is stored at import outside the
+  password, as `{id}.scan-key`, for this and for phrase wallets; a scan
+  without the spend key (`ScanKeys { spend: None }`) needs no password and
+  knows no key image, so `LocalOutput::key_image` is optional,
+  `MoneroSyncStatus` reports `spends_known: false`, the balance is what
+  arrived, and a send is refused. Importing the phrase upgrades the watched
+  wallet in place; outputs without key images make the next scan start over
+  with the spend key. The app's sync card says what the balance cannot see,
+  and Scan Blocks is offered to a view-only wallet as to a signing one.
+- **Why:** the open item asked for view-only import and scanning with
+  public spend and private view keys modelled explicitly, the address
+  checked before storing, and the spent-output limit reported rather than
+  hidden.
+- **CLI check:** `python3 scripts/cli-send-monero.py target/debug/spectra`
+  refuses a wrong key, a subaddress, a stagenet key on mainnet and a view
+  key on Bitcoin; watches the primary address with the key, receives and
+  reports `spends_known: false` without a password, refuses a send, and is
+  upgraded in place by the phrase. `scripts/cli-monero-regtest.py --monerod
+  …` (official monerod v0.18.4.5, offline regtest) scans the view key to
+  every subaddress the phrase wallet found, with a balance above the
+  phrase's, refuses to build, resumes after a restart, and after the
+  upgrade holds the phrase wallet's balance.
+- **Verification:** core: `a_view_key_is_read_only_with_its_own_primary_address`
+  and the setup descriptor's import/refusal test over every network.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1274
+  passed, `scripts/cli-acceptance.sh` 100 passed, `make test-ios` 142 passed
+  on an iPhone simulator. `scripts/cli-monero-regtest.py --monerod` passed
+  against the official monerod v0.18.4.5 (offline regtest), outside `make
+  verify`.
+
+## 2026-10-08 — A Monero wallet watches its subaddresses and rotates its receive address
+
+- **Before:** the scanner registered no subaddress: an output sent to any
+  address but the primary one was never found, and the receive screen
+  always showed the primary address.
+- **After:** a scan watches wallet2's default lookahead
+  (`LOOKAHEAD_ACCOUNTS` 50, `LOOKAHEAD_ADDRESSES` 200) past each account's
+  highest used address and the highest account used, kept as
+  `LocalWallet::used_subaddresses` in the encrypted scan cache, and past
+  the receive index handed out. A block whose outputs widen the window is
+  scanned again under the wider one. Key images and signing take the
+  subaddress offset monero-wallet folds into each output's key offset. The
+  receive address is account 0's at the keypool's reserved index — the
+  primary address, then the next subaddress once an output arrives at the
+  one handed out (`advance_receive_past`) — derived from the stored view
+  key without a password. `MoneroSyncStatus.used_subaddresses` reports each
+  account's highest used index. Balances sum every account; change returns
+  to the primary address.
+- **Why:** the open item: funds sent to a subaddress, the address every
+  Monero wallet hands out, were invisible to a restored wallet.
+- **CLI check:** `scripts/cli-monero-regtest.py --monerod …`: after the
+  primary address receives, `wallet receive` gives wallet2's `0/1`; one
+  block pays `0/1`, `0/199`, `0/300`, `49/199` and `50/0`; the wallet and the
+  phrase restored in another directory report `0/300`, `49/199` and `50/0`
+  as used with equal balances, rotate to the same fresh address, and keep
+  the status across a restart.
+- **Verification:** `monero-subaddresses.json` from
+  `scripts/generate-monero-subaddress-vectors.cjs` (monero-ts 0.11.15,
+  wallet2 in WebAssembly): 26 subaddresses on mainnet and stagenet,
+  including the lookahead edges and two-byte indices; the window test pins
+  the lookahead arithmetic.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1274
+  passed, `scripts/cli-acceptance.sh` 100 passed, `make test-ios` 142 passed
+  on an iPhone simulator. `scripts/cli-monero-regtest.py --monerod` passed
+  against the official monerod v0.18.4.5 (offline regtest), outside `make
+  verify`.
+
+## 2026-10-08 — Every account UTXO network watches an account public key
+
+- **Before:** only Bitcoin and its test networks took an account public key
+  (xpub/ypub/zpub, tpub/upub/vpub), read by `xpub_walker`, which normalised
+  the prefix to `xpub` and accepted a key at any depth: a receive branch's
+  key or a single address's key imported as an "account". On every other
+  UTXO network the setup page offered no account key, so an account a
+  Litecoin, Dogecoin, Dash or Kaspa wallet exported could only be watched one
+  address at a time, with nothing found past the addresses typed.
+- **After:** `Chain::account_key_versions` lists, per network, the encodings
+  its wallets write an account key in and the script each names: SLIP-132's
+  for Bitcoin and Litecoin (`Ltub`, `Mtub`, `zpub`; `ttub` beside
+  `tpub`/`upub`/`vpub` on its testnet), Trezor's coin definitions for
+  Dogecoin's `dgub`, Dash's `drkp`, Decred's `dpub` and testnet `tpub`, and
+  the `xpub`/`tpub` of Bitcoin Cash, Bitcoin SV, Bitcoin Gold, Peercoin,
+  Zcash and Dash; rusty-kaspa's `kpub`/`ktub`. `accepts_account_xpub` is
+  that list being non-empty, which is every account UTXO network, and the
+  setup descriptor offers the watch method from it. `derivation::account_key`
+  reads a key only in its network's own encoding, at an account's depth
+  (`m/purpose'/coin'/account'`, the index hardened), with a valid checksum
+  and point; a sibling network's key is refused as such, any other as not
+  this network's. The watched account derives, scans, rotates and sums its
+  addresses like a phrase wallet's (`UtxoDerivation::from_watched_xpub`).
+  Two keys are one account whatever their encodings (`same_account`), so a
+  phrase restoring a watched Dash `drkp` account upgrades that wallet, and
+  a key already held is refused. `xpub_walker` is deleted. `ChainIdentity`
+  carries `account_key_prefixes`; the app's field and `spectra wallet
+  methods` name the network's prefixes instead of `xpub… / ypub… / zpub…`.
+- **Why:** the open item: account discovery existed on every account UTXO
+  network, but watching an account did not. A key at the wrong depth
+  watched the wrong addresses without a word.
+- **CLI check:** `python3 scripts/cli-account-utxo.py target/debug/spectra`
+  watches the abandon phrase's account key (`zpub`, `xpub`, `dgub`, `drkp`,
+  `dpub`, `kpub`, from `account-keys.json`) on each of its nine networks in
+  a fresh data directory: its receive address is the phrase wallet's, the
+  gap scan finds `/0/7` and `/1/3`, the balance sums all three. The same
+  key is refused where the phrase wallet holds the account, and the
+  network's testnet key (Bitcoin Gold: Litecoin's `Ltub`) is refused.
+  `spectra --json wallet methods --chain litecoin` lists
+  `account_key_prefixes`.
+- **Verification:** `account-keys.json` from
+  `scripts/generate-account-key-vectors.cjs` (bip39 3.1.0, bip32 5.0.1,
+  tiny-secp256k1 2.2.4): 41 keys over 22 networks, each read in its encoding
+  and its first receive address matching `derivation-profiles.json`; every
+  listed encoding has a vector. Bitcoin's zpub is BIP-84's published one.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1274
+  passed, `scripts/cli-acceptance.sh` 100 passed, `make test-ios` 142 passed
+  on an iPhone simulator.
+
+## 2026-10-08 — Every UTXO network's phrase wallet is an account
+
+- **Before:** two models. Litecoin and Peercoin phrase wallets stored their
+  account public key, summed their balance over every owned address and
+  spent from each with its own key. Bitcoin, Bitcoin Cash, Bitcoin SV and
+  Dogecoin rotated receive addresses and gap-scanned the account, but their
+  balance read one address and their sends spent from it alone: the receive
+  screen of a Bitcoin phrase wallet handed out `…/0/1`, and what arrived
+  there counted in no balance and was spent by no send. Bitcoin's history
+  walked a fixed 20 receive and 10 change addresses from the unsealed seed,
+  falling back to one address behind a password, and a watched account's
+  balance walked 20 and 20 without a scan. Zcash, Bitcoin Gold, Decred,
+  Kaspa and Dash held one address: no scan, no rotation, the setup page's
+  "single address" limit. Five fixed-fee signers took one key, two pairs of
+  them byte-for-byte duplicates; most of these networks paid one fixed fee
+  whatever a transaction's size.
+- **After:** `Chain::uses_account_utxo` covers all eleven UTXO families but
+  Cardano and Monero, and is the one model: `supports_deep_utxo_discovery`,
+  `has_single_owned_address` and `WalletSetupLimit::SingleAddress` are gone,
+  and `ChainIdentity` carries `uses_account_utxo`. A phrase wallet stores its
+  account key (`UtxoDerivation::from_account_xpub`, checked against its root
+  address), so the scan and a fresh receive address need no password; a
+  watched account key scans and rotates from itself
+  (`UtxoDerivation::from_watched_xpub`). The scan runs once on its own before
+  an account's balance or history is first read (`discover_account_once`,
+  remembered in `utxo_discoveries`), and on request. Decred and Kaspa answer
+  the scan's activity probe (`InsightClient::has_activity`,
+  `KaspaClient::has_activity`), and their balance and history are read per
+  address like every indexer's (`AccountBalanceReader`,
+  `AccountHistoryReader`). Bitcoin's history is the account history over
+  known addresses, with the page size the caller asks; `history_bitcoin.rs`,
+  the 20-and-20 xpub walk and its send preview are deleted. Sends on every
+  account network but Litecoin and Peercoin build a
+  `PreparedAccountTransfer` (`send/account_utxo.rs`): inputs from every
+  source the account holds, largest first until the amount and its fee are
+  paid, exact outputs with change to the wallet's own address, each input
+  signed with its source's key — `send/bitcoin.rs` for Bitcoin (also
+  Litecoin's signer now, Taproot key-path included),
+  `send/legacy_p2pkh.rs` for Dogecoin and Dash (legacy hash) and Bitcoin
+  Cash, Bitcoin SV and Bitcoin Gold (`SIGHASH_FORKID` with fork ids 0, 0
+  and 79), and Zcash's, Decred's and Kaspa's own signers, each now one key
+  per input. The five old fixed-fee modules are deleted; a key not owning
+  its input's script is refused by every signer. The owned-send preview of
+  all of them is the account preview (`SendPreview::Utxo`; the Dogecoin
+  variant is gone). Fees follow size: Bitcoin's rate over the virtual size,
+  the static fee per started kilobyte on the legacy-format networks, ZIP-317
+  on Zcash, at least ten atoms a byte on Decred and the transaction's mass
+  on Kaspa. Refused now: a phrase path no account of the network's profiles
+  holds, on Bitcoin too (it imported as a lone address before), and a Kaspa
+  coinbase output, whose maturity the indexer does not say. Phrase wallets
+  of these networks export their phrase (and, on Bitcoin, the account key),
+  not one address's private key. The coin listing covers the networks whose
+  indexer counts confirmations, all but Decred and Kaspa.
+- **Why:** the open item asked for account recovery on ZEC, BTG, DCR, KAS
+  and DASH; the networks already said to have it lost funds received at the
+  addresses they handed out. One model for all, and one signer per wire
+  format, replaces a split nobody chose.
+- **CLI check:** `python3 scripts/cli-account-utxo.py target/debug/spectra`
+  on Bitcoin, Bitcoin Cash, Bitcoin SV, Dogecoin, Dash, Bitcoin Gold, Zcash,
+  Decred and Kaspa against their own loopback indexers: a sealed wallet's
+  fresh receive address, a gap scan finding `/0/7` and `/1/3`, the balance
+  over three addresses in a new process, a send selecting the two largest
+  outputs on two addresses whose decoded inputs and outputs are the
+  reviewed ones, and an output spent after review refused at signing.
+- **Verification:** `account-utxo-transactions.json` from
+  `scripts/generate-account-utxo-vectors.cjs` (bitcoinjs-lib 7.0.2, ecpair
+  3.0.1, tiny-secp256k1 2.2.4, kaspa-wasm 0.13.0): three inputs on two keys
+  signed byte for byte on P2PKH, P2WPKH, P2SH-P2WPKH, legacy and both fork
+  ids, Taproot signatures over bitcoinjs-lib's BIP341 sighashes and Kaspa's
+  over kaspa-wasm's; Zcash's and Decred's per-input keys verified over the
+  digests their reference vectors pin.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1274
+  passed, `scripts/cli-acceptance.sh` 100 passed, `make test-ios` 142 passed
+  on an iPhone simulator.
+
+## 2026-10-08 — Polkadot and Bittensor phrases derive along Substrate junction paths
+
+- **Before:** a Polkadot, Westend or Bittensor phrase derived only its
+  sr25519 root key. Import refused any path, but the dispatcher dropped the
+  path it was handed for these chains, and `resolve_derivation_path` turned
+  a path it could not parse as BIP-32 into the chain's default: had a path
+  reached signing, message signing, staking or key export, they would have
+  derived the root key in its place, and only the send's derived-address
+  check would have noticed; export had no such check. Signing took a 32-byte
+  mini secret only. A Polkadot HMAC override other than `uniform` was
+  accepted and ignored, and message signing expanded every seed in Ed25519
+  mode, so a `uniform` wallet signed messages as another account.
+- **After:** a phrase on these chains takes a Substrate path of hard (`//`)
+  and soft (`/`) junctions, as subkey and polkadot.js read a secret URI
+  (`derivation::substrate_path`), and `derives_along_junctions` is the
+  registry fact. A junction's chain code is its number as a 64-bit
+  little-endian integer, or its SCALE-encoded text, BLAKE2b-256-hashed past
+  32 bytes; a hard junction expands the derived mini secret in Ed25519 mode,
+  a soft one derives the key directly. Refused before anything is stored: a
+  path that is not junctions, `///password` (the passphrase, entered as
+  one), `0x` hex junctions (polkadot.js reads bytes, sp-core text) and
+  numbers past 64 bits. The import, its preview, the copy, the signing
+  identity, message signing, staking and export all derive along the stored
+  path; dispatch refuses a path on a chain that derives without one, and
+  `resolve_derivation_path` refuses one that does not parse instead of
+  substituting the default. A key whose junctions are all hard is a seed, as
+  before; after a soft junction it is the 64-byte expanded secret key, which
+  the transaction and message signers take too
+  (`substrate_path::signing_keypair`, matched to the account). Such a wallet
+  exports only its phrase; a hard path exports its derived seed, which
+  imports back as the same account. A Polkadot HMAC override other than
+  `uniform` is refused, and message signing uses whichever expansion gives
+  the address. The setup descriptor offers the path as
+  `WalletSetupField::JunctionPath` on both phrase methods; the app shows it
+  as its own field, and the CLI takes `--path //hard/soft`.
+- **Why:** the open item: a path the user names must derive that account or
+  be refused, never silently the root key; and the paths Polkadot wallets
+  write should restore their accounts.
+- **CLI check:** `python3 scripts/cli-wallets.py target/debug/spectra
+  WalletsTests.test_substrate_junction_paths_import_and_sign_as_polkadot_js_derives`
+  imports `//polkadot//0/1` and `//polkadot//0` on Polkadot, Westend and
+  Bittensor to polkadot.js's addresses, signs a message each verifies, round
+  trips the hard path's exported seed, refuses the soft path's export and
+  refuses `//0x1234`, `//18446744073709551616`, a BIP-32 path, `///secret`
+  and a profile without storing; `scripts/cli-send-polkadot.py` (both
+  chains) signs a transfer from a soft-path wallet whose extrinsic names
+  polkadot.js's public key.
+- **Verification:** `substrate-paths.json` from
+  `scripts/generate-substrate-path-vectors.cjs` (@polkadot/util-crypto
+  14.0.3, @polkadot/keyring 14.0.3, @polkadot/wasm-crypto 7.5.4): fifteen
+  paths' public keys, addresses on prefixes 0 and 42, and the whole secret
+  key of every hard path. Core checks each, and a soft key's signature over
+  a transfer.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1274
+  passed, `scripts/cli-acceptance.sh` 100 passed, `make test-ios` 142 passed
+  on an iPhone simulator.
+
 ## 2026-10-08 — A NEAR wallet gets its token storage deposits back
 
 - **Before:** every NEP-141 contract that had registered the account kept

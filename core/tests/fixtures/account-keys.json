@@ -1,0 +1,252 @@
+{
+  "provenance": "bip39 3.1.0, bip32 5.0.1, tiny-secp256k1 2.2.4 (scripts/generate-account-key-vectors.cjs)",
+  "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "vectors": [
+    {
+      "chain": "bitcoin",
+      "profile": "legacy",
+      "prefix": "xpub",
+      "xpub": "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "nestedSegWit",
+      "prefix": "ypub",
+      "xpub": "ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP"
+    },
+    {
+      "chain": "bitcoin",
+      "profile": "nativeSegWit",
+      "prefix": "zpub",
+      "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "legacy",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "nestedSegWit",
+      "prefix": "upub",
+      "xpub": "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY"
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "profile": "nativeSegWit",
+      "prefix": "vpub",
+      "xpub": "vpub5Y6cjg78GGuNLsaPhmYsiw4gYX3HoQiRBiSwDaBXKUafCt9bNwWQiitDk5VZ5BVxYnQdwoTyXSs2JHRPAgjAvtbBrf8ZhDYe2jWAqvZVnsc"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "legacy",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "nestedSegWit",
+      "prefix": "upub",
+      "xpub": "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY"
+    },
+    {
+      "chain": "bitcoin-testnet-4",
+      "profile": "nativeSegWit",
+      "prefix": "vpub",
+      "xpub": "vpub5Y6cjg78GGuNLsaPhmYsiw4gYX3HoQiRBiSwDaBXKUafCt9bNwWQiitDk5VZ5BVxYnQdwoTyXSs2JHRPAgjAvtbBrf8ZhDYe2jWAqvZVnsc"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "legacy",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "nestedSegWit",
+      "prefix": "upub",
+      "xpub": "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY"
+    },
+    {
+      "chain": "bitcoin-signet",
+      "profile": "nativeSegWit",
+      "prefix": "vpub",
+      "xpub": "vpub5Y6cjg78GGuNLsaPhmYsiw4gYX3HoQiRBiSwDaBXKUafCt9bNwWQiitDk5VZ5BVxYnQdwoTyXSs2JHRPAgjAvtbBrf8ZhDYe2jWAqvZVnsc"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "legacy",
+      "prefix": "Ltub",
+      "xpub": "Ltub2YDQmP391UYeDYvLye9P1SuNJFkcRGN7SYHM8JMxaDnegcPTXHJ2BnYmvHnFnGPGKu2WMuCga6iZV3SDxDMGrRyMcrYEfSPhrpS1EPkC43E"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "nestedSegWit",
+      "prefix": "Mtub",
+      "xpub": "Mtub2rz9F1pkisRsSZX8sa4Ajon9GhPP6JymLgpuHqbYdU5JKFLBF7Qy8b1tZ3dccj2fefrAxfrPdVkpCxuWn3g72UctH2bvJRkp6iFmp8aLeRZ"
+    },
+    {
+      "chain": "litecoin",
+      "profile": "nativeSegWit",
+      "prefix": "zpub",
+      "xpub": "zpub6rPo5mF47z5coVm5rvWv7fv181awb7Vckn5Cf3xQXBVKu18kuBHDhNi1Jrb4br6vVD3ZbrnXemEsWJoR18mZwkUdzwD8TQnHDUCGxqZ6swA"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "legacy",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "nestedSegWit",
+      "prefix": "upub",
+      "xpub": "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "nativeSegWit",
+      "prefix": "vpub",
+      "xpub": "vpub5Y6cjg78GGuNLsaPhmYsiw4gYX3HoQiRBiSwDaBXKUafCt9bNwWQiitDk5VZ5BVxYnQdwoTyXSs2JHRPAgjAvtbBrf8ZhDYe2jWAqvZVnsc"
+    },
+    {
+      "chain": "litecoin-testnet",
+      "profile": "legacy",
+      "prefix": "ttub",
+      "xpub": "ttub4d4VPcY3DBxKCoAjoeDr9q3FaD4dbY89X65XUhapWiaSFbEjYLwnNg2EcHgEVSEALaEVdZnprREdcWMPJxqFkvN89FcPRFBueauxVCvFpUt"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "legacy",
+      "prefix": "xpub",
+      "xpub": "xpub6CTKEV6nTHxzhWMz3vNjiDQqBaUdfNQotXHGrvZJPhvzmR8LAFGLLwsfeWb8pVbZ6qki9A6CwifHuELQuGLZNKfA9zN5Kx4K2oJuSsoXgjn"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "nestedSegWit",
+      "prefix": "ypub",
+      "xpub": "ypub6XT2osgRJ5PKST39dGx76pip7m8VQ7NLZpoh75Zz62v2bHgyyV9B4eByPVrGFr1cmBGnjGf14XNaXY6gVeN7cBmeufUEsr9bVbiuB7J1ueR"
+    },
+    {
+      "chain": "peercoin",
+      "profile": "nativeSegWit",
+      "prefix": "zpub",
+      "xpub": "zpub6qvE1kQLRjT68F7z94qGUHPvPj3AEhteBcw5ByES5KGBSn2KAWmshoXYYKLq344DJvGuhHwXZD8VaQW9zWNk9xG19F5mHaRMKiSzdbczZcP"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "legacy",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "nestedSegWit",
+      "prefix": "upub",
+      "xpub": "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY"
+    },
+    {
+      "chain": "peercoin-testnet",
+      "profile": "nativeSegWit",
+      "prefix": "vpub",
+      "xpub": "vpub5Y6cjg78GGuNLsaPhmYsiw4gYX3HoQiRBiSwDaBXKUafCt9bNwWQiitDk5VZ5BVxYnQdwoTyXSs2JHRPAgjAvtbBrf8ZhDYe2jWAqvZVnsc"
+    },
+    {
+      "chain": "bitcoin-cash",
+      "profile": "standard",
+      "prefix": "xpub",
+      "xpub": "xpub6ByHsPNSQXTWZ7PLESMY2FufyYWtLXagSUpMQq7Un96SiThZH2iJB1X7pwviH1WtKVeDP6K8d6xxFzzoaFzF3s8BKCZx8oEDdDkNnp4owAZ"
+    },
+    {
+      "chain": "bitcoin-cash-testnet",
+      "profile": "standard",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "bitcoin-sv",
+      "profile": "standard",
+      "prefix": "xpub",
+      "xpub": "xpub6CdMDgU2hzWyeZ852LWqp5AfDz3ty2cRfi4jEw9BT8aNYugMQvVykQsKLARZdbqKKp7yTviJdL1N9saYLmJNKD1rwVAwLTmU8r8qKeoyG4R"
+    },
+    {
+      "chain": "bitcoin-sv-testnet",
+      "profile": "standard",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "bitcoin-gold",
+      "profile": "standard",
+      "prefix": "xpub",
+      "xpub": "xpub6BwBY3LGBvGtyVy9wygN7v7yFWsK7g9jv5QwRyprquwhRQTgbXGx4HWPZHRnF5ueji94Dztce4k3RJnt2ir3xWBS7y6bDk8ryS8vKXyoYPL"
+    },
+    {
+      "chain": "zcash",
+      "profile": "standard",
+      "prefix": "xpub",
+      "xpub": "xpub6CLX6bXDznyoBCRaHYmzfApq4dLc34UydL1gRHQTG55pNwbKSC2GvXjTQ4VS3n6P24fRd14uKz7P92xJQ3MWdRzUxGkqiftZf3riboiJLJs"
+    },
+    {
+      "chain": "zcash-testnet",
+      "profile": "standard",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "dash",
+      "profile": "standard",
+      "prefix": "xpub",
+      "xpub": "xpub6CYEjsU6zPM3sADS2ubu2aZeGxCm3C5KabkCpo4rkNbXGAH9M7rRUJ4E5CKiyUddmRzrSCopPzisTBrXkfCD4o577XKM9mzyZtP1Xdbizyk"
+    },
+    {
+      "chain": "dash",
+      "profile": "standard",
+      "prefix": "drkp",
+      "xpub": "drkpRzJp5yxNJdtLq7YmV6Bfg7NtjycEopwQtnqre1mPRoie9DPWBfCu23U5gVteaKYiMF3gaFd88RnZUfowGYoBoR4sWk4RApm4jrbSAGgQUdq"
+    },
+    {
+      "chain": "dash-testnet",
+      "profile": "standard",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "dogecoin",
+      "profile": "standard",
+      "prefix": "dgub",
+      "xpub": "dgub8rUhDtD3YFGZTUphBfpBbzvFxSMKQXYLzg87Me2ta78r2SdVLmypBUkkxrrn9RTnchsyiJSkHZyLWxD13ibBiXtuFWktBoDaGaZjQUBLNLs"
+    },
+    {
+      "chain": "dogecoin-testnet",
+      "profile": "standard",
+      "prefix": "tpub",
+      "xpub": "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"
+    },
+    {
+      "chain": "decred",
+      "profile": "standard",
+      "prefix": "dpub",
+      "xpub": "dpubZFUiMExUREbqJQVJkfXSs4wjUb1jwVkoofnPK8Mt95j3PanCyq9Mc4aFnWtRZkhci9ZYPVLZybVLMMkS6g1nKBTN4899KJwGeVBvyw7k86V"
+    },
+    {
+      "chain": "decred-testnet",
+      "profile": "standard",
+      "prefix": "tpub",
+      "xpub": "tpubVoUcvbCRBDcX3gorLkRiwtNSNYDjxtnHG5pLQwAZvjDhSMzC84Y9hY4MoSKcxsZSmBcRWEYZxZpSbQhRbZrVX2jrjimfnTh45RGMqE5W4wv"
+    },
+    {
+      "chain": "kaspa",
+      "profile": "standard",
+      "prefix": "kpub",
+      "xpub": "kpub2JXpdok4yzBUdLiywgMbE36ixpEnffDhG31kJpRextvhpBQgBJVPcQJ7A99JryUvi8JNBcnzGoiu4qbGcvCfpY1T2RWndCaUjJqhwDSUNw8"
+    },
+    {
+      "chain": "kaspa-testnet",
+      "profile": "standard",
+      "prefix": "ktub",
+      "xpub": "ktub23DkKYbjwxuPoPwqmSYUYnugDU81Zuxj9HJUpyjy8h5gWUS5r9R3BdA8waFJwvrQYuvq9PjaHtspmv5q9FhKHaBp2pxWKVstK42GY4kByCU"
+    }
+  ]
+}

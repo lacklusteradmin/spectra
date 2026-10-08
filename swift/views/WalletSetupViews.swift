@@ -45,7 +45,8 @@ struct SetupView: View {
         switch draft.mode {
         case .edit: return AppLocalization.string("import_flow.save_wallet")
         case .setup(.createPhrase): return AppLocalization.string("import_flow.create_wallet")
-        case .setup(.watchAddresses), .setup(.watchAccountXpub): return AppLocalization.string("import_flow.watch_addresses")
+        case .setup(.watchAddresses), .setup(.watchAccountXpub), .setup(.watchViewKey), .setup(.watchMultisig):
+            return AppLocalization.string("import_flow.watch_addresses")
         case .setup: return AppLocalization.string("import_flow.import_wallet")
         }
     }
@@ -146,9 +147,28 @@ struct SetupView: View {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                     if draft.method == .watchAccountXpub {
                         Text(AppLocalization.string("Account Public Key")).font(.headline).foregroundStyle(Color.primary)
-                        TextField("xpub… / ypub… / zpub…", text: $draft.accountXpubInput).textInputAutocapitalization(.never)
+                        TextField(chain.accountKeyPrefixes.map { "\($0)…" }.joined(separator: " / "), text: $draft.accountXpubInput).textInputAutocapitalization(.never)
                             .autocorrectionDisabled().font(.system(.footnote, design: .monospaced))
                             .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
+                    } else if draft.method == .watchMultisig {
+                        Text(AppLocalization.string("Descriptor")).font(.headline).foregroundStyle(Color.primary)
+                        TextField("wsh(sortedmulti(…))", text: $draft.descriptorInput, axis: .vertical).lineLimit(4...10)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .font(.system(.footnote, design: .monospaced))
+                            .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
+                        Text(AppLocalization.string("Spectra watches the account and builds its PSBTs. To sign, add one cosigner's phrase to the wallet afterwards."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if draft.method == .watchViewKey {
+                        Text(AppLocalization.string("Primary Address")).font(.headline).foregroundStyle(Color.primary)
+                        TextField(chain.displayName, text: $draft.watchOnlyInput).textInputAutocapitalization(.never)
+                            .autocorrectionDisabled().font(.system(.footnote, design: .monospaced))
+                            .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
+                        Text(AppLocalization.string("Private View Key")).font(.headline).foregroundStyle(Color.primary)
+                        TextField(AppLocalization.string("64 hex digits"), text: $draft.viewKeyInput).textInputAutocapitalization(.never)
+                            .autocorrectionDisabled().font(.system(.footnote, design: .monospaced))
+                            .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
+                        Text(AppLocalization.string("A view key shows what the wallet receives, not what it spends: its balance does not drop when it pays from another device."))
+                            .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text(copy.addressesToWatchTitle).font(.headline).foregroundStyle(Color.primary)
                         Text(copy.addressesToWatchSubtitle).font(.subheadline).foregroundStyle(.secondary)
@@ -164,6 +184,7 @@ struct SetupView: View {
                     }
                 }
             }
+            if draft.method == .watchViewKey { RestoreHeightCard(draft: draft) }
             WalletAddressPreviewCard(store: store, draft: draft)
         }
     }

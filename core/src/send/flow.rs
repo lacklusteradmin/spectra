@@ -171,12 +171,9 @@ pub(crate) fn is_ens_name_candidate(value: &str) -> bool {
 /// crosses the FFI.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
 pub enum SendPreview {
-    /// Bitcoin, Bitcoin Cash, Bitcoin SV and Litecoin share one preview shape.
+    /// Every account UTXO network shares one preview shape.
     Utxo {
         preview: BitcoinSendPreview,
-    },
-    Dogecoin {
-        preview: DogecoinSendPreview,
     },
     Ethereum {
         preview: EvmSendPreview,
@@ -259,15 +256,6 @@ pub(crate) fn compute_send_preview_details(
                 p.usesChangeOutput,
                 p.maxSendable,
                 Some(p.estimatedNetworkFee),
-            ),
-            SendPreview::Dogecoin { preview: p } => (
-                Some(p.spendableBalance),
-                p.feeRateDescription,
-                Some(p.estimatedTransactionBytes),
-                Some(p.selectedInputCount),
-                Some(p.usesChangeOutput),
-                Some(p.maxSendable),
-                None,
             ),
             SendPreview::Ethereum { preview: p } => (
                 p.spendableBalance,

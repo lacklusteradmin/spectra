@@ -87,3 +87,37 @@ pub fn keypool_load_all(
         Ok(outer)
     })
 }
+
+/// Record that a gap scan of the wallet's account on `chain_id` ran to its
+/// end, so it is not run again unasked.
+pub fn discovery_save(
+    database: &WalletDatabase,
+    wallet_id: &str,
+    chain_id: crate::registry::Chain,
+) -> Result<(), DbError> {
+    with_conn(database, |conn| {
+        conn.execute(
+            "INSERT INTO utxo_discoveries (wallet_id, chain_id, completed_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(wallet_id, chain_id) DO UPDATE SET completed_at = excluded.completed_at",
+            params![wallet_id, chain_id, now_secs()],
+        )
+        .map_err(DbError::from)?;
+        Ok(())
+    })
+}
+
+/// Every (wallet, chain) whose account has had a complete gap scan.
+pub fn discovery_load_all(
+    database: &WalletDatabase,
+) -> Result<Vec<(String, crate::registry::Chain)>, DbError> {
+    with_conn(database, |conn| {
+        let mut stmt = conn
+            .prepare("SELECT wallet_id, chain_id FROM utxo_discoveries")
+            .map_err(DbError::from)?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get(1)?)))
+            .map_err(DbError::from)?;
+        rows.collect::<Result<_, _>>().map_err(DbError::from)
+    })
+}

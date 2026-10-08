@@ -621,7 +621,7 @@ pub struct ChainKeypoolStateRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainKeypoolBaselineInput {
-    pub supports_deep_utxo_discovery: bool,
+    pub uses_account_utxo: bool,
     pub max_transaction_external_index: Option<i32>,
     pub max_transaction_change_index: Option<i32>,
     pub max_owned_external_index: Option<i32>,
@@ -630,7 +630,7 @@ pub struct ChainKeypoolBaselineInput {
 }
 
 pub fn derive_chain_keypool_baseline(input: ChainKeypoolBaselineInput) -> ChainKeypoolStateRecord {
-    if input.supports_deep_utxo_discovery {
+    if input.uses_account_utxo {
         let max_external = input.max_transaction_external_index.unwrap_or(-1);
         let max_change = input.max_transaction_change_index.unwrap_or(-1);
         let max_owned_external = input.max_owned_external_index.unwrap_or(0);

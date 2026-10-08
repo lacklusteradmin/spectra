@@ -120,6 +120,7 @@ mod send_chain_tests {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
+            multisig_descriptor: None,
         }
     }
 

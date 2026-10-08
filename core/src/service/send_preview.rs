@@ -155,49 +155,6 @@ impl WalletService {
         }
     }
 
-    pub(crate) async fn fetch_utxo_fee_preview_json(
-        &self,
-        chain: crate::registry::Chain,
-        address: String,
-        fee_rate_svb: u64,
-    ) -> Result<String, SpectraBridgeError> {
-        let family = chain.mainnet_counterpart();
-        if !matches!(
-            family,
-            Chain::Bitcoin | Chain::Dogecoin | Chain::BitcoinCash | Chain::BitcoinSV
-        ) {
-            return Err(SpectraBridgeError::failure(format!(
-                "fetch_utxo_fee_preview_json: unsupported chain: {family:?}"
-            )));
-        }
-        let utxos = self
-            .utxo_client(chain, &[EndpointCapability::Utxo])
-            .await
-            .fetch_utxos(&address)
-            .await?;
-        let rate = if fee_rate_svb > 0 {
-            fee_rate_svb
-        } else {
-            let fees = self.utxo_client(chain, &[EndpointCapability::Fee]).await;
-            match family {
-                // Bitcoin is quoted live, or not previewed.
-                Chain::Bitcoin => fees
-                    .fetch_fee_rate(3)
-                    .await
-                    .map(|r| r.sats_per_vbyte.ceil() as u64)?,
-                // A live quote where one answers, else the relay floor.
-                Chain::BitcoinCash => fees
-                    .fetch_fee_rate(3)
-                    .await
-                    .map(|r| (r.sats_per_vbyte.ceil() as u64).max(1))
-                    .unwrap_or(1),
-                _ => 1,
-            }
-        };
-        let values: Vec<u64> = utxos.into_iter().map(|u| u.value).collect();
-        Ok(utxo_fee_preview_json(values, rate))
-    }
-
     /// Quote an EVM send: nonce, fee, gas limit, and what is spendable.
     ///
     /// "Spendable" is a fact about the asset the amount field moves. Gas is
@@ -591,39 +548,6 @@ impl WalletService {
 }
 
 impl WalletService {
-    pub async fn fetch_bitcoin_hd_send_preview(
-        &self,
-        chain: crate::registry::Chain,
-        xpub: String,
-        receive_count: u32,
-        change_count: u32,
-    ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
-        if chain.mainnet_counterpart() != Chain::Bitcoin {
-            return Err(SpectraBridgeError::InvalidInput {
-                message: format!("{chain} is not a Bitcoin network").into(),
-            });
-        }
-        let (balance, rate) = tokio::try_join!(
-            self.bitcoin_xpub_balance(chain, xpub, receive_count, change_count),
-            self.bitcoin_fee_rate(chain),
-        )?;
-        Ok(
-            crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
-                balance.confirmed_sats,
-                rate.sats_per_vbyte,
-            ),
-        )
-    }
-    pub async fn fetch_dogecoin_send_preview(
-        &self,
-        address: String,
-        requested_amount: String,
-    ) -> Result<Option<crate::send::preview_types::DogecoinSendPreview>, SpectraBridgeError> {
-        let raw = self
-            .fetch_utxo_fee_preview_json(Chain::Dogecoin, address, 0)
-            .await?;
-        Ok(crate::send::preview_decode::build_dogecoin_send_preview_record(raw, &requested_amount))
-    }
     pub async fn fetch_simple_chain_send_preview(
         &self,
         chain_id: crate::registry::Chain,
@@ -640,42 +564,6 @@ impl WalletService {
             .await?;
         Ok(crate::send::preview_decode::build_simple_chain_preview(
             raw, chain,
-        ))
-    }
-    pub async fn fetch_utxo_fee_preview(
-        &self,
-        chain_id: crate::registry::Chain,
-        address: String,
-        fee_rate_svb: u64,
-        destination_address: String,
-    ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
-        if chain_id.mainnet_counterpart() == Chain::Litecoin {
-            let wallet_id = self
-                .wallet_state
-                .read()
-                .await
-                .wallets
-                .iter()
-                .find(|wallet| wallet.address_on(chain_id) == Some(address.as_str()))
-                .map(|wallet| wallet.id.clone())
-                .ok_or_else(|| {
-                    SpectraBridgeError::invalid("Litecoin fee preview requires an owned wallet")
-                })?;
-            return self
-                .litecoin_preview_at_rate(
-                    chain_id,
-                    &wallet_id,
-                    "0",
-                    &destination_address,
-                    fee_rate_svb,
-                )
-                .await;
-        }
-        let raw = self
-            .fetch_utxo_fee_preview_json(chain_id, address, fee_rate_svb)
-            .await?;
-        Ok(crate::send::preview_decode::build_utxo_send_preview_record(
-            raw,
         ))
     }
 }

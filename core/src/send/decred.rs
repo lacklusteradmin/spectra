@@ -14,7 +14,6 @@
 use crate::send::error::SendError;
 
 use super::bitcoin_wire::{decode_txid_le, varint};
-use crate::api::insight::InsightClient;
 use crate::derivation::decred::{blake256, parse_decred_address};
 use crate::derivation::utxo_address::ParsedUtxoAddress;
 use crate::registry::Chain;
@@ -32,76 +31,52 @@ const SIGHASH_ALL: u32 = 1;
 /// confirmation height is not being committed to.
 const TX_TREE_REGULAR: u8 = 0;
 
-/// Pay `to_address` the script it names on `chain`'s network. Both
-/// addresses are decoded before any provider read, so a recipient on another
-/// network or of a form these sends cannot pay is refused having asked
-/// nothing of the node.
-pub(crate) async fn prepare_transfer(
-    client: &InsightClient,
-    chain: Chain,
-    from_address: &str,
-    to_address: &str,
-    amount_atoms: u64,
-    fee_atoms: u64,
-    dust_threshold: Option<u64>,
-) -> Result<PreparedDecredTransaction, SendError> {
-    // The wallet's key signs a P2PKH input; change returns to that script,
-    // built from the decoded hash so the caller's spelling of the address
-    // cannot reach the wire.
-    let from_script =
-        ParsedUtxoAddress::P2pkh(parse_decred_address(chain, from_address)?.require_p2pkh()?)
-            .script_pubkey();
-    let to_script = parse_decred_address(chain, to_address)?.script_pubkey();
-    let utxos = client.fetch_utxos(from_address).await?;
+/// The script a wallet's own address pays: a secp256k1 key's P2PKH, the
+/// only kind a Decred wallet signs for.
+pub(crate) fn sender_script(chain: Chain, address: &str) -> Result<Vec<u8>, SendError> {
+    Ok(
+        ParsedUtxoAddress::P2pkh(parse_decred_address(chain, address)?.require_p2pkh()?)
+            .script_pubkey(),
+    )
+}
 
-    let change = super::accounting::checked_change(
-        utxos.iter().map(|u| u.value_atoms),
-        amount_atoms,
-        fee_atoms,
-    )?;
+/// The script `to_address` names on `chain`'s network: a pubkey hash or a
+/// script hash. Any other form, and an address of the other network, is
+/// refused before an input is read.
+pub(crate) fn recipient_script(chain: Chain, to_address: &str) -> Result<Vec<u8>, SendError> {
+    Ok(parse_decred_address(chain, to_address)?.script_pubkey())
+}
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_atoms)];
-    if change > dust_threshold.unwrap_or(6_030) {
-        outputs.push((from_script.clone(), change));
-    }
+/// One regular-tree input and the key of the address it pays.
+pub(crate) struct DecredSigningInput<'a> {
+    pub utxo: &'a (String, u32, u64, Vec<u8>),
+    pub private_key: &'a [u8],
+}
 
-    let inputs: Vec<DcrInputBuild> = utxos
+/// Sign `inputs`, each with its own key, into a transaction paying
+/// `outputs` in order. Every input must pay its key's P2PKH script.
+pub(crate) fn sign(
+    inputs: &[DecredSigningInput<'_>],
+    outputs: &[(Vec<u8>, u64)],
+) -> Result<Vec<u8>, SendError> {
+    let builds = inputs
         .iter()
-        .map(|u| {
+        .map(|input| {
             Ok(DcrInputBuild {
-                // Decoded here rather than at each of the two
-                // serializations, which have nowhere to report a bad txid.
-                outpoint_txid: decode_txid_le(&u.txid)?,
-                vout: u.vout,
+                outpoint_txid: decode_txid_le(&input.utxo.0)?,
+                vout: input.utxo.1,
                 tree: TX_TREE_REGULAR,
                 sequence: 0xFFFF_FFFF,
-                amount: u.value_atoms,
-                script_pubkey: from_script.clone(),
+                amount: input.utxo.2,
+                script_pubkey: input.utxo.3.clone(),
             })
         })
-        .collect::<Result<_, SendError>>()?;
-
-    Ok(PreparedDecredTransaction { inputs, outputs })
+        .collect::<Result<Vec<_>, SendError>>()?;
+    let keys: Vec<&[u8]> = inputs.iter().map(|input| input.private_key).collect();
+    sign_dcr_tx(&builds, outputs, &keys)
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct PreparedDecredTransaction {
-    inputs: Vec<DcrInputBuild>,
-    outputs: Vec<(Vec<u8>, u64)>,
-}
-impl PreparedDecredTransaction {
-    pub fn sign(&self, key: &[u8]) -> Result<String, SendError> {
-        Ok(hex::encode(sign_dcr_tx(&self.inputs, &self.outputs, key)?))
-    }
-    pub fn resources(&self) -> Vec<String> {
-        self.inputs
-            .iter()
-            .map(|i| format!("decred:utxo:{}:{}", hex::encode(&i.outpoint_txid), i.vout))
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 struct DcrInputBuild {
     /// The outpoint txid in wire (little-endian) order.
     outpoint_txid: Vec<u8>,
@@ -115,14 +90,35 @@ struct DcrInputBuild {
 fn sign_dcr_tx(
     inputs: &[DcrInputBuild],
     outputs: &[(Vec<u8>, u64)],
-    private_key_bytes: &[u8],
+    private_keys: &[&[u8]],
 ) -> Result<Vec<u8>, SendError> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("dcr invalid privkey: {e}").into()))?;
-    let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
+    if inputs.is_empty() || outputs.is_empty() || inputs.len() != private_keys.len() {
+        return Err(SendError::Invalid(
+            "dcr transaction must have inputs, outputs and one key per input".into(),
+        ));
+    }
+    let mut keys = Vec::with_capacity(inputs.len());
+    let mut outpoints = std::collections::HashSet::new();
+    for (input, private_key) in inputs.iter().zip(private_keys) {
+        let secret_key = SecretKey::from_slice(private_key)
+            .map_err(|e| SendError::Invalid(format!("dcr invalid privkey: {e}").into()))?;
+        let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
+        if input.script_pubkey
+            != ParsedUtxoAddress::P2pkh(crate::derivation::decred::dcr_hash160(&pubkey_bytes))
+                .script_pubkey()
+        {
+            return Err(SendError::Invalid(
+                "dcr input does not belong to its signing key".into(),
+            ));
+        }
+        if !outpoints.insert((input.outpoint_txid.clone(), input.vout)) {
+            return Err(SendError::Invalid("dcr: duplicate input".into()));
+        }
+        keys.push((secret_key, pubkey_bytes));
+    }
 
     // Decred sighash optimization: prefix hash is constant across all inputs
     // for SIGHASH_ALL since the prefix never references signature scripts.
@@ -130,10 +126,10 @@ fn sign_dcr_tx(
     let prefix_hash = blake256(&prefix_serialization);
 
     let mut signed_sig_scripts: Vec<Vec<u8>> = Vec::with_capacity(inputs.len());
-    for i in 0..inputs.len() {
+    for (i, (secret_key, pubkey_bytes)) in keys.iter().enumerate() {
         let sighash = signature_hash(inputs, &prefix_hash, i);
         let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
-        let sig = secp.sign_ecdsa(&msg, &secret_key);
+        let sig = secp.sign_ecdsa(&msg, secret_key);
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL as u8);
 
@@ -142,7 +138,7 @@ fn sign_dcr_tx(
         script_sig.push(der.len() as u8);
         script_sig.extend_from_slice(&der);
         script_sig.push(pubkey_bytes.len() as u8);
-        script_sig.extend_from_slice(&pubkey_bytes);
+        script_sig.extend_from_slice(pubkey_bytes);
         signed_sig_scripts.push(script_sig);
     }
 

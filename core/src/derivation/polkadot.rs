@@ -4,8 +4,8 @@
 //!
 //! - SS58 prefix: 0 = `Chain::Polkadot` (mainnet, addresses start with `1…`),
 //!   42 = `Chain::PolkadotWestend` (testnet, addresses start with `5…`).
-//! - Substrate junction derivation (`//hard`, `/soft`) is not yet supported —
-//!   omit the derivation path to derive the root sr25519 keypair.
+//! - A derivation path is Substrate's hard (`//`) and soft (`/`) junctions
+//!   (`derivation::substrate_path`); none derives the root sr25519 keypair.
 
 use crate::derivation::error::DerivationError;
 
@@ -27,26 +27,40 @@ use crate::derivation::types::DerivationResult;
 fn substrate_internal(
     ss58_prefix: u16,
     seed_phrase: String,
+    path: String,
     passphrase: Option<String>,
     hmac_key: Option<String>,
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    let uniform_expansion = hmac_key.as_deref() == Some("uniform");
-    let (mini_secret, public_key) = derive_substrate_sr25519_material(
+    // The override's one meaning here: `uniform` expands the root seed in
+    // schnorrkel's Uniform mode. Any other value would be ignored, so it is
+    // refused rather than deriving the key it does not change.
+    let uniform_expansion = match hmac_key.as_deref().map(str::trim) {
+        None | Some("") => false,
+        Some("uniform") => true,
+        Some(_) => {
+            return Err(crate::derivation::error::DerivationError::refused(
+                "%@ takes only `uniform` as its HMAC override.",
+                ["Polkadot"],
+            )
+            .into());
+        }
+    };
+    let (key, public_key) = derive_substrate_sr25519_material(
         &seed_phrase,
         passphrase.as_deref().unwrap_or(""),
         None,
         None,
         0,
-        None,
+        Some(&path),
         uniform_expansion,
     )?;
     Ok(DerivationResult {
         address: want_address.then(|| encode_ss58(&public_key, ss58_prefix)),
         public_key_hex: want_public_key.then(|| hex::encode(public_key)),
-        private_key_hex: want_private_key.then(|| hex::encode(mini_secret)),
+        private_key_hex: want_private_key.then(|| hex::encode(&*key)),
         account: 0,
         branch: 0,
         index: 0,
@@ -56,6 +70,7 @@ fn substrate_internal(
 /// Derive Polkadot mainnet wallet (SS58 prefix 0, "1…" addresses).
 pub fn derive_polkadot(
     seed_phrase: String,
+    path: String,
     passphrase: Option<String>,
     hmac_key: Option<String>,
     want_address: bool,
@@ -65,6 +80,7 @@ pub fn derive_polkadot(
     substrate_internal(
         0,
         seed_phrase,
+        path,
         passphrase,
         hmac_key,
         want_address,
@@ -76,6 +92,7 @@ pub fn derive_polkadot(
 /// Derive Polkadot Westend testnet wallet (SS58 prefix 42, "5…" addresses).
 pub fn derive_polkadot_westend(
     seed_phrase: String,
+    path: String,
     passphrase: Option<String>,
     hmac_key: Option<String>,
     want_address: bool,
@@ -85,6 +102,7 @@ pub fn derive_polkadot_westend(
     substrate_internal(
         42,
         seed_phrase,
+        path,
         passphrase,
         hmac_key,
         want_address,

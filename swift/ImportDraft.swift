@@ -87,9 +87,19 @@ final class WalletImportDraft {
         guard let chain, let derivationProfile else { return nil }
         return try? derivationProfilePath(chain: chain, profile: derivationProfile, account: derivationAccount)
     }
-    /// The path the import derives along: the custom one when typed, else the
-    /// profile's. Core refuses one that does not parse.
+    /// A Substrate path of hard (`//`) and soft (`/`) junctions as typed;
+    /// blank derives the phrase's root key.
+    var junctionPathInput: String = ""
+    /// Whether this method on this network takes a junction path.
+    var asksJunctionPath: Bool { setupOption?.fields.contains(.junctionPath) ?? false }
+    /// The path the import derives along: on a Substrate network the typed
+    /// junctions, else the custom one when typed, else the profile's. Core
+    /// refuses one that does not parse.
     var derivationPath: String? {
+        if asksJunctionPath {
+            let path = junctionPathInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            return path.isEmpty ? nil : path
+        }
         let custom = customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines)
         return custom.isEmpty ? profileDerivationPath : custom
     }
@@ -98,11 +108,18 @@ final class WalletImportDraft {
     /// Not an address: an account xpub stands in for the whole account and
     /// imports one wallet rather than one per line.
     var accountXpubInput: String = ""
+    /// A Monero wallet's private view key, watched with its primary address
+    /// typed in `watchOnlyInput`.
+    var viewKeyInput: String = ""
+    /// A multisig account's output descriptor.
+    var descriptorInput: String = ""
     var backupVerificationWordIndices: [Int] = []
     var backupVerificationEntries: [String] = []
     var isCreateMode: Bool { method == .createPhrase }
     var isPrivateKeyImportMode: Bool { method == .importPrivateKey }
-    var isWatchOnlyMode: Bool { method == .watchAddresses || method == .watchAccountXpub }
+    var isWatchOnlyMode: Bool {
+        method == .watchAddresses || method == .watchAccountXpub || method == .watchViewKey || method == .watchMultisig
+    }
     /// The pages this draft's form walks through.
     var setupFlow: SetupFlow {
         switch mode {
@@ -142,6 +159,10 @@ final class WalletImportDraft {
         case .importPrivateKey: .privateKey
         case .watchAddresses: .watchAddresses(addresses: watchOnlyEntries)
         case .watchAccountXpub: .watchAccountXpub(xpub: accountXpubInput.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .watchViewKey: .watchViewKey(
+            address: watchOnlyInput.trimmingCharacters(in: .whitespacesAndNewlines),
+            viewKey: viewKeyInput.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .watchMultisig: .watchMultisig(descriptor: descriptorInput.trimmingCharacters(in: .whitespacesAndNewlines))
         case .createPhrase, .importPhrase, nil: .phrase
         }
     }
@@ -175,6 +196,9 @@ final class WalletImportDraft {
         switch importKind {
         case .watchAddresses(let addresses): guard !addresses.isEmpty else { return nil }
         case .watchAccountXpub(let xpub): guard !xpub.isEmpty else { return nil }
+        case .watchViewKey(let address, let viewKey):
+            guard !address.isEmpty, !viewKey.isEmpty, isRestoreHeightValid else { return nil }
+        case .watchMultisig(let descriptor): guard !descriptor.isEmpty else { return nil }
         case .phrase, .privateKey: guard isSecretComplete else { return nil }
         }
         guard var commit = importCommit(name: "") else { return nil }
@@ -189,6 +213,8 @@ final class WalletImportDraft {
         switch importKind {
         case .watchAddresses(let addresses): return !addresses.isEmpty
         case .watchAccountXpub(let xpub): return !xpub.isEmpty
+        case .watchViewKey(let address, let viewKey): return !address.isEmpty && !viewKey.isEmpty && isRestoreHeightValid
+        case .watchMultisig(let descriptor): return !descriptor.isEmpty
         case .phrase, .privateKey: break
         }
         return isSecretComplete && (!requiresBackupVerification || isBackupVerificationComplete)
@@ -272,6 +298,8 @@ final class WalletImportDraft {
         selectedSeedPhraseWordCount = 12
         watchOnlyInput = ""
         accountXpubInput = ""
+        viewKeyInput = ""
+        descriptorInput = ""
         restoreHeightInput = ""
         namedAccountInput = ""
         tonWalletVersion = .w5

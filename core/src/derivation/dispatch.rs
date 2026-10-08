@@ -33,6 +33,18 @@ pub fn derive_for_chain(
         monero as xmr, near, peercoin, polkadot, solana, stellar, sui, ton, tron, xrp, zcash,
     };
 
+    // A chain that derives without a path refuses one rather than deriving
+    // its one key whatever the path says.
+    if !chain.uses_derivation_path()
+        && !chain.derives_along_junctions()
+        && !derivation_path.trim().is_empty()
+    {
+        return Err(crate::derivation::error::DerivationError::refused(
+            "%@ derives without a derivation path.",
+            [chain.chain_display_name()],
+        )
+        .into());
+    }
     let s = seed_phrase.to_string();
     let p = derivation_path.to_string();
     let pass = passphrase.map(str::to_string);
@@ -104,9 +116,9 @@ pub fn derive_for_chain(
         Chain::Icp => icp::derive_icp(s, p, pass, wa, wp, wk)?,
         Chain::Near => near::derive_near(s, p, pass, wa, wp, wk)?,
         Chain::NearTestnet => near::derive_near_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Polkadot => polkadot::derive_polkadot(s, pass, hmac, wa, wp, wk)?,
-        Chain::PolkadotWestend => polkadot::derive_polkadot_westend(s, pass, hmac, wa, wp, wk)?,
-        Chain::Bittensor => bittensor::derive_bittensor(s, pass, wa, wp, wk)?,
+        Chain::Polkadot => polkadot::derive_polkadot(s, p, pass, hmac, wa, wp, wk)?,
+        Chain::PolkadotWestend => polkadot::derive_polkadot_westend(s, p, pass, hmac, wa, wp, wk)?,
+        Chain::Bittensor => bittensor::derive_bittensor(s, p, pass, wa, wp, wk)?,
         Chain::Monero => xmr::derive_monero(s, wa, wp, wk)?,
         Chain::MoneroStagenet => xmr::derive_monero_stagenet(s, wa, wp, wk)?,
         // Every EVM chain derives the same address from the same path — there

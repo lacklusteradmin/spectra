@@ -787,7 +787,6 @@ impl WalletService {
         }
         let signing_payload_hex = hex::encode(match &prepared {
             PreparedPayload::Evm(p) => p.signing_payload()?,
-            PreparedPayload::Bitcoin(p) => hex::decode(&p.unsigned_hex)?,
             PreparedPayload::Icp(p) => hex::decode(&p.argument_hex)?,
             PreparedPayload::Substrate(p) => p.signing_payload()?,
             PreparedPayload::Solana(p) => p.message.clone(),

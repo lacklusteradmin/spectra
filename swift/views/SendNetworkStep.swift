@@ -199,7 +199,7 @@ struct SendNetworkStep: View {
                 AppLocalization.format("Max Gas Amount: %llu", p.maxGasAmount),
                 AppLocalization.format("Gas Unit Price: %llu octas", p.gasUnitPriceOctas),
             ]
-        case .utxo, .dogecoin, .ethereum, .tron, .solana, .xrp, .stellar, .cardano, .ton, .icp, .near,
+        case .utxo, .ethereum, .tron, .solana, .xrp, .stellar, .cardano, .ton, .icp, .near,
              .polkadot, .bittensor:
             return []
         }

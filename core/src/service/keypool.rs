@@ -203,6 +203,29 @@ impl WalletService {
         .await
     }
 
+    /// Record that the wallet's account on `chain_id` has had a complete gap
+    /// scan: stored first, then visible, like an owned address.
+    pub(crate) async fn mark_account_discovered(
+        &self,
+        wallet_id: String,
+        chain_id: crate::registry::Chain,
+    ) -> Result<(), SpectraBridgeError> {
+        self.write_persisted(move |service| async move {
+            let mut tables = service.keypool.write().await;
+            if let Some(database) = service.state_binding.connection().await {
+                let wallet = wallet_id.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::wallet_db::discovery_save(&database, &wallet, chain_id)
+                })
+                .await
+                .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
+            }
+            tables.discovered.insert(keypool_key(&wallet_id, chain_id));
+            Ok(())
+        })
+        .await
+    }
+
     /// Every address this wallet is known to hold, on any chain: its stored
     /// addresses, the ends of transactions it made, and the owned-address rows.
     pub(crate) async fn known_wallet_addresses(
@@ -273,6 +296,45 @@ impl WalletService {
         ))
     }
 
+    /// Move the reserved receive index past `used`, an index an output has
+    /// arrived at, when it is not past it already: to the first index
+    /// neither used nor handed out.
+    pub(super) async fn advance_receive_past(
+        &self,
+        wallet_id: String,
+        chain_id: crate::registry::Chain,
+        used: i64,
+    ) -> Result<(), SpectraBridgeError> {
+        self.write_persisted(move |service| async move {
+            let baseline = service.chain_keypool_baseline(&wallet_id, chain_id).await?;
+            let key = keypool_key(&wallet_id, chain_id);
+            let mut tables = service.keypool.write().await;
+            let mut state = keypool_from_record(&crate::store::merge_chain_keypool_state(
+                baseline,
+                tables.state(&key).map(record_from_keypool),
+            ));
+            if state
+                .reserved_receive_index
+                .is_some_and(|reserved| reserved > used)
+            {
+                return Ok(());
+            }
+            let next = state.next_external_index.max(next_keypool_index(used)?);
+            state.reserved_receive_index = Some(next);
+            state.next_external_index = next_keypool_index(next)?;
+            persist_keypool(
+                &service.state_binding,
+                &mut tables,
+                key,
+                &wallet_id,
+                chain_id,
+                state,
+            )
+            .await
+        })
+        .await
+    }
+
     pub(super) async fn advance_receive_index_if_current(
         &self,
         wallet_id: String,
@@ -324,10 +386,10 @@ impl WalletService {
         wallet_id: &str,
         chain: crate::registry::Chain,
     ) -> Result<crate::store::ChainKeypoolStateRecord, SpectraBridgeError> {
-        let supports_deep = chain.supports_deep_utxo_discovery();
+        let account = chain.uses_account_utxo();
 
         let mut input = crate::store::ChainKeypoolBaselineInput {
-            supports_deep_utxo_discovery: supports_deep,
+            uses_account_utxo: account,
             max_transaction_external_index: None,
             max_transaction_change_index: None,
             max_owned_external_index: None,
@@ -335,7 +397,7 @@ impl WalletService {
             has_resolved_address: false,
         };
 
-        if !supports_deep {
+        if !account {
             let state = self.wallet_state.read().await;
             input.has_resolved_address = state
                 .wallets
@@ -453,6 +515,8 @@ pub(crate) struct KeypoolTables {
     indices: HashMap<String, crate::wallet_db::KeypoolState>,
     /// Addresses this wallet is known to own, keyed by chain.
     owned: HashMap<crate::registry::Chain, Vec<crate::wallet_db::OwnedAddressRecord>>,
+    /// The accounts whose gap scan has run to its end, keyed like `indices`.
+    discovered: std::collections::HashSet<String>,
 }
 
 impl Keypool {
@@ -503,14 +567,21 @@ impl KeypoolTables {
         }
     }
 
-    /// Seed both tables from storage. Only `open_state` does this.
+    /// Seed the tables from storage. Only `open_state` does this.
     pub(crate) fn load(
         &mut self,
         indices: HashMap<String, crate::wallet_db::KeypoolState>,
         owned: HashMap<crate::registry::Chain, Vec<crate::wallet_db::OwnedAddressRecord>>,
+        discovered: std::collections::HashSet<String>,
     ) {
         self.indices = indices;
         self.owned = owned;
+        self.discovered = discovered;
+    }
+
+    /// Whether the account behind `key` has had a complete gap scan.
+    pub(crate) fn is_discovered(&self, key: &str) -> bool {
+        self.discovered.contains(key)
     }
 
     /// Drop everything belonging to deleted wallets.
@@ -526,6 +597,10 @@ impl KeypoolTables {
         for rows in self.owned.values_mut() {
             rows.retain(|row| !removed_wallets.contains(&row.wallet_id));
         }
+        self.discovered.retain(|key| {
+            key.split_once('|')
+                .is_none_or(|(wallet_id, _)| !removed_wallets.iter().any(|r| r == wallet_id))
+        });
     }
 
     /// Whether either table holds anything. Test affordance.

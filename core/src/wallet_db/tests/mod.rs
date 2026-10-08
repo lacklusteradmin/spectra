@@ -349,6 +349,7 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
         hidden_holdings: Vec::new(),
         icp_principal: None,
         near_account_key: None,
+        multisig_descriptor: None,
     }
 }
 

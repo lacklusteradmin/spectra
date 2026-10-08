@@ -50,8 +50,7 @@ fn account_sources_allow_peercoin_taproot_and_refuse_unsupported_litecoin_script
                 .unwrap();
         let root = context.derive(4).unwrap().0;
         let (address, source_path) = context.derive_on_branch(1, 7).unwrap();
-        let source =
-            account_utxo_source(chain, &root, Some(&path), address, Some(source_path)).unwrap();
+        let source = account_utxo_source(chain, &root, Some(&path), address, source_path).unwrap();
         assert_eq!(source.script_pubkey.len(), 34);
         assert_eq!(&source.script_pubkey[..2], &[0x51, 0x20]);
     }

@@ -68,15 +68,15 @@ pub struct WalletCoins {
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// The addresses and coins behind the wallet's balance, read from the
-    /// network. Refuses a wallet on a network with one address.
+    /// network. Refuses a network whose indexer counts no confirmations.
     pub async fn wallet_coins(&self, wallet_id: String) -> Result<WalletCoins, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
-            if !chain.supports_deep_utxo_discovery() {
+            if !chain.lists_account_coins() {
                 return Err(SpectraBridgeError::refused(
-                    "%@ wallets hold one address; there is no account to list.",
+                    "%@ wallets list no coins.",
                     [chain.chain_display_name()],
                 ));
             }

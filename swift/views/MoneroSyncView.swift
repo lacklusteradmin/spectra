@@ -15,6 +15,10 @@ struct MoneroSyncView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Text(verbatim: "\(status.scannedHeight) / \(status.targetHeight)")
                         .monospacedDigit()
+                    if !status.spendsKnown {
+                        Text(AppLocalization.string("A view key shows what the wallet receives, not what it spends: its balance does not drop when it pays from another device."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if vm.isRunning {
                         ProgressView()
                         Button(AppLocalization.string("Cancel")) { vm.cancel() }

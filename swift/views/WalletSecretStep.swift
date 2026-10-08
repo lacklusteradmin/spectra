@@ -205,6 +205,7 @@ struct WalletSecretStep: View {
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
             derivationAccountCard
+            junctionPathCard
             WalletAddressPreviewCard(store: store, draft: draft)
         } else if isPrivateKeyImportMode {
             privateKeyImportFields
@@ -215,8 +216,9 @@ struct WalletSecretStep: View {
         } else {
             SeedPhraseEntryView(entry: draft.seedEntry)
                 .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
-            if draft.asksRestoreHeight { restoreHeightCard }
+            if draft.asksRestoreHeight { RestoreHeightCard(draft: draft) }
             derivationAccountCard
+            junctionPathCard
             namedAccountCard
             tonWalletVersionCard
             WalletAddressPreviewCard(store: store, draft: draft)
@@ -254,6 +256,24 @@ struct WalletSecretStep: View {
                     Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 findUsedAccountsButton
+            }
+            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+    }
+    /// A Substrate network's account below the phrase's root: hard and soft
+    /// junctions, as its wallets write them. The preview below shows the
+    /// address it derives; core refuses a path it cannot read one way.
+    @ViewBuilder
+    private var junctionPathCard: some View {
+        if draft.asksJunctionPath {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                Text(AppLocalization.string("Derivation Path (Optional)")).font(.subheadline.weight(.semibold))
+                TextField("//polkadot//0", text: $draft.junctionPathInput)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+                Text(AppLocalization.string(
+                    "Hard (//) and soft (/) junctions, as Polkadot wallets write them. Leave it blank for the phrase's root account."
+                )).font(.caption).foregroundStyle(.secondary)
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
         }
@@ -308,26 +328,6 @@ struct WalletSecretStep: View {
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
         }
-    }
-    /// Where a restored wallet's scan starts: a Monero wallet's, or a Zcash
-    /// wallet's for its shielded funds. Blank reads a Polyseed's birthday, or
-    /// scans from the first block the wallet could have received at.
-    private var restoreHeightCard: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            Text(AppLocalization.string("Restore Height (Optional)")).font(.subheadline.weight(.semibold))
-            TextField(AppLocalization.string("Block height"), text: $draft.restoreHeightInput)
-                .keyboardType(.numberPad).font(.body.monospacedDigit())
-                .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
-            if draft.isRestoreHeightValid {
-                Text(AppLocalization.string(
-                    "The scan starts here and cannot find funds received earlier. Leave it blank to use the phrase's creation date when it records one (a Polyseed), or to scan from the first block the wallet could have received at, which takes longest."
-                )).font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text(AppLocalization.string("A restore height is a whole block number.")).font(.caption)
-                    .foregroundStyle(.red.opacity(0.9))
-            }
-        }
-        .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
     }
     @ViewBuilder
     private var backupVerificationStepSection: some View {

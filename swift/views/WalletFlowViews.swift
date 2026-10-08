@@ -356,7 +356,7 @@ struct WalletDetailView: View {
                 openURL(url)
             }
         case .addToNetwork, .rename, .revealPhrase, .exportKeys, .delete: isShowingAdvancedPage = true
-        case .history, .addKeys, .stake, .scanBlocks, .coins, .tokenApprovals, .nfts, .shieldedFunds,
+        case .history, .psbts, .addKeys, .stake, .scanBlocks, .coins, .tokenApprovals, .nfts, .shieldedFunds,
              .mwebFunds, .networkAccount, .accessKeys, .tokenStorage, .coinObjects, .tokenAccounts, .trustLines,
              .signMessage, .verifyMessage:
             openedAction = action
@@ -367,6 +367,8 @@ struct WalletDetailView: View {
         switch action {
         case .history:
             HistoryListView(store: store, walletId: wallet.id)
+        case .psbts:
+            WalletPsbtView(store: store, wallet: displayedWallet)
         case .addKeys:
             WalletSetupMethodsView(
                 store: store, chain: displayedWallet.chain,

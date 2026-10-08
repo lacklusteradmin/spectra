@@ -2,10 +2,11 @@
 //! Only public daemon requests cross the transport; keys and scan results stay local.
 
 use crate::api::monero_daemon_rpc::Daemon;
+use crate::derivation::monero::ViewKeys;
 use crate::send::error::SendError;
 use monero_wallet::{
     OutputWithDecoys, Scanner, ViewPair, WalletOutput,
-    address::{MoneroAddress, Network},
+    address::{MoneroAddress, SubaddressIndex},
     ed25519::{Point, Scalar},
     interface::prelude::*,
     ringct::RctType,
@@ -72,10 +73,18 @@ pub(crate) fn received_with_tx_key(
     Ok(received)
 }
 
+/// wallet2's default subaddress lookahead (`--subaddress-lookahead 50:200`):
+/// how many accounts past the highest one used, and addresses past each
+/// account's highest used, a scan watches.
+pub(crate) const LOOKAHEAD_ACCOUNTS: u32 = 50;
+pub(crate) const LOOKAHEAD_ADDRESSES: u32 = 200;
+
 #[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct LocalOutput {
     pub encoded: String,
-    pub key_image: String,
+    /// `None` for a wallet scanned without its spend key, which cannot
+    /// know it.
+    pub key_image: Option<String>,
     pub received_height: u64,
     pub spent: bool,
 }
@@ -101,7 +110,17 @@ pub(crate) struct LocalWallet {
     pub target_height: u64,
     pub outputs: Vec<LocalOutput>,
     pub transfers: Vec<LocalTransfer>,
+    /// Each account's highest address index an output arrived at, its
+    /// primary address being 0: what the scan's lookahead is counted from,
+    /// so the subaddresses it watches survive a restart.
+    #[zeroize(skip)]
+    #[serde(default)]
+    pub used_subaddresses: std::collections::BTreeMap<u32, u32>,
 }
+/// The subaddresses a scan watches: each account's addresses below the
+/// bound it maps to.
+type Window = std::collections::BTreeMap<u32, u32>;
+
 impl LocalWallet {
     pub fn unlocked(&self) -> Result<Vec<WalletOutput>, SendError> {
         let mut timestamps = self.timestamps.clone();
@@ -138,6 +157,46 @@ impl LocalWallet {
                 .ok_or_else(|| SendError::invalid("Monero balance overflow"))
         })
     }
+
+    /// Start the scan over from the restore height.
+    fn reset(&mut self) {
+        self.outputs.clear();
+        self.transfers.clear();
+        self.timestamps.clear();
+        self.used_subaddresses.clear();
+        self.next_height = self.restore_height;
+        self.last_hash = None;
+    }
+
+    /// wallet2's lookahead past what was used: `LOOKAHEAD_ACCOUNTS`
+    /// accounts past the highest used, and in each `LOOKAHEAD_ADDRESSES`
+    /// addresses past its highest used — in account 0 past `handed_out`
+    /// too, the receive index the wallet last gave out.
+    fn window(&self, handed_out: u32) -> Window {
+        let past = |used: Option<u32>| used.map_or(0, |used| used.saturating_add(1));
+        let accounts = past(self.used_subaddresses.keys().next_back().copied())
+            .saturating_add(LOOKAHEAD_ACCOUNTS);
+        (0..accounts)
+            .map(|account| {
+                let mut bound = past(self.used_subaddresses.get(&account).copied());
+                if account == 0 {
+                    bound = bound.max(handed_out);
+                }
+                (account, bound.saturating_add(LOOKAHEAD_ADDRESSES))
+            })
+            .collect()
+    }
+}
+
+/// Register on `scanner` the subaddresses `to` holds and `from` does not.
+fn register(scanner: &mut Scanner, from: &Window, to: &Window) {
+    for (&account, &bound) in to {
+        for address in from.get(&account).copied().unwrap_or(0)..bound {
+            if let Some(index) = SubaddressIndex::new(account, address) {
+                scanner.register_subaddress(index);
+            }
+        }
+    }
 }
 
 pub(crate) fn keys(private: &str) -> Result<(Zeroizing<Scalar>, ViewPair), SendError> {
@@ -157,14 +216,36 @@ pub(crate) fn keys(private: &str) -> Result<(Zeroizing<Scalar>, ViewPair), SendE
     ))
 }
 
-/// Scan a bounded batch and account for spent outputs locally, never querying key images.
+/// What a scan reads with: the wallet's view keys, and its spend key when
+/// the wallet holds one. Without it no output's key image is known, so
+/// neither is what the wallet spent.
+pub(crate) struct ScanKeys {
+    pub view: ViewKeys,
+    pub spend: Option<Zeroizing<Scalar>>,
+}
+
+impl ScanKeys {
+    /// A signing wallet's, from its spend and view keys in hex.
+    pub(crate) fn signing(chain: crate::registry::Chain, private: &str) -> Result<Self, SendError> {
+        let (spend, _) = keys(private)?;
+        Ok(Self {
+            view: ViewKeys::from_private(chain, private)?,
+            spend: Some(spend),
+        })
+    }
+}
+
+/// Scan a bounded batch and account for spent outputs locally, never
+/// querying key images. Every subaddress in wallet2's lookahead is watched;
+/// a block whose outputs widen it is scanned again under the wider window.
 pub(crate) async fn scan(
     wallet: &mut LocalWallet,
     rpc: &Daemon,
-    private: &str,
+    keys: &ScanKeys,
+    handed_out: u32,
     batch: u32,
 ) -> Result<(), SendError> {
-    let (spend, pair) = keys(private)?;
+    let pair = keys.view.pair()?;
     let target = rpc
         .latest_block_number()
         .await
@@ -172,12 +253,14 @@ pub(crate) async fn scan(
     wallet.target_height = target
         .checked_add(1)
         .ok_or_else(|| SendError::Invalid("Monero height overflow".into()))?;
+    // A wallet that holds its spend key now scans again what it scanned
+    // without it: no output found then has a key image, so no spend of one
+    // was seen.
+    if keys.spend.is_some() && wallet.outputs.iter().any(|o| o.key_image.is_none()) {
+        wallet.reset();
+    }
     if wallet.last_hash.is_some() && wallet.next_height > wallet.target_height {
-        wallet.outputs.clear();
-        wallet.transfers.clear();
-        wallet.timestamps.clear();
-        wallet.next_height = wallet.restore_height;
-        wallet.last_hash = None;
+        wallet.reset();
     }
     if wallet.last_hash.is_some() {
         let previous = rpc
@@ -185,11 +268,7 @@ pub(crate) async fn scan(
             .await
             .map_err(SendError::invalid)?;
         if Some(previous.block.hash()) != wallet.last_hash {
-            wallet.outputs.clear();
-            wallet.transfers.clear();
-            wallet.timestamps.clear();
-            wallet.next_height = wallet.restore_height;
-            wallet.last_hash = None;
+            wallet.reset();
         }
     }
     if wallet.next_height > wallet.target_height {
@@ -208,7 +287,9 @@ pub(crate) async fn scan(
         .contiguous_scannable_blocks(wallet.next_height as usize..=(end - 1) as usize)
         .await
         .map_err(SendError::invalid)?;
+    let mut window = wallet.window(handed_out);
     let mut scanner = Scanner::new(pair);
+    register(&mut scanner, &Window::new(), &window);
     for block in blocks {
         let height = block.block.number() as u64;
         if height != wallet.next_height
@@ -235,7 +316,7 @@ pub(crate) async fn scan(
                     if let Some(output) = wallet
                         .outputs
                         .iter()
-                        .find(|o| o.key_image == image && !o.spent)
+                        .find(|o| o.key_image.as_deref() == Some(image.as_str()) && !o.spent)
                     {
                         let output =
                             WalletOutput::read(&mut hex::decode(&output.encoded)?.as_slice())
@@ -266,18 +347,49 @@ pub(crate) async fn scan(
                 _ => None,
             })
             .collect();
-        for output in scanner
-            .scan(block)
-            .map_err(SendError::invalid)?
-            .ignore_additional_timelock()
-        {
-            let offset: curve25519_dalek::scalar::Scalar = output.key_offset().into();
-            let spend_scalar: curve25519_dalek::scalar::Scalar = (*spend).into();
-            let scalar = Zeroizing::new(spend_scalar + offset);
-            let point: curve25519_dalek::EdwardsPoint =
-                Point::biased_hash(output.key().compress().to_bytes()).into();
-            let image = hex::encode((point * *scalar).compress().to_bytes());
-            if wallet.outputs.iter().any(|o| o.key_image == image) {
+        // The block's outputs, scanned again while what they were sent to
+        // widens the window.
+        let mut found: Vec<WalletOutput> = Vec::new();
+        loop {
+            for output in scanner
+                .scan(block.clone())
+                .map_err(SendError::invalid)?
+                .ignore_additional_timelock()
+            {
+                if found.iter().any(|seen| {
+                    seen.transaction() == output.transaction()
+                        && seen.index_in_transaction() == output.index_in_transaction()
+                }) {
+                    continue;
+                }
+                let (account, address) = output
+                    .subaddress()
+                    .map_or((0, 0), |index| (index.account(), index.address()));
+                let used = wallet.used_subaddresses.entry(account).or_insert(address);
+                *used = (*used).max(address);
+                found.push(output);
+            }
+            let wider = wallet.window(handed_out);
+            if wider == window {
+                break;
+            }
+            register(&mut scanner, &window, &wider);
+            window = wider;
+        }
+        for output in found {
+            let image = keys.spend.as_ref().map(|spend| {
+                let offset: curve25519_dalek::scalar::Scalar = output.key_offset().into();
+                let spend_scalar: curve25519_dalek::scalar::Scalar = (**spend).into();
+                let scalar = Zeroizing::new(spend_scalar + offset);
+                let point: curve25519_dalek::EdwardsPoint =
+                    Point::biased_hash(output.key().compress().to_bytes()).into();
+                hex::encode((point * *scalar).compress().to_bytes())
+            });
+            let encoded = hex::encode(output.serialize());
+            if wallet.outputs.iter().any(|o| match (&o.key_image, &image) {
+                (Some(held), Some(image)) => held == image,
+                _ => o.encoded == encoded,
+            }) {
                 return Err(SendError::Invalid("Duplicate Monero output".into()));
             }
             let entry = transfers
@@ -288,14 +400,18 @@ pub(crate) async fn scan(
                 .checked_add(output.commitment().amount)
                 .ok_or_else(|| SendError::Invalid("Monero credit overflow".into()))?;
             wallet.outputs.push(LocalOutput {
-                encoded: hex::encode(output.serialize()),
+                encoded,
                 key_image: image,
                 received_height: height,
                 spent: false,
             });
         }
         for output in &mut wallet.outputs {
-            if spent.contains(&output.key_image) {
+            if output
+                .key_image
+                .as_ref()
+                .is_some_and(|image| spent.contains(image))
+            {
                 output.spent = true;
             }
         }
@@ -350,12 +466,7 @@ pub(crate) async fn prepare(
     amount: u64,
     encryption_key: &[u8],
 ) -> Result<PreparedMoneroTransaction, SendError> {
-    let chain = wallet.chain_id;
-    let network = match chain.monero_network_name()? {
-        "mainnet" => Network::Mainnet,
-        "stagenet" => Network::Stagenet,
-        _ => return Err(SendError::Invalid("Unsupported Monero network".into())),
-    };
+    let network = crate::derivation::monero::address_network(wallet.chain_id)?;
     let recipient_address =
         MoneroAddress::from_str(network, recipient).map_err(SendError::invalid)?;
     if wallet.next_height < wallet.target_height {
@@ -382,7 +493,8 @@ pub(crate) async fn prepare(
             .find(|o| o.encoded == hex::encode(output.serialize()))
             .ok_or_else(|| SendError::Invalid("Missing Monero output".into()))?
             .key_image
-            .clone();
+            .clone()
+            .ok_or_else(|| SendError::invalid("A view-only Monero wallet cannot spend."))?;
         inputs.push(
             OutputWithDecoys::new(&mut rng, rpc, 16, (wallet.next_height - 1) as usize, output)
                 .await
@@ -494,7 +606,7 @@ impl PreparedMoneroTransaction {
         let unlocked = wallet.unlocked()?;
         for image in &self.input_key_images {
             if !wallet.outputs.iter().any(|o| {
-                &o.key_image == image
+                o.key_image.as_ref() == Some(image)
                     && !o.spent
                     && unlocked
                         .iter()
@@ -519,5 +631,43 @@ impl PreparedMoneroTransaction {
             hex::encode(transaction.serialize()),
             hex::encode(transaction.hash()),
         ))
+    }
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::*;
+
+    fn wallet(used: &[(u32, u32)]) -> LocalWallet {
+        LocalWallet {
+            wallet_id: "w".into(),
+            chain_id: crate::registry::Chain::Monero,
+            sender: String::new(),
+            restore_height: 0,
+            next_height: 0,
+            timestamps: Vec::new(),
+            last_hash: None,
+            target_height: 0,
+            outputs: Vec::new(),
+            transfers: Vec::new(),
+            used_subaddresses: used.iter().copied().collect(),
+        }
+    }
+
+    /// wallet2's 50:200 from nothing; past each account's highest used and
+    /// the highest account used; and in account 0 past what was handed out.
+    #[test]
+    fn the_window_is_wallet2s_lookahead_past_what_was_used() {
+        let fresh = wallet(&[]).window(0);
+        assert_eq!(fresh.len(), 50);
+        assert!(fresh.values().all(|bound| *bound == 200));
+        let used = wallet(&[(0, 300), (49, 199)]).window(0);
+        assert_eq!(used.len(), 100);
+        assert_eq!(
+            (used[&0], used[&1], used[&49], used[&99]),
+            (501, 200, 400, 200)
+        );
+        assert_eq!(wallet(&[(0, 300)]).window(700)[&0], 900);
+        assert_eq!(wallet(&[(0, 0)]).window(0)[&0], 201);
     }
 }

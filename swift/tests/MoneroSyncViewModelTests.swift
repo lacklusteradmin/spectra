@@ -7,7 +7,7 @@ import Testing
 struct MoneroSyncViewModelTests {
     private func status(height: UInt64) -> MoneroSyncStatus {
         MoneroSyncStatus(walletId: "wallet", scannedHeight: height, targetHeight: 100,
-                         unlockedPiconeros: 0, complete: false)
+                         unlockedPiconeros: 0, complete: false, spendsKnown: true, usedSubaddresses: [])
     }
 
     @Test func cancelledBatchCannotOverwriteOrFinishRestartedScan() async throws {

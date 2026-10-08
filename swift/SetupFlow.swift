@@ -37,7 +37,8 @@ extension SetupFlow {
         switch method {
         case .createPhrase: SetupFlow(pages: [.seedPhrase, .password, .backupVerification, .walletName])
         case .importPhrase, .importPrivateKey: SetupFlow(pages: [.seedPhrase, .password, .walletName])
-        case .watchAddresses, .watchAccountXpub: SetupFlow(pages: [.watchAddresses, .walletName])
+        case .watchAddresses, .watchAccountXpub, .watchViewKey, .watchMultisig:
+            SetupFlow(pages: [.watchAddresses, .walletName])
         }
     }
 
@@ -78,6 +79,16 @@ extension WalletSetupPage {
                 return WalletSetupPageCopy(
                     title: AppLocalization.string("Watch Account"),
                     subtitle: AppLocalization.string("Enter the account's extended public key."))
+            }
+            if mode == .setup(.watchMultisig) {
+                return WalletSetupPageCopy(
+                    title: AppLocalization.string("Watch Multisig"),
+                    subtitle: AppLocalization.string("Enter the account's descriptor: wsh(sortedmulti(…)) with each key's origin."))
+            }
+            if mode == .setup(.watchViewKey) {
+                return WalletSetupPageCopy(
+                    title: AppLocalization.string("Watch with View Key"),
+                    subtitle: AppLocalization.string("Enter the wallet's primary address and its private view key."))
             }
             return WalletSetupPageCopy(
                 title: content.watchAddressesTitle, subtitle: content.watchAddressesSubtitle)

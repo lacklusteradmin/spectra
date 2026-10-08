@@ -168,7 +168,7 @@ struct StandardChainDiagnosticsView: View {
                 Button(isRunningChainSelfTests ? AppLocalization.string("Running Self-Tests...") : AppLocalization.string("Run Self-Tests")) {
                     Task { await store.runSelfTests(for: chain) }
                 }.disabled(isRunningChainSelfTests)
-                if chain.supportsDeepUTXODiscovery {
+                if chain.usesAccountUTXO {
                     Button(AppLocalization.string(isRunningChainRescan ? "Rescanning..." : "Run Rescan")) {
                         Task { await store.runUTXORescan(chain: chain) }
                     }.disabled(isRunningChainRescan)

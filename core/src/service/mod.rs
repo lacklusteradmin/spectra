@@ -9,7 +9,7 @@
 //! |---|---|
 //! | [`state`] | `ResidentState` projections and serialized persistence |
 //! | [`network`] | endpoint health and transaction status |
-//! | `network_balance`, `network_tokens`, `network_history`, `network_hd`, `network_prices` | chain reads grouped by responsibility |
+//! | `network_balance`, `network_tokens`, `network_history`, `network_prices` | chain reads grouped by responsibility |
 //! | [`send_preflight`] | send eligibility, routing and recipient warnings |
 //! | [`send_preview`] | fee estimates and send previews |
 //! | [`send_stages`] | prepared/signed artifacts and explicit submission |
@@ -76,7 +76,6 @@ pub use diagnostic_state::{
 mod funds_scan;
 pub use funds_scan::{FundsScan, FundsScanEndpoint, FundsScanProgress, FundsScanRead};
 mod helpers;
-mod history_bitcoin;
 mod history_cursor;
 pub(crate) mod history_derived;
 mod history_query;
@@ -92,7 +91,6 @@ mod keypool;
 mod maintenance;
 mod network;
 mod network_balance;
-mod network_hd;
 mod network_history;
 mod network_prices;
 pub use network_prices::{NativeSpotPrice, QuoteRefreshFailure, QuoteRefreshState};
@@ -305,9 +303,6 @@ impl WalletService {
         Ok(service)
     }
 
-    // `fetch_native_balance_summary_auto` lives in the plain-impl block below
-    // — an internal helper, not exported to Swift.
-
     /// Register the platform Keychain implementation. Must be called once at
     /// app start before any code path that reads or writes secrets. Rust code
     /// that needs secret I/O calls the delegate directly via `self.secret_store`;
@@ -494,4 +489,5 @@ impl WalletService {
 }
 
 mod monero_wallet;
+mod psbt;
 pub use monero_wallet::MoneroSyncStatus;

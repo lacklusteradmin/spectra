@@ -609,14 +609,16 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::ResidentState) ->
 }
 
 pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Option<RefreshEntry> {
-    use crate::registry::Chain;
     let chain = wallet.family();
-    let address = wallet
-        .xpub
-        .as_deref()
-        .map(str::trim)
-        .filter(|xpub| chain == Chain::Bitcoin && !xpub.is_empty())
-        .or_else(|| wallet.active_address())?;
+    // A watched account has no address of its own: it is its key, whose
+    // addresses the account balance sums.
+    let address = wallet.active_address().or_else(|| {
+        wallet
+            .xpub
+            .as_deref()
+            .map(str::trim)
+            .filter(|xpub| wallet.chain_id.uses_account_utxo() && !xpub.is_empty())
+    })?;
     Some(RefreshEntry {
         holding_chain_id: chain,
         chain_id: wallet.chain_id,
@@ -627,9 +629,8 @@ pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Op
 
 /// One (chain, wallet, address) triple registered for periodic refresh.
 ///
-/// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
-/// `WalletService::fetch_native_balance_summary_auto` detects extended keys
-/// automatically.
+/// A watched account's `address` is its extended public key; an account
+/// UTXO wallet's balance sums its every address whatever this names.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize)]
 pub struct RefreshEntry {
     /// The chain the balance is *filed* under: the wallet's family, which is
@@ -676,6 +677,7 @@ mod refresh_entry_tests {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
+            multisig_descriptor: None,
         }
     }
 
@@ -706,18 +708,25 @@ mod refresh_entry_tests {
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
     }
 
-    /// A Bitcoin account xpub covers every address the wallet derives, so it is
-    /// the fetch key. Only Bitcoin has one.
+    /// A watched account has no address of its own, so its key is the fetch
+    /// key; a wallet with an address is fetched by it, its account summed
+    /// by the account balance whatever the key.
     #[test]
-    fn a_bitcoin_xpub_is_the_fetch_key() {
+    fn a_watched_account_key_is_the_fetch_key() {
         let mut state = ResidentState::default();
-        let mut btc = wallet("w1", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1main")]);
+        let mut btc = wallet("w1", Chain::Bitcoin, &[]);
         btc.xpub = Some("zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs".to_string());
         state.wallets = vec![btc];
         assert!(refresh_entries_for(&state)[0].address.starts_with("zpub"));
 
         // An empty one is not a key.
         state.wallets[0].xpub = Some("   ".to_string());
+        assert!(refresh_entries_for(&state).is_empty());
+
+        // A phrase wallet's stored account key does not displace its address.
+        let mut phrase = wallet("w2", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1main")]);
+        phrase.xpub = Some("xpub-stored".into());
+        state.wallets = vec![phrase];
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
     }
 

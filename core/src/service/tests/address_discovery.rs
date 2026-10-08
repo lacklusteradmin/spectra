@@ -9,7 +9,7 @@ const SEED: &str =
 
 #[test]
 fn public_children_match_full_derivation_for_every_discovery_network() {
-    for chain in Chain::all().filter(|c| c.supports_deep_utxo_discovery()) {
+    for chain in Chain::all().filter(|c| c.uses_account_utxo()) {
         for purpose in [44, 49, 84, 86] {
             if match chain.mainnet_counterpart() {
                 Chain::Bitcoin | Chain::Peercoin => false,
@@ -26,6 +26,7 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
             for branch in [0, 1] {
                 for index in [0, 1, 40] {
                     let (address, path) = context.derive_on_branch(branch, index).unwrap();
+                    let path = path.unwrap();
                     let expected = crate::derivation::dispatch::derive_for_chain(
                         chain, SEED, &path, None, None, None, true, false, false,
                     )
@@ -122,17 +123,25 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     let secrets = Arc::new(InMemorySecretStore::new());
     crate::store::wallet_secrets::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
     service.set_secret_store(secrets);
+    let mut wallet = WalletState::single_address(
+        "scan",
+        "Scan",
+        crate::registry::Chain::Bitcoin,
+        "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+        Some("m/84'/0'/0'/0/0".into()),
+        false,
+    );
+    wallet.xpub = Some(
+        UtxoDerivation::account_xpub(
+            crate::registry::Chain::Bitcoin,
+            SEED,
+            "m/84'/0'/0'/0/0",
+            &Default::default(),
+        )
+        .unwrap(),
+    );
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "scan",
-                "Scan",
-                crate::registry::Chain::Bitcoin,
-                "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
-                Some("m/84'/0'/0'/0/0".into()),
-                false,
-            ),
-        })
+        .apply_state_command(StateCommand::UpsertWallet { wallet })
         .await
         .unwrap();
     (service, dir)
@@ -420,7 +429,7 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
                     .iter()
                     .find(|row| &row.address == address)
                     .unwrap();
-                assert_eq!(row.derivation_path.as_deref(), Some(path.as_str()));
+                assert_eq!(row.derivation_path.as_deref(), path.as_deref());
                 assert_eq!(row.branch.as_deref(), Some(branch));
                 assert_eq!(row.branch_index, Some(index));
             }
@@ -578,19 +587,18 @@ fn public_utxo_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
         ..Default::default()
     };
     for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
-        let default = crate::derivation::path::default_path_from_catalog(chain).unwrap();
-        let coin = crate::derivation::bitcoin::parse_bip32_path(&default).unwrap()[1]
-            - crate::derivation::primitives::HARDENED_OFFSET;
         let version = if chain.is_testnet() {
             XPUB_VERSION_TESTNET
         } else {
             XPUB_VERSION_MAINNET
         };
-        for purpose in [44, 49, 84, 86] {
-            if purpose == 86 && chain.mainnet_counterpart() != Chain::Peercoin {
-                continue;
-            }
-            let base = format!("m/{purpose}'/{coin}'/2'/1/9");
+        for profile in chain.derivation_profiles() {
+            let base = crate::derivation::path::derivation_path_replacing_last_two(
+                chain.derivation_profile_path(profile, 2).unwrap(),
+                1,
+                9,
+                String::new(),
+            );
             let seed_context =
                 UtxoDerivation::with_overrides(chain, SEED, base.clone(), &overrides).unwrap();
             let root = seed_context.derive_on_branch(1, 9).unwrap().0;
@@ -644,10 +652,9 @@ fn public_utxo_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
 #[tokio::test]
 async fn protected_account_utxo_public_context_receives_after_restart_without_opening_secrets() {
     for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
-        let default = crate::derivation::path::default_path_from_catalog(chain).unwrap();
-        let coin = crate::derivation::bitcoin::parse_bip32_path(&default).unwrap()[1]
-            - crate::derivation::primitives::HARDENED_OFFSET;
-        let base = format!("m/84'/{coin}'/2'/0/0");
+        let base = chain
+            .derivation_profile_path(chain.derivation_profiles()[0], 2)
+            .unwrap();
         let context = UtxoDerivation::new(chain, SEED, base.clone()).unwrap();
         let root = context.derive(0).unwrap().0;
         let mut wallet =
@@ -699,6 +706,7 @@ fn owned_receive_derivation_uses_the_wallet_passphrase() {
     let context =
         UtxoDerivation::with_overrides(Chain::Bitcoin, SEED, path.clone(), &overrides).unwrap();
     let (address, derived_path) = context.derive(3).unwrap();
+    let derived_path = derived_path.unwrap();
     let expected = crate::derivation::dispatch::derive_for_chain(
         crate::registry::Chain::Bitcoin,
         SEED,

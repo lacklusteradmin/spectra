@@ -683,15 +683,23 @@ impl Chain {
     /// Whether this chain's derivation reads a BIP-32 path.
     ///
     /// Read from the catalog rather than restated: `derivation_path = []` is
-    /// how a row says its keys do not come from a path. Monero is the only
-    /// mainnet that says it — its spend and view keys come from the seed
-    /// directly — and the five chains whose derivation ignores the path it is
-    /// handed still carry one, so this is not "does the arm use `p`".
+    /// how a row says its keys do not come from a BIP-32 path. Monero's spend
+    /// and view keys come from the seed directly, TON's from its mnemonic,
+    /// and Polkadot's and Bittensor's from Substrate junctions instead
+    /// (`derives_along_junctions`).
     ///
-    /// For Monero "no path" is the answer, not an error. See
+    /// For those "no path" is the answer, not an error. See
     /// `default_path_from_catalog`.
     pub fn uses_derivation_path(self) -> bool {
         crate::chains::default_derivation_path_template(self).is_some()
+    }
+
+    /// Whether a phrase wallet on this chain derives along a Substrate path
+    /// of hard (`//`) and soft (`/`) junctions under its sr25519 root key,
+    /// as subkey and polkadot.js do (`derivation::substrate_path`). No path
+    /// is the root key; there are no profiles or account indices.
+    pub fn derives_along_junctions(self) -> bool {
+        self.key_scheme() == Some(KeyScheme::Sr25519)
     }
 
     /// The derivation profiles a phrase wallet on this chain can use, the
@@ -808,6 +816,10 @@ impl Chain {
     /// Legacy output address versions: P2PKH, followed by accepted P2SH aliases.
     pub(crate) fn fixed_utxo_address_versions(self) -> Result<(u8, &'static [u8]), RegistryError> {
         match self {
+            Self::Bitcoin => Ok((0x00, &[0x05])),
+            Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
+                Ok((0x6f, &[0xc4]))
+            }
             Self::BitcoinCash | Self::BitcoinSV => Ok((0x00, &[0x05])),
             Self::BitcoinCashTestnet | Self::BitcoinSVTestnet => Ok((0x6f, &[0xc4])),
             Self::Dogecoin => Ok((0x1e, &[0x16])),
@@ -819,7 +831,18 @@ impl Chain {
             Self::BitcoinGold => Ok((0x26, &[0x17])),
             Self::Peercoin => Ok((0x37, &[0x75])),
             Self::PeercoinTestnet => Ok((0x6f, &[0xc4])),
-            _ => Err(self.not_in("fixed-fee UTXO")),
+            _ => Err(self.not_in("Base58 UTXO")),
+        }
+    }
+
+    /// The fork id a network's SIGHASH_FORKID signatures carry: Bitcoin
+    /// Gold's 79, and 0 on Bitcoin Cash and Bitcoin SV, whose replay
+    /// protection is the flag alone.
+    pub(crate) fn sighash_fork_id(self) -> Result<u32, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::BitcoinCash | Self::BitcoinSV => Ok(0),
+            Self::BitcoinGold => Ok(79),
+            _ => Err(self.not_in("SIGHASH_FORKID")),
         }
     }
 
@@ -834,10 +857,35 @@ impl Chain {
         }
     }
 
-    /// These send adapters resolve inputs and signing paths across a wallet's
-    /// persisted account addresses rather than using only its primary address.
+    /// A wallet on this chain is a BIP-44 account rather than one address:
+    /// a phrase wallet stores its account public key, a gap scan finds the
+    /// receive and change addresses it has used, receive addresses rotate,
+    /// its balance and history sum every one of them, and a send spends from
+    /// each with that address's own key. A private-key or watched-address
+    /// wallet is the account's one address.
     pub fn uses_account_utxo(self) -> bool {
-        matches!(self.mainnet_counterpart(), Self::Litecoin | Self::Peercoin)
+        matches!(
+            self.mainnet_counterpart(),
+            Self::Bitcoin
+                | Self::BitcoinCash
+                | Self::BitcoinSV
+                | Self::Litecoin
+                | Self::Dogecoin
+                | Self::Peercoin
+                | Self::Zcash
+                | Self::BitcoinGold
+                | Self::Decred
+                | Self::Kaspa
+                | Self::Dash
+        )
+    }
+
+    /// Whether a wallet's coins can be listed address by address with their
+    /// confirmations: an account on a UTXO indexer that reports both.
+    /// Decred's Insight and Kaspa's REST API do not count confirmations
+    /// against a tip, so their accounts list no coins.
+    pub fn lists_account_coins(self) -> bool {
+        self.uses_account_utxo() && self.uses_utxo_client()
     }
 
     /// Peercoin Core amount.h: amount range sanity bound, not a supply cap.
@@ -882,15 +930,25 @@ impl Chain {
 
     /// The network's genesis block, as explorers write its hash: what an
     /// indexer on it names at height 0.
-    pub(crate) fn litecoin_genesis(self) -> Result<&'static str, RegistryError> {
+    /// The hash of the network's genesis block, as an indexer names the
+    /// block at height 0: what a custom Bitcoin or Litecoin indexer is
+    /// checked against before it broadcasts.
+    pub(crate) fn genesis_block_hash(self) -> Result<String, RegistryError> {
         match self {
             Self::Litecoin => {
-                Ok("12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2")
+                Ok("12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2".into())
             }
             Self::LitecoinTestnet => {
-                Ok("4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0")
+                Ok("4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0".into())
             }
-            _ => Err(self.not_in("Litecoin")),
+            _ => self
+                .bitcoin_network()
+                .map(|network| {
+                    bitcoin::blockdata::constants::genesis_block(network)
+                        .block_hash()
+                        .to_string()
+                })
+                .ok_or_else(|| self.not_in("Bitcoin or Litecoin")),
         }
     }
 
@@ -911,6 +969,8 @@ impl Chain {
 
     pub(crate) fn fixed_utxo_segwit_hrp(self) -> Option<&'static str> {
         match self {
+            Self::Bitcoin => Some("bc"),
+            Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => Some("tb"),
             Self::Litecoin => Some("ltc"),
             Self::LitecoinTestnet => Some("tltc"),
             Self::BitcoinGold => Some("btg"),
@@ -930,6 +990,10 @@ impl Chain {
 
     pub(crate) fn fixed_utxo_supports_witness(self, version: u8, program_length: usize) -> bool {
         match self {
+            Self::Bitcoin | Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
+                (version == 0 && matches!(program_length, 20 | 32))
+                    || (version == 1 && program_length == 32)
+            }
             Self::Litecoin | Self::LitecoinTestnet => {
                 (version == 0 && matches!(program_length, 20 | 32))
                     || (version == 1 && program_length == 32)
@@ -944,7 +1008,7 @@ impl Chain {
         }
     }
 
-    /// Minimum retained change for the fixed-fee P2PKH send adapters.
+    /// Minimum retained change for the legacy-format P2PKH networks.
     pub(crate) fn legacy_change_dust(self) -> Result<u64, RegistryError> {
         match self.mainnet_counterpart() {
             Self::BitcoinCash
@@ -1358,29 +1422,6 @@ impl Chain {
         self.entry().native_coingecko_id.as_str()
     }
 
-    /// The `bitcoin` crate's network for this chain.
-    ///
-    /// Replaces `bitcoin_network_for_mode(&str)`, which matched on the mode
-    /// strings — one more table saying what the registry already knows.
-    /// Non-UTXO chains answer `Bitcoin`, which is what the mode-string version
-    /// did for anything it did not recognise.
-    pub fn bitcoin_network(self) -> bitcoin::Network {
-        match self {
-            Chain::BitcoinTestnet
-            | Chain::LitecoinTestnet
-            | Chain::BitcoinCashTestnet
-            | Chain::BitcoinSVTestnet
-            | Chain::DogecoinTestnet
-            | Chain::ZcashTestnet
-            | Chain::DecredTestnet
-            | Chain::DashTestnet
-            | Chain::PeercoinTestnet => bitcoin::Network::Testnet,
-            Chain::BitcoinTestnet4 => bitcoin::Network::Testnet4,
-            Chain::BitcoinSignet => bitcoin::Network::Signet,
-            _ => bitcoin::Network::Bitcoin,
-        }
-    }
-
     /// Whether this chain's native send needs nothing beyond a destination, an
     /// amount and the fee its preview already supplied.
     ///
@@ -1626,16 +1667,6 @@ impl Chain {
         })
     }
 
-    /// Whether this chain's wallets own one address per network, which every
-    /// receive and send uses: no account-wide gap scan and no fresh receive
-    /// addresses.
-    pub fn has_single_owned_address(self) -> bool {
-        matches!(
-            self.mainnet_counterpart(),
-            Self::Zcash | Self::BitcoinGold | Self::Decred | Self::Kaspa | Self::Dash
-        )
-    }
-
     /// Whether the ledger creates an account only once it holds the
     /// network's reserve, so a first payment below it fails.
     pub fn requires_account_reserve(self) -> bool {
@@ -1659,18 +1690,6 @@ impl Chain {
     /// so the payment key alone imports as another (enterprise) address.
     pub(crate) fn phrase_address_has_stake_key(self) -> bool {
         self.mainnet_counterpart() == Self::Cardano
-    }
-
-    pub fn supports_deep_utxo_discovery(self) -> bool {
-        matches!(
-            self.mainnet_counterpart(),
-            Chain::Bitcoin
-                | Chain::BitcoinCash
-                | Chain::BitcoinSV
-                | Chain::Litecoin
-                | Chain::Dogecoin
-                | Chain::Peercoin
-        )
     }
 
     /// Does a name typed as a destination resolve to an address on this chain?
@@ -1798,12 +1817,113 @@ impl Chain {
         }
     }
 
-    /// `true` when a watch-only or seed import can carry an account extended
-    /// public key for this chain, which stands in for the whole account and
-    /// makes one wallet rather than one per address. Bitcoin's mainnet and
-    /// test networks use their own BIP32 serialization prefixes.
+    /// `true` when an account's extended public key can be watched on this
+    /// chain, standing in for the whole account as one wallet rather than
+    /// one per address: every account UTXO network, each in the encodings
+    /// `account_key_versions` lists.
     pub fn accepts_account_xpub(self) -> bool {
-        self.mainnet_counterpart() == Chain::Bitcoin
+        !self.account_key_versions().is_empty()
+    }
+
+    /// The rust-bitcoin network a Bitcoin chain is; `None` off Bitcoin.
+    pub(crate) fn bitcoin_network(self) -> Option<bitcoin::Network> {
+        match self {
+            Chain::Bitcoin => Some(bitcoin::Network::Bitcoin),
+            Chain::BitcoinTestnet => Some(bitcoin::Network::Testnet),
+            Chain::BitcoinTestnet4 => Some(bitcoin::Network::Testnet4),
+            Chain::BitcoinSignet => Some(bitcoin::Network::Signet),
+            _ => None,
+        }
+    }
+
+    /// `true` when a wallet on this chain can be a multisig account
+    /// (`derivation::multisig`): Bitcoin and its test networks.
+    pub fn supports_multisig(self) -> bool {
+        self.bitcoin_network().is_some()
+    }
+
+    /// `true` when a wallet on this chain can be watched from its address
+    /// and private view key, scanning what it receives without its spend
+    /// key: Monero's view-only wallet.
+    pub fn watches_with_view_key(self) -> bool {
+        self.mainnet_counterpart() == Chain::Monero
+    }
+
+    /// The prefixes an account public key starts with on this network, in
+    /// `account_key_versions` order: what a front end names in its prompt.
+    pub fn account_key_prefixes(self) -> Vec<&'static str> {
+        self.account_key_versions()
+            .iter()
+            .map(|version| version.prefix)
+            .collect()
+    }
+
+    /// The encodings an account public key is read in on this network, the
+    /// one its own wallets export first. Each names the script the account's
+    /// addresses pay. From SLIP-132 (Bitcoin, Litecoin), Trezor's coin
+    /// definitions (Litecoin's zpub, Dogecoin's dgub, Dash's drkp, Decred's
+    /// dpub and its own tpub, and the xpub of Bitcoin Cash, Bitcoin Gold,
+    /// Peercoin and Zcash), the nodes' own chain parameters (Dash Core's
+    /// xpub, Dogecoin Core's testnet tpub), ElectrumSV's xpub on Bitcoin SV
+    /// and rusty-kaspa's kpub and ktub. A Taproot account has no version of
+    /// its own, nor do the SegWit accounts of a network Spectra signs only
+    /// P2PKH on.
+    pub(crate) fn account_key_versions(self) -> &'static [AccountKeyVersion] {
+        use crate::derivation::types::BitcoinScriptType::{P2pkh, P2shP2wpkh, P2wpkh};
+        const fn v(
+            version: u32,
+            prefix: &'static str,
+            script: crate::derivation::types::BitcoinScriptType,
+        ) -> AccountKeyVersion {
+            AccountKeyVersion {
+                version: version.to_be_bytes(),
+                prefix,
+                script,
+            }
+        }
+        const XPUB: AccountKeyVersion = v(0x0488_b21e, "xpub", P2pkh);
+        const YPUB: AccountKeyVersion = v(0x049d_7cb2, "ypub", P2shP2wpkh);
+        const ZPUB: AccountKeyVersion = v(0x04b2_4746, "zpub", P2wpkh);
+        const TPUB: AccountKeyVersion = v(0x0435_87cf, "tpub", P2pkh);
+        const UPUB: AccountKeyVersion = v(0x044a_5262, "upub", P2shP2wpkh);
+        const VPUB: AccountKeyVersion = v(0x045f_1cf6, "vpub", P2wpkh);
+        const LTUB: AccountKeyVersion = v(0x019d_a462, "Ltub", P2pkh);
+        const MTUB: AccountKeyVersion = v(0x01b2_6ef6, "Mtub", P2shP2wpkh);
+        const TTUB: AccountKeyVersion = v(0x0436_f6e1, "ttub", P2pkh);
+        const DRKP: AccountKeyVersion = v(0x02fe_52cc, "drkp", P2pkh);
+        const DGUB: AccountKeyVersion = v(0x02fa_cafd, "dgub", P2pkh);
+        const DPUB: AccountKeyVersion = v(0x02fd_a926, "dpub", P2pkh);
+        const DECRED_TPUB: AccountKeyVersion = v(0x0435_87d1, "tpub", P2pkh);
+        const KPUB: AccountKeyVersion = v(0x038f_332e, "kpub", P2pkh);
+        const KTUB: AccountKeyVersion = v(0x0390_a241, "ktub", P2pkh);
+        match self {
+            Self::Bitcoin | Self::Peercoin => &[XPUB, YPUB, ZPUB],
+            Self::BitcoinTestnet
+            | Self::BitcoinTestnet4
+            | Self::BitcoinSignet
+            | Self::PeercoinTestnet => &[TPUB, UPUB, VPUB],
+            Self::Litecoin => &[LTUB, MTUB, ZPUB],
+            Self::LitecoinTestnet => &[TPUB, UPUB, VPUB, TTUB],
+            Self::BitcoinCash | Self::BitcoinSV | Self::BitcoinGold | Self::Zcash => &[XPUB],
+            Self::Dash => &[XPUB, DRKP],
+            Self::Dogecoin => &[DGUB],
+            Self::Decred => &[DPUB],
+            Self::DecredTestnet => &[DECRED_TPUB],
+            Self::Kaspa => &[KPUB],
+            Self::KaspaTestnet => &[KTUB],
+            Self::BitcoinCashTestnet
+            | Self::BitcoinSVTestnet
+            | Self::ZcashTestnet
+            | Self::DashTestnet
+            | Self::DogecoinTestnet => &[TPUB],
+            _ => &[],
+        }
+    }
+
+    /// Whether a message is proven for a SegWit or Taproot address with a
+    /// BIP-322 signature: Bitcoin's networks, whose verifiers read it.
+    pub(crate) fn proves_with_bip322(self) -> bool {
+        self.mainnet_counterpart() == Self::Bitcoin
     }
 
     /// `true` when a wallet on this chain can be imported watch-only from an
@@ -1995,7 +2115,7 @@ mod tests {
             assert_eq!(chain.peercoin_fee_per_kb_units().unwrap(), 10_000);
             assert_eq!(chain.peercoin_max_money().unwrap(), 21_000_000_000_000);
             assert!(chain.uses_utxo_client());
-            assert!(chain.supports_deep_utxo_discovery());
+            assert!(chain.uses_account_utxo());
             assert!(chain.supports_watch_only_import());
             assert!(chain.derives_from_private_key());
             assert!(chain.has_send_preview());
@@ -2318,18 +2438,35 @@ mod tests {
     /// requires a private view key, so an address is insufficient on either.
     #[test]
     fn watch_only_support_excludes_only_the_monero_family() {
-        assert_eq!(
-            Chain::all()
-                .filter(|c| c.accepts_account_xpub())
-                .collect::<Vec<_>>(),
-            vec![
-                Chain::Bitcoin,
-                Chain::BitcoinTestnet,
-                Chain::BitcoinTestnet4,
-                Chain::BitcoinSignet
-            ],
-            "only Bitcoin networks carry an account xpub"
-        );
+        // Every account network reads account keys, each version spelling
+        // its prefix and a test network's no mainnet's.
+        for chain in Chain::all() {
+            assert_eq!(
+                chain.accepts_account_xpub(),
+                chain.uses_account_utxo(),
+                "{chain}"
+            );
+            for version in chain.account_key_versions() {
+                let encoded = crate::derivation::bitcoin::base58check_encode(
+                    &[version.version.as_slice(), &[0u8; 74]].concat(),
+                );
+                assert!(
+                    encoded.starts_with(version.prefix),
+                    "{chain} {}",
+                    version.prefix
+                );
+                if chain.is_testnet() {
+                    assert!(
+                        !chain
+                            .mainnet_counterpart()
+                            .account_key_versions()
+                            .contains(version),
+                        "{chain} {}",
+                        version.prefix
+                    );
+                }
+            }
+        }
         for chain in Chain::all() {
             assert!(
                 chain.supports_watch_only_import()
@@ -2512,8 +2649,12 @@ pub struct ChainIdentity {
     /// Which chain's slot this chain's address is stored under. The EVM family
     /// shares Ethereum's.
     pub address_slot: String,
-    /// HD discovery walks this chain's addresses past the last used one.
-    pub supports_deep_utxo_discovery: bool,
+    /// A wallet on this chain is an account of many addresses
+    /// (`Chain::uses_account_utxo`), which a rescan can walk.
+    pub uses_account_utxo: bool,
+    /// The prefixes a watched account public key starts with here
+    /// (`Chain::account_key_prefixes`); empty where none is taken.
+    pub account_key_prefixes: Vec<String>,
     /// The staking tab can query this chain's live validator directory.
     pub supports_staking: bool,
     /// The send screen has a network card to show for this chain — a fee, a
@@ -2543,7 +2684,12 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             is_testnet: chain.is_testnet(),
             is_evm: chain.is_evm(),
             address_slot: chain.address_slot().to_string(),
-            supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
+            uses_account_utxo: chain.uses_account_utxo(),
+            account_key_prefixes: chain
+                .account_key_prefixes()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),
             hosts_tokens: chain.hosts_tokens(),
@@ -2556,6 +2702,33 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
 #[cfg(test)]
 mod catalog_agreement_tests {
     use super::*;
+
+    /// The genesis hashes an indexer is checked against are the networks'
+    /// published ones.
+    #[test]
+    fn genesis_hashes_are_the_networks() {
+        for (chain, hash) in [
+            (
+                Chain::Bitcoin,
+                "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+            ),
+            (
+                Chain::BitcoinTestnet,
+                "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943",
+            ),
+            (
+                Chain::BitcoinSignet,
+                "00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6",
+            ),
+            (
+                Chain::Litecoin,
+                "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2",
+            ),
+        ] {
+            assert_eq!(chain.genesis_block_hash().unwrap(), hash, "{chain}");
+        }
+        assert!(Chain::Dogecoin.genesis_block_hash().is_err());
+    }
 
     /// A chain id spelled from the variant's own name, so the check below has
     /// a source independent of the catalog it is checking.
@@ -2664,21 +2837,27 @@ mod the_post_send_refresh_set_is_the_registrys {
     }
 }
 
+/// One encoding of an account public key on a network: its four version
+/// bytes, the prefix they spell, and the script the account's addresses pay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AccountKeyVersion {
+    pub version: [u8; 4],
+    pub prefix: &'static str,
+    pub script: crate::derivation::types::BitcoinScriptType,
+}
+
 /// History service strategy; callers never select a protocol implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HistoryRefreshKind {
-    Bitcoin,
     Evm,
     Utxo,
     Normalized,
 }
 impl Chain {
     pub(crate) fn history_refresh_kind(self) -> HistoryRefreshKind {
-        if self.mainnet_counterpart() == Chain::Bitcoin {
-            HistoryRefreshKind::Bitcoin
-        } else if self.is_evm() {
+        if self.is_evm() {
             HistoryRefreshKind::Evm
-        } else if self.supports_deep_utxo_discovery() {
+        } else if self.uses_account_utxo() {
             HistoryRefreshKind::Utxo
         } else {
             HistoryRefreshKind::Normalized

@@ -41,8 +41,11 @@ extension Chain: Identifiable {
     /// Which chain's slot this chain's address is stored under. The EVM family
     /// shares Ethereum's.
     var addressSlot: String { identity?.addressSlot ?? "" }
-    /// HD discovery walks this chain's addresses past the last used one.
-    var supportsDeepUTXODiscovery: Bool { identity?.supportsDeepUtxoDiscovery ?? false }
+    /// A wallet on this chain is an account of many addresses, which a
+    /// rescan can walk.
+    var usesAccountUTXO: Bool { identity?.usesAccountUtxo ?? false }
+    /// The prefixes a watched account public key starts with on this network.
+    var accountKeyPrefixes: [String] { identity?.accountKeyPrefixes ?? [] }
     /// The send screen has a network card to show for this chain.
     var hasSendPreview: Bool { identity?.hasSendPreview ?? false }
     /// The chain can hold tracked tokens.

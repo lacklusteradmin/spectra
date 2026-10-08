@@ -26,15 +26,11 @@ fn watch(chain: Chain, kind: WalletImportKind) -> WalletImportCommit {
 fn shown_address(wallet: &WalletState) -> String {
     match wallet.address_on(wallet.chain_id) {
         Some(address) => address.to_string(),
-        None => crate::derivation::xpub_walker::derive_children(
+        None => crate::derivation::account_key::first_receive_address(
+            wallet.chain_id,
             wallet.xpub.as_deref().unwrap(),
-            0,
-            0,
-            1,
         )
-        .unwrap()[0]
-            .address
-            .clone(),
+        .unwrap(),
     }
 }
 
@@ -236,6 +232,125 @@ async fn an_export_needs_the_wallets_password() {
         .await
         .unwrap();
     assert_eq!(export.format, WalletSecretFormat::SolanaKeypair);
+    drop(service);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+/// A Polkadot or Bittensor phrase imports along a Substrate junction path
+/// to polkadot.js's account for it (`substrate-paths.json`): the preview,
+/// the stored path, the signing identity and a message signature are all
+/// that account's. A hard path exports a seed that imports back as the same
+/// wallet; a soft junction's key has no seed, so it offers none.
+#[tokio::test]
+async fn a_substrate_phrase_derives_along_its_junction_path() {
+    let fixtures: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/substrate-paths.json")).unwrap();
+    for chain in Chain::all().filter(|chain| chain.derives_along_junctions()) {
+        let field = if chain == Chain::Polkadot {
+            "polkadot"
+        } else {
+            "substrate"
+        };
+        for vector in fixtures["vectors"].as_array().unwrap() {
+            let path = vector["path"].as_str().unwrap();
+            if path.is_empty() {
+                continue;
+            }
+            let expected = vector[field].as_str().unwrap();
+            let (source, directory) = service().await;
+            let mut commit =
+                crate::derivation::setup::tests::fixture(chain, WalletSetupMethod::ImportPhrase);
+            commit.seed_phrase = Some(fixtures["phrase"].as_str().unwrap().into());
+            commit.derivation_path = Some(format!(" {path} "));
+            let passphrase = vector["passphrase"].as_str().unwrap();
+            if !passphrase.is_empty() {
+                commit.derivation_overrides.passphrase = Some(passphrase.into());
+            }
+            let preview = source.preview_wallet_import(commit.clone()).await.unwrap();
+            assert_eq!(preview.addresses, [expected], "{chain} {path:?}");
+            let wallet = import(&source, commit).await;
+            assert_eq!(wallet.derivation_path.as_deref(), Some(path), "{chain}");
+            assert_eq!(wallet.address_on(chain), Some(expected), "{chain} {path:?}");
+            assert_eq!(
+                source
+                    .send_identity_address(wallet.id.clone(), chain, None)
+                    .await
+                    .unwrap(),
+                expected,
+                "{chain} {path:?}"
+            );
+            let signed = source
+                .sign_wallet_message(wallet.id.clone(), "Spectra".into(), None)
+                .await
+                .unwrap();
+            assert!(
+                crate::send::message::verify_message(
+                    chain,
+                    expected.into(),
+                    "Spectra".into(),
+                    signed.signature
+                ),
+                "{chain} {path:?}"
+            );
+            let exports = source.wallet_key_exports(wallet.id.clone()).await.unwrap();
+            if vector["hardOnly"].as_bool().unwrap() {
+                assert_eq!(exports, [WalletKeyKind::PrivateKey], "{chain} {path:?}");
+                let export = source
+                    .export_wallet_key(wallet.id.clone(), WalletKeyKind::PrivateKey, None)
+                    .await
+                    .unwrap();
+                let (target, target_directory) = service().await;
+                let mut key = crate::derivation::setup::tests::fixture(
+                    chain,
+                    WalletSetupMethod::ImportPrivateKey,
+                );
+                key.private_key = Some(export.value);
+                assert_eq!(
+                    import(&target, key).await.address_on(chain),
+                    Some(expected),
+                    "{chain} {path:?}"
+                );
+                drop(target);
+                std::fs::remove_dir_all(target_directory).unwrap();
+            } else {
+                assert!(exports.is_empty(), "{chain} {path:?}");
+                assert!(
+                    source
+                        .export_wallet_key(wallet.id.clone(), WalletKeyKind::PrivateKey, None)
+                        .await
+                        .is_err()
+                );
+            }
+            drop(source);
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+    }
+}
+
+/// A path the two Substrate implementations read differently, a BIP-32
+/// path and a secret URI's `///password` are refused before anything is
+/// stored; so is a Polkadot HMAC override that would change nothing.
+#[tokio::test]
+async fn a_substrate_import_refuses_paths_it_cannot_read_one_way() {
+    let (service, directory) = service().await;
+    for path in [
+        "//0x1234",
+        "m/44'/354'/0'",
+        "//polkadot///secret",
+        "polkadot",
+    ] {
+        let mut commit = crate::derivation::setup::tests::fixture(
+            Chain::Polkadot,
+            WalletSetupMethod::ImportPhrase,
+        );
+        commit.derivation_path = Some(path.into());
+        assert!(service.import_wallets(commit).await.is_err(), "{path:?}");
+    }
+    let mut commit =
+        crate::derivation::setup::tests::fixture(Chain::Polkadot, WalletSetupMethod::ImportPhrase);
+    commit.derivation_overrides.hmac_key = Some("Bitcoin seed".into());
+    assert!(service.import_wallets(commit).await.is_err());
+    assert!(service.app_state().await.wallets.is_empty());
     drop(service);
     std::fs::remove_dir_all(directory).unwrap();
 }

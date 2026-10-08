@@ -114,7 +114,6 @@ extension CapabilityCoverage {
 extension WalletSetupLimit {
     var explanation: String {
         switch self {
-        case .singleAddress: AppLocalization.string("One address receives and sends; no fresh receive addresses.")
         case .accountReserve: AppLocalization.string("The account exists only once it holds the network's reserve; a smaller first payment fails.")
         case .tokenBearingInputsUntouched: AppLocalization.string("ADA held beside native tokens cannot pay; only pure-ADA inputs are spent.")
         case .shieldedScan: AppLocalization.string("Shielded funds are found by scanning blocks on this device from the restore height on; only a wallet restored from its seed phrase holds them.")

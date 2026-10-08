@@ -88,15 +88,12 @@ impl WalletService {
                 }
                 let chain = chain_id;
                 let result = match chain.history_refresh_kind() {
-                    crate::registry::HistoryRefreshKind::Bitcoin => {
-                        this.refresh_bitcoin_history(ids, load_more, limit).await
-                    }
                     crate::registry::HistoryRefreshKind::Evm => {
                         this.refresh_evm_chain_history(chain_id, ids, load_more, limit)
                             .await
                     }
                     crate::registry::HistoryRefreshKind::Utxo => {
-                        this.refresh_utxo_chain_history(chain_id, ids, load_more)
+                        this.refresh_utxo_chain_history(chain_id, ids, load_more, limit)
                             .await
                     }
                     crate::registry::HistoryRefreshKind::Normalized => {

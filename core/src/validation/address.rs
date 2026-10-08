@@ -751,6 +751,7 @@ mod tests {
 
         let bittensor = crate::derivation::bittensor::derive_bittensor(
             MNEMONIC.to_string(),
+            String::new(),
             None,
             true,
             false,

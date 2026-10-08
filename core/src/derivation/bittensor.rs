@@ -11,8 +11,8 @@
 //! Bittensor does not currently use the optional ECDSA path that the
 //! generic SS58 envelope reserves.
 //!
-//! Substrate junction derivation (`//hard`, `/soft`) is not yet supported —
-//! omit the derivation path to derive the root sr25519 keypair.
+//! A derivation path is Substrate's hard (`//`) and soft (`/`) junctions
+//! (`derivation::substrate_path`); none derives the root sr25519 keypair.
 
 use crate::derivation::error::DerivationError;
 
@@ -30,7 +30,8 @@ pub fn validate_bittensor_address(address: &str) -> bool {
     decode_bittensor_ss58(address).is_ok()
 }
 
-// Derive Bittensor address, public key, and mini-secret hex from a mnemonic seed phrase.
+// Derive Bittensor address, public key, and signing key hex (a seed, or a
+// soft junction's expanded key) from a mnemonic seed phrase along `path`.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     passphrase: Option<&str>,
@@ -39,7 +40,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<OptionalKeyMaterial, DerivationError> {
-    let (mini_secret, public_key) = derive_substrate_sr25519_material(
+    let (key, public_key) = derive_substrate_sr25519_material(
         seed_phrase,
         passphrase.unwrap_or(""),
         None,
@@ -51,7 +52,7 @@ pub(crate) fn derive_from_seed_phrase(
     Ok((
         want_address.then(|| encode_ss58(&public_key, 42)),
         want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(mini_secret)),
+        want_private_key.then(|| hex::encode(&*key)),
     ))
 }
 
@@ -60,9 +61,11 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::SpectraBridgeError;
 use crate::derivation::types::DerivationResult;
 
-/// Derive Bittensor wallet (address, public key, mini-secret) from a seed phrase.
+/// Derive Bittensor wallet (address, public key, signing key) from a seed
+/// phrase along a Substrate junction path.
 pub fn derive_bittensor(
     seed_phrase: String,
+    path: String,
     passphrase: Option<String>,
     want_address: bool,
     want_public_key: bool,
@@ -71,7 +74,7 @@ pub fn derive_bittensor(
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
         &seed_phrase,
         passphrase.as_deref(),
-        None,
+        Some(&path),
         want_address,
         want_public_key,
         want_private_key,

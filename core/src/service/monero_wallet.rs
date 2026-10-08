@@ -2,11 +2,7 @@
 use super::*;
 use crate::send::monero_local::{self, LocalWallet, PreparedMoneroTransaction};
 use crate::store::secret_store::SecretClass;
-use ::monero_wallet::{
-    ViewPair,
-    address::{MoneroAddress, Network},
-    ed25519::Scalar,
-};
+use ::monero_wallet::address::MoneroAddress;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -17,14 +13,39 @@ pub struct MoneroSyncStatus {
     pub target_height: u64,
     pub unlocked_piconeros: u64,
     pub complete: bool,
+    /// Whether the wallet sees what it spends. A view-only wallet has no
+    /// spend key, so no key image: its balance is what it received, and an
+    /// output spent elsewhere still counts in it.
+    pub spends_known: bool,
+    /// Each account an output arrived in, with its highest address index
+    /// one arrived at: what the scan watches wallet2's lookahead past.
+    pub used_subaddresses: Vec<MoneroSubaddress>,
 }
-fn status(wallet: &LocalWallet) -> Result<MoneroSyncStatus, SpectraBridgeError> {
+
+/// A Monero subaddress index: account, then address within it; `(0, 0)` is
+/// the primary address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct MoneroSubaddress {
+    pub account: u32,
+    pub address: u32,
+}
+
+fn status(
+    wallet: &LocalWallet,
+    spends_known: bool,
+) -> Result<MoneroSyncStatus, SpectraBridgeError> {
     Ok(MoneroSyncStatus {
         wallet_id: wallet.wallet_id.clone(),
         scanned_height: wallet.next_height,
         target_height: wallet.target_height,
         unlocked_piconeros: wallet.balance()?,
         complete: wallet.target_height > 0 && wallet.next_height >= wallet.target_height,
+        spends_known,
+        used_subaddresses: wallet
+            .used_subaddresses
+            .iter()
+            .map(|(&account, &address)| MoneroSubaddress { account, address })
+            .collect(),
     })
 }
 
@@ -47,6 +68,7 @@ impl WalletService {
             if chain.mainnet_counterpart() != Chain::Monero {
                 return Ok(None);
             }
+            let spends_known = !wallet.is_watch_only();
             let db = this.bound_database().await?;
             if crate::wallet_db::scan_cache_load(&db, &wallet_id, chain)?.is_none() {
                 // Not scanned yet: the scan will start at the restore height
@@ -57,10 +79,12 @@ impl WalletService {
                     target_height: 0,
                     unlocked_piconeros: 0,
                     complete: false,
+                    spends_known,
+                    used_subaddresses: Vec::new(),
                 }));
             }
             let (_, cached, _) = this.load_monero(&wallet_id).await?;
-            Ok(Some(status(&cached)?))
+            Ok(Some(status(&cached, spends_known)?))
         })
         .await
     }
@@ -68,7 +92,9 @@ impl WalletService {
     /// Bounded, durable scan batch. Both shells can await batches until complete;
     /// cancellation between batches loses no progress. No key is sent to a server.
     /// The first batch starts at the restore height the wallet was imported
-    /// with, which nothing changes afterwards.
+    /// with, which nothing changes afterwards. A view-only wallet scans with
+    /// its view key alone and takes no password; a signing wallet unseals its
+    /// spend key, which the key images of what it spends need.
     pub async fn sync_monero_wallet(
         &self,
         wallet_id: String,
@@ -78,29 +104,42 @@ impl WalletService {
         crate::worker::run(async move {
             let this = &this;
             let password = password.map(Zeroizing::new);
-            let state = this.app_state().await;
-            let wallet = state
-                .wallets
-                .iter()
-                .find(|w| w.id == wallet_id)
-                .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
+            let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             let restore_height = wallet.restore_height.unwrap_or(0);
             chain.monero_network_name()?;
-            let signer = this
-                .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
-                .await?;
-            let _guard = this.lock_sender(chain, &signer.from_address).await?;
-            let secret = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
-            if secret.len() != 64 {
-                return Err(SpectraBridgeError::failure("Invalid Monero key material"));
+            let address = wallet
+                .address_on(chain)
+                .ok_or_else(|| SpectraBridgeError::failure("Monero wallet has no address"))?
+                .to_string();
+            let spends_known = !wallet.is_watch_only();
+            let keys = if spends_known {
+                let signer = this
+                    .resolve_send_identity(chain, &wallet_id, password.as_ref().map(|p| p.as_str()))
+                    .await?;
+                let keys = monero_local::ScanKeys::signing(chain, &signer.private_key_hex)?;
+                // A wallet copied from another network's phrase first meets
+                // its view key here.
+                this.secrets()?.save_secret(
+                    SecretClass::Generic,
+                    format!("{wallet_id}.scan-key"),
+                    hex::encode(*keys.view.view),
+                )?;
+                keys
+            } else {
+                monero_local::ScanKeys {
+                    view: this
+                        .monero_view_keys(&wallet_id, chain, &address)?
+                        .ok_or_else(|| SpectraBridgeError::failure("Monero view key missing"))?,
+                    spend: None,
+                }
+            };
+            if keys.view.address.to_string() != address {
+                return Err(SpectraBridgeError::failure(
+                    "Monero keys do not belong to the wallet's address",
+                ));
             }
-            let store = this.secrets()?;
-            store.save_secret(
-                SecretClass::Generic,
-                format!("{wallet_id}.scan-key"),
-                hex::encode(&secret[32..]),
-            )?;
+            let _guard = this.lock_sender(chain, &address).await?;
             let db = this.bound_database().await?;
             let (revision, mut cached, key) =
                 if crate::wallet_db::scan_cache_load(&db, &wallet_id, chain)?.is_some() {
@@ -112,7 +151,7 @@ impl WalletService {
                         LocalWallet {
                             wallet_id: wallet_id.clone(),
                             chain_id: chain,
-                            sender: signer.from_address.clone(),
+                            sender: address.clone(),
                             restore_height,
                             next_height: restore_height,
                             timestamps: Vec::new(),
@@ -120,17 +159,21 @@ impl WalletService {
                             target_height: 0,
                             outputs: Vec::new(),
                             transfers: Vec::new(),
+                            used_subaddresses: Default::default(),
                         },
-                        cache_key(&wallet_id, &secret[32..]),
+                        cache_key(&wallet_id, keys.view.view.as_slice()),
                     )
                 };
             let endpoint = this
                 .monero_endpoint(chain, &[EndpointCapability::Verification])
                 .await?;
             let rpc = crate::api::monero_daemon_rpc::daemon(&endpoint, chain).await?;
-            monero_local::scan(&mut cached, &rpc, &signer.private_key_hex, 500).await?;
+            let handed_out = this.monero_handed_out(&wallet_id, chain).await?;
+            monero_local::scan(&mut cached, &rpc, &keys, handed_out, 500).await?;
             this.save_monero(revision, &cached, &key).await?;
-            status(&cached)
+            this.rotate_monero_receive(&wallet_id, chain, &cached)
+                .await?;
+            status(&cached, spends_known)
         })
         .await
     }
@@ -143,6 +186,95 @@ fn cache_key(wallet_id: &str, view: &[u8]) -> Zeroizing<Vec<u8>> {
     Zeroizing::new(hash.finalize().to_vec())
 }
 impl WalletService {
+    /// The wallet's scan keys from its stored view key and primary address;
+    /// `None` until the view key is stored.
+    pub(super) fn monero_view_keys(
+        &self,
+        wallet_id: &str,
+        chain: Chain,
+        address: &str,
+    ) -> Result<Option<crate::derivation::monero::ViewKeys>, SpectraBridgeError> {
+        let view = match self
+            .secrets()?
+            .load_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))
+        {
+            Ok(view) => Zeroizing::new(view),
+            Err(crate::store::secret_store::SecretStoreError::NotFound) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        Ok(Some(crate::derivation::monero::view_keys(
+            chain, address, &view,
+        )?))
+    }
+
+    /// The highest account-0 address index the wallet has handed out.
+    async fn monero_handed_out(
+        &self,
+        wallet_id: &str,
+        chain: Chain,
+    ) -> Result<u32, SpectraBridgeError> {
+        let reserved = self
+            .keypool_state(wallet_id.to_string(), chain)
+            .await?
+            .reserved_receive_index
+            .unwrap_or(0);
+        Ok(u32::try_from(reserved).unwrap_or(0))
+    }
+
+    /// Move the receive address past one an output has arrived at, so the
+    /// next payer gets a fresh subaddress.
+    async fn rotate_monero_receive(
+        &self,
+        wallet_id: &str,
+        chain: Chain,
+        wallet: &LocalWallet,
+    ) -> Result<(), SpectraBridgeError> {
+        if let Some(&used) = wallet.used_subaddresses.get(&0) {
+            self.advance_receive_past(wallet_id.to_string(), chain, i64::from(used))
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Account 0's address at the wallet's reserved receive index: its
+    /// primary address until an output arrives there, then the next
+    /// subaddress. `None` until the view key is stored.
+    pub(super) async fn monero_receive_address(
+        &self,
+        wallet_id: &str,
+        chain: Chain,
+        primary: &str,
+        reserve: bool,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let Some(keys) = self.monero_view_keys(wallet_id, chain, primary)? else {
+            return Ok(None);
+        };
+        let index = if reserve {
+            self.reserve_receive_index(wallet_id.to_string(), chain, 0)
+                .await?
+        } else {
+            self.keypool_state(wallet_id.to_string(), chain)
+                .await?
+                .reserved_receive_index
+                .unwrap_or(0)
+        };
+        let index = u32::try_from(index)
+            .map_err(|_| SpectraBridgeError::failure("receive index is out of range"))?;
+        let address = crate::derivation::monero::subaddress(&keys, 0, index)?;
+        if reserve {
+            self.register_owned_address(
+                wallet_id.to_string(),
+                chain,
+                address.clone(),
+                None,
+                Some("external".to_string()),
+                Some(i64::from(index)),
+            )
+            .await?;
+        }
+        Ok(Some(address))
+    }
+
     pub(super) async fn monero_history(
         &self,
         chain: Chain,
@@ -281,25 +413,18 @@ impl WalletService {
             .flatten()
             .collect();
         for output in &mut wallet.outputs {
-            if reserved.contains(&output.key_image) {
+            if output
+                .key_image
+                .as_ref()
+                .is_some_and(|image| reserved.contains(image))
+            {
                 output.spent = true;
             }
         }
-        let view = Zeroizing::new(self.secrets()?.load_secret(
-            SecretClass::Generic,
-            format!("{}.scan-key", request.wallet_id),
-        )?);
-        let view = Zeroizing::new(hex::decode(view.as_str())?);
-        let scalar = Scalar::read(&mut view.as_slice()).map_err(SpectraBridgeError::failure)?;
-        let network = if chain == Chain::Monero {
-            Network::Mainnet
-        } else {
-            Network::Stagenet
-        };
-        let address = MoneroAddress::from_str(network, &wallet.sender)
-            .map_err(SpectraBridgeError::failure)?;
-        let pair = ViewPair::new(address.spend(), Zeroizing::new(scalar))
-            .map_err(SpectraBridgeError::failure)?;
+        let pair = self
+            .monero_view_keys(&request.wallet_id, chain, &wallet.sender)?
+            .ok_or_else(|| SpectraBridgeError::failure("Monero view key missing"))?
+            .pair()?;
         let rpc = crate::api::monero_daemon_rpc::daemon(
             &self
                 .monero_endpoint(
@@ -328,8 +453,12 @@ impl WalletService {
             chain,
         )
         .await?;
-        monero_local::scan(&mut wallet, &rpc, private, 500).await?;
+        let keys = monero_local::ScanKeys::signing(chain, private)?;
+        let handed_out = self.monero_handed_out(wallet_id, chain).await?;
+        monero_local::scan(&mut wallet, &rpc, &keys, handed_out, 500).await?;
         self.save_monero(Some(revision), &wallet, &key).await?;
+        self.rotate_monero_receive(wallet_id, chain, &wallet)
+            .await?;
         if wallet.next_height < wallet.target_height {
             return Err(SpectraBridgeError::failure(
                 "Monero sync is behind; finish syncing before signing",

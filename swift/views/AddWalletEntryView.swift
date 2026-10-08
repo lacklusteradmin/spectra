@@ -153,6 +153,8 @@ extension WalletSetupMethod {
         case .importPrivateKey: AppLocalization.string("Import Private Key")
         case .watchAddresses: AppLocalization.string("Watch Addresses")
         case .watchAccountXpub: AppLocalization.string("Watch Account")
+        case .watchViewKey: AppLocalization.string("Watch with View Key")
+        case .watchMultisig: AppLocalization.string("Watch Multisig")
         }
     }
     var subtitle: String {
@@ -162,6 +164,8 @@ extension WalletSetupMethod {
         case .importPrivateKey: AppLocalization.string("Add one account from its private key.")
         case .watchAddresses: AppLocalization.string("Track public addresses without adding private keys.")
         case .watchAccountXpub: AppLocalization.string("Track a whole account from its extended public key.")
+        case .watchViewKey: AppLocalization.string("Scan what a wallet receives from its address and private view key.")
+        case .watchMultisig: AppLocalization.string("Watch a multisig account from its descriptor; add a cosigner's phrase to sign.")
         }
     }
     var icon: String {
@@ -171,6 +175,8 @@ extension WalletSetupMethod {
         case .importPrivateKey: "key.circle.fill"
         case .watchAddresses: "eye.circle.fill"
         case .watchAccountXpub: "binoculars.circle.fill"
+        case .watchViewKey: "eye.square.fill"
+        case .watchMultisig: "person.3.fill"
         }
     }
 }
@@ -191,7 +197,9 @@ extension WalletSecretFormat {
         case .aptosPrivateKey: AppLocalization.string("AIP-80 key (ed25519-priv-0x…)")
         case .nearSecretKey: AppLocalization.string("Key string (ed25519:…)")
         case .address: AppLocalization.string("Addresses, one per line")
-        case .accountXpub: AppLocalization.string("Account xpub, ypub or zpub")
+        case .accountXpub: AppLocalization.string("Account public key")
+        case .moneroViewKey: AppLocalization.string("Private view key, 64 hex digits")
+        case .multisigDescriptor: AppLocalization.string("Output descriptor, wsh(sortedmulti(…))")
         }
     }
 }

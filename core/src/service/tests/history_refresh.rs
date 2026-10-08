@@ -27,6 +27,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         hidden_holdings: Vec::new(),
         icp_principal: None,
         near_account_key: None,
+        multisig_descriptor: None,
     }
 }
 
@@ -406,7 +407,7 @@ async fn a_utxo_wallet_with_no_known_addresses_is_not_exhausted() {
         .expect("wallet");
 
     let outcome = service
-        .refresh_utxo_chain_history(Chain::Litecoin, Vec::new(), false)
+        .refresh_utxo_chain_history(Chain::Litecoin, Vec::new(), false, None)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
@@ -485,7 +486,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .expect("owned address");
 
     let outcome = service
-        .refresh_utxo_chain_history(Chain::Litecoin, Vec::new(), false)
+        .refresh_utxo_chain_history(Chain::Litecoin, Vec::new(), false, None)
         .await
         .expect("refresh");
     assert_eq!(outcome.wallets_refreshed, 0);
@@ -501,66 +502,6 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
             .is_exhausted,
         "a wallet that failed must stay loadable"
     );
-}
-
-/// A Bitcoin wallet with neither an address nor an xpub is a failure with
-/// a reason, not a silent skip.
-///
-/// Offline: the three sources are tried in order and none of them has an
-/// identifier to fetch for, so no provider is reached.
-#[tokio::test]
-async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
-    let service = WalletService::new(Vec::new()).expect("service");
-    let db = std::env::temp_dir()
-        .join(format!(
-            "spectra-btc-history-{}.sqlite",
-            crate::store::new_event_id()
-        ))
-        .to_string_lossy()
-        .into_owned();
-    service.open_state(db).await.expect("open");
-    service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: wallet("w1", Chain::Bitcoin, &[]),
-        })
-        .await
-        .expect("wallet");
-
-    let outcome = service
-        .refresh_bitcoin_history(Vec::new(), false, None)
-        .await
-        .expect("refresh");
-    assert_eq!(outcome.wallets_refreshed, 0);
-    assert_eq!(outcome.wallets_failed, 1);
-    assert_eq!(outcome.added, 0);
-    assert_eq!(outcome.diagnostics.len(), 1);
-    assert_eq!(outcome.diagnostics[0].source_used, "none");
-    assert!(
-        outcome.diagnostics[0]
-            .error
-            .as_deref()
-            .is_some_and(|error| error.contains("no Bitcoin address"))
-    );
-    // The row names the wallet when it has nothing else to be named by.
-    assert_eq!(outcome.diagnostics[0].identifier, "w1 wallet");
-    // A failure leaves the cursor where it was: writing `None` there would
-    // say "the chain confirms there is no more".
-    assert!(!outcome.exhausted, "a failed page is not the last page");
-    assert!(
-        !service
-            .history_cursor(Chain::Bitcoin, "w1".to_string())
-            .is_exhausted,
-        "a failure must not mark the wallet exhausted"
-    );
-
-    // No Bitcoin wallets at all is not a failure.
-    let empty = WalletService::new(Vec::new()).expect("service");
-    let outcome = empty
-        .refresh_bitcoin_history(Vec::new(), false, None)
-        .await
-        .expect("refresh");
-    assert_eq!(outcome.wallets_failed, 0);
-    assert!(outcome.exhausted);
 }
 
 /// Only an EVM chain has an explorer page to fetch.
