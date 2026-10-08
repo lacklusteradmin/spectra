@@ -438,26 +438,31 @@ pub(super) fn plan_import(
             vec![ImportedAddress::AccountXpub(xpub)]
         }
     };
-    // A Monero wallet scans from its restore height: the one typed or
-    // given for a created wallet, else a Polyseed's birthday, else the
-    // start of the chain. No other chain scans.
-    let restore_height = if chain.mainnet_counterpart() == Chain::Monero {
+    // A Monero wallet, and a Zcash wallet's shielded pools, scan from its
+    // restore height: the one typed or given for a created wallet, else a
+    // Polyseed's birthday, else the chain's default (Monero's start,
+    // Zcash's Sapling activation). A Zcash wallet without a phrase has no
+    // shielded keys and scans nothing. No other chain scans.
+    let scans = crate::restore_heights::takes_restore_height(chain)
+        && (chain.mainnet_counterpart() == Chain::Monero || commit.seed_phrase.is_some());
+    let restore_height = if scans {
         Some(match commit.restore_height {
             Some(height) => {
-                crate::monero_heights::check_restore_height(chain, height)?;
+                crate::restore_heights::check_restore_height(chain, height)?;
                 height
             }
             None => commit
                 .seed_phrase
                 .as_deref()
                 .and_then(crate::derivation::phrase::polyseed_birthday)
-                .map_or(0, |birthday| {
-                    crate::monero_heights::height_at_or_before(chain, birthday)
-                }),
+                .map_or(
+                    crate::restore_heights::default_restore_height(chain),
+                    |birthday| crate::restore_heights::height_at_or_before(chain, birthday),
+                ),
         })
     } else if commit.restore_height.is_some() {
         return Err(SpectraBridgeError::invalid(
-            "Only Monero wallets take a restore height.",
+            "Only Monero wallets and Zcash wallets restored from a phrase take a restore height.",
         ));
     } else {
         None

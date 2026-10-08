@@ -1,6 +1,7 @@
-//! Stellar send: XDR Payment (native XLM) and AccountMerge builders and
-//! Ed25519 signer.
+//! Stellar send: XDR Payment (native XLM or a credit asset), ChangeTrust
+//! and AccountMerge builders and Ed25519 signer.
 
+use crate::api::stellar_asset::StellarAsset;
 use crate::send::error::SendError;
 
 use crate::derivation::stellar::decode_stellar_address;
@@ -9,18 +10,29 @@ use crate::derivation::stellar::decode_stellar_address;
 
 /// The one operation a Spectra transaction carries.
 enum StellarOperation<'a> {
-    /// PAYMENT of native XLM.
-    Payment { to: &'a [u8; 32], stroops: i64 },
+    /// PAYMENT of native XLM, or of `asset` when there is one.
+    Payment {
+        to: &'a [u8; 32],
+        asset: Option<&'a StellarAsset>,
+        stroops: i64,
+    },
     /// ACCOUNT_MERGE: the source account is removed and its balance, less
     /// the fee, goes to `to`.
     AccountMerge { to: &'a [u8; 32] },
+    /// CHANGE_TRUST: hold up to `limit` of `asset`; a limit of zero on an
+    /// empty trustline removes it.
+    ChangeTrust { asset: &'a StellarAsset, limit: i64 },
 }
 
-/// Build a signed Stellar Payment transaction for native XLM.
+/// The largest trustline limit, which the SDK sets when none is given.
+pub(crate) const MAX_TRUST_LIMIT: i64 = i64::MAX;
+
+/// Build a signed Stellar Payment transaction: native XLM, or `asset`.
 #[allow(clippy::too_many_arguments)]
-pub fn build_signed_payment_xdr(
+pub(crate) fn build_signed_payment_xdr(
     from: &str,
     to: &str,
+    asset: Option<&StellarAsset>,
     stroops: i64,
     base_fee: u64,
     sequence: u64,
@@ -30,8 +42,44 @@ pub fn build_signed_payment_xdr(
 ) -> Result<Vec<u8>, SendError> {
     let _from_bytes = decode_stellar_address(from)?;
     let to = decode_stellar_address(to)?;
+    if stroops <= 0 {
+        return Err(SendError::invalid(
+            "Stellar: a payment moves a positive amount",
+        ));
+    }
     build_signed(
-        StellarOperation::Payment { to: &to, stroops },
+        StellarOperation::Payment {
+            to: &to,
+            asset,
+            stroops,
+        },
+        base_fee,
+        sequence,
+        network_passphrase,
+        private_key,
+        public_key,
+    )
+}
+
+/// Build a signed Stellar ChangeTrust: the account `from` holds up to
+/// `limit` stroops of `asset`.
+pub(crate) fn build_signed_change_trust_xdr(
+    from: &str,
+    asset: &StellarAsset,
+    limit: i64,
+    base_fee: u64,
+    sequence: u64,
+    network_passphrase: &[u8],
+    private_key: &[u8; 64],
+    public_key: &[u8; 32],
+) -> Result<Vec<u8>, SendError> {
+    if limit < 0 || asset.issuer == from {
+        return Err(SendError::invalid(
+            "Stellar: a trustline is to another account, for a limit of zero or more",
+        ));
+    }
+    build_signed(
+        StellarOperation::ChangeTrust { asset, limit },
         base_fee,
         sequence,
         network_passphrase,
@@ -83,7 +131,7 @@ fn build_signed(
     let network_hash: [u8; 32] = Sha256::digest(network_passphrase).into();
 
     // TransactionV0/Transaction XDR encoding (manual).
-    let tx_xdr = encode_tx(&operation, base_fee, sequence, public_key);
+    let tx_xdr = encode_tx(&operation, base_fee, sequence, public_key)?;
 
     // Signing payload: sha256(network_hash || ENVELOPE_TYPE_TX(2) || tx_xdr)
     let mut payload = Vec::new();
@@ -113,12 +161,29 @@ fn build_signed(
     Ok(envelope)
 }
 
+/// An `Asset`: native, or `credit_alphanum4`/`12` with the code padded
+/// with zeros and the issuer's key.
+fn encode_asset(tx: &mut Vec<u8>, asset: Option<&StellarAsset>) -> Result<(), SendError> {
+    let Some(asset) = asset else {
+        tx.extend_from_slice(&0u32.to_be_bytes()); // ASSET_TYPE_NATIVE
+        return Ok(());
+    };
+    let width = if asset.code.len() <= 4 { 4 } else { 12 };
+    tx.extend_from_slice(&(if width == 4 { 1u32 } else { 2u32 }).to_be_bytes());
+    let mut code = vec![0u8; width];
+    code[..asset.code.len()].copy_from_slice(asset.code.as_bytes());
+    tx.extend_from_slice(&code);
+    tx.extend_from_slice(&0u32.to_be_bytes()); // PUBLIC_KEY_TYPE_ED25519
+    tx.extend_from_slice(&decode_stellar_address(&asset.issuer)?);
+    Ok(())
+}
+
 fn encode_tx(
     operation: &StellarOperation<'_>,
     base_fee: u64,
     sequence: u64,
     public_key: &[u8; 32],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, SendError> {
     let mut tx = Vec::new();
     // sourceAccount: PUBLIC_KEY_TYPE_ED25519(0) + key
     tx.extend_from_slice(&0u32.to_be_bytes());
@@ -135,15 +200,20 @@ fn encode_tx(
     // Operation: sourceAccount optional=0 (no override)
     tx.extend_from_slice(&0u32.to_be_bytes());
     match operation {
-        StellarOperation::Payment { to, stroops } => {
+        StellarOperation::Payment { to, asset, stroops } => {
             tx.extend_from_slice(&1u32.to_be_bytes()); // PAYMENT op type
             // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
             tx.extend_from_slice(&0u32.to_be_bytes());
             tx.extend_from_slice(*to);
-            // ASSET_TYPE_NATIVE = 0
-            tx.extend_from_slice(&0u32.to_be_bytes());
+            encode_asset(&mut tx, *asset)?;
             // amount: Int64
             tx.extend_from_slice(&stroops.to_be_bytes());
+        }
+        StellarOperation::ChangeTrust { asset, limit } => {
+            tx.extend_from_slice(&6u32.to_be_bytes()); // CHANGE_TRUST op type
+            // ChangeTrustAsset: a credit asset, as an Asset.
+            encode_asset(&mut tx, Some(asset))?;
+            tx.extend_from_slice(&limit.to_be_bytes());
         }
         StellarOperation::AccountMerge { to } => {
             tx.extend_from_slice(&8u32.to_be_bytes()); // ACCOUNT_MERGE op type
@@ -154,7 +224,7 @@ fn encode_tx(
     }
     // ext: 0
     tx.extend_from_slice(&0u32.to_be_bytes());
-    tx
+    Ok(tx)
 }
 
 fn xdr_write_bytes(out: &mut Vec<u8>, data: &[u8]) {
@@ -187,6 +257,7 @@ mod tests {
         let envelope = build_signed_payment_xdr(
             &address,
             &address,
+            None,
             12_345_678,
             100,
             42,
@@ -250,6 +321,78 @@ mod tests {
                 100,
                 1,
                 b"Test SDF Network ; September 2015",
+                &key.to_keypair_bytes(),
+                &public,
+            )
+            .is_err()
+        );
+    }
+
+    /// Credit-asset payments and trustlines exactly as the Stellar SDK
+    /// builds and signs them, for four- and twelve-character codes.
+    #[test]
+    fn credit_assets_match_the_stellar_sdk() {
+        use base64::Engine;
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/issued-assets.json")).unwrap();
+        let vectors = &fixture["stellar"];
+        let seed: [u8; 32] = hex::decode(vectors["seed"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let key = SigningKey::from_bytes(&seed);
+        let public = key.verifying_key().to_bytes();
+        let text = |value: &serde_json::Value| value.as_str().unwrap().to_string();
+        let passphrase = text(&vectors["network_passphrase"]);
+        let stroops = |amount: &serde_json::Value| {
+            crate::decimal::to_units(amount.as_str().unwrap(), 7).unwrap() as i64
+        };
+        let encode = base64::engine::general_purpose::STANDARD;
+        for vector in vectors["payments"].as_array().unwrap() {
+            let asset = StellarAsset::parse(&text(&vector["asset"])).unwrap();
+            let envelope = build_signed_payment_xdr(
+                &text(&vectors["source"]),
+                &text(&vectors["destination"]),
+                Some(&asset),
+                stroops(&vector["amount"]),
+                100,
+                text(&vector["sequence"]).parse().unwrap(),
+                passphrase.as_bytes(),
+                &key.to_keypair_bytes(),
+                &public,
+            )
+            .unwrap();
+            assert_eq!(encode.encode(envelope), text(&vector["envelope_b64"]));
+        }
+        for vector in vectors["trustlines"].as_array().unwrap() {
+            let asset = StellarAsset::parse(&text(&vector["asset"])).unwrap();
+            let envelope = build_signed_change_trust_xdr(
+                &text(&vectors["source"]),
+                &asset,
+                stroops(&vector["limit"]),
+                100,
+                text(&vector["sequence"]).parse().unwrap(),
+                passphrase.as_bytes(),
+                &key.to_keypair_bytes(),
+                &public,
+            )
+            .unwrap();
+            assert_eq!(encode.encode(envelope), text(&vector["envelope_b64"]));
+        }
+        assert_eq!(
+            stroops(&vectors["trustlines"][0]["limit"]),
+            MAX_TRUST_LIMIT,
+            "the SDK's default limit is the largest"
+        );
+        let own = StellarAsset::new("OWN", &text(&vectors["source"])).unwrap();
+        assert!(
+            build_signed_change_trust_xdr(
+                &text(&vectors["source"]),
+                &own,
+                1,
+                100,
+                1,
+                passphrase.as_bytes(),
                 &key.to_keypair_bytes(),
                 &public,
             )

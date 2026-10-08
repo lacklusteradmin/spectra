@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Token preview/build/sign survives restart; local nodes, no broadcasts.
 SDK byte-level proof lives in token-send-vectors.json; this proves core routing.
+Solana Token-2022 transfers state their fee and carry their hook's accounts,
+and every rule the network would refuse them for is refused before building.
 """
+import base64
 import http.server
 import json
 import os
@@ -23,7 +26,154 @@ OWNER_TON = {'w5': '0:9d1e1843624c4d175a695a8c2de8a5a61f03b93336e8caa4e164bf6cbb
              'v4R2': '0:efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5'}
 
 
+T22 = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'core/tests/fixtures/solana-token-2022.json').read_text())
+TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
+B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+
+def b58(data: bytes) -> str:
+    number, text = int.from_bytes(data, 'big'), ''
+    while number:
+        number, digit = divmod(number, 58)
+        text = B58[digit] + text
+    return '1' * (len(data) - len(data.lstrip(b'\0'))) + text
+
+
+class SolanaNode(http.server.BaseHTTPRequestHandler):
+    """A Solana node holding one Token-2022 mint, the owner's account of it
+    and, when set, the recipient's and a transfer hook's validation account."""
+    state = {}
+    submitted = []
+
+    def log_message(self, *_):
+        pass
+
+    def do_POST(self):
+        call = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        method, params, state = call['method'], call.get('params') or [], self.state
+        def account(holder, extensions=(), status='initialized'):
+            return {'owner': TOKEN_2022, 'data': {'parsed': {'type': 'account', 'info': {
+                'mint': T22['mint'], 'owner': T22[holder], 'state': status, 'extensions': list(extensions),
+                'tokenAmount': {'amount': '5000000', 'decimals': 6}}}}}
+        if method == 'getGenesisHash':
+            result = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
+        elif method == 'getAccountInfo':
+            address, raw = params[0], params[1]['encoding'] == 'base64'
+            value = None
+            if address == T22['mint'] and not raw:
+                value = {'owner': TOKEN_2022, 'data': {'parsed': {'type': 'mint', 'info': {
+                    'isInitialized': True, 'decimals': 6, 'extensions': state['mint_extensions']}}}}
+            elif address == T22['source']:
+                value = ({'owner': TOKEN_2022, 'data': [T22['source_data'], 'base64']} if raw
+                         else account('owner'))
+            elif address == T22['destination'] and not raw and state.get('destination') is not None:
+                value = account('recipient', *state['destination'])
+            elif address == T22['validation_account'] and raw and state.get('validation'):
+                value = {'owner': T22['hook_program'], 'data': [state['validation'], 'base64']}
+            result = {'context': {'slot': 1}, 'value': value}
+        elif method == 'getEpochInfo':
+            result = {'epoch': 700, 'slotIndex': 1000, 'slotsInEpoch': 432000, 'absoluteSlot': 1}
+        elif method == 'getLatestBlockhash':
+            result = {'value': {'blockhash': b58(bytes([5] * 32)), 'lastValidBlockHeight': 100}}
+        elif method == 'simulateTransaction':
+            result = {'value': {'err': state.get('hook_error'), 'logs': []}}
+        elif method == 'isBlockhashValid':
+            result = {'value': True}
+        elif method == 'sendTransaction':
+            self.submitted.append(params[0])
+            result = b58(base64.b64decode(params[0])[1:65])
+        else:
+            raise AssertionError(call)
+        data = json.dumps({'jsonrpc': '2.0', 'id': call['id'], 'result': result}).encode()
+        self.send_response(200)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
 class TokenSendTests(unittest.TestCase):
+    def test_solana_token_2022_fees_and_hooks_are_reviewed_and_refusals_build_nothing(self):
+        fee = lambda bps: {'extension': 'transferFeeConfig', 'state': {'withheldAmount': 0,
+            'olderTransferFee': {'epoch': 0, 'transferFeeBasisPoints': bps, 'maximumFee': 10**12},
+            'newerTransferFee': {'epoch': 0, 'transferFeeBasisPoints': bps, 'maximumFee': 10**12}}}
+        hook = {'extension': 'transferHook', 'state': {'authority': None, 'programId': T22['hook_program']}}
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), SolanaNode)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        SolanaNode.submitted.clear()
+        try:
+            with tempfile.TemporaryDirectory(prefix='spectra-token-2022-') as directory:
+                def run(*args, success=True, code=0):
+                    result = subprocess.run([BINARY, '--data-dir', directory, '--json', *args], capture_output=True, text=True, timeout=60,
+                                            env={**os.environ, 'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl'),
+                                                 'SPECTRA_PRIVATE_KEY': '01' * 32})
+                    assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
+                    assert success or not code or result.returncode == code, (args, result.returncode, result.stderr)
+                    return json.loads(result.stdout) if success else result.stdout + result.stderr
+                endpoint = f'http://127.0.0.1:{server.server_port}'
+                owner = run('wallet', 'import', '--chain', 'solana', '--name', 'SOL', '--no-password',
+                            '--private-key-env', 'SPECTRA_PRIVATE_KEY')['wallet']['address']
+                assert owner == T22['owner'], owner
+                run('endpoints', '--chain', 'solana', '--api', 'solana-json-rpc', '--capabilities',
+                    'balance,fee,verification,token-balance,broadcast', '--add', endpoint)
+                build = ('send', 'build', '--from', 'SOL', '--to', T22['recipient'], '--endpoint', endpoint,
+                         '--contract', T22['mint'], '--decimals', '6', '--amount', '1')
+
+                # A 0.5% fee: withheld from the amount, stated in the transfer.
+                SolanaNode.state = {'mint_extensions': [fee(50)]}
+                built = run(*build)['artifact']
+                assert built['review']['transfer_terms'] == {'debited': '1', 'received': '0.995', 'fee': '0.005',
+                                                             'hook_program': None, 'carried_native': None}, built['review']
+                token = json.loads(built['prepared_details'])['Solana']['token']
+                assert (token['amount'], token['fee'], token['hook']) == (1000000, 5000, None), token
+                sign = ('send', 'sign', built['id'], '--review-digest', built['review_digest'], '--endpoint', endpoint)
+                # A fee raised after review is a different transfer.
+                SolanaNode.state['mint_extensions'] = [fee(100)]
+                assert 'changed' in run(*sign, success=False)
+                SolanaNode.state['mint_extensions'] = [fee(50)]
+                signed = run(*sign)['artifact']
+                raw = base64.b64decode(signed['signed_payload'])
+                assert raw[65:].hex() == built['signing_payload_hex'], raw.hex()
+                run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
+                assert SolanaNode.submitted == [signed['signed_payload']], SolanaNode.submitted
+
+                # A hook: its program and resolved accounts follow the transfer's own four.
+                SolanaNode.state = {'mint_extensions': [hook], 'validation': T22['validation_data']}
+                hooked = run(*build)['artifact']
+                assert hooked['review']['transfer_terms'] == {'debited': '1', 'received': '1', 'fee': '0',
+                                                              'hook_program': T22['hook_program'], 'carried_native': None}, hooked['review']
+                resolved = json.loads(hooked['prepared_details'])['Solana']['token']['hook']
+                expected = T22['cases']['hook'][1]['keys'][4:-2]
+                assert [(a['address'], a['writable']) for a in resolved['accounts']] == [
+                    (k['pubkey'], k['writable']) for k in expected], resolved
+                assert resolved['validation_account'] == T22['validation_account'], resolved
+
+                # Each refusal names its reason and builds nothing.
+                before = len(run('send', 'list')['artifacts'])
+                signing_hook = bytearray(base64.b64decode(T22['validation_data']))
+                signing_hook[8 + 4 + 4 + 33] = 1
+                for state, words in [
+                    ({'mint_extensions': [{'extension': 'nonTransferable'}]}, 'cannot be transferred'),
+                    ({'mint_extensions': [{'extension': 'pausableConfig', 'state': {'authority': None, 'paused': True}}]}, 'paused'),
+                    ({'mint_extensions': [{'extension': 'scaledUiAmountConfig', 'state': {}}]}, 'scaled'),
+                    ({'mint_extensions': [{'extension': 'somethingNew', 'state': {}}]}, 'somethingNew'),
+                    ({'mint_extensions': [], 'destination': [[{'extension': 'memoTransfer', 'state': {
+                        'requireIncomingTransferMemos': True}}]]}, 'memo'),
+                    ({'mint_extensions': [], 'destination': [[], 'frozen']}, 'frozen'),
+                    ({'mint_extensions': [{'extension': 'defaultAccountState', 'state': {'accountState': 'frozen'}}]}, 'starts frozen'),
+                    ({'mint_extensions': [hook], 'validation': base64.b64encode(signing_hook).decode()}, 'signature'),
+                    ({'mint_extensions': [hook], 'validation': T22['validation_data'],
+                      'hook_error': {'InstructionError': [1, {'Custom': 6000}]}}, 'refused this transfer'),
+                ]:
+                    SolanaNode.state = state
+                    output = run(*build, success=False, code=3)
+                    assert words in output, (words, output)
+                assert len(run('send', 'list')['artifacts']) == before, 'a refusal builds nothing'
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
+
     def test_token_routes_read_real_precision_review_and_sign(self):
         cases = [('sui', 'sui-json-rpc', 'Sui Coin', '0x' + ASSET + '::coins::USD'),
                  ('aptos', 'aptos-rest', 'Aptos Coin', '0x' + ASSET + '::coins::USD'),
@@ -94,6 +244,7 @@ class TokenSendTests(unittest.TestCase):
                                 data = params[0]['data']
                                 if data.startswith('0x313ce567'): result = hex(live['decimals'])
                                 elif data.startswith('0x95d89b41'): result = '0x' + ('TEST'.encode().hex()).ljust(64,'0')
+                                elif data.startswith('0x01ffc9a7'): result = '0x' + '0'*64
                                 else: result = hex(live['token_balance'])
                             else:
                                 values = {'eth_chainId':hex(chain_ids.get(chain,1)), 'eth_getBalance':hex(live['native_balance']*10**9), 'eth_estimateGas':'0x186a0','eth_getCode':'0x6000', 'eth_getTransactionCount':hex(live['seqno']), 'eth_blockNumber':'0x123', 'eth_gasPrice':'0x3b9aca00','eth_feeHistory':{'baseFeePerGas':['0x3b9aca00'],'reward':[['0x77359400']]}}

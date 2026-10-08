@@ -419,7 +419,7 @@ class WalletsTests(unittest.TestCase):
                 assert summary('bnb')['history'] == 'needsCustomEndpoint', summary('bnb')
                 assert summary('xrp')['limits'] == ['accountReserve']
                 assert summary('monero')['limits'] == ['scansOnDevice']
-                assert summary('zcash')['limits'] == ['singleAddress', 'transparentOnly']
+                assert summary('zcash')['limits'] == ['singleAddress', 'shieldedScan']
                 assert summary('ethereum')['staking'] is False and summary('solana')['staking'] is True
                 base = summary('base-sepolia')
                 assert base['balance'] == 'configured' and base['endpoints'], base
@@ -676,6 +676,8 @@ class ApprovalsTests(unittest.TestCase):
                             result = word('12')
                         elif selector == '95d89b41':
                             result = abi_string('TKA')
+                        elif selector == '01ffc9a7':
+                            result = word('0')
                         elif selector == '0178b8bf':
                             result = word(resolver)
                         elif selector == '691f3431':

@@ -24,12 +24,11 @@ pub struct NormalizedHistoryItem {
 
 // ────────────────────────────────────────────────────────────────────
 // EVM history page decode — shape produced by
-// `WalletService::fetch_evm_history_page` (tokens and native).
+// `WalletService::fetch_evm_history_page` (tokens, NFTs and native).
 // ────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct EvmTokenTransferItem {
-    #[uniffi(default = "")]
     pub standard: String,
     pub contract_address: String,
     pub token_name: String,
@@ -46,7 +45,23 @@ pub struct EvmTokenTransferItem {
     pub timestamp: f64,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+/// One ERC-721 or ERC-1155 transfer: a token id and a whole quantity.
+#[derive(Debug, Clone)]
+pub struct EvmNftTransferItem {
+    pub standard: crate::api::evm_nft::NftStandard,
+    pub contract_address: String,
+    pub token_id: String,
+    pub quantity: String,
+    pub collection: String,
+    pub symbol: String,
+    pub from_address: String,
+    pub to_address: String,
+    pub transaction_hash: String,
+    pub block_number: i64,
+    pub timestamp: f64,
+}
+
+#[derive(Debug, Clone)]
 pub struct EvmNativeTransferItem {
     pub status: String,
     pub from_address: String,
@@ -57,9 +72,10 @@ pub struct EvmNativeTransferItem {
     pub timestamp: f64,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, Default)]
 pub struct EvmHistoryPageDecoded {
     pub tokens: Vec<EvmTokenTransferItem>,
+    pub nfts: Vec<EvmNftTransferItem>,
     pub native: Vec<EvmNativeTransferItem>,
 }
 
@@ -162,6 +178,50 @@ pub(crate) fn build_evm_transaction_records(
                 created_at_unix: created_at,
             });
         }
+        for transfer in &request.decoded_page.nfts {
+            let is_outgoing = transfer.from_address == normalized;
+            let is_incoming = transfer.to_address == normalized;
+            if !is_outgoing && !is_incoming {
+                continue;
+            }
+            let (counterparty, wallet_side) = if is_outgoing {
+                (transfer.to_address.clone(), transfer.from_address.clone())
+            } else {
+                (transfer.from_address.clone(), transfer.to_address.clone())
+            };
+            let created_at = if transfer.timestamp > 0.0 {
+                transfer.timestamp
+            } else {
+                request.unknown_timestamp_sentinel_unix
+            };
+            // The token is its own asset: its quantity is the amount, and no
+            // catalog token, price or holding shares its identity.
+            out.push(EvmHistoryTransactionRecord {
+                status: "confirmed".into(),
+                deployment_id: Some(crate::tokens::nft_deployment_id(
+                    request.chain_id,
+                    transfer.standard,
+                    &transfer.contract_address,
+                    &transfer.token_id,
+                )),
+                wallet_id: wallet.wallet_id.clone(),
+                wallet_name: wallet.wallet_name.clone(),
+                kind: if is_outgoing { "send" } else { "receive" }.to_string(),
+                asset_display_name: crate::tokens::nft_display_name(
+                    &transfer.collection,
+                    &transfer.token_id,
+                ),
+                symbol: crate::tokens::nft_symbol(&transfer.symbol),
+                chain_id: request.chain_id,
+                amount_decimal: transfer.quantity.clone(),
+                counterparty,
+                transaction_hash: transfer.transaction_hash.clone(),
+                block_number: transfer.block_number,
+                source_address: wallet_side,
+                source_used: token_source.clone(),
+                created_at_unix: created_at,
+            });
+        }
         for transfer in &request.decoded_page.native {
             let is_outgoing = transfer.from_address == normalized;
             let is_incoming = transfer.to_address == normalized;
@@ -221,6 +281,7 @@ mod tests {
                 log_index: 0,
                 timestamp: 1700000000.0,
             }],
+            nfts: vec![],
             native: vec![EvmNativeTransferItem {
                 status: "confirmed".into(),
                 from_address: "0xother".into(),
@@ -271,7 +332,7 @@ mod tests {
                 log_index: 0,
                 timestamp: 1700000000.0,
             }],
-            native: vec![],
+            ..Default::default()
         };
         let out = build_evm_transaction_records(EvmTransactionRecordRequest {
             decoded_page: page,

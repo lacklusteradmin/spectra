@@ -71,6 +71,17 @@ impl WalletService {
                     .await?;
                 Ok(json!({ "txid": txid }).to_string())
             }
+            Api::Lightwalletd => {
+                let raw = hex::decode(&payload)?;
+                let network = chain.zcash_network()?;
+                let txid = super::zcash_shielded::zcash_txid(&network, &raw)?;
+                crate::api::lightwalletd::LightwalletdClient::new(eps)
+                    .session(chain)
+                    .await?
+                    .submit(raw)
+                    .await?;
+                Ok(json!({ "txid": txid }).to_string())
+            }
             Api::SolanaJsonRpc => {
                 let client = SolanaClient::new(eps);
                 let res = client.broadcast_raw(&payload).await?;

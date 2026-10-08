@@ -130,6 +130,22 @@ impl EsploraClient {
         .await
     }
 
+    /// The hash of the block at `height` on the indexer's chain:
+    /// `GET /block-height/{height}`, the hash as text.
+    pub(crate) async fn fetch_block_hash(&self, height: u64) -> Result<String, ApiError> {
+        let http = self.http.clone();
+        race(&self.endpoints, |base| {
+            let http = http.clone();
+            async move {
+                let bytes = http
+                    .get_bytes(&format!("{base}/block-height/{height}"), 128)
+                    .await?;
+                String::from_utf8(bytes).map_err(|_| ApiError::decode("block hash"))
+            }
+        })
+        .await
+    }
+
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         let addr = address.to_string();
         let http = self.http.clone();

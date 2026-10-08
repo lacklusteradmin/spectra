@@ -51,17 +51,33 @@ impl CustomEndpoint {
         {
             return Err(SpectraBridgeError::failure("Enter one endpoint URL"));
         }
-        let parsed = reqwest::Url::parse(endpoint.trim())
-            .map_err(|_| SpectraBridgeError::failure("Enter a valid HTTP or HTTPS URL"))?;
-        if !matches!(parsed.scheme(), "http" | "https")
+        // A Litecoin node is reached peer to peer, at `tcp://host:port`.
+        let peer_to_peer = api == EndpointApi::LitecoinP2p;
+        let parsed = reqwest::Url::parse(endpoint.trim()).map_err(|_| {
+            SpectraBridgeError::failure(if peer_to_peer {
+                "Enter a node as tcp://host:port"
+            } else {
+                "Enter a valid HTTP or HTTPS URL"
+            })
+        })?;
+        let scheme_fits = if peer_to_peer {
+            parsed.scheme() == "tcp"
+                && matches!(parsed.path(), "" | "/")
+                && parsed.query().is_none()
+        } else {
+            matches!(parsed.scheme(), "http" | "https")
+        };
+        if !scheme_fits
             || parsed.host_str().is_none()
             || !parsed.username().is_empty()
             || parsed.password().is_some()
             || parsed.fragment().is_some()
         {
-            return Err(SpectraBridgeError::failure(
-                "Enter an HTTP or HTTPS URL without credentials or a fragment",
-            ));
+            return Err(SpectraBridgeError::failure(if peer_to_peer {
+                "Enter a node as tcp://host:port"
+            } else {
+                "Enter an HTTP or HTTPS URL without credentials or a fragment"
+            }));
         }
         let endpoint = parsed.to_string().trim_end_matches('/').to_string();
         if catalog
@@ -316,7 +332,10 @@ mod tests {
             .apply_state_command(StateCommand::SetAppSetting {
                 update: AppSettingUpdate::AddCustomEndpoint {
                     capabilities: match api {
-                        "blockscout" => vec![EndpointCapability::History],
+                        "blockscout" => vec![
+                            EndpointCapability::History,
+                            EndpointCapability::TokenHistory,
+                        ],
                         "trongrid-v1" => vec![EndpointCapability::TokenDiscovery],
                         _ => vec![EndpointCapability::Balance, EndpointCapability::Broadcast],
                     },
@@ -411,13 +430,15 @@ mod tests {
     #[tokio::test]
     async fn custom_indexer_apis_are_used_separately_from_primary_rpc() {
         let server = MockServer::start().await;
+        // One history page reads three lists: the address's transactions,
+        // and its ERC-721 and ERC-1155 transfers.
         Mock::given(method("GET"))
             .and(path("/blockscout/api"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(serde_json::json!({"status":"1","message":"OK","result":[]})),
             )
-            .expect(1)
+            .expect(3)
             .mount(&server)
             .await;
         Mock::given(method("GET"))

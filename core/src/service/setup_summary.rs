@@ -34,8 +34,10 @@ pub enum WalletSetupLimit {
     /// ADA payments leave token-bearing inputs untouched, so ADA held beside
     /// native assets cannot pay (Cardano).
     TokenBearingInputsUntouched,
-    /// Transparent addresses only; shielded funds are not seen (Zcash).
-    TransparentOnly,
+    /// Shielded funds are found by scanning blocks on this device from the
+    /// restore height on, and only a wallet restored from its seed phrase
+    /// holds them (Zcash).
+    ShieldedScan,
     /// Balance and history come from scanning blocks on this device from the
     /// restore height on, through a daemon (Monero).
     ScansOnDevice,
@@ -106,7 +108,7 @@ pub(crate) fn wallet_setup_limits(chain: Chain) -> Vec<WalletSetupLimit> {
             family == Chain::Cardano,
             WalletSetupLimit::TokenBearingInputsUntouched,
         ),
-        (family == Chain::Zcash, WalletSetupLimit::TransparentOnly),
+        (family == Chain::Zcash, WalletSetupLimit::ShieldedScan),
         (chain.scans_for_balance(), WalletSetupLimit::ScansOnDevice),
     ]
     .into_iter()
@@ -440,7 +442,7 @@ mod tests {
         );
         assert_eq!(
             wallet_setup_limits(Chain::Zcash),
-            [SingleAddress, TransparentOnly]
+            [SingleAddress, ShieldedScan]
         );
         assert_eq!(wallet_setup_limits(Chain::Monero), [ScansOnDevice]);
         assert!(wallet_setup_limits(Chain::Bitcoin).is_empty());

@@ -7,12 +7,57 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::evm_nft::NftStandard;
 use crate::api::http::{HttpClient, RetryProfile, race};
+
+/// The ERC-165 calls that ask whether `contract` is an NFT collection: does
+/// it implement ERC-721, ERC-1155, and ERC-165's own invalid interface.
+fn nft_interface_calls(contract: &str) -> Vec<(&'static str, Value)> {
+    [
+        NftStandard::Erc721.interface_id(),
+        NftStandard::Erc1155.interface_id(),
+        crate::api::evm_nft::INVALID_INTERFACE,
+    ]
+    .into_iter()
+    .map(|interface| {
+        let data = crate::api::evm_nft::supports_interface_call(interface);
+        (
+            "eth_call",
+            json!([{"to": contract, "data": format!("0x{}", hex::encode(data))}, "latest"]),
+        )
+    })
+    .collect()
+}
+
+/// What the three answers to [`nft_interface_calls`] claim: ERC-721 and
+/// ERC-1155. A revert, an error or anything but a single true word claims
+/// nothing, and a contract that claims the invalid interface claims every
+/// one, so none.
+fn nft_claims(answers: &[Result<Value, ApiError>]) -> (bool, bool) {
+    let claimed = |answer: &Result<Value, ApiError>| {
+        answer
+            .as_ref()
+            .ok()
+            .and_then(Value::as_str)
+            .and_then(|hex| decode_hex(hex).ok())
+            .is_some_and(|word| crate::api::evm_nft::is_abi_true(&word))
+    };
+    if claimed(&answers[2]) {
+        return (false, false);
+    }
+    (claimed(&answers[0]), claimed(&answers[1]))
+}
+
+/// The refusal for reading an NFT collection as a fungible token.
+fn not_fungible() -> ApiError {
+    ApiError::invalid("This contract is an NFT collection, not a fungible token")
+}
 
 // ── ERC-20 4-byte function selectors  (keccak256(signature)[..4])
 pub(crate) const SEL_BALANCE_OF: [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
 pub(crate) const SEL_DECIMALS: [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
 pub(crate) const SEL_SYMBOL: [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
+const SEL_NAME: [u8; 4] = [0x06, 0xfd, 0xde, 0x03]; // name()
 pub(crate) const SEL_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(address,uint256)
 pub(crate) const SEL_APPROVE: [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
 pub(crate) const SEL_ALLOWANCE: [u8; 4] = [0xdd, 0x62, 0xed, 0x3e]; // allowance(address,address)
@@ -158,17 +203,8 @@ impl EvmClient {
         .await
     }
 
-    /// Send a JSON-RPC 2.0 batch request. Returns one result per request in
-    /// the same order as `requests` regardless of how the server orders the
-    /// batch response; any failed request fails the batch.
-    pub(crate) async fn call_batch(
-        &self,
-        requests: Vec<(&str, Value)>,
-    ) -> Result<Vec<Value>, ApiError> {
-        self.call_batch_each(requests).await?.into_iter().collect()
-    }
-
-    /// A JSON-RPC 2.0 batch whose requests answer independently: the outer
+    /// A JSON-RPC 2.0 batch whose requests answer independently, in the
+    /// order of `requests` however the server orders its answer: the outer
     /// error is the batch's (transport, shape), the inner ones each request's
     /// own (a revert, an RPC error object).
     pub(crate) async fn call_batch_each(
@@ -426,7 +462,47 @@ impl EvmClient {
     /// node's batch limit is not the wallet's token limit, and the requests
     /// run together. Each contract's answer is its own: one that reverts
     /// (a self-destructed token) does not take the others with it.
+    ///
+    /// A contract that holds something is then asked, through ERC-165,
+    /// whether it is an NFT collection: an ERC-721 `balanceOf` is a count of
+    /// tokens, never a balance to scale by decimals, so such a contract
+    /// answers a refusal. A zero is the same either way and costs no call.
     pub async fn fetch_erc20_balances(
+        &self,
+        holder: &str,
+        contracts: &[String],
+    ) -> Vec<Result<(u128, u8), ApiError>> {
+        let mut reads = self.fetch_erc20_balance_words(holder, contracts).await;
+        let held: Vec<usize> = (0..reads.len())
+            .filter(|&index| matches!(reads[index], Ok((raw, _)) if raw > 0))
+            .collect();
+        /// Contracts per batch: three calls each.
+        const CONTRACTS_PER_BATCH: usize = 13;
+        let checks = held.chunks(CONTRACTS_PER_BATCH).map(|chunk| {
+            let requests = chunk
+                .iter()
+                .flat_map(|&index| nft_interface_calls(&contracts[index]))
+                .collect();
+            async move { (chunk, self.call_batch_each(requests).await) }
+        });
+        for (chunk, answers) in futures::future::join_all(checks).await {
+            for (position, &index) in chunk.iter().enumerate() {
+                match &answers {
+                    Ok(answers) => {
+                        if nft_claims(&answers[3 * position..3 * position + 3]) != (false, false) {
+                            reads[index] = Err(not_fungible());
+                        }
+                    }
+                    // Unchecked is unread: the balance waits for an answer.
+                    Err(error) => reads[index] = Err(error.clone()),
+                }
+            }
+        }
+        reads
+    }
+
+    /// The balance and decimals words of [`Self::fetch_erc20_balances`].
+    async fn fetch_erc20_balance_words(
         &self,
         holder: &str,
         contracts: &[String],
@@ -506,6 +582,111 @@ impl EvmClient {
             .as_str()
             .or_decode("eth_call balanceOf: expected string")?;
         parse_hex_u128(hex_str)
+    }
+
+    /// `eth_call` at the latest block: the returned bytes, or `None` when
+    /// the call reverts.
+    async fn call_or_revert(&self, to: &str, data: &[u8]) -> Result<Option<Vec<u8>>, ApiError> {
+        match self
+            .call(
+                "eth_call",
+                json!([{"to": to, "data": format!("0x{}", hex::encode(data))}, "latest"]),
+            )
+            .await
+        {
+            Ok(result) => Ok(Some(decode_hex(
+                result.as_str().or_decode("eth_call: expected string")?,
+            )?)),
+            // A node's error object for a call is the call reverting.
+            Err(ApiError::Rejected(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// The NFT standard `contract` reports through ERC-165, or `None` for a
+    /// contract that reports neither, or claims every interface at once.
+    /// One that reports both is refused: which transfer it means is not
+    /// known.
+    pub(crate) async fn fetch_nft_standard(
+        &self,
+        contract: &str,
+    ) -> Result<Option<NftStandard>, ApiError> {
+        let answers = self.call_batch_each(nft_interface_calls(contract)).await?;
+        match nft_claims(&answers) {
+            (false, false) => Ok(None),
+            (true, true) => Err(ApiError::rejected(
+                "The contract reports both ERC-721 and ERC-1155",
+            )),
+            (true, false) => Ok(Some(NftStandard::Erc721)),
+            (false, true) => Ok(Some(NftStandard::Erc1155)),
+        }
+    }
+
+    /// The owner of an ERC-721 token, lowercase; `None` when the token does
+    /// not exist (the call reverts).
+    pub(crate) async fn fetch_erc721_owner(
+        &self,
+        contract: &str,
+        token_id: &str,
+    ) -> Result<Option<String>, ApiError> {
+        let data = crate::api::evm_nft::owner_of_call(token_id)?;
+        let Some(word) = self.call_or_revert(contract, &data).await? else {
+            return Ok(None);
+        };
+        if word.len() != 32 || word[..12] != [0; 12] {
+            return Err(ApiError::decode("ownerOf: not an address"));
+        }
+        Ok(Some(format!("0x{}", hex::encode(&word[12..]))))
+    }
+
+    /// How many of an ERC-1155 token id `owner` holds: a whole number, not
+    /// an amount.
+    pub(crate) async fn fetch_erc1155_balance(
+        &self,
+        contract: &str,
+        owner: &str,
+        token_id: &str,
+    ) -> Result<num_bigint::BigUint, ApiError> {
+        let data = crate::api::evm_nft::balance_of_call(owner, token_id)?;
+        let word = self
+            .call_or_revert(contract, &data)
+            .await?
+            .ok_or_else(|| ApiError::rejected("balanceOf reverted"))?;
+        if word.len() != 32 {
+            return Err(ApiError::decode("balanceOf: not a uint256"));
+        }
+        Ok(num_bigint::BigUint::from_bytes_be(&word))
+    }
+
+    /// A collection's `name()` and `symbol()`, each empty where the contract
+    /// has none: both are optional in ERC-721 and absent from ERC-1155.
+    pub(crate) async fn fetch_collection_label(
+        &self,
+        contract: &str,
+    ) -> Result<(String, String), ApiError> {
+        let answers = self
+            .call_batch_each(
+                [SEL_NAME, SEL_SYMBOL]
+                    .into_iter()
+                    .map(|selector| {
+                        (
+                            "eth_call",
+                            json!([{"to": contract, "data": format!("0x{}", hex::encode(selector))}, "latest"]),
+                        )
+                    })
+                    .collect(),
+            )
+            .await?;
+        let text = |answer: &Result<Value, ApiError>| {
+            answer
+                .as_ref()
+                .ok()
+                .and_then(Value::as_str)
+                .and_then(decode_abi_string_or_bytes32)
+                .map(|text| text.trim().to_string())
+                .unwrap_or_default()
+        };
+        Ok((text(&answers[0]), text(&answers[1])))
     }
 
     /// Resolve an ENS name to a checksummed Ethereum address via the ENS Ideas API.
@@ -666,19 +847,27 @@ impl EvmClient {
     }
 
     /// Fetch token metadata (symbol + decimals) in a single batch request.
+    ///
+    /// A contract that reports an NFT standard through ERC-165 is refused,
+    /// whatever `decimals()` answers: its token ids and quantities are not a
+    /// balance to scale, and every fungible read and send comes through here.
     pub async fn fetch_erc20_metadata(&self, contract: &str) -> Result<Erc20Metadata, ApiError> {
-        let results = self
-            .call_batch(vec![
-                (
-                    "eth_call",
-                    json!([{"to": contract, "data": format!("0x{}", hex::encode(SEL_DECIMALS))}, "latest"]),
-                ),
-                (
-                    "eth_call",
-                    json!([{"to": contract, "data": format!("0x{}", hex::encode(SEL_SYMBOL))}, "latest"]),
-                ),
-            ])
-            .await?;
+        let call = |data: Vec<u8>| {
+            (
+                "eth_call",
+                json!([{"to": contract, "data": format!("0x{}", hex::encode(data))}, "latest"]),
+            )
+        };
+        let mut requests = vec![call(SEL_DECIMALS.to_vec()), call(SEL_SYMBOL.to_vec())];
+        requests.extend(nft_interface_calls(contract));
+        let mut results = self.call_batch_each(requests).await?;
+        if nft_claims(&results[2..]) != (false, false) {
+            return Err(not_fungible());
+        }
+        results.truncate(2);
+        let results = results
+            .into_iter()
+            .collect::<Result<Vec<Value>, ApiError>>()?;
         let decimals = crate::api::checked_token_decimals(parse_hex_u128(
             results[0]
                 .as_str()

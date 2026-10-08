@@ -326,6 +326,8 @@ class PortfolioTests(unittest.TestCase):
                         selector = item['params'][0]['data'][:10]
                         if selector == '0x313ce567':
                             result = hex(6 if token == usdc else 18)
+                        elif selector == '0x01ffc9a7':
+                            result = '0x' + '0' * 64
                         elif selector in ('0x95d89b41', '0x06fdde03'):
                             text = 'USDC' if token == usdc else 'TOKEN'
                             result = '0x' + f'{32:064x}{len(text):064x}' + text.encode().hex().ljust(64, '0')

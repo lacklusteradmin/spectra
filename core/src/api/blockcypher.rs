@@ -97,6 +97,15 @@ impl BlockcypherClient {
         Ok(self.get::<Chain>("").await?.height)
     }
 
+    /// The hash of the block at `height`: `GET /blocks/{height}`.
+    pub(crate) async fn fetch_block_hash(&self, height: u64) -> Result<String, ApiError> {
+        #[derive(Deserialize)]
+        struct Block {
+            hash: String,
+        }
+        Ok(self.get::<Block>(&format!("/blocks/{height}")).await?.hash)
+    }
+
     /// The confirmed balance and the mempool's net change to it.
     pub async fn fetch_balance(&self, address: &str) -> Result<UtxoBalance, ApiError> {
         let info: BlockcypherBalance = self.get(&format!("/addrs/{address}/balance")).await?;

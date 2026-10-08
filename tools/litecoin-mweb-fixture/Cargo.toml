@@ -1,0 +1,29 @@
+[package]
+name = "spectra_litecoin_mweb_fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# A loopback Litecoin node and indexer for `scripts/cli-litecoin-mweb.py`: a
+# synthetic chain whose MWEB outputs fund a wallet's stealth addresses,
+# served to light clients over the peer-to-peer protocol and to the wallet's
+# indexer over Esplora's HTTP API, that checks each transaction it is handed
+# as a node would before mining it. It shares no code with spectra_core: its
+# MWEB is written from libmw apart from core's, and transactions are decoded
+# by the `litecoin` crate.
+[[bin]]
+name = "spectra-litecoin-mweb-fixture"
+path = "src/main.rs"
+
+[dependencies]
+litecoin = "=0.32.8-rc.1"
+secp256k1 = { version = "0.29", features = ["global-context"] }
+grin_secp256k1zkp = "0.8"
+blake3 = "1"
+sha2 = "0.10"
+num-bigint = "0.4"
+bip39 = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
+rand = "0.8"
+hex = "0.4"
+serde_json = "1"

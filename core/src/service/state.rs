@@ -550,6 +550,15 @@ impl WalletService {
                     "wallet {id} was removed; secret cleanup is pending and will be retried: {error}"
                 ))
             })?;
+            // A Zcash wallet's shielded database holds its viewing keys and
+            // what they found, and goes with them.
+            if let Ok(path) = crate::wallet_db::zcash::zcash_db_path(&database, &id) {
+                crate::wallet_db::zcash::delete_zcash_db(&path).map_err(|error| {
+                    SpectraBridgeError::failure(format!(
+                        "wallet {id} was removed; shielded data cleanup is pending and will be retried: {error}"
+                    ))
+                })?;
+            }
             let target = database.clone();
             tokio::task::spawn_blocking(move || {
                 crate::wallet_db::complete_secret_deletion(&target, &id)

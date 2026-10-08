@@ -158,7 +158,7 @@ impl AppStateChanges {
                 .map_err(DbError::from)?;
             }
             if self.replace {
-                tx.execute("DELETE FROM monero_wallets", [])
+                tx.execute("DELETE FROM scan_caches", [])
                     .map_err(DbError::from)?;
                 tx.execute("DELETE FROM send_reservations", [])
                     .map_err(DbError::from)?;
@@ -170,7 +170,7 @@ impl AppStateChanges {
                     .map_err(DbError::from)?;
             }
             for id in self.removed_wallets {
-                tx.execute("DELETE FROM monero_wallets WHERE wallet_id=?1", params![id])
+                tx.execute("DELETE FROM scan_caches WHERE wallet_id=?1", params![id])
                     .map_err(DbError::from)?;
                 tx.execute("DELETE FROM send_reservations WHERE artifact_id IN (SELECT id FROM send_artifacts WHERE json_extract(payload,'$.view.wallet_id')=?1)", params![id]).map_err(DbError::from)?;
                 tx.execute(

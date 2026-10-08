@@ -87,12 +87,14 @@ pub struct AddArgs {
     /// Token name.
     #[arg(long)]
     name: String,
-    /// Contract address, TRC-10 numeric ID, mint, jetton master or coin type.
+    /// Contract address, TRC-10 numeric ID, mint, jetton master, coin type,
+    /// XRP Ledger `CODE.rIssuer` or Stellar `CODE:ISSUER`.
     #[arg(long)]
     contract: String,
-    /// How many decimal places the token has.
+    /// How many decimal places the token has; the network's own number where
+    /// its protocol fixes one.
     #[arg(long)]
-    decimals: u32,
+    decimals: Option<u32>,
     /// CoinGecko id, when the token has a quoted price.
     #[arg(long, default_value = "")]
     coingecko_id: String,
@@ -252,22 +254,36 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
             "token edit cannot change the deployment standard",
         ));
     }
+    let chain_id = resolve_chain(&args.chain)?;
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
-        chain_id: resolve_chain(&args.chain)?,
+        chain_id,
         contract: args.contract,
         symbol: args.symbol,
         name: args.name,
         coingecko_id: args.coingecko_id,
         coinpaprika_id: args.coinpaprika_id,
-        decimals: args.decimals,
+        decimals: token_decimals(chain_id, args.decimals)?,
     })?;
     reject_on_event(&transition)?;
     out.emit(serde_json::json!({"ok": true}));
     Ok(())
 }
 
+/// The places a token takes: the network's own where its protocol fixes
+/// them, otherwise the ones given.
+fn token_decimals(chain_id: spectra_core::registry::Chain, given: Option<u32>) -> CliResult<u32> {
+    let fixed = spectra_core::chains::list_all_chains()
+        .into_iter()
+        .find(|entry| entry.id == chain_id.str_id())
+        .and_then(|entry| entry.fixed_token_decimals);
+    given
+        .or(fixed)
+        .ok_or_else(|| CliError::usage("--decimals is required on this network"))
+}
+
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let chain_id = resolve_chain(&args.chain)?;
+    let decimals = token_decimals(chain_id, args.decimals)?;
     let transition = ctx.apply(StateCommand::AddCustomToken {
         standard: args.standard,
         chain_id,
@@ -276,7 +292,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         contract: args.contract.clone(),
         coingecko_id: args.coingecko_id,
         coinpaprika_id: args.coinpaprika_id,
-        decimals: args.decimals,
+        decimals,
     })?;
     reject_on_event(&transition)?;
 

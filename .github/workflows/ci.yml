@@ -69,8 +69,8 @@ jobs:
           python3 --version
           sqlite3 --version
 
-      - name: Build the CLI
-        run: cargo build -p spectra_cli
+      - name: Build the CLI and the Zcash and MWEB fixtures
+        run: cargo build -p spectra_cli -p spectra_zcash_fixture -p spectra_litecoin_mweb_fixture
 
       - name: Acceptance suite
         run: ./scripts/cli-acceptance.sh

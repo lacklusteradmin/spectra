@@ -17,6 +17,501 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-08 — Cardano's token standard is "Cardano Native Token"
+
+- **Before:** Cardano's token standard was "Cardano Asset", a name of
+  Spectra's own. It was the middle of every Cardano token's deployment ID
+  (`cardano:cardano asset:POLICY.NAME`), and two messages called the tokens
+  Cardano assets.
+- **After:** the standard is "Cardano Native Token", the network's own term
+  for its ledger-native tokens. Deployment IDs read
+  `cardano:cardano native token:POLICY.NAME`, and the messages say native
+  token in all three locales. Spectra is prelaunch: no stored ID is
+  migrated.
+- **Why:** each standard Spectra names is its network's own term or number —
+  ERC-20, TEP-74, Trust Line Token, Stellar Asset — and Cardano's is native
+  tokens. CIP-113 programmable tokens, now a numbered standard, are another
+  kind of native token, held elsewhere and moved by scripts; they will be a
+  standard of their own ([OPEN-ITEMS](OPEN-ITEMS.md)), and a name that took
+  in every Cardano asset would blur the two.
+- **CLI check:** `spectra --json chains` lists Cardano's and Cardano
+  Preprod's `tokenStandards` as `["Cardano Native Token"]`;
+  `cli-send-cardano.py` sends, discovers and adds a token, and finds the
+  refreshed holding under it.
+- **Verification:** full `make verify` after the rename, 2026-10-08: lint
+  clean, 1249 workspace tests, 97 acceptance checks and 140 iOS tests
+  passed.
+
+## 2026-10-08 — Litecoin wallets restored from a phrase hold, scan and send MWEB funds
+
+- **Before:** Litecoin was transparent only. MWEB outputs sent to a phrase's
+  keys were invisible and unspendable from Spectra, an `ltcmweb1…` address was
+  refused as a recipient before any provider read, and the former incomplete
+  peg-in builder had been removed.
+- **After:** a Litecoin wallet restored from its phrase holds the phrase's
+  MWEB funds: the scan key at `m/1000'/0'` and the spend key at `m/1000'/1'`
+  of its BIP-39 seed (`send::litecoin_mweb::keys`, as Cake Wallet and mwebd
+  derive them), whatever path the wallet's transparent address is at; the
+  first wallet of a phrase on a network to sync claims them and a second is
+  refused. Core's MWEB is its own, written from libmw: tagged BLAKE3,
+  Pedersen and switch commitments, the Schnorr scheme, stealth addresses and
+  outputs (`send::litecoin_mweb::primitives`, `output`), inputs, kernels and
+  both balances (`transaction`), bulletproofs through `grin_secp256k1zkp`.
+  `sync_litecoin_mweb` scans one bounded batch at a time over Litecoin's
+  peer-to-peer protocol (`api::litecoin_p2p`, the `litecoin-p2p` endpoint API
+  over the new `api::tcp`, which obeys the Tor kill switch, the SOCKS5 proxy
+  and the loopback guard): it anchors at the indexer's tip, checks the node's
+  headers by scrypt proof of work and Litecoin's retarget, proves the tip's
+  MWEB header through its HogEx, the leafset by its root and each page of
+  4,096 unspent outputs into the output root by ltcd's verifier, eight pages
+  a batch, from leaf 0 the first time and what is new after; a chain that no
+  longer holds the last tip is scanned again whole, and a node that drops the
+  client or answers what does not prove leaves the batch to the next of up to
+  four, each peer a DNS seed names tried in turn. Requests keep to a node's
+  serving allowance. What scans find is cached on the device, encrypted under
+  a key derived from the scan key. The MWEB total joins the wallet's LTC
+  holding; history gains receipts at the addresses the wallet gives out and
+  the payments this device made, confirmed once their inputs are spent.
+  `build_litecoin_mweb_send` pays an MWEB address inside MWEB or any other
+  address by a peg-out (`LitecoinMweb`, reviewed as a `ShieldedPayment` with
+  no memo); `build_litecoin_mweb_pegin` moves transparent LTC to the wallet's
+  peg-in address (`LitecoinPegIn`, a `ShieldTransparent`), and an ordinary
+  send from transparent funds to any MWEB address is the same peg-in. Fees
+  are Litecoin Core's: 100 litoshis per unit of MWEB weight, a peg-out's
+  canonical bytes at 10,000 per kB, the canonical part's as any Litecoin
+  send's. Both payloads are checked whole when stored and again when signed;
+  signing finds each input among the wallet's unspent outputs and reserves
+  it, and the transaction is verified as a node verifies one before it is
+  stored. A wallet action (`mwebFunds`), `wallet mweb-sync`, `mweb-status`,
+  `mweb-pegin` and `send-mweb` in the CLI, and an MWEB Funds page in the app.
+  Built-in nodes: three mainnet DNS seeds and one testnet seed.
+- **Why:** the open item asked for complete MWEB support — keys, scanning,
+  balances, recovery, transfers and peg-in/peg-out — with protocol bytes and
+  proofs verified independently and every path exercised through the CLI
+  before support is advertised. A light client over the peer-to-peer
+  protocol needs no service of Spectra's own: the node learns that a client
+  asked for its tip's outputs, nothing about which are the wallet's.
+- **CLI check:** `cli-litecoin-mweb.py` against
+  `spectra-litecoin-mweb-fixture`, a loopback node and Esplora indexer that
+  shares no code with core (its MWEB written apart from core's, transactions
+  decoded by the `litecoin` crate, proofs assembled as Litecoin Core's
+  `SegmentFactory` assembles them) and checks each transaction as a node
+  would: no node, then a wrong password, derive nothing; a scan of 40,000
+  outputs finds the wallet's at the address the fixture derived, in batches;
+  a payment inside MWEB, a peg-out and a peg-in pay what the journal shows; a
+  send from transparent funds pays another wallet's MWEB address; a second
+  data directory at another path recovers what is left; a key wallet, a
+  second wallet of the phrase, a node on another network, payments past the
+  balance, to another network or below dust, and watching an MWEB address
+  are refused.
+- **Verification:** primitives, outputs, inputs, kernels, peg-in scripts,
+  HogEx commitments and fees against six mainnet blocks and ltcd's vector;
+  light-client answers, headers and retargets against mainnet's
+  (`core/tests/fixtures/mweb-mainnet.json`); a live read-only sync of
+  mainnet and testnet through the built-in nodes
+  (`docs/audits/litecoin-mweb-nodes-2026-10-08.json`); every mainnet peer
+  the three seeds named served the walk, and the testnet seed's peers drop
+  light clients often enough that a batch tries the next. Full
+  `make verify` after these changes, 2026-10-08: lint clean, 1249 workspace
+  tests, 97 acceptance checks (re-run after `cli-endpoints.py` gave the
+  `litecoin-p2p` API a `tcp://` endpoint and `cli-zcash-shielded.py` took
+  the history merge below) and 140 iOS tests passed.
+
+## 2026-10-08 — An MWEB address is a Litecoin address to pay, never one to watch
+
+- **Before:** `validate_address` refused `ltcmweb1…` and `tmweb1…`, so the
+  send screen, the address book and a scanned QR code called a stealth
+  address invalid.
+- **After:** a stealth address on the wallet's network is a valid Litecoin
+  address, in its lowercase spelling; one of the other network is not. A
+  watch-only import, and any wallet's own address, refuses one: nothing
+  public shows what it holds.
+- **Why:** the wallet now gives out an MWEB address of its own and pays
+  others; a validator that called them invalid would be a second, wrong
+  model of the same addresses.
+- **CLI check:** `cli-litecoin-mweb.py` sends to the fixture's MWEB
+  addresses, refuses another network's, and refuses `wallet watch` of one.
+- **Verification:** see the first entry of this date.
+
+## 2026-10-08 — A custom Litecoin indexer is checked by its genesis before it broadcasts
+
+- **Before:** a Litecoin endpoint the catalog did not list could not receive
+  a transaction at all: its network could not be verified, so the broadcast
+  was refused.
+- **After:** the indexer must name Litecoin's genesis block (testnet's on
+  testnet) at height 0 (`Chain::litecoin_genesis`), through whichever API it
+  speaks, before it receives one.
+- **Why:** an endpoint the user added is as entitled to a broadcast as a
+  built-in one once its network is proved, and the genesis is what proves it.
+- **CLI check:** `cli-litecoin-mweb.py` broadcasts every transaction to the
+  fixture's indexer, which names mainnet's genesis.
+- **Verification:** see the first entry of this date.
+
+## 2026-10-08 — A provider's row confirms the operation it records; a counterparty it omits is kept
+
+- **Before:** only staking records took in an indexer's send or receive row
+  of the same transaction; a revoked approval, a closed account, a shield or
+  a peg-in the wallet recorded sat beside a second row of it. Every
+  history merge took the provider's counterparty even when it named none, so
+  a UTXO send lost its recipient on the next refresh.
+- **After:** any record of an operation (`TransactionKind::is_operation`,
+  every kind but send and receive) takes in the provider's row of its
+  transaction, keeping its kind, amount and counterparty and taking the
+  status; a provider row with no counterparty keeps the recorded one.
+- **Why:** one transaction is one row; the staking rule was this rule,
+  written for four of the eleven operation kinds.
+- **CLI check:** `cli-litecoin-mweb.py` saves the indexer's history after a
+  peg-in and finds the one `shield` row confirmed, at the peg-in address;
+  `cli-zcash-shielded.py` finds its shielding's row confirmed by the scan
+  and naming the unified address it moved to, where the scan's row had
+  named none.
+- **Verification:** see the first entry of this date.
+
+## 2026-10-08 — An MWEB peg-in's output pays Litecoin's dust rule at a witness spend's cost
+
+- **Before:** `litecoin_dust_threshold` knew P2PKH, P2SH, P2WPKH, P2WSH and
+  P2TR, and refused every other script, a peg-in's included.
+- **After:** a peg-in's version 9 program is priced as Litecoin Core's
+  `GetDustThreshold` prices every witness program; any other script, a
+  HogEx's version 8 among them, is still refused.
+- **Why:** a peg-in's canonical output is one the relay rule applies to; the
+  builder must apply the same rule, not refuse the output, and must still
+  refuse what no wallet pays.
+- **CLI check:** none of its own; every peg-in in `cli-litecoin-mweb.py`
+  clears it, and core tests check the least amount a peg-in can carry.
+- **Verification:** see the first entry of this date.
+
+## 2026-10-08 — One encrypted scan cache serves every scanning wallet
+
+- **Before:** the Monero scan cache had its own table (`monero_wallets`) and
+  secret (`{wallet}.monero-view`).
+- **After:** `scan_caches` holds a Monero wallet's outputs and a Litecoin
+  wallet's MWEB outputs alike, each encrypted under a key derived from the
+  wallet's scan key, kept as `{wallet}.scan-key`. Spectra is prelaunch: no
+  migration.
+- **Why:** two wallets that scan with a key and cache what they find are one
+  model; a second table and key name would be a copy of it.
+- **CLI check:** `cli-litecoin-mweb.py` syncs, reopens and sends through
+  it; core's Monero scan tests read and write it.
+- **Verification:** see the first entry of this date.
+
+## 2026-10-07 — Zcash wallets restored from a phrase hold, scan and send shielded funds
+
+- **Before:** Zcash was transparent only. A wallet's balance, history and
+  sends were its transparent address's; nothing scanned the shielded pools,
+  so ZEC sent to the wallet's keys there was invisible and unspendable from
+  Spectra, and the setup page said so (`transparentOnly`). Only Monero
+  wallets took a restore height.
+- **After:** a Zcash wallet restored from its phrase has a shielded account:
+  the ZIP-32 account its standard path names, so its transparent receiver is
+  the wallet's address (`service::zcash_shielded::shielded_account`); a key,
+  a watched address, a custom path or an HMAC key has none. librustzcash
+  (zcash_client_backend 0.24, zcash_client_sqlite 0.22) keeps it in a
+  database of its own beside Spectra's (`wallet_db::zcash`), viewing keys
+  only, deleted with the wallet. `sync_zcash_shielded` advances the scan one
+  bounded batch at a time from a lightwalletd server — the account made from
+  the seed on the first batch, at the wallet's restore height; tree states;
+  the Sapling, Orchard and Ironwood subtree roots; the transparent outputs to
+  shield; up to 1,000 compact blocks; up to 20 transactions read whole for
+  memos and spends — and a batch that moved nothing while the scan is not
+  complete is an error, so a caller's loop cannot spin. `ZcashShieldedStatus`
+  says where it stands (`unreadTransactions` counts what is left to read).
+  The shielded total joins the wallet's ZEC holding, and history gains
+  shielded receives, sends and a `shield` kind. Two operations build through
+  the send stages: `ShieldTransparent` (every transparent output into the
+  wallet's own pool, paying no one) and `ShieldedPayment` (one recipient, the
+  memo and the fee), each validated against the proposal it carries; the
+  proposal's encoding is reviewed and signing decodes it against the
+  database again and refuses any change. Orchard proofs need nothing; a
+  Sapling spend or output needs the Sapling parameters, downloaded once from
+  `download.z.cash` and used only when each file matches its pinned length
+  and BLAKE2b-512 hash. Signing refuses unless the server's branch is the one
+  librustzcash gives for the next block. Broadcast goes to lightwalletd. The
+  new `api::lightwalletd` (`Lightwalletd` endpoint API, zec.rocks for
+  mainnet and testnet) speaks gRPC over `api::grpc`, whose connections obey
+  the Tor kill switch, the SOCKS5 proxy (now remembered by `api::http`) and
+  the loopback-only guard as HTTP does. A Zcash phrase wallet takes a restore
+  height like Monero's (`restore_heights`, formerly `monero_heights`): typed,
+  estimated for a created wallet from a recent block of each network, or
+  Sapling's activation; the setup limit is now `shieldedScan`. A wallet
+  action (`shieldedFunds`), `wallet zcash-sync`, `zcash-status`, `shield` and
+  `send-shielded` in the CLI, and a Shielded Funds page in the app with the
+  unified address, scanning, shielding and sending. zcash_client_sqlite
+  needs rusqlite 0.37, which moved arti to 0.41 (the newest release whose
+  dependencies agree with librustzcash's). The wallet-actions honesty test
+  now checks every action; three (NFTs, shielded funds, trust lines) had
+  been left out of its list.
+- **Why:** the open item asked for one coherent core model of shielded
+  addresses, scanning, recovery, balances, proofs and signing, proved with
+  independent vectors and the CLI. Building on librustzcash keeps the
+  protocol where the network's own wallets keep it; Spectra owns which
+  account, which server, what is reviewed and what is refused.
+- **CLI check:** `cli-zcash-shielded.py` against `spectra-zcash-fixture`, a
+  loopback lightwalletd whose chain checks each transaction as a node would
+  (branch, expiry, ZIP-244 transparent signatures, Orchard-family anchors,
+  nullifiers, proofs and signatures, ZIP-317 fee): no server, then a wrong
+  password, make nothing; the scan finds the funding at the fixture's
+  address; shielding pays only the wallet; a payment's memo is read by the
+  recipient and, through the outgoing viewing key, by the sender; a payment
+  to a transparent address that would spend the Sapling note asks only
+  `download.z.cash` and signs nothing, even with a planted parameter file;
+  one from Ironwood pays the transparent address; five refusals before any
+  note is chosen; a second data directory recovers the same funds and
+  history; a key wallet, a restore height past the tip and a testnet server
+  are refused.
+- **Verification:** unified receivers against the zcash-test-vectors
+  reference (`core/tests/fixtures/zcash-addresses.json`, 15 vectors) and the
+  account's unified address against one of them byte for byte; TEX against
+  ZIP-320's reference pair; account paths, refusals before note selection,
+  parameter pinning and operation tampering in core tests; the fixture
+  checks every submitted transaction's proofs and signatures with
+  librustzcash's verifiers; the built-in servers probed read-only and a
+  wallet restored at block 3,509,000 synced against `zec.rocks`
+  (`docs/audits/zcash-shielded-endpoints-2026-10-07.json`). Full
+  `make verify` after these changes, 2026-10-07: lint clean, 1233 workspace
+  tests, 96 acceptance checks (re-run after `cli-endpoints.py` stopped
+  treating Zcash testnet as a network with no built-in provider) and 140 iOS
+  tests passed.
+
+## 2026-10-07 — Every Zcash address form is an address, and transparent funds pay a TEX address
+
+- **Before:** the Zcash validator took only transparent `t1`/`t3` addresses
+  (`tm`/`t2` on testnet). A unified, Sapling or TEX address was "not a valid
+  address" to the send screen, the address book and the risk checks, and the
+  transparent send refused it as undecodable.
+- **After:** `validate_address` takes every Zcash form on its network through
+  librustzcash's decoder (`zcash_keys::address::Address`): transparent,
+  TEX (ZIP-320), Sapling and unified. The transparent send pays a TEX
+  address the P2PKH script of its key hash, and refuses a Sapling or unified
+  one with "A shielded address is paid from the wallet's shielded funds."; a
+  shielded payment refuses a TEX address the other way round. The
+  transparent-only decoders in `derivation::zcash` are gone.
+- **Why:** the wallet now shows a unified address of its own; a validator
+  that called it invalid would be a second, wrong model of the same
+  addresses. A TEX address exists to be paid from transparent funds, which
+  the transparent send already has.
+- **CLI check:** `cli-send-icp-zcash.py` pays the TEX form of its own
+  address, computed in the script and checked against ZIP-320's reference
+  pair, and the output is that key hash's P2PKH script; a unified address is
+  refused with the message above. `cli-zcash-shielded.py` reviews a payment
+  to a unified address with only the `new_address` warning.
+- **Verification:** see the entry above.
+
+## 2026-10-07 — Zcash consensus branches come from librustzcash, so transparent sends work under NU6.3
+
+- **Before:** `zcash_consensus_branch` read a hand-written table ending at
+  NU6.2 (`0x5437f330`). Since NU6.3 (Ironwood, `0x37a5165b`) activated on
+  mainnet at block 3,428,143, every transparent send compared the server's
+  next-block branch with the table's and refused to build or sign.
+- **After:** the branch for a height is librustzcash's
+  (`BranchId::for_height`), the schedule the shielded builder and scanner
+  use too, so there is one. Before NU5 nothing is built, as before.
+- **Why:** a second, stale copy of the upgrade schedule had stopped every
+  mainnet transparent send; the library Spectra now builds shielded
+  transactions with carries the schedule its proofs and digests follow.
+- **CLI check:** `cli-send-icp-zcash.py` builds, signs and broadcasts at
+  height 3,500,000 under `37a5165b`, and refuses to sign when the server
+  reports NU5's or NU6.2's branch instead.
+- **Verification:** see the first entry of this date.
+
+## 2026-10-07 — EVM wallets hold and send ERC-721 and ERC-1155 tokens, never as balances
+
+- **Before:** NFTs were outside the asset model. Discovery skipped them, but
+  a fungible transfer row an explorer gave without decimals was scaled as 18
+  places, and nothing stopped a collection tracked as a custom ERC-20 from
+  showing its `balanceOf` (a token count) as a balance or being sent with
+  `transfer`.
+- **After:** core models an NFT as a contract and a token id, an ERC-1155
+  holding as a whole-number quantity (`api::evm_nft`). `wallet_nfts` reads a
+  Blockscout explorer's inventory to its end and refuses a network that has
+  none (Routescan alone); `build_nft_transfer` reads the standard from
+  ERC-165, refuses a contract reporting neither, both or every interface,
+  reads `ownerOf` or `balanceOf(owner, id)` live, and builds the collection's
+  `safeTransferFrom` under a new `WalletOperation::TransferNft` that binds
+  contract, standard, id, quantity and recipient; signing re-reads ownership
+  first. History reads `tokennfttx` and `token1155tx` on every page, each
+  token its own asset (`chain:erc-721:contract:id`) with its quantity as the
+  amount, and the indexer's row replaces the pending send. On the fungible
+  side, `fetch_erc20_metadata` refuses any contract that reports an NFT
+  standard (so a token send or decimals read of one fails), the batched
+  balance read asks each contract holding something the same question and
+  refuses a collection, `tokentx` rows carrying a `tokenID` are dropped, and
+  a tracked token's rows are scaled and named by the tracked token itself,
+  never by the explorer's `tokenDecimal`, which may be empty. A wallet action
+  (`nfts`), `wallet nfts` and `wallet send-nft` in the CLI, and an NFTs page
+  in the app. The ENS refusal for a non-EVM wallet now speaks of ENS, not
+  token approvals, and the EVM history page records are no longer exported
+  across the FFI, which never read them.
+- **Why:** NFTs are much of what EVM addresses hold; a token id or a count
+  read through a fungible path is a wrong amount, and a guessed 18 places is
+  one too. The open item asked for proof that neither can happen.
+- **CLI check:** `cli-nfts.py`: the inventory is read across two pages and
+  an ERC-404 row is left out; nine refusals, each before anything is built;
+  one ERC-721 token and three of an ERC-1155 id sign byte for byte as
+  ethers.js signs them, and a balance that fell below the quantity after
+  review fails signing; history shows four token rows with no duplicate
+  pending ones; a collection tracked by hand as a token gets no balance, is
+  not discovered and cannot be sent as a token.
+- **Verification:** calldata for ids 0 to 2^256 − 1 and quantities to
+  2^128 − 1, the reads and both signed transactions against ethers 6.17.0
+  (`scripts/generate-nft-transfer-vectors.cjs`); inventory and transfer
+  parsing against answers captured from Blockscout and Routescan
+  (`core/tests/fixtures/blockscout-nft.json`); operation tampering, ERC-165
+  answers, live holdings and the balance refusal in core tests; explorers
+  probed live (`docs/audits/nft-endpoints-2026-10-07.json`).
+  Full `make verify` after these changes, 2026-10-07: lint clean, 1218
+  workspace tests, 95 acceptance checks (the history suite re-run after its
+  explorer answered the two new lists) and 140 iOS tests passed.
+
+## 2026-10-07 — Cardano spends token-bearing outputs and sends native assets
+
+- **Before:** a Cardano send spent every pure-ADA output, never one that
+  also held a native asset, so ADA held beside tokens could not pay; it paid
+  a static 0.17 ADA fee whatever its size, refused any change under 1 ADA,
+  and native assets were outside the token list, balances and history.
+- **After:** `send::cardano` builds one transaction model
+  (`PreparedCardanoTransaction`) for ADA and native assets. Selection takes
+  outputs holding the sent asset first, then ADA alone, then other
+  token-bearing outputs, each largest first; the change returns every asset
+  the inputs held; every output holds the protocol minimum ADA for its size
+  (`(160 + size) × coinsPerUTxOByte`, as `min_ada_for_output` computes it);
+  the fee is `a × size + b` for the signed size, both from Koios's latest
+  epoch parameters; change too small to stand joins the fee. Signing checks
+  each input still holds exactly its reviewed value and assets, the outputs
+  still meet the current minimums, and value and assets balance. The network
+  hosts "Cardano Asset" (`POLICY.NAME`): decimals from the CIP-68 datum,
+  else the token registry; balances and discovery from the address's
+  outputs; history rows per asset; an asset transfer reviewed with the ADA
+  it carries (`AssetTransferTerms::carried_native`). The send records the
+  transaction's own hash, and a Koios endpoint's genesis network magic is
+  checked before it receives one. The ADA preview's maximum leaves the
+  minimum ADA held tokens need as change.
+- **Why:** a wallet whose ADA sits beside tokens could not send it, a fixed
+  fee is wrong for any but small transactions, and native assets are much
+  of what Cardano addresses hold.
+- **CLI check:** `cli-send-cardano.py`: the pure-ADA send still signs the
+  SDK's bytes; a 5 ADA output holding a token pays 1 ADA and returns the
+  token; the token is sent with its minimum ADA (reviewed as
+  `carried_native`), discovered, refreshed and broadcast after the genesis
+  check, which refuses a node on another network; short, changed and
+  incomplete inputs are refused.
+- **Verification:** bodies, signed transactions, minimum ADA per output and
+  minimum fee for three transactions against
+  @emurgo/cardano-serialization-lib-nodejs 15.0.3
+  (`scripts/generate-cardano-asset-vectors.cjs`), selection and conservation
+  in `send::cardano::tests`, history rows and decimals in `api::koios`;
+  Koios endpoints probed live
+  (`docs/audits/cardano-asset-endpoints-2026-10-07.json`).
+  Full `make verify` after these changes, 2026-10-07: lint clean, 1204
+  workspace tests, 94 acceptance checks (two suites re-run after their
+  expectations gained `carried_native`) and 140 iOS tests passed.
+
+## 2026-10-07 — XRP Ledger and Stellar issued assets are tokens, by code and issuer
+
+- **Before:** XRP and Stellar hosted no tokens. Issued currencies and
+  credit assets were invisible: discovery listed none, a balance refresh
+  read only XRP or XLM, history dropped their payments, and a send naming
+  one was refused as a protocol the network does not host. An account could
+  not open or remove a trust line.
+- **After:** the networks host "Trust Line Token" (`CODE.rIssuer`, the code
+  as three characters or 40 uppercase hex digits) and "Stellar Asset"
+  (`CODE:ISSUER`), each identified by code and issuer together and fixed at
+  15 and 7 places (`tokens::fixed_token_decimals`, `ChainEntry`'s
+  `fixed_token_decimals`, which the app shows instead of a decimals stepper
+  and the CLI's `token add` no longer asks for). Discovery and balances read
+  `account_lines` and the account's Horizon balances; history gives each
+  asset its own row from the account's own line change. Sends build
+  `PreparedXrpIssuedPayment` and `PreparedStellarAssetPayment` from one
+  verified node's ledger, refusing a missing, unauthorized, frozen or full
+  line on either side, a recipient that does not exist or does not accept
+  the deposit, an issuer that lets its currency ripple on neither line, an
+  amount the ledger cannot hold exactly, and a short balance; an XRP Ledger
+  issuer's transfer rate is paid with `SendMax`, reviewed as the asset's
+  transfer terms and checked again before signing. `wallet_trust_lines`,
+  `build_trust_asset` and `build_remove_trust_line` (`spectra wallet
+  trust-lines`, `trust`, `untrust`; Trust Lines on the wallet page) list,
+  open and remove lines as `WalletOperation::TrustAsset` and
+  `RemoveTrustLine`, recorded as their own transaction kinds. The built-in
+  XRPL and Horizon endpoints claim token balances, discovery and history,
+  probed live (`docs/audits/issued-asset-endpoints-2026-10-07.json`).
+  Horizon amounts are read exactly: more than seven places or more than an
+  `i64` is refused where it used to be truncated or overflow.
+- **Why:** both ledgers carry most of their value in issued assets, and a
+  wallet that cannot see, receive or send them misstates what an account
+  holds; each prerequisite the network enforces costs a fee when it fails,
+  so it is checked first.
+- **CLI check:** `cli-issued-assets.py`: two USD tokens from two XRP Ledger
+  issuers and two USDC from two Stellar issuers stay apart in `token list`,
+  `refresh`, `token discover` and `history`; the hex spelling of a listed
+  code is refused as a duplicate; TrustSet, the issued payment with
+  `SendMax` and its removal, and Stellar's ChangeTrust, payment and removal
+  are each signed byte for byte as the SDK signs them; a rate raised before
+  signing and each refusal are refused.
+- **Verification:** amounts, currency codes, payments and TrustSet against
+  ripple-binary-codec 2.11.0 and ripple-keypairs 3.1.0, payments and
+  ChangeTrust against @stellar/stellar-base 14.1.0
+  (`scripts/generate-issued-asset-vectors.cjs`); every refusal in
+  `send::xrp_issued` and `send::stellar_issued` tests.
+  Full `make verify` after these changes, 2026-10-07: lint clean, 1198
+  workspace tests, 94 acceptance checks and 139 iOS tests passed.
+
+## 2026-10-07 — A listed token's history rows carry the list's name
+
+- **Before:** a provider history row of a token the catalog does not know —
+  any custom token, on any network — was named by its contract or
+  identifier, while the same token's sends were named as the token list
+  names it.
+- **After:** `service::history_refresh` names a row of any token the list
+  holds (custom or built in) by the list's name and symbol; a token nobody
+  lists is still shown as itself.
+- **Why:** one token, two names, depending on which way the transfer went;
+  for XRP Ledger and Stellar assets, which are nearly always custom, every
+  incoming row read as `USD.rhub8…`.
+- **CLI check:** `cli-issued-assets.py` asserts provider rows named "Other
+  USD" and "GateHub USD" for two custom tokens.
+- **Verification:** `service::history_refresh::tests::a_listed_token_is_named_as_the_list_names_it`.
+  Full `make verify` after these changes, 2026-10-07: lint clean, 1198
+  workspace tests, 94 acceptance checks and 139 iOS tests passed.
+
+## 2026-10-07 — Solana Token-2022 fees and transfer hooks are sent, every other rule refused by name
+
+- **Before:** a Token-2022 mint with a fee that could charge anything, or a
+  transfer hook with a program, was refused, as was every extension not
+  named; the transfer itself read only the mint, so a frozen account, a
+  recipient account demanding a memo or a short balance failed on chain
+  after the fee was paid.
+- **After:** a Solana token transfer is planned in `send::solana_token`
+  from the mint and every account it touches, before review and again
+  before signing. A transfer fee is the program's own calculation for the
+  current epoch, stated with `TransferCheckedWithFee` so a raised fee fails
+  instead of withholding more; it is refused within 300 slots of an epoch
+  that changes it. A transfer hook's extra accounts are resolved from its
+  validation account as spl-transfer-hook-interface resolves them, the
+  transfer is simulated, and a hook asking for a signature, a missing or
+  foreign validation account, or a failed simulation is refused. The review
+  carries `AssetTransferTerms` (what leaves, what arrives, the token's fee
+  and the hook program), bound into the review digest and shown before
+  signing. Refused by name before building: paused and non-transferable
+  mints, frozen sending or receiving accounts, recipient accounts that
+  require a memo or accept only confidential transfers, a missing recipient
+  account when new ones start frozen, a short associated-account balance,
+  interest-bearing and scaled-amount mints, and unlisted extensions.
+- **Why:** the network enforces each of these rules; reading them first
+  turns a paid failure into a refusal, and a fee or a hook program is part
+  of what the person agrees to, so it belongs in the reviewed artifact.
+- **CLI check:** `cli-send-tokens.py`: against a loopback Solana node, a
+  0.5% fee mint builds with `transfer_terms` of 1 sent, 0.995 received and
+  0.005 fee, a fee raised before signing is refused, and the signed bytes
+  are the reviewed message; a hook mint carries its eight resolved accounts;
+  nine refusals exit 3 and build nothing.
+- **Verification:** `TransferCheckedWithFee`, the associated-account
+  create and a hook's accounts from every seed kind match @solana/spl-token
+  0.4.14 (`scripts/generate-solana-token-2022-vectors.cjs`,
+  `send::solana_token::tests`); fee arithmetic and every refusal in
+  `api::solana_json_rpc` and `send::solana_token` tests.
+  Full `make verify` after these changes, 2026-10-07: lint clean, 1178
+  workspace tests, 93 acceptance checks and 139 iOS tests passed.
+
 ## 2026-10-07 — Stellar, Cardano, Kaspa and Monero wallets sign messages
 
 - **Before:** Sign Message and Verify Message existed only on the Bitcoin

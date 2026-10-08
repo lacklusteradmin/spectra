@@ -28,5 +28,6 @@ mod tests;
 mod sends;
 pub(crate) use sends::*;
 
-mod monero;
-pub(crate) use monero::{monero_load, monero_save};
+mod scan_cache;
+pub(crate) use scan_cache::{scan_cache_load, scan_cache_save};
+pub(crate) mod zcash;

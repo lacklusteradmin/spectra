@@ -28,6 +28,8 @@ class Node(http.server.BaseHTTPRequestHandler):
                     value = '0x' + f'{10**30:064x}'
                 elif data == '0x313ce567':
                     value = '0x' + f'{6:064x}'
+                elif data.startswith('0x01ffc9a7'):
+                    value = '0x' + '0' * 64
                 else:
                     value = '0x' + 'TOKEN'.encode().hex().ljust(64, '0')
                 return dict(jsonrpc='2.0',id=call['id'],result=value)

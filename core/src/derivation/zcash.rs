@@ -1,67 +1,6 @@
-//! Zcash transparent: address validation, BIP-32 derivation, t1… P2PKH
-//! base58check encoding (2-byte version prefix)
-
-use crate::derivation::error::DerivationError;
-
-// ── Address validation (preserved) ───────────────────────────────────────
-
-pub(crate) const ZCASH_T1_VERSION: [u8; 2] = [0x1C, 0xB8];
-pub(crate) const ZCASH_T3_VERSION: [u8; 2] = [0x1C, 0xBD];
-
-// Base58check-decode a Zcash transparent address; accepts t1 (P2PKH) and t3 (P2SH) forms.
-pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], DerivationError> {
-    let decoded = bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map_err(|e| DerivationError::Invalid(format!("invalid zcash address: {e}").into()))?;
-    if decoded.len() != 22 {
-        return Err(DerivationError::Invalid(
-            "zcash address payload must be 22 bytes (2 version + 20 hash)".into(),
-        ));
-    }
-    let version = [decoded[0], decoded[1]];
-    if version != ZCASH_T1_VERSION && version != ZCASH_T3_VERSION {
-        return Err(DerivationError::Invalid(
-            format!("unrecognised zcash version bytes: {version:02x?}").into(),
-        ));
-    }
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&decoded[2..22]);
-    Ok(hash)
-}
-
-/// True if address passes Zcash base58check decode with a recognised t1/t3 version prefix.
-/// Whether `address` is valid on the network asked about.
-///
-/// Took no network, so the testnet arm of the dispatcher ran the mainnet
-/// decoder: a derived testnet address failed the app's own validator, which
-/// means the receive screen showed an address the send screen would refuse.
-/// Testnet transparent addresses carry their own version bytes.
-pub(crate) fn decode_zcash_testnet_address(address: &str) -> Result<[u8; 20], DerivationError> {
-    let decoded = bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map_err(|e| {
-            DerivationError::Invalid(format!("invalid zcash testnet address: {e}").into())
-        })?;
-    if decoded.len() != 22
-        || ![ZCASH_TESTNET_VERSION, [0x1c, 0xba]].contains(&[decoded[0], decoded[1]])
-    {
-        return Err(DerivationError::Invalid(
-            "not a zcash testnet transparent address".into(),
-        ));
-    }
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&decoded[2..22]);
-    Ok(hash)
-}
-
-pub fn validate_zcash_address(address: &str, testnet: bool) -> bool {
-    match decode_zcash_address(address) {
-        Ok(_) => !testnet,
-        Err(_) => testnet && decode_zcash_testnet_address(address).is_ok(),
-    }
-}
+//! Zcash transparent: BIP-32 derivation and t1… P2PKH base58check encoding
+//! (2-byte version prefix). Every Zcash address form, shielded ones too, is
+//! validated by `validation::address` through librustzcash.
 
 use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
@@ -138,23 +77,4 @@ pub fn derive_zcash_testnet(
         want_public_key,
         want_private_key,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_random_garbage() {
-        assert!(!validate_zcash_address("", false));
-        assert!(!validate_zcash_address("not-a-zec-address", false));
-    }
-
-    #[test]
-    fn rejects_btc_p2pkh() {
-        assert!(!validate_zcash_address(
-            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-            false
-        ));
-    }
 }

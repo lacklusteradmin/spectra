@@ -240,6 +240,66 @@ chain_id = "zcash"
 endpoint = "https://blockbook.zec.zelcore.io"
 capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
+# Lightwalletd: the compact blocks a Zcash shielded wallet scans, over gRPC.
+[[endpoints]]
+id = "zcash.lightwalletd.zec-rocks"
+api = "lightwalletd"
+chain_id = "zcash"
+endpoint = "https://zec.rocks:443"
+capabilities = ["history", "broadcast", "verification"]
+
+[[endpoints]]
+id = "zcash.lightwalletd.zec-rocks-na"
+api = "lightwalletd"
+chain_id = "zcash"
+endpoint = "https://na.zec.rocks:443"
+capabilities = ["history", "broadcast", "verification"]
+
+[[endpoints]]
+id = "zcash.lightwalletd.zec-rocks-eu"
+api = "lightwalletd"
+chain_id = "zcash"
+endpoint = "https://eu.zec.rocks:443"
+capabilities = ["history", "broadcast", "verification"]
+
+[[endpoints]]
+id = "zcash-testnet.lightwalletd.zec-rocks"
+api = "lightwalletd"
+chain_id = "zcash-testnet"
+endpoint = "https://testnet.zec.rocks:443"
+capabilities = ["history", "broadcast", "verification"]
+
+# Litecoin nodes, peer to peer: the MWEB outputs a wallet scans. A DNS seed
+# names a different node each time it is asked; one that does not serve MWEB
+# light clients is passed over.
+[[endpoints]]
+id = "litecoin.p2p.loshan"
+api = "litecoin-p2p"
+chain_id = "litecoin"
+endpoint = "tcp://seed-a.litecoin.loshan.co.uk:9333"
+capabilities = ["history"]
+
+[[endpoints]]
+id = "litecoin.p2p.thrasher"
+api = "litecoin-p2p"
+chain_id = "litecoin"
+endpoint = "tcp://dnsseed.thrasher.io:9333"
+capabilities = ["history"]
+
+[[endpoints]]
+id = "litecoin.p2p.ltcpool"
+api = "litecoin-p2p"
+chain_id = "litecoin"
+endpoint = "tcp://dnsseed.ltcpool.org:9333"
+capabilities = ["history"]
+
+[[endpoints]]
+id = "litecoin-testnet.p2p.thrasher"
+api = "litecoin-p2p"
+chain_id = "litecoin-testnet"
+endpoint = "tcp://dnsseed-testnet.thrasher.io:19335"
+capabilities = ["history"]
+
 [[endpoints]]
 id = "bitcoingold.mainnet.zelcore"
 api = "blockbook"
@@ -322,56 +382,56 @@ id = "xrp.rpc.s1"
 api = "xrpl-json-rpc"
 chain_id = "xrp"
 endpoint = "https://s1.ripple.com:51234/"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "xrp.rpc.s2"
 api = "xrpl-json-rpc"
 chain_id = "xrp"
 endpoint = "https://s2.ripple.com:51234/"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "xrp.rpc.cluster"
 api = "xrpl-json-rpc"
 chain_id = "xrp"
 endpoint = "https://xrplcluster.com/"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "xrp.testnet.altnet"
 api = "xrpl-json-rpc"
 chain_id = "xrp-testnet"
 endpoint = "https://s.altnet.rippletest.net:51234/"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "xrp.testnet.xrpllabs"
 api = "xrpl-json-rpc"
 chain_id = "xrp-testnet"
 endpoint = "https://testnet.xrpl-labs.com/"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "cardano.koios.primary"
 api = "koios"
 chain_id = "cardano"
 endpoint = "https://api.koios.rest/api/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification", "utxo"]
 
 [[endpoints]]
 id = "cardano.koios.xray"
 api = "koios"
 chain_id = "cardano"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification", "utxo"]
 
 [[endpoints]]
 id = "cardano.preprod.koios.xray"
 api = "koios"
 chain_id = "cardano-preprod"
 endpoint = "https://graph.xray.app/output/services/koios/preprod/api/v1"
-capabilities = ["balance", "history", "fee", "broadcast", "verification", "utxo"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification", "utxo"]
 
 [[endpoints]]
 id = "aptos.rpc.aptoslabs"
@@ -546,21 +606,21 @@ id = "stellar.horizon.primary"
 api = "horizon"
 chain_id = "stellar"
 endpoint = "https://horizon.stellar.org"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "stellar.horizon.lobstr"
 api = "horizon"
 chain_id = "stellar"
 endpoint = "https://horizon.stellar.lobstr.co"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "stellar.testnet.horizon"
 api = "horizon"
 chain_id = "stellar-testnet"
 endpoint = "https://horizon-testnet.stellar.org"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
 
 [[endpoints]]
 id = "monero.daemon.cake"

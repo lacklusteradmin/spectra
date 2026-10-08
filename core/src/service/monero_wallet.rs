@@ -48,7 +48,7 @@ impl WalletService {
                 return Ok(None);
             }
             let db = this.bound_database().await?;
-            if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_none() {
+            if crate::wallet_db::scan_cache_load(&db, &wallet_id, chain)?.is_none() {
                 // Not scanned yet: the scan will start at the restore height
                 // the wallet was imported with.
                 return Ok(Some(MoneroSyncStatus {
@@ -98,12 +98,12 @@ impl WalletService {
             let store = this.secrets()?;
             store.save_secret(
                 SecretClass::Generic,
-                format!("{wallet_id}.monero-view"),
+                format!("{wallet_id}.scan-key"),
                 hex::encode(&secret[32..]),
             )?;
             let db = this.bound_database().await?;
             let (revision, mut cached, key) =
-                if crate::wallet_db::monero_load(&db, &wallet_id, chain)?.is_some() {
+                if crate::wallet_db::scan_cache_load(&db, &wallet_id, chain)?.is_some() {
                     let (r, w, k) = this.load_monero(&wallet_id).await?;
                     (Some(r), w, k)
                 } else {
@@ -185,7 +185,7 @@ impl WalletService {
     ) -> Result<(u64, LocalWallet, Zeroizing<Vec<u8>>), SpectraBridgeError> {
         let view = Zeroizing::new(
             self.secrets()?
-                .load_secret(SecretClass::Generic, format!("{wallet_id}.monero-view"))?,
+                .load_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))?,
         );
         let view = Zeroizing::new(hex::decode(view.as_str())?);
         if view.len() != 32 {
@@ -199,13 +199,16 @@ impl WalletService {
             .find(|w| w.id == wallet_id)
             .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
         let chain = owner.chain_id;
-        let (revision, payload) =
-            crate::wallet_db::monero_load(self.bound_database().await?.as_ref(), wallet_id, chain)?
-                .ok_or_else(|| {
-                    SpectraBridgeError::failure(
-                        "Sync the local Monero wallet before building a transaction",
-                    )
-                })?;
+        let (revision, payload) = crate::wallet_db::scan_cache_load(
+            self.bound_database().await?.as_ref(),
+            wallet_id,
+            chain,
+        )?
+        .ok_or_else(|| {
+            SpectraBridgeError::failure(
+                "Sync the local Monero wallet before building a transaction",
+            )
+        })?;
         let plaintext = Zeroizing::new(crate::store::seed_envelope::decrypt(
             payload.as_bytes(),
             &key,
@@ -242,7 +245,7 @@ impl WalletService {
                 "Wallet removed during Monero sync",
             ));
         }
-        crate::wallet_db::monero_save(
+        crate::wallet_db::scan_cache_save(
             self.bound_database().await?.as_ref(),
             &wallet.wallet_id,
             wallet.chain_id,
@@ -284,7 +287,7 @@ impl WalletService {
         }
         let view = Zeroizing::new(self.secrets()?.load_secret(
             SecretClass::Generic,
-            format!("{}.monero-view", request.wallet_id),
+            format!("{}.scan-key", request.wallet_id),
         )?);
         let view = Zeroizing::new(hex::decode(view.as_str())?);
         let scalar = Scalar::read(&mut view.as_slice()).map_err(SpectraBridgeError::failure)?;

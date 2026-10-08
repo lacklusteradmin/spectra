@@ -534,6 +534,10 @@ impl Chain {
             Chain::Near => &[Api::Nearblocks, Api::Fastnear],
             Chain::Tron => &[Api::TrongridV1],
             Chain::Ton => &[Api::ToncenterV3],
+            // Shielded funds are scanned from a lightwalletd server.
+            Chain::Zcash => &[Api::Lightwalletd],
+            // MWEB funds are scanned from a Litecoin node, peer to peer.
+            Chain::Litecoin => &[Api::LitecoinP2p],
             _ => &[],
         };
         self.endpoint_apis()
@@ -620,6 +624,9 @@ impl Chain {
             Self::Sui | Self::SuiTestnet => "Sui Coin",
             Self::Aptos | Self::AptosTestnet if identifier.contains("::") => "Aptos Coin",
             Self::Aptos | Self::AptosTestnet => "AIP-21",
+            Self::Xrp | Self::XrpTestnet => "Trust Line Token",
+            Self::Stellar | Self::StellarTestnet => "Stellar Asset",
+            Self::Cardano | Self::CardanoPreprod => "Cardano Native Token",
             _ => "",
         }
     }
@@ -862,6 +869,20 @@ impl Chain {
         }
     }
 
+    /// The network's genesis block, as explorers write its hash: what an
+    /// indexer on it names at height 0.
+    pub(crate) fn litecoin_genesis(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Litecoin => {
+                Ok("12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2")
+            }
+            Self::LitecoinTestnet => {
+                Ok("4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0")
+            }
+            _ => Err(self.not_in("Litecoin")),
+        }
+    }
+
     pub(crate) fn litecoin_max_money(self) -> Result<u64, RegistryError> {
         match self {
             Self::Litecoin | Self::LitecoinTestnet => Ok(84_000_000 * 100_000_000),
@@ -964,21 +985,28 @@ impl Chain {
         }
     }
 
-    /// Source: zcash/zcash src/chainparams.cpp and consensus/upgrades.cpp.
+    /// The consensus parameters librustzcash builds and scans this network
+    /// with: its upgrade schedule is the one schedule Spectra uses.
+    pub(crate) fn zcash_network(self) -> Result<zcash_protocol::consensus::Network, RegistryError> {
+        match self {
+            Self::Zcash => Ok(zcash_protocol::consensus::Network::MainNetwork),
+            Self::ZcashTestnet => Ok(zcash_protocol::consensus::Network::TestNetwork),
+            _ => Err(self.not_in("Zcash")),
+        }
+    }
+
+    /// The consensus branch at `height`, from librustzcash's upgrade schedule.
+    /// Before NU5 no V5 transaction is valid, so there is none to build for.
     pub(crate) fn zcash_consensus_branch(self, height: u32) -> Result<u32, RegistryError> {
-        let activations = match self {
-            Self::Zcash => [1_687_104, 2_726_400, 3_146_400, 3_364_600],
-            Self::ZcashTestnet => [1_842_420, 2_976_000, 3_536_500, 4_052_000],
-            _ => return Err(self.not_in("Zcash")),
-        };
-        let branches = [0xc2d6_d0b4, 0xc8e7_1055, 0x4dec_4df0, 0x5437_f330];
-        activations
-            .into_iter()
-            .zip(branches)
-            .rev()
-            .find(|(activation, _)| height >= *activation)
-            .map(|(_, branch)| branch)
-            .ok_or(RegistryError::ZcashV5Inactive(height))
+        use zcash_protocol::consensus::{BlockHeight, BranchId, NetworkUpgrade, Parameters};
+        let network = self.zcash_network()?;
+        if !network.is_nu_active(NetworkUpgrade::Nu5, BlockHeight::from_u32(height)) {
+            return Err(RegistryError::ZcashV5Inactive(height));
+        }
+        Ok(u32::from(BranchId::for_height(
+            &network,
+            BlockHeight::from_u32(height),
+        )))
     }
 
     pub(crate) fn zcash_genesis(self) -> Result<&'static str, RegistryError> {
@@ -1006,6 +1034,15 @@ impl Chain {
             Self::Solana => Ok("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"),
             Self::SolanaDevnet => Ok("EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"),
             _ => Err(self.not_in("Solana")),
+        }
+    }
+
+    /// The network magic a Cardano node's genesis states.
+    pub(crate) fn cardano_network_magic(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Cardano => Ok(764_824_073),
+            Self::CardanoPreprod => Ok(1),
+            _ => Err(self.not_in("Cardano")),
         }
     }
 
@@ -1457,9 +1494,15 @@ impl Chain {
     pub fn sends_tokens(self) -> bool {
         let chain = self.mainnet_counterpart();
         match chain {
-            Chain::Solana | Chain::Tron | Chain::Near | Chain::Sui | Chain::Aptos | Chain::Ton => {
-                true
-            }
+            Chain::Solana
+            | Chain::Tron
+            | Chain::Near
+            | Chain::Sui
+            | Chain::Aptos
+            | Chain::Ton
+            | Chain::Xrp
+            | Chain::Stellar
+            | Chain::Cardano => true,
             _ => chain.is_evm(),
         }
     }
@@ -2610,4 +2653,33 @@ impl Chain {
 #[uniffi::export]
 pub fn chain_faucet_url(chain: Chain) -> Option<String> {
     chain.faucet_url().map(str::to_string)
+}
+
+#[cfg(test)]
+mod zcash_schedule {
+    use super::*;
+
+    /// The branch at each upgrade's first block, NU6.3 (Ironwood) included,
+    /// and nothing to build for before NU5.
+    #[test]
+    fn branches_follow_librustzcash() {
+        for (chain, height, branch) in [
+            (Chain::Zcash, 1_687_104, 0xc2d6_d0b4),
+            (Chain::Zcash, 3_364_600, 0x5437_f330),
+            (Chain::Zcash, 3_428_142, 0x5437_f330),
+            (Chain::Zcash, 3_428_143, 0x37a5_165b),
+            (Chain::ZcashTestnet, 4_134_000, 0x37a5_165b),
+        ] {
+            assert_eq!(
+                chain.zcash_consensus_branch(height),
+                Ok(branch),
+                "{chain} {height}"
+            );
+        }
+        assert_eq!(
+            Chain::Zcash.zcash_consensus_branch(1_687_103),
+            Err(RegistryError::ZcashV5Inactive(1_687_103))
+        );
+        assert!(Chain::Bitcoin.zcash_consensus_branch(1).is_err());
+    }
 }

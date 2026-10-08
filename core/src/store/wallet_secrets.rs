@@ -278,7 +278,7 @@ pub fn unlock_private_key(
 
 /// Idempotent, like the underlying store.
 pub fn delete(store: &dyn SecretStore, wallet_id: &str) -> Result<(), WalletSecretError> {
-    store.delete_secret(SecretClass::Generic, format!("{wallet_id}.monero-view"))?;
+    store.delete_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))?;
     for blob in Blob::ALL {
         store.delete_secret(blob.class(), blob.key(wallet_id))?;
     }

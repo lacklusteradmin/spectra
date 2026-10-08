@@ -261,7 +261,6 @@ async fn finish_bootstrap(data_dir: String, percent: Arc<AtomicU8>) {
                     return;
                 }
             };
-            let client = Arc::new(client);
             let proxy_task = tokio::spawn(run_socks5_proxy(client.clone(), listener));
             crate::api::http::set_socks5_proxy(Some(&format!("socks5h://127.0.0.1:{port}")));
             *state = TorInternalState::Running {
@@ -276,7 +275,7 @@ async fn finish_bootstrap(data_dir: String, percent: Arc<AtomicU8>) {
 async fn try_bootstrap(
     data_dir: &str,
     percent: &Arc<AtomicU8>,
-) -> Result<TorClient<PreferredRuntime>, String> {
+) -> Result<Arc<TorClient<PreferredRuntime>>, String> {
     let mut builder = TorClientConfig::builder();
     builder
         .storage()
@@ -287,7 +286,7 @@ async fn try_bootstrap(
     percent.store(5, Ordering::Relaxed);
     publish_status();
 
-    let client: TorClient<PreferredRuntime> = TorClient::builder()
+    let client = TorClient::builder()
         .config(config)
         .create_bootstrapped()
         .await
@@ -295,7 +294,7 @@ async fn try_bootstrap(
 
     percent.store(100, Ordering::Relaxed);
     publish_status();
-    Ok(client)
+    Ok(Arc::new(client))
 }
 
 // ── SOCKS5 proxy server ──────────────────────────────────────────────────────

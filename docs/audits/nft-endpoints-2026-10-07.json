@@ -1,0 +1,2720 @@
+{
+  "checked": "2026-10-07",
+  "method": "Read-only GETs to each built-in Blockscout-API history endpoint and read-only eth_calls to a public Ethereum node, made by a script written for this audit; nothing submitted. For the burn address 0x\u2026dead, which holds burned NFTs on every network: the ERC-721 and ERC-1155 transfer lists, the fungible transfer list (whether NFT rows appear in it), and Blockscout's REST v2 NFT inventory with its second page. Then ERC-165 answers for an ERC-721, an ERC-1155 and an ERC-20 contract, ownerOf for an existing and a missing token, and an ERC-1155 balanceOf.",
+  "holder": "0x000000000000000000000000000000000000dead",
+  "endpoints": [
+    {
+      "id": "plasma.history.routescan",
+      "chain_id": "plasma",
+      "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        }
+      ]
+    },
+    {
+      "id": "world-chain.history.blockscout",
+      "chain_id": "world-chain",
+      "endpoint": "https://worldchain-mainnet.explorer.alchemy.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "0",
+          "message": "No token transfers found",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x3727b2ed8aa5f5bf0cbb98d4c174481615b2a749",
+            "token_id": "1",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "ethereum.explorer.blockscout",
+      "chain_id": "ethereum",
+      "endpoint": "https://eth.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "error": "TimeoutError: The read operation timed out"
+        }
+      ]
+    },
+    {
+      "id": "ethereumclassic.explorer.blockscout",
+      "chain_id": "ethereum-classic",
+      "endpoint": "https://etc.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 1,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 3
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x44b6ad1dccec2a512088997766cc39d0cf3f5d12",
+            "token_id": "9989",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "base.history.keyless",
+      "chain_id": "base",
+      "endpoint": "https://base.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "token1155tx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "tokentx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "arbitrum.history.keyless",
+      "chain_id": "arbitrum",
+      "endpoint": "https://arbitrum.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "token1155tx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "tokentx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "optimism.history.keyless",
+      "chain_id": "optimism",
+      "endpoint": "https://explorer.optimism.io",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x012caeb558dffc053a6a092835a1e7f5c8eeba8b",
+            "token_id": "880339",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "polygon.history.keyless",
+      "chain_id": "polygon",
+      "endpoint": "https://polygon.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "token1155tx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "tokentx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "scroll.history.keyless",
+      "chain_id": "scroll",
+      "endpoint": "https://scroll.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "error": "TimeoutError: The read operation timed out"
+        }
+      ]
+    },
+    {
+      "id": "celo.history.keyless",
+      "chain_id": "celo",
+      "endpoint": "https://celo.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x01e25bf88c0ae7d2006eda8fa66d2877a5796a54",
+            "token_id": "15",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "zksync-era.history.keyless",
+      "chain_id": "zksync-era",
+      "endpoint": "https://zksync.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x0616e5762c1e7dc3723c50663df10a162d690a86",
+            "token_id": "82102",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "unichain.history.keyless",
+      "chain_id": "unichain",
+      "endpoint": "https://unichain.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "error": "TimeoutError: The read operation timed out"
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x30cdc630ffbc078bbb24036ca77d83412b721f27",
+            "token_id": "12490",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "ink.history.keyless",
+      "chain_id": "ink",
+      "endpoint": "https://explorer.inkonchain.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 5,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x01e8078bc25a705c4227bc197782e8a8e16cb0c0",
+            "token_id": "583",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "avalanche.history.keyless",
+      "chain_id": "avalanche",
+      "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        }
+      ]
+    },
+    {
+      "id": "blast.history.keyless",
+      "chain_id": "blast",
+      "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        }
+      ]
+    },
+    {
+      "id": "mantle.history.keyless",
+      "chain_id": "mantle",
+      "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        }
+      ]
+    },
+    {
+      "id": "ethereum-sepolia.history.keyless",
+      "chain_id": "ethereum-sepolia",
+      "endpoint": "https://eth-sepolia.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 6
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "new_ui_multiplier",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "ui_multiplier",
+            "ui_multiplier_effective_at",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x017e02ed70a1b1250ea797692773d64f401e3031",
+            "token_id": "100",
+            "items_count": 50
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "ethereum-hoodi.history.keyless",
+      "chain_id": "ethereum-hoodi",
+      "endpoint": "https://eth-hoodi.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 1,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 2,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 3,
+          "item_fields": [
+            "animation_media_type",
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_media_type",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "new_ui_multiplier",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "ui_multiplier",
+            "ui_multiplier_effective_at",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-1155",
+            "ERC-721"
+          ],
+          "erc1155_values": [
+            "1",
+            "1"
+          ],
+          "next_page_params": null
+        }
+      ]
+    },
+    {
+      "id": "ethereum-classic-mordor.history.keyless",
+      "chain_id": "ethereum-classic-mordor",
+      "endpoint": "https://etc-mordor.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "0",
+          "message": "No token transfers found",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_media_type",
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_media_type",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "new_ui_multiplier",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "ui_multiplier",
+            "ui_multiplier_effective_at",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x798484e4227df1083504b1efe8ff304dc049a552",
+            "token_id": "896"
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "arbitrum-sepolia.history.keyless",
+      "chain_id": "arbitrum-sepolia",
+      "endpoint": "https://arbitrum-sepolia.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "token1155tx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "action": "tokentx",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "optimism-sepolia.history.keyless",
+      "chain_id": "optimism-sepolia",
+      "endpoint": "https://testnet-explorer.optimism.io",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-1155",
+            "ERC-721"
+          ],
+          "erc1155_values": [
+            "2",
+            "1",
+            "2"
+          ],
+          "next_page_params": {
+            "token_type": "ERC-1155",
+            "token_contract_address_hash": "0x2f0d361c32d6e25ce771ab6ec12a74064ea5ad1b",
+            "token_id": "1",
+            "items_count": 50
+          },
+          "second_page_items": 5,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "base-sepolia.history.keyless",
+      "chain_id": "base-sepolia",
+      "endpoint": "https://base-sepolia.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_media_type",
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_media_type",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "new_ui_multiplier",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "ui_multiplier",
+            "ui_multiplier_effective_at",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0x085f5780ea07f2792dc7448a4499253150573ce5",
+            "token_id": "65"
+          },
+          "second_page_items": 50,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "avalanche-fuji.history.keyless",
+      "chain_id": "avalanche-fuji",
+      "endpoint": "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "tokenValue",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        }
+      ]
+    },
+    {
+      "id": "celo-sepolia.history.keyless",
+      "chain_id": "celo-sepolia",
+      "endpoint": "https://celo-sepolia.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "0",
+          "message": "No token transfers found",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "token1155tx",
+          "status": "0",
+          "message": "No token transfers found",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 0,
+          "item_fields": [],
+          "token_fields": [],
+          "token_types": [],
+          "erc1155_values": [],
+          "next_page_params": null
+        }
+      ]
+    },
+    {
+      "id": "zksync-era-sepolia.history.keyless",
+      "chain_id": "zksync-era-sepolia",
+      "endpoint": "https://zksync-sepolia.blockscout.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "0",
+          "message": "No token transfers found",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 50,
+          "item_fields": [
+            "animation_media_type",
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_media_type",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "new_ui_multiplier",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "ui_multiplier",
+            "ui_multiplier_effective_at",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": {
+            "token_type": "ERC-721",
+            "token_contract_address_hash": "0xb67cbe3a9186fb1eaa0049c0860d2d2e0c68a70e",
+            "token_id": "202"
+          },
+          "second_page_items": 12,
+          "pages_overlap": 0
+        }
+      ]
+    },
+    {
+      "id": "ink-sepolia.history.keyless",
+      "chain_id": "ink-sepolia",
+      "endpoint": "https://explorer-sepolia.inkonchain.com",
+      "checks": [
+        {
+          "action": "tokennfttx",
+          "status": "1",
+          "message": "OK",
+          "rows": 9,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenID",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex"
+          ]
+        },
+        {
+          "action": "token1155tx",
+          "status": "0",
+          "message": "No token transfers found",
+          "rows": 0,
+          "fields": []
+        },
+        {
+          "action": "tokentx",
+          "status": "1",
+          "message": "OK",
+          "rows": 25,
+          "fields": [
+            "blockHash",
+            "blockNumber",
+            "confirmations",
+            "contractAddress",
+            "cumulativeGasUsed",
+            "from",
+            "functionName",
+            "gas",
+            "gasPrice",
+            "gasUsed",
+            "hash",
+            "input",
+            "methodId",
+            "nonce",
+            "timeStamp",
+            "to",
+            "tokenDecimal",
+            "tokenName",
+            "tokenSymbol",
+            "transactionIndex",
+            "value"
+          ],
+          "rows_with_token_id": 0,
+          "rows_without_decimals": 0
+        },
+        {
+          "path": "/api/v2/addresses/{holder}/nft?type=ERC-721,ERC-1155",
+          "items": 9,
+          "item_fields": [
+            "animation_url",
+            "external_app_url",
+            "id",
+            "image_url",
+            "is_unique",
+            "media_type",
+            "media_url",
+            "metadata",
+            "owner",
+            "thumbnails",
+            "token",
+            "token_type",
+            "value"
+          ],
+          "token_fields": [
+            "address_hash",
+            "circulating_market_cap",
+            "circulating_supply",
+            "decimals",
+            "exchange_rate",
+            "holders_count",
+            "icon_url",
+            "name",
+            "reputation",
+            "symbol",
+            "total_supply",
+            "type",
+            "volume_24h"
+          ],
+          "token_types": [
+            "ERC-721"
+          ],
+          "erc1155_values": [],
+          "next_page_params": null
+        }
+      ]
+    }
+  ],
+  "contract_reads": {
+    "rpc": "https://ethereum-rpc.publicnode.com",
+    "bayc_supports_erc721": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "bayc_supports_erc1155": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "ens_name_wrapper_supports_erc721": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "ens_name_wrapper_supports_erc1155": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "usdc_supports_erc721": {
+      "error": {
+        "code": 3,
+        "message": "execution reverted"
+      }
+    },
+    "bayc_owner_of_1": "0x00000000000000000000000046efbaedc92067e6d60e84ed6395099723252496",
+    "bayc_owner_of_10000": {
+      "error": {
+        "code": 3,
+        "message": "execution reverted: ERC721: owner query for nonexistent token",
+        "data": "0x08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000294552433732313a206f776e657220717565727920666f72206e6f6e6578697374656e7420746f6b656e0000000000000000000000000000000000000000000000"
+      }
+    },
+    "ens_name_wrapper_balance_of_dead_1": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "notes": [
+    "base, arbitrum, polygon and arbitrum-sepolia Blockscout instances answered every request from this machine, the existing txlist and tokentx included, with a Cloudflare challenge (HTTP 403, cf-mitigated: challenge); nothing NFT-specific was learned from them.",
+    "Blockscout writes null for a collection's tokenName and tokenSymbol when it has none, and Routescan's token1155tx rows carry no tokenDecimal; both shapes are parsed.",
+    "No tokentx answer carried a tokenID; two carried an empty tokenDecimal for a fungible token, which is why a tracked token's own decimals scale its rows."
+  ]
+}

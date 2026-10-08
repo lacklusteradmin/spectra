@@ -289,6 +289,27 @@ impl HttpClient {
 
     // ── Convenience wrappers
 
+    /// GET a file's bytes, refusing one larger than `limit`.
+    pub(crate) async fn get_bytes(&self, url: &str, limit: usize) -> Result<Vec<u8>, ApiError> {
+        let response = self
+            .send_with_retry(|client| client.get(url), RetryProfile::ChainRead)
+            .await?;
+        if response
+            .content_length()
+            .is_some_and(|length| length > limit as u64)
+        {
+            return Err(ApiError::Decode(format!("{url}: larger than expected")));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| ApiError::Transport(format_reqwest_error(&error)))?;
+        if bytes.len() > limit {
+            return Err(ApiError::Decode(format!("{url}: larger than expected")));
+        }
+        Ok(bytes.to_vec())
+    }
+
     /// GET a JSON response.
     pub async fn get_json<T: DeserializeOwned>(
         &self,
@@ -450,7 +471,18 @@ impl RetryProfile {
 /// through the given SOCKS5 URL, or remove the proxy when `None`.
 /// Called by `crate::tor` when Arti finishes bootstrapping / is stopped.
 pub(crate) fn set_socks5_proxy(proxy_url: Option<&str>) {
+    *PROXY.write() = proxy_url.map(str::to_string);
     SHARED_CLIENT.set_proxy(proxy_url);
+}
+
+/// The proxy every request is routed through, as `set_socks5_proxy` last set
+/// it: transports other than this client's, such as `grpc`, dial through it
+/// too.
+static PROXY: RwLock<Option<String>> = RwLock::new(None);
+
+/// The SOCKS5 proxy in force, if any.
+pub(crate) fn current_proxy() -> Option<String> {
+    PROXY.read().clone()
 }
 
 // ── Fallback helpers

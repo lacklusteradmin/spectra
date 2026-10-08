@@ -21,6 +21,15 @@ fn every_builtin_api_has_a_probe_on_its_own_origin() {
             // path and network refusal are exercised below through `probe`.
             continue;
         }
+        if matches!(
+            record.api,
+            EndpointApi::Lightwalletd | EndpointApi::LitecoinP2p
+        ) {
+            // gRPC and Litecoin's peer-to-peer protocol, probed by opening
+            // the session a shielded or MWEB sync opens, which the
+            // acceptance suites drive against loopback servers.
+            continue;
+        }
         let checks = checks(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
         assert!(!checks.is_empty());
         for check in checks {

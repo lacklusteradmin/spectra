@@ -1,0 +1,111 @@
+{
+  "checked": "2026-10-08",
+  "method": "Read-only peer-to-peer requests to each built-in Litecoin node, nothing submitted: a version handshake recording what each node says of itself; for every address each seed resolved to, the light-client walk Spectra's sync makes (getheaders after the indexer's tip's parent, getdata MSG_MWEB_HEADER and MSG_MWEB_LEAFSET for the node's tip) by a probe written for this audit; and `spectra wallet mweb-sync` with the public BIP-39 test phrase ('abandon … about') against the built-in endpoints, which anchors at the indexer's tip, checks the node's headers, proves the MWEB header through the HogEx, the leafset by its root and every page of unspent outputs into the output root.",
+  "endpoints": [
+    {
+      "id": "litecoin.p2p.loshan",
+      "chain_id": "litecoin",
+      "endpoint": "tcp://seed-a.litecoin.loshan.co.uk:9333",
+      "handshake": {
+        "resolved": "143.244.202.196",
+        "protocol_version": 70017,
+        "services": "0x1800449",
+        "mweb_light_client": true,
+        "mweb": true,
+        "user_agent": "/LitecoinCore:0.21.4/",
+        "start_height": 3191499
+      },
+      "light_client_walk": {
+        "peers": ["109.87.166.145", "143.244.202.196", "144.6.50.249", "157.180.10.241"],
+        "served": "every peer: headers, the tip's MWEB header (449 bytes) and its leafset (46,816 bytes)"
+      }
+    },
+    {
+      "id": "litecoin.p2p.thrasher",
+      "chain_id": "litecoin",
+      "endpoint": "tcp://dnsseed.thrasher.io:9333",
+      "handshake": {
+        "resolved": "104.243.42.76",
+        "protocol_version": 70017,
+        "services": "0x1800449",
+        "mweb_light_client": true,
+        "mweb": true,
+        "user_agent": "/LitecoinCore:0.21.5.8/",
+        "start_height": 3191499
+      },
+      "light_client_walk": {
+        "peers": ["103.219.170.109", "104.243.42.76", "137.186.12.219", "144.6.50.249"],
+        "served": "every peer: headers, the tip's MWEB header and its leafset"
+      }
+    },
+    {
+      "id": "litecoin.p2p.ltcpool",
+      "chain_id": "litecoin",
+      "endpoint": "tcp://dnsseed.ltcpool.org:9333",
+      "handshake": {
+        "resolved": "15.204.182.52",
+        "protocol_version": 70017,
+        "services": "0x1800449",
+        "mweb_light_client": true,
+        "mweb": true,
+        "user_agent": "/LitecoinCore:0.21.5.8/",
+        "start_height": 3191499
+      },
+      "light_client_walk": {
+        "peers": ["15.204.182.52", "15.235.54.217", "152.53.124.126", "157.180.28.11"],
+        "served": "every peer: headers, the tip's MWEB header and its leafset"
+      }
+    },
+    {
+      "id": "litecoin-testnet.p2p.thrasher",
+      "chain_id": "litecoin-testnet",
+      "endpoint": "tcp://dnsseed-testnet.thrasher.io:19335",
+      "handshake": {
+        "resolved": "167.172.77.184",
+        "protocol_version": 70017,
+        "services": "0x1800449",
+        "mweb_light_client": true,
+        "mweb": true,
+        "user_agent": "/LitecoinCore:0.21.5.4/",
+        "start_height": 4911643
+      },
+      "light_client_walk": {
+        "peers": ["195.133.68.203", "81.17.120.243", "167.172.77.184"],
+        "served": "195.133.68.203 and 81.17.120.243 complete the handshake and drop the connection at the first MWEB header request, in every try; 167.172.77.184 served the walk in two of three tries and dropped it at the header or the leafset in the others. A sync tries each peer in turn: it completed once at block 4,911,644 and failed once with every peer dropped."
+      }
+    }
+  ],
+  "live_sync": {
+    "mainnet": {
+      "first_sync": "complete at block 3,191,499 in two batches (618‰ after the first eight pages), 5.7 s",
+      "next_sync": "complete at block 3,191,503, 0.5 s",
+      "address_index_2": "ltcmweb1qqdylm4v7qsaxzgapu7my7lxqhje9vec4sec47a89cprxxxzv2q2d6qs6k9egg95t8c6v3u42jjwtsa9levmdm97tg4hk9jyyhfvvs3dsd5yqndj5",
+      "spendable": "0"
+    },
+    "testnet": {
+      "first_sync": "complete at block 4,911,644 in one batch, 5.7 s, after the peers that dropped it",
+      "address_index_2": "tmweb1qqdylm4v7qsaxzgapu7my7lxqhje9vec4sec47a89cprxxxzv2q2d6qs6k9egg95t8c6v3u42jjwtsa9levmdm97tg4hk9jyyhfvvs3dsd59fj6wr"
+    }
+  },
+  "unspent_set": {
+    "block": 3191353,
+    "leaves": 374240,
+    "unspent": 56925,
+    "source": "the leafset in core/tests/fixtures/mweb-mainnet.json"
+  },
+  "first_mweb_blocks": {
+    "litecoin": {
+      "height": 2265984,
+      "evidence": "seed-a.litecoin.loshan.co.uk served the MWEB header of block 2,265,984 and of blocks 2,700,000, 3,000,000 and 3,150,000, and none for 2,265,983"
+    },
+    "litecoin-testnet": {
+      "height": 2215750,
+      "evidence": "167.172.77.184 served MWEB headers from block 2,215,750 and none at 2,215,749 in three tries; its drops are intermittent, so lower heights were each tried three times"
+    }
+  },
+  "reference_blocks": {
+    "litecoin_genesis": "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2",
+    "litecoin_testnet_genesis": "4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0",
+    "source": "Blockbook (blockbook.ltc.zelcore.io) block-index 0 and litecoinspace.org testnet block-height 0; what a custom Litecoin indexer must name at height 0 before it receives a transaction"
+  }
+}

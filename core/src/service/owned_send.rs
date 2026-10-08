@@ -288,7 +288,14 @@ impl WalletService {
         if let Some(token) = token.as_ref()
             && matches!(
                 chain.mainnet_counterpart(),
-                Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Ton | Chain::Near
+                Chain::Solana
+                    | Chain::Sui
+                    | Chain::Aptos
+                    | Chain::Ton
+                    | Chain::Near
+                    | Chain::Xrp
+                    | Chain::Stellar
+                    | Chain::Cardano
             )
         {
             let real_decimals = self
@@ -336,7 +343,7 @@ impl WalletService {
                 }
             } else {
                 let Some(preview) = self
-                    .fetch_simple_chain_send_preview(chain, address)
+                    .fetch_simple_chain_send_preview(chain, address.clone())
                     .await?
                     .map(SendPreview::from)
                 else {
@@ -344,10 +351,30 @@ impl WalletService {
                 };
                 preview
             };
+            // An XRP Ledger issuer's transfer rate takes its share on top of
+            // what arrives, so the most that can arrive is the balance over
+            // the rate.
+            let max_sendable = if chain.mainnet_counterpart() == Chain::Xrp {
+                let issue = crate::api::xrpl_amount::XrplIssue::parse(&token.contract)?;
+                let rate = XrplClient::new(
+                    self.endpoints_for(chain, &[EndpointCapability::Verification])
+                        .await,
+                )
+                .fetch_issue_state(chain, &address, &issue, None)
+                .await?
+                .issuer
+                .map_or(1_000_000_000, |issuer| issuer.transfer_rate);
+                let places = u32::from(balance.decimals);
+                let units = crate::decimal::to_units(&balance.balance_display, places)
+                    .ok_or_else(|| SpectraBridgeError::failure("Token balance unavailable"))?;
+                crate::decimal::from_units(units * 1_000_000_000 / u128::from(rate), places)
+            } else {
+                balance.balance_display.clone()
+            };
             macro_rules! asset_balance {
                 ($p:expr) => {{
                     $p.spendableBalance = balance.balance_display.clone();
-                    $p.maxSendable = balance.balance_display.clone();
+                    $p.maxSendable = max_sendable.clone();
                 }};
             }
             match &mut preview {
@@ -355,6 +382,27 @@ impl WalletService {
                 SendPreview::Sui { preview } => asset_balance!(preview),
                 SendPreview::Aptos { preview } => asset_balance!(preview),
                 SendPreview::Near { preview } => asset_balance!(preview),
+                SendPreview::Xrp { preview } => asset_balance!(preview),
+                SendPreview::Stellar { preview } => asset_balance!(preview),
+                SendPreview::Cardano { preview } => {
+                    asset_balance!(preview);
+                    // The token's output carries the minimum ADA its size
+                    // needs, which leaves the sender with it.
+                    let params = KoiosClient::new(
+                        self.endpoints_for(chain, &[EndpointCapability::Fee]).await,
+                    )
+                    .fetch_protocol_params()
+                    .await?;
+                    let carried =
+                        crate::send::cardano::token_send_ada(&address, &token.contract, &params)?;
+                    let carried = crate::decimal::from_units(u128::from(carried), 6);
+                    preview.estimatedNetworkFee =
+                        crate::decimal::add(&preview.estimatedNetworkFee, &carried).ok_or_else(
+                            || SpectraBridgeError::failure("Invalid Cardano fee estimate"),
+                        )?;
+                    preview.feeRateDescription =
+                        Some("Network fee and the minimum ADA sent with the token".into());
+                }
                 SendPreview::Ton { preview } => {
                     asset_balance!(preview);
                     preview.estimatedNetworkFee =

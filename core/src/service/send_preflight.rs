@@ -279,6 +279,7 @@ impl WalletService {
             warnings: without_new_address_for_self_send(warnings, requires_self_send_confirmation),
             recipient_warnings,
             requires_self_send_confirmation,
+            transfer_terms: None,
         })
     }
 }

@@ -23,28 +23,63 @@ pub struct EvmHistoryEntry {
     pub is_incoming: bool,
 }
 
-/// One ERC-20 token transfer returned by Etherscan `tokentx`.
+/// One ERC-20 token transfer returned by Etherscan `tokentx`. The amount is
+/// the raw integer, and the token is only its contract: the tracked token's
+/// own decimals scale it and name it, never the explorer's `tokenDecimal`,
+/// which an explorer may leave empty.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvmTokenTransferEntry {
     pub contract: String,
-    pub symbol: String,
-    pub token_name: String,
-    pub decimals: u8,
     pub from: String,
     pub to: String,
     /// Raw integer amount (base units), as string.
     pub amount_raw: String,
-    /// Human-readable amount (raw / 10^decimals), up to 6 decimal places.
-    pub amount_display: String,
     pub txid: String,
     pub block_number: u64,
     pub log_index: u32,
     pub timestamp: u64,
 }
 
+/// One ERC-721 or ERC-1155 transfer, from `tokennfttx` or `token1155tx`: a
+/// token id and a whole quantity, never a decimal amount.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvmNftTransferEntry {
+    pub standard: crate::api::evm_nft::NftStandard,
+    pub contract: String,
+    pub token_id: String,
+    pub quantity: String,
+    pub symbol: String,
+    pub collection: String,
+    pub from: String,
+    pub to: String,
+    pub txid: String,
+    pub block_number: u64,
+    pub timestamp: u64,
+}
+
+/// One NFT an address holds, as an explorer's inventory lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvmNftHolding {
+    pub standard: crate::api::evm_nft::NftStandard,
+    pub contract: String,
+    pub token_id: String,
+    pub quantity: String,
+    pub collection: String,
+    pub symbol: String,
+    /// The token's own name from its metadata, when it has one.
+    pub name: Option<String>,
+}
+
 /// Routescan serves the Etherscan wire contract under `/etherscan`.
 fn is_routescan(base: &str) -> bool {
     base.trim_end_matches('/').ends_with("/etherscan")
+}
+
+/// Whether the explorer at `base` lists the NFTs an address holds: a
+/// Blockscout instance does, through its REST v2 API; Routescan's Etherscan
+/// interface has transfer lists but no inventory.
+pub fn serves_nft_inventory(base: &str) -> bool {
+    !is_routescan(base)
 }
 
 /// Build a query for a configured keyless explorer, refusing unavailable history.
@@ -333,14 +368,15 @@ impl BlockscoutClient {
         )))
     }
 
-    /// Fetch ERC-20 token transfer history for `address` via Etherscan `tokentx`.
+    /// One page of `address`'s ERC-20 transfers via Etherscan `tokentx`, and
+    /// whether the page was full, so another may follow.
     pub async fn fetch_token_transfers(
         &self,
         address: &str,
         source: EvmHistorySource<'_>,
         page: u32,
         page_size: u32,
-    ) -> Result<Vec<EvmTokenTransferEntry>, ApiError> {
+    ) -> Result<(Vec<EvmTokenTransferEntry>, bool), ApiError> {
         let addr_lower = address.to_lowercase();
         let safe_page = page.max(1);
         let safe_size = page_size.clamp(1, 500);
@@ -367,47 +403,247 @@ impl BlockscoutClient {
             from: String,
             to: String,
             contract_address: String,
-            token_name: String,
-            token_symbol: String,
-            token_decimal: String,
             value: String,
             #[serde(default)]
             log_index: String,
+            /// Present on an NFT's transfer, which is no fungible amount.
+            #[serde(default, rename = "tokenID")]
+            token_id: Option<String>,
         }
 
         let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
         let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
+        let full = rows.len() >= safe_size as usize;
 
         let items: Vec<TxItem> = serde_json::from_value(serde_json::Value::Array(rows))
             .map_err(|e| ApiError::Decode(format!("token transfer parse: {e}")))?;
 
-        items
+        let entries = items
             .into_iter()
+            // A transfer of a token id moves no fungible amount.
+            .filter(|tx| tx.token_id.as_deref().is_none_or(str::is_empty))
             .map(|tx| {
-                let decimals: u8 = tx.token_decimal.parse().unwrap_or(18);
-                let amount_display =
-                    crate::decimal::from_unit_digits(&tx.value, u32::from(decimals)).ok_or_else(
-                        || ApiError::Decode(format!("token transfer {}: malformed value", tx.hash)),
-                    )?;
+                if tx.value.is_empty() || !tx.value.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(ApiError::Decode(format!(
+                        "token transfer {}: malformed value",
+                        tx.hash
+                    )));
+                }
                 let timestamp =
                     crate::api::time::confirmed_history_time(tx.time_stamp.parse().ok(), &tx.hash)?;
                 Ok(EvmTokenTransferEntry {
                     contract: tx.contract_address.to_lowercase(),
-                    symbol: tx.token_symbol.clone(),
-                    token_name: tx.token_name.clone(),
-                    decimals,
                     from: tx.from.to_lowercase(),
                     to: tx.to.to_lowercase(),
                     amount_raw: tx.value,
-                    amount_display,
                     txid: tx.hash,
                     block_number: tx.block_number.parse().unwrap_or(0),
                     log_index: tx.log_index.parse().unwrap_or(0),
                     timestamp,
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, ApiError>>()?;
+        Ok((entries, full))
     }
+}
+
+impl BlockscoutClient {
+    /// One page of `address`'s ERC-721 (`tokennfttx`) or ERC-1155
+    /// (`token1155tx`) transfers, newest first, and whether the page was
+    /// full, so another may follow.
+    pub async fn fetch_nft_transfers(
+        &self,
+        address: &str,
+        source: EvmHistorySource<'_>,
+        standard: crate::api::evm_nft::NftStandard,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<EvmNftTransferEntry>, bool), ApiError> {
+        use crate::api::evm_nft::{NftStandard, canonical_uint256};
+        #[derive(Deserialize)]
+        struct ApiResp {
+            status: String,
+            #[serde(default)]
+            message: String,
+            result: Value,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct TxItem {
+            block_number: String,
+            time_stamp: String,
+            hash: String,
+            from: String,
+            to: String,
+            contract_address: String,
+            // Blockscout writes `null` for a collection with no name.
+            #[serde(default)]
+            token_name: Option<String>,
+            #[serde(default)]
+            token_symbol: Option<String>,
+            #[serde(rename = "tokenID")]
+            token_id: String,
+            #[serde(default)]
+            token_value: Option<String>,
+        }
+        let page_size = page_size.clamp(1, 500);
+        let action = match standard {
+            NftStandard::Erc721 => "tokennfttx",
+            NftStandard::Erc1155 => "token1155tx",
+        };
+        let url = explorer_query_url(
+            source,
+            &format!(
+                "module=account&action={action}&address={}&page={}&offset={page_size}&sort=desc",
+                address.to_lowercase(),
+                page.max(1),
+            ),
+        )?;
+        let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
+        let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
+        let full = rows.len() >= page_size as usize;
+        let items: Vec<TxItem> = serde_json::from_value(Value::Array(rows))
+            .map_err(|e| ApiError::Decode(format!("NFT transfer parse: {e}")))?;
+        let entries = items
+            .into_iter()
+            .map(|tx| {
+                let token_id = canonical_uint256(&tx.token_id)
+                    .ok_or_else(|| ApiError::decode("NFT transfer: invalid token id"))?;
+                // An ERC-721 transfer moves the one token; an ERC-1155
+                // transfer states its whole-number quantity.
+                let quantity = match standard {
+                    NftStandard::Erc721 => "1".to_string(),
+                    NftStandard::Erc1155 => {
+                        tx.token_value
+                            .as_deref()
+                            .and_then(canonical_uint256)
+                            .ok_or_else(|| ApiError::decode("NFT transfer: invalid quantity"))?
+                    }
+                };
+                Ok(EvmNftTransferEntry {
+                    standard,
+                    contract: tx.contract_address.to_lowercase(),
+                    token_id,
+                    quantity,
+                    symbol: tx.token_symbol.unwrap_or_default(),
+                    collection: tx.token_name.unwrap_or_default(),
+                    from: tx.from.to_lowercase(),
+                    to: tx.to.to_lowercase(),
+                    block_number: tx.block_number.parse().unwrap_or(0),
+                    timestamp: crate::api::time::confirmed_history_time(
+                        tx.time_stamp.parse().ok(),
+                        &tx.hash,
+                    )?,
+                    txid: tx.hash,
+                })
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?;
+        Ok((entries, full))
+    }
+
+    /// Every ERC-721 and ERC-1155 token `address` holds, from a Blockscout
+    /// instance's inventory, and whether the list is complete. Only an
+    /// explorer [`serves_nft_inventory`] is asked.
+    pub async fn fetch_nft_inventory(
+        &self,
+        address: &str,
+        base: &str,
+    ) -> Result<(Vec<EvmNftHolding>, bool), ApiError> {
+        if !serves_nft_inventory(base) {
+            return Err(ApiError::invalid("This explorer keeps no NFT inventory"));
+        }
+        let root = base.trim_end_matches('/').trim_end_matches("/api");
+        let address = address.to_lowercase();
+        let mut holdings = Vec::new();
+        let mut complete = true;
+        let mut cursor: Option<Value> = None;
+        // Fifty a page; twenty pages are a thousand tokens, and a list past
+        // that is reported as not complete rather than read as all there is.
+        for _ in 0..20 {
+            let mut url = format!("{root}/api/v2/addresses/{address}/nft?type=ERC-721%2CERC-1155");
+            if let Some(next) = cursor.as_ref().and_then(Value::as_object) {
+                for (key, value) in next {
+                    let value = match value {
+                        Value::String(text) => text.clone(),
+                        other => other.to_string(),
+                    };
+                    url.push_str(&format!(
+                        "&{key}={}",
+                        crate::api::history_page::query_value(&value)
+                    ));
+                }
+            }
+            let page: Value = self.client.get_json(&url, RetryProfile::ChainRead).await?;
+            let (read, whole) = parse_nft_inventory(&page)?;
+            holdings.extend(read);
+            complete &= whole;
+            match page.get("next_page_params").filter(|next| !next.is_null()) {
+                Some(next) => cursor = Some(next.clone()),
+                None => return Ok((holdings, complete)),
+            }
+        }
+        Ok((holdings, false))
+    }
+}
+
+/// One page of a Blockscout `/api/v2/addresses/{address}/nft` answer, and
+/// whether every row on it was read. A row of another kind (ERC-404, which
+/// a type filter can let through) is not an NFT here, nor is a quantity of
+/// zero; a row whose contract, id or quantity does not read is left out and
+/// the page reported short, rather than one indexer row hiding the others.
+fn parse_nft_inventory(page: &Value) -> Result<(Vec<EvmNftHolding>, bool), ApiError> {
+    use crate::api::evm_nft::{NftStandard, canonical_uint256};
+    let items = page
+        .get("items")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ApiError::decode("NFT inventory: missing items"))?;
+    let text = |value: Option<&Value>| value.and_then(Value::as_str).map(str::to_string);
+    let mut whole = true;
+    let mut holdings = Vec::new();
+    for item in items {
+        let Some(standard) = item
+            .get("token_type")
+            .and_then(Value::as_str)
+            .and_then(NftStandard::parse)
+        else {
+            continue;
+        };
+        let token = item.get("token").unwrap_or(&Value::Null);
+        let contract =
+            text(token.get("address_hash").or_else(|| token.get("address"))).filter(|contract| {
+                contract.len() == 42
+                    && contract.starts_with("0x")
+                    && contract[2..].bytes().all(|b| b.is_ascii_hexdigit())
+            });
+        let token_id = text(item.get("id")).as_deref().and_then(canonical_uint256);
+        let quantity = match standard {
+            NftStandard::Erc721 => Some("1".to_string()),
+            NftStandard::Erc1155 => text(item.get("value"))
+                .as_deref()
+                .and_then(canonical_uint256),
+        };
+        let (Some(contract), Some(token_id), Some(quantity)) = (contract, token_id, quantity)
+        else {
+            whole = false;
+            continue;
+        };
+        // A row for an ERC-1155 id the address no longer holds.
+        if quantity == "0" {
+            continue;
+        }
+        holdings.push(EvmNftHolding {
+            standard,
+            contract: contract.to_lowercase(),
+            token_id,
+            quantity,
+            collection: text(token.get("name")).unwrap_or_default(),
+            symbol: text(token.get("symbol")).unwrap_or_default(),
+            name: text(item.pointer("/metadata/name"))
+                .map(|name| name.trim().to_string())
+                .filter(|name| !name.is_empty()),
+        });
+    }
+    Ok((holdings, whole))
 }
 
 /// The fungible holdings in a `tokenlist` (Blockscout) or
@@ -684,5 +920,208 @@ mod execution_history_regressions {
                 None => assert!(result.is_err()),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod nft_answers {
+    use super::*;
+    use crate::api::evm_nft::NftStandard;
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::query_param};
+
+    fn fixture() -> Value {
+        serde_json::from_str(include_str!("../../tests/fixtures/blockscout-nft.json")).unwrap()
+    }
+
+    /// The inventory page Blockscout answered: both standards, collection
+    /// names it could not read as `null`, metadata names where tokens have
+    /// them, contracts checksummed.
+    #[test]
+    fn an_inventory_page_reads_as_tokens_not_balances() {
+        let (holdings, whole) = parse_nft_inventory(&fixture()["inventory"]).unwrap();
+        assert!(whole);
+        assert_eq!(holdings.len(), 3);
+        assert_eq!(
+            holdings[0],
+            EvmNftHolding {
+                standard: NftStandard::Erc721,
+                contract: "0x1338f0bce9fc48373bfa96f0d4d558497b2ea230".into(),
+                token_id: "0".into(),
+                quantity: "1".into(),
+                collection: "QA-Test-NFT".into(),
+                symbol: "QANFT".into(),
+                name: None,
+            }
+        );
+        assert_eq!(holdings[1].standard, NftStandard::Erc1155);
+        assert_eq!(
+            (holdings[1].token_id.as_str(), holdings[1].quantity.as_str()),
+            ("2", "1")
+        );
+        assert_eq!(holdings[1].collection, "");
+        assert!(holdings[1].name.is_some());
+
+        // Rows that do not read are left out and the page reported short; a
+        // row of another standard, or an emptied ERC-1155 id, is no NFT.
+        let mut page = fixture()["inventory"].clone();
+        let items = page["items"].as_array_mut().unwrap();
+        items[0]["id"] = json!("1.5");
+        items[1]["value"] = json!("0");
+        items[2]["token_type"] = json!("ERC-404");
+        let (holdings, whole) = parse_nft_inventory(&page).unwrap();
+        assert!(holdings.is_empty() && !whole);
+        // Leaving those two out is no gap in the list.
+        let mut page = fixture()["inventory"].clone();
+        page["items"][1]["value"] = json!("0");
+        page["items"][2]["token_type"] = json!("ERC-404");
+        let (holdings, whole) = parse_nft_inventory(&page).unwrap();
+        assert!(whole);
+        assert_eq!(holdings.len(), 1);
+        assert!(parse_nft_inventory(&json!({"message": "Not found"})).is_err());
+    }
+
+    /// The inventory follows `next_page_params` to its end, and Routescan,
+    /// which keeps none, is never asked for one.
+    #[tokio::test]
+    async fn the_inventory_is_read_to_its_end() {
+        let server = MockServer::start().await;
+        let next = fixture()["next_page_params"].clone();
+        let mut first = fixture()["inventory"].clone();
+        first["next_page_params"] = next.clone();
+        Mock::given(query_param("token_id", "1"))
+            .and(query_param(
+                "token_contract_address_hash",
+                next["token_contract_address_hash"].as_str().unwrap(),
+            ))
+            .and(query_param("items_count", "50"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"items": [fixture()["inventory"]["items"][0]], "next_page_params": null}),
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(query_param("type", "ERC-721,ERC-1155"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(first))
+            .mount(&server)
+            .await;
+        let client = BlockscoutClient::new();
+        let (holdings, complete) = client
+            .fetch_nft_inventory("0x000000000000000000000000000000000000dEaD", &server.uri())
+            .await
+            .unwrap();
+        assert!(complete);
+        assert_eq!(holdings.len(), 4);
+        let paths: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|request| request.url.path().to_string())
+            .collect();
+        assert_eq!(
+            paths,
+            vec!["/api/v2/addresses/0x000000000000000000000000000000000000dead/nft"; 2]
+        );
+        let routescan = "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan";
+        assert!(!serves_nft_inventory(routescan));
+        assert!(
+            client
+                .fetch_nft_inventory("0xabc", routescan)
+                .await
+                .is_err()
+        );
+    }
+
+    /// Both transfer lists, as Blockscout and Routescan answer them: token
+    /// ids and whole quantities, a collection without a name read as empty.
+    #[tokio::test]
+    async fn transfers_carry_ids_and_quantities() {
+        for (answer, standard, expected) in [
+            (
+                fixture()["erc721_transfers"].clone(),
+                NftStandard::Erc721,
+                vec![("0", "1", "QA-Test-NFT")],
+            ),
+            (
+                fixture()["erc1155_transfers"].clone(),
+                NftStandard::Erc1155,
+                vec![("1", "1", ""), ("2", "1", "")],
+            ),
+            (
+                fixture()["routescan_erc1155_transfers"].clone(),
+                NftStandard::Erc1155,
+                vec![("1780468422553", "1", "Frqtal FNFT"); 2],
+            ),
+        ] {
+            let server = MockServer::start().await;
+            let action = match standard {
+                NftStandard::Erc721 => "tokennfttx",
+                NftStandard::Erc1155 => "token1155tx",
+            };
+            Mock::given(query_param("action", action))
+                .respond_with(ResponseTemplate::new(200).set_body_json(answer))
+                .mount(&server)
+                .await;
+            let (entries, full) = BlockscoutClient::new()
+                .fetch_nft_transfers(
+                    "0x000000000000000000000000000000000000dead",
+                    EvmHistorySource::Open(&server.uri()),
+                    standard,
+                    1,
+                    2,
+                )
+                .await
+                .unwrap();
+            assert_eq!(full, expected.len() == 2);
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|e| (
+                        e.token_id.as_str(),
+                        e.quantity.as_str(),
+                        e.collection.as_str()
+                    ))
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert!(entries.iter().all(|e| e.standard == standard
+                && e.to == "0x000000000000000000000000000000000000dead"
+                && e.timestamp > 0));
+        }
+    }
+
+    /// A fungible transfer list never carries an NFT's row as an amount, and
+    /// a tracked token's row is kept when the explorer leaves its decimals
+    /// out: the tracked token's own decimals scale it.
+    #[tokio::test]
+    async fn fungible_rows_are_raw_amounts_of_fungible_tokens() {
+        let row = |token_id: Option<&str>, decimals: &str| {
+            let mut row = json!({"blockNumber": "1", "timeStamp": "1700000000", "hash": "0xh",
+                "from": "0xA", "to": "0xB", "contractAddress": "0xC", "tokenName": "T",
+                "tokenSymbol": "T", "tokenDecimal": decimals, "value": "1000", "logIndex": "0"});
+            if let Some(id) = token_id {
+                row["tokenID"] = json!(id);
+            }
+            row
+        };
+        let server = MockServer::start().await;
+        Mock::given(query_param("action", "tokentx"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "status": "1", "message": "OK",
+                "result": [row(None, "6"), row(Some("7"), ""), row(None, "")]})))
+            .mount(&server)
+            .await;
+        let (entries, full) = BlockscoutClient::new()
+            .fetch_token_transfers("0xa", EvmHistorySource::Open(&server.uri()), 1, 3)
+            .await
+            .unwrap();
+        // The page was full: an NFT row on it still counts towards that.
+        assert!(full);
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .all(|e| e.amount_raw == "1000" && e.contract == "0xc")
+        );
     }
 }

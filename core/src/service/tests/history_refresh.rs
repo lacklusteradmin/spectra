@@ -81,7 +81,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
 
     let record = record_for(
         target,
-        Chain::Bitcoin,
+        &Default::default(),
         crate::fetch::history_decode::NormalizedHistoryItem {
             deployment_id: Some("bitcoin-testnet-4:native".to_string()),
             kind: "receive".to_string(),
@@ -134,11 +134,11 @@ fn an_undated_entry_is_stored_as_unknown() {
         timestamp,
     };
     assert_eq!(
-        record_for(target, Chain::Litecoin, entry(0.0)).created_at_unix,
+        record_for(target, &Default::default(), entry(0.0)).created_at_unix,
         SENTINEL_CREATED_AT_UNIX
     );
     assert_eq!(
-        record_for(target, Chain::Litecoin, entry(1_700_000_000.0)).created_at_unix,
+        record_for(target, &Default::default(), entry(1_700_000_000.0)).created_at_unix,
         1_700_000_000.0
     );
 }
@@ -175,7 +175,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     };
     let record = record_for(
         &target,
-        Chain::Solana,
+        &Default::default(),
         crate::fetch::history_decode::NormalizedHistoryItem {
             deployment_id: None,
             kind: "receive".to_string(),
@@ -220,16 +220,54 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
         timestamp: 0.0,
     };
     assert_eq!(
-        record_for(&target, Chain::Solana, entry.clone()).transaction_hash,
+        record_for(&target, &Default::default(), entry.clone()).transaction_hash,
         None
     );
     entry.tx_hash = "abc".to_string();
     assert_eq!(
-        record_for(&target, Chain::Solana, entry)
+        record_for(&target, &Default::default(), entry)
             .transaction_hash
             .as_deref(),
         Some("abc")
     );
+}
+
+/// A row of a token the user lists is named as the list names it, as its
+/// sends are; the feed's name for an unknown contract is the contract.
+#[test]
+fn a_listed_token_is_named_as_the_list_names_it() {
+    let target = Target {
+        wallet_id: "w1".to_string(),
+        wallet_name: "Main".to_string(),
+        address: "rHolder".to_string(),
+        network: Chain::Xrp,
+    };
+    let id = "xrp:trust line token:USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq";
+    let entry = crate::fetch::history_decode::NormalizedHistoryItem {
+        deployment_id: Some(id.into()),
+        kind: "receive".to_string(),
+        status: "confirmed".to_string(),
+        asset_display_name: "USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq".to_string(),
+        symbol: "USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq".to_string(),
+        chain_id: Chain::Xrp,
+        amount: "5".into(),
+        counterparty: "rOther".to_string(),
+        tx_hash: "hash".to_string(),
+        block_height: None,
+        timestamp: 1_700_000_000.0,
+    };
+    let names = [(
+        id.to_string(),
+        ("GateHub USD".to_string(), "USD".to_string()),
+    )]
+    .into();
+    let named = record_for(&target, &names, entry.clone());
+    assert_eq!(
+        (named.asset_display_name.as_str(), named.symbol.as_str()),
+        ("GateHub USD", "USD")
+    );
+    let unnamed = record_for(&target, &Default::default(), entry);
+    assert_eq!(unnamed.symbol, "USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq");
 }
 
 /// The tokens a page decodes with are the known ones for that chain,
@@ -726,7 +764,6 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         .await
         .unwrap();
     let page = EvmHistoryPageDecoded {
-        tokens: vec![],
         native: vec![EvmNativeTransferItem {
             status: "failed".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
@@ -736,6 +773,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             block_number: 123,
             timestamp: 1700000000.0,
         }],
+        ..Default::default()
     };
     let fetched = evm_record(
         build_evm_transaction_records(EvmTransactionRecordRequest {
@@ -847,7 +885,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
     let rows = build_evm_transaction_records(EvmTransactionRecordRequest {
         decoded_page: EvmHistoryPageDecoded {
             tokens,
-            native: vec![],
+            ..Default::default()
         },
         normalized_address: "from".into(),
         chain_id: crate::registry::Chain::Ethereum,

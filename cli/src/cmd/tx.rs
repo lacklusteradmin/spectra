@@ -1637,7 +1637,7 @@ fn staged_service(
     ctx.rt.block_on(service.open_state(ctx.db_path()))?;
     Ok(service)
 }
-fn emit_artifact(out: Out, artifact: &spectra_core::send::stages::SendArtifact) {
+pub(super) fn emit_artifact(out: Out, artifact: &spectra_core::send::stages::SendArtifact) {
     out.text(|| {
         println!(
             "{} {:?}\n{}\n{}",

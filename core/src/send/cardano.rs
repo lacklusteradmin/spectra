@@ -1,51 +1,549 @@
-//! Cardano send: minimal CBOR encoder for an ADA-only Shelley transfer.
+//! Cardano send: ADA and native assets from the wallet's address, as one
+//! transaction model. Coin selection spends any unspent output, assets
+//! included; the change returns every asset the inputs carried that the
+//! transfer does not send; every output holds the protocol's minimum ADA for
+//! its size; the fee is the protocol's linear fee for the signed size. A
+//! minimal CBOR encoder and the extended-key witness.
 
+use crate::api::cardano_asset::CardanoAssetId;
+use crate::api::koios::CardanoProtocolParams;
 use crate::send::error::SendError;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-// ── Cardano transaction building (minimal CBOR for ADA-only transfer)
+/// Some quantity of one native asset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct CardanoAssetAmount {
+    /// `policy.name`, as `CardanoAssetId::identifier` writes it.
+    pub asset: String,
+    pub quantity: u64,
+}
 
-/// Build a signed Shelley-era ADA transfer transaction.
-/// Returns raw CBOR bytes as hex.
-#[allow(clippy::too_many_arguments)]
-pub fn build_signed_ada_tx(
-    utxos: &[(String, u32, u64)], // (tx_hash, tx_index, lovelace)
-    to_address_bytes: &[u8],
-    amount_lovelace: u64,
-    fee_lovelace: u64,
-    change_address_bytes: &[u8],
-    signing_key_bytes: &[u8; 64],
-    verification_key_bytes: &[u8; 32],
-    ttl: u64,
-    min_change_lovelace: Option<u64>,
-) -> Result<String, SendError> {
-    let change = super::accounting::checked_change(
-        utxos.iter().map(|(_, _, v)| *v),
-        amount_lovelace,
-        fee_lovelace,
-    )?;
+/// An unspent output the transaction spends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct CardanoInput {
+    pub tx_hash: String,
+    pub tx_index: u32,
+    pub lovelace: u64,
+    pub assets: Vec<CardanoAssetAmount>,
+}
 
-    // Encode transaction body (map with fields 0-3).
-    let mut outputs: Vec<(&[u8], u64)> = vec![(to_address_bytes, amount_lovelace)];
-    if change > 0 && change < min_change_lovelace.unwrap_or(1_000_000) {
-        return Err(SendError::Invalid(
-            "change below minimum output; choose an exact amount or fee".into(),
-        ));
+/// An output the transaction creates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct CardanoOutput {
+    /// Bech32.
+    pub address: String,
+    pub lovelace: u64,
+    pub assets: Vec<CardanoAssetAmount>,
+}
+
+/// A transfer as reviewed: its inputs, the recipient's output and then the
+/// change, if any, its fee and TTL.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct PreparedCardanoTransaction {
+    pub inputs: Vec<CardanoInput>,
+    pub outputs: Vec<CardanoOutput>,
+    pub fee: u64,
+    pub ttl: u64,
+}
+
+/// What a transfer delivers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CardanoTransfer {
+    Ada(u64),
+    Asset {
+        asset: CardanoAssetId,
+        quantity: u64,
+    },
+}
+
+fn refused(message: &'static str) -> SendError {
+    SendError::Invalid(message.into())
+}
+
+/// Every asset in `amounts`, summed by asset, in a stable order.
+fn tally(
+    amounts: impl IntoIterator<Item = CardanoAssetAmount>,
+) -> Result<BTreeMap<String, u64>, SendError> {
+    let mut sums = BTreeMap::new();
+    for amount in amounts {
+        let sum: &mut u64 = sums.entry(amount.asset).or_default();
+        *sum = sum
+            .checked_add(amount.quantity)
+            .ok_or_else(|| refused("Cardano native token quantity overflow"))?;
     }
-    if change > 0 {
-        outputs.push((change_address_bytes, change));
+    Ok(sums)
+}
+
+fn amounts(sums: &BTreeMap<String, u64>) -> Vec<CardanoAssetAmount> {
+    sums.iter()
+        .filter(|(_, quantity)| **quantity != 0)
+        .map(|(asset, quantity)| CardanoAssetAmount {
+            asset: asset.clone(),
+            quantity: *quantity,
+        })
+        .collect()
+}
+
+/// An output's value: the coin alone, or `[coin, multiasset]` with policies
+/// in byte order and each policy's names shortest first, as canonical CBOR
+/// and the Cardano Serialization Library order them.
+fn encode_value(lovelace: u64, assets: &[CardanoAssetAmount]) -> Result<Vec<u8>, SendError> {
+    if assets.is_empty() {
+        return Ok(cbor_uint(lovelace));
+    }
+    let mut policies: BTreeMap<[u8; 28], BTreeMap<(usize, Vec<u8>), u64>> = BTreeMap::new();
+    for amount in assets {
+        let id = CardanoAssetId::parse(&amount.asset)?;
+        let names = policies.entry(id.policy).or_default();
+        if names
+            .insert((id.name.len(), id.name), amount.quantity)
+            .is_some()
+        {
+            return Err(refused("A Cardano output names an asset twice"));
+        }
+    }
+    let encoded = policies
+        .into_iter()
+        .map(|(policy, names)| {
+            let names = names
+                .into_iter()
+                .map(|((_, name), quantity)| (cbor_bytes(&name), cbor_uint(quantity)))
+                .collect::<Vec<_>>();
+            (cbor_bytes(&policy), cbor_map(&names))
+        })
+        .collect::<Vec<_>>();
+    Ok(cbor_array(&[cbor_uint(lovelace), cbor_map(&encoded)]))
+}
+
+/// `[address, value]`: the output form without a datum or script.
+fn encode_output(output: &CardanoOutput) -> Result<Vec<u8>, SendError> {
+    let address = crate::derivation::cardano::decode_cardano_addr_bytes(&output.address)?;
+    Ok(cbor_array(&[
+        cbor_bytes(&address),
+        encode_value(output.lovelace, &output.assets)?,
+    ]))
+}
+
+/// The ADA an output must hold: 160 bytes of overhead and the output's own
+/// size, at the protocol's price per byte, for the output as it stands.
+fn required_ada(output: &CardanoOutput, params: &CardanoProtocolParams) -> Result<u64, SendError> {
+    let size = encode_output(output)?.len() as u64;
+    (160 + size)
+        .checked_mul(params.coins_per_utxo_byte)
+        .ok_or_else(|| refused("Cardano minimum ADA overflow"))
+}
+
+/// The least ADA `address` can receive `assets` with: the requirement of an
+/// output holding exactly that much, found as the Cardano Serialization
+/// Library's `min_ada_for_output` finds it.
+pub(crate) fn minimum_ada(
+    address: &str,
+    assets: &[CardanoAssetAmount],
+    params: &CardanoProtocolParams,
+) -> Result<u64, SendError> {
+    let mut output = CardanoOutput {
+        address: address.to_string(),
+        lovelace: 0,
+        assets: assets.to_vec(),
+    };
+    for _ in 0..3 {
+        let required = required_ada(&output, params)?;
+        if output.lovelace >= required {
+            return Ok(required);
+        }
+        output.lovelace = required;
+    }
+    output.lovelace = u64::MAX;
+    required_ada(&output, params)
+}
+
+impl PreparedCardanoTransaction {
+    /// Choose inputs from `utxos` for `transfer` to `recipient`, returning
+    /// the change to `sender`, under `params`.
+    ///
+    /// Inputs that hold the sent asset come first, largest first; then
+    /// outputs of ADA alone, then outputs holding other assets, each largest
+    /// first, until the outputs, their minimum ADA and the fee are covered.
+    /// Change too small to stand as an output joins the fee.
+    pub(crate) fn plan(
+        utxos: &[CardanoInput],
+        params: &CardanoProtocolParams,
+        sender: &str,
+        recipient: &str,
+        transfer: &CardanoTransfer,
+        ttl: u64,
+    ) -> Result<Self, SendError> {
+        let recipient_output = match transfer {
+            CardanoTransfer::Ada(lovelace) => {
+                let output = CardanoOutput {
+                    address: recipient.to_string(),
+                    lovelace: *lovelace,
+                    assets: Vec::new(),
+                };
+                let minimum = required_ada(&output, params)?;
+                if *lovelace < minimum {
+                    return Err(SendError::Invalid(crate::LocalizableMessage::new(
+                        "A Cardano output holds at least %@ ADA",
+                        [crate::decimal::from_units(u128::from(minimum), 6)],
+                    )));
+                }
+                output
+            }
+            CardanoTransfer::Asset { asset, quantity } => {
+                if *quantity == 0 {
+                    return Err(refused("Amount must be greater than zero"));
+                }
+                let assets = vec![CardanoAssetAmount {
+                    asset: asset.identifier(),
+                    quantity: *quantity,
+                }];
+                CardanoOutput {
+                    address: recipient.to_string(),
+                    lovelace: minimum_ada(recipient, &assets, params)?,
+                    assets,
+                }
+            }
+        };
+        let holds = |input: &CardanoInput, asset: &str| {
+            input
+                .assets
+                .iter()
+                .filter(|amount| amount.asset == asset)
+                .map(|amount| amount.quantity)
+                .sum::<u64>()
+        };
+        let sent_asset = match transfer {
+            CardanoTransfer::Asset { asset, .. } => Some(asset.identifier()),
+            CardanoTransfer::Ada(_) => None,
+        };
+        let mut candidates: Vec<&CardanoInput> = utxos.iter().collect();
+        candidates.sort_by_key(|input| {
+            let tier = match &sent_asset {
+                Some(asset) if holds(input, asset) > 0 => 0,
+                _ if input.assets.is_empty() => 1,
+                _ => 2,
+            };
+            let size = match &sent_asset {
+                Some(asset) if tier == 0 => holds(input, asset),
+                _ => input.lovelace,
+            };
+            (
+                tier,
+                std::cmp::Reverse(size),
+                input.tx_hash.clone(),
+                input.tx_index,
+            )
+        });
+        let mut selected: Vec<CardanoInput> = Vec::new();
+        let mut last_shortfall = None;
+        for candidate in candidates {
+            selected.push(candidate.clone());
+            match Self::balance(&selected, &recipient_output, sender, params, ttl)? {
+                Ok(transaction) => return transaction.within_limits(params),
+                Err(shortfall) => last_shortfall = Some(shortfall),
+            }
+        }
+        Err(match last_shortfall {
+            Some(Shortfall::Asset) | None if sent_asset.is_some() => {
+                SendError::InsufficientFunds("Insufficient token balance".into())
+            }
+            _ => SendError::insufficient_funds(),
+        })
     }
 
-    let tx_body = encode_tx_body(utxos, &outputs, fee_lovelace, ttl)?;
+    /// The transaction these inputs make, or what they lack.
+    fn balance(
+        inputs: &[CardanoInput],
+        recipient: &CardanoOutput,
+        sender: &str,
+        params: &CardanoProtocolParams,
+        ttl: u64,
+    ) -> Result<Result<Self, Shortfall>, SendError> {
+        let held = tally(inputs.iter().flat_map(|input| input.assets.clone()))?;
+        let mut change_assets = held.clone();
+        for amount in &recipient.assets {
+            let left = change_assets.entry(amount.asset.clone()).or_default();
+            match left.checked_sub(amount.quantity) {
+                Some(rest) => *left = rest,
+                None => return Ok(Err(Shortfall::Asset)),
+            }
+        }
+        let change_assets = amounts(&change_assets);
+        let lovelace = inputs
+            .iter()
+            .try_fold(0u64, |sum, input| sum.checked_add(input.lovelace))
+            .ok_or_else(|| refused("Cardano input value overflow"))?;
+        let Some(available) = lovelace.checked_sub(recipient.lovelace) else {
+            return Ok(Err(Shortfall::Ada));
+        };
+        let mut fee = 0u64;
+        for _ in 0..16 {
+            let Some(change) = available.checked_sub(fee) else {
+                return Ok(Err(Shortfall::Ada));
+            };
+            let change_output = CardanoOutput {
+                address: sender.to_string(),
+                lovelace: change,
+                assets: change_assets.clone(),
+            };
+            let stands = change > 0 && change >= required_ada(&change_output, params)?;
+            let transaction = if change_assets.is_empty() && !stands {
+                // Too little to stand as an output: it joins the fee.
+                Self {
+                    inputs: inputs.to_vec(),
+                    outputs: vec![recipient.clone()],
+                    fee: available,
+                    ttl,
+                }
+            } else if stands {
+                Self {
+                    inputs: inputs.to_vec(),
+                    outputs: vec![recipient.clone(), change_output],
+                    fee,
+                    ttl,
+                }
+            } else {
+                // The change holds assets but not the ADA to carry them.
+                return Ok(Err(Shortfall::Ada));
+            };
+            let required = transaction.minimum_fee(params)?;
+            if transaction.fee >= required {
+                return Ok(Ok(transaction));
+            }
+            if transaction.outputs.len() == 1 {
+                return Ok(Err(Shortfall::Ada));
+            }
+            fee = required;
+        }
+        Err(refused("Cardano fee did not settle"))
+    }
 
-    let body_hash = blake2b_256(&tx_body);
+    /// The protocol's fee for this transaction signed by one key.
+    pub(crate) fn minimum_fee(&self, params: &CardanoProtocolParams) -> Result<u64, SendError> {
+        let size = self.encode_signed(&[0; 32], &[0; 64])?.len() as u64;
+        params
+            .fee_per_byte
+            .checked_mul(size)
+            .and_then(|fee| fee.checked_add(params.fee_fixed))
+            .ok_or_else(|| refused("Cardano fee overflow"))
+    }
 
-    let signature = sign_extended(signing_key_bytes, verification_key_bytes, &body_hash)?;
-    let witness_set = encode_witness_set(verification_key_bytes, &signature);
+    /// Refuse what the ledger would: an output short of its minimum ADA or
+    /// whose value is too large, a transaction past the size limit, or
+    /// value and assets that do not balance.
+    pub(crate) fn within_limits(self, params: &CardanoProtocolParams) -> Result<Self, SendError> {
+        for output in &self.outputs {
+            if output.lovelace < required_ada(output, params)? {
+                return Err(refused("A Cardano output holds less than its minimum ADA"));
+            }
+            if encode_value(output.lovelace, &output.assets)?.len() as u64 > params.max_value_size {
+                return Err(refused(
+                    "A Cardano output would hold more assets than one output can",
+                ));
+            }
+        }
+        if self.encode_signed(&[0; 32], &[0; 64])?.len() as u64 > params.max_tx_size {
+            return Err(refused(
+                "The Cardano transaction would be too large; send from fewer outputs",
+            ));
+        }
+        if self.fee < self.minimum_fee(params)? {
+            return Err(refused("The Cardano fee is below the protocol's minimum"));
+        }
+        self.conserves()?;
+        Ok(self)
+    }
 
-    // Transaction: [tx_body, witness_set, true, null]
-    let tx = cbor_array(&[tx_body.clone(), witness_set, cbor_bool(true), cbor_null()]);
+    /// Inputs equal outputs and the fee, in ADA and in every asset.
+    pub(crate) fn conserves(&self) -> Result<(), SendError> {
+        let lovelace_in = self
+            .inputs
+            .iter()
+            .try_fold(0u64, |sum, input| sum.checked_add(input.lovelace));
+        let lovelace_out = self
+            .outputs
+            .iter()
+            .try_fold(self.fee, |sum, output| sum.checked_add(output.lovelace));
+        let assets_in = tally(self.inputs.iter().flat_map(|input| input.assets.clone()))?;
+        let assets_out = tally(self.outputs.iter().flat_map(|output| output.assets.clone()))?;
+        if lovelace_in.is_none()
+            || lovelace_in != lovelace_out
+            || amounts(&assets_in) != amounts(&assets_out)
+        {
+            return Err(refused(
+                "The Cardano transaction does not return every input's value",
+            ));
+        }
+        Ok(())
+    }
 
-    Ok(hex::encode(&tx))
+    fn encode_body(&self) -> Result<Vec<u8>, SendError> {
+        let inputs = self
+            .inputs
+            .iter()
+            .map(|input| {
+                let hash = hex::decode(&input.tx_hash)
+                    .map_err(|e| SendError::Invalid(format!("input txid: {e}").into()))?;
+                if hash.len() != 32 {
+                    return Err(SendError::Invalid(
+                        "input txid must contain exactly 32 bytes".into(),
+                    ));
+                }
+                Ok(cbor_array(&[
+                    cbor_bytes(&hash),
+                    cbor_uint(u64::from(input.tx_index)),
+                ]))
+            })
+            .collect::<Result<Vec<_>, SendError>>()?;
+        let outputs = self
+            .outputs
+            .iter()
+            .map(encode_output)
+            .collect::<Result<Vec<_>, SendError>>()?;
+        // {0: inputs, 1: outputs, 2: fee, 3: ttl}
+        Ok(cbor_map(&[
+            (cbor_uint(0), cbor_tagged_set(&inputs)),
+            (cbor_uint(1), cbor_array(&outputs)),
+            (cbor_uint(2), cbor_uint(self.fee)),
+            (cbor_uint(3), cbor_uint(self.ttl)),
+        ]))
+    }
+
+    /// `[body, {0: [[vkey, signature]]}, true, null]`.
+    fn encode_signed(&self, public: &[u8; 32], signature: &[u8; 64]) -> Result<Vec<u8>, SendError> {
+        Ok(cbor_array(&[
+            self.encode_body()?,
+            encode_witness_set(public, signature),
+            cbor_bool(true),
+            cbor_null(),
+        ]))
+    }
+
+    /// The transaction's id: the hash of its body.
+    pub(crate) fn transaction_hash(&self) -> Result<[u8; 32], SendError> {
+        Ok(blake2b_256(&self.encode_body()?))
+    }
+
+    /// The signed transaction, as CBOR hex.
+    pub(crate) fn sign(
+        &self,
+        signing_key: &[u8; 64],
+        verification_key: &[u8; 32],
+    ) -> Result<String, SendError> {
+        self.conserves()?;
+        let signature = sign_extended(signing_key, verification_key, &self.transaction_hash()?)?;
+        Ok(hex::encode(
+            self.encode_signed(verification_key, &signature)?,
+        ))
+    }
+
+    /// What a native-asset transfer carries beyond the asset: the minimum
+    /// ADA its output holds, which the recipient keeps.
+    pub(crate) fn terms(&self, decimals: u32) -> Option<crate::send::stages::AssetTransferTerms> {
+        let recipient = self.outputs.first()?;
+        let sent = recipient.assets.first()?;
+        let amount = crate::decimal::from_units(u128::from(sent.quantity), decimals);
+        Some(crate::send::stages::AssetTransferTerms {
+            debited: amount.clone(),
+            received: amount,
+            fee: "0".into(),
+            hook_program: None,
+            carried_native: Some(crate::decimal::from_units(
+                u128::from(recipient.lovelace),
+                6,
+            )),
+        })
+    }
+}
+
+/// The fee and the most ADA a send from `utxos` can deliver: everything but
+/// the fee and, where the outputs hold native assets, the minimum ADA their
+/// change keeps. The fee is priced for a base-address recipient, the longest
+/// a Shelley recipient is, so the build never needs more.
+pub(crate) fn ada_preview(
+    utxos: &[CardanoInput],
+    params: &CardanoProtocolParams,
+    sender: &str,
+) -> Result<(u64, u64), SendError> {
+    let total = utxos
+        .iter()
+        .try_fold(0u64, |sum, input| sum.checked_add(input.lovelace))
+        .ok_or_else(|| refused("Cardano input value overflow"))?;
+    let held = amounts(&tally(utxos.iter().flat_map(|input| input.assets.clone()))?);
+    let recipient = longest_recipient(sender)?;
+    let keep = if held.is_empty() {
+        0
+    } else {
+        minimum_ada(sender, &held, params)?
+    };
+    let mut fee = 0u64;
+    for _ in 0..16 {
+        let max = total.saturating_sub(keep).saturating_sub(fee);
+        let mut outputs = vec![CardanoOutput {
+            address: recipient.clone(),
+            lovelace: max,
+            assets: Vec::new(),
+        }];
+        if !held.is_empty() {
+            outputs.push(CardanoOutput {
+                address: sender.to_string(),
+                lovelace: keep,
+                assets: held.clone(),
+            });
+        }
+        let required = PreparedCardanoTransaction {
+            inputs: utxos.to_vec(),
+            outputs,
+            fee,
+            ttl: u64::from(u32::MAX),
+        }
+        .minimum_fee(params)?;
+        if required <= fee {
+            return Ok((fee, max));
+        }
+        fee = required;
+    }
+    Err(refused("Cardano fee did not settle"))
+}
+
+/// A base address on `sender`'s network: the longest a Shelley recipient's
+/// is, so a quote for it never falls short.
+fn longest_recipient(sender: &str) -> Result<String, SendError> {
+    let hrp = if sender.starts_with("addr_test") {
+        "addr_test"
+    } else {
+        "addr"
+    };
+    bech32::encode::<bech32::Bech32>(
+        bech32::Hrp::parse(hrp).expect("valid hrp"),
+        &[[0x01].as_slice(), &[0xff; 56]].concat(),
+    )
+    .map_err(|_| refused("Cardano address encoding"))
+}
+
+/// The most ADA a send of `asset` carries to its recipient: the minimum for
+/// the largest quantity at the longest address.
+pub(crate) fn token_send_ada(
+    sender: &str,
+    asset: &str,
+    params: &CardanoProtocolParams,
+) -> Result<u64, SendError> {
+    minimum_ada(
+        &longest_recipient(sender)?,
+        &[CardanoAssetAmount {
+            asset: asset.to_string(),
+            quantity: u64::MAX,
+        }],
+        params,
+    )
+}
+
+/// What a selection of inputs lacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shortfall {
+    Asset,
+    Ada,
 }
 
 /// Cardano's extended Ed25519 key is kL || kR, not a seed. kL is the
@@ -83,50 +581,6 @@ pub(crate) fn sign_extended(
     signature[..32].copy_from_slice(&r);
     signature[32..].copy_from_slice(&s.to_bytes());
     Ok(signature)
-}
-
-fn encode_tx_body(
-    inputs: &[(String, u32, u64)],
-    outputs: &[(&[u8], u64)],
-    fee: u64,
-    ttl: u64,
-) -> Result<Vec<u8>, SendError> {
-    // CBOR map {0: inputs, 1: outputs, 2: fee, 3: ttl}
-    let mut map_entries = Vec::new();
-
-    // Inputs (field 0): set of [tx_hash, index]
-    let encoded_inputs: Vec<Vec<u8>> = inputs
-        .iter()
-        .map(|(hash, idx, _)| {
-            let hash_bytes = hex::decode(hash)
-                .map_err(|e| SendError::Invalid(format!("input txid: {e}").into()))?;
-            if hash_bytes.len() != 32 {
-                return Err(SendError::Invalid(
-                    "input txid must contain exactly 32 bytes".into(),
-                ));
-            }
-            Ok(cbor_array(&[
-                cbor_bytes(&hash_bytes),
-                cbor_uint(*idx as u64),
-            ]))
-        })
-        .collect::<Result<_, SendError>>()?;
-    map_entries.push((cbor_uint(0), cbor_tagged_set(&encoded_inputs)));
-
-    // Outputs (field 1): array of [address, lovelace]
-    let encoded_outputs: Vec<Vec<u8>> = outputs
-        .iter()
-        .map(|(addr, lovelace)| cbor_array(&[cbor_bytes(addr), cbor_uint(*lovelace)]))
-        .collect();
-    map_entries.push((cbor_uint(1), cbor_array_of(&encoded_outputs)));
-
-    // Fee (field 2)
-    map_entries.push((cbor_uint(2), cbor_uint(fee)));
-
-    // TTL (field 3)
-    map_entries.push((cbor_uint(3), cbor_uint(ttl)));
-
-    Ok(cbor_map(&map_entries))
 }
 
 fn encode_witness_set(vkey: &[u8], sig: &[u8]) -> Vec<u8> {
@@ -169,10 +623,6 @@ fn cbor_array(items: &[Vec<u8>]) -> Vec<u8> {
         out.extend_from_slice(item);
     }
     out
-}
-
-fn cbor_array_of(items: &[Vec<u8>]) -> Vec<u8> {
-    cbor_array(items)
 }
 
 fn cbor_tagged_set(items: &[Vec<u8>]) -> Vec<u8> {
@@ -225,96 +675,5 @@ fn blake2b_256(data: &[u8]) -> [u8; 32] {
 }
 
 #[cfg(test)]
-mod accounting_tests {
-    use super::*;
-    fn test_key() -> ([u8; 64], [u8; 32]) {
-        crate::derivation::cardano::derive_cardano_icarus_material(
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-            "", None, 0, Some("m/1852'/1815'/0'/0/0"),
-        ).unwrap()
-    }
-    fn build(values: &[u64], amount: u64, fee: u64) -> Result<String, SendError> {
-        let inputs: Vec<_> = values
-            .iter()
-            .enumerate()
-            .map(|(i, v)| ("00".repeat(32), i as u32, *v))
-            .collect();
-        build_signed_ada_tx(
-            &inputs,
-            &[0x61; 29],
-            amount,
-            fee,
-            &[0x62; 29],
-            &test_key().0,
-            &test_key().1,
-            100,
-            Some(1000000),
-        )
-    }
-    #[test]
-    fn extended_witness_matches_independent_emurgo_transaction() {
-        let vector: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/cardano-emurgo-witness.json"
-        ))
-        .unwrap();
-        let (key, public) = test_key();
-        assert_eq!(hex::encode(key), vector["privateKey"]);
-        assert_eq!(hex::encode(public), vector["publicKey"]);
-        let address = hex::decode(vector["addressBytes"].as_str().unwrap()).unwrap();
-        let inputs = vec![("00".repeat(32), 0, 1_170_000)];
-        let body = encode_tx_body(&inputs, &[(&address, 1_000_000)], 170_000, 100).unwrap();
-        assert_eq!(hex::encode(&body), vector["body"]);
-        let hash = blake2b_256(&body);
-        assert_eq!(hex::encode(hash), vector["hash"]);
-        let signature = sign_extended(&key, &public, &hash).unwrap();
-        assert_eq!(hex::encode(signature), vector["signature"]);
-        ed25519_dalek::VerifyingKey::from_bytes(&public)
-            .unwrap()
-            .verify_strict(&hash, &ed25519_dalek::Signature::from_bytes(&signature))
-            .unwrap();
-        let raw = build_signed_ada_tx(
-            &inputs, &address, 1_000_000, 170_000, &address, &key, &public, 100, None,
-        )
-        .unwrap();
-        assert_eq!(raw, vector["transaction"]);
-        assert!(sign_extended(&key, &[0; 32], &hash).is_err());
-        let mut altered = key;
-        altered[0] |= 1;
-        assert!(sign_extended(&altered, &public, &hash).is_err());
-    }
-    #[test]
-    fn cardano_refuses_malformed_input_hashes() {
-        for hash in [
-            String::new(),
-            "not hex".into(),
-            "00".repeat(31),
-            "00".repeat(33),
-        ] {
-            let result = build_signed_ada_tx(
-                &[(hash, 0, 1170000)],
-                &[0x61; 29],
-                1000000,
-                170000,
-                &[0x62; 29],
-                &[1; 64],
-                &[2; 32],
-                100,
-                None,
-            );
-            assert!(result.unwrap_err().to_string().contains("txid"));
-        }
-    }
-    #[test]
-    fn cardano_refuses_unbalanced_or_dust_transactions() {
-        assert!(build(&[2000000], 2000000, 1).is_err());
-        assert!(build(&[2000000], 1000000, 170000).is_err());
-        assert!(build(&[u64::MAX, 1], 1, 1).is_err());
-        assert!(build(&[u64::MAX], u64::MAX, 1).is_err());
-        assert!(build(&[], 1, 1).is_err());
-        assert!(build(&[1170000], 1000000, 170000).is_ok());
-        assert!(
-            build(&[2170000], 1000000, 170000).is_ok(),
-            "minimum change is valid"
-        );
-    }
-}
+#[path = "tests/cardano.rs"]
+mod tests;

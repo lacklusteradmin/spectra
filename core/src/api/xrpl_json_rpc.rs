@@ -25,6 +25,12 @@ pub struct XrpHistoryEntry {
     pub amount_drops: u64,
     pub fee_drops: u64,
     pub is_incoming: bool,
+    /// An issued currency's `CODE.rIssuer`; absent for XRP.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract: Option<String>,
+    /// An issued currency's amount, an exact decimal; absent for XRP.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_display: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +80,92 @@ pub(crate) struct XrpDeletableAccount {
     /// Objects in its owner directory the network will not delete with it:
     /// trust lines, escrows, payment channels, checks and the like.
     pub blockers: u64,
+}
+
+/// One of an account's trust lines, as `account_lines` reports it from the
+/// account's own side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct XrplTrustLine {
+    pub issue: crate::api::xrpl_amount::XrplIssue,
+    /// What the account holds; negative where it owes the other side.
+    pub balance: crate::api::xrpl_amount::IouValue,
+    /// The most the account accepts.
+    pub limit: crate::api::xrpl_amount::IouValue,
+    /// The most the other side accepts from the account.
+    pub limit_peer: crate::api::xrpl_amount::IouValue,
+    /// The other side does not let payments ripple through this line.
+    pub no_ripple_peer: bool,
+    /// The issuer has authorized the account to hold its currency.
+    pub peer_authorized: bool,
+    /// The issuer has frozen the line: the account can send only back to it.
+    pub frozen: bool,
+    /// The issuer has deep-frozen the line: it can neither send nor receive.
+    pub deep_frozen: bool,
+}
+
+/// An issuer's account flags and transfer rate, from its ledger root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct XrplIssuer {
+    pub flags: u32,
+    /// Billionths: 1 000 000 000 charges nothing, 1 002 000 000 takes 0.2%.
+    pub transfer_rate: u32,
+}
+
+impl XrplIssuer {
+    pub const REQUIRE_AUTH: u32 = 0x0004_0000;
+    pub const GLOBAL_FREEZE: u32 = 0x0040_0000;
+    pub const DISALLOW_INCOMING_TRUSTLINE: u32 = 0x2000_0000;
+}
+
+/// An account's `lsfDepositAuth`: payments need its preauthorization.
+pub(crate) const DEPOSIT_AUTH: u32 = 0x0100_0000;
+
+/// Everything a payment of an issued currency, or a trust line for one,
+/// depends on, from one verified node's validated ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct XrplIssueState {
+    /// The holder's balance and owner count; `None` when it does not exist.
+    pub holder: Option<(u64, u64)>,
+    pub holder_line: Option<XrplTrustLine>,
+    /// `None` when the issuer does not exist.
+    pub issuer: Option<XrplIssuer>,
+    /// The destination's flags and line, when a destination was asked
+    /// about; `None` inside when it does not exist.
+    pub destination: Option<Option<(u32, Option<XrplTrustLine>)>>,
+    /// Whether the destination accepts the holder's payments, when it
+    /// requires authorization for deposits.
+    pub deposit_authorized: Option<bool>,
+    pub reserve_base: u64,
+    pub reserve_increment: u64,
+}
+
+fn parse_trust_line(line: &Value) -> Result<XrplTrustLine, ApiError> {
+    use crate::api::xrpl_amount::{IouValue, XrplCurrency, XrplIssue};
+    let text = |field: &str| {
+        line.get(field)
+            .and_then(Value::as_str)
+            .or_decode("account_lines: incomplete line")
+    };
+    let value =
+        |field: &str| IouValue::parse(text(field)?).or_decode("account_lines: invalid amount");
+    let flag = |field: &str| line.get(field).and_then(Value::as_bool).unwrap_or(false);
+    let issuer = text("account")?;
+    crate::derivation::xrp::decode_xrp_address(issuer)
+        .map_err(|_| ApiError::decode("account_lines: invalid counterparty"))?;
+    Ok(XrplTrustLine {
+        issue: XrplIssue {
+            currency: XrplCurrency::parse(text("currency")?)
+                .map_err(|_| ApiError::decode("account_lines: invalid currency"))?,
+            issuer: issuer.to_string(),
+        },
+        balance: value("balance")?,
+        limit: value("limit")?,
+        limit_peer: value("limit_peer")?,
+        no_ripple_peer: flag("no_ripple_peer"),
+        peer_authorized: flag("peer_authorized"),
+        frozen: flag("freeze_peer"),
+        deep_frozen: flag("deep_freeze_peer"),
+    })
 }
 
 impl XrplClient {
@@ -307,6 +399,165 @@ impl XrplClient {
         }
     }
 
+    /// Every trust line of `address`, or of `address` with `peer` only, in
+    /// the validated ledger. An account that does not exist has none.
+    pub(crate) async fn fetch_trust_lines(
+        &self,
+        address: &str,
+        peer: Option<&str>,
+    ) -> Result<Vec<XrplTrustLine>, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            Self::new(std::sync::Arc::new(vec![endpoint.clone()]))
+                .lines_at(&endpoint, address, peer)
+                .await
+        })
+        .await
+    }
+
+    /// `account_lines` on one node, every page of it.
+    async fn lines_at(
+        &self,
+        endpoint: &str,
+        address: &str,
+        peer: Option<&str>,
+    ) -> Result<Vec<XrplTrustLine>, ApiError> {
+        let mut lines = Vec::new();
+        let mut marker: Option<Value> = None;
+        // Four hundred lines a page; a hundred pages is more trust lines than
+        // any wallet keeps, and a node that never stops is not answering.
+        for _ in 0..100 {
+            let mut params = json!({"account": address, "ledger_index": "validated", "limit": 400});
+            if let Some(peer) = peer {
+                params["peer"] = json!(peer);
+            }
+            if let Some(marker) = marker.take() {
+                params["marker"] = marker;
+            }
+            let body = json!({"method": "account_lines", "params": [params]});
+            let response: Value = self
+                .client
+                .post_json(endpoint, &body, crate::api::http::RetryProfile::ChainRead)
+                .await?;
+            let result = response
+                .get("result")
+                .or_decode("account_lines: missing result")?;
+            match result.get("error").and_then(Value::as_str) {
+                Some("actNotFound") => return Ok(Vec::new()),
+                Some(error) => return Err(ApiError::rejected(format!("account_lines: {error}"))),
+                None => {}
+            }
+            for line in result
+                .get("lines")
+                .and_then(Value::as_array)
+                .or_decode("account_lines: missing lines")?
+            {
+                lines.push(parse_trust_line(line)?);
+            }
+            match result.get("marker").filter(|marker| !marker.is_null()) {
+                Some(next) => marker = Some(next.clone()),
+                None => return Ok(lines),
+            }
+        }
+        Err(ApiError::decode("account_lines: pages never end"))
+    }
+
+    /// What paying `issue` from `holder`, or trusting it, depends on: the
+    /// holder, its line, the issuer, and the destination and its line, all
+    /// from one verified node's validated ledger.
+    pub(crate) async fn fetch_issue_state(
+        &self,
+        chain: crate::registry::Chain,
+        holder: &str,
+        issue: &crate::api::xrpl_amount::XrplIssue,
+        destination: Option<&str>,
+    ) -> Result<XrplIssueState, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint.clone()]));
+            node.verify_network(chain).await?;
+            let state = node.call("server_state", json!({})).await?;
+            let reserve = |field: &str| {
+                state
+                    .pointer(&format!("/state/validated_ledger/{field}"))
+                    .and_then(Value::as_u64)
+                    .or_decode("server_state: missing reserve")
+            };
+            let line_of = |lines: Vec<XrplTrustLine>| {
+                lines.into_iter().find(|line| line.issue == *issue)
+            };
+            let flags_of = |root: &Value| {
+                root.get("Flags")
+                    .and_then(Value::as_u64)
+                    .and_then(|flags| u32::try_from(flags).ok())
+                    .or_decode("account_info: missing Flags")
+            };
+            let holder_root = node.account_root(&endpoint, holder).await?;
+            let holder_line = match holder_root {
+                Some(_) => line_of(node.lines_at(&endpoint, holder, Some(&issue.issuer)).await?),
+                None => None,
+            };
+            let issuer = match node.account_root(&endpoint, &issue.issuer).await? {
+                None => None,
+                Some(root) => Some(XrplIssuer {
+                    flags: flags_of(&root)?,
+                    transfer_rate: match root.get("TransferRate") {
+                        None => 1_000_000_000,
+                        Some(rate) => rate
+                            .as_u64()
+                            .and_then(|rate| u32::try_from(rate).ok())
+                            // Zero is how the ledger spells "no fee".
+                            .map(|rate| if rate == 0 { 1_000_000_000 } else { rate })
+                            .filter(|rate| (1_000_000_000..=2_000_000_000).contains(rate))
+                            .or_decode("account_info: invalid TransferRate")?,
+                    },
+                }),
+            };
+            let mut deposit_authorized = None;
+            let destination = match destination {
+                None => None,
+                Some(destination) => Some(match node.account_root(&endpoint, destination).await? {
+                    None => None,
+                    Some(root) => {
+                        let flags = flags_of(&root)?;
+                        if flags & DEPOSIT_AUTH != 0 {
+                            let answer = node
+                                .call(
+                                    "deposit_authorized",
+                                    json!({"source_account": holder, "destination_account": destination,
+                                           "ledger_index": "validated"}),
+                                )
+                                .await?;
+                            deposit_authorized = Some(
+                                answer
+                                    .get("deposit_authorized")
+                                    .and_then(Value::as_bool)
+                                    .or_decode("deposit_authorized: missing answer")?,
+                            );
+                        }
+                        let line = if destination == issue.issuer {
+                            None
+                        } else {
+                            line_of(node.lines_at(&endpoint, destination, Some(&issue.issuer)).await?)
+                        };
+                        Some((flags, line))
+                    }
+                }),
+            };
+            Ok(XrplIssueState {
+                holder: match &holder_root {
+                    None => None,
+                    Some(root) => Some((balance_of(root)?, owner_count_of(root)?)),
+                },
+                holder_line,
+                issuer,
+                destination,
+                deposit_authorized,
+                reserve_base: reserve("reserve_base")?,
+                reserve_increment: reserve("reserve_inc")?,
+            })
+        })
+        .await
+    }
+
     pub async fn fetch_fee(&self) -> Result<u64, ApiError> {
         let result = self.call("fee", json!({})).await?;
         result
@@ -400,14 +651,75 @@ fn xrp_transaction_status(
     })
 }
 
-/// The XRP each successful payment moved in or out of `address`, fee excluded.
+/// Each issued currency a transaction moved in or out of `address`: the
+/// change in every trust line of the account its metadata touched, with the
+/// line's balance read from the account's side (the ledger stores it from
+/// the low account's).
+fn trust_line_changes(meta: &Value, address: &str) -> Vec<(String, bool, String)> {
+    use crate::api::xrpl_amount::{IouValue, XrplCurrency, XrplIssue};
+    let Some(nodes) = meta.get("AffectedNodes").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    nodes
+        .iter()
+        .filter_map(|node| {
+            let (kind, node) = node.as_object()?.iter().next()?;
+            if node.get("LedgerEntryType").and_then(Value::as_str) != Some("RippleState") {
+                return None;
+            }
+            let fields = if kind == "CreatedNode" {
+                node.get("NewFields")?
+            } else {
+                node.get("FinalFields")?
+            };
+            let side = |limit: &str| fields.pointer(&format!("/{limit}/issuer"))?.as_str();
+            let (low, high) = (side("LowLimit")?, side("HighLimit")?);
+            let (ours_is_low, counterparty) = if low == address {
+                (true, high)
+            } else if high == address {
+                (false, low)
+            } else {
+                return None;
+            };
+            let read = |balance: Option<&Value>| {
+                let value = IouValue::parse(balance?.get("value")?.as_str()?)?;
+                Some(if ours_is_low {
+                    value
+                } else {
+                    IouValue {
+                        negative: !value.negative && !value.is_zero(),
+                        ..value
+                    }
+                })
+            };
+            let after = read(fields.get("Balance"))?;
+            let before = match kind.as_str() {
+                "CreatedNode" => IouValue::ZERO,
+                _ => read(node.pointer("/PreviousFields/Balance")).unwrap_or(after),
+            };
+            let (negative, change) = after.minus(&before);
+            if crate::decimal::is_zero(&change) {
+                return None;
+            }
+            let currency = fields.pointer("/Balance/currency")?.as_str()?;
+            let issue = XrplIssue {
+                currency: XrplCurrency::parse(currency).ok()?,
+                issuer: counterparty.to_string(),
+            };
+            Some((issue.identifier(), !negative, change))
+        })
+        .collect()
+}
+
+/// What each successful payment moved in or out of `address`: XRP, fee
+/// excluded, and each issued currency.
 ///
-/// The amount is the account's own balance change from the transaction's
-/// metadata, not the payment's `Amount` field: `Amount` is an object for an
-/// issued currency, which read as 0 XRP, and for a partial payment it is an
-/// upper bound larger than what was delivered. A payment that moved no XRP
-/// for this account — an issued currency passing through — yields no entry,
-/// and neither does a failed one, which only burned its fee.
+/// Every amount is the account's own balance change from the transaction's
+/// metadata, not the payment's `Amount` field, which for a partial payment
+/// is an upper bound larger than what was delivered. An issued currency's
+/// change comes from the account's trust line for it and is its own row,
+/// beside the XRP row when a payment moved both. A failed payment only
+/// burned its fee and yields nothing.
 fn xrp_history_from_transactions(
     txs: &[Value],
     address: &str,
@@ -471,12 +783,10 @@ fn xrp_history_from_transactions(
         } else {
             balance_change
         };
-        if transfer == 0 {
+        let issued = trust_line_changes(meta, address);
+        if transfer == 0 && issued.is_empty() {
             continue;
         }
-        let Ok(amount_drops) = u64::try_from(transfer.unsigned_abs()) else {
-            continue;
-        };
         let txid = tx
             .get("hash")
             .and_then(Value::as_str)
@@ -490,16 +800,30 @@ fn xrp_history_from_transactions(
                 .map(|d| d + 946_684_800),
             &txid,
         )?;
-        entries.push(XrpHistoryEntry {
-            txid,
+        let row = |amount_drops: u64, is_incoming: bool| XrpHistoryEntry {
+            txid: txid.clone(),
             ledger_index: tx.get("ledger_index").and_then(Value::as_u64).unwrap_or(0),
             timestamp,
-            from,
-            to,
+            from: from.clone(),
+            to: to.clone(),
             amount_drops,
             fee_drops: u64::try_from(fee_drops).unwrap_or(0),
-            is_incoming: transfer > 0,
-        });
+            is_incoming,
+            contract: None,
+            amount_display: None,
+        };
+        if let Ok(amount_drops) = u64::try_from(transfer.unsigned_abs())
+            && transfer != 0
+        {
+            entries.push(row(amount_drops, transfer > 0));
+        }
+        for (contract, is_incoming, amount) in issued {
+            entries.push(XrpHistoryEntry {
+                contract: Some(contract),
+                amount_display: Some(amount),
+                ..row(0, is_incoming)
+            });
+        }
     }
     Ok(entries)
 }
@@ -657,6 +981,7 @@ mod history_tests {
 
     const ME: &str = "rMeMeMeMeMeMeMeMeMeMeMeMeMeMeMeMe1";
     const THEM: &str = "rThemThemThemThemThemThemThemThem2";
+    const ISSUER: &str = "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq";
 
     fn account_root(account: &str, before: &str, after: &str) -> Value {
         json!({"ModifiedNode": {
@@ -707,14 +1032,30 @@ mod history_tests {
                 "tesSUCCESS",
                 json!([account_root(ME, "14999988", "15999988")]),
             ),
-            // An issued currency moves no XRP for this account.
+            // An issued currency moves no XRP for this account: its trust
+            // line, where it is the high side, gains 5 USD.
             payment(
                 "iou",
                 THEM,
                 ME,
-                json!({"currency": "USD", "issuer": THEM, "value": "5"}),
+                json!({"currency": "USD", "issuer": ISSUER, "value": "5"}),
                 "tesSUCCESS",
-                json!([account_root(THEM, "100", "88")]),
+                json!([
+                    account_root(THEM, "100", "88"),
+                    ripple_state(ISSUER, ME, "USD", "-1.5", "-6.5"),
+                    ripple_state(THEM, ISSUER, "USD", "10", "5")
+                ]),
+            ),
+            // A line created by the payment, where this account is the low side.
+            payment(
+                "first",
+                THEM,
+                ME,
+                json!({"currency": "534F4C4F00000000000000000000000000000000", "issuer": ISSUER, "value": "1e-20"}),
+                "tesSUCCESS",
+                json!([{"CreatedNode": {"LedgerEntryType": "RippleState", "NewFields": {
+                    "Balance": {"currency": "534F4C4F00000000000000000000000000000000", "issuer": "rrrrrrrrrrrrrrrrrrrrBZbvji", "value": "1e-20"},
+                    "LowLimit": {"issuer": ME}, "HighLimit": {"issuer": ISSUER}}}}]),
             ),
             // A failed payment only burned its fee.
             payment(
@@ -727,12 +1068,40 @@ mod history_tests {
             ),
         ];
         let entries = xrp_history_from_transactions(&txs, ME).unwrap();
-        assert_eq!(entries.len(), 2, "{entries:?}");
+        assert_eq!(entries.len(), 4, "{entries:?}");
         assert_eq!(entries[0].txid, "sent");
         assert!(!entries[0].is_incoming);
         assert_eq!(entries[0].amount_drops, 5_000_000);
         assert_eq!(entries[1].txid, "partial");
         assert!(entries[1].is_incoming);
         assert_eq!(entries[1].amount_drops, 1_000_000);
+        // Only this account's line counts, read from its own side.
+        assert_eq!(entries[2].txid, "iou");
+        assert!(entries[2].is_incoming);
+        assert_eq!(
+            entries[2].contract.as_deref(),
+            Some(format!("USD.{ISSUER}").as_str())
+        );
+        assert_eq!(entries[2].amount_display.as_deref(), Some("5"));
+        assert_eq!(
+            entries[3].contract.as_deref(),
+            Some(format!("534F4C4F00000000000000000000000000000000.{ISSUER}").as_str())
+        );
+        assert_eq!(
+            entries[3].amount_display.as_deref(),
+            Some("0.00000000000000000001")
+        );
+        // XRP rows name no contract when serialized, as the normalizer reads them.
+        let json = serde_json::to_value(&entries[0]).unwrap();
+        assert!(json.get("contract").is_none() && json.get("amount_display").is_none());
+    }
+
+    fn ripple_state(low: &str, high: &str, currency: &str, before: &str, after: &str) -> Value {
+        let balance = |value: &str| json!({"currency": currency, "issuer": "rrrrrrrrrrrrrrrrrrrrBZbvji", "value": value});
+        json!({"ModifiedNode": {
+            "LedgerEntryType": "RippleState",
+            "FinalFields": {"Balance": balance(after), "LowLimit": {"issuer": low}, "HighLimit": {"issuer": high}},
+            "PreviousFields": {"Balance": balance(before)}
+        }})
     }
 }

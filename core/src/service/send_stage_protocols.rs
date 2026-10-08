@@ -61,6 +61,7 @@ impl WalletService {
                 self.validate_evm_fee_budget(chain, prepared).await?;
                 self.validate_evm_funds(chain, &stored.view.sender, prepared)
                     .await?;
+                self.validate_nft_transfer_state(stored).await?;
             }
             PreparedPayload::Sui(_) => {
                 let mut request = stored.request.clone();
@@ -247,6 +248,135 @@ impl WalletService {
                     ));
                 }
             }
+            // Every prerequisite again, from the ledger as it is now: a
+            // trust line, a freeze, an authorization or an issuer's rate may
+            // have changed since the review.
+            PreparedPayload::XrpIssuedPayment(prepared) => {
+                let fresh = crate::send::xrp_issued::PreparedXrpIssuedPayment::plan(
+                    &XrplClient::new(
+                        self.endpoints_for(
+                            chain,
+                            &[
+                                EndpointCapability::Verification,
+                                EndpointCapability::TokenBalance,
+                            ],
+                        )
+                        .await,
+                    ),
+                    chain,
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    &prepared.asset,
+                    &prepared.amount,
+                    prepared.fee_drops,
+                )
+                .await?;
+                if !fresh.same_payment(prepared) {
+                    return Err(SpectraBridgeError::failure(
+                        "The token's issuer fee changed; build and review again",
+                    ));
+                }
+            }
+            PreparedPayload::StellarAssetPayment(prepared) => {
+                let fresh = crate::send::stellar_issued::PreparedStellarAssetPayment::plan(
+                    &HorizonClient::new(
+                        self.endpoints_for(
+                            chain,
+                            &[
+                                EndpointCapability::Verification,
+                                EndpointCapability::TokenBalance,
+                            ],
+                        )
+                        .await,
+                    ),
+                    chain,
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    &prepared.asset,
+                    prepared.amount_stroops,
+                    prepared.fee_stroops,
+                )
+                .await?;
+                if !fresh.same_payment(prepared) {
+                    return Err(SpectraBridgeError::failure(
+                        "The asset payment changed; build and review again",
+                    ));
+                }
+            }
+            PreparedPayload::XrpTrustSet(prepared) => {
+                let (fresh, _) = crate::send::xrp_issued::PreparedXrpTrustSet::plan(
+                    &XrplClient::new(
+                        self.endpoints_for(chain, &[EndpointCapability::Verification])
+                            .await,
+                    ),
+                    chain,
+                    &stored.view.sender,
+                    &prepared.asset,
+                    prepared.removes(),
+                    prepared.fee_drops,
+                )
+                .await?;
+                if !fresh.same_change(prepared) {
+                    return Err(SpectraBridgeError::failure(
+                        "The trust line changed; build and review again",
+                    ));
+                }
+            }
+            PreparedPayload::StellarChangeTrust(prepared) => {
+                let (fresh, _) = crate::send::stellar_issued::PreparedStellarChangeTrust::plan(
+                    &HorizonClient::new(
+                        self.endpoints_for(chain, &[EndpointCapability::Verification])
+                            .await,
+                    ),
+                    chain,
+                    &stored.view.sender,
+                    &prepared.asset,
+                    prepared.removes(),
+                    prepared.fee_stroops,
+                )
+                .await?;
+                if !fresh.same_change(prepared) {
+                    return Err(SpectraBridgeError::failure(
+                        "The trust line changed; build and review again",
+                    ));
+                }
+            }
+            PreparedPayload::Solana(prepared) if stored.view.staking.is_none() => {
+                if let Some(token) = &prepared.token {
+                    // Read every rule again: a fee, a hook account or an
+                    // account state changed since review is a new transfer.
+                    let client = SolanaClient::new(
+                        self.endpoints_for(
+                            chain,
+                            &[
+                                EndpointCapability::Verification,
+                                EndpointCapability::TokenBalance,
+                            ],
+                        )
+                        .await,
+                    );
+                    let owner = crate::derivation::solana::decode_b58_32(&stored.view.sender)?;
+                    let recipient =
+                        crate::derivation::solana::decode_b58_32(&stored.view.recipient)?;
+                    let fresh = crate::send::solana_token::PreparedSolanaTokenTransfer::plan(
+                        &client,
+                        &owner,
+                        &recipient,
+                        &token.mint,
+                        token.decimals,
+                        token.amount,
+                    )
+                    .await?;
+                    if !fresh.same_transfer(token)
+                        || token.message(&owner, &recipient, &prepared.blockhash)?
+                            != prepared.message
+                    {
+                        return Err(SpectraBridgeError::failure(
+                            "The token's transfer fee or hook accounts changed; build and review again",
+                        ));
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -420,7 +550,12 @@ impl WalletService {
                     .ok_or_else(|| {
                         SpectraBridgeError::failure("TRON token precision unavailable")
                     })?,
-                Chain::Sui | Chain::Aptos | Chain::Ton => self
+                Chain::Sui
+                | Chain::Aptos
+                | Chain::Ton
+                | Chain::Xrp
+                | Chain::Stellar
+                | Chain::Cardano => self
                     .token_contract_decimals(chain, contract)
                     .await?
                     .ok_or_else(|| SpectraBridgeError::failure("Token precision unavailable"))?,
@@ -441,8 +576,11 @@ impl WalletService {
             u32::from(chain.native_decimals())
         };
         let amount = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+        // Where the amount is not one integer of smallest units on the wire —
+        // or not a u64 one — the protocol's own arm reads it.
         let amount_u64 = if matches!(chain.mainnet_counterpart(), Chain::Near | Chain::Polkadot)
-            || (chain.mainnet_counterpart() == Chain::Ton && request.contract_address.is_some())
+            || (matches!(chain.mainnet_counterpart(), Chain::Ton | Chain::Xrp)
+                && request.contract_address.is_some())
         {
             0
         } else {
@@ -671,11 +809,62 @@ impl WalletService {
                         .fetch_fee()
                         .await?;
                 crate::send::xrp::validate_drops(u128::from(fee_drops))?;
-                PreparedPayload::Xrp {
-                    sequence: client.fetch_sequence(sender).await?,
-                    fee_drops,
-                    amount_drops: amount_u64,
+                match request.contract_address.as_deref() {
+                    Some(asset) => PreparedPayload::XrpIssuedPayment(
+                        crate::send::xrp_issued::PreparedXrpIssuedPayment::plan(
+                            &XrplClient::new(
+                                self.endpoints_for(
+                                    chain,
+                                    &[
+                                        EndpointCapability::Verification,
+                                        EndpointCapability::TokenBalance,
+                                    ],
+                                )
+                                .await,
+                            ),
+                            chain,
+                            sender,
+                            to,
+                            asset,
+                            &request.amount_str,
+                            fee_drops,
+                        )
+                        .await?,
+                    ),
+                    None => PreparedPayload::Xrp {
+                        sequence: client.fetch_sequence(sender).await?,
+                        fee_drops,
+                        amount_drops: amount_u64,
+                    },
                 }
+            }
+            Chain::Stellar if request.contract_address.is_some() => {
+                PreparedPayload::StellarAssetPayment(
+                    crate::send::stellar_issued::PreparedStellarAssetPayment::plan(
+                        &HorizonClient::new(
+                            self.endpoints_for(
+                                chain,
+                                &[
+                                    EndpointCapability::Verification,
+                                    EndpointCapability::TokenBalance,
+                                ],
+                            )
+                            .await,
+                        ),
+                        chain,
+                        sender,
+                        to,
+                        request.contract_address.as_deref().unwrap_or_default(),
+                        i64::try_from(amount)
+                            .map_err(|_| SpectraBridgeError::failure("Amount too large"))?,
+                        HorizonClient::new(
+                            self.endpoints_for(chain, &[EndpointCapability::Fee]).await,
+                        )
+                        .fetch_base_fee()
+                        .await?,
+                    )
+                    .await?,
+                )
             }
             Chain::Stellar => {
                 let client = HorizonClient::new(eps);
@@ -725,41 +914,26 @@ impl WalletService {
             }
             Chain::Cardano => {
                 let client = KoiosClient::new(eps);
-                let fee = request
-                    .fee_amount
-                    .as_deref()
-                    .map(|v| crate::send::payload::fee_units(v, 6))
-                    .transpose()?
-                    .unwrap_or(
-                        u64::try_from(
-                            chain
-                                .static_fee_units()
-                                .ok_or_else(|| SpectraBridgeError::failure("No Cardano fee"))?,
-                        )
-                        .map_err(|_| SpectraBridgeError::failure("Invalid fee"))?,
-                    );
-                let inputs: Vec<_> =
-                    KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
-                        .fetch_ada_utxos(sender)
-                        .await?
-                        .into_iter()
-                        .map(|u| (u.tx_hash, u.tx_index, u.lovelace))
-                        .collect();
-                crate::send::accounting::checked_change(
-                    inputs.iter().map(|u| u.2),
-                    amount_u64,
-                    fee,
-                )?;
-                PreparedPayload::Cardano {
-                    inputs,
-                    amount: amount_u64,
-                    fee,
-                    ttl: client
+                let transfer = match request.contract_address.as_deref() {
+                    Some(asset) => crate::send::cardano::CardanoTransfer::Asset {
+                        asset: crate::api::cardano_asset::CardanoAssetId::parse(asset)?,
+                        quantity: amount_u64,
+                    },
+                    None => crate::send::cardano::CardanoTransfer::Ada(amount_u64),
+                };
+                let utxos = self.cardano_inputs(chain, sender).await?;
+                PreparedPayload::Cardano(crate::send::cardano::PreparedCardanoTransaction::plan(
+                    &utxos,
+                    &client.fetch_protocol_params().await?,
+                    sender,
+                    to,
+                    &transfer,
+                    client
                         .fetch_latest_slot()
                         .await?
                         .checked_add(7200)
                         .ok_or_else(|| SpectraBridgeError::failure("Slot overflow"))?,
-                }
+                )?)
             }
             Chain::Bitcoin => {
                 let client = self.utxo_client(chain, &[EndpointCapability::Utxo]).await;
@@ -974,6 +1148,13 @@ impl WalletService {
         let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
         let mut resources = Vec::new();
         let (payload, field, hash) = match &stored.prepared {
+            // Signed with the shielded account's key, which the seed
+            // derives: `sign_send` does that before this is reached.
+            PreparedPayload::ZcashShielded(_) | PreparedPayload::LitecoinMweb(_) => {
+                return Err(SpectraBridgeError::failure(
+                    "A shielded transaction is signed with the shielded account's key",
+                ));
+            }
             PreparedPayload::NearDeleteKey(p) => {
                 if !NearClient::new(eps)
                     .transaction_block_is_valid(chain, &p.block_hash)
@@ -1275,6 +1456,9 @@ impl WalletService {
             PreparedPayload::Litecoin(_) => {
                 return self.sign_litecoin(chain, stored, signer).await;
             }
+            PreparedPayload::LitecoinPegIn(_) => {
+                return self.sign_litecoin_pegin(chain, stored, signer).await;
+            }
             PreparedPayload::Peercoin(_) => return self.sign_peercoin(chain, stored, signer).await,
             PreparedPayload::Xrp {
                 sequence,
@@ -1298,7 +1482,8 @@ impl WalletService {
                 let blob = crate::send::xrp::build_signed_payment(
                     &stored.view.sender,
                     &stored.view.recipient,
-                    *amount_drops,
+                    &crate::send::xrp::PaymentAmount::Drops(*amount_drops),
+                    None,
                     *fee_drops,
                     *sequence,
                     &key,
@@ -1310,6 +1495,140 @@ impl WalletService {
                     stored.view.sender
                 ));
                 (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+            }
+            PreparedPayload::XrpIssuedPayment(prepared) => {
+                if XrplClient::new(eps)
+                    .fetch_sequence(&stored.view.sender)
+                    .await?
+                    != prepared.sequence
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "XRP sequence changed; build and review again",
+                    ));
+                }
+                let key = decode_private_key(&signer.private_key_hex)?;
+                let public = signer
+                    .public_key_hex
+                    .as_deref()
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing XRP public key"))?;
+                let (amount, send_max) = prepared.amounts()?;
+                let blob = crate::send::xrp::build_signed_payment(
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    &crate::send::xrp::PaymentAmount::Issued(amount),
+                    send_max.as_ref(),
+                    prepared.fee_drops,
+                    prepared.sequence,
+                    &key,
+                    public,
+                )?;
+                resources.push(format!(
+                    "{}:{}:sequence:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    prepared.sequence
+                ));
+                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+            }
+            PreparedPayload::XrpTrustSet(prepared) => {
+                if XrplClient::new(eps)
+                    .fetch_sequence(&stored.view.sender)
+                    .await?
+                    != prepared.sequence
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "XRP sequence changed; build and review again",
+                    ));
+                }
+                let key = decode_private_key(&signer.private_key_hex)?;
+                let public = signer
+                    .public_key_hex
+                    .as_deref()
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing XRP public key"))?;
+                let blob = crate::send::xrp::build_signed_trust_set(
+                    &stored.view.sender,
+                    &prepared.limit()?,
+                    prepared.fee_drops,
+                    prepared.sequence,
+                    &key,
+                    public,
+                )?;
+                resources.push(format!(
+                    "{}:{}:sequence:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    prepared.sequence
+                ));
+                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+            }
+            PreparedPayload::StellarAssetPayment(prepared) => {
+                if HorizonClient::new(eps)
+                    .fetch_sequence(&stored.view.sender)
+                    .await?
+                    .checked_add(1)
+                    != Some(prepared.sequence)
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Stellar sequence changed; build and review again",
+                    ));
+                }
+                let (key, public) = stellar_signing_key(&signer.private_key_hex)?;
+                let raw = crate::send::stellar::build_signed_payment_xdr(
+                    &stored.view.sender,
+                    &stored.view.recipient,
+                    Some(&prepared.asset()?),
+                    prepared.amount_stroops,
+                    prepared.fee_stroops,
+                    prepared.sequence,
+                    chain.stellar_network_passphrase()?.as_bytes(),
+                    &key,
+                    &public,
+                )?;
+                resources.push(format!(
+                    "{}:{}:sequence:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    prepared.sequence
+                ));
+                (
+                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
+                    "txid",
+                    None,
+                )
+            }
+            PreparedPayload::StellarChangeTrust(prepared) => {
+                if HorizonClient::new(eps)
+                    .fetch_sequence(&stored.view.sender)
+                    .await?
+                    .checked_add(1)
+                    != Some(prepared.sequence)
+                {
+                    return Err(SpectraBridgeError::failure(
+                        "Stellar sequence changed; build and review again",
+                    ));
+                }
+                let (key, public) = stellar_signing_key(&signer.private_key_hex)?;
+                let raw = crate::send::stellar::build_signed_change_trust_xdr(
+                    &stored.view.sender,
+                    &prepared.asset()?,
+                    prepared.limit_stroops,
+                    prepared.fee_stroops,
+                    prepared.sequence,
+                    chain.stellar_network_passphrase()?.as_bytes(),
+                    &key,
+                    &public,
+                )?;
+                resources.push(format!(
+                    "{}:{}:sequence:{}",
+                    chain.str_id(),
+                    stored.view.sender,
+                    prepared.sequence
+                ));
+                (
+                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
+                    "txid",
+                    None,
+                )
             }
             PreparedPayload::XrpAccountDelete {
                 sequence,
@@ -1399,6 +1718,7 @@ impl WalletService {
                 let raw = crate::send::stellar::build_signed_payment_xdr(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    None,
                     *amount_stroops,
                     *fee_stroops,
                     *sequence,
@@ -1458,33 +1778,32 @@ impl WalletService {
                     Some(hash),
                 )
             }
-            PreparedPayload::Cardano {
-                inputs,
-                amount,
-                fee,
-                ttl,
-            } => {
+            PreparedPayload::Cardano(prepared) => {
                 let client = KoiosClient::new(eps);
-                if client.fetch_latest_slot().await? >= *ttl {
+                if client.fetch_latest_slot().await? >= prepared.ttl {
                     return Err(SpectraBridgeError::failure(
                         "Cardano transaction expired; build and review again",
                     ));
                 }
-                let current =
-                    KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
-                        .fetch_ada_utxos(&stored.view.sender)
-                        .await?;
-                for (hash, index, value) in inputs {
-                    if !current
-                        .iter()
-                        .any(|u| &u.tx_hash == hash && u.tx_index == *index && u.lovelace == *value)
-                    {
+                // Every input still unspent with the value it was reviewed
+                // with, and the fee and outputs still what the protocol asks.
+                let current = self.cardano_inputs(chain, &stored.view.sender).await?;
+                for input in &prepared.inputs {
+                    if !current.contains(input) {
                         return Err(SpectraBridgeError::failure(
                             "Cardano input changed; build and review again",
                         ));
                     }
-                    resources.push(format!("{}:utxo:{hash}:{index}", chain.str_id()));
+                    resources.push(format!(
+                        "{}:utxo:{}:{}",
+                        chain.str_id(),
+                        input.tx_hash,
+                        input.tx_index
+                    ));
                 }
+                prepared
+                    .clone()
+                    .within_limits(&client.fetch_protocol_params().await?)?;
                 let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                 let key: &[u8; 64] = bytes
                     .as_slice()
@@ -1495,18 +1814,12 @@ impl WalletService {
                         SpectraBridgeError::failure("Missing Cardano public key")
                     })?)?;
                 let public = decode_hex_array::<32>(&hex::encode(public), "Cardano public key")?;
-                let raw = crate::send::cardano::build_signed_ada_tx(
-                    inputs,
-                    &crate::derivation::cardano::decode_cardano_addr_bytes(&stored.view.recipient)?,
-                    *amount,
-                    *fee,
-                    &crate::derivation::cardano::decode_cardano_addr_bytes(&stored.view.sender)?,
-                    key,
-                    &public,
-                    *ttl,
-                    None,
-                )?;
-                (json!({"cbor_hex":raw}).to_string(), "txid", None)
+                let raw = prepared.sign(key, &public)?;
+                (
+                    json!({"cbor_hex":raw}).to_string(),
+                    "txid",
+                    Some(hex::encode(prepared.transaction_hash()?)),
+                )
             }
             PreparedPayload::Bitcoin(p) => {
                 let current = self
@@ -1739,6 +2052,8 @@ impl WalletService {
             HorizonClient::new(eps).verify_network(chain).await?;
         } else if chain.mainnet_counterpart() == Chain::Xrp {
             XrplClient::new(eps).verify_network(chain).await?;
+        } else if chain.mainnet_counterpart() == Chain::Cardano {
+            KoiosClient::new(eps).verify_network(chain).await?;
         } else if chain.mainnet_counterpart() == Chain::Tron {
             TronHttpClient::new(eps).verify_network(chain).await?;
         } else if chain.mainnet_counterpart() == Chain::Ton {
@@ -1756,6 +2071,22 @@ impl WalletService {
             BlockbookClient::new(eps, chain)
                 .verify_peercoin_network()
                 .await?;
+        } else if chain.mainnet_counterpart() == Chain::Litecoin {
+            // The indexer names the network's genesis block at height 0.
+            let api = self
+                .endpoint_api(chain, endpoint)
+                .await
+                .ok_or_else(|| ApiError::invalid("Endpoint is not a Litecoin indexer"))?;
+            let client = crate::api::utxo::UtxoClient::new(
+                chain,
+                vec![crate::endpoint_api::Endpoint {
+                    api,
+                    url: endpoint.to_string(),
+                }],
+            );
+            if client.fetch_block_hash(0).await? != chain.litecoin_genesis()? {
+                return Err(wrong_network());
+            }
         } else if chain == Chain::Icp {
             IcpClient::new(eps).verify_network().await?;
         } else if chain.mainnet_counterpart() == Chain::Monero {
@@ -1825,8 +2156,30 @@ impl WalletService {
                 .as_str()
                 .and_then(|s| s.parse::<u64>().ok())
                 .is_none_or(|expiry| now >= expiry as f64),
-            PreparedPayload::Cardano { ttl, .. } => {
-                KoiosClient::new(endpoints).fetch_latest_slot().await? >= *ttl
+            PreparedPayload::Cardano(prepared) => {
+                KoiosClient::new(endpoints).fetch_latest_slot().await? >= prepared.ttl
+            }
+            PreparedPayload::ZcashShielded(_) => {
+                let submission = stored
+                    .submission
+                    .as_ref()
+                    .ok_or_else(|| SpectraBridgeError::failure("Missing signed transaction"))?;
+                let expiry = super::zcash_shielded::zcash_expiry_height(
+                    &chain.zcash_network()?,
+                    &submission.payload,
+                )?;
+                let lightwalletd = self
+                    .api_endpoints(
+                        chain,
+                        crate::EndpointApi::Lightwalletd,
+                        &[EndpointCapability::History],
+                    )
+                    .await?;
+                let tip = crate::api::lightwalletd::LightwalletdClient::new(Arc::new(lightwalletd))
+                    .session(chain)
+                    .await?
+                    .tip;
+                expiry != 0 && tip >= expiry
             }
             PreparedPayload::Solana(p) => {
                 SolanaClient::new(endpoints)
@@ -1856,6 +2209,38 @@ impl WalletService {
             ));
         }
         Ok(())
+    }
+}
+
+impl WalletService {
+    /// Every unspent output of `address`, with the assets each holds.
+    pub(super) async fn cardano_inputs(
+        &self,
+        chain: Chain,
+        address: &str,
+    ) -> Result<Vec<crate::send::cardano::CardanoInput>, SpectraBridgeError> {
+        KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Utxo]).await)
+            .fetch_utxos(address)
+            .await?
+            .into_iter()
+            .map(|utxo| {
+                Ok(crate::send::cardano::CardanoInput {
+                    assets: utxo
+                        .assets
+                        .iter()
+                        .map(|asset| {
+                            Ok(crate::send::cardano::CardanoAssetAmount {
+                                asset: asset.id()?.identifier(),
+                                quantity: asset.amount()?,
+                            })
+                        })
+                        .collect::<Result<_, ApiError>>()?,
+                    tx_hash: utxo.tx_hash,
+                    tx_index: utxo.tx_index,
+                    lovelace: utxo.lovelace,
+                })
+            })
+            .collect()
     }
 }
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """ICP/Zcash stages with loopback-only providers; no real funds or keys."""
-import http.server, json, os, pathlib, subprocess, sys, tempfile, threading
+import hashlib, http.server, json, os, pathlib, subprocess, sys, tempfile, threading
 binary=str(pathlib.Path(sys.argv[1] if len(sys.argv)>1 else 'target/debug/spectra').resolve())
-state=dict(submitted=[],expected='',branch='5437f330',height=3400000,genesis='00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08',spent=False,fee='10000')
+# NU6.3 (Ironwood) is the network's upgrade since block 3,428,143.
+state=dict(submitted=[],expected='',branch='37a5165b',height=3500000,genesis='00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08',spent=False,fee='10000')
 network={'blockchain':'Internet Computer','network':'00000000000000020101'}
 class Node(http.server.BaseHTTPRequestHandler):
     def log_message(self,*_):pass
@@ -27,6 +28,31 @@ class Node(http.server.BaseHTTPRequestHandler):
             assert body['signed_transaction']
             state['submitted'].append(body['signed_transaction']);return self.reply({'transaction_identifier':{'hash':state['expected']}})
         raise AssertionError(self.path)
+B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+def b58check(text):
+    n=0
+    for c in text:n=n*58+B58.index(c)
+    raw=n.to_bytes((n.bit_length()+7)//8,'big')
+    assert hashlib.sha256(hashlib.sha256(raw[:-4]).digest()).digest()[:4]==raw[-4:]
+    return raw[:-4]
+def tex_address(transparent):
+    """ZIP-320: Bech32m of the P2PKH address's key hash, under `tex`."""
+    data,acc,bits=[],0,0
+    for byte in b58check(transparent)[2:]:
+        acc=(acc<<8)|byte;bits+=8
+        while bits>=5:bits-=5;data.append((acc>>bits)&31)
+    if bits:data.append((acc<<(5-bits))&31)
+    def polymod(values):
+        chk=1
+        for v in values:
+            top=chk>>25;chk=(chk&0x1ffffff)<<5^v
+            for i,g in enumerate([0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3]):chk^=g if (top>>i)&1 else 0
+        return chk
+    hrp='tex';expanded=[ord(c)>>5 for c in hrp]+[0]+[ord(c)&31 for c in hrp]
+    check=polymod(expanded+data+[0]*6)^0x2bc830a3
+    return hrp+'1'+''.join('qpzry9x8gf2tvdw0s3jn54khce6mua7l'[d] for d in data+[(check>>5*(5-i))&31 for i in range(6)])
+# ZIP-320's reference pair.
+assert tex_address('t1VmmGiyjVNeCjxDZzg7vZmd99WyzVby9yC')=='tex1s2rt77ggv6q989lr49rkgzmh5slsksa9khdgte'
 node=http.server.ThreadingHTTPServer(('127.0.0.1',0),Node)
 threading.Thread(target=node.serve_forever,daemon=True).start()
 url=f'http://127.0.0.1:{node.server_port}'
@@ -47,8 +73,19 @@ try:
         assert prepared['stage']=='Prepared' and len(state['submitted'])==before
         competing=build()
         if chain=='zcash':
-            state['branch']='c2d6d0b4';run('send','sign',prepared['id'],'--review-digest',prepared['review_digest'],'--endpoint',url,success=False)
-            state['branch']='5437f330';state['spent']=True
+            # Transparent funds pay a TEX address (ZIP-320) the P2PKH script
+            # of its key hash, and refuse a shielded one.
+            tex=run('send','build','--from',name,'--to',tex_address(destination),'--amount','0.001','--endpoint',url)['artifact']
+            outputs=json.loads(tex['prepared_details'])['Zcash']['outputs']
+            assert bytes(outputs[0][0])==bytes([0x76,0xa9,0x14])+b58check(destination)[2:]+bytes([0x88,0xac]) and outputs[0][1]==100000,outputs
+            unified=json.loads((pathlib.Path(__file__).resolve().parents[1]/'core/tests/fixtures/zcash-addresses.json').read_text())['unified']['vectors'][0]['unified_addr']
+            refused=run('send','build','--from',name,'--to',unified,'--amount','0.001','--endpoint',url,success=False)
+            assert "paid from the wallet's shielded funds" in refused['error'],refused
+            # A branch other than the next block's is refused: NU5's, or
+            # NU6.2's, which NU6.3 replaced.
+            for stale in ('c2d6d0b4','5437f330'):
+                state['branch']=stale;run('send','sign',prepared['id'],'--review-digest',prepared['review_digest'],'--endpoint',url,success=False)
+            state['branch']='37a5165b';state['spent']=True
             run('send','sign',prepared['id'],'--review-digest',prepared['review_digest'],'--endpoint',url,success=False);state['spent']=False
         else:
             state['fee']='10001';run('send','build','--from',name,'--to',destination,'--amount','0.001','--endpoint',url,success=False);state['fee']='10000'

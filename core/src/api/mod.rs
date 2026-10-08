@@ -3,17 +3,19 @@
 //! One module per `EndpointApi`, named after its `as_str()`: each is that wire
 //! contract's reads and submissions, whichever chain uses it. `utxo` is the one
 //! module that spans several APIs — the UTXO family's client over them and the
-//! answer types they share. `http` and `json_rpc` are the transport under all
-//! of them, `time` the provider timestamps they read.
+//! answer types they share. `http`, `json_rpc` and `grpc` are the transport
+//! under all of them, `time` the provider timestamps they read.
 //!
 //! `api` depends on nothing but the transport and `registry`: `fetch`, `send`,
 //! `staking` and `service` call it, never the other way round. Building and
 //! signing transactions is per chain and lives in `send`.
 
 pub mod error;
+pub(crate) mod grpc;
 pub(crate) mod history_page;
 pub mod http;
 pub(crate) mod json_rpc;
+pub(crate) mod tcp;
 pub mod time;
 pub(crate) mod transaction_status;
 pub use history_page::HistoryPage;
@@ -26,8 +28,10 @@ pub mod bch_rest_v2;
 pub mod blockbook;
 pub mod blockcypher;
 pub mod blockscout;
+pub(crate) mod cardano_asset;
 pub mod esplora;
 pub mod evm_json_rpc;
+pub mod evm_nft;
 pub mod fastnear;
 pub mod horizon;
 pub mod icp_replica;
@@ -35,10 +39,13 @@ pub mod icp_rosetta;
 pub mod insight;
 pub mod kaspa_rest;
 pub mod koios;
+pub mod lightwalletd;
+pub mod litecoin_p2p;
 pub mod monero_daemon_rpc;
 pub mod near_json_rpc;
 pub mod nearblocks;
 pub mod solana_json_rpc;
+pub(crate) mod stellar_asset;
 pub mod substrate_json_rpc;
 pub mod sui_json_rpc;
 pub mod toncenter_v2;
@@ -46,6 +53,7 @@ pub mod toncenter_v3;
 pub mod tron_http;
 pub mod trongrid_v1;
 pub mod whatsonchain;
+pub(crate) mod xrpl_amount;
 pub mod xrpl_json_rpc;
 
 /// One token holding an address turned out to have, as the service that

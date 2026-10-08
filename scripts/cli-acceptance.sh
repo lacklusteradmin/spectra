@@ -19,7 +19,9 @@ set -uo pipefail
 
 BIN="${1:-}"
 if [[ -z "$BIN" ]]; then
-    cargo build -p spectra_cli --quiet || exit 1
+    # The Zcash suite's lightwalletd and the MWEB suite's Litecoin node are
+    # fixtures of their own, built beside it.
+    cargo build -p spectra_cli -p spectra_zcash_fixture -p spectra_litecoin_mweb_fixture --quiet || exit 1
     BIN="$(cd "$(dirname "$0")/.." && pwd)/target/debug/spectra"
 fi
 
@@ -292,6 +294,10 @@ suite "Litecoin SegWit recovery and durable signing"            cli-litecoin.py
 suite "Peercoin recovery, mature rewards and durable signing"   cli-peercoin.py
 suite "XRP signing and protocol validation"                     cli-send-xrp.py
 suite "wallet operations: closing accounts, deleting keys"         cli-wallet-operations.py
+suite "XRP Ledger and Stellar issued assets, by issuer"           cli-issued-assets.py
+suite "ERC-721 and ERC-1155 tokens, never balances"              cli-nfts.py
+suite "Zcash shielded scanning, transfers and recovery"          cli-zcash-shielded.py
+suite "Litecoin MWEB scanning, peg-ins, peg-outs and recovery"   cli-litecoin-mweb.py
 suite "TRC-10 discovery, signing and execution receipts"        cli-trc10.py
 suite "owned staking preparation, execution and durable recovery" cli-staking.py
 suite "ICP neuron ownership, explicit review and certified refusal" cli-icp-staking.py

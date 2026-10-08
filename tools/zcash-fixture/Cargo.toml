@@ -1,0 +1,41 @@
+[package]
+name = "spectra_zcash_fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# A loopback lightwalletd for `scripts/cli-zcash-shielded.py`: a synthetic
+# Zcash chain funding a wallet's shielded and transparent receivers with real
+# transactions, served over gRPC, that checks each transaction it is handed
+# as a node would before mining it.
+[[bin]]
+name = "spectra-zcash-fixture"
+path = "src/main.rs"
+
+[dependencies]
+zcash_client_backend = { version = "0.24", default-features = false, features = ["lightwalletd-tonic-transport", "orchard", "transparent-inputs"] }
+zcash_keys = { version = "0.16", features = ["orchard", "sapling", "transparent-inputs"] }
+zcash_protocol = "0.10"
+zcash_primitives = { version = "0.30", features = ["transparent-inputs"] }
+zcash_transparent = { version = "0.10", features = ["transparent-inputs"] }
+zcash_script = "0.4"
+sapling-crypto = "0.7"
+orchard = { version = "0.15", default-features = false, features = ["std"] }
+incrementalmerkletree = { version = "0.8", features = ["legacy-api"] }
+zip32 = "0.2"
+jubjub = "0.10"
+bls12_381 = "0.8"
+bip39 = "2"
+secp256k1 = { version = "0.29", features = ["global-context"] }
+tonic = "0.14"
+tonic-prost = "0.14"
+prost = "0.14"
+http = "1"
+tower = "0.5"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+futures = "0.3"
+rand = "0.8"
+hex = "0.4"
+serde_json = "1"
+blake2b_simd = "1.0"

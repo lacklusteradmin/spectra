@@ -1,0 +1,149 @@
+{
+  "checked": "2026-10-07",
+  "method": "Read-only REST calls to each built-in Koios endpoint, made by a script written for this audit; nothing submitted. Genesis network magic, protocol parameters, an asset's metadata, an address holding it with its extended UTXOs, and one of its transactions with assets: the reads native-asset balances, discovery, history and transfers use.",
+  "claims_added": [
+    "token-balance",
+    "token-discovery",
+    "token-history"
+  ],
+  "endpoints": [
+    {
+      "id": "cardano.koios.primary",
+      "chain_id": "cardano",
+      "endpoint": "https://api.koios.rest/api/v1",
+      "checks": [
+        {
+          "path": "/epoch_params?order=epoch_no.desc&limit=1",
+          "fields": {
+            "epoch_no": 660,
+            "min_fee_a": 44,
+            "min_fee_b": 155381,
+            "coins_per_utxo_size": "4310",
+            "max_tx_size": 16384,
+            "max_val_size": 5000
+          }
+        },
+        {
+          "path": "/asset_info",
+          "asset": "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a.434841524c4933",
+          "fingerprint": "asset1qjflf9fs3x8rmlnacz2r6xdur0wtxmssan8u8p",
+          "registry_decimals": 6,
+          "has_cip68_field": true
+        },
+        {
+          "path": "/address_utxos (extended)",
+          "address": "addr1q840mw0s5lez3e9amj4r4k7xaff35r0g48fhsd99e4qa469w2rwhmdr0ky609hv9s0nxd5a5g2zq0ehcudkr7gp3a2wqx5nc9p",
+          "utxos": 4,
+          "utxos_with_assets": 2,
+          "asset_fields": [
+            "asset_name",
+            "decimals",
+            "fingerprint",
+            "policy_id",
+            "quantity"
+          ]
+        },
+        {
+          "path": "/tx_info (_assets)",
+          "tx_hash": "f3ea37b0382eb5f63304a7d039b704be456a97c4a9c8626b80e7f1c03a19e61c",
+          "output_asset_lists": 51,
+          "input_asset_lists": 1
+        }
+      ],
+      "network_magic": "764824073",
+      "ok": true
+    },
+    {
+      "id": "cardano.koios.xray",
+      "chain_id": "cardano",
+      "endpoint": "https://graph.xray.app/output/services/koios/mainnet/api/v1",
+      "checks": [
+        {
+          "path": "/epoch_params?order=epoch_no.desc&limit=1",
+          "fields": {
+            "epoch_no": 660,
+            "min_fee_a": 44,
+            "min_fee_b": 155381,
+            "coins_per_utxo_size": "4310",
+            "max_tx_size": 16384,
+            "max_val_size": 5000
+          }
+        },
+        {
+          "path": "/asset_info",
+          "asset": "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a.434841524c4933",
+          "fingerprint": "asset1qjflf9fs3x8rmlnacz2r6xdur0wtxmssan8u8p",
+          "registry_decimals": 6,
+          "has_cip68_field": true
+        },
+        {
+          "path": "/address_utxos (extended)",
+          "address": "addr1q840mw0s5lez3e9amj4r4k7xaff35r0g48fhsd99e4qa469w2rwhmdr0ky609hv9s0nxd5a5g2zq0ehcudkr7gp3a2wqx5nc9p",
+          "utxos": 4,
+          "utxos_with_assets": 2,
+          "asset_fields": [
+            "asset_name",
+            "decimals",
+            "fingerprint",
+            "policy_id",
+            "quantity"
+          ]
+        },
+        {
+          "path": "/tx_info (_assets)",
+          "tx_hash": "f3ea37b0382eb5f63304a7d039b704be456a97c4a9c8626b80e7f1c03a19e61c",
+          "output_asset_lists": 51,
+          "input_asset_lists": 1
+        }
+      ],
+      "network_magic": "764824073",
+      "ok": true
+    },
+    {
+      "id": "cardano.preprod.koios.xray",
+      "chain_id": "cardano-preprod",
+      "endpoint": "https://graph.xray.app/output/services/koios/preprod/api/v1",
+      "checks": [
+        {
+          "path": "/epoch_params?order=epoch_no.desc&limit=1",
+          "fields": {
+            "epoch_no": 318,
+            "min_fee_a": 44,
+            "min_fee_b": 155381,
+            "coins_per_utxo_size": "4310",
+            "max_tx_size": 16384,
+            "max_val_size": 5000
+          }
+        },
+        {
+          "path": "/asset_info",
+          "asset": "0000001c1f5134859ee40556e75834b9929d1b393ab94858a3d27ae0.424541434f4e",
+          "fingerprint": "asset1denjnw8f0qtcqu66wd5xxrv2ycghml6ed0alua",
+          "registry_decimals": null,
+          "has_cip68_field": true
+        },
+        {
+          "path": "/address_utxos (extended)",
+          "address": "addr_test1wp5eh8ptmasf64k8wjsfcqp8rzl6lu9djs2ysmxrqd3gqhsk45pn8",
+          "utxos": 1,
+          "utxos_with_assets": 1,
+          "asset_fields": [
+            "asset_name",
+            "decimals",
+            "fingerprint",
+            "policy_id",
+            "quantity"
+          ]
+        },
+        {
+          "path": "/tx_info (_assets)",
+          "tx_hash": "ec00dbc3b03ae69d0490ec71fe678490d7bbbc3248a1e9056c4bf16ede430cc2",
+          "output_asset_lists": 1,
+          "input_asset_lists": 1
+        }
+      ],
+      "network_magic": "1",
+      "ok": true
+    }
+  ]
+}

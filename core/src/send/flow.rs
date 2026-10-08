@@ -1336,6 +1336,8 @@ pub(crate) fn quoted_send_amount(
             SendPreview::Aptos { .. } if chain.mainnet_counterpart() == Chain::Aptos => {}
             SendPreview::Ton { .. } if chain.mainnet_counterpart() == Chain::Ton => {}
             SendPreview::Near { .. } if chain.mainnet_counterpart() == Chain::Near => {}
+            SendPreview::Xrp { .. } if chain.mainnet_counterpart() == Chain::Xrp => {}
+            SendPreview::Stellar { .. } if chain.mainnet_counterpart() == Chain::Stellar => {}
             _ => return None,
         }
         token_decimals?

@@ -16,6 +16,8 @@ authoritative copy, and the CLI can drive every domain operation.
 | `swift/` | Native iOS UI and platform services |
 | `kotlin/` | Android shell, currently a skeleton |
 | `tools/uniffi-bindgen/` | Binding generation binary |
+| `tools/zcash-fixture/` | Loopback lightwalletd over a synthetic Zcash chain, for `scripts/cli-zcash-shielded.py` |
+| `tools/litecoin-mweb-fixture/` | Loopback Litecoin node and Esplora indexer over a synthetic MWEB chain, for `scripts/cli-litecoin-mweb.py`; shares no code with core |
 
 Core stays one crate. A crate per domain would add Cargo overhead without an
 external consumer that needs the isolation. There are no published library APIs
@@ -210,7 +212,11 @@ panic when broken, since a broken embedded file is a build defect.
 - `api/` owns every request to a chain service and the parsing of its answer:
   one module per `EndpointApi` (`api/esplora.rs`, `api/substrate_json_rpc.rs`,
   …), plus `utxo` (the UTXO family's client over several of them), the `http`
-  and `json_rpc` transport and provider `time` parsing. It depends on nothing
+  and `json_rpc` transport, the `tcp` connection that the `grpc` channel
+  `lightwalletd` speaks over and Litecoin's peer-to-peer protocol
+  (`litecoin_p2p`) dial (under the same Tor, proxy and loopback rules as
+  `http`) and provider `time` parsing. `litecoin_p2p::wire` holds MWEB's wire
+  format, which `send::litecoin_mweb` builds with. It depends on nothing
   above it; `fetch`, `send`, `staking` and `service` call it.
 - `service/network.rs` owns endpoint health and status probes. Its siblings
   `network_balance`, `network_tokens`, `network_history`, `network_hd` and
@@ -225,7 +231,14 @@ panic when broken, since a broken embedded file is a build defect.
 - `wallet_db/` separates connection/schema, keypool, addresses, history,
   wallets, state and teardown. `state` and `teardown` keep their cross-table
   transactions; splitting files does not split commits. `store/tests/` groups
-  regressions by domain.
+  regressions by domain. `wallet_db::zcash` is the exception to one database:
+  a Zcash wallet's shielded state is librustzcash's own database
+  (`zcash/<wallet id>.sqlite` beside Spectra's), which only
+  `service::zcash_shielded` and `send::zcash_shielded` open, and which wallet
+  removal deletes with the wallet's secrets. `wallet_db::scan_cache` holds
+  what a scan with a wallet's own key finds — a Monero wallet's outputs, a
+  Litecoin wallet's MWEB outputs — encrypted under a key derived from that
+  scan key, which the SecretStore keeps as `{wallet id}.scan-key`.
 
 ### Persistent send stages
 

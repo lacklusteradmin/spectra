@@ -35,6 +35,7 @@ pub(crate) mod icp_stages;
 pub(crate) mod icp_staking;
 pub mod kaspa;
 pub mod litecoin;
+pub(crate) mod litecoin_mweb;
 pub(crate) mod litecoin_quote;
 pub(crate) mod monero_local;
 pub mod near;
@@ -42,13 +43,17 @@ pub mod peercoin;
 pub mod polkadot;
 pub mod polkadot_pools;
 pub mod solana;
+pub(crate) mod solana_token;
 pub mod stellar;
+pub(crate) mod stellar_issued;
 pub mod substrate;
 pub mod sui;
 pub mod ton;
 pub mod tron;
 pub mod xrp;
+pub(crate) mod xrp_issued;
 pub mod zcash;
+pub(crate) mod zcash_shielded;
 pub(crate) mod zcash_stages;
 
 #[cfg(test)]

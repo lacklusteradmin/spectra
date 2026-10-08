@@ -234,3 +234,29 @@ mod watch_only {
         assert_eq!(rejected, vec!["0xnothex".to_string()]);
     }
 }
+
+/// An MWEB address is a Litecoin address a payment can reach, and nothing a
+/// watched wallet could read: no wallet is one.
+#[test]
+fn an_mweb_address_is_no_wallet() {
+    use crate::registry::Chain;
+    let key = secp256k1::PublicKey::from_secret_key(
+        &secp256k1::Secp256k1::new(),
+        &secp256k1::SecretKey::from_slice(&[2; 32]).unwrap(),
+    );
+    let address = crate::send::litecoin_mweb::keys::StealthAddress {
+        scan: key,
+        spend: key,
+    }
+    .encode(Chain::Litecoin)
+    .unwrap();
+    assert!(crate::send::flow::is_valid_send_address(
+        Chain::Litecoin,
+        address.clone()
+    ));
+    assert_eq!(normalized(Chain::Litecoin, &address), None);
+    assert!(!crate::derivation::import::is_valid_watch_only_address(
+        Chain::Litecoin,
+        address
+    ));
+}

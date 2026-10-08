@@ -316,25 +316,6 @@ impl SolanaClient {
         Ok(SolanaBalance { lamports })
     }
 
-    /// Fetch SPL token balances for a list of mint addresses.
-    /// Every SPL token account the owner holds, in one call.
-    ///
-    /// `getTokenAccountsByOwner` filtered by `programId` rather than by mint
-    /// returns the lot, and the parsed account carries the mint's own
-    /// `decimals` — so discovery answers "what does this address hold" and
-    /// "how is it denominated" together, without a catalog and without an
-    /// indexer.
-    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<TransferMint, ApiError> {
-        crate::derivation::solana::decode_b58_32(mint).map_err(ApiError::invalid)?;
-        let result = self
-            .call(
-                "getAccountInfo",
-                json!([mint, {"encoding":"jsonParsed", "commitment":"confirmed"}]),
-            )
-            .await?;
-        validate_transfer_mint(&result["value"])
-    }
-
     /// Every token account the owner holds under either token program, as
     /// one confirmed read each: what closing them depends on.
     pub(crate) async fn fetch_token_accounts(
@@ -400,6 +381,13 @@ impl SolanaClient {
         Ok(out)
     }
 
+    /// Every SPL token account the owner holds, in one call.
+    ///
+    /// `getTokenAccountsByOwner` filtered by `programId` rather than by mint
+    /// returns the lot, and the parsed account carries the mint's own
+    /// `decimals` — so discovery answers "what does this address hold" and
+    /// "how is it denominated" together, without a catalog and without an
+    /// indexer.
     pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, ApiError> {
         const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
         const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
@@ -871,41 +859,283 @@ mod balance_read_tests {
 pub(crate) struct TransferMint {
     pub program: [u8; 32],
     pub decimals: u8,
-    /// The mint has a transfer-fee extension, so the transfer states the fee
-    /// it expects (always zero; see [`validate_transfer_mint`]).
-    pub transfer_fee_extension: bool,
+    /// Token-2022's transfer fee, when the mint has the extension: the
+    /// transfer then states the fee it expects, and the program fails it on
+    /// any other.
+    pub transfer_fee: Option<TransferFeeConfig>,
+    /// The program a Token-2022 transfer hook runs on every transfer.
+    pub transfer_hook: Option<[u8; 32]>,
+    /// New token accounts start frozen, so a recipient without one cannot
+    /// receive until the issuer thaws the account the transfer would create.
+    pub default_frozen: bool,
+}
+
+/// One Token-2022 transfer fee setting: from `epoch` on, `basis_points` of
+/// the amount, rounded up and capped at `maximum_fee`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct TransferFee {
+    pub epoch: u64,
+    pub maximum_fee: u64,
+    pub basis_points: u16,
+}
+
+impl TransferFee {
+    /// spl-token-2022's `TransferFee::calculate_fee`, which the program
+    /// recomputes and compares with the fee a transfer states.
+    pub fn fee(&self, amount: u64) -> u64 {
+        if self.basis_points == 0 || amount == 0 {
+            return 0;
+        }
+        let raw = (u128::from(amount) * u128::from(self.basis_points)).div_ceil(10_000);
+        // Never more than the amount: the basis points are at most 10 000.
+        u64::try_from(raw).map_or(self.maximum_fee, |raw| raw.min(self.maximum_fee))
+    }
+}
+
+/// A mint's transfer fee: the older setting, until the epoch the newer one
+/// takes over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct TransferFeeConfig {
+    pub older: TransferFee,
+    pub newer: TransferFee,
+}
+
+impl TransferFeeConfig {
+    /// The setting a transaction executing in `epoch` pays.
+    pub fn at(&self, epoch: u64) -> TransferFee {
+        if epoch >= self.newer.epoch {
+            self.newer
+        } else {
+            self.older
+        }
+    }
+}
+
+/// Where the cluster is in its epoch: a Token-2022 fee is the one of the
+/// epoch the transaction executes in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EpochInfo {
+    pub epoch: u64,
+    pub slot_index: u64,
+    pub slots_in_epoch: u64,
+}
+
+/// A token account a transfer reads from or credits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TransferTokenAccount {
+    /// The token program that owns it.
+    pub program: [u8; 32],
+    pub mint: String,
+    pub owner: String,
+    pub amount: u64,
+    pub frozen: bool,
+    /// Token-2022 `MemoTransfer`: a credit without a memo before it fails.
+    pub requires_memo: bool,
+    /// Token-2022 confidential transfers with non-confidential credits
+    /// switched off: a public transfer into it fails.
+    pub refuses_public_credits: bool,
+}
+
+impl SolanaClient {
+    /// The mint as a transfer of it must treat it, or a refusal.
+    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<TransferMint, ApiError> {
+        crate::derivation::solana::decode_b58_32(mint).map_err(ApiError::invalid)?;
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([mint, {"encoding":"jsonParsed", "commitment":"confirmed"}]),
+            )
+            .await?;
+        validate_transfer_mint(&result["value"])
+    }
+
+    pub(crate) async fn fetch_epoch_info(&self) -> Result<EpochInfo, ApiError> {
+        let result = self
+            .call("getEpochInfo", json!([{"commitment": "confirmed"}]))
+            .await?;
+        let field = |name: &str| {
+            result[name]
+                .as_u64()
+                .or_decode("getEpochInfo: missing epoch position")
+        };
+        let info = EpochInfo {
+            epoch: field("epoch")?,
+            slot_index: field("slotIndex")?,
+            slots_in_epoch: field("slotsInEpoch")?,
+        };
+        if info.slot_index >= info.slots_in_epoch {
+            return Err(ApiError::decode("getEpochInfo: slot outside its epoch"));
+        }
+        Ok(info)
+    }
+
+    /// A token account, or `None` when nothing is at the address yet.
+    pub(crate) async fn fetch_transfer_token_account(
+        &self,
+        address: &str,
+    ) -> Result<Option<TransferTokenAccount>, ApiError> {
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([address, {"encoding":"jsonParsed", "commitment":"confirmed"}]),
+            )
+            .await?;
+        let account = &result["value"];
+        if account.is_null() {
+            return Ok(None);
+        }
+        parse_transfer_token_account(account).map(Some)
+    }
+
+    /// An account's owner program and raw data, or `None` when it does not
+    /// exist: what a transfer hook's extra accounts are resolved from.
+    pub(crate) async fn fetch_account_data(
+        &self,
+        address: &str,
+    ) -> Result<Option<([u8; 32], Vec<u8>)>, ApiError> {
+        use base64::Engine;
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([address, {"encoding":"base64", "commitment":"confirmed"}]),
+            )
+            .await?;
+        let account = &result["value"];
+        if account.is_null() {
+            return Ok(None);
+        }
+        let owner = account["owner"]
+            .as_str()
+            .or_decode("getAccountInfo: missing owner")?;
+        let data = account["data"]
+            .as_array()
+            .filter(|data| data.get(1).and_then(Value::as_str) == Some("base64"))
+            .and_then(|data| data.first())
+            .and_then(Value::as_str)
+            .or_decode("getAccountInfo: missing base64 data")?;
+        Ok(Some((
+            crate::derivation::solana::decode_b58_32(owner)?,
+            base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|_| ApiError::decode("getAccountInfo: invalid base64 data"))?,
+        )))
+    }
+
+    /// Run an unsigned message without signature checks. `None` when it
+    /// executes; the program's error when an instruction fails. A node that
+    /// cannot run it at all is a read failure, not a verdict.
+    pub(crate) async fn simulate_message(
+        &self,
+        message: &[u8],
+    ) -> Result<Option<String>, ApiError> {
+        use base64::Engine;
+        let mut bytes = vec![1];
+        bytes.extend([0; 64]);
+        bytes.extend(message);
+        let result = self
+            .call(
+                "simulateTransaction",
+                json!([
+                    base64::engine::general_purpose::STANDARD.encode(bytes),
+                    {"encoding":"base64","sigVerify":false,"commitment":"confirmed"}
+                ]),
+            )
+            .await?;
+        let error = result["value"]
+            .get("err")
+            .or_decode("simulateTransaction: missing result")?;
+        if error.is_null() {
+            return Ok(None);
+        }
+        if error.get("InstructionError").is_some() {
+            return Ok(Some(error.to_string()));
+        }
+        Err(ApiError::rejected(format!(
+            "Solana simulation did not run: {error}"
+        )))
+    }
+}
+
+fn parse_transfer_token_account(account: &Value) -> Result<TransferTokenAccount, ApiError> {
+    let owner = account["owner"]
+        .as_str()
+        .or_decode("token account: missing owner program")?;
+    let parsed = &account["data"]["parsed"];
+    if parsed["type"] != "account" {
+        return Err(ApiError::invalid("Not a token account"));
+    }
+    let info = &parsed["info"];
+    let text = |field: &str| {
+        info[field]
+            .as_str()
+            .map(str::to_string)
+            .or_decode("token account: missing mint or owner")
+    };
+    let mut requires_memo = false;
+    let mut refuses_public_credits = false;
+    for extension in info["extensions"].as_array().into_iter().flatten() {
+        let state = &extension["state"];
+        match extension["extension"].as_str() {
+            Some("memoTransfer") => {
+                requires_memo = state["requireIncomingTransferMemos"]
+                    .as_bool()
+                    .or_decode("token account: invalid memo requirement")?;
+            }
+            Some("confidentialTransferAccount") => {
+                refuses_public_credits = !state["allowNonConfidentialCredits"]
+                    .as_bool()
+                    .or_decode("token account: invalid confidential transfer state")?;
+            }
+            _ => {}
+        }
+    }
+    Ok(TransferTokenAccount {
+        program: crate::derivation::solana::decode_b58_32(owner)?,
+        mint: text("mint")?,
+        owner: text("owner")?,
+        amount: info
+            .pointer("/tokenAmount/amount")
+            .and_then(Value::as_str)
+            .and_then(|amount| amount.parse().ok())
+            .or_decode("token account: missing amount")?,
+        frozen: match info["state"].as_str() {
+            Some("initialized") => false,
+            Some("frozen") => true,
+            _ => return Err(ApiError::decode("token account: not initialized")),
+        },
+        requires_memo,
+        refuses_public_credits,
+    })
 }
 
 /// Refuse unknown programs and extensions before signing.
 ///
-/// Token-2022 extensions are allowed by name, each for a reason it leaves a
-/// plain `TransferChecked` from the owner meaning what it says:
+/// Token-2022 extensions are taken by name, each for what it does to a
+/// `TransferChecked` from the owner:
 ///
 /// - metadata, group and member pointers and records only describe the mint;
-/// - a mint close authority acts only on a mint with no supply;
+/// - a mint close authority acts only on a mint with no supply, and
+///   confidential and permissioned mint and burn settings act on minting and
+///   burning;
 /// - a permanent delegate can move the owner's tokens, but whether the owner
 ///   sends does not change that;
 /// - confidential transfer configs govern encrypted balances, not this one;
-/// - a transfer hook with no program runs nothing;
-/// - a transfer fee that charges nothing in either its current or its
-///   scheduled config withholds nothing. The transfer then asserts a zero
-///   fee on chain, so a fee raised between review and landing fails the
-///   transaction instead of withholding from the recipient.
+/// - a transfer fee is withheld from the amount on its way: the transfer
+///   states it, and the recipient receives the rest;
+/// - a transfer hook runs its program, which the transfer gives the extra
+///   accounts its validation account lists;
+/// - a default frozen state freezes the account the transfer would create
+///   for a recipient who has none;
+/// - a pause stops every transfer while it lasts.
 ///
-/// Anything else — a hook program, a fee, non-transferable tokens, frozen
-/// default accounts, interest or scaled amounts, pausing, or an extension
-/// this list has never heard of — changes what arrives or needs accounts the
-/// transfer does not supply, so it is refused.
+/// Anything else — non-transferable tokens, interest or scaled amounts that
+/// show a balance other than the one moved, or an extension this list has
+/// never heard of — is refused.
 fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, ApiError> {
     let owner = account["owner"]
         .as_str()
         .or_decode("SPL mint: missing owner")?;
-    if ![
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-    ]
-    .contains(&owner)
-    {
+    if !crate::send::solana::TOKEN_PROGRAMS.contains(&owner) {
         return Err(ApiError::InvalidInput(
             "SPL mint: unsupported owner program".into(),
         ));
@@ -917,7 +1147,16 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, A
             "SPL mint: expected initialized mint".into(),
         ));
     }
-    let mut transfer_fee_extension = false;
+    let mut mint = TransferMint {
+        program: crate::derivation::solana::decode_b58_32(owner)?,
+        decimals: info["decimals"]
+            .as_u64()
+            .and_then(|d| u8::try_from(d).ok())
+            .or_decode("SPL mint: invalid decimals")?,
+        transfer_fee: None,
+        transfer_hook: None,
+        default_frozen: false,
+    };
     let extensions = match info.get("extensions") {
         None => &Vec::new(),
         Some(extensions) => extensions
@@ -937,48 +1176,70 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, A
                 | "mintCloseAuthority"
                 | "permanentDelegate"
                 | "confidentialTransferMint"
-                | "confidentialTransferFeeConfig",
+                | "confidentialTransferFeeConfig"
+                | "confidentialMintBurn"
+                | "permissionedBurnConfig",
             ) => {}
             Some("transferHook") => {
-                if !state["programId"].is_null() {
-                    return Err(ApiError::InvalidInput(
-                        "SPL mint: transfer hook programs are not supported".into(),
-                    ));
-                }
+                mint.transfer_hook = match &state["programId"] {
+                    Value::Null => None,
+                    Value::String(program) => {
+                        Some(crate::derivation::solana::decode_b58_32(program)?)
+                    }
+                    _ => return Err(ApiError::decode("SPL mint: invalid transfer hook")),
+                };
             }
             Some("transferFeeConfig") => {
-                // A fee is zero when either factor is: no basis points, or a
-                // cap of nothing.
-                let charges_nothing = |config: &serde_json::Value| {
-                    config["transferFeeBasisPoints"].as_u64() == Some(0)
-                        || config["maximumFee"].as_u64() == Some(0)
+                let fee = |config: &Value| {
+                    Some(TransferFee {
+                        epoch: config["epoch"].as_u64()?,
+                        maximum_fee: config["maximumFee"].as_u64()?,
+                        basis_points: config["transferFeeBasisPoints"]
+                            .as_u64()
+                            .filter(|points| *points <= 10_000)
+                            .and_then(|points| u16::try_from(points).ok())?,
+                    })
                 };
-                if !charges_nothing(&state["olderTransferFee"])
-                    || !charges_nothing(&state["newerTransferFee"])
-                {
-                    return Err(ApiError::rejected(
-                        "SPL mint: tokens that charge a transfer fee are not supported",
+                mint.transfer_fee = Some(TransferFeeConfig {
+                    older: fee(&state["olderTransferFee"])
+                        .or_decode("SPL mint: invalid transfer fee")?,
+                    newer: fee(&state["newerTransferFee"])
+                        .or_decode("SPL mint: invalid transfer fee")?,
+                });
+            }
+            Some("defaultAccountState") => {
+                mint.default_frozen = match state["accountState"].as_str() {
+                    Some("frozen") => true,
+                    Some("initialized") => false,
+                    _ => return Err(ApiError::decode("SPL mint: invalid default account state")),
+                };
+            }
+            Some("pausableConfig") => match state["paused"].as_bool() {
+                Some(false) => {}
+                Some(true) => {
+                    return Err(ApiError::invalid(
+                        "The token's issuer has paused its transfers",
                     ));
                 }
-                transfer_fee_extension = true;
+                None => return Err(ApiError::decode("SPL mint: invalid pause state")),
+            },
+            Some("nonTransferable") => {
+                return Err(ApiError::invalid("This token cannot be transferred"));
+            }
+            Some("interestBearingConfig" | "scaledUiAmountConfig") => {
+                return Err(ApiError::invalid(
+                    "Sending a token whose displayed amount is scaled from the amount moved is not supported",
+                ));
             }
             Some(other) => {
-                return Err(ApiError::Decode(format!(
+                return Err(ApiError::invalid(format!(
                     "SPL mint: Token-2022 extension {other} is not supported for sending"
                 )));
             }
             None => return Err(ApiError::InvalidInput("SPL mint: unnamed extension".into())),
         }
     }
-    let decimals = info["decimals"]
-        .as_u64()
-        .and_then(|d| u8::try_from(d).ok())
-        .or_decode("SPL mint: invalid decimals")?;
-    Ok(TransferMint {
-        program: crate::derivation::solana::decode_b58_32(owner)?,
-        decimals,
-        transfer_fee_extension,
-    })
+    Ok(mint)
 }
 
 #[cfg(test)]
@@ -993,7 +1254,8 @@ mod audit_fix5_mint_tests {
         let b = validate_transfer_mint(&token2022).unwrap();
         assert_ne!(a.program, b.program);
         assert_eq!(a.decimals, 9);
-        assert!(!a.transfer_fee_extension && !b.transfer_fee_extension);
+        assert!(a.transfer_fee.is_none() && b.transfer_fee.is_none());
+        assert!(a.transfer_hook.is_none() && !a.default_frozen);
         let program = |id: &str| crate::derivation::solana::decode_b58_32(id).unwrap();
         assert_eq!(
             a.program,
@@ -1009,7 +1271,7 @@ mod audit_fix5_mint_tests {
             validate_transfer_mint(&token2022)
                 .unwrap_err()
                 .to_string()
-                .contains("nonTransferable")
+                .contains("cannot be transferred")
         );
         assert!(validate_transfer_mint(&account("11111111111111111111111111111111")).is_err());
         assert!(validate_transfer_mint(&serde_json::Value::Null).is_err());
@@ -1045,79 +1307,126 @@ mod audit_fix5_mint_tests {
         mint
     }
 
-    /// Every extension PYUSD carries leaves the transfer meaning what it says,
-    /// and the fee extension is reported so the transfer can assert zero.
+    /// Every extension PYUSD carries leaves the transfer meaning what it
+    /// says: a fee of nothing, and a hook with no program to run.
     #[test]
-    fn pyusd_is_sendable_and_states_its_fee_extension() {
+    fn pyusd_is_sendable_with_a_zero_fee_and_no_hook() {
         let mint = validate_transfer_mint(&pyusd_mint()).unwrap();
         assert_eq!(mint.decimals, 6);
-        assert!(mint.transfer_fee_extension);
+        let fee = mint.transfer_fee.unwrap();
+        assert_eq!(fee.at(644).fee(u64::MAX), 0);
+        assert!(mint.transfer_hook.is_none() && !mint.default_frozen);
     }
 
-    /// A fee charges nothing when either factor is zero, in both the current
-    /// and the scheduled config; anything else is refused.
+    /// spl-token-2022's fee: basis points of the amount rounded up, capped,
+    /// and the newer setting from its own epoch on.
     #[test]
-    fn a_fee_that_can_withhold_is_refused() {
-        let config = |older: Value, newer: Value| {
-            with_extension(
-                pyusd_mint(),
-                "transferFeeConfig",
-                json!({"olderTransferFee": older, "newerTransferFee": newer}),
-            )
+    fn a_transfer_fee_is_read_and_charged_per_epoch() {
+        let fee = |epoch: u64, bps: u64, max: u64| json!({"epoch": epoch, "transferFeeBasisPoints": bps, "maximumFee": max});
+        let mint = validate_transfer_mint(&with_extension(
+            pyusd_mint(),
+            "transferFeeConfig",
+            json!({"olderTransferFee": fee(10, 50, 5_000), "newerTransferFee": fee(12, 100, 1_000_000)}),
+        ))
+        .unwrap();
+        let config = mint.transfer_fee.unwrap();
+        // 0.5%, rounded up: 1 unit of fee on anything from 1 to 200 units.
+        assert_eq!(config.at(11).fee(1), 1);
+        assert_eq!(config.at(11).fee(200), 1);
+        assert_eq!(config.at(11).fee(201), 2);
+        assert_eq!(config.at(11).fee(0), 0);
+        // Capped at the maximum.
+        assert_eq!(config.at(11).fee(10_000_000), 5_000);
+        // The newer setting from its epoch on.
+        assert_eq!(config.at(12).fee(10_000), 100);
+        assert_eq!(config.at(13).fee(u64::MAX), 1_000_000);
+        // A fee cannot be more than the amount.
+        let all = TransferFee {
+            epoch: 0,
+            maximum_fee: u64::MAX,
+            basis_points: 10_000,
         };
-        let fee = |bps: u64, max: u64| json!({"transferFeeBasisPoints": bps, "maximumFee": max});
-        for (older, newer, sendable) in [
-            (fee(0, 5), fee(0, 5), true),
-            (fee(50, 0), fee(50, 0), true),
-            (fee(50, 5), fee(0, 0), false),
-            // Scheduled for a later epoch still counts: review cannot know
-            // which epoch the transaction lands in.
-            (fee(0, 0), fee(1, 1), false),
-            (json!({}), fee(0, 0), false),
+        assert_eq!(all.fee(u64::MAX), u64::MAX);
+        for bad in [
+            json!({"olderTransferFee": fee(1, 10_001, 1), "newerTransferFee": fee(1, 0, 0)}),
+            json!({"olderTransferFee": {}, "newerTransferFee": fee(1, 0, 0)}),
         ] {
-            let result = validate_transfer_mint(&config(older, newer));
-            assert_eq!(result.is_ok(), sendable, "{result:?}");
-            if !sendable {
-                assert!(result.unwrap_err().to_string().contains("transfer fee"));
-            }
+            assert!(
+                validate_transfer_mint(&with_extension(pyusd_mint(), "transferFeeConfig", bad))
+                    .is_err()
+            );
         }
     }
 
-    /// A hook with a program needs extra accounts this transfer does not
-    /// resolve.
+    /// A hook names the program the transfer must give its extra accounts.
     #[test]
-    fn a_transfer_hook_program_is_refused() {
-        let mint = with_extension(
+    fn a_transfer_hook_program_is_read() {
+        let hook = "HooK111111111111111111111111111111111111111";
+        let mint = validate_transfer_mint(&with_extension(
             pyusd_mint(),
             "transferHook",
-            json!({"programId": "HooK111111111111111111111111111111111111111"}),
+            json!({"programId": hook}),
+        ))
+        .unwrap();
+        assert_eq!(
+            mint.transfer_hook,
+            Some(crate::derivation::solana::decode_b58_32(hook).unwrap())
+        );
+        let malformed = with_extension(pyusd_mint(), "transferHook", json!({"programId": 7}));
+        assert!(validate_transfer_mint(&malformed).is_err());
+    }
+
+    /// Frozen default accounts are reported, and a pause refuses only while
+    /// it lasts.
+    #[test]
+    fn default_state_and_pause_are_read() {
+        let frozen = with_extension(
+            pyusd_mint(),
+            "defaultAccountState",
+            json!({"accountState": "frozen"}),
+        );
+        assert!(validate_transfer_mint(&frozen).unwrap().default_frozen);
+        let thawed = with_extension(
+            pyusd_mint(),
+            "defaultAccountState",
+            json!({"accountState": "initialized"}),
+        );
+        assert!(!validate_transfer_mint(&thawed).unwrap().default_frozen);
+        let running = with_extension(
+            pyusd_mint(),
+            "pausableConfig",
+            json!({"authority": "x", "paused": false}),
+        );
+        assert!(validate_transfer_mint(&running).is_ok());
+        let paused = with_extension(
+            pyusd_mint(),
+            "pausableConfig",
+            json!({"authority": "x", "paused": true}),
         );
         assert!(
-            validate_transfer_mint(&mint)
+            validate_transfer_mint(&paused)
                 .unwrap_err()
                 .to_string()
-                .contains("hook")
+                .contains("paused")
         );
     }
 
-    /// Extensions that change what arrives, and ones nobody listed, are refused.
+    /// Extensions that change what a transfer means, and ones nobody listed,
+    /// are refused, each with its reason.
     #[test]
-    fn unlisted_extensions_are_refused() {
-        for name in [
-            "nonTransferable",
-            "defaultAccountState",
-            "interestBearingConfig",
-            "scaledUiAmountConfig",
-            "pausableConfig",
-            "somethingNew",
+    fn remaining_extensions_are_refused() {
+        for (name, reason) in [
+            ("nonTransferable", "cannot be transferred"),
+            ("interestBearingConfig", "scaled"),
+            ("scaledUiAmountConfig", "scaled"),
+            ("unparseableExtension", "unparseableExtension"),
+            ("somethingNew", "somethingNew"),
         ] {
             let mint = with_extension(pyusd_mint(), name, json!({}));
+            let error = validate_transfer_mint(&mint).unwrap_err();
             assert!(
-                validate_transfer_mint(&mint)
-                    .unwrap_err()
-                    .to_string()
-                    .contains(name),
-                "{name}"
+                matches!(error, ApiError::InvalidInput(_)) && error.to_string().contains(reason),
+                "{name}: {error}"
             );
         }
         let mut unnamed = pyusd_mint();
@@ -1125,6 +1434,41 @@ mod audit_fix5_mint_tests {
         assert!(validate_transfer_mint(&unnamed).is_err());
         unnamed["data"]["parsed"]["info"]["extensions"] = json!("none");
         assert!(validate_transfer_mint(&unnamed).is_err());
+    }
+
+    /// A recipient account's memo requirement and confidential-only credits
+    /// are read from its extensions.
+    #[test]
+    fn token_account_transfer_rules_are_read() {
+        let account = |extensions: Value, state: &str| {
+            json!({"owner":"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb","data":{"parsed":{"type":"account","info":{
+                "mint":"M","owner":"O","state":state,"tokenAmount":{"amount":"42","decimals":6},
+                "extensions":extensions}}}})
+        };
+        let plain = parse_transfer_token_account(&account(json!([]), "initialized")).unwrap();
+        assert_eq!(
+            (
+                plain.amount,
+                plain.frozen,
+                plain.requires_memo,
+                plain.refuses_public_credits
+            ),
+            (42, false, false, false)
+        );
+        let strict = parse_transfer_token_account(&account(
+            json!([
+                {"extension":"memoTransfer","state":{"requireIncomingTransferMemos":true}},
+                {"extension":"confidentialTransferAccount","state":{"allowNonConfidentialCredits":false}},
+                {"extension":"immutableOwner"}
+            ]),
+            "frozen",
+        ))
+        .unwrap();
+        assert!(strict.frozen && strict.requires_memo && strict.refuses_public_credits);
+        assert!(parse_transfer_token_account(&account(json!([]), "uninitialized")).is_err());
+        let mut mint = account(json!([]), "initialized");
+        mint["data"]["parsed"]["type"] = json!("mint");
+        assert!(parse_transfer_token_account(&mint).is_err());
     }
 }
 

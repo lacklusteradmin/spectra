@@ -38,6 +38,7 @@ impl WalletService {
                 recipient_warnings: review.recipient_warnings,
                 requires_self_send_confirmation: review.requires_self_send_confirmation,
                 staking: None,
+                transfer_terms: None,
             };
             this.build_send_with_review(review.request, Some(advisories))
                 .await
@@ -117,6 +118,14 @@ impl WalletService {
                     .await?;
             }
             let (submission, resources) = match &stored.prepared {
+                PreparedPayload::ZcashShielded(p) => {
+                    this.sign_zcash_shielded(&stored, p, password.as_ref().map(|p| p.as_str()))
+                        .await?
+                }
+                PreparedPayload::LitecoinMweb(p) => {
+                    this.sign_litecoin_mweb(&stored, p, password.as_ref().map(|p| p.as_str()))
+                        .await?
+                }
                 PreparedPayload::Evm(p) => {
                     let key = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                     let raw = p.sign(&key)?;
@@ -230,8 +239,13 @@ impl WalletService {
         }
         let chain = stored.view.chain_id;
         let icp_staking = matches!(&stored.prepared, PreparedPayload::IcpStaking(_));
+        // A shielded transaction goes to the lightwalletd servers the wallet
+        // scans with.
+        let shielded = matches!(&stored.prepared, PreparedPayload::ZcashShielded(_));
         let configured = if stored.view.staking.is_some() {
             self.staking_broadcast_endpoints(chain).await?
+        } else if shielded {
+            self.zcash_shielded_broadcast_endpoints(chain).await?
         } else {
             self.send_endpoints(chain).await?
         };
@@ -243,7 +257,11 @@ impl WalletService {
                     "Select distinct configured broadcast endpoints",
                 ));
             }
-            if !icp_staking {
+            if shielded {
+                crate::api::lightwalletd::LightwalletdClient::new(Arc::new(vec![endpoint.clone()]))
+                    .session(chain)
+                    .await?;
+            } else if !icp_staking {
                 self.validate_broadcast_endpoint(chain, endpoint).await?;
             }
         }
@@ -433,7 +451,35 @@ impl WalletService {
             Some(crate::send::stages::WalletOperation::CloseTokenAccounts { .. }) => {
                 history.kind = crate::store::wallet_domain::TransactionKind::CloseTokenAccounts;
             }
-            Some(crate::send::stages::WalletOperation::CloseAccount { .. }) | None => {}
+            Some(crate::send::stages::WalletOperation::TrustAsset { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::TrustAsset;
+            }
+            Some(crate::send::stages::WalletOperation::RemoveTrustLine { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::RemoveTrustLine;
+            }
+            // A transfer like any other, of an asset that is one token: the
+            // indexer's row for it has this identity, and replaces this one.
+            Some(crate::send::stages::WalletOperation::TransferNft {
+                contract,
+                standard,
+                token_id,
+                collection,
+                ..
+            }) => {
+                history.deployment_id = Some(crate::tokens::nft_deployment_id(
+                    chain, *standard, contract, token_id,
+                ));
+                history.asset_display_name = crate::tokens::nft_display_name(collection, token_id);
+                history.symbol = stored.view.symbol.clone();
+            }
+            Some(crate::send::stages::WalletOperation::ShieldTransparent { .. }) => {
+                history.kind = crate::store::wallet_domain::TransactionKind::Shield;
+            }
+            Some(
+                crate::send::stages::WalletOperation::CloseAccount { .. }
+                | crate::send::stages::WalletOperation::ShieldedPayment { .. },
+            )
+            | None => {}
         }
         history.created_at_unix = stored.view.created_at;
         if icp_staking {
@@ -461,6 +507,8 @@ impl WalletService {
         for endpoint in endpoints {
             let api = if icp_staking {
                 Some(crate::EndpointApi::IcpReplica)
+            } else if shielded {
+                Some(crate::EndpointApi::Lightwalletd)
             } else {
                 self.endpoint_api(chain, &endpoint).await
             }
@@ -512,7 +560,8 @@ impl WalletService {
             match result {
                 Ok(hash)
                     if submission.transaction_hash.as_ref().is_none_or(|expected| {
-                        if chain.is_evm() {
+                        // Hex ids are one id in either case.
+                        if chain.is_evm() || chain.mainnet_counterpart() == Chain::Cardano {
                             expected.eq_ignore_ascii_case(&hash)
                         } else {
                             expected == &hash
@@ -743,10 +792,11 @@ impl WalletService {
             }
             _ => Vec::new(),
         });
-        let review = match review {
+        let mut review = match review {
             Some(review) => review,
             None => self.staged_send_review(&request).await?,
         };
+        review.transfer_terms = prepared.transfer_terms(request.token_decimals);
         let mut stored = StoredSend {
             view: SendArtifact {
                 id: crate::store::new_transaction_id(),

@@ -82,16 +82,16 @@ impl WalletService {
         }
         fetch_history_page(address, chain, cursor, self).await
     }
-    /// Fetch one page of EVM transaction history for `address`.
-    ///
-    /// Runs two requests in parallel against the configured Etherscan-compatible
-    /// explorer endpoint:
+    /// Fetch one page of EVM transaction history for `address` from the
+    /// configured Etherscan-compatible explorers:
     ///   1. `txlist` — native ETH/EVM transfers
     ///   2. `tokentx` — ERC-20 token transfers
+    ///   3. `tokennfttx` and `token1155tx` — ERC-721 and ERC-1155 transfers
     ///
     /// `tokens` lists the known tokens to include. Only transfers whose
     /// contract matches a known token are returned; pass an empty list to
-    /// skip token transfers entirely.
+    /// skip token transfers entirely. Every NFT transfer of the address is
+    /// returned: each names its own token, with no list to match.
     pub(crate) async fn fetch_evm_history_page(
         &self,
         chain_id: crate::registry::Chain,
@@ -101,7 +101,7 @@ impl WalletService {
         page_size: u32,
     ) -> Result<EvmHistoryPage, SpectraBridgeError> {
         use crate::fetch::history_decode::{
-            EvmHistoryPageDecoded, EvmNativeTransferItem, EvmTokenTransferItem,
+            EvmHistoryPageDecoded, EvmNativeTransferItem, EvmNftTransferItem, EvmTokenTransferItem,
         };
 
         // Only EVM chains are supported.
@@ -144,17 +144,17 @@ impl WalletService {
             }
         })
         .await?;
-        let raw_tokens = if tokens.is_empty() {
-            vec![]
+        let token_sources = self
+            .api_endpoints(
+                chain,
+                crate::EndpointApi::Blockscout,
+                &[EndpointCapability::TokenHistory],
+            )
+            .await?;
+        let (raw_tokens, tokens_full) = if tokens.is_empty() {
+            (vec![], false)
         } else {
-            let sources = self
-                .api_endpoints(
-                    chain,
-                    crate::EndpointApi::Blockscout,
-                    &[EndpointCapability::TokenHistory],
-                )
-                .await?;
-            crate::api::http::race(&sources, |base| {
+            crate::api::http::race(&token_sources, |base| {
                 let client = &client;
                 let address = &address;
                 async move {
@@ -170,9 +170,36 @@ impl WalletService {
             })
             .await?
         };
+        let mut raw_nfts = Vec::new();
+        let mut nfts_full = false;
+        if !token_sources.is_empty() {
+            for standard in [
+                crate::api::evm_nft::NftStandard::Erc721,
+                crate::api::evm_nft::NftStandard::Erc1155,
+            ] {
+                let (entries, full) = crate::api::http::race(&token_sources, |base| {
+                    let client = &client;
+                    let address = &address;
+                    async move {
+                        client
+                            .fetch_nft_transfers(
+                                address,
+                                crate::registry::EvmHistorySource::Open(&base),
+                                standard,
+                                page,
+                                page_size,
+                            )
+                            .await
+                    }
+                })
+                .await?;
+                raw_nfts.extend(entries);
+                nfts_full |= full;
+            }
+        }
 
         let page_size = page_size.clamp(1, 500) as usize;
-        let exhausted = native_entries.len() < page_size && raw_tokens.len() < page_size;
+        let exhausted = native_entries.len() < page_size && !tokens_full && !nfts_full;
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
@@ -197,28 +224,24 @@ impl WalletService {
 
         let tokens_decoded: Vec<EvmTokenTransferItem> = raw_tokens
             .into_iter()
-            .filter_map(|mut entry| {
-                let key = entry.contract.to_lowercase();
-                let (sym, name, dec, standard) = token_map.get(&key)?.clone();
-                entry.symbol = sym;
-                entry.token_name = name;
-                if dec != entry.decimals {
-                    entry.decimals = dec;
-                    entry.amount_display =
-                        crate::decimal::from_unit_digits(&entry.amount_raw, u32::from(dec))?;
-                }
+            .filter_map(|entry| {
+                let (symbol, token_name, decimals, standard) =
+                    token_map.get(&entry.contract)?.clone();
                 if entry.from != addr_lower && entry.to != addr_lower {
                     return None;
                 }
                 Some(EvmTokenTransferItem {
                     standard,
                     contract_address: entry.contract,
-                    token_name: entry.token_name,
-                    symbol: entry.symbol,
-                    decimals: entry.decimals as i32,
+                    token_name,
+                    symbol,
+                    decimals: i32::from(decimals),
                     from_address: entry.from,
                     to_address: entry.to,
-                    amount_decimal: entry.amount_display,
+                    amount_decimal: crate::decimal::from_unit_digits(
+                        &entry.amount_raw,
+                        u32::from(decimals),
+                    )?,
                     transaction_hash: entry.txid,
                     block_number: entry.block_number as i64,
                     log_index: entry.log_index as i64,
@@ -249,9 +272,27 @@ impl WalletService {
             })
             .collect::<Result<Vec<_>, SpectraBridgeError>>()?;
 
+        let nfts_decoded = raw_nfts
+            .into_iter()
+            .map(|entry| EvmNftTransferItem {
+                standard: entry.standard,
+                contract_address: entry.contract,
+                token_id: entry.token_id,
+                quantity: entry.quantity,
+                collection: entry.collection,
+                symbol: entry.symbol,
+                from_address: entry.from,
+                to_address: entry.to,
+                transaction_hash: entry.txid,
+                block_number: entry.block_number as i64,
+                timestamp: entry.timestamp as f64,
+            })
+            .collect();
+
         Ok(EvmHistoryPage {
             decoded: EvmHistoryPageDecoded {
                 tokens: tokens_decoded,
+                nfts: nfts_decoded,
                 native: native_decoded,
             },
             exhausted,

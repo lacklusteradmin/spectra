@@ -9,10 +9,14 @@ operation refuses missing capabilities before signing or changing holdings.
 
 All catalog networks have native-transfer signing paths. Cardano signs its
 CIP-1852 extended Ed25519 key; Bittensor and Polkadot use verified genesis and
-live runtime metadata rather than hard-coded pallet indices. Cardano ADA-only
-transfers select inputs with an explicitly empty native-asset list; token-bearing
-inputs are left untouched. A wallet with insufficient pure-ADA inputs cannot send
-an ADA-only transfer.
+live runtime metadata rather than hard-coded pallet indices. A Cardano transfer
+spends any of the address's outputs, those holding native assets included, and
+its change returns every asset the inputs held that the transfer does not
+send: outputs of the sent asset first, then ADA alone, then other
+token-bearing outputs, each largest first. Every output holds the protocol's
+minimum ADA for its size, the fee is the protocol's linear fee for the signed
+size, both from the latest epoch's parameters, and change too small to stand
+as an output joins the fee.
 
 Each network restores the phrase formats its own wallets write and creates
 in one every wallet for it restores. Most networks read and create BIP-39.
@@ -24,7 +28,11 @@ ton-crypto's 24-word mnemonic, including password-protected ones opened with
 the derivation passphrase. Neither reads BIP-39, which none of their wallets
 restore. A Monero wallet's restore height is fixed at import: typed, from a
 Polyseed's birthday, near now for a created wallet (from monthly checkpoints
-read off two public daemons), or the start of the chain.
+read off two public daemons), or the start of the chain. A Zcash wallet
+restored from a phrase has one too, where its scan for shielded funds starts:
+typed, near now for a created wallet (a recent block of each network and the
+75-second target spacing, less a week), or Sapling's activation, the first
+block a ZIP-32 key could receive at.
 
 A phrase wallet derives along one of its network's derivation profiles at an
 account index, or a custom path. Bitcoin and its test networks offer native
@@ -93,12 +101,15 @@ no funded live transaction was broadcast during verification.
 | Network family | Supported token transfer protocol |
 | --- | --- |
 | Every EVM network, including Ethereum Classic and HyperEVM | ERC-20 and the network's registry label |
-| Solana | Standard SPL and ordinary Token-2022 transfers |
+| Solana | SPL and Token-2022, including transfer fees and transfer hooks |
 | Tron | TRC-10 asset IDs and TRC-20 contracts |
 | Sui | `Coin<T>` programmable transactions with separate SUI gas |
 | Aptos | Legacy Move coin and primary fungible store transfers |
 | TON | TEP-74 jettons through the owner's verified jetton wallet |
 | NEAR | NEP-141 |
+| XRP Ledger | Issued currencies on trust lines (`CODE.rIssuer`) |
+| Stellar | Credit assets on trustlines (`CODE:ISSUER`) |
+| Cardano | Native assets (`POLICY.NAME` in hex) |
 
 Token precision comes from validated metadata. TON master identity uses the raw
 account address, with friendly-address network flags checked first. Raw,
@@ -114,12 +125,61 @@ on-chain precision and balances before creating or signing a token transfer.
 TransferAssetContract bytes and signatures match independent TronWeb fixtures;
 mainnet and Nile retain distinct network identity.
 
-XRP issued currencies, Stellar issued assets and
-Cardano native assets are outside the tracked-token interface. Zcash supports
-transparent transfers; shielded addresses and transfers are excluded. Litecoin
-supports transparent SegWit; MWEB is excluded. Solana transfer-fee, transfer-hook
-and unknown Token-2022 extensions are refused until their semantics can be
-reviewed and signed correctly.
+A Solana token transfer is one `TransferChecked` from the owner's associated
+account, after an idempotent create of the recipient's. Token-2022 rules are
+read from the mint before building and again before signing. A transfer fee
+is computed for the current epoch as the program computes it (basis points of
+the amount, rounded up and capped) and stated with `TransferCheckedWithFee`, so
+a fee changed after review fails the transfer rather than withholding more;
+the review shows the fee and what the recipient receives, and a fee that
+changes in an epoch about to start is refused near the boundary. A transfer
+hook's extra accounts are resolved from its validation account exactly as
+spl-transfer-hook-interface resolves them (literal, PDA, instruction-data,
+account-data, external-program and pubkey-data entries, read-only accounts
+kept read-only), the transfer is simulated, and the review names the hook
+program. Refused before anything is built: a hook asking for a signature, a
+missing or foreign validation account, a simulation the hook fails, a paused
+or non-transferable mint, a frozen sending or receiving account, a recipient
+account that requires a memo or accepts only confidential transfers, a
+recipient without an account when new accounts start frozen, an insufficient
+associated-account balance, interest-bearing and scaled-amount mints (their
+displayed amount is not the amount moved), and any extension not listed.
+
+An XRP Ledger issued currency and a Stellar credit asset are identified by
+their code and issuer together, so two assets with one code are two tokens in
+the list, the balances, discovery and history; an XRP Ledger code is kept as
+its three characters or 40 uppercase hex digits, a Stellar issuer in
+capitals, and codes keep their case. Stellar amounts have seven places; an
+XRP Ledger value has 16 significant digits at a floating exponent, which
+Spectra keeps at 15 places, rounding a balance down, and a send refuses an
+amount the ledger cannot hold exactly. A node's `account_lines` and an
+account's Horizon balances list every line, history rows come from each
+line's own change in the transaction, and a row of a listed token is named
+as the list names it. Trust lines are a wallet operation: opening one sets the
+largest limit (no rippling through the wallet on the XRP Ledger) and locks a
+reserve, which the XRP Ledger waives for an account's first two objects;
+removing an empty one frees it. A payment is refused before building when the
+sender or recipient has no line, the issuer has not authorized it or has
+frozen it, the recipient's line has no room, the recipient does not exist or
+does not accept the sender's deposits, the issuer lets its currency ripple
+on neither line, or the balance is short. An XRP Ledger issuer's transfer rate
+is paid with `SendMax` (the amount times the rate, rounded up), reviewed as
+the asset's transfer terms and read again before signing; paying the issuer
+back takes none. A wallet that is an asset's issuer does not send it.
+
+A Cardano native token (`Cardano Native Token`) is its policy and name,
+written `POLICY.NAME` in lowercase hex (the policy alone for an empty name).
+Its decimals are its CIP-68 fungible-token datum's, else the token
+registry's, else none. Balances and discovery sum the address's outputs,
+history gives each token its own row from the address's net change, and a
+transfer of a token carries the minimum ADA its output needs, reviewed as ADA
+sent with it. A CIP-113 programmable token is a native token held at a shared
+script address under its owner's credential, which the wallet's address does
+not hold; Spectra neither shows nor sends one. A Koios endpoint's genesis
+network magic is checked before it receives a transaction.
+
+Zcash holds transparent and [shielded funds](#zcash-shielded-funds).
+Litecoin holds transparent and [MWEB funds](#litecoin-mweb-funds).
 
 The [follow-up source audit](audits/token-verification-2026-10-04/README.md)
 verifies and reactivates 58 of the 59 preserved deployments, along with all 21
@@ -136,6 +196,144 @@ retains the earlier decision as history. Explicit custom assets remain available
 Verified legacy BTTOLD (TRC-10 ID `1002000`)
 is separate from the redenominated TRC-20 BTT; it cannot inherit BTT's market
 quote or conflate their 1:1000 denomination.
+
+## Non-fungible tokens
+
+Every EVM network holds ERC-721 and ERC-1155 tokens, each one a collection's
+contract and a token id, and an ERC-1155 holding a whole-number quantity of
+it. Neither is a balance: no token id or quantity is ever scaled by decimals,
+and no NFT is a holding, a price or part of the portfolio total.
+
+| What | Source |
+| --- | --- |
+| The NFTs a wallet holds | A Blockscout explorer's inventory (`/api/v2/addresses/{address}/nft`), read to its end |
+| The standard | The contract's own ERC-165 answer |
+| Ownership and quantity | `ownerOf` and ERC-1155 `balanceOf`, read live before building and again before signing |
+| History | `tokennfttx` and `token1155tx`, from Blockscout or Routescan |
+| Transfer | The collection's `safeTransferFrom`, from the wallet, with no value |
+
+A network whose only explorer is Routescan has NFT history but no inventory,
+so listing a wallet's NFTs there is refused rather than answered empty; a
+Blockscout endpoint added for it lists them. A transfer is refused before
+anything is built when the contract reports neither standard, reports both,
+or claims every interface; when the wallet does not own the ERC-721 token or
+holds fewer of the ERC-1155 id than it sends; for an ERC-721 quantity other
+than one, a zero quantity, the wallet's own address or the zero address. A
+contract recipient must accept the token or the transfer reverts. History
+gives each token its own asset (`ethereum:erc-721:0xcontract:1234`), its
+quantity the amount. A contract that reports an NFT standard is never read as
+a fungible token: its ERC-20 metadata read is refused, so it cannot be sent as
+one, and a tracked token whose contract turns out to be a collection holding
+something has its balance refused. Token images are not loaded, since a
+token's metadata can point at any host. Contracts that predate ERC-165's
+ERC-721 interface, such as CryptoKitties and CryptoPunks, are not NFTs here.
+
+## Zcash shielded funds
+
+A Zcash wallet restored from its phrase holds a shielded account: the ZIP-32
+account its standard path names (`m/44'/133'/account'/0/0`, coin type 1 on
+testnet), so its transparent receiver at index 0 is the wallet's address. A
+wallet added from a key, watched, or derived along a custom path or HMAC key
+has none. The account receives at a unified address with Orchard and Sapling
+receivers and no transparent one, so the wallet's public address is not tied
+to it. librustzcash (`zcash_client_backend`, `zcash_client_sqlite`) does the
+protocol work over a wallet database of the account's own beside Spectra's,
+holding viewing keys, notes and note commitment trees and never a spending
+key; it is deleted with the wallet.
+
+| What | How |
+| --- | --- |
+| Scan | Compact blocks from a lightwalletd server, from the restore height, a bounded batch per call; each batch is kept, so a cancelled scan resumes |
+| Trees | The server's tree state at the restore height, and the completed subtree roots of the Sapling, Orchard and Ironwood trees |
+| Memos and spends | Each transaction the scan finds, read whole and decrypted on the device |
+| Balance | Spendable and pending shielded ZEC, added to the wallet's ZEC holding; transparent ZEC the account can shield |
+| History | Received into the shielded pools, sent out of them, and shielded, one row each |
+| Fees | ZIP-317, as librustzcash's proposal chooses inputs and change |
+| Signing | Proofs on the device: Orchard needs no parameters; a Sapling spend or output needs the published Sapling parameters, downloaded once from `download.z.cash` and used only when each file matches its pinned BLAKE2b-512 hash |
+| Broadcast | The network's lightwalletd servers |
+
+Shielding moves every transparent output of the wallet into its own shielded
+pool, paying no one; a shielded payment pays one unified, Sapling or
+transparent address, with a memo of up to 512 bytes for a shielded recipient.
+Since NU6.3, shielded value and payments to an Orchard receiver land in the
+Ironwood pool. A payment to a transparent address spends the Sapling pool
+first when it covers the amount, as librustzcash prefers. The proposal is what
+is reviewed: its encoding and what it pays, its memo and fee are bound into
+the review digest, and signing decodes it against the database again and
+refuses it if anything changed. Before signing, the server's consensus branch
+must be the one librustzcash gives for the next block; a network past the
+upgrades this build knows (the test network's NU7) scans but does not sign. A
+TEX address (ZIP-320) takes only transparent funds, so the transparent send
+pays it, the P2PKH script of its key hash, and the shielded one refuses it;
+the transparent send refuses a Sapling or unified address. Every Zcash address
+form is a valid address on its network for the address book and the send
+screen. A restored wallet recovers a payment it sent from the chain with its
+outgoing viewing key, which gives the receiver the payment reached, not the
+whole unified address it was sent to.
+
+A session reads one server that says it is on the wallet's network, with
+Sapling's activation where the network has it; a server on another network is
+refused. lightwalletd learns the restore height, which transactions the
+wallet reads whole, and the transparent address it asks about. Every gRPC
+connection goes through the same Tor kill switch, SOCKS5 proxy and
+loopback-only guard as HTTP. [Dated read-only checks](audits/zcash-shielded-endpoints-2026-10-07.json)
+of the built-in servers record their network, branch, trees and subtree roots.
+
+## Litecoin MWEB funds
+
+A Litecoin wallet restored from its phrase holds the phrase's MWEB funds,
+whatever path its transparent address is at: the scan key is the BIP-32 key
+at `m/1000'/0'` of its seed and the spend key the one at `m/1000'/1'`, where
+Cake Wallet and mwebd derive them, so a phrase restored here finds what it
+received there. One wallet per phrase and network holds them; the first to
+sync claims them, and a second wallet of the same phrase is refused. A key, a
+watched address or another network's wallet has none. The wallet receives at
+its stealth address 2 (`ltcmweb1…`, `tmweb1…` on testnet); address 0 takes
+change and address 1 peg-ins, as Litecoin Core keeps them, and a scan
+recognizes the first 1,000. An MWEB address is a Litecoin address for the
+send screen and the address book, and never a wallet's own: a watch import
+refuses one, as nothing public shows what it holds.
+
+| What | How |
+| --- | --- |
+| Anchor | The block the wallet's indexer names as its tip; a Litecoin node's headers after it are checked, each by scrypt proof of work and Litecoin's retarget, the retarget window's first time read the same way |
+| Scan | Over the peer-to-peer protocol (`NODE_MWEB_LIGHT_CLIENT`): the node's tip's MWEB header, proved through the block's HogEx by its merkle root; the leafset, proved by the header's leafset root; pages of 4,096 unspent outputs, proved into the output root; eight pages a batch, each kept, so a cancelled scan resumes |
+| Recognition | Each output's view tag, then its key exchange with the scan key, on the device; the scan key and what it finds stay there, the cache encrypted under a key derived from it |
+| Balance | Unspent outputs, less what a signed payment spends, with what broadcast payments return to the wallet; added to the wallet's LTC holding |
+| History | Outputs received at addresses the wallet gives out, dated by the scan that found them; payments this device sent, confirmed once their inputs are spent; peg-ins as `shield` |
+| Fees | 100 litoshis per unit of MWEB weight (3 a kernel, 18 an output, a peg-out's script a unit per 42 bytes), as Litecoin Core weighs them; a peg-out's canonical bytes at 10,000 litoshis per kB |
+| Signing | Inputs, outputs with their range proofs, and the kernel, made on the device from the seed; the transaction checked as a node checks one before it is stored |
+| Broadcast | The wallet's Litecoin indexers |
+
+A payment out of MWEB funds spends the largest outputs first and pays an MWEB
+address inside MWEB, or any other Litecoin address by a peg-out whose amount
+and script the kernel names; its change goes to address 0, unless what is left
+would not pay for its own output, when it joins the fee. Litecoin Core relays
+at most 1,000 inputs in one transaction. Moving transparent LTC into MWEB is a
+peg-in to address 1: a canonical transaction from the wallet's transparent
+outputs pays the script its kernel makes, the amount and the kernel's fee,
+with the canonical fee beside it; a send from transparent funds to any MWEB
+address is the same peg-in to that address. Litecoin Core's relay rules are
+the builder's: a peg-in kernel is the one its canonical output names, a
+transaction with a canonical part has no other kernel, and every output,
+peg-in and peg-out alike, clears the dust threshold. What is reviewed is the
+inputs, the recipient, the amount, the change and the fee; signing finds each
+input among the wallet's unspent outputs again and refuses a review that does
+not balance.
+
+A light client reads unspent outputs only, so what was received and spent
+before a wallet's first scan is not in its history, and a restored wallet's
+change and peg-ins are its own outputs, not receipts. Nodes serve leafsets and
+outputs only for blocks within ten of their tip, and only 32 such requests at
+once, then one every two seconds, across every client they serve: requests
+from here keep to that allowance per node, and one left unanswered fails the
+batch, which can be run again. A chain that no longer holds the last scan's
+tip is scanned again whole; the whole unspent set is a few dozen pages. The
+node learns that a light client asked for its tip's outputs, nothing about
+which are the wallet's; the indexer learns what the transparent address
+always told it. [Dated read-only checks](audits/litecoin-mweb-nodes-2026-10-08.json)
+of the built-in nodes record their service bits, heights and the activation
+blocks.
 
 ## History and confirmation
 
@@ -168,8 +366,9 @@ native transfers, tracked ERC-20 balances/transfers and submitted receipts.
 Polkadot/Westend and Bittensor have no built-in keyless address-history indexer;
 their verified RPCs support balances, transfers and finality.
 
-BCH, DOGE, ZEC, DCR and DASH test networks have no verified built-in keyless
-provider. Their supported custom API must be configured before network reads or
+BCH, DOGE, ZEC (transparent), DCR and DASH test networks have no verified
+built-in keyless provider; Zcash testnet's shielded funds read a built-in
+lightwalletd. Their supported custom API must be configured before network reads or
 transfers. Failed providers are not retained as fallback entries. Mainnet Monero
 and stagenet defaults support local scanning; Avalanche defaults read ERC-20
 balances. [Dated read-only endpoint checks](audits/chain-support-2026-10-04/endpoint-probes.json)

@@ -102,14 +102,17 @@ pub(crate) fn validate_ltc_values(
 }
 
 /// Litecoin Core's GetDustThreshold policy uses its dust relay rate and an
-/// estimated cost to spend the output: 148 bytes for legacy, 67 for witness.
+/// estimated cost to spend the output: 148 bytes for legacy, 67 for a
+/// witness program. Only the standard outputs a wallet pays are priced: an
+/// MWEB peg-in's version 9 program among them, any other script refused.
 /// https://github.com/litecoin-project/litecoin/blob/master/src/policy/policy.cpp
 pub(crate) fn litecoin_dust_threshold(chain: Chain, script: &[u8]) -> Result<u64, SendError> {
     let relay_fee = chain.litecoin_dust_relay_fee_per_kvb()?;
+    let pegin = script.len() == 34 && script[..2] == [0x59, 0x20];
     let script = Script::from_bytes(script);
     let spend_size = if script.is_p2pkh() || script.is_p2sh() {
         148
-    } else if script.is_p2wpkh() || script.is_p2wsh() || script.is_p2tr() {
+    } else if script.is_p2wpkh() || script.is_p2wsh() || script.is_p2tr() || pegin {
         67
     } else {
         return Err(SendError::Invalid(

@@ -33,7 +33,26 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             let path=request.url.path();
             let result = match body["method"].as_str().unwrap_or(path) {
                 "getGenesisHash" => json!(Chain::Solana.solana_genesis_hash().unwrap()),
-                "getAccountInfo" => json!({"value":{"owner":if token2022 {"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"} else {"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":6,"extensions":[]}}}}}),
+                "getAccountInfo" => {
+                    // The mint, the owner's funded account, and no account
+                    // yet for the recipient.
+                    let program = if token2022 {"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"} else {"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"};
+                    let mint = bs58::encode([0x44; 32]).into_string();
+                    let owner = v["solana"]["address"].as_str().unwrap();
+                    let source = crate::send::solana::derive_associated_token_account(
+                        &crate::derivation::solana::decode_b58_32(owner).unwrap(),
+                        &[0x44; 32],
+                        &crate::derivation::solana::decode_b58_32(program).unwrap(),
+                    ).unwrap();
+                    let address = body["params"][0].as_str().unwrap();
+                    if address == mint {
+                        json!({"value":{"owner":program,"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":6,"extensions":[]}}}}})
+                    } else if address == bs58::encode(source).into_string() {
+                        json!({"value":{"owner":program,"data":{"parsed":{"type":"account","info":{"mint":mint,"owner":owner,"state":"initialized","tokenAmount":{"amount":"1000000000","decimals":6}}}}}})
+                    } else {
+                        json!({"value":null})
+                    }
+                },
                 "isBlockhashValid" => json!({"value":true}),
                 "getLatestBlockhash" => json!({"value":{"blockhash":v["solana"]["blockhash"]}}),
                 "sendTransaction" => {

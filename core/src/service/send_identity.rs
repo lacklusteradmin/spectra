@@ -34,6 +34,43 @@ impl WalletService {
             .from_address)
     }
 
+    /// A wallet's BIP-39 seed, with its passphrase: what Zcash's shielded
+    /// account and Litecoin's MWEB keys derive from. A wallet holding a
+    /// private key has none, and is refused with `no_seed`.
+    pub(super) async fn resolve_bip39_seed(
+        &self,
+        wallet_id: &str,
+        password: Option<&str>,
+        no_seed: &str,
+    ) -> Result<Zeroizing<Vec<u8>>, SpectraBridgeError> {
+        let mut wallet = self
+            .wallet_state
+            .read()
+            .await
+            .wallets
+            .iter()
+            .find(|wallet| wallet.id == wallet_id)
+            .cloned()
+            .ok_or_else(|| invalid("send wallet does not exist"))?;
+        let overrides = SensitiveOverrides::take_from(&mut wallet);
+        let secrets = self.secrets()?;
+        match load_signing_material(&*secrets, wallet_id, password)
+            .map_err(|error| invalid(&error.to_string()))?
+        {
+            SigningMaterial::Mnemonic(phrase) => {
+                let seed = crate::derivation::primitives::derive_bip39_seed(
+                    &phrase,
+                    overrides.passphrase().unwrap_or(""),
+                    0,
+                    None,
+                    None,
+                )?;
+                Ok(Zeroizing::new(seed.to_vec()))
+            }
+            SigningMaterial::PrivateKey(_) => Err(invalid(no_seed)),
+        }
+    }
+
     pub(super) async fn resolve_send_identity(
         &self,
         chain: Chain,

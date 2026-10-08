@@ -83,7 +83,7 @@ pub(super) fn validate_execution_amount(
             ));
         }
     }
-    if chain.mainnet_counterpart() == Chain::Xrp {
+    if chain.mainnet_counterpart() == Chain::Xrp && request.contract_address.is_none() {
         crate::send::xrp::validate_drops(raw)?;
     }
     if raw == 0 && (!chain.is_evm() || request.contract_address.is_some()) {
@@ -288,6 +288,10 @@ impl WalletService {
                 "{standard} metadata reads are not supported"
             )));
         }
+        // A protocol that fixes every token's places has nothing to read.
+        if let Some(places) = crate::tokens::fixed_token_decimals(standard) {
+            return Ok(Some(places));
+        }
         let endpoints = self
             .endpoints_for(chain, &[EndpointCapability::TokenBalance])
             .await;
@@ -316,6 +320,13 @@ impl WalletService {
             return Ok(Some(u32::from(
                 client.fetch_ft_metadata(contract).await?.decimals,
             )));
+        }
+        if chain.mainnet_counterpart() == Chain::Cardano {
+            let asset = crate::api::cardano_asset::CardanoAssetId::parse(contract)?;
+            let decimals = crate::api::koios::KoiosClient::new(endpoints)
+                .fetch_asset_decimals(std::slice::from_ref(&asset))
+                .await?;
+            return Ok(decimals.get(&asset).map(|places| u32::from(*places)));
         }
         if chain.mainnet_counterpart() == Chain::Sui {
             return Ok(SuiClient::new(endpoints)

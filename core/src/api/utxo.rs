@@ -171,6 +171,29 @@ impl UtxoClient {
         .await
     }
 
+    /// The hash of the block at `height`, in lowercase hex as explorers
+    /// write it. Only the Litecoin family's indexers are asked: MWEB anchors
+    /// its light client to it.
+    pub(crate) async fn fetch_block_hash(&self, height: u64) -> Result<String, ApiError> {
+        let hash = self
+            .race(|adapter| async move {
+                match adapter {
+                    Adapter::Esplora(c) => c.fetch_block_hash(height).await,
+                    Adapter::Blockbook(c) => c.fetch_block_hash(height).await,
+                    Adapter::Blockcypher(c) => c.fetch_block_hash(height).await,
+                    Adapter::Whatsonchain(_) | Adapter::BchRest(_) => Err(ApiError::invalid(
+                        "This indexer does not name blocks by height",
+                    )),
+                }
+            })
+            .await?;
+        let hash = hash.trim().to_ascii_lowercase();
+        if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(ApiError::decode("block hash"));
+        }
+        Ok(hash)
+    }
+
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         self.race(|adapter| async move {
             match adapter {
