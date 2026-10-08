@@ -1,4 +1,4 @@
-//! Resolve every known source in a Litecoin or Peercoin wallet account.
+//! Resolve every known source in an account UTXO wallet.
 use super::*;
 use crate::send::stages::UtxoSendSource;
 use crate::store::state::{WalletSigning, WalletState};
@@ -51,25 +51,7 @@ fn account_utxo_source(
     address: String,
     path: Option<String>,
 ) -> Result<UtxoSendSource, SpectraBridgeError> {
-    use crate::derivation::utxo_address::{ParsedUtxoAddress, parse_utxo_address};
-    let parsed = parse_utxo_address(chain, &address)?;
-    let supported = match &parsed {
-        ParsedUtxoAddress::P2pkh(_) | ParsedUtxoAddress::P2sh(_) => true,
-        ParsedUtxoAddress::Witness {
-            version: 0,
-            program,
-        } => program.len() == 20,
-        ParsedUtxoAddress::Witness {
-            version: 1,
-            program,
-        } => chain.mainnet_counterpart() == Chain::Peercoin && program.len() == 32,
-        _ => false,
-    };
-    if !supported {
-        return Err(SpectraBridgeError::invalid(
-            "UTXO source script is unsupported by its chain's account signer",
-        ));
-    }
+    let script_pubkey = crate::send::account_utxo::source_script(chain, &address)?;
     let path = match root_path {
         Some(root_path) => {
             let path = path
@@ -94,7 +76,7 @@ fn account_utxo_source(
     Ok(UtxoSendSource {
         address,
         derivation_path: path,
-        script_pubkey: parsed.script_pubkey(),
+        script_pubkey,
     })
 }
 
@@ -232,11 +214,9 @@ impl WalletService {
                             &bytes,
                         )?;
                     }
-                    _ => {
-                        return Err(SpectraBridgeError::invalid(
-                            "Unsupported account UTXO network",
-                        ));
-                    }
+                    // Each account signer checks every input's key against
+                    // the script it pays.
+                    _ => {}
                 }
                 Ok(UtxoSigningSource {
                     source,

@@ -25,7 +25,7 @@ impl WalletService {
                     .iter()
                     .filter_map(|w| {
                         let network = w.chain_id;
-                        (network.supports_deep_utxo_discovery()
+                        (network.uses_account_utxo()
                             && if chain.is_testnet() {
                                 network == chain
                             } else {
@@ -68,7 +68,7 @@ impl WalletService {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
-            let (wallet_id, network, stored, xpub) = {
+            let (wallet_id, network, stored) = {
                 let state = this.wallet_state.read().await;
                 let wallet = state
                     .wallets
@@ -88,52 +88,20 @@ impl WalletService {
                     wallet.id.clone(),
                     network,
                     wallet.address_on(network).map(str::to_string),
-                    wallet.xpub.clone(),
                 )
             };
-            // Extended public keys are sufficient for watch-only Bitcoin receiving.
-            if network.mainnet_counterpart() == Chain::Bitcoin
-                && let Some(xpub) = xpub.filter(|value| !value.trim().is_empty())
-            {
-                use crate::derivation::xpub_walker::{HdNetwork, derive_children_on_network};
-                let id = network;
-                let hd_network = if network.is_testnet() {
-                    HdNetwork::Testnet
-                } else {
-                    HdNetwork::Mainnet
-                };
-                // Validate before reserving any index.
-                derive_children_on_network(&xpub, 0, 0, 1, hd_network, None)?;
-                let index = if reserve {
-                    this.reserve_receive_index(wallet_id.clone(), id, 1).await?
-                } else {
-                    this.keypool_state(wallet_id.clone(), id)
-                        .await?
-                        .reserved_receive_index
-                        .unwrap_or(0)
-                };
-                let index = u32::try_from(index)
-                    .map_err(|_| SpectraBridgeError::failure("receive index is out of range"))?;
-                let address = derive_children_on_network(&xpub, 0, index, 1, hd_network, None)?
-                    .pop()
-                    .ok_or_else(|| SpectraBridgeError::failure("missing derived address"))?
-                    .address;
-                if reserve {
-                    this.register_owned_address(
-                        wallet_id,
-                        id,
-                        address.clone(),
-                        None,
-                        Some("external".into()),
-                        Some(i64::from(index)),
-                    )
-                    .await?;
-                }
-                return Ok(Some(address));
-            }
-            if network.supports_deep_utxo_discovery()
+            if network.uses_account_utxo()
                 && let Some(address) = this
                     .utxo_receive_address(wallet_id.clone(), network, reserve)
+                    .await?
+            {
+                return Ok(Some(address));
+            }
+            // A Monero wallet rotates through account 0's subaddresses.
+            if network.mainnet_counterpart() == crate::registry::Chain::Monero
+                && let Some(primary) = stored.as_deref()
+                && let Some(address) = this
+                    .monero_receive_address(&wallet_id, network, primary, reserve)
                     .await?
             {
                 return Ok(Some(address));
@@ -171,15 +139,15 @@ impl WalletService {
             let this = &this;
             const GAP_LIMIT: u32 = 20;
             const MAX_INDEX: u32 = 999;
-            if !chain.supports_deep_utxo_discovery() {
+            if !chain.uses_account_utxo() {
                 return Ok(Vec::new());
             }
             let mut ordered = this.known_utxo_addresses(wallet_id.clone(), chain).await?;
             let mut seen: std::collections::HashSet<String> = ordered.iter().cloned().collect();
 
-            // Litecoin scans from its persisted public account, even while
-            // sealed. Other chains can return known addresses when their seed
-            // is not readable here or the wallet has no HD signing material.
+            // An account scans from its public key, stored or watched, even
+            // while the seed is sealed. A wallet of one address has no
+            // account to scan and knows its addresses already.
             let Some(context) = this.utxo_derivation_context(&wallet_id, chain).await? else {
                 return Ok(ordered);
             };
@@ -220,7 +188,7 @@ impl WalletService {
                             wallet_id.clone(),
                             chain,
                             address.clone(),
-                            Some(path),
+                            path,
                             Some(name.to_string()),
                             Some(i64::from(index)),
                         )
@@ -240,6 +208,7 @@ impl WalletService {
                     )));
                 }
             }
+            this.mark_account_discovered(wallet_id, chain).await?;
             Ok(ordered)
         })
         .await
@@ -247,6 +216,33 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Run the account's gap scan when it has never run to its end: a
+    /// restored phrase or a watched account key finds its used addresses
+    /// before its balance or history is first read, without being asked. A
+    /// wallet of one address has no account to scan.
+    pub(crate) async fn discover_account_once(
+        &self,
+        wallet_id: &str,
+        chain: crate::registry::Chain,
+    ) -> Result<(), SpectraBridgeError> {
+        if !chain.uses_account_utxo()
+            || self
+                .keypool
+                .read()
+                .await
+                .is_discovered(&super::keypool::keypool_key(wallet_id, chain))
+            || self
+                .utxo_derivation_context(wallet_id, chain)
+                .await?
+                .is_none()
+        {
+            return Ok(());
+        }
+        self.discover_utxo_addresses(wallet_id.to_string(), chain)
+            .await
+            .map(drop)
+    }
+
     /// Every address this wallet is already known to hold on `chain_id`.
     ///
     /// No network and no derivation: the wallet's own address, what the owned
@@ -257,7 +253,7 @@ impl WalletService {
         wallet_id: String,
         chain: crate::registry::Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        if !chain.supports_deep_utxo_discovery() {
+        if !chain.uses_account_utxo() {
             return Ok(Vec::new());
         }
         let mut ordered: Vec<String> = Vec::new();
@@ -304,7 +300,7 @@ impl WalletService {
         &self,
         chain: crate::registry::Chain,
     ) -> Result<(), SpectraBridgeError> {
-        if !chain.supports_deep_utxo_discovery() {
+        if !chain.uses_account_utxo() {
             return Ok(());
         }
         let wallets: Vec<_> = {
@@ -354,35 +350,54 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Has this address ever been used on chain? One question, asked the same
-    /// way for every UTXO chain.
+    /// Has this address ever been used on chain? One question, asked of each
+    /// account UTXO chain's indexer.
     pub(crate) async fn utxo_address_has_activity(
         &self,
         chain: crate::registry::Chain,
         address: &str,
     ) -> Result<bool, SpectraBridgeError> {
-        if !chain.uses_utxo_client() {
-            return Err(SpectraBridgeError::failure(
-                "chain does not support UTXO discovery",
-            ));
-        }
-        Ok(self
-            .utxo_client(chain, &[EndpointCapability::History])
-            .await
-            .has_activity(address)
-            .await?)
+        let endpoints = || self.endpoints_for(chain, &[EndpointCapability::History]);
+        Ok(match chain.mainnet_counterpart() {
+            Chain::Decred => {
+                crate::api::insight::InsightClient::new(endpoints().await)
+                    .has_activity(address)
+                    .await?
+            }
+            Chain::Kaspa => {
+                crate::api::kaspa_rest::KaspaClient::new(endpoints().await)
+                    .has_activity(address)
+                    .await?
+            }
+            _ if chain.uses_utxo_client() => {
+                self.utxo_client(chain, &[EndpointCapability::History])
+                    .await
+                    .has_activity(address)
+                    .await?
+            }
+            _ => {
+                return Err(SpectraBridgeError::failure(
+                    "chain does not support UTXO discovery",
+                ));
+            }
+        })
     }
 
     /// The public branches and base path used to derive UTXO addresses,
     /// resolved once so a scan does not redo it per index.
     ///
-    /// Account UTXO wallets require their persisted public key for mnemonic wallets.
-    /// Other chains return `None` when the phrase is unreadable without a password.
+    /// A phrase wallet's account is its stored public key, checked against
+    /// its root address, so a scan needs no password; a watched account is
+    /// the key it watches. `None` for a wallet of one address: a private key
+    /// or a watched address has no account to walk.
     pub(crate) async fn utxo_derivation_context(
         &self,
         wallet_id: &str,
         chain: crate::registry::Chain,
     ) -> Result<Option<UtxoDerivation>, SpectraBridgeError> {
+        if !chain.uses_account_utxo() {
+            return Ok(None);
+        }
         let mut wallet = {
             let state = self.wallet_state.read().await;
             let Some(wallet) = state.wallets.iter().find(|w| w.id == wallet_id).cloned() else {
@@ -390,67 +405,67 @@ impl WalletService {
             };
             wallet
         };
-        let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
-        // An empty path resolves to the chain's default.
-        let raw_path = wallet
-            .addresses
-            .iter()
-            .find(|a| a.chain_id == chain)
-            .and_then(|a| a.derivation_path.clone())
-            .or_else(|| {
-                (wallet.chain_id == chain)
-                    .then(|| wallet.derivation_path.clone())
-                    .flatten()
-            })
-            .unwrap_or_default();
-        let chain_id = chain;
-        let resolved = crate::derivation::path::resolve_derivation_path(chain_id, raw_path)?;
-
-        if chain.uses_account_utxo() {
-            if !matches!(
-                wallet.signing,
-                crate::store::state::WalletSigning::SeedPhrase { .. }
-            ) {
-                return Ok(None);
-            }
-            let xpub = wallet
-                .xpub
-                .as_deref()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| {
+        let _overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
+        // A multisig account is its policy, whoever signs it.
+        if let Some(descriptor) = wallet.multisig_descriptor.as_deref() {
+            return UtxoDerivation::from_multisig(chain, descriptor).map(Some);
+        }
+        let xpub = wallet
+            .xpub
+            .as_deref()
+            .filter(|value| !value.trim().is_empty());
+        match wallet.signing {
+            crate::store::state::WalletSigning::SeedPhrase { .. } => {
+                // An empty path resolves to the chain's default.
+                let raw_path = wallet
+                    .address_record_on(chain)
+                    .and_then(|a| a.derivation_path.clone())
+                    .or_else(|| {
+                        (wallet.chain_id == chain)
+                            .then(|| wallet.derivation_path.clone())
+                            .flatten()
+                    })
+                    .unwrap_or_default();
+                let resolved = crate::derivation::path::resolve_derivation_path(chain, raw_path)?;
+                let xpub = xpub.ok_or_else(|| {
                     SpectraBridgeError::invalid(
                         "UTXO mnemonic wallet is missing its account public key",
                     )
                 })?;
-            let root = wallet.address_on(chain).ok_or_else(|| {
-                SpectraBridgeError::invalid("UTXO mnemonic wallet is missing its root address")
-            })?;
-            return UtxoDerivation::from_account_xpub(chain, xpub, resolved, root).map(Some);
+                let root = wallet.address_on(chain).ok_or_else(|| {
+                    SpectraBridgeError::invalid("UTXO mnemonic wallet is missing its root address")
+                })?;
+                UtxoDerivation::from_account_xpub(chain, xpub, resolved, root).map(Some)
+            }
+            crate::store::state::WalletSigning::WatchOnly => xpub
+                .map(|xpub| UtxoDerivation::from_watched_xpub(chain, xpub))
+                .transpose(),
+            crate::store::state::WalletSigning::PrivateKey { .. } => Ok(None),
         }
-        let Ok(store) = self.secrets() else {
-            return Ok(None);
-        };
-        let Ok(seed_phrase) =
-            crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None)
-        else {
-            return Ok(None);
-        };
-
-        tokio::task::spawn_blocking(move || {
-            UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
-        })
-        .await
-        .map_err(|error| SpectraBridgeError::failure(format!("UTXO derivation task: {error}")))?
-        .map(Some)
     }
 }
 
 /// Scan-local receive/change xpubs. No mnemonic or private key is kept while probing.
 pub(crate) struct UtxoDerivation {
     chain: crate::registry::Chain,
-    branches: [crate::derivation::bitcoin::ExtendedPublicKey; 2],
+    shape: AccountShape,
     secp: secp256k1::Secp256k1<secp256k1::All>,
-    base_path: String,
+    /// A phrase wallet's root path, whose branch and index each derived
+    /// address's path replaces: what a send derives the address's key
+    /// along. `None` for a watched account key, which signs nothing.
+    base_path: Option<String>,
+}
+
+/// What an account's addresses are made of.
+enum AccountShape {
+    /// One key per address: the receive and change branch keys, and the
+    /// script every address pays.
+    Single {
+        branches: [crate::derivation::bitcoin::ExtendedPublicKey; 2],
+        script: crate::derivation::types::BitcoinScriptType,
+    },
+    /// A multisig account's policy over its cosigners' keys.
+    Multisig(crate::derivation::multisig::MultisigPolicy),
 }
 
 impl UtxoDerivation {
@@ -463,6 +478,9 @@ impl UtxoDerivation {
         Self::with_overrides(chain, phrase, base_path, &Default::default())
     }
 
+    /// A phrase's account, derived from the phrase itself: the public key a
+    /// stored one must equal.
+    #[cfg(test)]
     pub(super) fn with_overrides(
         chain: crate::registry::Chain,
         phrase: &str,
@@ -477,9 +495,12 @@ impl UtxoDerivation {
         ];
         let context = Self {
             chain,
-            branches,
+            shape: AccountShape::Single {
+                branches,
+                script: crate::derivation::dispatch::script_type_for_path(&base_path),
+            },
             secp,
-            base_path,
+            base_path: Some(base_path),
         };
         context.derive_on_branch(0, 0)?;
         Ok(context)
@@ -557,6 +578,8 @@ impl UtxoDerivation {
             .to_xpub_string(version))
     }
 
+    /// A phrase wallet's account from the public key it stores, which must
+    /// be its path's account and derive its root address.
     pub(crate) fn from_account_xpub(
         chain: Chain,
         xpub: &str,
@@ -588,13 +611,16 @@ impl UtxoDerivation {
         ];
         let context = Self {
             chain,
-            branches,
+            shape: AccountShape::Single {
+                branches,
+                script: crate::derivation::dispatch::script_type_for_path(&base_path),
+            },
             secp,
-            base_path,
+            base_path: Some(base_path),
         };
         let (root, _) = context.derive_on_branch(indices[3], indices[4])?;
-        if crate::derivation::utxo_address::parse_utxo_address(chain, &root)?
-            != crate::derivation::utxo_address::parse_utxo_address(chain, root_address)?
+        if normalized_utxo_address(chain, &root).is_none()
+            || normalized_utxo_address(chain, &root) != normalized_utxo_address(chain, root_address)
         {
             return Err(SpectraBridgeError::invalid(
                 "UTXO account public key does not derive the stored root address",
@@ -603,31 +629,96 @@ impl UtxoDerivation {
         Ok(context)
     }
 
-    pub(crate) fn derive(&self, index: u32) -> Result<(String, String), SpectraBridgeError> {
+    /// A watched account from its extended public key, paying the script its
+    /// encoding names on the key's own network.
+    pub(crate) fn from_watched_xpub(chain: Chain, xpub: &str) -> Result<Self, SpectraBridgeError> {
+        let account = crate::derivation::account_key::parse(chain, xpub)?;
+        let secp = secp256k1::Secp256k1::new();
+        let branches = [
+            account.key.derive_child(&secp, 0)?,
+            account.key.derive_child(&secp, 1)?,
+        ];
+        Ok(Self {
+            chain,
+            shape: AccountShape::Single {
+                branches,
+                script: account.version.script,
+            },
+            secp,
+            base_path: None,
+        })
+    }
+
+    /// A multisig account from its descriptor. Its keys sign through a
+    /// PSBT, so no address has a path of its own.
+    pub(crate) fn from_multisig(
+        chain: Chain,
+        descriptor: &str,
+    ) -> Result<Self, SpectraBridgeError> {
+        Ok(Self {
+            chain,
+            shape: AccountShape::Multisig(crate::derivation::multisig::MultisigPolicy::parse(
+                chain, descriptor,
+            )?),
+            secp: secp256k1::Secp256k1::new(),
+            base_path: None,
+        })
+    }
+
+    pub(crate) fn derive(
+        &self,
+        index: u32,
+    ) -> Result<(String, Option<String>), SpectraBridgeError> {
         self.derive_on_branch(0, index)
     }
 
+    /// The address at `index` on `branch` (0 receive, 1 change), and the
+    /// path its key derives along when the account is a phrase wallet's.
     pub(crate) fn derive_on_branch(
         &self,
         branch: u32,
         index: u32,
-    ) -> Result<(String, String), SpectraBridgeError> {
-        let branch_key = self.branches.get(branch as usize).ok_or_else(|| {
-            SpectraBridgeError::failure("UTXO discovery branch must be receive or change")
-        })?;
-        let path = crate::derivation::path::derivation_path_replacing_last_two(
-            self.base_path.clone(),
-            branch,
-            index,
-            self.base_path.clone(),
-        );
-        let child = branch_key.derive_child(&self.secp, index)?;
-        let address = self.chain.encode_discovery_address(
-            &child.public_key,
-            crate::derivation::dispatch::script_type_for_path(&path),
-        )?;
+    ) -> Result<(String, Option<String>), SpectraBridgeError> {
+        if branch > 1 {
+            return Err(SpectraBridgeError::failure(
+                "UTXO discovery branch must be receive or change",
+            ));
+        }
+        if index >= crate::derivation::primitives::HARDENED_OFFSET {
+            return Err(SpectraBridgeError::failure(
+                "UTXO discovery index must be non-hardened",
+            ));
+        }
+        let path = self.base_path.as_ref().map(|base| {
+            crate::derivation::path::derivation_path_replacing_last_two(
+                base.clone(),
+                branch,
+                index,
+                base.clone(),
+            )
+        });
+        let address = match &self.shape {
+            AccountShape::Single { branches, script } => {
+                let child = branches[branch as usize].derive_child(&self.secp, index)?;
+                self.chain
+                    .encode_discovery_address(&child.public_key, *script)?
+            }
+            AccountShape::Multisig(policy) => policy.address(self.chain, (branch, index))?,
+        };
         Ok((address, path))
     }
+}
+
+/// `address` as the chain's validator normalizes it, or `None` when it is
+/// not one of the chain's addresses.
+pub(crate) fn normalized_utxo_address(chain: Chain, address: &str) -> Option<String> {
+    let validated = crate::validation::address::validate_address(
+        crate::validation::address::AddressValidationRequest {
+            kind: chain.address_validation_kind().to_string(),
+            value: address.to_string(),
+        },
+    );
+    validated.normalized_value.filter(|_| validated.is_valid)
 }
 
 /// Append an address if it is valid for the chain and not already listed.
@@ -639,13 +730,7 @@ fn push_utxo_address(
     ordered: &mut Vec<String>,
     seen: &mut std::collections::HashSet<String>,
 ) {
-    let validated = crate::validation::address::validate_address(
-        crate::validation::address::AddressValidationRequest {
-            kind: chain.address_validation_kind().to_string(),
-            value: address.to_string(),
-        },
-    );
-    let Some(normalized) = validated.normalized_value.filter(|_| validated.is_valid) else {
+    let Some(normalized) = normalized_utxo_address(chain, address) else {
         return;
     };
     if seen.insert(normalized.clone()) {
@@ -654,22 +739,22 @@ fn push_utxo_address(
 }
 
 impl WalletService {
-    /// The reserved receive address for a wallet on a deep-UTXO chain.
+    /// The reserved receive address for a wallet on an account UTXO chain.
     ///
     /// `reserve` takes the next index when none is held; without it this only
-    /// reads. Deep-UTXO chains never hand out index 0 as a receive address,
-    /// which is why the reservation floor is 1.
+    /// reads. An account never hands out index 0 as a receive address, which
+    /// is why the reservation floor is 1.
     ///
-    /// `None` for a chain without the walk or a wallet without readable HD
-    /// material. UTXO mnemonic wallets use their stored public account;
-    /// missing or mismatched public keys fail before reserving any index.
+    /// `None` for a chain without accounts or a wallet of one address. A
+    /// phrase wallet uses its stored account key and a watched account its
+    /// own; a missing or mismatched key fails before reserving any index.
     pub async fn utxo_receive_address(
         &self,
         wallet_id: String,
         chain: crate::registry::Chain,
         reserve: bool,
     ) -> Result<Option<String>, SpectraBridgeError> {
-        if !chain.supports_deep_utxo_discovery() {
+        if !chain.uses_account_utxo() {
             return Ok(None);
         }
 
@@ -682,9 +767,12 @@ impl WalletService {
                     .await?,
             )
         } else {
+            // A watched account has no address of its own to fall back to:
+            // until one is reserved, it shows its first.
             self.keypool_state(wallet_id.clone(), chain)
                 .await?
                 .reserved_receive_index
+                .or(context.base_path.is_none().then_some(0))
         };
         let Some(index) = index.filter(|i| *i >= 0) else {
             return Ok(None);
@@ -698,7 +786,7 @@ impl WalletService {
                 wallet_id,
                 chain,
                 address.clone(),
-                Some(path),
+                path,
                 Some("external".to_string()),
                 Some(i64::from(index)),
             )

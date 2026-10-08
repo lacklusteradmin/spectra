@@ -13,7 +13,6 @@ use crate::derivation::monero::derive_monero;
 use crate::derivation::monero::monero_base58_encode;
 use crate::derivation::near::derive_near;
 use crate::derivation::polkadot::derive_polkadot;
-use crate::derivation::primitives::derive_substrate_sr25519_material;
 use crate::derivation::solana::derive_solana;
 use crate::derivation::stellar::derive_stellar;
 use crate::derivation::sui::derive_sui;
@@ -239,7 +238,7 @@ fn derives_all_supported_chains() {
     );
     ok!(
         "polkadot",
-        derive_polkadot(m.clone(), None, None, true, true, true)
+        derive_polkadot(m.clone(), String::new(), None, None, true, true, true)
     );
     ok!(
         "monero",
@@ -683,7 +682,7 @@ fn mnemonic_entropy_matches_bip39_and_survives_ambiguous_phrases() {
     let chinese = parse_mnemonic("的 的 的 的 的 的 的 的 的 的 的 在", None).unwrap();
     assert_eq!(*mnemonic_entropy(&chinese), [0u8; 16]);
     let polkadot = |phrase: &str| {
-        derive_polkadot(phrase.into(), None, None, true, false, false)
+        derive_polkadot(phrase.into(), String::new(), None, None, true, false, false)
             .expect("polkadot")
             .address
     };
@@ -699,8 +698,8 @@ fn mnemonic_entropy_matches_bip39_and_survives_ambiguous_phrases() {
 fn polkadot_substrate_address_structure() {
     // SS58 Polkadot mainnet (network prefix 0): 1-byte prefix + 32-byte
     // pubkey + 2-byte Blake2b-512("SS58PRE"||…) checksum, base58-encoded.
-    let result =
-        derive_polkadot(MNEMONIC.into(), None, None, true, true, true).expect("polkadot derive");
+    let result = derive_polkadot(MNEMONIC.into(), String::new(), None, None, true, true, true)
+        .expect("polkadot derive");
     let priv_hex = result.private_key_hex.expect("polkadot mini-secret");
     let pub_hex = result.public_key_hex.expect("polkadot pub");
     let address = result.address.expect("polkadot address");
@@ -721,11 +720,20 @@ fn polkadot_substrate_address_structure() {
 
 #[test]
 fn polkadot_substrate_passphrase_changes_mini_secret() {
-    let baseline = derive_polkadot(MNEMONIC.into(), None, None, false, false, true)
-        .expect("baseline polkadot")
-        .private_key_hex;
+    let baseline = derive_polkadot(
+        MNEMONIC.into(),
+        String::new(),
+        None,
+        None,
+        false,
+        false,
+        true,
+    )
+    .expect("baseline polkadot")
+    .private_key_hex;
     let tweaked = derive_polkadot(
         MNEMONIC.into(),
+        String::new(),
         Some("TREZOR".into()),
         None,
         false,
@@ -742,22 +750,19 @@ fn polkadot_substrate_diverges_from_bip39_seed_prefix() {
     // substrate-bip39 uses the BIP-39 *entropy* (16 bytes for 12 words)
     // as the PBKDF2 password — NOT the mnemonic string. So the resulting
     // mini-secret must differ from the first 32 bytes of the standard BIP-39 seed.
-    let result =
-        derive_polkadot(MNEMONIC.into(), None, None, false, false, true).expect("polkadot");
+    let result = derive_polkadot(
+        MNEMONIC.into(),
+        String::new(),
+        None,
+        None,
+        false,
+        false,
+        true,
+    )
+    .expect("polkadot");
     let mini_secret = result.private_key_hex.expect("mini-secret");
     let bip39_seed_prefix = "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1";
     assert_ne!(mini_secret, bip39_seed_prefix);
-}
-
-#[test]
-fn polkadot_path_with_junction_is_rejected() {
-    let err =
-        derive_substrate_sr25519_material(MNEMONIC, "", None, None, 0, Some("//Alice"), false)
-            .expect_err("junction path must be rejected");
-    assert!(
-        err.to_string().to_lowercase().contains("junction"),
-        "error should mention junctions, got: {err}"
-    );
 }
 
 #[test]
@@ -768,7 +773,16 @@ fn polkadot_ss58_round_trip() {
     use blake2::digest::consts::U64;
     type Blake2b512 = Blake2b<U64>;
 
-    let result = derive_polkadot(MNEMONIC.into(), None, None, true, true, false).expect("polkadot");
+    let result = derive_polkadot(
+        MNEMONIC.into(),
+        String::new(),
+        None,
+        None,
+        true,
+        true,
+        false,
+    )
+    .expect("polkadot");
     let address = result.address.expect("polkadot address");
     let pub_hex = result.public_key_hex.expect("polkadot pub");
 

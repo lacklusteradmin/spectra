@@ -291,6 +291,52 @@ class WalletsTests(unittest.TestCase):
                        '--no-password', success=False) == 3
             assert len(run('wallet', 'list')['wallets']) == 4
 
+    def test_substrate_junction_paths_import_and_sign_as_polkadot_js_derives(self):
+        """A `//hard/soft` path imports polkadot.js's account on each Substrate network, signs as it after reopening, and exports a seed only where one exists."""
+        fixture = json.loads((pathlib.Path(__file__).resolve().parents[1]
+                              / 'core/tests/fixtures/substrate-paths.json').read_text())
+        vector = lambda path: next(v for v in fixture['vectors'] if v['path'] == path and not v['passphrase'])
+        with tempfile.TemporaryDirectory(prefix='spectra-junctions-') as directory:
+            root = pathlib.Path(directory)
+            def run(*args, success=True, env=None):
+                env = {**os.environ, 'SPECTRA_SEED': fixture['phrase'], **(env or {})}
+                p = subprocess.run([binary, '--data-dir', str(root / 'state'), '--json', *args],
+                                   capture_output=True, text=True, timeout=60, env=env)
+                assert (p.returncode == 0) == success, (args, p.stdout, p.stderr)
+                return json.loads(p.stdout) if success else p.returncode
+            for chain, field in [('polkadot', 'polkadot'), ('polkadot-westend', 'substrate'), ('bittensor', 'substrate')]:
+                for path in ['//polkadot//0/1', '//polkadot//0']:
+                    expected = vector(path)[field]
+                    name = f'{chain} {path}'
+                    preview = run('wallet', 'import', '--chain', chain, '--path', path, '--no-password', '--preview')
+                    assert preview['addresses'] == [expected], preview
+                    wallet = run('wallet', 'import', '--chain', chain, '--path', path,
+                                 '--no-password', '--name', name)['wallet']
+                    assert (wallet['address'], wallet['derivationPath']) == (expected, path), wallet
+                    # Each command is a new process: the stored path signs.
+                    assert run('send', 'identity', '--from', name)['address'] == expected
+                    signed = run('wallet', 'sign-message', name, '--message', 'Spectra')
+                    assert run('address', 'verify-message', '--chain', chain, '--address', expected,
+                               '--message', 'Spectra', '--signature', signed['signature'])['valid']
+                    if vector(path)['hardOnly']:
+                        key = run('wallet', 'export', name, '--key', 'private-key', '--yes')['privateKey']
+                        run('wallet', 'delete', name, '--yes')
+                        restored = run('wallet', 'import', '--chain', chain, '--private-key-env', 'KEY',
+                                       '--no-password', '--name', name, env={'KEY': key})['wallet']
+                        assert restored['address'] == expected, restored
+                    else:
+                        # A soft junction's key expands from no seed.
+                        assert run('wallet', 'export', name, '--key', 'private-key', '--yes', success=False) == 3
+            # Read one way by sp-core and another by polkadot.js, a BIP-32
+            # path, a profile and a secret URI's password: refused, nothing stored.
+            before = len(run('wallet', 'list')['wallets'])
+            for args in [['--path', '//0x1234'], ['--path', '//18446744073709551616'],
+                         ['--path', "m/44'/354'/0'"], ['--path', '//polkadot///secret'],
+                         ['--profile', 'standard']]:
+                assert run('wallet', 'import', '--chain', 'polkadot', *args, '--no-password',
+                           success=False) == 3, args
+            assert len(run('wallet', 'list')['wallets']) == before
+
     def test_a_preview_shows_what_the_import_stores_and_stores_nothing(self):
         """Phrase, key and watched-account previews name the stored address without storing a wallet."""
         phrase = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
@@ -415,11 +461,11 @@ class WalletsTests(unittest.TestCase):
                     return json.loads(p.stdout) if p.stdout.strip() else None
                 summary = lambda chain: run('wallet', 'capabilities', '--chain', chain)['summary']
                 assert summary('dash-testnet')['balance'] == 'needsCustomEndpoint'
-                assert 'singleAddress' in summary('dash-testnet')['limits']
+                assert summary('dash-testnet')['limits'] == []
                 assert summary('bnb')['history'] == 'needsCustomEndpoint', summary('bnb')
                 assert summary('xrp')['limits'] == ['accountReserve']
                 assert summary('monero')['limits'] == ['scansOnDevice']
-                assert summary('zcash')['limits'] == ['singleAddress', 'shieldedScan']
+                assert summary('zcash')['limits'] == ['shieldedScan']
                 assert summary('ethereum')['staking'] is False and summary('solana')['staking'] is True
                 base = summary('base-sepolia')
                 assert base['balance'] == 'configured' and base['endpoints'], base

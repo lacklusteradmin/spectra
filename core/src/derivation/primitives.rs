@@ -187,6 +187,12 @@ pub(crate) fn derive_substrate_mini_secret(
     Ok(out)
 }
 
+/// The sr25519 signing key and public key a phrase derives along a Substrate
+/// junction path (`substrate_path`; empty is the root key): the 32-byte seed
+/// while every junction is hard, which a raw-key import reads too, and the
+/// 64-byte expanded secret key after a soft junction, which no seed gives.
+/// `uniform_expansion` expands the root seed in schnorrkel's Uniform mode
+/// rather than the Ed25519 mode every Substrate wallet uses.
 pub(crate) fn derive_substrate_sr25519_material(
     seed_phrase: &str,
     passphrase: &str,
@@ -195,15 +201,8 @@ pub(crate) fn derive_substrate_sr25519_material(
     iteration_count: u32,
     derivation_path: Option<&str>,
     uniform_expansion: bool,
-) -> Result<([u8; 32], [u8; 32]), DerivationError> {
-    let path = derivation_path.unwrap_or("").trim();
-    if !path.is_empty() && path != "m" && path != "M" {
-        return Err(DerivationError::invalid(
-            "Substrate junction derivation (//hard, /soft) is not yet supported; \
-             omit the derivation path to derive the root sr25519 keypair.",
-        ));
-    }
-
+) -> Result<(Zeroizing<Vec<u8>>, [u8; 32]), DerivationError> {
+    let junctions = super::substrate_path::parse(derivation_path.unwrap_or(""))?;
     let mini_secret = derive_substrate_mini_secret(
         seed_phrase,
         passphrase,
@@ -211,21 +210,18 @@ pub(crate) fn derive_substrate_sr25519_material(
         salt_prefix,
         iteration_count,
     )?;
-
-    let mini = schnorrkel::MiniSecretKey::from_bytes(&*mini_secret).map_err(|e| {
-        DerivationError::Invalid(format!("Invalid sr25519 mini-secret: {e}").into())
-    })?;
     let mode = if uniform_expansion {
         schnorrkel::ExpansionMode::Uniform
     } else {
         schnorrkel::ExpansionMode::Ed25519
     };
-    let keypair = mini.expand_to_keypair(mode);
-    let public_key = keypair.public.to_bytes();
-
-    let mut mini_out = [0u8; 32];
-    mini_out.copy_from_slice(&*mini_secret);
-    Ok((mini_out, public_key))
+    let (secret, seed) = super::substrate_path::derive(&mini_secret, mode, &junctions)?;
+    let public_key = secret.to_public().to_bytes();
+    let key = match seed {
+        Some(seed) => Zeroizing::new(seed.to_vec()),
+        None => Zeroizing::new(secret.to_bytes().to_vec()),
+    };
+    Ok((key, public_key))
 }
 
 fn ss58_prefix_bytes(network_prefix: u16) -> Vec<u8> {

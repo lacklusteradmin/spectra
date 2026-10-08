@@ -34,19 +34,6 @@ pub struct BitcoinSendPreview {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-pub struct DogecoinSendPreview {
-    pub estimatedNetworkFee: String,
-    pub estimatedFeeRateDogePerKb: String,
-    pub estimatedTransactionBytes: i64,
-    pub selectedInputCount: i64,
-    pub usesChangeOutput: bool,
-    pub spendableBalance: String,
-    pub feeRateDescription: Option<String>,
-    pub maxSendable: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct TronSendPreview {
     pub estimatedNetworkFee: String,
     pub feeLimitSun: i64,

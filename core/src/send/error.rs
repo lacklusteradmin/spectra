@@ -30,6 +30,14 @@ impl SendError {
         Self::Invalid(message.to_string().into())
     }
 
+    /// A refusal a person reads, with its values named.
+    pub(crate) fn refused(
+        template: &'static str,
+        args: impl IntoIterator<Item = impl std::fmt::Display>,
+    ) -> Self {
+        Self::Invalid(crate::LocalizableMessage::new(template, args))
+    }
+
     pub(crate) fn insufficient_funds() -> Self {
         Self::InsufficientFunds("Insufficient funds for the amount plus the network fee.".into())
     }

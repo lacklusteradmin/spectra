@@ -12,12 +12,6 @@ pub fn fee_units(amount: &str, decimals: u32) -> Result<u64, crate::SpectraBridg
         .ok_or_else(invalid)
 }
 
-pub(crate) fn dogecoin_fee(rate: &str) -> Result<u64, crate::SpectraBridgeError> {
-    let raw_per_kb = fee_units(rate, 8)?;
-    // The existing 350-byte estimate, rounded UP once in integer units.
-    Ok((u128::from(raw_per_kb) * 350).div_ceil(1000) as u64)
-}
-
 #[cfg(test)]
 mod fee_tests {
     use super::*;
@@ -37,8 +31,6 @@ mod fee_tests {
             assert!(fee_units(value, 9).is_err(), "{value}");
         }
         assert!(fee_units("18446744073710", 6).is_err());
-        assert_eq!(dogecoin_fee("0.01").unwrap(), 350000);
-        assert_eq!(dogecoin_fee("0.00000001").unwrap(), 1);
     }
 }
 

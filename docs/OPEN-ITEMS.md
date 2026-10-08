@@ -151,7 +151,7 @@ foundation; the rest build on them and need not land together.
 - [x] **Upgrade watched wallets and refuse other duplicates.** Nothing
   stops a second wallet with the same network and address; the only check is
   on minted ids. A signing setup is one from a phrase or a private key. When
-  its derived address, or its Bitcoin account xpub, matches a watch-only
+  its derived address, or its account public key, matches a watch-only
   wallet on the same network, it upgrades that wallet in place.
   Core seals the secret under the existing id, records the signing kind,
   paths and overrides, and keeps the name, history, labels and settings. The
@@ -475,25 +475,25 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
 
 ### Wallet import and address recovery
 
-- [ ] **Add owned Monero accounts and subaddresses.** The wallet derives its
+- [x] **Add owned Monero accounts and subaddresses.** The wallet derives its
   primary address and scans without registering owned subaddresses. Add core
   account/index derivation, receive rotation and durable scan targets. Prove
   recovery of outputs sent to non-primary accounts/subaddresses and continued
   scanning after restart. Sending to a subaddress recipient is a separate,
   already parsed destination capability.
-- [ ] **Add Monero view-only wallet import and scanning.** There is no current
+- [x] **Add Monero view-only wallet import and scanning.** There is no current
   watch-only import path for a Monero scan-key wallet. Model public spend and
   private view keys explicitly, validate the derived address before storing,
   and allow scanning without a spend key. Report any limits on spent-output
   knowledge; prove import, scan, restart and refusal to sign through the CLI.
   An address alone does not contain the keys needed for Monero scanning.
-- [ ] **Add account address recovery for ZEC, BTG, DCR, KAS and DASH.** Each
+- [x] **Add account address recovery for ZEC, BTG, DCR, KAS and DASH.** Each
   currently uses one owned address per network. Add supported receive/change
   derivation, account-wide gap scanning, receive rotation and balances across
   owned sources together with signing for every discovered spendable source.
   CLI recovery must find used child addresses beyond the initial address and
   remain correct after reopening the database.
-- [ ] **Support Polkadot/Bittensor junction derivation.** `//hard` and `/soft`
+- [x] **Support Polkadot/Bittensor junction derivation.** `//hard` and `/soft`
   derivation is unsupported; only the root sr25519 derivation is exposed.
   The primitive rejects explicit paths, but ordinary chain dispatch does not
   forward the path to these adapters. First ensure every entry point refuses
@@ -501,12 +501,12 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   explicit path parsing and derivation against independent vectors, validate
   imported identity before storing, and prove CLI import and signing for
   supported paths.
-- [ ] **Add Bitcoin-family multisig and PSBT workflows.** Wallets currently
+- [x] **Add Bitcoin-family multisig and PSBT workflows.** Wallets currently
   model single-key scripts. Core must own the signing policy, cosigner/script
   identity, partial signatures, transaction review and finalization. Prove
   interoperability with independent PSBT fixtures and refuse foreign inputs,
   mismatched scripts or changed outputs before signing.
-- [ ] **Extend external account xpub import beyond Bitcoin.** Bitcoin mainnet
+- [x] **Extend external account xpub import beyond Bitcoin.** Bitcoin mainnet
   and its test networks are the only accepted account-xpub imports. Account
   discovery on other UTXO chains does not provide this import capability.
   Add each supported chain's network/path/script validation, owned public

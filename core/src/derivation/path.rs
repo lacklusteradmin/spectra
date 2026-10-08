@@ -13,13 +13,14 @@ pub struct DerivationPathSegment {
 }
 
 /// The derivation path a wallet on `chain` will use: the caller's, normalized,
-/// or the chain's catalog default when the caller named none.
+/// or the chain's catalog default when the caller named none. A path that
+/// does not parse for the chain is refused rather than replaced by the
+/// default, which would sign with a key the wallet never named.
 pub(crate) fn resolve_derivation_path(
     chain: Chain,
     derivation_path: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    let default_path = default_path_from_catalog(chain)?;
-    Ok(normalize_derivation_path(&derivation_path, &default_path))
+    Ok(import_derivation_path(chain, Some(&derivation_path))?.unwrap_or_default())
 }
 
 /// A chain's derivation profiles, default first, each with the template its
@@ -175,14 +176,18 @@ fn render_derivation_path_template(template: &str, account: u32) -> String {
 }
 
 /// The path an import stores on `chain`: the one chosen, normalized, or the
-/// chain's default profile at account 0 when none was. A chain that derives
-/// without a path refuses one rather than ignoring it, and a path that does
-/// not parse is refused rather than replaced by the default.
+/// chain's default profile at account 0 when none was. A Substrate chain
+/// takes junctions (`substrate_path`), none being its root key. A chain that
+/// derives without a path refuses one rather than ignoring it, and a path
+/// that does not parse is refused rather than replaced by the default.
 pub(crate) fn import_derivation_path(
     chain: Chain,
     requested: Option<&str>,
 ) -> Result<Option<String>, DerivationError> {
     let requested = requested.map(str::trim).filter(|path| !path.is_empty());
+    if chain.derives_along_junctions() {
+        return requested.map_or(Ok(None), super::substrate_path::normalized);
+    }
     if !chain.uses_derivation_path() {
         return match requested {
             None => Ok(None),

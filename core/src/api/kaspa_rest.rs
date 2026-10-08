@@ -145,6 +145,19 @@ impl KaspaClient {
         })
     }
 
+    /// Has this address ever been in a transaction? The indexer counts the
+    /// transactions it has for the address.
+    pub async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
+        #[derive(Deserialize)]
+        struct Count {
+            total: u64,
+        }
+        let count: Count = self
+            .get(&format!("/addresses/{address}/transactions-count"))
+            .await?;
+        Ok(count.total > 0)
+    }
+
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<KasUtxo>, ApiError> {
         let utxos: Vec<ApiUtxo> = self.get(&format!("/addresses/{address}/utxos")).await?;
         Ok(utxos

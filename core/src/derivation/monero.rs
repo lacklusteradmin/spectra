@@ -241,3 +241,135 @@ pub fn derive_monero_stagenet(
         index: 0,
     })
 }
+
+// ── Subaddresses and the view key ───────────────────────────────────────
+
+use crate::registry::Chain;
+use monero_wallet::{
+    ViewPair,
+    address::{AddressType, MoneroAddress, Network, SubaddressIndex},
+    ed25519::{Point, Scalar},
+};
+
+/// The address network `chain` writes Monero addresses for.
+pub(crate) fn address_network(chain: Chain) -> Result<Network, DerivationError> {
+    match chain {
+        Chain::Monero => Ok(Network::Mainnet),
+        Chain::MoneroStagenet => Ok(Network::Stagenet),
+        _ => Err(DerivationError::invalid(format!(
+            "{chain} is not a Monero network"
+        ))),
+    }
+}
+
+/// What scans a Monero wallet and derives its subaddresses: its primary
+/// address, whose public spend key it carries, and its private view key.
+/// Neither spends anything.
+pub(crate) struct ViewKeys {
+    pub address: MoneroAddress,
+    pub view: Zeroizing<[u8; 32]>,
+}
+
+impl ViewKeys {
+    /// The scan keys of the wallet `private` (the spend key, then the view
+    /// key, 64 bytes in hex) holds on `chain`.
+    pub(crate) fn from_private(chain: Chain, private: &str) -> Result<Self, DerivationError> {
+        let raw = Zeroizing::new(hex::decode(private.trim()).map_err(|_| {
+            DerivationError::invalid("Monero signing identity must contain spend and view keys")
+        })?);
+        let (Ok(spend), Ok(view)) = (
+            <[u8; 32]>::try_from(raw.get(..32).unwrap_or_default()),
+            <[u8; 32]>::try_from(raw.get(32..).unwrap_or_default()),
+        ) else {
+            return Err(DerivationError::invalid(
+                "Monero signing identity must contain spend and view keys",
+            ));
+        };
+        let spend = Zeroizing::new(spend);
+        let public = |key: &[u8; 32]| {
+            Option::<curve25519_dalek::scalar::Scalar>::from(
+                curve25519_dalek::scalar::Scalar::from_canonical_bytes(*key),
+            )
+            .map(|scalar| {
+                (&scalar * curve25519_dalek::constants::ED25519_BASEPOINT_TABLE)
+                    .compress()
+                    .to_bytes()
+            })
+            .ok_or_else(|| DerivationError::invalid("Not a Monero private key"))
+        };
+        let address =
+            encode_monero_main_address(&public(&spend)?, &public(&view)?, chain == Chain::Monero)?;
+        view_keys(chain, &address, &hex::encode(view))
+    }
+
+    /// The keys a scanner reads outputs with.
+    pub(crate) fn pair(&self) -> Result<ViewPair, DerivationError> {
+        let view = Scalar::read(&mut self.view.as_slice())
+            .map_err(|_| DerivationError::invalid("Not a private view key"))?;
+        ViewPair::new(self.address.spend(), Zeroizing::new(view))
+            .map_err(|error| DerivationError::invalid(error.to_string()))
+    }
+}
+
+/// `address` and `view_key` (64 hex digits) as one wallet's scan keys on
+/// `chain`: refused unless the address is a standard address of the network
+/// and the view key is the one its view public key was made from.
+pub(crate) fn view_keys(
+    chain: Chain,
+    address: &str,
+    view_key: &str,
+) -> Result<ViewKeys, DerivationError> {
+    let network = address_network(chain)?;
+    let address = address.trim();
+    let parsed = MoneroAddress::from_str(network, address).map_err(|_| {
+        DerivationError::refused(
+            "Not a %@ address: %@",
+            [chain.chain_display_name(), address],
+        )
+    })?;
+    if *parsed.kind() != AddressType::Legacy {
+        return Err(DerivationError::invalid(
+            "A view-only wallet is watched by its primary address, not a subaddress or an integrated address.",
+        ));
+    }
+    let not_a_key = || DerivationError::invalid("A private view key is 64 hex digits.");
+    let view: [u8; 32] = hex::decode(view_key.trim())
+        .ok()
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(not_a_key)?;
+    let view = Zeroizing::new(view);
+    let scalar = Option::<curve25519_dalek::scalar::Scalar>::from(
+        curve25519_dalek::scalar::Scalar::from_canonical_bytes(*view),
+    )
+    .ok_or_else(not_a_key)?;
+    if Point::from(&scalar * curve25519_dalek::constants::ED25519_BASEPOINT_TABLE) != parsed.view()
+    {
+        return Err(DerivationError::invalid(
+            "This private view key does not belong to the address.",
+        ));
+    }
+    Ok(ViewKeys {
+        address: parsed,
+        view,
+    })
+}
+
+/// The address at `(account, index)` of the wallet `keys` scans: its
+/// primary address at `(0, 0)`, a subaddress anywhere else.
+pub(crate) fn subaddress(
+    keys: &ViewKeys,
+    account: u32,
+    index: u32,
+) -> Result<String, DerivationError> {
+    let Some(subaddress) = SubaddressIndex::new(account, index) else {
+        return Ok(keys.address.to_string());
+    };
+    Ok(keys
+        .pair()?
+        .subaddress(keys.address.network(), subaddress)
+        .to_string())
+}
+
+#[cfg(test)]
+#[path = "tests/monero_subaddress.rs"]
+mod subaddress_tests;

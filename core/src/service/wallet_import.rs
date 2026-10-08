@@ -114,6 +114,7 @@ impl WalletService {
                     mut commit,
                     mut wallets,
                     rejected_addresses,
+                    scan_key,
                     ..
                 } = plan;
                 let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
@@ -161,13 +162,22 @@ impl WalletService {
                 }
                 let changes =
                     crate::wallet_db::AppStateChanges::between(Some(&previous), &snapshot)?;
-                let secrets = if is_watch_only {
+                let secrets = if is_watch_only && scan_key.is_none() {
                     None
                 } else {
                     Some(service.secrets()?)
                 };
                 let result: Result<(), SpectraBridgeError> = async {
-                    if let Some(store) = &secrets {
+                    if let (Some(store), Some(view)) = (&secrets, &scan_key) {
+                        for wallet in &wallets {
+                            store.save_secret(
+                                crate::store::secret_store::SecretClass::Generic,
+                                format!("{}.scan-key", wallet.id),
+                                view.to_string(),
+                            )?;
+                        }
+                    }
+                    if let Some(store) = secrets.as_ref().filter(|_| !is_watch_only) {
                         for wallet in &wallets {
                             let result = if commit.request.kind == WalletImportKind::PrivateKey {
                                 crate::store::wallet_secrets::store_private_key(
@@ -202,6 +212,17 @@ impl WalletService {
                             {
                                 cleanup_errors.push(format!("{}: {e}", wallet.id));
                             }
+                            // A watched Monero wallet the import would have
+                            // upgraded keeps its view key.
+                            if let (Some(_), Some(view)) = (&upgrade, &scan_key)
+                                && let Err(e) = store.save_secret(
+                                    crate::store::secret_store::SecretClass::Generic,
+                                    format!("{}.scan-key", wallet.id),
+                                    view.to_string(),
+                                )
+                            {
+                                cleanup_errors.push(format!("{}: {e}", wallet.id));
+                            }
                         }
                     }
                     return Err(SpectraBridgeError::failure(format!(
@@ -233,6 +254,8 @@ pub(super) struct ImportPlan {
     /// The named account the wallet holds and the public key (hex) the
     /// network must list among its full-access keys before it is stored.
     named_account_key: Option<(String, String)>,
+    /// A Monero wallet's private view key, hex, stored outside the password.
+    scan_key: Option<Zeroizing<String>>,
 }
 
 pub(super) fn plan_import(
@@ -425,19 +448,47 @@ pub(super) fn plan_import(
             kept.into_iter().map(ImportedAddress::Address).collect()
         }
         WalletImportKind::WatchAccountXpub { xpub } => {
-            let xpub =
-                crate::derivation::import::validated_account_xpub(xpub).ok_or_else(|| {
-                    SpectraBridgeError::InvalidInput {
-                        message: format!(
-                            "Enter a valid account public key. Rejected: {}",
-                            xpub.trim()
-                        )
-                        .into(),
-                    }
-                })?;
-            vec![ImportedAddress::AccountXpub(xpub)]
+            crate::derivation::account_key::parse(chain, xpub)?;
+            vec![ImportedAddress::AccountXpub(xpub.trim().to_string())]
+        }
+        WalletImportKind::WatchViewKey { address, view_key } => {
+            let keys = crate::derivation::monero::view_keys(chain, address, view_key)?;
+            vec![ImportedAddress::Address(keys.address.to_string())]
+        }
+        WalletImportKind::WatchMultisig { descriptor } => {
+            let policy = crate::derivation::multisig::MultisigPolicy::parse(chain, descriptor)?;
+            vec![ImportedAddress::Multisig {
+                address: policy.address(chain, (0, 0))?,
+                descriptor: policy.descriptor(),
+            }]
         }
     };
+    // A Monero wallet's private view key is stored beside it, outside the
+    // password: its subaddresses are derived from it, and a view-only
+    // wallet scans with it alone.
+    let scan_key = match &commit.request.kind {
+        _ if chain.mainnet_counterpart() != Chain::Monero => None,
+        WalletImportKind::WatchViewKey { address, view_key } => {
+            Some(crate::derivation::monero::view_keys(chain, address, view_key)?.view)
+        }
+        WalletImportKind::Phrase => {
+            let derived = crate::derivation::dispatch::derive_for_chain(
+                chain,
+                commit.seed_phrase.as_deref().unwrap_or_default(),
+                commit.derivation_path.as_deref().unwrap_or_default(),
+                commit.derivation_overrides.passphrase.as_deref(),
+                commit.derivation_overrides.hmac_key.as_deref(),
+                None,
+                false,
+                false,
+                true,
+            )?;
+            let private = Zeroizing::new(derived.private_key_hex.unwrap_or_default());
+            Some(crate::derivation::monero::ViewKeys::from_private(chain, &private)?.view)
+        }
+        _ => None,
+    }
+    .map(|view| Zeroizing::new(hex::encode(*view)));
     // A Monero wallet, and a Zcash wallet's shielded pools, scan from its
     // restore height: the one typed or given for a created wallet, else a
     // Polyseed's birthday, else the chain's default (Monero's start,
@@ -505,6 +556,7 @@ pub(super) fn plan_import(
         wallets,
         rejected_addresses,
         named_account_key,
+        scan_key,
     })
 }
 
@@ -516,11 +568,14 @@ fn preview_address(
     if let Some(address) = wallet.primary_address() {
         return Ok(address.to_string());
     }
-    wallet
+    let xpub = wallet
         .account_xpub
         .as_deref()
-        .and_then(first_receive_address)
-        .ok_or_else(|| SpectraBridgeError::failure("a planned wallet has no address"))
+        .ok_or_else(|| SpectraBridgeError::failure("a planned wallet has no address"))?;
+    Ok(crate::derivation::account_key::first_receive_address(
+        wallet.chain_id,
+        xpub,
+    )?)
 }
 
 /// A plan placed among the wallets already stored on its network.
@@ -556,12 +611,18 @@ fn place_import(
         .map(|wallet| {
             let mut addresses: Vec<String> =
                 wallet.addresses.iter().map(|a| a.address.clone()).collect();
-            addresses.extend(wallet.xpub.as_deref().and_then(first_receive_address));
-            (
-                wallet,
-                addresses,
-                wallet.xpub.as_deref().and_then(account_key),
-            )
+            // A watched account's first address; a phrase wallet's stored
+            // key is its own address's account, already listed.
+            addresses.extend(
+                wallet
+                    .xpub
+                    .as_deref()
+                    .filter(|_| wallet.is_watch_only())
+                    .and_then(|xpub| {
+                        crate::derivation::account_key::first_receive_address(chain, xpub).ok()
+                    }),
+            );
+            (wallet, addresses, wallet.xpub.clone())
         })
         .collect();
     // A phrase on a network that watches account keys holds the key of the
@@ -584,12 +645,13 @@ fn place_import(
         let key = wallet
             .account_xpub
             .as_deref()
-            .or(phrase_account_key.as_deref())
-            .and_then(account_key);
+            .or(phrase_account_key.as_deref());
         held.iter()
             .find(|(_, addresses, stored_key)| {
                 address.as_ref().is_some_and(|a| addresses.contains(a))
-                    || key.is_some() && *stored_key == key
+                    || key.zip(stored_key.as_deref()).is_some_and(|(key, stored)| {
+                        crate::derivation::account_key::same_account(key, stored)
+                    })
             })
             .map(|(wallet, _, _)| *wallet)
     };
@@ -615,6 +677,46 @@ fn place_import(
             Some(wallet)
         }
     };
+    // A cosigner's phrase gives a watched multisig account that cosigner's
+    // signature: the wallet keeps its policy and addresses, and signs
+    // with the key at the cosigner's origin.
+    if let Some(bound) = bound
+        && let Some(descriptor) = bound.multisig_descriptor.as_deref()
+    {
+        let policy = crate::derivation::multisig::MultisigPolicy::parse(chain, descriptor)?;
+        let seed = plan
+            .commit
+            .seed_phrase
+            .as_deref()
+            .filter(|_| plan.commit.request.kind == WalletImportKind::Phrase)
+            .ok_or_else(|| {
+                SpectraBridgeError::invalid("A multisig wallet takes a cosigner's phrase.")
+            })?;
+        if plan.commit.derivation_overrides.hmac_key.is_some() {
+            return Err(SpectraBridgeError::invalid(
+                "A multisig cosigner derives with BIP-32's own master key.",
+            ));
+        }
+        let (cosigner, _) = policy.cosigner_of_phrase(
+            chain,
+            seed,
+            plan.commit
+                .derivation_overrides
+                .passphrase
+                .as_deref()
+                .unwrap_or_default(),
+        )?;
+        let mut upgraded = bound.clone();
+        upgraded.signing = plan.wallets[0].signing;
+        upgraded.derivation_path = Some(format!("m/{}", policy.cosigners[cosigner].origin));
+        upgraded.derivation_overrides = plan.commit.derivation_overrides.clone();
+        upgraded.xpub = None;
+        plan.wallets = vec![upgraded.to_wallet_view()];
+        return Ok(Placed {
+            plan,
+            upgrade: Some(upgraded),
+        });
+    }
     match plan.commit.request.kind {
         WalletImportKind::Phrase | WalletImportKind::PrivateKey => {
             let holds_bound = |existing: Option<&crate::store::state::WalletState>| {
@@ -650,7 +752,10 @@ fn place_import(
                 upgrade: Some(upgraded),
             })
         }
-        WalletImportKind::WatchAddresses { .. } | WalletImportKind::WatchAccountXpub { .. }
+        WalletImportKind::WatchAddresses { .. }
+        | WalletImportKind::WatchAccountXpub { .. }
+        | WalletImportKind::WatchViewKey { .. }
+        | WalletImportKind::WatchMultisig { .. }
             if bound.is_some() =>
         {
             Err(SpectraBridgeError::invalid(
@@ -698,7 +803,9 @@ fn place_import(
                 upgrade: None,
             })
         }
-        WalletImportKind::WatchAccountXpub { .. } => match holder(&plan.wallets[0]) {
+        WalletImportKind::WatchAccountXpub { .. }
+        | WalletImportKind::WatchViewKey { .. }
+        | WalletImportKind::WatchMultisig { .. } => match holder(&plan.wallets[0]) {
             Some(held_by) => Err(refused(held_by)),
             None => Ok(Placed {
                 plan,
@@ -739,21 +846,4 @@ impl WalletService {
             Err(error) => Err(error.into()),
         }
     }
-}
-
-/// The first receive address of an account public key.
-fn first_receive_address(xpub: &str) -> Option<String> {
-    crate::derivation::xpub_walker::derive_children(xpub.trim(), 0, 0, 1)
-        .ok()?
-        .into_iter()
-        .next()
-        .map(|child| child.address)
-}
-
-/// An account public key as its key, whatever version bytes it was written
-/// with: a zpub and the xpub of the same account are one account.
-fn account_key(xpub: &str) -> Option<String> {
-    crate::derivation::xpub_walker::normalize_xpub(xpub.trim())
-        .ok()
-        .map(|(canonical, _, _)| canonical)
 }

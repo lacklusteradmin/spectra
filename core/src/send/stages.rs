@@ -29,12 +29,12 @@ pub(crate) struct PreparedAccountUtxoTransaction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum PreparedPayload {
     Evm(super::evm::PreparedEvmTransaction),
-    Zcash(super::zcash_stages::PreparedZcashTransaction),
+    /// A transparent transfer from a wallet account's addresses, on every
+    /// account UTXO network without a protocol stage of its own.
+    AccountTransfer(super::account_utxo::PreparedAccountTransfer),
     Icp(super::icp_stages::PreparedIcpTransaction),
     IcpStaking(super::icp_staking::PreparedIcpStaking),
     Monero(super::monero_local::PreparedMoneroTransaction),
-    Decred(super::decred::PreparedDecredTransaction),
-    Kaspa(super::kaspa::PreparedKaspaTransaction),
     Litecoin(PreparedAccountUtxoTransaction),
     Peercoin(PreparedAccountUtxoTransaction),
     Near {
@@ -56,12 +56,6 @@ pub(crate) enum PreparedPayload {
         amount: u128,
         valid_until: u32,
         jetton: Option<super::ton::PreparedJettonTransfer>,
-    },
-    FixedUtxo {
-        inputs: Vec<(String, u32, u64, Vec<u8>)>,
-        amount: u64,
-        fee: u64,
-        recipient_script: Vec<u8>,
     },
     Xrp {
         sequence: u32,
@@ -93,7 +87,6 @@ pub(crate) enum PreparedPayload {
     },
     Substrate(super::polkadot::PreparedPolkadotTransaction),
     Cardano(super::cardano::PreparedCardanoTransaction),
-    Bitcoin(super::bitcoin::PreparedBitcoinTransaction),
     Solana(super::solana::PreparedSolanaTransaction),
     SolanaAccountClosure(super::solana::PreparedSolanaAccountClosure),
     Tron(super::tron::PreparedTronTransfer),

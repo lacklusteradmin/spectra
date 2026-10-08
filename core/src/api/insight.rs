@@ -15,6 +15,16 @@ struct InsightAddress {
     balance: f64,
 }
 
+/// What an address's summary says about its use: Insight's own spelling of
+/// "appearances", confirmed and in the mempool.
+#[derive(Debug, Deserialize)]
+struct InsightAddressActivity {
+    #[serde(rename = "txApperances")]
+    transactions: u64,
+    #[serde(rename = "unconfirmedTxApperances")]
+    unconfirmed_transactions: u64,
+}
+
 #[derive(Debug, Deserialize)]
 struct InsightUtxo {
     txid: String,
@@ -137,6 +147,12 @@ impl InsightClient {
         Ok(DcrBalance {
             balance_atoms: atoms,
         })
+    }
+
+    /// Has this address ever been in a transaction, confirmed or not?
+    pub async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
+        let info: InsightAddressActivity = self.get(&format!("/addr/{address}?noTxList=1")).await?;
+        Ok(info.transactions > 0 || info.unconfirmed_transactions > 0)
     }
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<DcrUtxo>, ApiError> {

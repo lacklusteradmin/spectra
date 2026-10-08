@@ -27,122 +27,84 @@ use crate::send::error::SendError;
 
 use serde::Serialize;
 
-use crate::api::kaspa_rest::KaspaClient;
 use crate::derivation::kaspa::decode_kaspa_address;
+use crate::registry::Chain;
 
 const TX_VERSION: u16 = 0;
 const SIGHASH_ALL: u8 = 1;
 const SIG_OP_COUNT_DEFAULT: u8 = 1;
 const KASPA_SIGHASH_KEY: &[u8] = b"TransactionSigningHash";
 
-pub(crate) async fn prepare_transfer(
-    client: &KaspaClient,
-    from_address: &str,
-    to_address: &str,
-    amount_sompi: u64,
-    fee_sompi: u64,
-    min_fee_sompi: Option<u64>,
-    dust_threshold_sompi: Option<u64>,
-) -> Result<PreparedKaspaTransaction, SendError> {
-    if amount_sompi == 0 {
-        return Err(SendError::Invalid("kaspa amount must be positive".into()));
-    }
-    let utxos = client.fetch_utxos(from_address).await?;
-    if utxos.is_empty() {
+/// The version and payload of an address on `chain`'s own network.
+fn network_address(chain: Chain, address: &str) -> Result<(u8, Vec<u8>), SendError> {
+    let (version, payload, is_testnet) = decode_kaspa_address(address)?;
+    if is_testnet != chain.is_testnet() {
         return Err(SendError::Invalid(
-            "kaspa: no spendable UTXOs at source address".into(),
+            "kaspa address belongs to another network".into(),
         ));
     }
-    let from_decoded = decode_kaspa_address(from_address)?;
-    let to_decoded = decode_kaspa_address(to_address)?;
-    if from_decoded.0 != 0 {
+    Ok((version, payload))
+}
+
+/// The script a wallet's own address pays: a Schnorr key's P2PK, the only
+/// kind a Kaspa wallet signs for.
+pub(crate) fn sender_script(chain: Chain, address: &str) -> Result<Vec<u8>, SendError> {
+    let (version, payload) = network_address(chain, address)?;
+    if version != 0 {
         return Err(SendError::Invalid(
             "kaspa: only Schnorr (version 0) sender addresses supported".into(),
         ));
     }
-    if to_decoded.0 != 0 && to_decoded.0 != 1 && to_decoded.0 != 8 {
+    kaspa_payment_script(version, &payload)
+}
+
+/// The script paying `address`: a Schnorr or ECDSA key's P2PK, or P2SH, on
+/// `chain`'s own network.
+pub(crate) fn recipient_script(chain: Chain, address: &str) -> Result<Vec<u8>, SendError> {
+    let (version, payload) = network_address(chain, address)?;
+    kaspa_payment_script(version, &payload)
+}
+
+/// One input and the key of the address it pays.
+pub(crate) struct KaspaSigningInput<'a> {
+    pub utxo: &'a (String, u32, u64, Vec<u8>),
+    pub private_key: &'a [u8],
+}
+
+/// Sign `inputs`, each with its own key, into the `/transactions` request
+/// paying `outputs` in order. Every input must pay its key's Schnorr P2PK.
+pub(crate) fn sign(
+    inputs: &[KaspaSigningInput<'_>],
+    outputs: &[(Vec<u8>, u64)],
+) -> Result<serde_json::Value, SendError> {
+    if inputs.is_empty() || outputs.is_empty() {
         return Err(SendError::Invalid(
-            format!(
-                "kaspa: unsupported destination version 0x{:02x}",
-                to_decoded.0
-            )
-            .into(),
+            "kaspa transaction must have inputs and outputs".into(),
         ));
     }
-
-    let total_in = utxos.iter().try_fold(0u64, |sum, u| {
-        sum.checked_add(u.value_sompi)
-            .ok_or_else(|| SendError::Invalid("kaspa input sum overflow".into()))
-    })?;
-    let actual_fee = fee_sompi.max(min_fee_sompi.unwrap_or(1_000));
-    let needed = amount_sompi
-        .checked_add(actual_fee)
-        .ok_or_else(|| SendError::Invalid("kaspa amount plus fee overflow".into()))?;
-    if total_in < needed {
-        return Err(SendError::Invalid(
-            format!("kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi")
-                .into(),
-        ));
-    }
-    let change = total_in - needed;
-
-    // Outputs: recipient + optional change. Kaspa dust threshold is 1000
-    // sompi for a 2-output Schnorr send; below that we drop the change
-    // output and let it become fee.
-    let mut outputs: Vec<KaspaOutputBuild> = vec![KaspaOutputBuild {
-        amount: amount_sompi,
-        script_pubkey: kaspa_payment_script(to_decoded.0, &to_decoded.1)?,
-        script_version: 0,
-    }];
-    if change > dust_threshold_sompi.unwrap_or(1_000) {
-        outputs.push(KaspaOutputBuild {
-            amount: change,
-            script_pubkey: kaspa_payment_script(from_decoded.0, &from_decoded.1)?,
-            script_version: 0,
-        });
-    }
-
-    // Per-input snapshot needed for both sighash and the final wire body.
-    let inputs: Vec<KaspaInputBuild> = utxos
+    let builds: Vec<KaspaInputBuild> = inputs
         .iter()
-        .map(|u| {
-            let script_pubkey = hex::decode(&u.script_pubkey_hex)
-                .map_err(|e| SendError::Invalid(format!("kaspa utxo script hex: {e}").into()))?;
-            Ok::<KaspaInputBuild, SendError>(KaspaInputBuild {
-                txid: u.txid.clone(),
-                vout: u.vout,
-                sequence: 0,
-                sig_op_count: SIG_OP_COUNT_DEFAULT,
-                amount: u.value_sompi,
-                script_pubkey,
-                script_version: u.script_version as u16,
-            })
+        .map(|input| KaspaInputBuild {
+            txid: input.utxo.0.clone(),
+            vout: input.utxo.1,
+            sequence: 0,
+            sig_op_count: SIG_OP_COUNT_DEFAULT,
+            amount: input.utxo.2,
+            script_pubkey: input.utxo.3.clone(),
+            script_version: 0,
         })
-        .collect::<Result<_, _>>()?;
-
-    Ok(PreparedKaspaTransaction { inputs, outputs })
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct PreparedKaspaTransaction {
-    inputs: Vec<KaspaInputBuild>,
-    outputs: Vec<KaspaOutputBuild>,
-}
-impl PreparedKaspaTransaction {
-    pub fn sign(&self, key: &[u8]) -> Result<serde_json::Value, SendError> {
-        let signatures = sign_kaspa_inputs(&self.inputs, &self.outputs, key)?;
-        Ok(build_broadcast_body(
-            &self.inputs,
-            &self.outputs,
-            &signatures,
-        ))
-    }
-    pub fn resources(&self) -> Vec<String> {
-        self.inputs
-            .iter()
-            .map(|i| format!("kaspa:utxo:{}:{}", i.txid, i.vout))
-            .collect()
-    }
+        .collect();
+    let outputs: Vec<KaspaOutputBuild> = outputs
+        .iter()
+        .map(|(script_pubkey, amount)| KaspaOutputBuild {
+            amount: *amount,
+            script_pubkey: script_pubkey.clone(),
+            script_version: 0,
+        })
+        .collect();
+    let keys: Vec<&[u8]> = inputs.iter().map(|input| input.private_key).collect();
+    let signatures = sign_kaspa_inputs(&builds, &outputs, &keys)?;
+    Ok(build_broadcast_body(&builds, &outputs, &signatures))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -305,14 +267,32 @@ fn sighash_for_input_with_lock_time(
 fn sign_kaspa_inputs(
     inputs: &[KaspaInputBuild],
     outputs: &[KaspaOutputBuild],
-    private_key_bytes: &[u8],
+    private_keys: &[&[u8]],
 ) -> Result<Vec<Vec<u8>>, SendError> {
     use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("kaspa invalid privkey: {e}").into()))?;
-    let keypair = Keypair::from_secret_key(&secp, &secret_key);
+    let mut keypairs = Vec::with_capacity(inputs.len());
+    let mut outpoints = std::collections::HashSet::new();
+    for (input, private_key) in inputs.iter().zip(private_keys) {
+        let secret_key = SecretKey::from_slice(private_key)
+            .map_err(|e| SendError::Invalid(format!("kaspa invalid privkey: {e}").into()))?;
+        let keypair = Keypair::from_secret_key(&secp, &secret_key);
+        if input.script_pubkey
+            != kaspa_payment_script(0, &keypair.x_only_public_key().0.serialize())?
+        {
+            return Err(SendError::Invalid(
+                "kaspa input does not belong to its signing key".into(),
+            ));
+        }
+        if !outpoints.insert((decode_transaction_id(&input.txid)?, input.vout)) {
+            return Err(SendError::Invalid("kaspa: duplicate input".into()));
+        }
+        keypairs.push(keypair);
+    }
+    if keypairs.len() != inputs.len() {
+        return Err(SendError::Invalid("kaspa: one key per input".into()));
+    }
 
     let prevouts = prev_outputs_hash(inputs)?;
     let sequences = sequences_hash(inputs);
@@ -321,7 +301,7 @@ fn sign_kaspa_inputs(
     let payload_h = payload_hash();
 
     let mut signed = Vec::with_capacity(inputs.len());
-    for i in 0..inputs.len() {
+    for (i, keypair) in keypairs.iter().enumerate() {
         let sighash = sighash_for_input_with_lock_time(
             inputs,
             i,
@@ -333,7 +313,7 @@ fn sign_kaspa_inputs(
             0,
         )?;
         let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
-        let sig = secp.sign_schnorr(&msg, &keypair);
+        let sig = secp.sign_schnorr(&msg, keypair);
         let mut sig_with_type = sig.as_ref().to_vec();
         sig_with_type.push(SIGHASH_ALL);
 
@@ -455,6 +435,122 @@ fn build_broadcast_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// kaspa-wasm's per-input sighashes for an account spend with two keys
+    /// (`account-utxo-transactions.json`), and each signature verifies under
+    /// its own input's key.
+    #[test]
+    fn account_inputs_sign_kaspa_wasm_sighashes_each_with_its_key() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/account-utxo-transactions.json"
+        ))
+        .unwrap();
+        let vector = &fixtures["kaspa"];
+        let utxos: Vec<(String, u32, u64, Vec<u8>)> = vector["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|input| {
+                (
+                    input["txid"].as_str().unwrap().to_string(),
+                    input["vout"].as_u64().unwrap() as u32,
+                    input["value"].as_u64().unwrap(),
+                    hex::decode(input["script"].as_str().unwrap()).unwrap(),
+                )
+            })
+            .collect();
+        let keys: Vec<Vec<u8>> = vector["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|input| hex::decode(input["key"].as_str().unwrap()).unwrap())
+            .collect();
+        let outputs: Vec<(Vec<u8>, u64)> = vector["outputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|output| {
+                (
+                    hex::decode(output["script"].as_str().unwrap()).unwrap(),
+                    output["value"].as_u64().unwrap(),
+                )
+            })
+            .collect();
+        let inputs: Vec<_> = utxos
+            .iter()
+            .zip(&keys)
+            .map(|(utxo, key)| KaspaSigningInput {
+                utxo,
+                private_key: key,
+            })
+            .collect();
+        let body = sign(&inputs, &outputs).unwrap();
+        let builds: Vec<KaspaInputBuild> = utxos
+            .iter()
+            .map(|utxo| KaspaInputBuild {
+                txid: utxo.0.clone(),
+                vout: utxo.1,
+                sequence: 0,
+                sig_op_count: SIG_OP_COUNT_DEFAULT,
+                amount: utxo.2,
+                script_pubkey: utxo.3.clone(),
+                script_version: 0,
+            })
+            .collect();
+        let output_builds: Vec<KaspaOutputBuild> = outputs
+            .iter()
+            .map(|(script_pubkey, amount)| KaspaOutputBuild {
+                amount: *amount,
+                script_pubkey: script_pubkey.clone(),
+                script_version: 0,
+            })
+            .collect();
+        let secp = secp256k1::Secp256k1::verification_only();
+        for (index, expected) in vector["sighashes"].as_array().unwrap().iter().enumerate() {
+            let digest = sighash_for_input_with_lock_time(
+                &builds,
+                index,
+                &prev_outputs_hash(&builds).unwrap(),
+                &sequences_hash(&builds),
+                &sig_op_counts_hash(&builds),
+                &outputs_hash(&output_builds),
+                &payload_hash(),
+                0,
+            )
+            .unwrap();
+            assert_eq!(
+                hex::encode(digest),
+                expected.as_str().unwrap(),
+                "input {index}"
+            );
+            let script = hex::decode(
+                body["transaction"]["inputs"][index]["signatureScript"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!((script[0], script[65]), (65, SIGHASH_ALL));
+            let key = secp256k1::XOnlyPublicKey::from_slice(&utxos[index].3[1..33]).unwrap();
+            secp.verify_schnorr(
+                &secp256k1::schnorr::Signature::from_slice(&script[1..65]).unwrap(),
+                &secp256k1::Message::from_digest(digest),
+                &key,
+            )
+            .unwrap();
+        }
+        // A key that does not own its input signs nothing.
+        let mut swapped = keys.clone();
+        swapped.swap(0, 1);
+        let wrong: Vec<_> = utxos
+            .iter()
+            .zip(&swapped)
+            .map(|(utxo, key)| KaspaSigningInput {
+                utxo,
+                private_key: key,
+            })
+            .collect();
+        assert!(sign(&wrong, &outputs).is_err());
+    }
 
     /// rusty-kaspa consensus/core/src/hashing/sighash.rs, native-all-0.
     /// This is an independent expected digest, not a round trip through our encoder.

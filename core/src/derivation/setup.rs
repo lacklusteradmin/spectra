@@ -25,6 +25,10 @@ pub enum WalletSetupMethod {
     WatchAddresses,
     /// Track a whole account from its extended public key.
     WatchAccountXpub,
+    /// Scan a Monero wallet from its address and private view key.
+    WatchViewKey,
+    /// Watch a Bitcoin multisig account from its descriptor.
+    WatchMultisig,
 }
 
 impl WalletSetupMethod {
@@ -37,6 +41,8 @@ impl WalletSetupMethod {
             WalletImportKind::PrivateKey => Self::ImportPrivateKey,
             WalletImportKind::WatchAddresses { .. } => Self::WatchAddresses,
             WalletImportKind::WatchAccountXpub { .. } => Self::WatchAccountXpub,
+            WalletImportKind::WatchViewKey { .. } => Self::WatchViewKey,
+            WalletImportKind::WatchMultisig { .. } => Self::WatchMultisig,
         }
     }
 }
@@ -77,6 +83,11 @@ pub enum WalletSecretFormat {
     /// A BIP-32 account public key: xpub, ypub or zpub, or tpub, upub or vpub
     /// on a test network.
     AccountXpub,
+    /// A Monero private view key, 64 hex digits.
+    MoneroViewKey,
+    /// A `wsh(sortedmulti(k, …))` output descriptor whose keys name their
+    /// origin.
+    MultisigDescriptor,
 }
 
 /// A value a method asks for beside its secret or addresses.
@@ -93,6 +104,10 @@ pub enum WalletSetupField {
     /// The wallet contract a TON key holds its account under. Optional: W5
     /// unless the wallet being restored is an older version.
     TonWalletVersion,
+    /// A Substrate derivation path of hard (`//`) and soft (`/`) junctions,
+    /// as subkey and polkadot.js write it (`//polkadot//0`). Optional: none
+    /// derives the phrase's root key.
+    JunctionPath,
 }
 
 /// One method a network offers, with the formats it accepts there, the
@@ -145,18 +160,24 @@ pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
     } else {
         Vec::new()
     };
+    // A Substrate phrase derives along junctions rather than a profile.
+    let path_fields = if chain.derives_along_junctions() {
+        vec![WalletSetupField::JunctionPath]
+    } else {
+        Vec::new()
+    };
     let mut options = vec![
         WalletSetupOption {
             method: WalletSetupMethod::CreatePhrase,
             formats: vec![chain.created_phrase_format()],
             profiles: chain.derivation_profiles(),
-            fields: Vec::new(),
+            fields: path_fields.clone(),
         },
         WalletSetupOption {
             method: WalletSetupMethod::ImportPhrase,
             formats: chain.phrase_formats(),
             profiles: chain.derivation_profiles(),
-            fields: [restore_fields, key_fields.clone()].concat(),
+            fields: [path_fields, restore_fields, key_fields.clone()].concat(),
         },
     ];
     let key_formats = chain.private_key_formats();
@@ -184,6 +205,25 @@ pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
             fields: Vec::new(),
         });
     }
+    if chain.supports_multisig() {
+        options.push(WalletSetupOption {
+            method: WalletSetupMethod::WatchMultisig,
+            formats: vec![WalletSecretFormat::MultisigDescriptor],
+            profiles: Vec::new(),
+            fields: Vec::new(),
+        });
+    }
+    if chain.watches_with_view_key() {
+        options.push(WalletSetupOption {
+            method: WalletSetupMethod::WatchViewKey,
+            formats: vec![
+                WalletSecretFormat::Address,
+                WalletSecretFormat::MoneroViewKey,
+            ],
+            profiles: Vec::new(),
+            fields: vec![WalletSetupField::RestoreHeight],
+        });
+    }
     WalletSetupDescriptor { chain, options }
 }
 
@@ -196,7 +236,9 @@ pub(crate) fn check_offered(chain: Chain, kind: &WalletImportKind) -> Result<(),
     let template = match method {
         WalletSetupMethod::ImportPrivateKey => "%@ cannot derive an address from a private key.",
         WalletSetupMethod::WatchAddresses => "%@ cannot be imported as watch-only.",
-        WalletSetupMethod::WatchAccountXpub => "%@ does not take an account xpub.",
+        WalletSetupMethod::WatchAccountXpub => "%@ does not take an account public key.",
+        WalletSetupMethod::WatchViewKey => "%@ does not take a view key.",
+        WalletSetupMethod::WatchMultisig => "%@ has no multisig wallets.",
         // Every network offers a phrase; the descriptor test holds it.
         WalletSetupMethod::CreatePhrase | WalletSetupMethod::ImportPhrase => return Ok(()),
     };
@@ -308,8 +350,9 @@ pub(crate) mod tests {
                 },
             ),
             WalletSetupMethod::WatchAccountXpub => {
-                // A Bitcoin-family account path; a chain that takes no xpub
-                // is offered a mainnet Bitcoin one, which it must refuse.
+                // The account's key in its network's own encoding; a chain
+                // that takes no account key is offered a Bitcoin one, which
+                // it must refuse.
                 let xpub_chain = if chain.accepts_account_xpub() {
                     chain
                 } else {
@@ -317,24 +360,85 @@ pub(crate) mod tests {
                 };
                 let account =
                     crate::derivation::path::default_path_from_catalog(xpub_chain).unwrap();
-                let xpub = crate::service::address_discovery::UtxoDerivation::account_xpub(
+                let key = crate::service::address_discovery::UtxoDerivation::account_private_key(
                     xpub_chain,
                     PHRASE,
                     &account,
                     &Default::default(),
                 )
+                .unwrap()
+                .to_neutered(&secp256k1::Secp256k1::new());
+                let script = crate::derivation::dispatch::script_type_for_path(&account);
+                let version = xpub_chain
+                    .account_key_versions()
+                    .iter()
+                    .find(|version| version.script == script)
+                    .unwrap()
+                    .version;
+                commit(
+                    chain,
+                    WalletImportKind::WatchAccountXpub {
+                        xpub: key.to_xpub_string(version),
+                    },
+                )
+            }
+            WalletSetupMethod::WatchMultisig => commit(
+                chain,
+                WalletImportKind::WatchMultisig {
+                    // Bitcoin's own where the network has none, which it
+                    // must refuse.
+                    descriptor: crate::derivation::multisig::tests::descriptor_of_phrases(
+                        if chain.supports_multisig() {
+                            chain
+                        } else {
+                            Chain::Bitcoin
+                        },
+                    ),
+                },
+            ),
+            WalletSetupMethod::WatchViewKey => {
+                // The phrase's view key on a Monero network; anywhere else
+                // Monero's, which the network must refuse.
+                let monero = if chain.watches_with_view_key() {
+                    chain
+                } else {
+                    Chain::Monero
+                };
+                let private = crate::derivation::dispatch::derive_for_chain(
+                    monero,
+                    phrase(monero),
+                    &crate::derivation::path::default_path_from_catalog(monero).unwrap(),
+                    None,
+                    None,
+                    None,
+                    false,
+                    false,
+                    true,
+                )
+                .unwrap()
+                .private_key_hex
                 .unwrap();
-                commit(chain, WalletImportKind::WatchAccountXpub { xpub })
+                let keys =
+                    crate::derivation::monero::ViewKeys::from_private(monero, &private).unwrap();
+                commit(
+                    chain,
+                    WalletImportKind::WatchViewKey {
+                        address: keys.address.to_string(),
+                        view_key: hex::encode(*keys.view),
+                    },
+                )
             }
         }
     }
 
-    const METHODS: [WalletSetupMethod; 5] = [
+    const METHODS: [WalletSetupMethod; 7] = [
         WalletSetupMethod::CreatePhrase,
         WalletSetupMethod::ImportPhrase,
         WalletSetupMethod::ImportPrivateKey,
         WalletSetupMethod::WatchAddresses,
         WalletSetupMethod::WatchAccountXpub,
+        WalletSetupMethod::WatchViewKey,
+        WalletSetupMethod::WatchMultisig,
     ];
 
     /// The descriptor is honest: on every network, each method it offers
@@ -436,15 +540,11 @@ pub(crate) mod tests {
                     .iter()
                     .map(|wallet| match wallet.primary_address() {
                         Some(address) => address.to_string(),
-                        None => crate::derivation::xpub_walker::derive_children(
+                        None => crate::derivation::account_key::first_receive_address(
+                            chain,
                             wallet.account_xpub.as_deref().unwrap(),
-                            0,
-                            0,
-                            1,
                         )
-                        .unwrap()[0]
-                            .address
-                            .clone(),
+                        .unwrap(),
                     })
                     .collect();
                 assert_eq!(preview.addresses, stored, "{chain} {:?}", option.method);

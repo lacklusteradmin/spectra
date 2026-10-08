@@ -44,5 +44,36 @@ try:
         assert requests == [('/get_info', b'{}')], 'keys must not be sent to the daemon'
         assert run('send', 'monero-status', '--from', 'LocalXmr')['sync'] == initial
         print('PASS Monero: stored restore height, durable status, local authorization and wrong-network refusal without sending keys')
+
+        # A view key watches its own primary address, and nothing else.
+        vectors = json.loads((pathlib.Path(__file__).resolve().parents[1]
+                              / 'core/tests/fixtures/monero-subaddresses.json').read_text())['networks']
+        mainnet, stagenet = vectors
+        primary, view = mainnet['primary'], mainnet['private_view_key']
+        # The phrase wallet hands out its primary address without a
+        # password: its view key was stored at import.
+        assert run('wallet', 'receive', 'LocalXmr', password='')['address'] == primary
+        for address, key, chain in [(primary, view[:-1] + 'f', 'monero'),
+                                    (mainnet['subaddresses'][1]['encoded'], view, 'monero'),
+                                    (stagenet['primary'], stagenet['private_view_key'], 'monero'),
+                                    (primary, view, 'bitcoin')]:
+            run('wallet', 'watch', '--chain', chain, '--name', 'ViewXmr', '--address', address,
+                '--view-key', key, success=False)
+        # The phrase wallet already holds it.
+        run('wallet', 'watch', '--chain', 'monero', '--address', primary, '--view-key', view, success=False)
+        run('wallet', 'delete', 'LocalXmr', '--yes')
+        watched = run('wallet', 'watch', '--chain', 'monero', '--name', 'ViewXmr', '--address', f' {primary} ',
+                      '--view-key', view.upper(), '--restore-height', '3000000')['wallet']
+        assert watched['isWatchOnly'] and watched['restoreHeight'] == 3000000, watched
+        assert run('wallet', 'receive', 'ViewXmr', password='')['address'] == primary
+        status = run('send', 'monero-status', '--from', 'ViewXmr', password='')['sync']
+        assert not status['spends_known'] and status['used_subaddresses'] == [], status
+        run('send', 'build', '--from', 'ViewXmr', '--to', primary, '--amount', '0.001', password='', success=False)
+        # The phrase gives it its spend key, in place.
+        upgraded = run('wallet', 'import', '--chain', 'monero', '--name', 'Other', '--restore-height', '3000000')['wallet']
+        assert upgraded['id'] == watched['id'] and upgraded['name'] == 'ViewXmr' and not upgraded['isWatchOnly'], upgraded
+        assert run('send', 'monero-status', '--from', 'ViewXmr')['sync']['spends_known']
+        print('PASS Monero view key: refused unless it opens its primary address, receives and reports without '
+              'a password, cannot send, upgraded in place by its phrase')
 finally:
     server.shutdown(); server.server_close()

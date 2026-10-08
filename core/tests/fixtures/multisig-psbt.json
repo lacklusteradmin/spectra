@@ -1,0 +1,139 @@
+{
+  "provenance": "bitcoinjs-lib 7.0.2, bip32 5.0.1, bip39 3.1.0, tiny-secp256k1 2.2.4 (scripts/generate-multisig-psbt-vectors.cjs)",
+  "phrases": [
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "legal winner thank year wave sausage worth useful legal winner thank yellow",
+    "letter advice cage absurd amount doctor acoustic avoid letter advice cage above"
+  ],
+  "networks": [
+    {
+      "chain": "bitcoin",
+      "threshold": 2,
+      "cosigners": [
+        {
+          "fingerprint": "73c5da0a",
+          "origin": "48h/0h/0h/2h",
+          "xpub": "xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf"
+        },
+        {
+          "fingerprint": "b8688df1",
+          "origin": "48h/0h/0h/2h",
+          "xpub": "xpub6FQya7zGhR92kacYsNnjreouvnHJMpXYsUXnW6NJJAJRCKsa26TzDy4LdnGhEurr3d6y1J8PJ7EEMKQp74XTqYvmGJNogYXSKDszYHtF8mX"
+        },
+        {
+          "fingerprint": "28645006",
+          "origin": "48h/0h/0h/2h",
+          "xpub": "xpub6DnEBNkSJKBYQmsbhS1sP9cNdtU5c9PLFGCjTJmxicxc13WB8zNNGQazabQpyFAGW5bV9tMko4uBxDxjUKL6dSAcx1tEbgEHtgSqyRsekh6"
+        }
+      ],
+      "addresses": [
+        {
+          "branch": 0,
+          "index": 0,
+          "address": "bc1qm43n7nnev58aj3nrznz2xscgv98t7gxycq5pmp20a5vzfp5t0q2s7r6twa"
+        },
+        {
+          "branch": 0,
+          "index": 1,
+          "address": "bc1qh0jxweder0zfwz363juas8vhav6p4d4hmk6yx7kphd3gvf769fzq2dp3an"
+        },
+        {
+          "branch": 0,
+          "index": 2,
+          "address": "bc1qklz3sd5m7zmv4kkkxh2g24gdj24x0d3ghhmtl2wju3ghhgduzjfqcseehe"
+        },
+        {
+          "branch": 1,
+          "index": 0,
+          "address": "bc1qy0qa9lx04k0lk9lrv4542ndehul9spkcafdtcpdv38qx6ft5km2ssnce5d"
+        },
+        {
+          "branch": 1,
+          "index": 1,
+          "address": "bc1q5gy9eqgu0ssvpuxx4fzw4v6xpwlxe67rpc9kgaw27fhj2v0ff2eq2vca9v"
+        }
+      ],
+      "psbt": {
+        "inputs": [
+          {
+            "txid": "1111111111111111111111111111111111111111111111111111111111111111",
+            "vout": 0,
+            "value": 100000,
+            "branch": 0,
+            "index": 0
+          },
+          {
+            "txid": "2222222222222222222222222222222222222222222222222222222222222222",
+            "vout": 3,
+            "value": 50000,
+            "branch": 1,
+            "index": 0
+          }
+        ],
+        "recipient": {
+          "address": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+          "value": 120000
+        },
+        "change": {
+          "branch": 1,
+          "index": 1,
+          "value": 29000
+        },
+        "fee": 1000,
+        "unsigned": "cHNidP8BAKYCAAAAAhERERERERERERERERERERERERERERERERERERERERERAAAAAAD9////IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIDAAAAAP3///8CwNQBAAAAAAAWABR1HnboGZGW1FSUHEXRs6Mj8UM71khxAAAAAAAAIgAgoghcgRx8IMDwxqpE6rNGC75s68MOC2R1yvJvJTHpSrIAAAAAAAEBK6CGAQAAAAAAIgAg3WM/TnllD9lGYxTEo0MIYU6/IMTAKB2FT+0YJIaLeBUBBWlSIQKOgY32PW8tzpMI10Vf1MhcuznXA2CLj77WR9deJiMi2CEDIpyzT+PrGvQ7bdKi4bMWgQObcdkwPe02sxKO81njeb0hA9wZU8J1bHxY1PSMobu6dn9BT9I2v01mK2dyGsYmxRTgU64iBgKOgY32PW8tzpMI10Vf1MhcuznXA2CLj77WR9deJiMi2By4aI3xMAAAgAAAAIAAAACAAgAAgAAAAAAAAAAAIgYDIpyzT+PrGvQ7bdKi4bMWgQObcdkwPe02sxKO81njeb0cKGRQBjAAAIAAAACAAAAAgAIAAIAAAAAAAAAAACIGA9wZU8J1bHxY1PSMobu6dn9BT9I2v01mK2dyGsYmxRTgHHPF2gowAACAAAAAgAAAAIACAACAAAAAAAAAAAAAAQErUMMAAAAAAAAiACAjwdL8z62f+xfjZWlVTbm/PlgG2OpavAWsicBtJXS21QEFaVIhApwQm4govaa3JpuVS8t71pSXlJP8TxhXsx4YocposC+GIQNIHDaFi1VfTSMkwFUb4umTjYKKPFAAFVSamFu9jW+v/iEDquJv+sHn8HMuAoR/BC71sjUsLeF9R9NWTG5JijTN+d1TriIGApwQm4govaa3JpuVS8t71pSXlJP8TxhXsx4YocposC+GHLhojfEwAACAAAAAgAAAAIACAACAAQAAAAAAAAAiBgNIHDaFi1VfTSMkwFUb4umTjYKKPFAAFVSamFu9jW+v/hxzxdoKMAAAgAAAAIAAAACAAgAAgAEAAAAAAAAAIgYDquJv+sHn8HMuAoR/BC71sjUsLeF9R9NWTG5JijTN+d0cKGRQBjAAAIAAAACAAAAAgAIAAIABAAAAAAAAAAAAAQFpUiEDJCisqq8ua/bG5zCf3IQmFqsyUBtW6eJlQErwTDS7428hA234oxNhv3WtvvMVI4g3sIpsIYo01wLmcc0uORvEHN+MIQPAKbgRmqOHEHT0GQXfaRHWxZTmzGQ5mdt/FPxayXVpIlOuIgIDJCisqq8ua/bG5zCf3IQmFqsyUBtW6eJlQErwTDS7428cuGiN8TAAAIAAAACAAAAAgAIAAIABAAAAAQAAACICA234oxNhv3WtvvMVI4g3sIpsIYo01wLmcc0uORvEHN+MHChkUAYwAACAAAAAgAAAAIACAACAAQAAAAEAAAAiAgPAKbgRmqOHEHT0GQXfaRHWxZTmzGQ5mdt/FPxayXVpIhxzxdoKMAAAgAAAAIAAAACAAgAAgAEAAAABAAAAAA==",
+        "unsigned_tx": "020000000211111111111111111111111111111111111111111111111111111111111111110000000000fdffffff22222222222222222222222222222222222222222222222222222222222222220300000000fdffffff02c0d4010000000000160014751e76e8199196d454941c45d1b3a323f1433bd64871000000000000220020a2085c811c7c20c0f0c6aa44eab3460bbe6cebc30e0b6475caf26f2531e94ab200000000",
+        "signed_by_b": "cHNidP8BAKYCAAAAAhERERERERERERERERERERERERERERERERERERERERERAAAAAAD9////IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIDAAAAAP3///8CwNQBAAAAAAAWABR1HnboGZGW1FSUHEXRs6Mj8UM71khxAAAAAAAAIgAgoghcgRx8IMDwxqpE6rNGC75s68MOC2R1yvJvJTHpSrIAAAAAAAEBK6CGAQAAAAAAIgAg3WM/TnllD9lGYxTEo0MIYU6/IMTAKB2FT+0YJIaLeBUiAgKOgY32PW8tzpMI10Vf1MhcuznXA2CLj77WR9deJiMi2EcwRAIgcZTDqh1tWNSyld57D+2QabNnUlTkpD7Gsr/VY2YCT34CIDl5Zmm1COC9bxkuxOMlGaU1KqtBdtjttbp7pwD4wb7RAQEFaVIhAo6BjfY9by3OkwjXRV/UyFy7OdcDYIuPvtZH114mIyLYIQMinLNP4+sa9Dtt0qLhsxaBA5tx2TA97TazEo7zWeN5vSED3BlTwnVsfFjU9Iyhu7p2f0FP0ja/TWYrZ3IaxibFFOBTriIGAo6BjfY9by3OkwjXRV/UyFy7OdcDYIuPvtZH114mIyLYHLhojfEwAACAAAAAgAAAAIACAACAAAAAAAAAAAAiBgMinLNP4+sa9Dtt0qLhsxaBA5tx2TA97TazEo7zWeN5vRwoZFAGMAAAgAAAAIAAAACAAgAAgAAAAAAAAAAAIgYD3BlTwnVsfFjU9Iyhu7p2f0FP0ja/TWYrZ3IaxibFFOAcc8XaCjAAAIAAAACAAAAAgAIAAIAAAAAAAAAAAAABAStQwwAAAAAAACIAICPB0vzPrZ/7F+NlaVVNub8+WAbY6lq8BayJwG0ldLbVIgICnBCbiCi9prcmm5VLy3vWlJeUk/xPGFezHhihymiwL4ZHMEQCIA8G8bzhkvY5m0HX0F2cB0u/2RgdY+tVzPPz9Hcba3eyAiA7SWrC3FGZknyvok6ajLy+0d7S1s/cmxSPw/uQDF+7twEBBWlSIQKcEJuIKL2mtyablUvLe9aUl5ST/E8YV7MeGKHKaLAvhiEDSBw2hYtVX00jJMBVG+Lpk42CijxQABVUmphbvY1vr/4hA6rib/rB5/BzLgKEfwQu9bI1LC3hfUfTVkxuSYo0zfndU64iBgKcEJuIKL2mtyablUvLe9aUl5ST/E8YV7MeGKHKaLAvhhy4aI3xMAAAgAAAAIAAAACAAgAAgAEAAAAAAAAAIgYDSBw2hYtVX00jJMBVG+Lpk42CijxQABVUmphbvY1vr/4cc8XaCjAAAIAAAACAAAAAgAIAAIABAAAAAAAAACIGA6rib/rB5/BzLgKEfwQu9bI1LC3hfUfTVkxuSYo0zfndHChkUAYwAACAAAAAgAAAAIACAACAAQAAAAAAAAAAAAEBaVIhAyQorKqvLmv2xucwn9yEJharMlAbVuniZUBK8Ew0u+NvIQNt+KMTYb91rb7zFSOIN7CKbCGKNNcC5nHNLjkbxBzfjCEDwCm4EZqjhxB09BkF32kR1sWU5sxkOZnbfxT8Wsl1aSJTriICAyQorKqvLmv2xucwn9yEJharMlAbVuniZUBK8Ew0u+NvHLhojfEwAACAAAAAgAAAAIACAACAAQAAAAEAAAAiAgNt+KMTYb91rb7zFSOIN7CKbCGKNNcC5nHNLjkbxBzfjBwoZFAGMAAAgAAAAIAAAACAAgAAgAEAAAABAAAAIgIDwCm4EZqjhxB09BkF32kR1sWU5sxkOZnbfxT8Wsl1aSIcc8XaCjAAAIAAAACAAAAAgAIAAIABAAAAAQAAAAA=",
+        "final_a_b": "0200000000010211111111111111111111111111111111111111111111111111111111111111110000000000fdffffff22222222222222222222222222222222222222222222222222222222222222220300000000fdffffff02c0d4010000000000160014751e76e8199196d454941c45d1b3a323f1433bd64871000000000000220020a2085c811c7c20c0f0c6aa44eab3460bbe6cebc30e0b6475caf26f2531e94ab2040047304402207194c3aa1d6d58d4b295de7b0fed9069b3675254e4a43ec6b2bfd56366024f7e022039796669b508e0bd6f192ec4e32519a5352aab4176d8edb5ba7ba700f8c1bed101483045022100a87b7741986c75b39d9b93fa8e5a7e2178434d7058c203a416ea193d50990aae02203979534addf60709e48d0f9206b648c2bec1a60e92bee03483a6bbbcefd4e26301695221028e818df63d6f2dce9308d7455fd4c85cbb39d703608b8fbed647d75e262322d82103229cb34fe3eb1af43b6dd2a2e1b31681039b71d9303ded36b3128ef359e379bd2103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e053ae040047304402200f06f1bce192f6399b41d7d05d9c074bbfd9181d63eb55ccf3f3f4771b6b77b202203b496ac2dc5199927cafa24e9a8cbcbed1ded2d6cfdc9b148fc3fb900c5fbbb701483045022100be3a836ff541ae3e82aa99b3def496cd97b8365500688c7efe70bb780526e83102206ac473c5a73d53895b6492cfabe30130192f55ece88ac885e6d8544702993a9c01695221029c109b8828bda6b7269b954bcb7bd694979493fc4f1857b31e18a1ca68b02f862103481c36858b555f4d2324c0551be2e9938d828a3c500015549a985bbd8d6faffe2103aae26ffac1e7f0732e02847f042ef5b2352c2de17d47d3564c6e498a34cdf9dd53ae00000000",
+        "txid": "ed8fff5e94c9fb6da14462a69443cb2f67138c3ff3dc888c68fa23bde7ee6cb2"
+      }
+    },
+    {
+      "chain": "bitcoin-testnet",
+      "threshold": 2,
+      "cosigners": [
+        {
+          "fingerprint": "73c5da0a",
+          "origin": "48h/1h/0h/2h",
+          "xpub": "tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ"
+        },
+        {
+          "fingerprint": "b8688df1",
+          "origin": "48h/1h/0h/2h",
+          "xpub": "tpubDEfobrrtptRTbKf4gysDhoabneABDTAcdj3Vbn4XwPsLE2pmqpizSPRG6zHsbAMuiSgWmWPsYCLHTKTPpyrGJ5rAoTpKoQNZcxodiPf2tSJ"
+        },
+        {
+          "fingerprint": "28645006",
+          "origin": "48h/1h/0h/2h",
+          "xpub": "tpubDEwqCvJxKwKWX9xvRe48uofWJn1Y89Jn8UeH1Efrjb1UEVjUDy3URYTiqWaVCW7WdvHrL8XrSihHEhTwv5H3VDJoakjuCHiAnr6xcF2Xm4s"
+        }
+      ],
+      "addresses": [
+        {
+          "branch": 0,
+          "index": 0,
+          "address": "tb1qr3az57pxl8z7q6d9q7v0fmeaphuwe3z0ghvkjr457ch4vqwmtkasmn0gme"
+        },
+        {
+          "branch": 0,
+          "index": 1,
+          "address": "tb1qfd7fatk9l5q75yqft27jsn4uehtkl4eyhalgusnccwtcha362ywskv2che"
+        },
+        {
+          "branch": 0,
+          "index": 2,
+          "address": "tb1qujnan48z7a83cmnjzhqlw9f0rkn4l5q5x3nyh3epl7dycfq0kffscxx339"
+        },
+        {
+          "branch": 1,
+          "index": 0,
+          "address": "tb1qklaygzf7d5waqjvl2lul2aafh429l2xkqkrszfj537ejzmhu8axsgpufdm"
+        },
+        {
+          "branch": 1,
+          "index": 1,
+          "address": "tb1qq4jhdvpml7jy06mj3jct2ytzxku4gpkx94sq53e6n3ntvqw5lc2s3jemkz"
+        }
+      ]
+    }
+  ]
+}

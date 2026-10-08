@@ -91,10 +91,11 @@ impl WalletService {
     ) -> Result<WalletState, SpectraBridgeError> {
         let chain = entry.chain_id;
         let native = if chain.uses_account_utxo() {
+            self.discover_account_once(&entry.wallet_id, chain).await?;
             self.account_utxo_wallet_balance(&entry.wallet_id, chain)
                 .await?
         } else {
-            self.fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())
+            super::network_balance::fetch_native_balance_summary(&entry.address, chain, self)
                 .await?
         };
         let mut native_amount = balance_amount(&native.amount_display)?;

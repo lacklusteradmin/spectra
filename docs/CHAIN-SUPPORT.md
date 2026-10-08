@@ -51,7 +51,14 @@ native and nested SegWit; Peercoin all four; Bitcoin Cash its BIP-44 coin type
 and the older coin type 0; Solana `m/44'/501'/{account}'/0'` and the older
 `m/44'/501'/{account}'`; every other chain with a path its one standard
 profile. NEAR walks SLIP-10 along `m/44'/397'/{account}'` as near-seed-phrase
-does. Monero, TON, Polkadot and Bittensor derive without a path and refuse one.
+does. Monero and TON derive without a path and refuse one. Polkadot, its
+Westend testnet and Bittensor derive along a Substrate path of hard (`//`)
+and soft (`/`) junctions under the phrase's sr25519 root, as subkey and
+polkadot.js read a secret URI (none is the root key), checked against
+polkadot.js; its `///password` is the passphrase, entered as one. A junction
+the two read differently is refused: `0x` hex, which polkadot.js reads as
+bytes, and a number past 64 bits. A key whose path has a soft junction has
+no seed, so its wallet exports only its phrase.
 A TON phrase or key holds one account per wallet contract: W5 (wallet v5r1,
 the default and what a created wallet uses) or v4R2, chosen at import and
 found by the used-account search. W5 folds the network's global id into its
@@ -90,13 +97,87 @@ payment key alone imports as the enterprise address, not the base address
 that holds its funds. Monero's spend/view key model uses mnemonic import instead
 of a generic 32-byte key. Watch-only addresses are available on supported
 mainnets and test networks;
-Monero requires wallet scan keys. Bitcoin account xpub import validates the
-concrete network, including testnet 3, testnet 4 and signet.
+Monero is watched from its scan keys: a view-only wallet is its primary
+address and private view key, refused unless the key is the one the
+address's view key was made from (a subaddress or an integrated address is
+refused). It scans with the view key alone and takes no password, but no
+key image is known without the spend key: its balance is what it received,
+and a spend made elsewhere does not lower it (`MoneroSyncStatus.spends_known`
+says so), nor does it record outgoing transfers. It cannot send. Importing
+the wallet's phrase upgrades it in place and scans again with the spend key.
 
-BTC, BCH, BSV, LTC, DOGE and PPC support account address discovery and multiple owned
-inputs. ZEC, BTG, DCR, KAS and DASH wallets have one derived address per network;
-receive and send share that address. They do not offer an account-wide gap scan
-or hand out child addresses that their signer cannot spend.
+A Monero wallet, from its phrase or its view key, watches its subaddresses
+with wallet2's default lookahead: fifty accounts past the highest one an
+output arrived in, and two hundred addresses past each account's highest
+used, widened while it scans — a block is scanned again when its own
+outputs widen the window. What was used is kept in the encrypted scan cache,
+so a restart watches the same subaddresses. The balance sums every account;
+a send spends outputs of any account and returns change to the primary
+address. The receive address is account 0's: the primary address until an
+output arrives there, then the first subaddress past the highest used or
+handed out. The private view key is stored at import outside the password,
+so a fresh subaddress needs none.
+
+An account public key is watched on every
+account UTXO network below, in the encodings its wallets write
+(`Chain::account_key_versions`: `xpub`/`ypub`/`zpub` on Bitcoin, `Ltub`,
+`Mtub` and `zpub` on Litecoin, `dgub` on Dogecoin, `xpub` or `drkp` on Dash,
+`dpub` on Decred, `kpub` on Kaspa, `xpub` elsewhere, and each test
+network's own), only at an account's depth and only on its concrete
+network: a testnet key is refused on mainnet, and testnet 3, testnet 4 and
+signet each read their own.
+
+On every UTXO network but Cardano and Monero — BTC, BCH, BSV, LTC, DOGE,
+PPC, ZEC (its transparent funds), BTG, DCR, KAS and DASH, and their test
+networks — a phrase wallet is a BIP-44 account. It stores the account's
+public key, so a gap scan (twenty unused addresses past the last used one,
+on the receive and the change branch) and a fresh receive address need no
+password. The scan runs once on its own before a restored or watched
+account's balance or history is first read, and again on request; what it
+finds is stored. The balance and history sum every address the account is
+known to hold, each read from the network's own indexer (Esplora, Blockbook,
+Blockcypher, Whatsonchain, Insight or Kaspa's REST API). A send spends the
+largest confirmed outputs it needs (on Litecoin, every confirmed output),
+across addresses, each signed with its own address's key derived along its
+stored path, and returns change to the
+wallet's own address; an output gone or changed after review is refused at
+signing. A phrase is imported only at a path its profile's account names: a
+path no account of the network's profiles holds is refused. A private key or
+a watched address is the account's one address. The coin listing, address by
+address with confirmations, covers the networks whose indexer counts them,
+all but Decred and Kaspa. A Kaspa coinbase output is not spent, since the
+indexer does not say when it matures. Zcash shields transparent funds at the
+addresses librustzcash's own gap window tracks; transparent sends spend
+every address the scan found.
+
+Bitcoin and its test networks also hold multisig accounts: a
+`wsh(sortedmulti(k, …))` output descriptor (BIP-380/383, `<0;1>` or `/0/*`
+keys) whose keys name their origin, watched as one wallet. Its addresses are
+the P2WSH of the k-of-n script over the cosigners' keys at each index,
+sorted (BIP-67); discovery, the balance, history and receive rotation are an
+account's like any other. Spending is a PSBT (BIP-174): created from the
+account's largest confirmed outputs with key origins on every input and on
+the change, or read from another coordinator, where every input must pay
+the wallet's script at the place its key origins name, change must be the
+wallet's script, and every signature must verify. A cosigner's BIP-39 phrase,
+imported bound to the watched wallet, lets it sign its share at the
+cosigner's origin; it signs only the transaction it reviewed (the digest of
+the unsigned transaction and its input amounts), only after the indexer
+confirms each input is unspent and of the amount the PSBT claims, and only
+`SIGHASH_ALL`. Copies of one transaction join their signatures; one whose
+inputs or outputs differ is refused. Finalizing places the threshold's
+signatures in the script's key order. P2SH-wrapped, Taproot and
+non-sorted multisig, and PSBTs for single-key wallets, are not supported.
+A custom Bitcoin or Litecoin indexer broadcasts only once it names its
+network's genesis block at height 0.
+
+Fees follow each network's rule for the transaction's size: Bitcoin's and
+Litecoin's sat/vB rate over the estimated virtual size, Peercoin's per
+kilobyte, the network's static fee for each started kilobyte on Bitcoin
+Cash, Bitcoin SV, Dogecoin, Dash and Bitcoin Gold, ZIP-317's 5,000 zatoshis
+per logical action (at least two) on Zcash, at least dcrd's 10 atoms a byte
+on Decred and at least the transaction's mass on Kaspa, each never below the
+network's static fee.
 
 A Decred send pays the script its recipient names on the wallet's own
 network: a secp256k1 pubkey hash (`Ds…`, `Ts…`) or a script hash (`Dc…`,

@@ -88,17 +88,11 @@ async fn service(
 
 #[test]
 fn litecoin_fee_rate_uses_exact_checked_rounding() {
-    assert_eq!(litecoin_fee_for_vsize("1.001", 141).unwrap(), 142);
-    assert_eq!(
-        litecoin_fee_for_vsize("0.0000000000000000001", 141).unwrap(),
-        1
-    );
-    assert_eq!(
-        litecoin_fee_for_vsize("18446744073709551615", 1).unwrap(),
-        u64::MAX
-    );
+    assert_eq!(fee_for_vsize("1.001", 141).unwrap(), 142);
+    assert_eq!(fee_for_vsize("0.0000000000000000001", 141).unwrap(), 1);
+    assert_eq!(fee_for_vsize("18446744073709551615", 1).unwrap(), u64::MAX);
     for rate in ["0", "-1", "NaN", "1e3", "18446744073709551616"] {
-        assert!(litecoin_fee_for_vsize(rate, 2).is_err(), "{rate}");
+        assert!(fee_for_vsize(rate, 2).is_err(), "{rate}");
     }
 }
 

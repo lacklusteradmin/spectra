@@ -76,7 +76,7 @@ try:
             # Transparent funds pay a TEX address (ZIP-320) the P2PKH script
             # of its key hash, and refuse a shielded one.
             tex=run('send','build','--from',name,'--to',tex_address(destination),'--amount','0.001','--endpoint',url)['artifact']
-            outputs=json.loads(tex['prepared_details'])['Zcash']['outputs']
+            outputs=json.loads(tex['prepared_details'])['AccountTransfer']['outputs']
             assert bytes(outputs[0][0])==bytes([0x76,0xa9,0x14])+b58check(destination)[2:]+bytes([0x88,0xac]) and outputs[0][1]==100000,outputs
             unified=json.loads((pathlib.Path(__file__).resolve().parents[1]/'core/tests/fixtures/zcash-addresses.json').read_text())['unified']['vectors'][0]['unified_addr']
             refused=run('send','build','--from',name,'--to',unified,'--amount','0.001','--endpoint',url,success=False)

@@ -25,9 +25,6 @@ pub enum CapabilityCoverage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum WalletSetupLimit {
-    /// One address receives and sends: no account-wide gap scan and no fresh
-    /// receive addresses (ZEC, BTG, DCR, KAS, DASH).
-    SingleAddress,
     /// The ledger creates an account only once it holds the network's
     /// reserve, so a first receive below it fails (XRP, Stellar).
     AccountReserve,
@@ -96,10 +93,6 @@ const REFRESH_READS: [EndpointCapability; 6] = [
 pub(crate) fn wallet_setup_limits(chain: Chain) -> Vec<WalletSetupLimit> {
     let family = chain.mainnet_counterpart();
     [
-        (
-            chain.has_single_owned_address(),
-            WalletSetupLimit::SingleAddress,
-        ),
         (
             chain.requires_account_reserve(),
             WalletSetupLimit::AccountReserve,
@@ -419,31 +412,13 @@ mod tests {
     #[test]
     fn limits_follow_the_registry() {
         use WalletSetupLimit::*;
-        let single: std::collections::HashSet<_> = Chain::all()
-            .filter(|chain| !chain.is_testnet() && chain.has_single_owned_address())
-            .collect();
-        assert_eq!(
-            single,
-            [
-                Chain::Zcash,
-                Chain::BitcoinGold,
-                Chain::Decred,
-                Chain::Kaspa,
-                Chain::Dash
-            ]
-            .into_iter()
-            .collect()
-        );
         assert_eq!(wallet_setup_limits(Chain::Xrp), [AccountReserve]);
         assert_eq!(wallet_setup_limits(Chain::StellarTestnet), [AccountReserve]);
         assert_eq!(
             wallet_setup_limits(Chain::Cardano),
             [TokenBearingInputsUntouched]
         );
-        assert_eq!(
-            wallet_setup_limits(Chain::Zcash),
-            [SingleAddress, ShieldedScan]
-        );
+        assert_eq!(wallet_setup_limits(Chain::Zcash), [ShieldedScan]);
         assert_eq!(wallet_setup_limits(Chain::Monero), [ScansOnDevice]);
         assert!(wallet_setup_limits(Chain::Bitcoin).is_empty());
     }

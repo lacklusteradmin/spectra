@@ -2,10 +2,6 @@ fn normalized(chain: crate::registry::Chain, address: &str) -> Option<String> {
     crate::derivation::import::normalized_import_address(chain, address)
 }
 
-fn validated_account_xpub(xpub: &str) -> Option<String> {
-    crate::derivation::import::validated_account_xpub(xpub)
-}
-
 #[test]
 fn a_malformed_address_is_refused_whatever_the_chain() {
     // Solana and Tron were both in the lenient group.
@@ -33,53 +29,6 @@ fn a_valid_address_survives_and_is_normalised() {
     // Normalisation is core's, not the caller's transcription.
     assert!(stored.starts_with("0x"));
     assert_eq!(stored.len(), 42);
-}
-
-#[test]
-fn a_malformed_account_xpub_is_rejected() {
-    assert_eq!(validated_account_xpub("zpub-whatever"), None);
-}
-
-#[test]
-fn bitcoin_account_xpubs_validate_checksums_payloads_and_public_keys() {
-    use crate::derivation::bitcoin::{base58check_decode, base58check_encode};
-    const XPUB: &str = "xpub6BemYiVNp19Zz9Bw6kmmfXR2LEFukA1hnhSZrXgE2AUJvNLW8a87gg72bQLi4RfGHcKcR4ojrEFgFJgNCXcjVYSH75YmvhTZ7qh9FCrxv3a";
-    let original = base58check_decode(XPUB).unwrap();
-    for version in [
-        [0x04, 0x88, 0xb2, 0x1e],
-        [0x04, 0x9d, 0x7c, 0xb2],
-        [0x04, 0xb2, 0x47, 0x46],
-        [0x04, 0x35, 0x87, 0xcf],
-        [0x04, 0x4a, 0x52, 0x62],
-        [0x04, 0x5f, 0x1c, 0xf6],
-    ] {
-        let mut payload = original.clone();
-        payload[..4].copy_from_slice(&version);
-        let valid = base58check_encode(&payload);
-        assert_eq!(
-            validated_account_xpub(&format!("  {valid}  ")).as_deref(),
-            Some(valid.as_str())
-        );
-        assert_eq!(
-            crate::derivation::xpub_walker::derive_children(&valid, 0, 0, 1)
-                .unwrap()
-                .len(),
-            1,
-        );
-
-        let mut bad_checksum = valid.clone().into_bytes();
-        let last = bad_checksum.last_mut().unwrap();
-        *last = if *last == b'1' { b'2' } else { b'1' };
-        let mut bad_key = payload.clone();
-        bad_key[45..].fill(0);
-        for invalid in [
-            String::from_utf8(bad_checksum).unwrap(),
-            base58check_encode(&bad_key),
-            base58check_encode(&payload[..77]),
-        ] {
-            assert_eq!(validated_account_xpub(&invalid), None, "accepted {invalid}");
-        }
-    }
 }
 
 /// A derived address is judged by the network it was derived for.

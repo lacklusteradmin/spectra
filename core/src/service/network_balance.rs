@@ -3,7 +3,8 @@ use super::*;
 
 impl WalletService {
     /// Recovery and receive reservations add addresses to the same wallet.
-    /// Its native balance includes every owned account UTXO address.
+    /// Its native balance includes every owned account UTXO address, read
+    /// from the chain's own indexer.
     pub(super) async fn account_utxo_wallet_balance(
         &self,
         wallet_id: &str,
@@ -16,17 +17,15 @@ impl WalletService {
             ));
         }
         let addresses = self.known_utxo_addresses(wallet_id.into(), chain).await?;
-        let client = self
-            .utxo_client(chain, &[EndpointCapability::Balance])
-            .await;
+        let reader = AccountBalanceReader::new(self, chain).await;
         let total = stream::iter(addresses)
             .map(|address| {
-                let client = &client;
-                async move { client.fetch_balance(&address).await }
+                let reader = &reader;
+                async move { reader.balance(&address).await }
             })
             .buffered(4)
             .try_fold(0u64, |sum, balance| async move {
-                sum.checked_add(balance.confirmed_sats).ok_or_else(|| {
+                sum.checked_add(balance).ok_or_else(|| {
                     crate::api::error::ApiError::InvalidInput("UTXO wallet balance overflow".into())
                 })
             })
@@ -37,6 +36,37 @@ impl WalletService {
                 u128::from(total),
                 u32::from(chain.native_decimals()),
             ),
+        })
+    }
+}
+
+/// One address's confirmed native balance, from the indexer its account
+/// UTXO chain reads.
+enum AccountBalanceReader {
+    Utxo(crate::api::utxo::UtxoClient),
+    Insight(InsightClient),
+    Kaspa(KaspaClient),
+}
+
+impl AccountBalanceReader {
+    async fn new(service: &WalletService, chain: Chain) -> Self {
+        let endpoints = || service.endpoints_for(chain, &[EndpointCapability::Balance]);
+        match chain.mainnet_counterpart() {
+            Chain::Decred => Self::Insight(InsightClient::new(endpoints().await)),
+            Chain::Kaspa => Self::Kaspa(KaspaClient::new(endpoints().await)),
+            _ => Self::Utxo(
+                service
+                    .utxo_client(chain, &[EndpointCapability::Balance])
+                    .await,
+            ),
+        }
+    }
+
+    async fn balance(&self, address: &str) -> Result<u64, crate::api::error::ApiError> {
+        Ok(match self {
+            Self::Utxo(client) => client.fetch_balance(address).await?.confirmed_sats,
+            Self::Insight(client) => client.fetch_balance(address).await?.balance_atoms,
+            Self::Kaspa(client) => client.fetch_balance(address).await?.balance_sompi,
         })
     }
 }
@@ -65,27 +95,7 @@ impl WalletService {
         .await
     }
 }
-impl WalletService {
-    pub(crate) async fn fetch_native_balance_summary_auto(
-        &self,
-        chain: crate::registry::Chain,
-        address: String,
-    ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
-        // The Bitcoin family, not the literal id: a wallet on Testnet4 arrives
-        // as `bitcoin-testnet-4`, and comparing the string meant its xpub was
-        // walked as a plain address instead.
-        let is_bitcoin_family = chain.mainnet_counterpart() == crate::registry::Chain::Bitcoin;
-        if is_bitcoin_family && is_extended_public_key(&address) {
-            let bal = self.bitcoin_xpub_balance(chain, address, 20, 20).await?;
-            return Ok(NativeBalanceSummary {
-                smallest_unit: bal.confirmed_sats.to_string(),
-                amount_display: crate::decimal::from_units(bal.confirmed_sats as u128, 8),
-            });
-        }
-        fetch_native_balance_summary(&address, chain, self).await
-    }
-}
-async fn fetch_native_balance_summary(
+pub(super) async fn fetch_native_balance_summary(
     address: &str,
     chain: Chain,
     service: &WalletService,

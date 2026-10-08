@@ -20,30 +20,37 @@ fn signed_transaction(chain: Chain, to: &str) -> ::bitcoin::Transaction {
         100_000,
         bitcoin_wire::p2pkh_script(&hash),
     )];
+    let recipient = parse_utxo_address(chain, to).unwrap().script_pubkey();
+    let outputs = vec![
+        (recipient.clone(), 50_000),
+        (bitcoin_wire::p2pkh_script(&hash), 49_000),
+    ];
+    let legacy = |fork_id| {
+        legacy_p2pkh::sign(
+            &[legacy_p2pkh::LegacyInput {
+                utxo: &inputs[0],
+                private_key: &key,
+            }],
+            &outputs,
+            fork_id,
+        )
+    };
     let result = match chain.mainnet_counterpart() {
-        Chain::BitcoinCash => {
-            bitcoin_cash::sign_bch_tx(chain, &inputs, to, 50_000, 1_000, &sender, &key, None)
+        Chain::Bitcoin => bitcoin::sign_inputs(
+            &[bitcoin::SigningInput {
+                utxo: &inputs[0],
+                private_key: &key,
+            }],
+            &outputs,
+            ::bitcoin::transaction::Version::TWO,
+            ::bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
+        ),
+        Chain::BitcoinCash | Chain::BitcoinSV | Chain::BitcoinGold => {
+            legacy(Some(chain.sighash_fork_id().unwrap()))
         }
-        Chain::BitcoinSV => {
-            bitcoin_sv::sign_bsv_tx(chain, &inputs, to, 50_000, 1_000, &sender, &key, None)
-        }
-        Chain::BitcoinGold => {
-            bitcoin_gold::sign_btg_tx(chain, &inputs, to, 50_000, 1_000, &sender, &key, None)
-        }
-        Chain::Dogecoin => {
-            dogecoin::sign_doge_p2pkh(chain, &inputs, to, 50_000, 1_000, &sender, &key, None)
-        }
-        Chain::Dash => {
-            dash::sign_dash_p2pkh(chain, &inputs, to, 50_000, 1_000, &sender, &key, None)
-        }
+        Chain::Dogecoin | Chain::Dash => legacy(None),
         Chain::Litecoin => litecoin::sign_ltc_with_output_script(
-            chain,
-            &inputs,
-            &parse_utxo_address(chain, to).unwrap().script_pubkey(),
-            50_000,
-            1_000,
-            &sender,
-            &key,
+            chain, &inputs, &recipient, 50_000, 1_000, &sender, &key,
         ),
         Chain::Peercoin => {
             peercoin::sign_peercoin_tx(chain, &inputs, to, 50_000, 10_000, &sender, &key)
@@ -138,6 +145,8 @@ fn cashaddr_and_legacy_addresses_pay_identical_outputs() {
 #[test]
 fn witness_utxo_chains_pay_supported_witness_programs() {
     for chain in [
+        Chain::Bitcoin,
+        Chain::BitcoinSignet,
         Chain::Litecoin,
         Chain::LitecoinTestnet,
         Chain::BitcoinGold,
@@ -172,6 +181,7 @@ fn witness_utxo_chains_pay_supported_witness_programs() {
 #[test]
 fn utxo_address_parser_refuses_wrong_network_and_malformed_cashaddr() {
     for (chain, other) in [
+        (Chain::Bitcoin, Chain::BitcoinTestnet),
         (Chain::BitcoinCash, Chain::BitcoinCashTestnet),
         (Chain::BitcoinSV, Chain::BitcoinSVTestnet),
         (Chain::Dogecoin, Chain::DogecoinTestnet),

@@ -529,7 +529,11 @@ impl WalletService {
         chain: Chain,
         wallet_ids: Vec<String>,
         load_more: bool,
+        limit: Option<u32>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
+        // A display page: twenty records unless the caller asks, never fewer
+        // than ten or more than a hundred.
+        let limit = limit.unwrap_or(20).clamp(10, 100) as usize;
         let _operation = self.history_pagination.operation_lock.lock().await;
         let targets = {
             let state = self.app_state().await;
@@ -548,32 +552,32 @@ impl WalletService {
             }
             let previous = if load_more { saved.next_cursor } else { None };
             let fetched = async {
+                self.discover_account_once(&target.wallet_id, target.network)
+                    .await?;
                 let addresses = self
                     .known_utxo_addresses(target.wallet_id.clone(), target.network)
                     .await?;
+                // A watched account no transaction has touched yet.
                 if addresses.is_empty() {
-                    return Err(SpectraBridgeError::failure(
-                        "UTXO wallet has no stored addresses",
-                    ));
+                    return Ok(crate::api::HistoryPage {
+                        items: Vec::new(),
+                        next_cursor: None,
+                    });
                 }
-                let client = self
-                    .utxo_client(target.network, &[crate::EndpointCapability::History])
-                    .await;
+                let reader = AccountHistoryReader::new(self, target.network).await;
                 Ok::<_, SpectraBridgeError>(
-                        crate::fetch::bitcoin_history::page(
-                            target.network,
-                            &addresses,
-                            previous.as_deref(),
-                            20,
-                            |address, after| {
-                                let client = &client;
-                                async move {
-                                    client.fetch_history_page(&address, after.as_deref()).await
-                                }
-                            },
-                        )
-                        .await?,
+                    crate::fetch::bitcoin_history::page(
+                        target.network,
+                        &addresses,
+                        previous.as_deref(),
+                        limit,
+                        |address, after| {
+                            let reader = &reader;
+                            async move { reader.page(&address, after.as_deref()).await }
+                        },
                     )
+                    .await?,
+                )
             }
             .await;
             match fetched {
@@ -639,6 +643,91 @@ impl WalletService {
             updated: change.updated.len() as u32,
             exhausted,
             diagnostics,
+        })
+    }
+}
+
+/// One address's history page from the indexer its account UTXO network
+/// reads, as the account history merges it: newest first, each row the
+/// address's net change in one transaction.
+enum AccountHistoryReader {
+    Utxo(crate::api::utxo::UtxoClient),
+    Insight(crate::api::insight::InsightClient),
+    Kaspa(crate::api::kaspa_rest::KaspaClient),
+}
+
+impl AccountHistoryReader {
+    async fn new(service: &WalletService, chain: Chain) -> Self {
+        let endpoints = || service.endpoints_for(chain, &[crate::EndpointCapability::History]);
+        match chain.mainnet_counterpart() {
+            Chain::Decred => {
+                Self::Insight(crate::api::insight::InsightClient::new(endpoints().await))
+            }
+            Chain::Kaspa => {
+                Self::Kaspa(crate::api::kaspa_rest::KaspaClient::new(endpoints().await))
+            }
+            _ => Self::Utxo(
+                service
+                    .utxo_client(chain, &[crate::EndpointCapability::History])
+                    .await,
+            ),
+        }
+    }
+
+    async fn page(
+        &self,
+        address: &str,
+        cursor: Option<&str>,
+    ) -> Result<
+        crate::api::HistoryPage<crate::api::utxo::UtxoHistoryEntry>,
+        crate::api::error::ApiError,
+    > {
+        use crate::api::utxo::UtxoHistoryEntry;
+        Ok(match self {
+            Self::Utxo(client) => client.fetch_history_page(address, cursor).await?,
+            Self::Insight(client) => {
+                let page = client.fetch_history_page(address, cursor).await?;
+                crate::api::HistoryPage {
+                    items: page
+                        .items
+                        .into_iter()
+                        .map(|entry| {
+                            let confirmed = entry.block_height > 0 && entry.timestamp.is_some();
+                            UtxoHistoryEntry {
+                                txid: entry.txid,
+                                confirmed,
+                                block_height: confirmed.then_some(entry.block_height as u64),
+                                block_time: entry.timestamp,
+                                net_sats: entry.amount_atoms,
+                                fee_sats: Some(entry.fee_atoms),
+                            }
+                        })
+                        .collect(),
+                    next_cursor: page.next_cursor,
+                }
+            }
+            // Every listed Kaspa transaction is accepted; its accepting
+            // block's blue score orders it, as a block height would.
+            Self::Kaspa(client) => {
+                let page = client.fetch_history_page(address, cursor).await?;
+                let mut items: Vec<UtxoHistoryEntry> = page
+                    .items
+                    .into_iter()
+                    .map(|entry| UtxoHistoryEntry {
+                        txid: entry.txid,
+                        confirmed: true,
+                        block_height: Some(entry.block_daa_score),
+                        block_time: Some(entry.timestamp / 1_000),
+                        net_sats: entry.amount_sompi,
+                        fee_sats: None,
+                    })
+                    .collect();
+                items.sort_by_key(|entry| std::cmp::Reverse(entry.block_height));
+                crate::api::HistoryPage {
+                    items,
+                    next_cursor: page.next_cursor,
+                }
+            }
         })
     }
 }

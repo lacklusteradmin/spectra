@@ -175,9 +175,13 @@ try:
                 counter += 1
                 fixture['txid'] = f'{counter:064x}'
                 artifact = run('send', 'build', '--from', chain, '--to', recipient, '--amount', '0.001', '--endpoint', endpoint)['artifact']
-                kind = 'Litecoin' if chain.startswith('litecoin') else 'FixedUtxo'
-                prepared = json.loads(artifact['prepared_details'])[kind]
-                assert bytes(prepared['recipient_script']).hex() == script, (chain, recipient, prepared)
+                if chain.startswith('litecoin'):
+                    prepared = json.loads(artifact['prepared_details'])['Litecoin']
+                    paid_script = prepared['recipient_script']
+                else:
+                    prepared = json.loads(artifact['prepared_details'])['AccountTransfer']
+                    paid_script = prepared['outputs'][0][0]
+                assert bytes(paid_script).hex() == script, (chain, recipient, prepared)
                 signed = run('send', 'sign', artifact['id'], '--review-digest', artifact['review_digest'], '--endpoint', endpoint)['artifact']
                 assert outputs(signed['signed_payload'])[0] == (100000, script), (chain, recipient, signed)
                 assert run('send', 'inspect', artifact['id'])['artifact']['signed_payload'] == signed['signed_payload']
@@ -200,7 +204,7 @@ try:
                 counter += 1
                 fixture['txid'] = f'{counter:064x}'
                 artifact = run('send', 'build', '--from', chain, '--to', recipient, '--amount', '0.001', '--endpoint', endpoint)['artifact']
-                prepared = json.loads(artifact['prepared_details'])['Decred']
+                prepared = json.loads(artifact['prepared_details'])['AccountTransfer']
                 assert bytes(prepared['outputs'][0][0]).hex() == script, (chain, recipient, prepared)
                 signed = run('send', 'sign', artifact['id'], '--review-digest', artifact['review_digest'], '--endpoint', endpoint)['artifact']
                 paid = decred_outputs(run('send', 'inspect', artifact['id'])['artifact']['signed_payload'])

@@ -178,7 +178,7 @@ impl WalletService {
             _ => None,
         };
         let deep_rescan = matches!(intent, AppRefreshIntent::DeepRescan { .. });
-        if deep_rescan && !chain.is_some_and(|c| c.supports_deep_utxo_discovery()) {
+        if deep_rescan && !chain.is_some_and(|c| c.uses_account_utxo()) {
             return Err(SpectraBridgeError::failure(
                 "Chain does not support deep UTXO discovery",
             ));

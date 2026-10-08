@@ -6,8 +6,35 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 const SEED: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
+/// `value` as an address's confirmed balance, in the shape the chain's
+/// default indexer answers.
+fn indexer_balance(chain: Chain, value: &str) -> serde_json::Value {
+    let units: u64 = value.parse().unwrap();
+    match chain.default_api().unwrap() {
+        crate::EndpointApi::Esplora => json!({
+            "address": "",
+            "chain_stats": {"funded_txo_sum": units, "spent_txo_sum": 0, "tx_count": 1},
+            "mempool_stats": {"funded_txo_sum": 0, "spent_txo_sum": 0, "tx_count": 0},
+        }),
+        crate::EndpointApi::Blockcypher => json!({"balance": units, "unconfirmed_balance": 0}),
+        crate::EndpointApi::Whatsonchain => json!({"confirmed": units, "unconfirmed": 0}),
+        crate::EndpointApi::Insight => json!({"balanceSat": units, "balance": 0}),
+        crate::EndpointApi::KaspaRest => json!({"address": "", "balance": units}),
+        _ => json!({"balance": value, "unconfirmedBalance": "0"}),
+    }
+}
+
 async fn reopened_account_with_balances(
     chain: Chain,
+    receive_units: u64,
+    change_units: u64,
+) -> (Arc<WalletService>, std::path::PathBuf, MockServer) {
+    reopened_account_holding(chain, 0, receive_units, change_units).await
+}
+
+async fn reopened_account_holding(
+    chain: Chain,
+    root_units: u64,
     receive_units: u64,
     change_units: u64,
 ) -> (Arc<WalletService>, std::path::PathBuf, MockServer) {
@@ -17,7 +44,7 @@ async fn reopened_account_with_balances(
     let receive = context.derive(4).unwrap();
     let change = context.derive_on_branch(1, 3).unwrap();
     let values = HashMap::from([
-        (root.clone(), "0".to_string()),
+        (root.clone(), root_units.to_string()),
         (receive.0.clone(), receive_units.to_string()),
         (change.0.clone(), change_units.to_string()),
     ]);
@@ -30,8 +57,14 @@ async fn reopened_account_with_balances(
                 let network = if chain.is_testnet() { "testnet" } else { "livenet" };
                 json!({"blockbook":{"coin":coin,"decimals":chain.native_decimals()},"backend":{"chain":network,"blocks":900000}})
             } else {
-                let address = path.rsplit('/').next().unwrap();
-                json!({"balance":values.get(address).expect("only wallet-owned addresses are read"),"unconfirmedBalance":"0"})
+                let segments: Vec<&str> = path.split('/').collect();
+                let address = segments
+                    .iter()
+                    .position(|segment| matches!(*segment, "address" | "addrs" | "addr" | "addresses"))
+                    .and_then(|at| segments.get(at + 1))
+                    .expect("an address read");
+                let value = values.get(*address).expect("only wallet-owned addresses are read");
+                indexer_balance(chain, value)
             };
             ResponseTemplate::new(200).set_body_json(response)
         })
@@ -63,7 +96,7 @@ async fn reopened_account_with_balances(
                 "w".into(),
                 chain,
                 address,
-                Some(path),
+                path,
                 Some(branch.into()),
                 Some(index),
             )
@@ -124,13 +157,25 @@ async fn peercoin_wallet_balance_can_exceed_the_per_transaction_money_limit() {
 #[tokio::test]
 async fn account_utxo_wallet_balance_refuses_integer_overflow() {
     for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
+        // Whatsonchain reports a balance as a signed integer, so its total
+        // overflows across three addresses.
+        let (root, receive, change) =
+            if chain.default_api() == Some(crate::EndpointApi::Whatsonchain) {
+                let half = u64::try_from(i64::MAX).unwrap();
+                (2, half, half)
+            } else {
+                (0, u64::MAX, 1)
+            };
         let (service, directory, _server) =
-            reopened_account_with_balances(chain, u64::MAX, 1).await;
+            reopened_account_holding(chain, root, receive, change).await;
         let error = service
             .account_utxo_wallet_balance("w", chain)
             .await
             .unwrap_err();
-        assert!(error.to_string().contains("UTXO wallet balance overflow"));
+        assert!(
+            error.to_string().contains("UTXO wallet balance overflow"),
+            "{chain}: {error}"
+        );
         drop(service);
         std::fs::remove_dir_all(directory).unwrap();
     }

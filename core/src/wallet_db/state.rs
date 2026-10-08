@@ -182,6 +182,8 @@ impl AppStateChanges {
                 for table in [
                     "wallet_keypool",
                     "wallet_owned_addresses",
+                    "utxo_discoveries",
+                    "psbt_sessions",
                     "history_pagination",
                 ] {
                     tx.execute(

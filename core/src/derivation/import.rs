@@ -20,16 +20,26 @@ pub enum WalletImportKind {
     PrivateKey,
     /// Addresses on the import's chain, one wallet each, in the order typed.
     WatchAddresses { addresses: Vec<String> },
-    /// One account public key, watched as one wallet. Only on a chain that
-    /// `accepts_account_xpub`.
+    /// One account public key, watched as one wallet, in one of its
+    /// network's encodings (`Chain::account_key_versions`).
     WatchAccountXpub { xpub: String },
+    /// A Monero wallet's primary address and private view key (64 hex
+    /// digits): it scans what the wallet receives, and spends nothing.
+    WatchViewKey { address: String, view_key: String },
+    /// A Bitcoin multisig account's `wsh(sortedmulti(…))` descriptor
+    /// (`derivation::multisig`), watched as one wallet. A cosigner's phrase
+    /// imported bound to it gives it that cosigner's signature.
+    WatchMultisig { descriptor: String },
 }
 
 impl WalletImportKind {
     pub fn is_watch_only(&self) -> bool {
         matches!(
             self,
-            Self::WatchAddresses { .. } | Self::WatchAccountXpub { .. }
+            Self::WatchAddresses { .. }
+                | Self::WatchAccountXpub { .. }
+                | Self::WatchViewKey { .. }
+                | Self::WatchMultisig { .. }
         )
     }
 }
@@ -102,9 +112,10 @@ impl WalletImportCommit {
         match self.request.kind {
             WalletImportKind::Phrase => WalletSigning::SeedPhrase { password_protected },
             WalletImportKind::PrivateKey => WalletSigning::PrivateKey { password_protected },
-            WalletImportKind::WatchAddresses { .. } | WalletImportKind::WatchAccountXpub { .. } => {
-                WalletSigning::WatchOnly
-            }
+            WalletImportKind::WatchAddresses { .. }
+            | WalletImportKind::WatchAccountXpub { .. }
+            | WalletImportKind::WatchViewKey { .. }
+            | WalletImportKind::WatchMultisig { .. } => WalletSigning::WatchOnly,
         }
     }
 }
@@ -222,29 +233,6 @@ pub struct WalletImportPreview {
     pub upgrades_wallet: Option<String>,
 }
 
-/// A Bitcoin account public key carrying a recognized network and script
-/// serialization prefix, trimmed, or `None`. Validate the checksum, full BIP32
-/// payload and public key before storage; its textual prefix alone does not
-/// establish that any addresses can be derived.
-pub(crate) fn validated_account_xpub(xpub: &str) -> Option<String> {
-    let trimmed = xpub.trim();
-    let version = match trimmed.get(..4) {
-        Some("xpub") => Some(super::bitcoin::XPUB_VERSION_MAINNET),
-        Some("ypub") => Some([0x04, 0x9d, 0x7c, 0xb2]),
-        Some("zpub") => Some([0x04, 0xb2, 0x47, 0x46]),
-        Some("tpub") => Some(super::bitcoin::XPUB_VERSION_TESTNET),
-        Some("upub") => Some([0x04, 0x4a, 0x52, 0x62]),
-        Some("vpub") => Some([0x04, 0x5f, 0x1c, 0xf6]),
-        _ => None,
-    };
-    version
-        .is_some_and(|expected| {
-            super::bitcoin::ExtendedPublicKey::from_xpub_string(trimmed)
-                .is_ok_and(|(_, observed)| observed == expected)
-        })
-        .then(|| trimmed.to_string())
-}
-
 /// Validate one address as `chain`'s, returning the normalized form to store,
 /// or `None` when it does not parse for that chain. An MWEB address pays a
 /// wallet without anything public to watch, so no wallet is one.
@@ -308,14 +296,13 @@ impl WalletImportRequest {
             | WalletImportKind::PrivateKey
             | WalletImportKind::WatchAddresses { .. } => Ok(()),
             WalletImportKind::WatchAccountXpub { xpub } => {
-                let (_, _, network) = super::xpub_walker::normalize_xpub(xpub.trim())?;
-                let testnet = network == super::xpub_walker::HdNetwork::Testnet;
-                if testnet != chain.is_testnet() {
-                    return Err(DerivationError::invalid(
-                        "Account public key belongs to a different network.",
-                    ));
-                }
-                Ok(())
+                super::account_key::parse(chain, xpub).map(drop)
+            }
+            WalletImportKind::WatchViewKey { address, view_key } => {
+                super::monero::view_keys(chain, address, view_key).map(drop)
+            }
+            WalletImportKind::WatchMultisig { descriptor } => {
+                super::multisig::MultisigPolicy::parse(chain, descriptor).map(drop)
             }
         }
     }
@@ -327,6 +314,12 @@ impl WalletImportRequest {
 pub(crate) enum ImportedAddress {
     Address(String),
     AccountXpub(String),
+    /// A multisig account: its first receive address and its canonical
+    /// descriptor.
+    Multisig {
+        address: String,
+        descriptor: String,
+    },
 }
 
 /// Build the imported wallets without storing them, minting an id for each.
@@ -386,9 +379,13 @@ pub(crate) fn wallets_for_import(
         .into_iter()
         .enumerate()
         .map(|(index, imported)| {
-            let (address, account_xpub) = match imported {
-                ImportedAddress::Address(address) => (Some(address), None),
-                ImportedAddress::AccountXpub(xpub) => (None, Some(xpub)),
+            let (address, account_xpub, multisig_descriptor) = match imported {
+                ImportedAddress::Address(address) => (Some(address), None, None),
+                ImportedAddress::AccountXpub(xpub) => (None, Some(xpub), None),
+                ImportedAddress::Multisig {
+                    address,
+                    descriptor,
+                } => (Some(address), None, Some(descriptor)),
             };
             crate::store::wallet_domain::WalletView {
                 id: crate::store::new_transaction_id(),
@@ -414,6 +411,7 @@ pub(crate) fn wallets_for_import(
                 // A named NEAR account's key is set where the import
                 // confirmed it.
                 near_account_key: None,
+                multisig_descriptor,
             }
         })
         .collect()
@@ -644,11 +642,11 @@ mod tests {
             xpub: "xpub123".to_string(),
         };
         assert!(
-            request(Chain::Litecoin, xpub)
+            request(Chain::Ethereum, xpub)
                 .check_shape()
                 .unwrap_err()
                 .to_string()
-                .contains("account xpub")
+                .contains("account public key")
         );
     }
 
