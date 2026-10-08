@@ -17,6 +17,92 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-08 — A NEAR wallet gets its token storage deposits back
+
+- **Before:** every NEP-141 contract that had registered the account kept
+  its NEP-145 storage deposit, usually 0.00125 NEAR, after the token was
+  sent away or airdropped and abandoned. Nothing showed those deposits, and
+  getting one back took another wallet or a hand-made `storage_unregister`.
+  The NearBlocks inventory reader dropped an emptied token's row, so no
+  reader kept its contract; discovery still lists only held tokens.
+- **After:** a NEAR wallet's page offers Token Storage
+  (`WalletAction::TokenStorage`). `wallet_token_storage` collects the
+  contracts the wallet's NEP-141 holdings, its stored history and its
+  NearBlocks inventory name (emptied ones included:
+  `NearblocksClient::fetch_ft_contracts`), reads `storage_balance_of` and
+  `ft_balance_of` for each on one verified node, and lists those holding a
+  non-zero deposit while the account holds none of the token, with the
+  deposit each returns; a contract that answers no NEP-145 or NEP-141 query,
+  or does not exist, is passed over. `build_token_storage_refund` builds one
+  contract's `storage_unregister` as a send under
+  `WalletOperation::RefundTokenStorage`: arguments `{}`, so `force` is never
+  passed, one yoctoNEAR attached, 30 Tgas, the account as recipient and the
+  deposit as amount. A held balance, a contract holding no deposit, a
+  contract that reports no balance and a watched wallet are refused before
+  anything is built. Before signing and before broadcast the deposit, the
+  empty balance, the nonce, the fee budget and the spendable NEAR are read
+  again. The stage binding refuses any other method, arguments, deposit,
+  contract, refund or recipient under the operation's name, and a non-staking
+  NEAR call with no operation. History records it as `refundTokenStorage`,
+  which the history table's kind check and pending-send index now admit.
+  The CLI has `wallet token-storage` and `wallet refund-storage --contract`.
+- **Why:** the open item: deposits the account can have back should be
+  visible and returnable, and `force` must never be the way, since it burns
+  a balance instead of refusing.
+- **CLI check:** `python3 scripts/cli-wallet-operations.py
+  target/debug/spectra` lists the deposits of an inventory contract, a
+  tracked holding and a token only the history names, and passes over a
+  held token, an unregistered contract and one without NEP-145; refuses a
+  held token, a missing deposit, a contract without NEP-145, an invalid
+  contract and a watched wallet without building anything; builds the
+  refund with the protocol config's exact fee; refuses to sign once a token
+  arrives; and decodes the signed bytes to one `storage_unregister` with
+  `{}`, 30 Tgas and one yoctoNEAR, recorded as `refundTokenStorage`.
+- **Verification:** `near-storage-unregister.json` from
+  `scripts/generate-near-storage-unregister-vector.cjs`
+  (@near-js/transactions 2.5.1, @near-js/crypto 2.5.1), byte for byte with
+  its hash; a mock node answering as each kind of contract for the listing
+  and the refusals; the stage binding against each tamper.
+  Full `make verify`, 2026-10-08: lint clean and 1265 workspace tests
+  passed; `test-cli` first stopped on a full disk while building, and once
+  the incremental cache was cleared `make test-cli test-ios` passed 98
+  acceptance checks and 142 iOS tests.
+
+## 2026-10-08 — A Cardano account shows its stake address, rewards and delegation
+
+- **Before:** a Cardano phrase wallet held a base address whose stake key
+  earned rewards and carried delegation, and nothing showed either: Cardano
+  had no network account, and its rewards counted in no balance.
+- **After:** a Cardano wallet whose address names a stake credential has a
+  network account (`NetworkAccount::Cardano`): the CIP-19 reward address of
+  that credential (`derivation::cardano::cardano_stake_address`), type 14
+  (`stake1…`, `stake_test1…`) for a key as every phrase wallet's is, or 15 for
+  a watched address's script, with the registration, available rewards and
+  pool and DRep delegation Koios `account_info` reports for it from a node
+  verified by its genesis. A stake address the chain has never seen reads as
+  unregistered with nothing earned. An enterprise address, which a raw key
+  derives, and pointer and Byron addresses name no stake key: their wallets
+  offer no network account (`has_network_account` now asks the wallet, not
+  the network), and asking is refused.
+- **Why:** the open item: the rewards a phrase's account earns are funds
+  the wallet holds, and the base address made them reachable.
+- **CLI check:** `python3 scripts/cli-wallet-operations.py
+  target/debug/spectra` shows the abandon phrase's `stake1u8j40…` with its
+  rewards, pool and DRep from a loopback Koios; a watched script-staked base
+  address's `stake17…`, unregistered; and a raw key's wallet offering no
+  account and refused one by `wallet account`.
+- **Verification:** `cardano-stake-addresses.json` from
+  `scripts/generate-cardano-stake-address-vectors.cjs`
+  (@emurgo/cardano-serialization-lib-nodejs 17.0.0, bip39 3.1.0): the
+  phrase's base and stake addresses at accounts 0 and 1 on both networks,
+  every base-address credential mix and no stake address behind enterprise
+  and pointer ones; CIP-19's own type-14 vectors; Koios `account_info` rows,
+  missing, deregistered and malformed.
+  Full `make verify`, 2026-10-08: lint clean and 1265 workspace tests
+  passed; `test-cli` first stopped on a full disk while building, and once
+  the incremental cache was cleared `make test-cli test-ios` passed 98
+  acceptance checks and 142 iOS tests.
+
 ## 2026-10-08 — A NEAR token send registers its recipient first
 
 - **Before:** a NEP-141 send was one `ft_transfer` call. A standard token

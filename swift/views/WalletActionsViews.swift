@@ -20,6 +20,7 @@ extension WalletAction {
         case .mwebFunds: AppLocalization.string("MWEB Funds")
         case .networkAccount: AppLocalization.string("Network Account")
         case .accessKeys: AppLocalization.string("Access Keys")
+        case .tokenStorage: AppLocalization.string("Token Storage")
         case .coinObjects: AppLocalization.string("Coin Objects")
         case .getTestCoins: AppLocalization.string("Get Test Coins")
         case .tokenAccounts: AppLocalization.string("Token Accounts")
@@ -50,6 +51,7 @@ extension WalletAction {
         case .mwebFunds: "eye.slash.circle"
         case .networkAccount: "gauge.with.dots.needle.33percent"
         case .accessKeys: "key.2.on.ring"
+        case .tokenStorage: "archivebox"
         case .coinObjects: "circle.grid.3x3"
         case .getTestCoins: "drop"
         case .tokenAccounts: "tray"

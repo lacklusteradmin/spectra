@@ -1,8 +1,9 @@
 //! What a wallet's account on its network holds and needs, where the network
 //! keeps more than a balance: Tron's bandwidth and energy, the reserve XRP and
 //! Stellar lock, a TON wallet's contract and state, what a Substrate balance
-//! is made of, and the storage a NEAR account pays for. Read from one verified
-//! node each; the page that shows it is the wallet's Account.
+//! is made of, the storage a NEAR account pays for, and the stake address
+//! where a Cardano base address's rewards and delegation live. Read from one
+//! verified node each; the page that shows it is the wallet's Account.
 
 use super::*;
 
@@ -88,6 +89,23 @@ pub enum NetworkAccount {
         /// What the liquid balance keeps for storage beyond that.
         storage_reserve: String,
     },
+    /// The stake address a Cardano base address names, which holds its
+    /// rewards and delegation apart from the address's own balance.
+    Cardano {
+        /// CIP-19 type 14 (`stake1…`, `stake_test1…`), or 15 for a script's
+        /// stake credential.
+        stake_address: String,
+        /// Whether the stake key is registered: only a registered key
+        /// delegates and earns.
+        registered: bool,
+        /// Rewards earned and not yet withdrawn; no balance counts them.
+        rewards: String,
+        /// The pool it delegates to, as `pool1…`.
+        delegated_pool: Option<String>,
+        /// The DRep it delegates its vote to, as `drep1…` or one of the
+        /// predefined `drep_always_abstain` and `drep_always_no_confidence`.
+        delegated_drep: Option<String>,
+    },
 }
 
 /// A wallet's network account and the coin its amounts are in.
@@ -102,17 +120,33 @@ pub struct WalletNetworkAccount {
     pub closable: bool,
 }
 
-/// Whether core reads a network account for `chain`.
-pub(crate) fn has_network_account(chain: Chain) -> bool {
-    matches!(
-        chain.mainnet_counterpart(),
+/// Whether core reads a network account for `wallet`: on a network that
+/// keeps more than a balance, and on Cardano for an address that names a
+/// stake credential, which a raw key's enterprise address does not.
+pub(crate) fn has_network_account(wallet: &crate::store::state::WalletState) -> bool {
+    let chain = wallet.chain_id;
+    match chain.mainnet_counterpart() {
         Chain::Tron
-            | Chain::Xrp
-            | Chain::Stellar
-            | Chain::Ton
-            | Chain::Polkadot
-            | Chain::Bittensor
-            | Chain::Near
+        | Chain::Xrp
+        | Chain::Stellar
+        | Chain::Ton
+        | Chain::Polkadot
+        | Chain::Bittensor
+        | Chain::Near => true,
+        Chain::Cardano => wallet
+            .address_on(chain)
+            .is_some_and(|address| matches!(cardano_stake_address(address), Ok(Some(_)))),
+        _ => false,
+    }
+}
+
+fn cardano_stake_address(address: &str) -> Result<Option<String>, SpectraBridgeError> {
+    Ok(crate::derivation::cardano::cardano_stake_address(address)?)
+}
+
+fn no_stake_key() -> SpectraBridgeError {
+    SpectraBridgeError::invalid(
+        "This address names no stake key, so it has no rewards or delegation. A wallet imported from a key holds only a payment key.",
     )
 }
 
@@ -128,11 +162,15 @@ impl WalletService {
         crate::worker::run(async move {
             let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
-            if !has_network_account(chain) {
-                return Err(SpectraBridgeError::refused(
-                    "A %@ account holds only its balance.",
-                    [chain.chain_display_name()],
-                ));
+            if !has_network_account(&wallet) {
+                return Err(if chain.mainnet_counterpart() == Chain::Cardano {
+                    no_stake_key()
+                } else {
+                    SpectraBridgeError::refused(
+                        "A %@ account holds only its balance.",
+                        [chain.chain_display_name()],
+                    )
+                });
             }
             let address = wallet
                 .address_on(chain)
@@ -263,6 +301,27 @@ impl WalletService {
                         storage_price: coin(state.cost_per_byte),
                         locked: coin(state.locked),
                         storage_reserve: coin(state.storage_reserve()?),
+                    }
+                }
+                Chain::Cardano => {
+                    let stake_address =
+                        cardano_stake_address(&address)?.ok_or_else(no_stake_key)?;
+                    let account = KoiosClient::new(Arc::new(
+                        this.api_endpoints(
+                            chain,
+                            crate::EndpointApi::Koios,
+                            &[EndpointCapability::Verification],
+                        )
+                        .await?,
+                    ))
+                    .fetch_stake_account(chain, &stake_address)
+                    .await?;
+                    NetworkAccount::Cardano {
+                        stake_address,
+                        registered: account.registered,
+                        rewards: coin(u128::from(account.rewards_available)),
+                        delegated_pool: account.delegated_pool,
+                        delegated_drep: account.delegated_drep,
                     }
                 }
                 _ => unreachable!("has_network_account names these networks"),

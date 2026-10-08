@@ -14,7 +14,11 @@ mainstream wallets restore: the payment key at
 stake key at `m/1852'/1815'/{account}'/2/0`; a path of any other shape names no
 stake key and is refused. Balance, inputs and history are read there, change
 returns there, and spending needs only the payment key's witness. A raw
-extended key holds no stake key and keeps its enterprise address. Bittensor and Polkadot use verified genesis and
+extended key holds no stake key and keeps its enterprise address. A base
+address's network account shows the stake address its stake credential names
+(CIP-19 type 14, or 15 for a script's) with the registration, available rewards
+and pool and DRep delegation Koios reports for it; an enterprise address has
+none. Bittensor and Polkadot use verified genesis and
 live runtime metadata rather than hard-coded pallet indices. A Cardano transfer
 spends any of the address's outputs, those holding native assets included, and
 its change returns every asset the inputs held that the transfer does not
@@ -445,7 +449,13 @@ and `storage_balance_bounds().min` before `ft_transfer`, its budget covers both
 calls and the deposit is reviewed as part of the cost. A contract that answers
 neither query is refused. Storage reserve, funds, the recipient's registration
 and the reviewed budget are checked again before signing or submitting; pending
-retries also check the current budget because signed bytes do not cap gas price. Four account chains resolve exact transaction execution outcomes;
+retries also check the current budget because signed bytes do not cap gas price.
+A NEAR wallet lists the token contracts its NearBlocks inventory, holdings and
+history name that hold a NEP-145 deposit while the account holds none of their
+token, and returns one deposit per transaction with `storage_unregister`:
+empty arguments, so never `force`, and one yoctoNEAR. A held balance or a
+missing deposit is refused, and both are read again before signing or
+submitting. Four account chains resolve exact transaction execution outcomes;
 Substrate resolves finalized extrinsic events. Manual status checks bypass background
 poll backoff. NEAR native, token and staking transactions validate their canonical
 reference block against the live protocol validity period, rather than an

@@ -313,7 +313,7 @@ Customisation stays functional: no colours, icons or other decoration.
   key Spectra signs with. Delete a function-call key through the send stages.
   Full-access keys are listed only, and deleting the wallet's own key is
   refused. Show the storage the account's balance must cover.
-- [ ] **NEAR: refund token storage deposits.** Each NEP-141 token contract
+- [x] **NEAR: refund token storage deposits.** Each NEP-141 token contract
   that has registered the account holds its NEP-145 storage deposit, usually
   0.00125 NEAR. No node lists every contract an account registered with, so
   read `storage_balance_of` on the contracts the wallet's discovery and
@@ -340,7 +340,7 @@ Customisation stays functional: no colours, icons or other decoration.
   its history row and offer, from the transaction's detail, the proof that
   monero-wallet-cli's `check_tx_key` verifies. Owned subaddresses are under
   [Wallet import and address recovery](#wallet-import-and-address-recovery).
-- [ ] **Cardano: stake address and rewards.** A phrase wallet holds a base
+- [x] **Cardano: stake address and rewards.** A phrase wallet holds a base
   address, so its account has a stake key at `m/1852'/1815'/{account}'/2/0`.
   Show the stake address (CIP-19 type 14, `stake1…`/`stake_test1…`) and its
   reward balance and delegation as Koios reports them for that stake

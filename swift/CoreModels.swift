@@ -169,6 +169,7 @@ extension TransactionRecord: Identifiable {
         case .deleteAccessKey: return AppLocalization.string("Delete Access Key")
         case .mergeCoins: return AppLocalization.format("Merge %@ Coins", symbol)
         case .closeTokenAccounts: return AppLocalization.string("Close Token Accounts")
+        case .refundTokenStorage: return AppLocalization.string("Refund Token Storage")
         case .trustAsset: return AppLocalization.string("Trust Asset")
         case .removeTrustLine: return AppLocalization.string("Remove Trust Line")
         case .shield: return AppLocalization.format("Shield %@", symbol)
@@ -187,8 +188,8 @@ extension TransactionRecord: Identifiable {
         switch kind {
         case .send, .stake: return .red
         case .receive, .withdraw, .claimRewards: return .green
-        case .unstake, .revokeApproval, .deleteAccessKey, .mergeCoins, .closeTokenAccounts, .trustAsset,
-             .removeTrustLine, .shield: return .secondary
+        case .unstake, .revokeApproval, .deleteAccessKey, .mergeCoins, .closeTokenAccounts, .refundTokenStorage,
+             .trustAsset, .removeTrustLine, .shield: return .secondary
         }
     }
     var isSubmittedOperation: Bool { transactionKindIsSubmitted(kind: kind) }

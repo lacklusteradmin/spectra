@@ -300,6 +300,37 @@ pub(crate) fn cardano_base_address(
     shelley_key_address(0, &[payment_public, stake_public], is_mainnet)
 }
 
+/// The CIP-19 reward address of a base address's stake credential, where
+/// its rewards and delegation live: type 14 (`stake1…`, `stake_test1…`) for
+/// a key, as every phrase wallet's is, or 15 for a script. `None` for an
+/// address with no stake credential of its own: enterprise, as a raw key
+/// derives, pointer, reward and Byron.
+pub(crate) fn cardano_stake_address(address: &str) -> Result<Option<String>, DerivationError> {
+    if !address.starts_with("addr1") && !address.starts_with("addr_test1") {
+        return Ok(None);
+    }
+    let data = decode_cardano_addr_bytes(address)?;
+    let header = *data
+        .first()
+        .ok_or_else(|| DerivationError::invalid("Empty Cardano address"))?;
+    let (kind, network) = (header >> 4, header & 0x0f);
+    if kind > 3 {
+        return Ok(None);
+    }
+    if data.len() != 57 || (network == 1) != address.starts_with("addr1") {
+        return Err(DerivationError::invalid("Invalid Cardano base address"));
+    }
+    // Types 2 and 3 carry a script's hash as their stake credential.
+    let mut reward = Vec::with_capacity(29);
+    reward.push(if kind >= 2 { 0xf0 } else { 0xe0 } | network);
+    reward.extend_from_slice(&data[29..]);
+    let hrp = bech32::Hrp::parse(if network == 1 { "stake" } else { "stake_test" })
+        .map_err(DerivationError::invalid)?;
+    Ok(Some(
+        bech32::encode::<bech32::Bech32>(hrp, &reward).map_err(DerivationError::invalid)?,
+    ))
+}
+
 // Derive a phrase's Cardano base address, payment public key and payment
 // private key via CIP-3 Icarus + BIP-32-Ed25519.
 pub(crate) fn derive_from_seed_phrase(

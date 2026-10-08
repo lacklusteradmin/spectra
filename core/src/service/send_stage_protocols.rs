@@ -38,6 +38,11 @@ impl WalletService {
         }
         match &stored.prepared {
             PreparedPayload::Near { .. } => self.validate_near_transfer_state(stored).await?,
+            // Staking is validated apart; a NEAR call that is not staking is
+            // a storage refund.
+            PreparedPayload::NearFunctionCall(prepared) => {
+                self.validate_token_storage_refund(stored, prepared).await?
+            }
             PreparedPayload::Evm(prepared) => {
                 let client = EvmClient::new(
                     self.endpoints_for(chain, &[EndpointCapability::Verification])

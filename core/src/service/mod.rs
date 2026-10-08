@@ -143,6 +143,7 @@ pub use wallet_keys::{WalletKeyExport, WalletKeyKind};
 mod wallet_closing;
 mod wallet_messages;
 mod wallet_near_keys;
+mod wallet_near_storage;
 mod wallet_network_account;
 mod wallet_nfts;
 pub use wallet_nfts::{WalletNft, WalletNfts};

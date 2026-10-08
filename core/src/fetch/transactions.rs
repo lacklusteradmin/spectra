@@ -134,6 +134,7 @@ fn kind_from_raw(raw: &str) -> TransactionKind {
         "deleteAccessKey" => TransactionKind::DeleteAccessKey,
         "mergeCoins" => TransactionKind::MergeCoins,
         "closeTokenAccounts" => TransactionKind::CloseTokenAccounts,
+        "refundTokenStorage" => TransactionKind::RefundTokenStorage,
         "trustAsset" => TransactionKind::TrustAsset,
         "shield" => TransactionKind::Shield,
         "removeTrustLine" => TransactionKind::RemoveTrustLine,

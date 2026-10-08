@@ -488,6 +488,27 @@ impl KoiosClient {
         })
     }
 
+    /// A stake address's registration, rewards and delegation, from one
+    /// node verified to be on `chain`.
+    pub(crate) async fn fetch_stake_account(
+        &self,
+        chain: crate::registry::Chain,
+        stake_address: &str,
+    ) -> Result<CardanoStakeAccount, ApiError> {
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let rows: Vec<serde_json::Value> = node
+                .post(
+                    "/account_info",
+                    &serde_json::json!({"_stake_addresses": [stake_address]}),
+                )
+                .await?;
+            cardano_stake_account(&rows, stake_address)
+        })
+        .await
+    }
+
     /// Fetch current slot from the latest block.
     pub async fn fetch_latest_slot(&self) -> Result<u64, ApiError> {
         #[derive(Deserialize)]
@@ -500,6 +521,66 @@ impl KoiosClient {
             .map(|t| t.abs_slot)
             .or_decode("tip: empty response")
     }
+}
+
+/// What Koios `account_info` reports for a stake address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CardanoStakeAccount {
+    /// Whether the stake key is registered: only a registered key delegates
+    /// and earns.
+    pub registered: bool,
+    /// Rewards earned and not yet withdrawn, in lovelace.
+    pub rewards_available: u64,
+    /// The pool it delegates to, as `pool1…`.
+    pub delegated_pool: Option<String>,
+    /// The DRep it delegates its vote to, as `drep1…` or one of the
+    /// predefined `drep_always_abstain` and `drep_always_no_confidence`.
+    pub delegated_drep: Option<String>,
+}
+
+/// `account_info`'s one row for `stake_address`. A stake address the chain
+/// has never seen has no row: unregistered, with nothing earned.
+fn cardano_stake_account(
+    rows: &[serde_json::Value],
+    stake_address: &str,
+) -> Result<CardanoStakeAccount, ApiError> {
+    let Some(row) = rows.first() else {
+        return Ok(CardanoStakeAccount {
+            registered: false,
+            rewards_available: 0,
+            delegated_pool: None,
+            delegated_drep: None,
+        });
+    };
+    if rows.len() != 1 || row["stake_address"].as_str() != Some(stake_address) {
+        return Err(ApiError::decode("Koios account: stake address mismatch"));
+    }
+    let registered = match row["status"].as_str() {
+        Some("registered") => true,
+        Some("not registered") => false,
+        _ => return Err(ApiError::decode("Koios account: unknown status")),
+    };
+    let named = |field: &str| -> Result<Option<String>, ApiError> {
+        match &row[field] {
+            serde_json::Value::Null => Ok(None),
+            value => Ok(Some(
+                value
+                    .as_str()
+                    .filter(|name| !name.is_empty())
+                    .or_decode("Koios account: invalid delegation")?
+                    .to_string(),
+            )),
+        }
+    };
+    Ok(CardanoStakeAccount {
+        registered,
+        rewards_available: row["rewards_available"]
+            .as_str()
+            .and_then(|lovelace| lovelace.parse().ok())
+            .or_decode("Koios account: invalid rewards")?,
+        delegated_pool: named("delegated_pool")?,
+        delegated_drep: named("delegated_drep")?,
+    })
 }
 
 fn cardano_transaction_status(
@@ -759,5 +840,65 @@ mod transaction_status_tests {
         assert!(
             cardano_transaction_status(&[json!({"tx_hash":"h","block_height":100})], "h").is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod stake_account_tests {
+    use super::*;
+    use serde_json::json;
+
+    const STAKE: &str = "stake1u8j40zgr2gy4788kl54h6x3gu0pukq5lfr8nflufpg5dzaskqlx2l";
+
+    #[test]
+    fn account_info_reports_registration_rewards_and_delegation() {
+        let row = json!({"stake_address": STAKE, "status": "registered",
+            "delegated_pool": "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy",
+            "delegated_drep": "drep_always_abstain", "total_balance": "9000000",
+            "rewards": "1500000", "withdrawals": "500000", "rewards_available": "1000000",
+            "deposit": "2000000"});
+        assert_eq!(
+            cardano_stake_account(std::slice::from_ref(&row), STAKE).unwrap(),
+            CardanoStakeAccount {
+                registered: true,
+                rewards_available: 1_000_000,
+                delegated_pool: Some(
+                    "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy".into()
+                ),
+                delegated_drep: Some("drep_always_abstain".into()),
+            }
+        );
+        // Never seen on chain: no row.
+        assert_eq!(
+            cardano_stake_account(&[], STAKE).unwrap(),
+            CardanoStakeAccount {
+                registered: false,
+                rewards_available: 0,
+                delegated_pool: None,
+                delegated_drep: None,
+            }
+        );
+        let deregistered = json!({"stake_address": STAKE, "status": "not registered",
+            "delegated_pool": null, "delegated_drep": null, "rewards_available": "0"});
+        assert!(
+            !cardano_stake_account(&[deregistered], STAKE)
+                .unwrap()
+                .registered
+        );
+        // Another address's row, two rows, or a field that is not what
+        // Koios writes are refused rather than shown.
+        let mut other = row.clone();
+        other["stake_address"] = json!("stake1other");
+        assert!(cardano_stake_account(&[other], STAKE).is_err());
+        assert!(cardano_stake_account(&[row.clone(), row.clone()], STAKE).is_err());
+        for (field, value) in [
+            ("status", json!("retired")),
+            ("rewards_available", json!(1000000)),
+            ("delegated_pool", json!(7)),
+        ] {
+            let mut bad = row.clone();
+            bad[field] = value;
+            assert!(cardano_stake_account(&[bad], STAKE).is_err(), "{field}");
+        }
     }
 }

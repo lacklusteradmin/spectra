@@ -371,7 +371,7 @@ pub(crate) fn history_save_send_progress(
                 "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_id = ?1 AND id != lower(?2)
                  AND lower(json_extract(payload, '$.sourceAddress')) = lower(?3)
                  AND json_extract(payload, '$.nonce') = ?4
-                 AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'trustAsset', 'removeTrustLine', 'shield')
+                 AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield')
                  AND json_extract(payload, '$.status') = 'pending')",
                 params![incoming.chain_id, incoming.id, source, nonce], |row| row.get(0)
             ).map_err(DbError::from)?;
@@ -427,7 +427,7 @@ pub(crate) fn history_pending_for_sender(
 ) -> Result<Vec<HistoryRecord>, DbError> {
     history_fetch_where(
         database,
-        "chain_id = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'",
+        "chain_id = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'",
         params![chain, sender],
     )
 }

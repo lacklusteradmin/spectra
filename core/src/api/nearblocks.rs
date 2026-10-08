@@ -32,9 +32,33 @@ impl NearblocksClient {
         }
     }
 
-    /// Read the complete FT inventory through v3's opaque cursor. A partial
-    /// inventory is refused because absence is interpreted as a zero holding.
+    /// The tokens the account holds, from its complete FT inventory.
     pub async fn fetch_ft_holdings(
+        &self,
+        account: &str,
+    ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
+        Ok(self
+            .fetch_ft_inventory(account)
+            .await?
+            .into_iter()
+            .filter(|token| token.balance_raw > 0)
+            .collect())
+    }
+
+    /// Every token contract the account's inventory names, held or emptied.
+    pub(crate) async fn fetch_ft_contracts(&self, account: &str) -> Result<Vec<String>, ApiError> {
+        Ok(self
+            .fetch_ft_inventory(account)
+            .await?
+            .into_iter()
+            .map(|token| token.contract)
+            .collect())
+    }
+
+    /// Read the complete FT inventory through v3's opaque cursor, a zero
+    /// balance included. A partial inventory is refused because absence is
+    /// interpreted as a zero holding.
+    async fn fetch_ft_inventory(
         &self,
         account: &str,
     ) -> Result<Vec<crate::api::HeldToken>, ApiError> {
@@ -73,13 +97,11 @@ impl NearblocksClient {
                     .and_then(|value| value.parse::<u128>().ok())
                     .or_decode("NEAR inventory: invalid amount")?;
                 let decimals = near_ft_decimals(&row["meta"])?;
-                if balance_raw > 0 {
-                    held.push(crate::api::HeldToken {
-                        contract: contract.into(),
-                        balance_raw,
-                        decimals: Some(decimals),
-                    });
-                }
+                held.push(crate::api::HeldToken {
+                    contract: contract.into(),
+                    balance_raw,
+                    decimals: Some(decimals),
+                });
             }
             let next = next_page(&response)?;
             if next.is_none() {

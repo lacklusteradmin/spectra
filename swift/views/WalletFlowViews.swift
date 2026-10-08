@@ -357,7 +357,7 @@ struct WalletDetailView: View {
             }
         case .addToNetwork, .rename, .revealPhrase, .exportKeys, .delete: isShowingAdvancedPage = true
         case .history, .addKeys, .stake, .scanBlocks, .coins, .tokenApprovals, .nfts, .shieldedFunds,
-             .mwebFunds, .networkAccount, .accessKeys, .coinObjects, .tokenAccounts, .trustLines,
+             .mwebFunds, .networkAccount, .accessKeys, .tokenStorage, .coinObjects, .tokenAccounts, .trustLines,
              .signMessage, .verifyMessage:
             openedAction = action
         }
@@ -389,6 +389,8 @@ struct WalletDetailView: View {
             WalletNetworkAccountView(store: store, wallet: displayedWallet)
         case .accessKeys:
             WalletAccessKeysView(store: store, wallet: displayedWallet)
+        case .tokenStorage:
+            WalletTokenStorageView(store: store, wallet: displayedWallet)
         case .coinObjects:
             WalletCoinObjectsView(store: store, wallet: displayedWallet)
         case .tokenAccounts:

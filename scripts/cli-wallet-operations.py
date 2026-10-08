@@ -3,7 +3,12 @@
 or Stellar account: each prerequisite the network enforces is refused before
 anything is built, and a closing that passes is built, signed exactly as each
 network's SDK signs it and broadcast as a send. NEAR access keys: listed with
-the signing key marked; a function-call key deleted, every other refused."""
+the signing key marked; a function-call key deleted, every other refused.
+NEAR token storage: the contracts the inventory, holdings and history name
+that hold a deposit beside an empty balance are listed, one is unregistered
+without `force`, and held tokens, missing deposits and watched wallets are
+refused. Cardano: a phrase wallet's account shows its stake address, rewards
+and delegation as Koios reports them; a raw key's address has none."""
 import base64
 import decimal
 import http.server
@@ -27,6 +32,11 @@ NEAR_CONFIG = json.loads((fixtures / 'near-staking-fee-protocol86.json').read_te
 PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
 # near-seed-phrase's key for PHRASE at m/44'/397'/0': the implicit account.
 NEAR_IMPLICIT = '5510e2b44cae6eb807e3e0e45d579dda058c274abcba15e5cb84636f5d1ee412'
+CARDANO = json.loads((fixtures / 'cardano-stake-addresses.json').read_text())
+CARDANO_KEY = json.loads((fixtures / 'cardano-emurgo-witness.json').read_text())['privateKey']
+NEAR_DEPOSIT = 1250000000000000000000
+METHOD_NOT_FOUND = {'error': 'wasm execution failed with error: FunctionCallError(MethodResolveError(MethodNotFound))',
+                    'logs': [], 'block_height': 100}
 SUI_TOKEN = '0x' + 'aa' * 32 + '::usdc::USDC'
 SUI_SINGLE = '0x' + 'bb' * 32 + '::one::ONE'
 B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -72,6 +82,12 @@ class Node(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         state = self.state
+        if self.path.startswith('/koios/genesis'):
+            return self.reply([{'networkmagic': '764824073', 'networkid': 'Mainnet'}])
+        if self.path.startswith('/nearblocks/'):
+            assert self.path == f"/nearblocks/accounts/{state['account']}/assets/fts?limit=250", self.path
+            return self.reply({'data': [{'contract': contract, 'amount': amount, 'meta': {'decimals': 6}}
+                                        for contract, amount in state['inventory']], 'meta': {}})
         path = self.path.removeprefix('/horizon')
         if path == '/' or path == '':
             return self.reply({'network_passphrase': merge['network_passphrase']})
@@ -110,6 +126,14 @@ class Node(http.server.BaseHTTPRequestHandler):
             return entry['access_key']
         if kind == 'view_account':
             return {'amount': str(10 ** 24), 'locked': '0', 'storage_usage': 500}
+        if kind == 'call_function':
+            assert json.loads(base64.b64decode(params['args_base64'])) == {'account_id': state['account']}, params
+            answers = state['tokens'].get(params['account_id'], {})
+            if params['method_name'] not in answers:
+                return METHOD_NOT_FOUND
+            state['calls'].append((params['account_id'], params['method_name']))
+            return {'result': list(json.dumps(answers[params['method_name']]).encode()), 'logs': [],
+                    'block_height': 100}
         raise AssertionError(call)
 
     def sui(self, call):
@@ -169,6 +193,10 @@ class Node(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers['Content-Length']))
+        if self.path.startswith('/koios/account_info'):
+            [stake] = json.loads(body)['_stake_addresses']
+            row = self.state['stake_accounts'].get(stake)
+            return self.reply([{'stake_address': stake, **row}] if row else [])
         if self.path.startswith('/solana'):
             call = json.loads(body)
             return self.reply({'jsonrpc': '2.0', 'id': call['id'], 'result': self.solana(call)})
@@ -384,6 +412,116 @@ class WalletOperationsTests(unittest.TestCase):
         # Two full-access keys: the one the phrase derives is the one it signs with.
         assert [(k['publicKey'], k['signs']) for k in keys][0] == (signer, True), keys
         assert not keys[1]['signs'], keys
+
+    def test_near_token_storage_is_refunded_only_beside_an_empty_balance(self):
+        signer = ed25519(NEAR_IMPLICIT)
+        registered = {'total': str(NEAR_DEPOSIT), 'available': '0'}
+        Node.state = {'account': NEAR_IMPLICIT, 'calls': [],
+                      'keys': [{'public_key': signer, 'access_key': {'nonce': 7, 'permission': 'FullAccess'}}],
+                      # The indexer's inventory, emptied tokens included.
+                      'inventory': [('empty.near', '0'), ('held.near', '5'), ('unregistered.near', '0'),
+                                    ('nostorage.near', '0')],
+                      'tokens': {
+                          'empty.near': {'storage_balance_of': registered, 'ft_balance_of': '0'},
+                          'held.near': {'storage_balance_of': registered, 'ft_balance_of': '5'},
+                          'unregistered.near': {'storage_balance_of': None, 'ft_balance_of': '0'},
+                          'nostorage.near': {'ft_balance_of': '0'},
+                          'holding.near': {'storage_balance_of': {'total': str(2 * NEAR_DEPOSIT), 'available': '0'},
+                                           'ft_balance_of': '0'},
+                          'history.near': {'storage_balance_of': registered, 'ft_balance_of': '0'},
+                      }}
+        self.run_cli('wallet', 'import', '--chain', 'near', '--name', 'NEAR', '--no-password', env={'SPECTRA_SEED': PHRASE})
+        self.endpoint('near', 'near-json-rpc', '/near')
+        self.run_cli('endpoints', '--chain', 'near', '--api', 'nearblocks', '--capabilities',
+                     'history,token-history,token-discovery', '--add', self.base + '/nearblocks')
+        assert any(a['action'] == 'tokenStorage' for a in self.run_cli('wallet', 'actions', 'NEAR')['actions']['actions'])
+        # A holding the wallet tracks and a token its history names, which the
+        # inventory does not.
+        with sqlite3.connect(pathlib.Path(self.directory.name) / 'spectra.sqlite') as db:
+            wid, payload = db.execute('SELECT id, payload FROM wallets').fetchone()
+            wallet = json.loads(payload)
+            wallet['holdings'].append(dict(name='Holding', symbol='HOLD', coingeckoId='', chainId='near',
+                                           tokenStandard='NEP-141', contractAddress='holding.near', amount='0'))
+            db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
+            record = dict(id='received', walletId=wid, kind='receive', status='confirmed', walletName='NEAR',
+                          assetDisplayName='History', symbol='HIST', chainId='near', amount='1',
+                          address=NEAR_IMPLICIT, deploymentId='near:nep-141:history.near', createdAtUnix=1.0)
+            db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) '
+                       'VALUES (?,?,?,?,?,?)', ('received', wid, 'near', None, 1.0, json.dumps(record)))
+        storage = self.run_cli('wallet', 'token-storage', 'NEAR')['storage']
+        assert [(d['contract'], d['symbol'], d['refund']) for d in storage['deposits']] == [
+            ('empty.near', 'empty.near', '0.00125'), ('history.near', 'history.near', '0.00125'),
+            ('holding.near', 'HOLD', '0.0025')], storage
+        assert storage['refundable'] == '0.005' and storage['account'] == NEAR_IMPLICIT, storage
+
+        self.refuses('still holds this token', 'wallet', 'refund-storage', 'NEAR', '--contract', 'held.near')
+        self.refuses('holds no storage deposit', 'wallet', 'refund-storage', 'NEAR', '--contract', 'unregistered.near')
+        self.refuses('holds no storage deposit', 'wallet', 'refund-storage', 'NEAR', '--contract', 'nostorage.near')
+        self.refuses('not a NEAR token contract', 'wallet', 'refund-storage', 'NEAR', '--contract', 'Not A Contract')
+        assert self.run_cli('send', 'list')['artifacts'] == [], 'a refusal builds nothing'
+
+        built = self.run_cli('wallet', 'refund-storage', 'NEAR', '--contract', 'empty.near')['artifact']
+        costs = NEAR_CONFIG['runtime_config']['transaction_costs']
+        actions = costs['action_creation_config']
+        count = len('storage_unregister') + len('{}')
+        parts = [costs['action_receipt_creation_config'], actions['function_call_cost'],
+                 {key: value * count for key, value in actions['function_call_cost_per_byte'].items()}]
+        price = 100000000
+        fee = sum(p['send_not_sir'] for p in parts) * price + (30000000000000 + sum(
+            p['execution'] for p in parts)) * max(price, int(NEAR_CONFIG['runtime_config']['min_gas_purchase_price']))
+        display = format(decimal.Decimal(fee) / 10 ** 24, 'f').rstrip('0').rstrip('.')
+        assert built['operation'] == {'kind': 'refund_token_storage', 'contract': 'empty.near', 'refund': '0.00125',
+                                      'network_fee': display}, built
+        assert built['recipient'] == built['sender'] == NEAR_IMPLICIT and built['amount'] == '0.00125', built
+        sign = ('send', 'sign', built['id'], '--review-digest', built['review_digest'], '--endpoint', self.base + '/near')
+        # A token that arrives before signing stops it: the contract would refuse.
+        Node.state['tokens']['empty.near']['ft_balance_of'] = '1'
+        code, output = self.run_cli(*sign, success=False)
+        assert 'still holds this token' in output, output
+        Node.state['tokens']['empty.near']['ft_balance_of'] = '0'
+        signed = self.run_cli(*sign)['artifact']
+        raw = base64.b64decode(json.loads(signed['signed_payload'])['signed_tx_b64'])
+        # To the token: one FunctionCall (2), storage_unregister with `{}`,
+        # 30 Tgas and one yoctoNEAR, then the signature.
+        call = (bytes([1, 0, 0, 0, 2]) + len('storage_unregister').to_bytes(4, 'little') + b'storage_unregister'
+                + (2).to_bytes(4, 'little') + b'{}' + (30000000000000).to_bytes(8, 'little') + (1).to_bytes(16, 'little'))
+        assert raw[:-65].endswith(call) and b'empty.near' in raw and b'force' not in raw, raw.hex()
+        self.run_cli('send', 'broadcast-signed', signed['id'], '--endpoint', self.base + '/near', '--yes')
+        assert Node.submitted == [json.loads(signed['signed_payload'])['signed_tx_b64']], Node.submitted
+        with sqlite3.connect(pathlib.Path(self.directory.name) / 'spectra.sqlite') as db:
+            kinds = sorted(json.loads(row[0])['kind'] for row in db.execute('SELECT payload FROM history_records'))
+        assert kinds == ['receive', 'refundTokenStorage'], kinds
+
+        # A watched account builds nothing.
+        self.run_cli('wallet', 'watch', '--chain', 'near', '--name', 'Watched', '--address', '22' * 32)
+        self.refuses('watch-only', 'wallet', 'refund-storage', 'Watched', '--contract', 'history.near')
+
+    def test_a_cardano_account_shows_its_stake_address_rewards_and_delegation(self):
+        phrase, script = CARDANO['phrase_vectors'][0], CARDANO['address_vectors'][2]
+        pool = 'pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy'
+        Node.state = {'stake_accounts': {phrase['stake_address']: {
+            'status': 'registered', 'delegated_pool': pool, 'delegated_drep': 'drep_always_abstain',
+            'total_balance': '9000000', 'rewards': '2000000', 'withdrawals': '500000',
+            'rewards_available': '1500000', 'deposit': '2000000'}}}
+        self.run_cli('wallet', 'import', '--chain', 'cardano', '--name', 'ADA', '--no-password',
+                     env={'SPECTRA_SEED': CARDANO['phrase']})
+        self.endpoint('cardano', 'koios', '/koios')
+        assert any(a['action'] == 'networkAccount' for a in self.run_cli('wallet', 'actions', 'ADA')['actions']['actions'])
+        account = self.run_cli('wallet', 'account', 'ADA')['account']
+        assert account == {'kind': 'cardano', 'stakeAddress': phrase['stake_address'], 'registered': True,
+                           'rewards': '1.5', 'delegatedPool': pool, 'delegatedDrep': 'drep_always_abstain'}, account
+        # A watched base address with a script's stake credential names a
+        # type-15 stake address, which the chain has not seen.
+        self.run_cli('wallet', 'watch', '--chain', 'cardano', '--name', 'Script', '--address', script['address'])
+        assert self.run_cli('wallet', 'account', 'Script')['account'] == {
+            'kind': 'cardano', 'stakeAddress': script['stake_address'], 'registered': False, 'rewards': '0',
+            'delegatedPool': None, 'delegatedDrep': None}
+        # A raw key derives an enterprise address, which names no stake key.
+        self.run_cli('wallet', 'import', '--chain', 'cardano', '--name', 'Key', '--no-password',
+                     '--private-key-env', 'CARDANO_KEY', env={'CARDANO_KEY': CARDANO_KEY})
+        assert not any(a['action'] == 'networkAccount'
+                       for a in self.run_cli('wallet', 'actions', 'Key')['actions']['actions'])
+        self.refuses('names no stake key', 'wallet', 'account', 'Key')
 
     def test_sui_objects_merge_by_type_with_gas_apart(self):
         Node.state = {'dry_runs': []}

@@ -149,6 +149,7 @@ pub(crate) fn transaction_endpoints_for(
         | crate::store::wallet_domain::TransactionKind::DeleteAccessKey
         | crate::store::wallet_domain::TransactionKind::MergeCoins
         | crate::store::wallet_domain::TransactionKind::CloseTokenAccounts
+        | crate::store::wallet_domain::TransactionKind::RefundTokenStorage
         | crate::store::wallet_domain::TransactionKind::TrustAsset
         | crate::store::wallet_domain::TransactionKind::Shield
         | crate::store::wallet_domain::TransactionKind::RemoveTrustLine => {

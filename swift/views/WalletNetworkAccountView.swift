@@ -2,8 +2,9 @@ import SwiftUI
 
 /// What the wallet's account on its network holds and needs beyond a
 /// balance, as core reads it from a node: Tron's resources, the XRP and
-/// Stellar reserve, a TON contract's state, the parts of a Substrate balance
-/// and the storage a NEAR account pays for. Read-only.
+/// Stellar reserve, a TON contract's state, the parts of a Substrate balance,
+/// the storage a NEAR account pays for, and a Cardano address's stake
+/// address with its rewards and delegation. Read-only.
 struct WalletNetworkAccountView: View {
     let store: AppState
     let wallet: WalletView
@@ -114,6 +115,30 @@ struct WalletNetworkAccountView: View {
                 amountRow(AppLocalization.string("Kept for Storage"), storageReserve, symbol, emphasized: true)
             } footer: {
                 Text(AppLocalization.string("Every byte an account stores must be covered by NEAR it holds, except for a small account within the network's free allowance. Locked stake counts toward it; the rest is kept back from the balance, and a send cannot move it."))
+            }
+        case let .cardano(stakeAddress, registered, rewards, delegatedPool, delegatedDrep):
+            if !registered {
+                notice(
+                    AppLocalization.string("The stake key is not registered: this account delegates to no pool and earns no rewards."),
+                    systemImage: "exclamationmark.circle")
+            }
+            Section {
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+                    Text(AppLocalization.string("Stake Address"))
+                    Text(verbatim: stakeAddress).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                amountRow(AppLocalization.string("Rewards"), rewards, symbol, emphasized: true)
+                LabeledContent(AppLocalization.string("Pool")) {
+                    Text(verbatim: delegatedPool ?? AppLocalization.string("None")).font(.caption.monospaced())
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                LabeledContent(AppLocalization.string("Voting Delegation")) {
+                    Text(verbatim: delegatedDrep ?? AppLocalization.string("None")).font(.caption.monospaced())
+                        .lineLimit(1).truncationMode(.middle)
+                }
+            } footer: {
+                Text(AppLocalization.string("Every address of this account shares one stake key. Delegating it to a pool earns rewards, which build up at the stake address and are not part of the balance until withdrawn."))
             }
         }
     }

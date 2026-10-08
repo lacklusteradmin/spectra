@@ -811,7 +811,7 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
             .is_empty()
     );
     with_conn(&db, |conn| {
-        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'")
+        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'")
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
         assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
         Ok::<_, DbError>(())
