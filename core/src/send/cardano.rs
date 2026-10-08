@@ -453,6 +453,7 @@ impl PreparedCardanoTransaction {
                 u128::from(recipient.lovelace),
                 6,
             )),
+            recipient_registration: None,
         })
     }
 }

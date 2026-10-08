@@ -823,6 +823,17 @@ impl Chain {
         }
     }
 
+    /// Decred's two-byte address versions, `(P2PKH, P2SH)`, from dcrd's
+    /// chaincfg: secp256k1 ECDSA pubkey hash (`Ds`/`Ts`) and script hash
+    /// (`Dc`/`Tc`).
+    pub(crate) fn decred_address_versions(self) -> Result<([u8; 2], [u8; 2]), RegistryError> {
+        match self {
+            Self::Decred => Ok(([0x07, 0x3f], [0x07, 0x1a])),
+            Self::DecredTestnet => Ok(([0x0f, 0x21], [0x0e, 0xfc])),
+            _ => Err(self.not_in("Decred")),
+        }
+    }
+
     /// These send adapters resolve inputs and signing paths across a wallet's
     /// persisted account addresses rather than using only its primary address.
     pub fn uses_account_utxo(self) -> bool {
@@ -1016,6 +1027,17 @@ impl Chain {
                 Ok("05a60a92d99d85997cce3b87616c089f6124d7342af37106edc76126334a2c38")
             }
             _ => Err(self.not_in("Zcash")),
+        }
+    }
+
+    /// What a payment on this network can say about whose deposit it is,
+    /// the first the default: XRP's destination tag, Stellar's text and ID
+    /// memos. Empty where payments carry none.
+    pub fn payment_memo_kinds(self) -> &'static [PaymentMemoKind] {
+        match self.mainnet_counterpart() {
+            Self::Xrp => &[PaymentMemoKind::DestinationTag],
+            Self::Stellar => &[PaymentMemoKind::MemoText, PaymentMemoKind::MemoId],
+            _ => &[],
         }
     }
 
@@ -1580,16 +1602,10 @@ impl Chain {
                 payload.extend(btc::hash160(&key.serialize()));
                 btc::base58check_encode(&payload)
             }
-            Self::Decred | Self::DecredTestnet => {
-                let hash = crate::derivation::decred::dcr_hash160(&key.serialize());
-                if self.is_testnet() {
-                    let mut payload = crate::derivation::decred::DCR_TESTNET_P2PKH_VERSION.to_vec();
-                    payload.extend(hash);
-                    crate::derivation::decred::dcr_base58check_encode(&payload)
-                } else {
-                    crate::derivation::decred::encode_dcr_p2pkh(&hash)
-                }
-            }
+            Self::Decred | Self::DecredTestnet => crate::derivation::decred::encode_decred_p2pkh(
+                self,
+                &crate::derivation::decred::dcr_hash160(&key.serialize()),
+            )?,
             Self::Kaspa | Self::KaspaTestnet => {
                 let hrp = if self.is_testnet() {
                     crate::derivation::kaspa::KASPA_TESTNET_HRP
@@ -1636,6 +1652,13 @@ impl Chain {
     /// the device through a daemon, rather than from a provider's index.
     pub fn scans_for_balance(self) -> bool {
         self.mainnet_counterpart() == Self::Monero
+    }
+
+    /// Whether a phrase wallet's address names a key besides the one it
+    /// signs with: Cardano's base address carries its account's stake key,
+    /// so the payment key alone imports as another (enterprise) address.
+    pub(crate) fn phrase_address_has_stake_key(self) -> bool {
+        self.mainnet_counterpart() == Self::Cardano
     }
 
     pub fn supports_deep_utxo_discovery(self) -> bool {
@@ -1877,6 +1900,21 @@ impl Chain {
     pub fn from_display_name(name: &str) -> Option<Self> {
         Chain::all().find(|c| c.chain_display_name() == name)
     }
+}
+
+/// How a payment names whose deposit it is at an account many share: the
+/// field a network's payments carry for it.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, uniffi::Enum,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum PaymentMemoKind {
+    /// XRP Ledger `DestinationTag`: an unsigned 32-bit integer.
+    DestinationTag,
+    /// Stellar `MEMO_TEXT`: up to 28 bytes of UTF-8.
+    MemoText,
+    /// Stellar `MEMO_ID`: an unsigned 64-bit integer.
+    MemoId,
 }
 
 /// How a chain's estimated fee enters its signing request.

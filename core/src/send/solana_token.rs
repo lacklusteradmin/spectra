@@ -232,6 +232,7 @@ impl PreparedSolanaTokenTransfer {
             fee: units(fee),
             hook_program: self.hook.as_ref().map(|hook| hook.program.clone()),
             carried_native: None,
+            recipient_registration: None,
         })
     }
 

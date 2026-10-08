@@ -11,7 +11,7 @@ import threading
 
 binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "target/debug/spectra").resolve())
 fixture = json.loads((pathlib.Path(__file__).resolve().parents[1] / "core/tests/fixtures/xrp-mnemonic-payment.json").read_text())
-state = dict(fee="12", sequence=7, requests=[])
+state = dict(fee="12", sequence=7, network_id=0, requests=[])
 
 
 class Node(http.server.BaseHTTPRequestHandler):
@@ -23,8 +23,11 @@ class Node(http.server.BaseHTTPRequestHandler):
         state["requests"].append(request)
         if request["method"] == "fee":
             result = {"drops": {"open_ledger_fee": state["fee"]}}
+        elif request["method"] == "server_info":
+            result = {"info": {"network_id": state["network_id"]}}
         elif request["method"] == "account_info":
-            result = {"account_data": {"Sequence": state["sequence"]}}
+            # The sender's sequence; the destination asks for no tag.
+            result = {"account_data": {"Sequence": state["sequence"], "Flags": 0}}
         else:
             raise AssertionError(request)
         body = json.dumps({"result": result}).encode()
@@ -38,7 +41,8 @@ node = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Node)
 threading.Thread(target=node.serve_forever, daemon=True).start()
 endpoint = f"http://127.0.0.1:{node.server_port}"
 try:
-    for chain in ["xrp", "xrp-testnet"]:
+    for chain, network_id in [("xrp", 0), ("xrp-testnet", 1)]:
+        state["network_id"] = network_id
         with tempfile.TemporaryDirectory(prefix="spectra-xrp-") as directory:
             def run(*args, success=True):
                 result = subprocess.run(

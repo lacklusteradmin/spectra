@@ -13,10 +13,11 @@
 
 use crate::send::error::SendError;
 
-use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, varint};
 use crate::api::insight::InsightClient;
-use crate::derivation::decred::{blake256, decode_dcr_address};
+use crate::derivation::decred::{blake256, parse_decred_address};
+use crate::derivation::utxo_address::ParsedUtxoAddress;
+use crate::registry::Chain;
 
 /// Decred wire `version | serType` 32-bit header, encoded little-endian. The
 /// low 16 bits hold the tx version (1 for standard transfers); the high 16
@@ -31,18 +32,27 @@ const SIGHASH_ALL: u32 = 1;
 /// confirmation height is not being committed to.
 const TX_TREE_REGULAR: u8 = 0;
 
+/// Pay `to_address` the script it names on `chain`'s network. Both
+/// addresses are decoded before any provider read, so a recipient on another
+/// network or of a form these sends cannot pay is refused having asked
+/// nothing of the node.
 pub(crate) async fn prepare_transfer(
     client: &InsightClient,
+    chain: Chain,
     from_address: &str,
     to_address: &str,
     amount_atoms: u64,
     fee_atoms: u64,
     dust_threshold: Option<u64>,
 ) -> Result<PreparedDecredTransaction, SendError> {
+    // The wallet's key signs a P2PKH input; change returns to that script,
+    // built from the decoded hash so the caller's spelling of the address
+    // cannot reach the wire.
+    let from_script =
+        ParsedUtxoAddress::P2pkh(parse_decred_address(chain, from_address)?.require_p2pkh()?)
+            .script_pubkey();
+    let to_script = parse_decred_address(chain, to_address)?.script_pubkey();
     let utxos = client.fetch_utxos(from_address).await?;
-    let from_hash = decode_dcr_address(from_address)?;
-    let from_script = p2pkh_script(&from_hash);
-    let to_hash = decode_dcr_address(to_address)?;
 
     let change = super::accounting::checked_change(
         utxos.iter().map(|u| u.value_atoms),
@@ -50,13 +60,9 @@ pub(crate) async fn prepare_transfer(
         fee_atoms,
     )?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_atoms)];
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script, amount_atoms)];
     if change > dust_threshold.unwrap_or(6_030) {
-        // Change goes back to the sender's own script, built from the
-        // hash the address decodes to — so the caller's spelling of that
-        // address, canonical or not, cannot reach the wire.
-        let change_hash = decode_dcr_address(from_address)?;
-        outputs.push((p2pkh_script(&change_hash), change));
+        outputs.push((from_script.clone(), change));
     }
 
     let inputs: Vec<DcrInputBuild> = utxos
@@ -124,18 +130,8 @@ fn sign_dcr_tx(
     let prefix_hash = blake256(&prefix_serialization);
 
     let mut signed_sig_scripts: Vec<Vec<u8>> = Vec::with_capacity(inputs.len());
-    for (i, _input) in inputs.iter().enumerate() {
-        // Witness-signing serialization keeps only the script_pubkey on the
-        // input being signed; all others have empty sigScripts.
-        let witness_serialization = serialize_witness_signing(inputs, i);
-        let witness_hash = blake256(&witness_serialization);
-
-        let mut preimage = Vec::with_capacity(4 + 32 + 32);
-        preimage.extend_from_slice(&SIGHASH_ALL.to_le_bytes());
-        preimage.extend_from_slice(&prefix_hash);
-        preimage.extend_from_slice(&witness_hash);
-        let sighash = blake256(&preimage);
-
+    for i in 0..inputs.len() {
+        let sighash = signature_hash(inputs, &prefix_hash, i);
         let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_ecdsa(&msg, &secret_key);
         let mut der = sig.serialize_der().to_vec();
@@ -151,6 +147,19 @@ fn sign_dcr_tx(
     }
 
     Ok(serialize_full(inputs, outputs, &signed_sig_scripts, 0, 0))
+}
+
+/// dcrd's `CalcSignatureHash` for `SIGHASH_ALL`: the hash type, the prefix
+/// hash and the hash of the witness-signing serialization.
+fn signature_hash(inputs: &[DcrInputBuild], prefix_hash: &[u8; 32], index: usize) -> [u8; 32] {
+    // Witness-signing serialization keeps only the script_pubkey on the
+    // input being signed; all others have empty sigScripts.
+    let witness_hash = blake256(&serialize_witness_signing(inputs, index));
+    let mut preimage = Vec::with_capacity(4 + 32 + 32);
+    preimage.extend_from_slice(&SIGHASH_ALL.to_le_bytes());
+    preimage.extend_from_slice(prefix_hash);
+    preimage.extend_from_slice(&witness_hash);
+    blake256(&preimage)
 }
 
 fn serialize_outputs(buf: &mut Vec<u8>, outputs: &[(Vec<u8>, u64)]) {
@@ -247,3 +256,7 @@ fn serialize_full(
     let _ = VERSION_ONLY_WITNESS;
     buf
 }
+
+#[cfg(test)]
+#[path = "tests/decred.rs"]
+mod tests;

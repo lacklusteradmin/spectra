@@ -123,7 +123,8 @@ class TokenSendTests(unittest.TestCase):
                 SolanaNode.state = {'mint_extensions': [fee(50)]}
                 built = run(*build)['artifact']
                 assert built['review']['transfer_terms'] == {'debited': '1', 'received': '0.995', 'fee': '0.005',
-                                                             'hook_program': None, 'carried_native': None}, built['review']
+                                                             'hook_program': None, 'carried_native': None,
+                                                             'recipient_registration': None}, built['review']
                 token = json.loads(built['prepared_details'])['Solana']['token']
                 assert (token['amount'], token['fee'], token['hook']) == (1000000, 5000, None), token
                 sign = ('send', 'sign', built['id'], '--review-digest', built['review_digest'], '--endpoint', endpoint)
@@ -141,7 +142,8 @@ class TokenSendTests(unittest.TestCase):
                 SolanaNode.state = {'mint_extensions': [hook], 'validation': T22['validation_data']}
                 hooked = run(*build)['artifact']
                 assert hooked['review']['transfer_terms'] == {'debited': '1', 'received': '1', 'fee': '0',
-                                                              'hook_program': T22['hook_program'], 'carried_native': None}, hooked['review']
+                                                              'hook_program': T22['hook_program'], 'carried_native': None,
+                                                              'recipient_registration': None}, hooked['review']
                 resolved = json.loads(hooked['prepared_details'])['Solana']['token']['hook']
                 expected = T22['cases']['hook'][1]['keys'][4:-2]
                 assert [(a['address'], a['writable']) for a in resolved['accounts']] == [

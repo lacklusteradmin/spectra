@@ -6,6 +6,20 @@ pub(super) struct NearSendQuote {
     pub budget: u128,
     pub spendable: u128,
     pub token_balance: Option<u128>,
+    /// The deposit that registers the recipient with the token first, when
+    /// the token has not registered it (NEP-145).
+    pub registration: Option<u128>,
+}
+
+impl NearSendQuote {
+    /// The NEAR a send of `amount` (NEAR when `native`) takes from the
+    /// account: the fee budget, the recipient's registration and the amount.
+    pub(super) fn required(&self, amount: u128, native: bool) -> Result<u128, SpectraBridgeError> {
+        self.budget
+            .checked_add(self.registration.unwrap_or(0))
+            .and_then(|sum| sum.checked_add(if native { amount } else { 0 }))
+            .ok_or_else(|| SpectraBridgeError::invalid("NEAR amount and fee overflow"))
+    }
 }
 
 impl WalletService {
@@ -36,29 +50,45 @@ impl WalletService {
             } else {
                 destination
             };
-            let (budget, token_balance) = if let Some(contract) = contract {
-                let args = crate::send::near::nep141_transfer_args(destination, amount)?;
+            let (budget, token_balance, registration) = if let Some(contract) = contract {
+                let registration = client
+                    .fetch_storage_registration(contract, destination)
+                    .await?;
+                let calls = crate::send::near::nep141_transfer_calls(
+                    destination,
+                    amount,
+                    registration,
+                    chain.near_token_gas_limit().unwrap(),
+                )?;
                 let fee = client
-                    .function_call_fee_budget(
+                    .function_calls_fee_budget(
                         owner,
                         contract,
-                        "ft_transfer",
-                        args.len(),
-                        chain.near_token_gas_limit().unwrap(),
+                        &calls
+                            .iter()
+                            .map(|call| (call.method.len() + call.args.len(), call.gas))
+                            .collect::<Vec<_>>(),
                     )
                     .await?;
                 (
+                    // ft_transfer's one attached yoctoNEAR.
                     fee.checked_add(1)
                         .ok_or_else(|| SpectraBridgeError::invalid("NEAR fee overflow"))?,
                     Some(client.fetch_ft_balance_of(contract, owner).await?),
+                    registration,
                 )
             } else {
-                (client.transfer_fee_budget(owner, destination).await?, None)
+                (
+                    client.transfer_fee_budget(owner, destination).await?,
+                    None,
+                    None,
+                )
             };
             Ok(NearSendQuote {
                 budget,
                 spendable: client.fetch_spendable_balance(owner).await?,
                 token_balance,
+                registration,
             })
         })
         .await
@@ -81,7 +111,7 @@ impl WalletService {
             estimatedNetworkFee: decimal(quote.budget),
             feeBudgetYoctoNear: quote.budget.to_string(),
             spendableBalance: decimal(quote.spendable),
-            maxSendable: decimal(quote.spendable.saturating_sub(quote.budget)),
+            maxSendable: decimal(quote.spendable.saturating_sub(quote.required(0, false)?)),
             feeRateDescription: Some("Protocol prepayment budget; storage stake retained".into()),
         })
     }
@@ -94,6 +124,7 @@ impl WalletService {
             amount,
             token_contract,
             fee_budget,
+            registration_deposit,
             public_key,
             nonce,
             ..
@@ -178,10 +209,14 @@ impl WalletService {
         if quote.token_balance.is_some_and(|balance| balance < *amount) {
             return Err(SpectraBridgeError::invalid("Insufficient NEP-141 balance"));
         }
-        let required = quote
-            .budget
-            .checked_add(if token_contract.is_none() { *amount } else { 0 })
-            .ok_or_else(|| SpectraBridgeError::invalid("NEAR amount and fee overflow"))?;
+        // The recipient's registration, read again: registered or not, and
+        // at what deposit, as reviewed.
+        if quote.registration.map(|deposit| deposit.to_string()) != *registration_deposit {
+            return Err(SpectraBridgeError::invalid(
+                "The recipient's registration with the token changed; build and review again",
+            ));
+        }
+        let required = quote.required(*amount, token_contract.is_none())?;
         if quote.spendable < required {
             return Err(SpectraBridgeError::invalid(
                 "Insufficient spendable NEAR for amount, protocol fee and storage stake",

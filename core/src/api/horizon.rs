@@ -6,6 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};
 
+/// SEP-29: an account that needs a memo says so in its `config.memo_required`
+/// data entry, whose value is "1" (base64 `MQ==`).
+fn memo_required(data: &std::collections::HashMap<String, String>) -> bool {
+    data.get("config.memo_required")
+        .is_some_and(|value| value == "MQ==")
+}
+
 // ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -510,15 +517,9 @@ impl HorizonClient {
                     auth_immutable: account.flags.auth_immutable,
                 }),
             };
-            // SEP-29: an account that needs a memo says so in a data entry
-            // whose value is "1".
-            let destination_memo_required =
-                account(destination.to_string()).await?.map(|account| {
-                    account
-                        .data
-                        .get("config.memo_required")
-                        .is_some_and(|value| value == "MQ==")
-                });
+            let destination_memo_required = account(destination.to_string())
+                .await?
+                .map(|account| memo_required(&account.data));
             Ok(StellarMergeState {
                 source,
                 destination_memo_required,
@@ -526,6 +527,30 @@ impl HorizonClient {
                     .map_err(|_| ApiError::decode("ledgers: sequence out of range"))?,
                 base_reserve: latest("base_reserve_in_stroops")?,
             })
+        })
+        .await
+    }
+
+    /// Whether payments to `address` must carry a memo (SEP-29), from a
+    /// node verified to be on `chain`. An account that does not exist asks
+    /// for none.
+    pub(crate) async fn fetch_memo_required(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<bool, ApiError> {
+        #[derive(Deserialize)]
+        struct Account {
+            #[serde(default)]
+            data: std::collections::HashMap<String, String>,
+        }
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            match node.get::<Account>(&format!("/accounts/{address}")).await {
+                Err(ApiError::Status { status: 404, .. }) => Ok(false),
+                read => Ok(memo_required(&read?.data)),
+            }
         })
         .await
     }

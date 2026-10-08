@@ -227,7 +227,8 @@ class IssuedAssetTests(unittest.TestCase):
         payment = self.run_cli('send', 'build', '--from', 'XRP', '--to', DESTINATION,
                                '--contract', usd, '--amount', '123.456')['artifact']
         assert payment['review']['transfer_terms'] == {'debited': '123.702912', 'received': '123.456',
-                                                       'fee': '0.246912', 'hook_program': None, 'carried_native': None}, payment['review']
+                                                       'fee': '0.246912', 'hook_program': None, 'carried_native': None,
+                                                       'recipient_registration': None}, payment['review']
         # A rate raised before signing is a different payment.
         Node.state['roots'][ISSUER]['TransferRate'] = 1_005_000_000
         code, output = self.run_cli('send', 'sign', payment['id'], '--review-digest', payment['review_digest'],

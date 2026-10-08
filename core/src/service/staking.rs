@@ -175,6 +175,7 @@ impl WalletService {
                 fee_sat: None,
                 gas_budget: None,
                 sign_only: false,
+                memo: None,
             };
             let signing_payload = match &prepared {
                 PreparedPayload::Solana(p) => p.message.clone(),
@@ -215,6 +216,7 @@ impl WalletService {
                     transaction_hash: None,
                     attempts: vec![],
                     selected_endpoints: vec![],
+                    memo: None,
                 },
                 request: send_request,
                 prepared,

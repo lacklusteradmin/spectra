@@ -197,6 +197,7 @@ impl WalletService {
                 fee_amount: None,
                 evm_overrides: None,
                 sign_only: false,
+                memo: None,
             };
             let data = crate::send::evm::encode_erc20_approve(&spender, 0)?;
             let overrides = crate::send::evm::EvmSendOverrides {
@@ -270,6 +271,7 @@ impl WalletService {
                     transaction_hash: None,
                     attempts: Vec::new(),
                     selected_endpoints: Vec::new(),
+                    memo: None,
                 },
                 request,
                 prepared,

@@ -17,6 +17,175 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-08 — A NEAR token send registers its recipient first
+
+- **Before:** a NEP-141 send was one `ft_transfer` call. A standard token
+  contract refuses a transfer to an account it has not registered, so a
+  send to a new holder failed on chain after its gas was spent, and nothing
+  checked the contract spoke NEP-145 at all.
+- **After:** the send reads the recipient's `storage_balance_of` from the
+  token, on the verified node that quotes the fee. Registered, it is
+  `ft_transfer` alone. Unregistered, it reads `storage_balance_bounds` and the
+  transaction is `storage_deposit {account_id, registration_only: true}` with
+  the bounds' minimum, then `ft_transfer`, both to the token in one signed
+  transaction (`send::near::nep141_transfer_calls`). The fee budget prices
+  both actions under one action receipt, as nearcore's `calculate_tx_cost`
+  does; the deposit is stored on the prepared transaction
+  (`registration_deposit`), shown as `AssetTransferTerms.recipient_registration`
+  and confirmed on review, and the spendable NEAR must cover the fee and it.
+  Before signing the registration is read again and must be as reviewed. A
+  contract that answers neither query is refused before anything is built.
+- **Why:** the open item: a transfer the contract will refuse should not be
+  signed, and registering the recipient is the sender's cost to show and
+  bind into the review digest, not a surprise.
+- **CLI check:** `python3 scripts/cli-send-near.py target/debug/spectra`
+  sends to a registered recipient as before (no deposit, no terms), refuses
+  a contract with no NEP-145 answer, refuses a balance that covers the fee
+  but not the registration, builds the two-action transaction with the fee
+  and deposit the protocol config gives, refuses to sign once the recipient
+  is registered meanwhile, and decodes the signed bytes to `storage_deposit`
+  with the minimum then `ft_transfer` with one yoctoNEAR, on mainnet and
+  testnet.
+- **Verification:** `near-token-registration.json` from
+  `scripts/generate-near-token-registration-vector.cjs`
+  (@near-js/transactions 2.5.1, @near-js/crypto 2.5.1): the registered and
+  unregistered transactions, byte for byte with their hashes; the shared
+  receipt in the two-action fee.
+  Full `make verify` after the four transfer-correctness changes,
+  2026-10-08: lint clean and 1259 workspace tests passed; acceptance
+  stopped on two suites whose exact `transfer_terms` expectations lacked
+  the new `recipient_registration` field, and once they were updated
+  `make test-cli test-ios` passed 98 acceptance checks and 142 iOS tests.
+
+## 2026-10-08 — XRP payments carry destination tags and Stellar payments memos
+
+- **Before:** XRP payments carried no `DestinationTag` and Stellar
+  transactions always `MEMO_NONE`, so a send to an exchange's shared deposit
+  account could not say whose deposit it was, and nothing refused one to an
+  account that asks for a tag or memo: the network took it and the
+  exchange could not credit it. Closing an XRP or Stellar account refused
+  such destinations outright ("which Spectra does not send").
+- **After:** a send takes a `PaymentMemo` — an XRP `destinationTag` (u32),
+  a Stellar `memoText` (1–28 bytes) or `memoId` (u64), the kinds
+  `Chain::payment_memo_kinds` names — on `SendExecutionRequest` and
+  `SendReviewInput`, checked and written canonically when the send is built
+  and refused on any other network. It rides in the request the review
+  digest covers and is shown on the artifact (`SendArtifact.memo`), which
+  must match the request. XRP Payments (XRP and issued) and AccountDelete
+  encode `DestinationTag` after `Sequence`; Stellar payments (native and
+  credit) and AccountMerge encode `MEMO_TEXT`/`MEMO_ID`. Without one, a
+  destination that asks for it — XRP's `lsfRequireDestTag`, SEP-29's
+  `config.memo_required` — is refused, read from a node verified to be on
+  the network before the transaction's own reads and again before signing.
+  Account closing takes the same memo (`build_account_closing`'s new
+  argument) and closes into such a destination with it. The composer shows
+  a destination tag field on XRP and a text/ID memo field on Stellar; the
+  review and closing screens show what will be sent. The CLI takes
+  `--destination-tag`, `--memo-text` or `--memo-id` on `send build`,
+  `build-owned`, `quote`, `owned-broadcast`, `spectra send` and
+  `wallet close`.
+- **Why:** an exchange tells deposits apart by the tag or memo; a payment
+  without the one it asked for is a deposit nobody can attribute, and the
+  network does not refuse it. The open item asked for the field, its
+  binding into the review digest and both networks' refusals.
+- **CLI check:** `python3 scripts/cli-payment-memos.py target/debug/spectra`
+  refuses each kind of missing, malformed and foreign memo (the missing one
+  having read only the destination; the others with no request at all),
+  signs an XRP payment with tag 0, an XRP account deletion, two Stellar
+  payments and a Stellar merge byte for byte as ripple-binary-codec,
+  ripple-keypairs and @stellar/stellar-base sign them, refuses a memo
+  altered after review, and refuses at signing a destination that started
+  asking for one after the build.
+- **Verification:** `payment-memos.json` from
+  `scripts/generate-payment-memo-vectors.cjs` (ripple-binary-codec 2.11.0,
+  ripple-keypairs 3.1.0, @stellar/stellar-base 14.1.0): XRP payments with
+  tags 0 and 4294967295, an issued payment with `SendMax`, AccountDelete;
+  Stellar text memos of 1, 13 and 28 bytes, ID memos 0 and 2^64−1, a
+  credit-asset payment and AccountMerge. Range, length and network checks in
+  core; closing's refusals with and without the memo.
+  Full `make verify` after the four transfer-correctness changes,
+  2026-10-08: lint clean and 1259 workspace tests passed; acceptance
+  stopped on two suites whose exact `transfer_terms` expectations lacked
+  the new `recipient_registration` field, and once they were updated
+  `make test-cli test-ios` passed 98 acceptance checks and 142 iOS tests.
+
+## 2026-10-08 — A Cardano phrase holds its base address
+
+- **Before:** a Cardano phrase derived the CIP-19 enterprise address of its
+  payment key at `m/1852'/1815'/{account}'/0/0`, with no stake credential.
+  Mainstream wallets (Yoroi, Eternl, Lace, Daedalus, Trezor) restore the
+  same phrase at its base address, so their funds were invisible here and
+  Spectra's address was one no other wallet showed. A phrase wallet
+  exported its payment key, and any custom path derived.
+- **After:** a phrase derives the base address (type 0): the payment key's
+  hash, then the hash of its account's stake key at
+  `m/1852'/1815'/{account}'/2/0`. Balance, UTXOs and history are read there,
+  change returns there and the used-account search lists base addresses;
+  spending still needs only the payment key's witness. A path must be
+  CIP-1852's, `m/1852'/1815'/{account}'/{role}/{index}` with role 0 or 1:
+  any other names no stake key and is refused before anything is stored. A
+  raw extended key holds no stake key and keeps its enterprise address. A
+  phrase wallet no longer exports its payment key: alone it imports as the
+  enterprise address, not the wallet, so the phrase is its only export.
+  Showing the stake address and rewards is a new open item.
+- **Why:** the address must be the one the phrase's other wallets hold, or
+  importing a phrase shows none of its funds. An export must read back as
+  the same wallet, which the payment key no longer does.
+- **CLI check:** `python3 scripts/cli-send-cardano.py target/debug/spectra`
+  imports the abandon phrase at CSL's base address, previews the raw key at
+  its enterprise address, reads balance, assets and inputs only at the base
+  address, returns change there and signs the SDK's transaction bytes.
+- **Verification:** CIP-19's base and enterprise test vectors for both
+  networks; Trezor's `get_base_address.json` restore of the all-`all`
+  phrase at account 4 on mainnet and testnet, and its enterprise vector
+  from the same payment key; `derivation-profiles.json` regenerated with
+  `@emurgo/cardano-serialization-lib-nodejs` 17.0.0 `BaseAddress` (only the
+  four Cardano rows changed); refused paths; the used-account search's
+  candidates; phrase wallets exporting no key.
+  Full `make verify` after the four transfer-correctness changes,
+  2026-10-08: lint clean and 1259 workspace tests passed; acceptance
+  stopped on two suites whose exact `transfer_terms` expectations lacked
+  the new `recipient_registration` field, and once they were updated
+  `make test-cli test-ios` passed 98 acceptance checks and 142 iOS tests.
+
+## 2026-10-08 — A Decred send pays the script its recipient names
+
+- **Before:** `decode_dcr_address` accepted `Ds…` P2PKH and `Dc…` P2SH
+  addresses alike and returned only the 20-byte hash, so `send/decred.rs`
+  paid every recipient a P2PKH output: a payment to a script hash went to a
+  key hash nobody holds. The decoder knew only mainnet versions, so a Decred
+  Testnet send refused its own `Ts…` sender, and testnet validation refused
+  `Tc…` script hashes. The recipient was decoded after the node had been
+  asked for the sender's inputs.
+- **After:** `derivation::decred::parse_decred_address` decodes on the
+  chain's network into the same `ParsedUtxoAddress` the other UTXO sends use,
+  with the versions on `Chain::decred_address_versions` (dcrd's chaincfg).
+  A pubkey hash pays `OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG`, a
+  script hash `OP_HASH160 <hash> OP_EQUAL`; the sender must be a pubkey hash
+  and change returns to its script. Validation, building and signing share
+  the parser, and both addresses are decoded before any provider read. An
+  address of the other network and Decred's pay-to-pubkey (`Dk…`), Ed25519
+  (`De…`) and Schnorr (`DS…`) pubkey-hash forms are refused: these sends do
+  not build their scripts. Decred Testnet sends now build and sign.
+- **Why:** validating an address and paying a different script is a
+  funds-loss bug; the 2026-10-02 fix gave the other UTXO sends one typed
+  address model and left Decred extracting a hash and guessing its meaning.
+- **CLI check:** `python3 scripts/cli-send-utxo.py target/debug/spectra`
+  builds and signs Decred and Decred Testnet sends to dcrd's P2PKH and P2SH
+  address vectors through a loopback Insight node, reads each signed
+  transaction back in dcrd's wire format and checks the recipient's script
+  and script version; an address of the other network and the unsupported
+  forms are refused with no request reaching the node.
+- **Verification:** dcrd's address vectors (`txscript/stdaddr`) for both
+  networks and both forms, its refused forms, and its `TestCalcSignatureHash`
+  digest for the signing hash, which nothing had checked before; the signed
+  transaction's outputs and signature read back in Rust.
+  Full `make verify` after the four transfer-correctness changes,
+  2026-10-08: lint clean and 1259 workspace tests passed; acceptance
+  stopped on two suites whose exact `transfer_terms` expectations lacked
+  the new `recipient_registration` field, and once they were updated
+  `make test-cli test-ios` passed 98 acceptance checks and 142 iOS tests.
+
 ## 2026-10-08 — Cardano's token standard is "Cardano Native Token"
 
 - **Before:** Cardano's token standard was "Cardano Asset", a name of

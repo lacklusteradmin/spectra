@@ -12,7 +12,7 @@
 
 use super::*;
 use crate::api::horizon::StellarMergeState;
-use crate::api::xrpl_json_rpc::XrpDeletionState;
+use crate::api::xrpl_json_rpc::{LSF_REQUIRE_DEST_TAG, XrpDeletionState};
 use crate::send::stages::{
     PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
 };
@@ -22,8 +22,6 @@ use crate::send::stages::{
 const XRP_DELETION_LEDGER_GAP: u64 = 256;
 /// The most objects XRP deletes with an account; more fails `tefTOO_BIG`.
 const XRP_DELETABLE_OBJECTS: u64 = 1000;
-/// `lsfRequireDestTag`: payments to the account need a destination tag.
-const XRP_REQUIRE_DEST_TAG: u32 = 0x0002_0000;
 /// `lsfDepositAuth`: the account takes only payments it has authorized.
 const XRP_DEPOSIT_AUTH: u32 = 0x0100_0000;
 
@@ -34,10 +32,11 @@ pub(crate) fn closes_accounts(chain: Chain) -> bool {
 
 /// The deletion an XRP account allows, or the network's reason to refuse
 /// it: `(balance, sequence, objects deleted with it, total reserve, fee)`,
-/// in drops.
+/// in drops. `tagged`: the deletion carries a destination tag.
 fn xrp_deletion(
     state: &XrpDeletionState,
     destination: &str,
+    tagged: bool,
 ) -> Result<(u64, u32, u64, u128, u64), SpectraBridgeError> {
     let Some(source) = &state.source else {
         return Err(SpectraBridgeError::invalid(
@@ -71,9 +70,9 @@ fn xrp_deletion(
                 [destination],
             ));
         }
-        Some(flags) if flags & XRP_REQUIRE_DEST_TAG != 0 => {
+        Some(flags) if flags & LSF_REQUIRE_DEST_TAG != 0 && !tagged => {
             return Err(SpectraBridgeError::refused(
-                "%@ requires a destination tag, which Spectra does not send. Close into another account.",
+                "%@ requires a destination tag. Add the one the recipient gave you.",
                 [destination],
             ));
         }
@@ -105,9 +104,11 @@ fn xrp_deletion(
 
 /// The merge a Stellar account allows, or the network's reason to refuse
 /// it: `(balance, the merge's sequence, total reserve)`, in stroops.
+/// `with_memo`: the merge carries a memo.
 fn stellar_merge(
     state: &StellarMergeState,
     destination: &str,
+    with_memo: bool,
 ) -> Result<(u64, u64, u128), SpectraBridgeError> {
     let Some(source) = &state.source else {
         return Err(SpectraBridgeError::invalid(
@@ -147,13 +148,13 @@ fn stellar_merge(
                 [destination],
             ));
         }
-        Some(true) => {
+        Some(true) if !with_memo => {
             return Err(SpectraBridgeError::refused(
-                "%@ requires a memo, which Spectra does not send. Close into another account.",
+                "%@ requires a memo. Add the one the recipient gave you.",
                 [destination],
             ));
         }
-        Some(false) => {}
+        Some(_) => {}
     }
     let reserve = (2 + u128::from(source.subentries) + u128::from(source.sponsoring))
         .saturating_sub(u128::from(source.sponsored))
@@ -166,12 +167,14 @@ impl WalletService {
     /// Build the transaction that closes the wallet's XRP or Stellar account
     /// into `destination`, an existing account: XRP `AccountDelete` or
     /// Stellar `AccountMerge`, prepared and stored like any send, to be
-    /// signed and broadcast through the same stages. Refuses whatever the
-    /// network would refuse, before anything is built.
+    /// signed and broadcast through the same stages, with `memo` — a
+    /// destination tag or memo — for a destination that shares its account.
+    /// Refuses whatever the network would refuse, before anything is built.
     pub async fn build_account_closing(
         &self,
         wallet_id: String,
         destination: String,
+        memo: Option<crate::send::payment_memo::PaymentMemo>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
@@ -206,10 +209,12 @@ impl WalletService {
                     "An account cannot be closed into itself.",
                 ));
             }
+            let memo = memo.map(|memo| memo.validated(chain)).transpose()?;
             let decimals = u32::from(chain.native_decimals());
             let coin = |units: u128| crate::decimal::from_units(units, decimals);
-            let (prepared, balance, fee, reserve, removed_objects) =
-                this.account_closing(chain, &sender, &destination).await?;
+            let (prepared, balance, fee, reserve, removed_objects) = this
+                .account_closing(chain, &sender, &destination, memo.is_some())
+                .await?;
             let network_fee = coin(u128::from(fee));
             let operation = WalletOperation::CloseAccount {
                 destination: destination.clone(),
@@ -233,6 +238,7 @@ impl WalletService {
                 fee_amount: Some(network_fee),
                 evm_overrides: None,
                 sign_only: false,
+                memo: memo.clone(),
             };
             let mut stored = StoredSend {
                 view: SendArtifact {
@@ -257,6 +263,7 @@ impl WalletService {
                     transaction_hash: None,
                     attempts: Vec::new(),
                     selected_endpoints: Vec::new(),
+                    memo,
                 },
                 request,
                 prepared,
@@ -277,11 +284,13 @@ impl WalletService {
     /// Read and check what closing `sender` into `destination` depends on:
     /// the prepared transaction, the balance, the fee and the reserve in the
     /// coin's smallest unit, and the objects deleted with the account.
+    /// `with_memo`: the closing carries a destination tag or memo.
     pub(super) async fn account_closing(
         &self,
         chain: Chain,
         sender: &str,
         destination: &str,
+        with_memo: bool,
     ) -> Result<(PreparedPayload, u64, u64, u128, u64), SpectraBridgeError> {
         let endpoints = self
             .endpoints_for(chain, &[EndpointCapability::Verification])
@@ -292,7 +301,7 @@ impl WalletService {
                     .fetch_deletion_state(chain, sender, destination)
                     .await?;
                 let (balance, sequence, objects, reserve, fee_drops) =
-                    xrp_deletion(&state, destination)?;
+                    xrp_deletion(&state, destination, with_memo)?;
                 crate::send::xrp::validate_drops(u128::from(fee_drops))?;
                 (
                     PreparedPayload::XrpAccountDelete {
@@ -309,7 +318,7 @@ impl WalletService {
                 let state = HorizonClient::new(endpoints.clone())
                     .fetch_merge_state(chain, sender, destination)
                     .await?;
-                let (balance, sequence, reserve) = stellar_merge(&state, destination)?;
+                let (balance, sequence, reserve) = stellar_merge(&state, destination, with_memo)?;
                 let fee_stroops =
                     HorizonClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
                         .fetch_base_fee()

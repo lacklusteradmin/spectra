@@ -44,6 +44,9 @@ pub(crate) enum PreparedPayload {
         amount: u128,
         token_contract: Option<String>,
         fee_budget: String,
+        /// The yoctoNEAR a token send deposits to register its recipient
+        /// with the token first; `None` when the token has registered it.
+        registration_deposit: Option<String>,
     },
     NearFunctionCall(super::near::PreparedNearFunctionCall),
     NearDeleteKey(super::near::PreparedNearDeleteKey),
@@ -175,6 +178,11 @@ pub struct AssetTransferTerms {
     /// the recipient, as an exact decimal: the minimum ADA a Cardano output
     /// holding the asset needs.
     pub carried_native: Option<String>,
+    /// The network's own coin the sender deposits with the token to register
+    /// a recipient it does not yet hold, as an exact decimal: a NEP-141
+    /// token's NEP-145 storage deposit.
+    #[uniffi(default = None)]
+    pub recipient_registration: Option<String>,
 }
 
 impl PreparedPayload {
@@ -185,6 +193,25 @@ impl PreparedPayload {
             Self::Solana(prepared) => prepared.token.as_ref()?.terms(),
             Self::XrpIssuedPayment(prepared) => prepared.terms(),
             Self::Cardano(prepared) => prepared.terms(token_decimals?),
+            Self::Near {
+                amount,
+                token_contract: Some(_),
+                registration_deposit: Some(deposit),
+                ..
+            } => {
+                let sent = crate::decimal::from_units(*amount, token_decimals?);
+                Some(AssetTransferTerms {
+                    debited: sent.clone(),
+                    received: sent,
+                    fee: "0".into(),
+                    hook_program: None,
+                    carried_native: None,
+                    recipient_registration: Some(crate::decimal::from_units(
+                        deposit.parse().ok()?,
+                        u32::from(crate::registry::Chain::Near.native_decimals()),
+                    )),
+                })
+            }
             _ => None,
         }
     }
@@ -303,6 +330,9 @@ pub struct SendArtifact {
     pub chain_id: crate::registry::Chain,
     pub sender: String,
     pub recipient: String,
+    /// The XRP destination tag or Stellar memo the transaction carries to
+    /// the recipient: the request's, reviewed with it.
+    pub memo: Option<super::payment_memo::PaymentMemo>,
     pub amount: String,
     /// Native symbol or exact token contract/mint identity.
     pub asset: String,
@@ -407,6 +437,7 @@ impl StoredSend {
         if self.request.wallet_id != self.view.wallet_id
             || self.request.chain_id != self.view.chain_id
             || self.request.to_address != self.view.recipient
+            || self.request.memo != self.view.memo
             || self.request.amount_str != self.view.amount
         {
             return Err(SendError::Invalid(

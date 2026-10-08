@@ -8,7 +8,13 @@ operation refuses missing capabilities before signing or changing holdings.
 ## Wallets and transfers
 
 All catalog networks have native-transfer signing paths. Cardano signs its
-CIP-1852 extended Ed25519 key; Bittensor and Polkadot use verified genesis and
+CIP-1852 extended Ed25519 key. A Cardano phrase holds the CIP-19 base address
+mainstream wallets restore: the payment key at
+`m/1852'/1815'/{account}'/{role}/{index}` (role 0 or 1) with its account's
+stake key at `m/1852'/1815'/{account}'/2/0`; a path of any other shape names no
+stake key and is refused. Balance, inputs and history are read there, change
+returns there, and spending needs only the payment key's witness. A raw
+extended key holds no stake key and keeps its enterprise address. Bittensor and Polkadot use verified genesis and
 live runtime metadata rather than hard-coded pallet indices. A Cardano transfer
 spends any of the address's outputs, those holding native assets included, and
 its change returns every asset the inputs held that the transfer does not
@@ -54,6 +60,15 @@ A NEAR phrase or key may hold a named account instead of its implicit one,
 once a verified node lists the key among the account's full-access keys.
 XRP and Stellar accounts exist only once they hold the network's reserve,
 which the receive screen reads from the network while a wallet is empty.
+For a recipient that shares one account among many, such as an exchange's
+deposit address, an XRP payment or account deletion carries a destination
+tag and a Stellar payment or merge a text memo of up to 28 bytes or an ID
+memo, of XRP and issued assets alike. It is reviewed with the transaction and
+bound into its review digest. A destination that asks for one — XRP's
+`lsfRequireDestTag`, Stellar's SEP-29 `config.memo_required` — is refused
+without one, read from a verified node at build and again before signing.
+Destinations are classic `r…` and `G…` accounts; XRP X-addresses and Stellar
+muxed `M…` accounts, which carry the tag in the address, are not accepted.
 
 Raw private-key import covers 49 mainnets and their corresponding test networks.
 Ed25519 chains accept 32-byte seeds, Substrate chains accept sr25519 seeds, and
@@ -66,7 +81,9 @@ base58 or Solana-CLI JSON keypair on Solana, an `S…` secret seed on Stellar,
 `ed25519:…` key string on NEAR. A keypair whose public half is not its
 secret's, a WIF for another network and an uncompressed WIF are refused: an
 uncompressed key owns a different P2PKH address than the compressed key
-Spectra signs with. Monero's spend/view key model uses mnemonic import instead
+Spectra signs with. A Cardano phrase wallet exports only its phrase: its
+payment key alone imports as the enterprise address, not the base address
+that holds its funds. Monero's spend/view key model uses mnemonic import instead
 of a generic 32-byte key. Watch-only addresses are available on supported
 mainnets and test networks;
 Monero requires wallet scan keys. Bitcoin account xpub import validates the
@@ -76,6 +93,12 @@ BTC, BCH, BSV, LTC, DOGE and PPC support account address discovery and multiple 
 inputs. ZEC, BTG, DCR, KAS and DASH wallets have one derived address per network;
 receive and send share that address. They do not offer an account-wide gap scan
 or hand out child addresses that their signer cannot spend.
+
+A Decred send pays the script its recipient names on the wallet's own
+network: a secp256k1 pubkey hash (`Ds…`, `Ts…`) or a script hash (`Dc…`,
+`Tc…`). Decred's pay-to-pubkey (`Dk…`), Ed25519 (`De…`) and Schnorr (`DS…`)
+pubkey-hash addresses, and every address of the other network, are refused
+before an input is read.
 
 Peercoin mainnet and testnet support BIP-44 legacy, BIP-49 nested SegWit,
 BIP-84 native SegWit and BIP-86 Taproot accounts, raw scalar and watch-only imports, account
@@ -415,7 +438,12 @@ than exposing a separate reward-claim operation; DOT and ICP have explicit claim
 NEAR native, token and staking fee budgets use live protocol action/receipt
 overhead and gas prices, including the protocol purchase minimum for prepaid
 gas. Creating an implicit account includes its account and access-key costs.
-NEP-141 includes the transfer call and attached deposit. Storage reserve, funds
+NEP-141 includes the transfer call and attached deposit. A NEP-141 send reads
+the recipient's NEP-145 `storage_balance_of`; when the token has not
+registered it, the transaction calls `storage_deposit` with `registration_only`
+and `storage_balance_bounds().min` before `ft_transfer`, its budget covers both
+calls and the deposit is reviewed as part of the cost. A contract that answers
+neither query is refused. Storage reserve, funds, the recipient's registration
 and the reviewed budget are checked again before signing or submitting; pending
 retries also check the current budget because signed bytes do not cap gas price. Four account chains resolve exact transaction execution outcomes;
 Substrate resolves finalized extrinsic events. Manual status checks bypass background

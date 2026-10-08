@@ -917,28 +917,28 @@
       "profile": "standard",
       "account": 0,
       "path": "m/1852'/1815'/0'/0/0",
-      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp"
+      "address": "addr1qy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mq4afdhv"
     },
     {
       "chain": "cardano",
       "profile": "standard",
       "account": 1,
       "path": "m/1852'/1815'/1'/0/0",
-      "address": "addr1v9kjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gmul5d4"
+      "address": "addr1q9kjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gk9jlajcx98yc9g8rxgw0zrdsprlkkjl4l2s9ls6hvxlsqj9j8fm"
     },
     {
       "chain": "cardano-preprod",
       "profile": "standard",
       "account": 0,
       "path": "m/1852'/1815'/0'/0/0",
-      "address": "addr_test1vq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss9hjl0y"
+      "address": "addr_test1qq8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mqkt5dmn"
     },
     {
       "chain": "cardano-preprod",
       "profile": "standard",
       "account": 1,
       "path": "m/1852'/1815'/1'/0/0",
-      "address": "addr_test1vpkjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gq5tgzs"
+      "address": "addr_test1qpkjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gk9jlajcx98yc9g8rxgw0zrdsprlkkjl4l2s9ls6hvxlsq3n089y"
     },
     {
       "chain": "ethereum",

@@ -1,14 +1,16 @@
 //! Cardano: address validation, decoding, BIP-32-Ed25519 (Icarus / CIP-3 +
-//! CIP-1852) key derivation, and CIP-19 Shelley enterprise address
-//! encoding
+//! CIP-1852) key derivation, and CIP-19 Shelley address encoding
 //!
 //! - Address validation accepts Shelley bech32 (`addr1` / `addr_test1`) and
 //!   Byron base58.
 //! - Derivation uses CIP-3 Icarus + CIP-1852: BIP-39 entropy → PBKDF2 root
 //!   xprv → BIP-32-Ed25519 (Khovratovich-Law) child walk → ed25519 keypair.
-//! - Address encoding uses CIP-19 Shelley enterprise (header type 6,
-//!   payment key hash) bech32-encoded under HRP `addr` (mainnet) or
-//!   `addr_test` (Cardano Preprod testnet).
+//! - A phrase derives a CIP-19 base address (header type 0): the payment key
+//!   hash, then the hash of its account's stake key at role 2, index 0, as
+//!   every mainstream wallet derives it. A raw extended key holds no stake
+//!   key and derives the enterprise address (header type 6). Both are
+//!   bech32-encoded under HRP `addr` (mainnet) or `addr_test` (Cardano
+//!   Preprod testnet).
 
 use crate::derivation::error::DerivationError;
 
@@ -76,36 +78,59 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, DerivationError> {
 
 // ── BIP-32-Ed25519 (Khovratovich-Law) ────────────────────────────────────
 
-// Derive Cardano Icarus private key and ed25519 public key via CIP-3 + BIP-32-Ed25519 child walk.
-pub(crate) fn derive_cardano_icarus_material(
-    seed_phrase: &str,
-    passphrase: &str,
-    mnemonic_wordlist: Option<&str>,
-    iteration_count: u32,
-    derivation_path: Option<&str>,
+const HARDENED: u32 = 0x8000_0000;
+
+/// The default payment path: account 0's first external address.
+const DEFAULT_PATH: &str = "m/1852'/1815'/0'/0/0";
+
+// Walk `segments` down from a 96-byte root xprv; return the extended key and its public key.
+fn derive_icarus_child_key(
+    root: &[u8; 96],
+    segments: &[u32],
 ) -> Result<([u8; 64], [u8; 32]), DerivationError> {
-    let root = derive_cardano_icarus_xprv_root(
-        seed_phrase,
-        passphrase,
-        mnemonic_wordlist,
-        iteration_count,
-    )?;
-    let path = derivation_path
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "m/1852'/1815'/0'/0/0".to_string());
-
-    let mut xprv: Zeroizing<[u8; 96]> = Zeroizing::new([0u8; 96]);
-    xprv.copy_from_slice(&*root);
-    for index in parse_bip32_path_segments(&path)? {
-        xprv = cardano_icarus_derive_child(&xprv, index)?;
+    let mut xprv: Zeroizing<[u8; 96]> = Zeroizing::new(*root);
+    for index in segments {
+        xprv = cardano_icarus_derive_child(&xprv, *index)?;
     }
-
     let mut private_key = [0u8; 64];
     private_key.copy_from_slice(&xprv[0..64]);
-
     let public_key = public_from_extended_key(&private_key)?;
-
     Ok((private_key, public_key))
+}
+
+/// The stake key path of a CIP-1852 payment path: its account's key at
+/// role 2, index 0. Every address of an account shares that one stake key,
+/// so a path of any other shape names none and is refused.
+fn stake_key_path(payment: &[u32]) -> Result<[u32; 5], DerivationError> {
+    match *payment {
+        [purpose, coin, account, role, index]
+            if purpose == 1852 | HARDENED
+                && coin == 1815 | HARDENED
+                && account & HARDENED != 0
+                && role <= 1
+                && index & HARDENED == 0 =>
+        {
+            Ok([purpose, coin, account, 2, 0])
+        }
+        _ => Err(DerivationError::invalid(
+            "A Cardano path follows CIP-1852: m/1852'/1815'/account'/role/index, with role 0 or 1",
+        )),
+    }
+}
+
+/// A phrase's payment key at `path` and the public stake key of its
+/// account: the two keys a base address names.
+pub(crate) fn derive_cardano_base_keys(
+    seed_phrase: &str,
+    passphrase: &str,
+    derivation_path: &str,
+) -> Result<([u8; 64], [u8; 32], [u8; 32]), DerivationError> {
+    let payment_path = parse_bip32_path_segments(derivation_path)?;
+    let stake_path = stake_key_path(&payment_path)?;
+    let root = derive_cardano_icarus_xprv_root(seed_phrase, passphrase, None, 0)?;
+    let (private_key, payment_public) = derive_icarus_child_key(&root, &payment_path)?;
+    let (_, stake_public) = derive_icarus_child_key(&root, &stake_path)?;
+    Ok((private_key, payment_public, stake_public))
 }
 
 /// Public key of a validated Cardano extended signing scalar and nonce prefix.
@@ -231,33 +256,52 @@ fn cardano_icarus_derive_child(
     Ok(child_xprv)
 }
 
-// Build a CIP-19 Shelley enterprise address: Blake2b-224(pubkey) as the payment key hash, bech32-encoded.
-pub(crate) fn derive_cardano_shelley_enterprise_address(
-    public_key: &[u8; 32],
-    is_mainnet: bool,
-) -> Result<String, DerivationError> {
+// Blake2b-224 of a public key: the key hash a Shelley address carries.
+fn key_hash(public_key: &[u8; 32]) -> [u8; 28] {
     use blake2::Blake2b;
     use blake2::digest::Digest;
     use blake2::digest::consts::U28;
-    type Blake2b224 = Blake2b<U28>;
+    Blake2b::<U28>::digest(public_key).into()
+}
 
-    let mut hasher = Blake2b224::new();
-    hasher.update(public_key);
-    let payment_hash = hasher.finalize();
-
-    let network_id: u8 = if is_mainnet { 1 } else { 0 };
-    let header = 0x60 | network_id;
-
-    let mut payload = Vec::with_capacity(29);
-    payload.push(header);
-    payload.extend_from_slice(&payment_hash);
-
+// A CIP-19 Shelley address of key credentials: the header (type, network),
+// then each key's hash, bech32-encoded.
+fn shelley_key_address(
+    address_type: u8,
+    keys: &[&[u8; 32]],
+    is_mainnet: bool,
+) -> Result<String, DerivationError> {
+    let mut payload = Vec::with_capacity(1 + 28 * keys.len());
+    payload.push(address_type << 4 | u8::from(is_mainnet));
+    for key in keys {
+        payload.extend_from_slice(&key_hash(key));
+    }
     let hrp_str = if is_mainnet { "addr" } else { "addr_test" };
     let hrp = bech32::Hrp::parse(hrp_str).map_err(DerivationError::invalid)?;
     bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(DerivationError::invalid)
 }
 
-// Derive Cardano address, public key, and private key from a mnemonic via CIP-3 Icarus + BIP-32-Ed25519.
+/// A CIP-19 Shelley enterprise address (type 6): the payment key hash
+/// alone. What a raw extended key, which holds no stake key, derives.
+pub(crate) fn derive_cardano_shelley_enterprise_address(
+    public_key: &[u8; 32],
+    is_mainnet: bool,
+) -> Result<String, DerivationError> {
+    shelley_key_address(6, &[public_key], is_mainnet)
+}
+
+/// A CIP-19 Shelley base address (type 0): the payment key hash, then the
+/// stake key hash.
+pub(crate) fn cardano_base_address(
+    payment_public: &[u8; 32],
+    stake_public: &[u8; 32],
+    is_mainnet: bool,
+) -> Result<String, DerivationError> {
+    shelley_key_address(0, &[payment_public, stake_public], is_mainnet)
+}
+
+// Derive a phrase's Cardano base address, payment public key and payment
+// private key via CIP-3 Icarus + BIP-32-Ed25519.
 pub(crate) fn derive_from_seed_phrase(
     mainnet: bool,
     seed_phrase: &str,
@@ -267,23 +311,16 @@ pub(crate) fn derive_from_seed_phrase(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let (private_key, public_key) = derive_cardano_icarus_material(
+    let (private_key, public_key, stake_public) = derive_cardano_base_keys(
         seed_phrase,
         passphrase.unwrap_or(""),
-        None,
-        0,
-        derivation_path,
+        derivation_path.unwrap_or(DEFAULT_PATH),
     )?;
-
     let address = if want_address {
-        Some(derive_cardano_shelley_enterprise_address(
-            &public_key,
-            mainnet,
-        )?)
+        Some(cardano_base_address(&public_key, &stake_public, mainnet)?)
     } else {
         None
     };
-
     Ok((
         address,
         want_public_key.then(|| hex::encode(public_key)),
@@ -330,7 +367,7 @@ fn cardano_internal(
     })
 }
 
-/// Derive Cardano mainnet wallet (addr1… bech32 address) from a seed phrase.
+/// Derive a Cardano mainnet wallet (addr1… base address) from a seed phrase.
 pub fn derive_cardano(
     seed_phrase: String,
     derivation_path: Option<String>,
@@ -350,7 +387,7 @@ pub fn derive_cardano(
     )
 }
 
-/// Derive Cardano Preprod testnet wallet (addr_test1… bech32 address) from a seed phrase.
+/// Derive a Cardano Preprod wallet (addr_test1… base address) from a seed phrase.
 pub fn derive_cardano_preprod(
     seed_phrase: String,
     derivation_path: Option<String>,

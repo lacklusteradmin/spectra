@@ -84,8 +84,10 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "bitcoinGold" => {
             validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinGold)
         }
-        "decred" => validate_decred_address(&normalized_input, false),
-        "decredTestnet" => validate_decred_address(&normalized_input, true),
+        "decred" => validate_decred_address(&normalized_input, crate::registry::Chain::Decred),
+        "decredTestnet" => {
+            validate_decred_address(&normalized_input, crate::registry::Chain::DecredTestnet)
+        }
         "kaspa" | "kaspaTestnet" => validate_kaspa_address(&normalized_input),
         "dash" => validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Dash),
         "dashTestnet" => {
@@ -214,8 +216,9 @@ fn validate_zcash_address(value: &str, testnet: bool) -> AddressValidationResult
     invalid_result()
 }
 
-fn validate_decred_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if crate::derivation::decred::validate_decred_address(value, testnet) {
+/// Pubkey and script hash addresses: the forms a Decred send can pay.
+fn validate_decred_address(value: &str, chain: crate::registry::Chain) -> AddressValidationResult {
+    if crate::derivation::decred::parse_decred_address(chain, value).is_ok() {
         return make_result(value.to_string());
     }
     invalid_result()

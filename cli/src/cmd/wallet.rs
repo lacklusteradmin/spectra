@@ -434,6 +434,8 @@ pub struct CloseArgs {
     /// The existing account that receives everything.
     #[arg(long)]
     to: String,
+    #[command(flatten)]
+    memo: super::tx::MemoArgs,
 }
 
 #[derive(Args)]
@@ -1172,7 +1174,11 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
             let wallet = ctx.find_wallet(&args.wallet)?;
             let artifact = ctx
                 .rt
-                .block_on(ctx.service()?.build_account_closing(wallet.id, args.to))
+                .block_on(ctx.service()?.build_account_closing(
+                    wallet.id,
+                    args.to,
+                    args.memo.memo(),
+                ))
                 .map_err(CliError::from)?;
             out.text(|| {
                 if let Some(spectra_core::send::stages::WalletOperation::CloseAccount {

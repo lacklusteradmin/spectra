@@ -211,6 +211,7 @@ impl WalletService {
                 fee_amount: Some(network_fee.clone()),
                 evm_overrides: None,
                 sign_only: false,
+                memo: None,
             };
             let signing_payload_hex = hex::encode(&prepared.transaction.message);
             let closed = prepared
@@ -246,6 +247,7 @@ impl WalletService {
                     transaction_hash: None,
                     attempts: Vec::new(),
                     selected_endpoints: Vec::new(),
+                    memo: None,
                 },
                 request,
                 prepared,

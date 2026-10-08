@@ -201,6 +201,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             fee_amount: None,
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         };
         let prepared = service.build_send(request).await.unwrap();
         let signed = service

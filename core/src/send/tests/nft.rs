@@ -52,6 +52,7 @@ fn transfer(standard: NftStandard, token_id: &str, quantity: &str) -> StoredSend
             transaction_hash: None,
             attempts: vec![],
             selected_endpoints: vec![],
+            memo: None,
         },
         request: super::super::SendExecutionRequest {
             chain_id: crate::registry::Chain::Ethereum,
@@ -68,6 +69,7 @@ fn transfer(standard: NftStandard, token_id: &str, quantity: &str) -> StoredSend
             fee_amount: None,
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         },
         prepared,
         submission: None,

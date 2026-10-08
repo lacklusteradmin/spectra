@@ -404,10 +404,10 @@ fn ton_mnemonic_structure() {
 }
 
 #[test]
-fn cardano_icarus_enterprise_address_structure() {
-    // CIP-1852 / CIP-3 Icarus + CIP-19 Shelley enterprise address:
-    // header byte is 0x61 (type 6 = enterprise + payment-key hash, network 1 = mainnet).
-    // Bech32 HRP = "addr"; payload is 29 bytes (1 header + 28 Blake2b-224).
+fn cardano_phrase_derives_a_base_address() {
+    // CIP-1852 / CIP-3 Icarus + CIP-19 Shelley base address: header byte
+    // 0x01 (type 0 = payment key hash + stake key hash, network 1), then the
+    // payment key's Blake2b-224 and the stake key's at m/1852'/1815'/0'/2/0.
     let result = derive_cardano(
         MNEMONIC.into(),
         Some("m/1852'/1815'/0'/0/0".into()),
@@ -423,11 +423,74 @@ fn cardano_icarus_enterprise_address_structure() {
 
     assert_eq!(priv_hex.len(), 128);
     assert_eq!(pub_hex.len(), 64);
-    assert!(address.starts_with("addr1"), "address: {address}");
     let (hrp, data) = bech32::decode(&address).expect("bech32 decode must succeed");
     assert_eq!(hrp.as_str(), "addr");
-    assert_eq!(data.len(), 29);
-    assert_eq!(data[0], 0x61);
+    assert_eq!(data.len(), 57);
+    assert_eq!(data[0], 0x01);
+    let payment = blake2b_simd::Params::new()
+        .hash_length(28)
+        .hash(&hex::decode(pub_hex).unwrap());
+    assert_eq!(&data[1..29], payment.as_bytes());
+
+    // Every address of the account shares its stake key; another account's
+    // differs.
+    let stake = |path: &str| {
+        let address = derive_cardano(MNEMONIC.into(), Some(path.into()), None, true, false, false)
+            .unwrap()
+            .address
+            .unwrap();
+        bech32::decode(&address).unwrap().1[29..].to_vec()
+    };
+    assert_eq!(stake("m/1852'/1815'/0'/1/7"), data[29..]);
+    assert_ne!(stake("m/1852'/1815'/1'/0/0"), data[29..]);
+}
+
+/// CIP-19's test vectors: one payment key and one stake key, encoded as each
+/// network's base (type 0) and enterprise (type 6) addresses.
+/// https://github.com/cardano-foundation/CIPs/blob/master/CIP-0019/README.md#test-vectors
+#[test]
+fn cardano_addresses_match_cip19() {
+    use crate::derivation::cardano::{
+        cardano_base_address, derive_cardano_shelley_enterprise_address,
+    };
+    let key = |bech: &str| -> [u8; 32] { bech32::decode(bech).unwrap().1.try_into().unwrap() };
+    let payment = key("addr_vk1w0l2sr2zgfm26ztc6nl9xy8ghsk5sh6ldwemlpmp9xylzy4dtf7st80zhd");
+    let stake = key("stake_vk1px4j0r2fk7ux5p23shz8f3y5y2qam7s954rgf3lg5merqcj6aetsft99wu");
+    assert_eq!(
+        cardano_base_address(&payment, &stake, true).unwrap(),
+        "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x"
+    );
+    assert_eq!(
+        cardano_base_address(&payment, &stake, false).unwrap(),
+        "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
+    );
+    assert_eq!(
+        derive_cardano_shelley_enterprise_address(&payment, true).unwrap(),
+        "addr1vx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzers66hrl8"
+    );
+    assert_eq!(
+        derive_cardano_shelley_enterprise_address(&payment, false).unwrap(),
+        "addr_test1vz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzerspjrlsz"
+    );
+}
+
+/// A base address needs the account's stake key, which only a CIP-1852
+/// payment path names.
+#[test]
+fn cardano_refuses_a_path_with_no_stake_key() {
+    for path in [
+        "m/44'/1815'/0'/0/0",
+        "m/1852'/1815'/0'/2/0",
+        "m/1852'/1815'/0/0/0",
+        "m/1852'/1815'/0'/0'/0",
+        "m/1852'/1815'/0'/0",
+        "m/1852'/1815'/0'/0/0/0",
+    ] {
+        assert!(
+            derive_cardano(MNEMONIC.into(), Some(path.into()), None, true, true, true).is_err(),
+            "{path}"
+        );
+    }
 }
 
 #[test]
@@ -1026,20 +1089,60 @@ fn canonical_external_golden_vectors_all_pass() {
         "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6"
     );
     check!(
-        "Cardano Shelley enterprise",
-        "trezor-firmware/common/tests/fixtures/cardano/get_enterprise_address.json",
-        "m/1852'/1815'/0'/0/0",
+        "Cardano Shelley base",
+        "trezor-firmware/common/tests/fixtures/cardano/get_base_address.json",
+        "m/1852'/1815'/4'/0/0",
         false,
         derive_cardano(
             ALL_ALL.into(),
-            Some("m/1852'/1815'/0'/0/0".into()),
+            Some("m/1852'/1815'/4'/0/0".into()),
             None,
             true,
             false,
             false
         ),
-        "addr1vxq0nckg3ekgzuqg7w5p9mvgnd9ym28qh5grlph8xd2z92su77c6m"
+        "addr1q8v42wjda8r6mpfj40d36znlgfdcqp7jtj03ah8skh6u8wnrqua2vw243tmjfjt0h5wsru6appuz8c0pfd75ur7myyeqsx9990"
     );
+    check!(
+        "Cardano Preprod Shelley base",
+        "trezor-firmware/common/tests/fixtures/cardano/get_base_address.json",
+        "m/1852'/1815'/4'/0/0",
+        false,
+        crate::derivation::cardano::derive_cardano_preprod(
+            ALL_ALL.into(),
+            Some("m/1852'/1815'/4'/0/0".into()),
+            None,
+            true,
+            false,
+            false
+        ),
+        "addr_test1qrv42wjda8r6mpfj40d36znlgfdcqp7jtj03ah8skh6u8wnrqua2vw243tmjfjt0h5wsru6appuz8c0pfd75ur7myyeqnsc9fs"
+    );
+    // A raw key's enterprise address, from the phrase's payment key.
+    match derive_cardano(
+        ALL_ALL.into(),
+        Some("m/1852'/1815'/0'/0/0".into()),
+        None,
+        false,
+        true,
+        false,
+    ) {
+        Ok(r) => {
+            let public: [u8; 32] = hex::decode(r.public_key_hex.unwrap())
+                .unwrap()
+                .try_into()
+                .unwrap();
+            let address = crate::derivation::cardano::derive_cardano_shelley_enterprise_address(
+                &public, true,
+            )
+            .unwrap();
+            // trezor-firmware/common/tests/fixtures/cardano/get_enterprise_address.json
+            if address != "addr1vxq0nckg3ekgzuqg7w5p9mvgnd9ym28qh5grlph8xd2z92su77c6m" {
+                failures.push(format!("Cardano Shelley enterprise mismatch: {address}"));
+            }
+        }
+        Err(e) => failures.push(format!("Cardano Shelley enterprise — {e:?}")),
+    }
 
     assert!(
         failures.is_empty(),
