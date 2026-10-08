@@ -138,7 +138,8 @@ async fn a_native_segwit_account_exports_bip84s_zpub() {
 }
 
 /// A phrase spread over many addresses has no one key; Taproot has no
-/// account-key encoding; a watched address has nothing to export.
+/// account-key encoding; a Cardano phrase's base address needs its stake
+/// key too; a watched address has nothing to export.
 #[tokio::test]
 async fn what_cannot_be_exported_is_not_offered_and_is_refused() {
     let (service, directory) = service().await;
@@ -176,6 +177,24 @@ async fn what_cannot_be_exported_is_not_offered_and_is_refused() {
             .await
             .unwrap()
             .is_empty()
+    );
+    let cardano = import(
+        &service,
+        fixture(Chain::Cardano, WalletSetupMethod::ImportPhrase),
+    )
+    .await;
+    assert!(
+        service
+            .wallet_key_exports(cardano.id.clone())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        service
+            .export_wallet_key(cardano.id, WalletKeyKind::PrivateKey, None)
+            .await
+            .is_err()
     );
     let watched = import(
         &service,

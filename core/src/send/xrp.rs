@@ -71,6 +71,7 @@ const TF_SET_NO_RIPPLE: u32 = 0x0002_0000;
 pub(crate) fn build_signed_payment(
     from: &str,
     to: &str,
+    destination_tag: Option<u32>,
     amount: &PaymentAmount,
     send_max: Option<&IssuedAmount>,
     fee_drops: u64,
@@ -88,7 +89,7 @@ pub(crate) fn build_signed_payment(
     build_signed(
         XrpTransaction::Payment { amount, send_max },
         from,
-        Some(to),
+        Some((to, destination_tag)),
         fee_drops,
         sequence,
         private_key_bytes,
@@ -123,11 +124,13 @@ pub(crate) fn build_signed_trust_set(
 }
 
 /// Build and sign an XRP AccountDelete transaction: the account `from` is
-/// removed and its balance, less the fee, goes to `to`. The network charges
+/// removed and its balance, less the fee, goes to `to`, with
+/// `destination_tag` when the destination asks for one. The network charges
 /// at least the owner reserve as its fee.
 pub fn build_signed_account_delete(
     from: &str,
     to: &str,
+    destination_tag: Option<u32>,
     fee_drops: u64,
     sequence: u32,
     private_key_bytes: &[u8],
@@ -141,7 +144,7 @@ pub fn build_signed_account_delete(
     build_signed(
         XrpTransaction::AccountDelete,
         from,
-        Some(to),
+        Some((to, destination_tag)),
         fee_drops,
         sequence,
         private_key_bytes,
@@ -149,10 +152,11 @@ pub fn build_signed_account_delete(
     )
 }
 
+/// `to` is the destination and its tag, when the transaction has one.
 fn build_signed(
     transaction: XrpTransaction<'_>,
     from: &str,
-    to: Option<&str>,
+    to: Option<(&str, Option<u32>)>,
     fee_drops: u64,
     sequence: u32,
     private_key_bytes: &[u8],
@@ -191,7 +195,7 @@ fn build_signed(
 fn encode_fields(
     transaction: XrpTransaction<'_>,
     from: &str,
-    to: Option<&str>,
+    to: Option<(&str, Option<u32>)>,
     fee_drops: u64,
     sequence: u32,
     public_key_hex: &str,
@@ -214,6 +218,11 @@ fn encode_fields(
     // Sequence, field 4, type 2
     out.push(0x24);
     out.extend_from_slice(&sequence.to_be_bytes());
+    if let Some((_, Some(tag))) = to {
+        // DestinationTag, field 14, type 2
+        out.push(0x2e);
+        out.extend_from_slice(&tag.to_be_bytes());
+    }
     match &transaction {
         XrpTransaction::Payment { amount, .. } => {
             // Amount, field 1, type 6 (Amount); XRP is 0x4000000000000000 | drops.
@@ -267,7 +276,7 @@ fn encode_fields(
     out.push(0x81);
     let from_bytes = decode_xrp_address(from)?;
     push_vl(&mut out, &from_bytes);
-    if let Some(to) = to {
+    if let Some((to, _)) = to {
         // Destination (to), field 3, type 8
         out.push(0x83);
         let to_bytes = decode_xrp_address(to)?;

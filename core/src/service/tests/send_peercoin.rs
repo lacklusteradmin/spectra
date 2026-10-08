@@ -75,6 +75,7 @@ fn request(chain: Chain, recipient: String) -> SendExecutionRequest {
         fee_amount: None,
         evm_overrides: None,
         sign_only: false,
+        memo: None,
     }
 }
 

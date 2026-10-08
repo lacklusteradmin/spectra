@@ -2,10 +2,12 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
+use spectra_core::registry::PaymentMemoKind;
 use spectra_core::send::ethereum::{
     EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken, parse_evm_custom_fees,
     parse_evm_nonce, prepare_evm_send_assembly,
 };
+use spectra_core::send::payment_memo::PaymentMemo;
 use spectra_core::send::{
     SendAffordability, SendAffordabilityInput, SendExecutionRequest, send_affordability,
 };
@@ -16,6 +18,34 @@ use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
+
+/// The XRP destination tag or Stellar memo a payment carries to a
+/// recipient that shares its account. Core checks it against the network.
+#[derive(Args, Clone)]
+#[group(multiple = false)]
+pub struct MemoArgs {
+    /// XRP Ledger destination tag, a whole number.
+    #[arg(long, value_name = "TAG")]
+    destination_tag: Option<String>,
+    /// Stellar text memo, up to 28 bytes.
+    #[arg(long, value_name = "TEXT")]
+    memo_text: Option<String>,
+    /// Stellar ID memo, a whole number.
+    #[arg(long, value_name = "ID")]
+    memo_id: Option<String>,
+}
+
+impl MemoArgs {
+    pub(super) fn memo(self) -> Option<PaymentMemo> {
+        let (kind, value) = match (self.destination_tag, self.memo_text, self.memo_id) {
+            (Some(tag), ..) => (PaymentMemoKind::DestinationTag, tag),
+            (_, Some(text), _) => (PaymentMemoKind::MemoText, text),
+            (.., Some(id)) => (PaymentMemoKind::MemoId, id),
+            _ => return None,
+        };
+        Some(PaymentMemo { kind, value })
+    }
+}
 
 #[derive(Args)]
 pub struct TxsArgs {
@@ -112,6 +142,8 @@ pub enum SendCommand {
         max_fee_gwei: Option<String>,
         #[arg(long, requires = "max_fee_gwei")]
         priority_fee_gwei: Option<String>,
+        #[command(flatten)]
+        memo: MemoArgs,
     },
     /// Build a transaction for a tracked holding, persisting it with its risk review.
     BuildOwned {
@@ -123,6 +155,8 @@ pub enum SendCommand {
         amount: String,
         #[arg(long)]
         destination: String,
+        #[command(flatten)]
+        memo: MemoArgs,
     },
     /// List prepared and signed transactions that survive app restarts.
     List,
@@ -182,6 +216,8 @@ pub enum SendCommand {
         amount: String,
         #[arg(long)]
         destination: String,
+        #[command(flatten)]
+        memo: MemoArgs,
     },
     /// Whether a destination is one of the user's own addresses on the holding's network.
     SelfCheck {
@@ -214,6 +250,8 @@ pub enum SendCommand {
         password_file: Option<String>,
         #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
         password_env: Option<String>,
+        #[command(flatten)]
+        memo: MemoArgs,
     },
     /// Resubmit the signed payload of a stored transaction.
     Rebroadcast {
@@ -253,6 +291,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             from,
             to,
             amount,
+            memo,
             endpoint,
             contract,
             decimals,
@@ -296,6 +335,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                             ..Default::default()
                         }),
                         sign_only: false,
+                        memo: memo.memo(),
                     }),
                 )?;
             emit_artifact(out, &artifact);
@@ -422,6 +462,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             holding,
             amount,
             destination,
+            memo,
             yes,
             password_file,
             password_env,
@@ -436,6 +477,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 amount,
                 destination,
                 overrides: None,
+                memo: memo.memo(),
             };
             let service = ctx.service()?;
             let password = signing_password(ctx, &input.wallet_id, password_file, password_env)?;
@@ -451,6 +493,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             holding,
             amount,
             destination,
+            memo,
         } => {
             let wallet = ctx.find_wallet(&wallet)?;
             let artifact = ctx.rt.block_on(ctx.service()?.build_owned_send(
@@ -460,6 +503,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                     amount,
                     destination,
                     overrides: None,
+                    memo: memo.memo(),
                 },
             ))?;
             out.emit(serde_json::json!({"artifact":artifact}));
@@ -470,6 +514,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             holding,
             amount,
             destination,
+            memo,
         } => {
             let wallet = ctx.find_wallet(&wallet)?;
             let quote = ctx.rt.block_on(ctx.service()?.review_owned_send(
@@ -479,6 +524,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                     amount,
                     destination,
                     overrides: None,
+                    memo: memo.memo(),
                 },
             ))?;
             out.emit(serde_json::json!({"quote":quote}));
@@ -1105,6 +1151,8 @@ pub struct SendArgs {
     /// EVM nonce. Omitted, the live one is read from the node.
     #[arg(long)]
     nonce: Option<i64>,
+    #[command(flatten)]
+    memo: MemoArgs,
     /// Read the wallet password from this file; `-` means stdin.
     #[arg(long, value_name = "PATH")]
     password_file: Option<String>,
@@ -1485,6 +1533,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
             }
         }),
         sign_only: args.sign_only,
+        memo: args.memo.clone().memo(),
     };
 
     out.text(|| {

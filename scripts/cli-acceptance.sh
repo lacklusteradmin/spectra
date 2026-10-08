@@ -293,6 +293,7 @@ suite "complete mined OP Stack fees and durable outcomes"       cli-receipt-fees
 suite "Litecoin SegWit recovery and durable signing"            cli-litecoin.py
 suite "Peercoin recovery, mature rewards and durable signing"   cli-peercoin.py
 suite "XRP signing and protocol validation"                     cli-send-xrp.py
+suite "XRP destination tags and Stellar memos, required and signed" cli-payment-memos.py
 suite "wallet operations: closing accounts, deleting keys"         cli-wallet-operations.py
 suite "XRP Ledger and Stellar issued assets, by issuer"           cli-issued-assets.py
 suite "ERC-721 and ERC-1155 tokens, never balances"              cli-nfts.py

@@ -105,6 +105,7 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
                 fee_amount: None,
                 evm_overrides: None,
                 sign_only: false,
+                memo: None,
             })
             .await
             .unwrap();
@@ -277,6 +278,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             fee_amount: Some("0.007".into()),
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         };
         let prepared = PreparedPayload::Ton {
             seqno: 7,
@@ -314,6 +316,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
                     detail: "Response lost".into(),
                 }],
                 selected_endpoints: vec![server.uri()],
+                memo: None,
             },
             request: request.clone(),
             prepared,

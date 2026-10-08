@@ -3,6 +3,7 @@
 
 use crate::api::stellar_asset::StellarAsset;
 use crate::send::error::SendError;
+use crate::send::payment_memo::StellarMemo;
 
 use crate::derivation::stellar::decode_stellar_address;
 
@@ -27,11 +28,13 @@ enum StellarOperation<'a> {
 /// The largest trustline limit, which the SDK sets when none is given.
 pub(crate) const MAX_TRUST_LIMIT: i64 = i64::MAX;
 
-/// Build a signed Stellar Payment transaction: native XLM, or `asset`.
+/// Build a signed Stellar Payment transaction: native XLM, or `asset`, with
+/// `memo` for the recipient.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_signed_payment_xdr(
     from: &str,
     to: &str,
+    memo: Option<StellarMemo<'_>>,
     asset: Option<&StellarAsset>,
     stroops: i64,
     base_fee: u64,
@@ -53,6 +56,7 @@ pub(crate) fn build_signed_payment_xdr(
             asset,
             stroops,
         },
+        memo,
         base_fee,
         sequence,
         network_passphrase,
@@ -80,6 +84,7 @@ pub(crate) fn build_signed_change_trust_xdr(
     }
     build_signed(
         StellarOperation::ChangeTrust { asset, limit },
+        None,
         base_fee,
         sequence,
         network_passphrase,
@@ -89,10 +94,13 @@ pub(crate) fn build_signed_change_trust_xdr(
 }
 
 /// Build a signed Stellar AccountMerge transaction: the account `from` is
-/// removed and everything it holds, less the fee, goes to `to`.
-pub fn build_signed_account_merge_xdr(
+/// removed and everything it holds, less the fee, goes to `to`, with `memo`
+/// when the destination asks for one.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_signed_account_merge_xdr(
     from: &str,
     to: &str,
+    memo: Option<StellarMemo<'_>>,
     base_fee: u64,
     sequence: u64,
     network_passphrase: &[u8],
@@ -108,6 +116,7 @@ pub fn build_signed_account_merge_xdr(
     }
     build_signed(
         StellarOperation::AccountMerge { to: &to },
+        memo,
         base_fee,
         sequence,
         network_passphrase,
@@ -118,6 +127,7 @@ pub fn build_signed_account_merge_xdr(
 
 fn build_signed(
     operation: StellarOperation<'_>,
+    memo: Option<StellarMemo<'_>>,
     base_fee: u64,
     sequence: u64,
     network_passphrase: &[u8],
@@ -131,7 +141,7 @@ fn build_signed(
     let network_hash: [u8; 32] = Sha256::digest(network_passphrase).into();
 
     // TransactionV0/Transaction XDR encoding (manual).
-    let tx_xdr = encode_tx(&operation, base_fee, sequence, public_key)?;
+    let tx_xdr = encode_tx(&operation, memo, base_fee, sequence, public_key)?;
 
     // Signing payload: sha256(network_hash || ENVELOPE_TYPE_TX(2) || tx_xdr)
     let mut payload = Vec::new();
@@ -180,6 +190,7 @@ fn encode_asset(tx: &mut Vec<u8>, asset: Option<&StellarAsset>) -> Result<(), Se
 
 fn encode_tx(
     operation: &StellarOperation<'_>,
+    memo: Option<StellarMemo<'_>>,
     base_fee: u64,
     sequence: u64,
     public_key: &[u8; 32],
@@ -193,8 +204,23 @@ fn encode_tx(
     tx.extend_from_slice(&(sequence as i64).to_be_bytes());
     // timeBounds: optional=0 (none)
     tx.extend_from_slice(&0u32.to_be_bytes());
-    // memo: MEMO_NONE=0
-    tx.extend_from_slice(&0u32.to_be_bytes());
+    match memo {
+        // MEMO_NONE
+        None => tx.extend_from_slice(&0u32.to_be_bytes()),
+        // MEMO_TEXT: string<28>
+        Some(StellarMemo::Text(text)) => {
+            if text.is_empty() || text.len() > 28 {
+                return Err(SendError::invalid("Stellar: a text memo is 1 to 28 bytes"));
+            }
+            tx.extend_from_slice(&1u32.to_be_bytes());
+            xdr_write_bytes(&mut tx, text.as_bytes());
+        }
+        // MEMO_ID: uint64
+        Some(StellarMemo::Id(id)) => {
+            tx.extend_from_slice(&2u32.to_be_bytes());
+            tx.extend_from_slice(&id.to_be_bytes());
+        }
+    }
     // operations: array of 1
     tx.extend_from_slice(&1u32.to_be_bytes());
     // Operation: sourceAccount optional=0 (no override)
@@ -258,6 +284,7 @@ mod tests {
             &address,
             &address,
             None,
+            None,
             12_345_678,
             100,
             42,
@@ -303,6 +330,7 @@ mod tests {
         let envelope = build_signed_account_merge_xdr(
             source,
             vector["destination"].as_str().unwrap(),
+            None,
             vector["fee"].as_str().unwrap().parse().unwrap(),
             vector["sequence"].as_str().unwrap().parse().unwrap(),
             vector["network_passphrase"].as_str().unwrap().as_bytes(),
@@ -318,6 +346,7 @@ mod tests {
             build_signed_account_merge_xdr(
                 source,
                 source,
+                None,
                 100,
                 1,
                 b"Test SDF Network ; September 2015",
@@ -326,6 +355,71 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// Text and ID memos exactly as the Stellar SDK encodes them, on native
+    /// and credit-asset payments and on AccountMerge.
+    #[test]
+    fn memos_match_the_stellar_sdk() {
+        use crate::registry::PaymentMemoKind;
+        use crate::send::payment_memo::PaymentMemo;
+        use base64::Engine;
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/payment-memos.json")).unwrap();
+        let vectors = &fixture["stellar"];
+        let seed: [u8; 32] = hex::decode(vectors["seed"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let key = SigningKey::from_bytes(&seed);
+        let public = key.verifying_key().to_bytes();
+        let text = |value: &serde_json::Value| value.as_str().unwrap().to_string();
+        let passphrase = text(&vectors["network_passphrase"]);
+        let memo = |vector: &serde_json::Value| PaymentMemo {
+            kind: serde_json::from_value::<PaymentMemoKind>(vector["kind"].clone()).unwrap(),
+            value: text(&vector["memo"]),
+        };
+        let encode = base64::engine::general_purpose::STANDARD;
+        for vector in vectors["payments"].as_array().unwrap() {
+            let memo = memo(vector)
+                .validated(crate::registry::Chain::StellarTestnet)
+                .unwrap();
+            let asset = vector["asset"]
+                .as_str()
+                .map(|asset| StellarAsset::parse(asset).unwrap());
+            let envelope = build_signed_payment_xdr(
+                &text(&vectors["source"]),
+                &text(&vectors["destination"]),
+                PaymentMemo::stellar(Some(&memo)).unwrap(),
+                asset.as_ref(),
+                crate::decimal::to_units(&text(&vector["amount"]), 7).unwrap() as i64,
+                100,
+                text(&vector["sequence"]).parse().unwrap(),
+                passphrase.as_bytes(),
+                &key.to_keypair_bytes(),
+                &public,
+            )
+            .unwrap();
+            assert_eq!(
+                encode.encode(envelope),
+                text(&vector["envelope_b64"]),
+                "{vector}"
+            );
+        }
+        let vector = &vectors["account_merge"];
+        let memo = memo(vector);
+        let envelope = build_signed_account_merge_xdr(
+            &text(&vectors["source"]),
+            &text(&vectors["destination"]),
+            PaymentMemo::stellar(Some(&memo)).unwrap(),
+            100,
+            text(&vector["sequence"]).parse().unwrap(),
+            passphrase.as_bytes(),
+            &key.to_keypair_bytes(),
+            &public,
+        )
+        .unwrap();
+        assert_eq!(encode.encode(envelope), text(&vector["envelope_b64"]));
     }
 
     /// Credit-asset payments and trustlines exactly as the Stellar SDK
@@ -353,6 +447,7 @@ mod tests {
             let envelope = build_signed_payment_xdr(
                 &text(&vectors["source"]),
                 &text(&vectors["destination"]),
+                None,
                 Some(&asset),
                 stroops(&vector["amount"]),
                 100,

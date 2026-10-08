@@ -778,6 +778,7 @@ impl WalletService {
                 transaction_hash: None,
                 attempts: Vec::new(),
                 selected_endpoints: Vec::new(),
+                memo: None,
             },
             request,
             prepared,
@@ -857,6 +858,7 @@ fn mweb_request(
         fee_amount: fee.map(decimal),
         evm_overrides: None,
         sign_only: false,
+        memo: None,
     }
 }
 

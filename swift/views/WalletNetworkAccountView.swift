@@ -188,7 +188,11 @@ private struct CloseAccountView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var session = SendSession()
     @State private var destination = ""
+    @State private var memoKind: PaymentMemoKind?
+    @State private var memoText = ""
     @State private var understood = false
+
+    private var memoKinds: [PaymentMemoKind] { paymentMemoKinds(chain: wallet.chainId) }
 
     var body: some View {
         Form {
@@ -199,6 +203,7 @@ private struct CloseAccountView: View {
                         Text(verbatim: destination).font(.caption.monospaced()).lineLimit(1)
                             .truncationMode(.middle)
                     }
+                    if let memo = artifact.memo { PaymentMemoRow(memo: memo) }
                     LabeledContent(AppLocalization.string("Amount"), value: "\(artifact.amount) \(artifact.symbol)")
                     LabeledContent(
                         AppLocalization.string("Reserve Recovered"), value: "\(reserve) \(artifact.symbol)")
@@ -221,6 +226,9 @@ private struct CloseAccountView: View {
                 Section {
                     TextField(AppLocalization.string("Destination Address"), text: $destination)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    if !memoKinds.isEmpty {
+                        SendPaymentMemoField(kinds: memoKinds, kind: $memoKind, text: $memoText)
+                    }
                 } footer: {
                     Text(AppLocalization.string("Closing deletes this account on the network and sends everything it holds, its reserve included, to another account that already exists. It cannot be undone. The wallet stays in Spectra, and funding its address again later opens a new account."))
                 }
@@ -245,9 +253,13 @@ private struct CloseAccountView: View {
 
     private func review() async {
         let destination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        let memo = memoKind.flatMap { memoText.isEmpty ? nil : PaymentMemo(kind: $0, value: memoText) }
         await session.load(
             operation: .build,
-            prepare: { try await store.bridge.ready().buildAccountClosing(walletId: wallet.id, destination: destination) },
+            prepare: {
+                try await store.bridge.ready().buildAccountClosing(
+                    walletId: wallet.id, destination: destination, memo: memo)
+            },
             endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
     }
 }

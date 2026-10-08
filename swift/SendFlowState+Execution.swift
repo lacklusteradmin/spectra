@@ -13,7 +13,7 @@ extension SendFlowState {
             nonce: nonce, customFees: fees, gasLimit: nil, calldataHex: nil,
             signOnly: nil, accessListJson: nil)
         return SendReviewInput(walletId: walletId, holdingKey: holdingKey,
-            amount: amountInput, destination: address, overrides: overrides)
+            amount: amountInput, destination: address, overrides: overrides, memo: paymentMemo)
     }
 
     func build() async {
@@ -55,6 +55,11 @@ extension SendFlowState {
                 reasons.append(AppLocalization.format(
                     "The token goes with %@ %@, the least its output can hold; the recipient keeps it.",
                     AmountPresentation.localizedDecimal(carried), artifact.chainId.gasTokenSymbol))
+            }
+            if let registration = terms.recipientRegistration {
+                reasons.append(AppLocalization.format(
+                    "The token has not registered the recipient. This send registers it first for %@ %@, which the token keeps for the recipient.",
+                    AmountPresentation.localizedDecimal(registration), artifact.chainId.gasTokenSymbol))
             }
             if let program = terms.hookProgram {
                 reasons.append(AppLocalization.format(

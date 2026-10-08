@@ -42,7 +42,9 @@ pub struct WalletKeyExport {
 /// A phrase wallet on a network that spreads its funds over many addresses
 /// (the account-discovery UTXO chains) has no one key that holds them, so
 /// it exports its account's public key where the network takes one, and
-/// otherwise only its phrase. An account key is exported where its encoding
+/// otherwise only its phrase. Nor does a Cardano phrase wallet's payment
+/// key: its base address names the account's stake key too, so it exports
+/// only its phrase. An account key is exported where its encoding
 /// names the script the wallet uses: not for Taproot, which has none, nor
 /// for a path no profile names.
 pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
@@ -62,7 +64,8 @@ pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
         WalletSigning::SeedPhrase { .. } => [
             (
                 crate::derivation::key_formats::export_format(chain).is_some()
-                    && !chain.supports_deep_utxo_discovery(),
+                    && !chain.supports_deep_utxo_discovery()
+                    && !chain.phrase_address_has_stake_key(),
                 WalletKeyKind::PrivateKey,
             ),
             (

@@ -933,6 +933,7 @@ impl WalletService {
             fee_amount: Some(crate::decimal::from_units(u128::from(prepared.fee_zat), 8)),
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         };
         // A payment is reviewed as any send is; shielding moves the
         // wallet's own funds and warns of nothing.
@@ -964,6 +965,7 @@ impl WalletService {
                 transaction_hash: None,
                 attempts: Vec::new(),
                 selected_endpoints: Vec::new(),
+                memo: None,
             },
             request,
             prepared,

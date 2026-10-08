@@ -313,6 +313,7 @@ mod query_tests {
                 transaction_hash: None,
                 attempts: vec![],
                 selected_endpoints: vec![],
+                memo: None,
             },
             request: crate::send::SendExecutionRequest {
                 chain_id: crate::registry::Chain::Icp,
@@ -329,6 +330,7 @@ mod query_tests {
                 fee_amount: None,
                 evm_overrides: None,
                 sign_only: false,
+                memo: None,
             },
             prepared: PreparedPayload::IcpStaking(prepared),
             submission: None,

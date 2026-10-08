@@ -1,6 +1,7 @@
 use super::*;
 use crate::api::error::{ApiError, OrDecode};
 use crate::send::payload::PreparedSubmission;
+use crate::send::payment_memo::PaymentMemo;
 use crate::send::stages::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 
@@ -25,6 +26,16 @@ impl WalletService {
         stored: &StoredSend,
     ) -> Result<(), SpectraBridgeError> {
         let now = crate::store::now_unix() as u64;
+        if matches!(
+            stored.prepared,
+            PreparedPayload::Xrp { .. }
+                | PreparedPayload::XrpIssuedPayment(_)
+                | PreparedPayload::Stellar { .. }
+                | PreparedPayload::StellarAssetPayment(_)
+        ) {
+            self.require_payment_memo(chain, &stored.view.recipient, stored.request.memo.as_ref())
+                .await?;
+        }
         match &stored.prepared {
             PreparedPayload::Near { .. } => self.validate_near_transfer_state(stored).await?,
             PreparedPayload::Evm(prepared) => {
@@ -517,6 +528,43 @@ impl WalletService {
         canonical(&wallet.address)
     }
 
+    /// Refuse a payment with no destination tag or memo to an account that
+    /// asks for one — XRP's `lsfRequireDestTag`, Stellar's SEP-29
+    /// `config.memo_required` — read from a verified node. An exchange
+    /// cannot tell whose deposit such a payment is, and the network takes
+    /// it all the same.
+    pub(super) async fn require_payment_memo(
+        &self,
+        chain: Chain,
+        destination: &str,
+        memo: Option<&PaymentMemo>,
+    ) -> Result<(), SpectraBridgeError> {
+        if memo.is_some() || chain.payment_memo_kinds().is_empty() {
+            return Ok(());
+        }
+        let endpoints = self
+            .endpoints_for(chain, &[EndpointCapability::Verification])
+            .await;
+        let refusal = match chain.mainnet_counterpart() {
+            Chain::Xrp
+                if XrplClient::new(endpoints.clone())
+                    .requires_destination_tag(chain, destination)
+                    .await? =>
+            {
+                "%@ requires a destination tag. Add the one the recipient gave you."
+            }
+            Chain::Stellar
+                if HorizonClient::new(endpoints)
+                    .fetch_memo_required(chain, destination)
+                    .await? =>
+            {
+                "%@ requires a memo. Add the one the recipient gave you."
+            }
+            _ => return Ok(()),
+        };
+        Err(SpectraBridgeError::refused(refusal, [destination]))
+    }
+
     pub(super) async fn prepare_staged_protocol(
         &self,
         chain: Chain,
@@ -588,6 +636,8 @@ impl WalletService {
                 .map_err(|_| SpectraBridgeError::failure("Amount exceeds protocol range"))?
         };
         let to = request.to_address.as_str();
+        self.require_payment_memo(chain, to, request.memo.as_ref())
+            .await?;
         Ok(match chain.mainnet_counterpart() {
             Chain::Dogecoin
             | Chain::BitcoinSV
@@ -662,14 +712,7 @@ impl WalletService {
                         "NEAR fee exceeds reviewed budget; review again",
                     ));
                 }
-                let required = quote
-                    .budget
-                    .checked_add(if request.contract_address.is_none() {
-                        amount
-                    } else {
-                        0
-                    })
-                    .ok_or_else(|| SpectraBridgeError::invalid("NEAR amount and fee overflow"))?;
+                let required = quote.required(amount, request.contract_address.is_none())?;
                 if quote.spendable < required {
                     return Err(SpectraBridgeError::invalid(
                         "Insufficient spendable NEAR for amount, protocol fee and storage stake",
@@ -710,6 +753,7 @@ impl WalletService {
                     amount,
                     token_contract: request.contract_address.clone(),
                     fee_budget: quote.budget.to_string(),
+                    registration_deposit: quote.registration.map(|deposit| deposit.to_string()),
                 }
             }
             Chain::Decred => PreparedPayload::Decred(
@@ -717,6 +761,7 @@ impl WalletService {
                     &InsightClient::new(
                         self.endpoints_for(chain, &[EndpointCapability::Utxo]).await,
                     ),
+                    chain,
                     sender,
                     to,
                     amount_u64,
@@ -1207,6 +1252,7 @@ impl WalletService {
                 block_hash,
                 amount,
                 token_contract,
+                registration_deposit,
                 ..
             } => {
                 let client = NearClient::new(eps);
@@ -1231,17 +1277,21 @@ impl WalletService {
                     .try_into()
                     .map_err(|_| SpectraBridgeError::failure("Invalid NEAR seed"))?;
                 let raw = if let Some(contract) = token_contract {
-                    let args =
-                        crate::send::near::nep141_transfer_args(&stored.view.recipient, *amount)?;
                     crate::send::near::build_near_function_call_tx(
                         &stored.view.sender,
                         public_key,
                         *nonce,
                         contract,
-                        "ft_transfer",
-                        &args,
-                        chain.near_token_gas_limit().unwrap(),
-                        1,
+                        &crate::send::near::nep141_transfer_calls(
+                            &stored.view.recipient,
+                            *amount,
+                            registration_deposit
+                                .as_deref()
+                                .map(str::parse)
+                                .transpose()
+                                .map_err(SpectraBridgeError::invalid)?,
+                            chain.near_token_gas_limit().unwrap(),
+                        )?,
                         block_hash,
                         key,
                     )?
@@ -1275,6 +1325,7 @@ impl WalletService {
                     &InsightClient::new(
                         self.endpoints_for(chain, &[EndpointCapability::Utxo]).await,
                     ),
+                    chain,
                     &stored.view.sender,
                     &stored.view.recipient,
                     u64::try_from(crate::send::amount_input::parse_raw_amount(
@@ -1482,6 +1533,7 @@ impl WalletService {
                 let blob = crate::send::xrp::build_signed_payment(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    PaymentMemo::destination_tag(stored.request.memo.as_ref())?,
                     &crate::send::xrp::PaymentAmount::Drops(*amount_drops),
                     None,
                     *fee_drops,
@@ -1515,6 +1567,7 @@ impl WalletService {
                 let blob = crate::send::xrp::build_signed_payment(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    PaymentMemo::destination_tag(stored.request.memo.as_ref())?,
                     &crate::send::xrp::PaymentAmount::Issued(amount),
                     send_max.as_ref(),
                     prepared.fee_drops,
@@ -1576,6 +1629,7 @@ impl WalletService {
                 let raw = crate::send::stellar::build_signed_payment_xdr(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    PaymentMemo::stellar(stored.request.memo.as_ref())?,
                     Some(&prepared.asset()?),
                     prepared.amount_stroops,
                     prepared.fee_stroops,
@@ -1637,7 +1691,12 @@ impl WalletService {
                 // Every prerequisite again: the account or its destination
                 // may have changed since the review.
                 let (fresh, ..) = self
-                    .account_closing(chain, &stored.view.sender, &stored.view.recipient)
+                    .account_closing(
+                        chain,
+                        &stored.view.sender,
+                        &stored.view.recipient,
+                        stored.request.memo.is_some(),
+                    )
                     .await?;
                 if !matches!(fresh, PreparedPayload::XrpAccountDelete { sequence: s, .. } if s == *sequence)
                 {
@@ -1653,6 +1712,7 @@ impl WalletService {
                 let blob = crate::send::xrp::build_signed_account_delete(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    PaymentMemo::destination_tag(stored.request.memo.as_ref())?,
                     *fee_drops,
                     *sequence,
                     &key,
@@ -1670,7 +1730,12 @@ impl WalletService {
                 fee_stroops,
             } => {
                 let (fresh, ..) = self
-                    .account_closing(chain, &stored.view.sender, &stored.view.recipient)
+                    .account_closing(
+                        chain,
+                        &stored.view.sender,
+                        &stored.view.recipient,
+                        stored.request.memo.is_some(),
+                    )
                     .await?;
                 if !matches!(fresh, PreparedPayload::StellarAccountMerge { sequence: s, .. } if s == *sequence)
                 {
@@ -1682,6 +1747,7 @@ impl WalletService {
                 let raw = crate::send::stellar::build_signed_account_merge_xdr(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    PaymentMemo::stellar(stored.request.memo.as_ref())?,
                     *fee_stroops,
                     *sequence,
                     chain.stellar_network_passphrase()?.as_bytes(),
@@ -1718,6 +1784,7 @@ impl WalletService {
                 let raw = crate::send::stellar::build_signed_payment_xdr(
                     &stored.view.sender,
                     &stored.view.recipient,
+                    PaymentMemo::stellar(stored.request.memo.as_ref())?,
                     None,
                     *amount_stroops,
                     *fee_stroops,

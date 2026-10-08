@@ -9,6 +9,52 @@ pub(crate) fn nep141_transfer_args(receiver: &str, amount: u128) -> Result<Vec<u
     )?)
 }
 
+/// NEP-145 `storage_deposit` registering `account` and nothing more.
+pub(crate) fn nep145_registration_args(account: &str) -> Result<Vec<u8>, SendError> {
+    Ok(serde_json::to_vec(
+        &serde_json::json!({"account_id":account,"registration_only":true}),
+    )?)
+}
+
+/// One FunctionCall action: a contract method, its JSON arguments, the gas
+/// it may burn and the yoctoNEAR it attaches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NearFunctionCall {
+    pub method: &'static str,
+    pub args: Vec<u8>,
+    pub gas: u64,
+    pub deposit: u128,
+}
+
+/// A NEP-141 transfer's actions, to the token contract: when the token has
+/// not registered `receiver`, `storage_deposit` registering it with
+/// `registration` yoctoNEAR first — a standard token refuses a transfer to an
+/// account it has not registered, after the gas is spent — then
+/// `ft_transfer` with the one yoctoNEAR it requires.
+pub(crate) fn nep141_transfer_calls(
+    receiver: &str,
+    amount: u128,
+    registration: Option<u128>,
+    gas: u64,
+) -> Result<Vec<NearFunctionCall>, SendError> {
+    let mut calls = Vec::with_capacity(2);
+    if let Some(deposit) = registration {
+        calls.push(NearFunctionCall {
+            method: "storage_deposit",
+            args: nep145_registration_args(receiver)?,
+            gas,
+            deposit,
+        });
+    }
+    calls.push(NearFunctionCall {
+        method: "ft_transfer",
+        args: nep141_transfer_args(receiver, amount)?,
+        gas,
+        deposit: 1,
+    });
+    Ok(calls)
+}
+
 /// NEAR identifies the unsigned Borsh transaction, excluding Signature's
 /// Ed25519 discriminator and 64 signature bytes.
 pub(crate) fn signed_transaction_hash(signed: &[u8]) -> Result<String, SendError> {
@@ -100,34 +146,22 @@ fn borsh_encode_transfer(
     out
 }
 
-/// Build a signed NEAR FunctionCall transaction (used for NEP-141 transfers).
-#[allow(clippy::too_many_arguments)]
-pub fn build_near_function_call_tx(
+/// Build a signed NEAR transaction of FunctionCall actions to one receiver
+/// (a NEP-141 transfer, with the recipient's registration before it).
+pub(crate) fn build_near_function_call_tx(
     signer_id: &str,
     public_key: &[u8; 32],
     nonce: u64,
     receiver_id: &str,
-    method_name: &str,
-    args: &[u8],
-    gas: u64,
-    deposit: u128,
+    calls: &[NearFunctionCall],
     block_hash: &[u8; 32],
     private_key: &[u8; 32],
 ) -> Result<Vec<u8>, SendError> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
 
-    let tx = borsh_encode_function_call(
-        signer_id,
-        public_key,
-        nonce,
-        receiver_id,
-        method_name,
-        args,
-        gas,
-        deposit,
-        block_hash,
-    );
+    let tx =
+        borsh_encode_function_calls(signer_id, public_key, nonce, receiver_id, calls, block_hash);
 
     let tx_hash: [u8; 32] = Sha256::digest(&tx).into();
     let signing_key = SigningKey::from_bytes(private_key);
@@ -157,8 +191,43 @@ fn borsh_encode_function_call(
     deposit: u128,
     block_hash: &[u8; 32],
 ) -> Vec<u8> {
-    let mut out = Vec::new();
+    let mut out = borsh_encode_header(signer_id, public_key, nonce, receiver_id, block_hash, 1);
+    borsh_function_call(&mut out, method_name, args, gas, deposit);
+    out
+}
 
+fn borsh_encode_function_calls(
+    signer_id: &str,
+    public_key: &[u8; 32],
+    nonce: u64,
+    receiver_id: &str,
+    calls: &[NearFunctionCall],
+    block_hash: &[u8; 32],
+) -> Vec<u8> {
+    let mut out = borsh_encode_header(
+        signer_id,
+        public_key,
+        nonce,
+        receiver_id,
+        block_hash,
+        calls.len() as u32,
+    );
+    for call in calls {
+        borsh_function_call(&mut out, call.method, &call.args, call.gas, call.deposit);
+    }
+    out
+}
+
+/// A transaction's fields before its actions, ending with their count.
+fn borsh_encode_header(
+    signer_id: &str,
+    public_key: &[u8; 32],
+    nonce: u64,
+    receiver_id: &str,
+    block_hash: &[u8; 32],
+    actions: u32,
+) -> Vec<u8> {
+    let mut out = Vec::new();
     // signer_id: string
     borsh_string(&mut out, signer_id);
     // public_key: key_type(u8) + bytes(32)
@@ -171,11 +240,16 @@ fn borsh_encode_function_call(
     // block_hash: [u8; 32]
     out.extend_from_slice(block_hash);
     // actions: array (u32 len)
-    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(&actions.to_le_bytes());
+    out
+}
+
+/// One `Action::FunctionCall`.
+fn borsh_function_call(out: &mut Vec<u8>, method_name: &str, args: &[u8], gas: u64, deposit: u128) {
     // Action::FunctionCall = variant 2
     out.push(2u8);
     // method_name: string
-    borsh_string(&mut out, method_name);
+    borsh_string(out, method_name);
     // args: Vec<u8> (u32 len + bytes)
     out.extend_from_slice(&(args.len() as u32).to_le_bytes());
     out.extend_from_slice(args);
@@ -183,8 +257,6 @@ fn borsh_encode_function_call(
     out.extend_from_slice(&gas.to_le_bytes());
     // deposit: u128
     out.extend_from_slice(&deposit.to_le_bytes());
-
-    out
 }
 
 fn borsh_string(out: &mut Vec<u8>, s: &str) {
@@ -394,10 +466,7 @@ mod protocol_tests {
             &public,
             42,
             "token.near",
-            "ft_transfer",
-            br#"{"amount":"123456","receiver_id":"bob.near"}"#,
-            30_000_000_000_000,
-            1,
+            &nep141_transfer_calls("bob.near", 123456, None, 30_000_000_000_000).unwrap(),
             &[2; 32],
             &[1; 32],
         )
@@ -450,6 +519,42 @@ mod protocol_tests {
             )
             .is_err()
         );
+        // A transfer to an account the token has not registered, and to
+        // one it has, as @near-js/transactions builds and signs them.
+        let registration: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/near-token-registration.json"
+        ))
+        .unwrap();
+        let text = |key: &str| registration[key].as_str().unwrap().to_string();
+        let deposit: u128 = text("registration_deposit").parse().unwrap();
+        for (case, registration_deposit) in [("registered", None), ("unregistered", Some(deposit))]
+        {
+            let raw = build_near_function_call_tx(
+                &text("signer"),
+                &hex::decode(text("public_key")).unwrap().try_into().unwrap(),
+                registration["nonce"].as_u64().unwrap(),
+                &text("token"),
+                &nep141_transfer_calls(
+                    &text("recipient"),
+                    text("amount").parse().unwrap(),
+                    registration_deposit,
+                    text("gas").parse().unwrap(),
+                )
+                .unwrap(),
+                &hex::decode(text("block_hash")).unwrap().try_into().unwrap(),
+                &hex::decode(text("seed")).unwrap().try_into().unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                hex::encode(&raw),
+                registration[case]["signed_hex"].as_str().unwrap(),
+                "{case}"
+            );
+            assert_eq!(
+                signed_transaction_hash(&raw).unwrap(),
+                registration[case]["hash"].as_str().unwrap()
+            );
+        }
         assert!(
             build_near_transfer_tx(
                 "alice.near",

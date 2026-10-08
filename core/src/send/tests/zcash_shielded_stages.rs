@@ -73,6 +73,7 @@ fn stored(shielding: bool) -> StoredSend {
             transaction_hash: None,
             attempts: vec![],
             selected_endpoints: vec![],
+            memo: None,
         },
         request: super::super::SendExecutionRequest {
             chain_id: crate::registry::Chain::Zcash,
@@ -89,6 +90,7 @@ fn stored(shielding: bool) -> StoredSend {
             fee_amount: None,
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         },
         prepared: PreparedPayload::ZcashShielded(prepared),
         submission: None,

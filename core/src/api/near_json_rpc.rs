@@ -563,15 +563,64 @@ impl NearClient {
         args_len: usize,
         gas: u64,
     ) -> Result<u128, ApiError> {
+        self.function_calls_fee_budget(signer, receiver, &[(method.len() + args_len, gas)])
+            .await
+    }
+
+    /// The fee budget of one transaction of FunctionCall actions to
+    /// `receiver`, each given as its method and argument bytes and its gas.
+    pub(crate) async fn function_calls_fee_budget(
+        &self,
+        signer: &str,
+        receiver: &str,
+        calls: &[(usize, u64)],
+    ) -> Result<u128, ApiError> {
         let (config, price) = self.fetch_fee_inputs().await?;
-        near_function_call_fee(
-            &config,
-            price,
-            signer == receiver,
-            method.len(),
-            args_len,
-            gas,
-        )
+        near_function_call_fee(&config, price, signer == receiver, calls)
+    }
+
+    /// What a NEP-145 token contract asks before it holds `account`'s
+    /// balance: `None` once it has registered the account, else the least
+    /// deposit that registers it, `storage_balance_bounds().min`. A contract
+    /// that answers neither `storage_balance_of` nor `storage_balance_bounds`
+    /// is refused rather than sent to blind.
+    pub(crate) async fn fetch_storage_registration(
+        &self,
+        contract: &str,
+        account: &str,
+    ) -> Result<Option<u128>, ApiError> {
+        let refused = || {
+            ApiError::invalid(
+                "This token's contract does not answer NEP-145 storage queries, so Spectra cannot tell whether the recipient can hold it.",
+            )
+        };
+        // A contract without the method answers with an execution error, or
+        // with a result that carries no bytes.
+        let answer = |read: Result<Vec<u8>, ApiError>| match read {
+            Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(|_| refused()),
+            Err(ApiError::Rejected(_) | ApiError::Decode(_)) => Err(refused()),
+            Err(error) => Err(error),
+        };
+        match answer(
+            self.view_function(
+                contract,
+                "storage_balance_of",
+                &json!({"account_id": account}),
+            )
+            .await,
+        )? {
+            Value::Null => {}
+            Value::Object(balance) if balance.contains_key("total") => return Ok(None),
+            _ => return Err(refused()),
+        }
+        answer(
+            self.view_function(contract, "storage_balance_bounds", &json!({}))
+                .await,
+        )?["min"]
+            .as_str()
+            .and_then(|min| min.parse::<u128>().ok())
+            .map(Some)
+            .ok_or_else(refused)
     }
 
     async fn fetch_fee_inputs(&self) -> Result<(Value, u128), ApiError> {
@@ -696,44 +745,46 @@ fn near_transfer_fee(
 
 /// The admission charge buys function gas and execution overhead at at least
 /// min_gas_purchase_price; the send overhead burns at the current gas price.
-/// This is nearcore runtime/config.rs calculate_tx_cost for one Ed25519
-/// FunctionCall (classical signature verification adds no gas charge).
+/// This is nearcore runtime/config.rs calculate_tx_cost for Ed25519
+/// FunctionCall actions to one receiver, each given as its method and
+/// argument bytes and its gas: one action receipt, then each action's base
+/// and per-byte cost and its prepaid gas (classical signature verification
+/// adds no gas charge).
 fn near_function_call_fee(
     config: &Value,
     price: u128,
     sender_is_receiver: bool,
-    method_len: usize,
-    args_len: usize,
-    gas: u64,
+    calls: &[(usize, u64)],
 ) -> Result<u128, ApiError> {
     let runtime = &config["runtime_config"];
     let fees = &runtime["transaction_costs"];
     let receipt = &fees["action_receipt_creation_config"];
     let base = &fees["action_creation_config"]["function_call_cost"];
     let byte = &fees["action_creation_config"]["function_call_cost_per_byte"];
-    let count = u128::try_from(
-        method_len
-            .checked_add(args_len)
-            .or_decode("NEAR argument size overflow")?,
-    )
-    .map_err(ApiError::decode)?;
     let send = if sender_is_receiver {
         "send_sir"
     } else {
         "send_not_sir"
     };
-    let total = |field: &str, prepaid: u128| -> Result<u128, ApiError> {
+    let total = |field: &str, execution: bool| -> Result<u128, ApiError> {
         let base = near_protocol_integer(&base[field])?;
-        let receipt = near_protocol_integer(&receipt[field])?;
-        near_protocol_integer(&byte[field])?
-            .checked_mul(count)
-            .and_then(|v| v.checked_add(prepaid))
-            .and_then(|v| v.checked_add(base))
-            .and_then(|v| v.checked_add(receipt))
-            .or_decode("NEAR protocol gas or fee overflow")
+        let per_byte = near_protocol_integer(&byte[field])?;
+        calls.iter().try_fold(
+            near_protocol_integer(&receipt[field])?,
+            |sum, (bytes, gas)| {
+                let prepaid = if execution { u128::from(*gas) } else { 0 };
+                u128::try_from(*bytes)
+                    .ok()
+                    .and_then(|bytes| per_byte.checked_mul(bytes))
+                    .and_then(|v| v.checked_add(prepaid))
+                    .and_then(|v| v.checked_add(base))
+                    .and_then(|v| v.checked_add(sum))
+                    .or_decode("NEAR protocol gas or fee overflow")
+            },
+        )
     };
-    let burnt = total(send, 0)?;
-    let remaining = total("execution", u128::from(gas))?;
+    let burnt = total(send, false)?;
+    let remaining = total("execution", true)?;
     near_prepayment_fee(config, price, burnt, remaining)
 }
 
@@ -851,12 +902,12 @@ mod transaction_validity_tests {
         // 19 bytes: deposit_and_stake plus JSON {}. These admission charges
         // use the independently captured protocol-86 fees and nearcore formula.
         let budget =
-            near_function_call_fee(&config, 100_000_000, false, 17, 2, 100_000_000_000_000)
+            near_function_call_fee(&config, 100_000_000, false, &[(19, 100_000_000_000_000)])
                 .unwrap();
         assert_eq!(budget, 100_918_998_531_804_500_000_000);
         assert!(budget > 100_000_000_000_000 * 100_000_000);
         assert_eq!(
-            near_function_call_fee(&config, 2_000_000_000, false, 17, 2, 100_000_000_000_000)
+            near_function_call_fee(&config, 2_000_000_000, false, &[(19, 100_000_000_000_000)])
                 .unwrap(),
             202_394_134_946_662_000_000_000
         );
@@ -866,11 +917,21 @@ mod transaction_validity_tests {
             .unwrap()
             .remove("min_gas_purchase_price");
         assert!(
-            near_function_call_fee(&missing, 100_000_000, false, 17, 2, 100_000_000_000_000)
+            near_function_call_fee(&missing, 100_000_000, false, &[(19, 100_000_000_000_000)])
                 .is_err()
         );
         assert!(
-            near_function_call_fee(&config, u128::MAX, false, 17, 2, 100_000_000_000_000).is_err()
+            near_function_call_fee(&config, u128::MAX, false, &[(19, 100_000_000_000_000)])
+                .is_err()
+        );
+        // Two actions share one action receipt: nearcore charges it once.
+        let fee = |calls: &[(usize, u64)]| {
+            near_function_call_fee(&config, 100_000_000, false, calls).unwrap()
+        };
+        let (registration, transfer) = ((65, 30_000_000_000_000), (56, 30_000_000_000_000));
+        assert_eq!(
+            fee(&[registration, transfer]),
+            fee(&[registration]) + fee(&[transfer]) - fee(&[])
         );
     }
 

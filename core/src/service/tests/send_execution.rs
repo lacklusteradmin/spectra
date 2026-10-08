@@ -55,6 +55,7 @@ pub(super) mod request_fixture {
             fee_amount: None,
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         }
     }
 }
@@ -210,6 +211,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
             transaction_hash: None,
             attempts: vec![],
             selected_endpoints: vec![],
+            memo: None,
         },
         prepared: PreparedPayload::Ton {
             seqno: 1,
@@ -247,6 +249,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         amount: 1,
         token_contract: None,
         fee_budget: "0".into(),
+        registration_deposit: None,
     };
     let server = wiremock::MockServer::start().await;
     let head = Arc::new(std::sync::atomic::AtomicU64::new(102));

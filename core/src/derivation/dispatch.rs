@@ -182,8 +182,19 @@ mod dispatch_export_tests {
                 derive_from_private_key(chain, expected.private_key_hex.unwrap(), true, true)
                     .unwrap()
                     .unwrap();
-            assert_eq!(actual.address, expected.address, "{chain}");
             assert_eq!(actual.public_key_hex, expected.public_key_hex, "{chain}");
+            if chain.mainnet_counterpart() == Chain::Cardano {
+                // A raw extended key holds no stake key: it derives the
+                // enterprise address of the payment key whose base address
+                // the phrase derives.
+                let payment = |address: &Option<String>| {
+                    bech32::decode(address.as_deref().unwrap()).unwrap().1[1..29].to_vec()
+                };
+                assert_eq!(payment(&actual.address), payment(&expected.address));
+                assert_ne!(actual.address, expected.address, "{chain}");
+            } else {
+                assert_eq!(actual.address, expected.address, "{chain}");
+            }
             assert!(
                 crate::send::flow::is_valid_send_address(chain, actual.address.unwrap()),
                 "{chain}"

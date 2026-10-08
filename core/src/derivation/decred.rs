@@ -10,13 +10,12 @@
 //! `Ds…` family); testnet uses `Ts…`. Simnet is out of scope.
 
 use crate::derivation::error::DerivationError;
+use crate::derivation::utxo_address::ParsedUtxoAddress;
+use crate::registry::Chain;
 
 use crate::derivation::primitives::derive_bip39_seed;
 use ripemd::{Digest as RipemdDigest, Ripemd160};
 use secp256k1::{PublicKey, Secp256k1};
-
-pub(crate) const DCR_P2PKH_VERSION: [u8; 2] = [0x07, 0x3F];
-pub(crate) const DCR_P2SH_VERSION: [u8; 2] = [0x07, 0x1A];
 
 // ── BLAKE-256 (SHA-3 finalist BLAKE-1 family) ─────────────────────────────
 
@@ -237,57 +236,43 @@ pub(crate) fn dcr_base58check_decode(input: &str) -> Result<Vec<u8>, DerivationE
     Ok(payload.to_vec())
 }
 
-/// Encode a `Ds…` (P2PKH) Decred address from a 20-byte pubkey hash.
-pub(crate) fn encode_dcr_p2pkh(pubkey_hash: &[u8; 20]) -> String {
+/// Encode the P2PKH address of a 20-byte pubkey hash on `chain`'s network:
+/// `Ds…` on mainnet, `Ts…` on testnet.
+pub(crate) fn encode_decred_p2pkh(
+    chain: Chain,
+    pubkey_hash: &[u8; 20],
+) -> Result<String, DerivationError> {
+    let (p2pkh, _) = chain.decred_address_versions()?;
     let mut payload = Vec::with_capacity(22);
-    payload.extend_from_slice(&DCR_P2PKH_VERSION);
+    payload.extend_from_slice(&p2pkh);
     payload.extend_from_slice(pubkey_hash);
-    dcr_base58check_encode(&payload)
+    Ok(dcr_base58check_encode(&payload))
 }
 
-/// Decode a Decred address into its 20-byte pubkey hash. Accepts both `Ds…`
-/// (P2PKH) and `Dc…` (P2SH) forms; the payload is identical.
-pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], DerivationError> {
-    let payload = dcr_base58check_decode(address)?;
-    if payload.len() != 22 {
-        return Err(DerivationError::Invalid(
-            "dcr payload must be 22 bytes (2 version + 20 hash)".into(),
-        ));
-    }
-    let version = [payload[0], payload[1]];
-    if version != DCR_P2PKH_VERSION && version != DCR_P2SH_VERSION {
-        return Err(DerivationError::Invalid(
-            format!("unrecognised dcr version bytes: {version:02x?}").into(),
-        ));
-    }
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&payload[2..22]);
-    Ok(hash)
-}
-
-/// True if address is a valid Decred mainnet address (Ds… P2PKH or Dc… P2SH).
-/// Whether `address` is valid on the network asked about.
+/// Decode a Decred address on `chain`'s network into the script it pays.
 ///
-/// Took no network, so the testnet arm of the dispatcher ran the mainnet
-/// decoder: a derived testnet address failed the app's own validator, which
-/// means the receive screen showed an address the send screen would refuse.
-/// Testnet addresses carry their own version bytes.
-pub(crate) fn decode_decred_testnet_address(address: &str) -> Result<[u8; 20], DerivationError> {
-    let decoded = dcr_base58check_decode(address)?;
-    if decoded.len() != 22 || [decoded[0], decoded[1]] != DCR_TESTNET_P2PKH_VERSION {
-        return Err(DerivationError::Invalid(
-            "not a decred testnet address".into(),
-        ));
-    }
-    let mut hash = [0u8; 20];
-    hash.copy_from_slice(&decoded[2..22]);
-    Ok(hash)
-}
-
-pub fn validate_decred_address(address: &str, testnet: bool) -> bool {
-    match decode_dcr_address(address) {
-        Ok(_) => !testnet,
-        Err(_) => testnet && decode_decred_testnet_address(address).is_ok(),
+/// Returned only a hash, for `Ds…` and `Dc…` alike, so every send paid a
+/// P2PKH output whatever the address named: a payment to a script hash went
+/// to a key hash nobody holds. Only secp256k1 ECDSA pubkey hash and script
+/// hash are payable here; Decred's other forms — pay-to-pubkey (`Dk…`),
+/// Ed25519 (`De…`) and Schnorr (`DS…`) pubkey hash — and every address of
+/// another network are refused.
+pub(crate) fn parse_decred_address(
+    chain: Chain,
+    address: &str,
+) -> Result<ParsedUtxoAddress, DerivationError> {
+    let (p2pkh, p2sh) = chain.decred_address_versions()?;
+    let refused =
+        || DerivationError::invalid("Not a Decred P2PKH or P2SH address on the selected network");
+    let payload = dcr_base58check_decode(address.trim()).map_err(|_| refused())?;
+    let (version, hash) = payload.split_first_chunk::<2>().ok_or_else(refused)?;
+    let hash: [u8; 20] = hash.try_into().map_err(|_| refused())?;
+    if *version == p2pkh {
+        Ok(ParsedUtxoAddress::P2pkh(hash))
+    } else if *version == p2sh {
+        Ok(ParsedUtxoAddress::P2sh(hash))
+    } else {
+        Err(refused())
     }
 }
 
@@ -310,8 +295,10 @@ fn derive_secp_keypair(
     Ok((public_key, xpriv.private_key.secret_bytes()))
 }
 
-// Derive Decred mainnet address (Ds…), public key, and private key from a mnemonic.
-pub(crate) fn derive_from_seed_phrase(
+// Derive the Decred P2PKH address on `chain`'s network, public key and
+// private key from a mnemonic.
+fn derive_from_seed_phrase(
+    chain: Chain,
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
@@ -321,33 +308,11 @@ pub(crate) fn derive_from_seed_phrase(
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let (public_key, private_bytes) =
         derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    let pubkey_hash = dcr_hash160(&public_key.serialize());
-    Ok((
-        want_address.then(|| encode_dcr_p2pkh(&pubkey_hash)),
-        want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(private_bytes)),
-    ))
-}
-
-pub(crate) const DCR_TESTNET_P2PKH_VERSION: [u8; 2] = [0x0F, 0x21];
-
-// Derive Decred testnet address (Ts…), public key, and private key from a mnemonic.
-pub(crate) fn derive_from_seed_phrase_testnet(
-    seed_phrase: &str,
-    derivation_path: &str,
-    passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let (public_key, private_bytes) =
-        derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    let pubkey_hash = dcr_hash160(&public_key.serialize());
     let address = if want_address {
-        let mut payload = Vec::with_capacity(22);
-        payload.extend_from_slice(&DCR_TESTNET_P2PKH_VERSION);
-        payload.extend_from_slice(&pubkey_hash);
-        Some(dcr_base58check_encode(&payload))
+        Some(encode_decred_p2pkh(
+            chain,
+            &dcr_hash160(&public_key.serialize()),
+        )?)
     } else {
         None
     };
@@ -375,6 +340,7 @@ pub fn derive_decred(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
+        Chain::Decred,
         &seed_phrase,
         &derivation_path,
         passphrase.as_deref(),
@@ -402,7 +368,8 @@ pub fn derive_decred_testnet(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase_testnet(
+    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
+        Chain::DecredTestnet,
         &seed_phrase,
         &derivation_path,
         passphrase.as_deref(),
@@ -439,23 +406,93 @@ mod tests {
         );
     }
 
+    /// dcrd's own address vectors: each address with the script it pays.
+    /// https://github.com/decred/dcrd/blob/master/txscript/stdaddr/address_test.go
+    const DCRD_PAYABLE: [(Chain, &str, &str); 6] = [
+        (
+            Chain::Decred,
+            "DsUZxxoHJSty8DCfwfartwTYbuhmVct7tJu",
+            "76a9142789d58cfa0957d206f025c2af056fc8a77cebb088ac",
+        ),
+        (
+            Chain::Decred,
+            "DsU7xcg53nxaKLLcAUSKyRndjG78Z2VZnX9",
+            "76a914229ebac30efd6a69eec9c1a48e048b7c975c25f288ac",
+        ),
+        (
+            Chain::DecredTestnet,
+            "Tso2MVTUeVrjHTBFedFhiyM7yVTbieqp91h",
+            "76a914f15da1cb8d1bcb162c6ab446c95757a6e791c91688ac",
+        ),
+        (
+            Chain::Decred,
+            "DcuQKx8BES9wU7C6Q5VmLBjw436r27hayjS",
+            "a914f0b4e85100aee1a996f22915eb3c3f764d53779a87",
+        ),
+        (
+            Chain::Decred,
+            "DcqgK4N4Ccucu2Sq4VDAdu4wH4LASLhzLVp",
+            "a914c7da5095683436f4435fc4e7163dcafda1a2d00787",
+        ),
+        (
+            Chain::DecredTestnet,
+            "TccWLgcquqvwrfBocq5mcK5kBiyw8MvyvCi",
+            "a91436c1ca10a8a6a4b5d4204ac970853979903aa28487",
+        ),
+    ];
+
     #[test]
-    fn p2pkh_address_roundtrip() {
-        let hash = [0x11u8; 20];
-        let addr = encode_dcr_p2pkh(&hash);
-        assert!(addr.starts_with("Ds"));
-        let decoded = decode_dcr_address(&addr).unwrap();
-        assert_eq!(decoded, hash);
+    fn dcrd_vectors_pay_the_script_the_address_names() {
+        for (chain, address, script) in DCRD_PAYABLE {
+            let parsed = parse_decred_address(chain, address).unwrap();
+            assert_eq!(hex::encode(parsed.script_pubkey()), script, "{address}");
+            let other = if chain == Chain::Decred {
+                Chain::DecredTestnet
+            } else {
+                Chain::Decred
+            };
+            assert!(parse_decred_address(other, address).is_err(), "{address}");
+        }
     }
 
     #[test]
-    fn rejects_garbage() {
-        assert!(!validate_decred_address("", false));
-        assert!(!validate_decred_address("not-a-decred-address", false));
-        // Bitcoin P2PKH starts with "1" — wrong version byte for DCR.
-        assert!(!validate_decred_address(
+    fn p2pkh_encoding_matches_dcrd() {
+        for (chain, address, script) in DCRD_PAYABLE {
+            if let Some(hash) = script.strip_prefix("76a914") {
+                let hash: [u8; 20] = hex::decode(&hash[..40]).unwrap().try_into().unwrap();
+                assert_eq!(encode_decred_p2pkh(chain, &hash).unwrap(), address);
+            }
+        }
+    }
+
+    #[test]
+    fn refuses_what_it_cannot_pay() {
+        for address in [
+            "",
+            "not-a-decred-address",
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-            false
-        ));
+            // dcrd's pay-to-pubkey, Ed25519 and Schnorr pubkey-hash vectors:
+            // valid Decred addresses whose scripts these sends do not build.
+            "DkM3ZigNyiwHrsXRjkDQ8t8tW6uKGW9g61qEkG3bMqQPQWYEf5X3J",
+            "DeeUhrRoTp4DftsqddVW96yMGMW4sgQFYUE",
+            "DSXcZv4oSRiEoWL2a9aD8sgfptRo1YEXNKj",
+            // A checksum broken in its last character.
+            "DsUZxxoHJSty8DCfwfartwTYbuhmVct7tJv",
+        ] {
+            assert!(
+                parse_decred_address(Chain::Decred, address).is_err(),
+                "{address}"
+            );
+        }
+        for address in [
+            "TkKmMiY5iDh4U3KkSopYgkU1AzhAcQZiSoVhYhFymZHGMi9LM9Fdt",
+            "TeeXvqZJrc7KnFZCT27fHfzcrTTzSF1aSRG",
+            "TSr4xSiznUfzxkJcH7F3xuaFCUBdEb5Jfzg",
+        ] {
+            assert!(
+                parse_decred_address(Chain::DecredTestnet, address).is_err(),
+                "{address}"
+            );
+        }
     }
 }

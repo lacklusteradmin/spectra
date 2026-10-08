@@ -112,15 +112,20 @@ const icp = (path) => {
   crc.writeUInt32BE(require('node:zlib').crc32(hash));
   return Buffer.concat([crc, hash]).toString('hex');
 };
+// A phrase's base address: the payment key's hash, then that of the
+// account's CIP-1852 stake key at role 2, index 0.
 const cardano = (mainnet) => (path) => {
   const root = CSL.Bip32PrivateKey.from_bip39_entropy(Buffer.from(bip39.mnemonicToEntropy(PHRASE), 'hex'), Buffer.alloc(0));
-  let key = root;
-  for (const segment of path.split('/').slice(1)) {
-    const index = parseInt(segment, 10);
-    key = key.derive(segment.endsWith("'") ? (index | 0x80000000) >>> 0 : index);
-  }
-  const credential = CSL.Credential.from_keyhash(key.to_public().to_raw_key().hash());
-  return CSL.EnterpriseAddress.new(mainnet ? 1 : 0, credential).to_address().to_bech32();
+  const credential = (keyPath) => {
+    let key = root;
+    for (const segment of keyPath.split('/').slice(1)) {
+      const index = parseInt(segment, 10);
+      key = key.derive(segment.endsWith("'") ? (index | 0x80000000) >>> 0 : index);
+    }
+    return CSL.Credential.from_keyhash(key.to_public().to_raw_key().hash());
+  };
+  const stakePath = path.split('/').slice(0, 4).concat(['2', '0']).join('/');
+  return CSL.BaseAddress.new(mainnet ? 1 : 0, credential(path), credential(stakePath)).to_address().to_bech32();
 };
 
 // chain → [[profile, template, address encoder]], from each chain's wallets.

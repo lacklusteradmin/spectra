@@ -10,7 +10,7 @@ enum StakingTestSupport {
     ) -> SendArtifact {
         SendArtifact(
             id: id, revision: 1, stage: stage, walletId: "wallet", chainId: chain,
-            sender: "owner", recipient: "validator", amount: "1.234567891", asset: chain.gasTokenSymbol,
+            sender: "owner", recipient: "validator", memo: nil, amount: "1.234567891", asset: chain.gasTokenSymbol,
             symbol: chain.gasTokenSymbol,
             staking: StakingRequest(
                 walletId: "wallet", chainId: chain, action: .stake,

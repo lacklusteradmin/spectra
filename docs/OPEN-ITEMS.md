@@ -340,6 +340,12 @@ Customisation stays functional: no colours, icons or other decoration.
   its history row and offer, from the transaction's detail, the proof that
   monero-wallet-cli's `check_tx_key` verifies. Owned subaddresses are under
   [Wallet import and address recovery](#wallet-import-and-address-recovery).
+- [ ] **Cardano: stake address and rewards.** A phrase wallet holds a base
+  address, so its account has a stake key at `m/1852'/1815'/{account}'/2/0`.
+  Show the stake address (CIP-19 type 14, `stake1…`/`stake_test1…`) and its
+  reward balance and delegation as Koios reports them for that stake
+  address; a raw-key wallet has neither. Withdrawing rewards and delegating
+  are a staking adapter under [Staking coverage](#staking-coverage).
 - [x] **Test networks: where to get coins.** A test network's page links its
   faucet from the registry, checked for the concrete network. Dogecoin
   testnet, Decred testnet and Kaspa TN10 have none yet: re-check
@@ -361,7 +367,7 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
 
 ### Transfer correctness
 
-- [ ] **Fix Decred destination script construction first.**
+- [x] **Fix Decred destination script construction first.**
   `decode_dcr_address` accepts both `Ds…` P2PKH and `Dc…` P2SH addresses but
   returns only the hash; `send/decred.rs` always creates a P2PKH recipient
   output. Retain the decoded network and script type and build the matching
@@ -370,7 +376,7 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   vectors and CLI inspection of the signed transaction. See
   [address decoding](../core/src/derivation/decred.rs) and
   [transfer construction](../core/src/send/decred.rs).
-- [ ] **Derive Cardano base addresses.** Spectra derives a CIP-19
+- [x] **Derive Cardano base addresses.** Spectra derives a CIP-19
   enterprise address from the payment key at `m/1852'/1815'/{account}'/0/0`,
   with no stake credential. Mainstream Cardano wallets derive base addresses
   that add the stake key at `m/1852'/1815'/{account}'/2/0`, so a phrase
@@ -386,7 +392,7 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   and its reward balance; delegation is a staking adapter under
   [Staking coverage](#staking-coverage). See
   [derivation](../core/src/derivation/cardano.rs).
-- [ ] **Send XRP destination tags and Stellar memos.** XRP payments carry no
+- [x] **Send XRP destination tags and Stellar memos.** XRP payments carry no
   `DestinationTag` and Stellar payments no memo, so a send to an exchange's
   shared deposit address cannot say whose deposit it is. Take a tag or memo
   in the send flow, bind it into the review digest, and refuse a send to an
@@ -394,7 +400,7 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   Stellar's SEP-29 `config.memo_required`. Account closing refuses those
   destinations today for the same reason. Prove the encodings against the
   networks' SDKs and the refusals through the CLI.
-- [ ] **Register a NEAR token's recipient before sending it.** A NEP-141
+- [x] **Register a NEAR token's recipient before sending it.** A NEP-141
   send is `ft_transfer` alone ([send_near.rs](../core/src/service/send_near.rs)),
   and a standard token contract refuses a transfer to an account it has not
   registered, after the gas is spent. Read `storage_balance_of` for the

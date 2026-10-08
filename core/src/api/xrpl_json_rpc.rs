@@ -57,6 +57,17 @@ pub(crate) struct XrpReserveState {
     pub reserve_increment: u64,
 }
 
+/// `lsfRequireDestTag`: payments to the account need a destination tag.
+pub(crate) const LSF_REQUIRE_DEST_TAG: u32 = 0x0002_0000;
+
+/// An account root's `Flags`.
+fn flags_of(root: &Value) -> Result<u32, ApiError> {
+    root.get("Flags")
+        .and_then(Value::as_u64)
+        .and_then(|flags| u32::try_from(flags).ok())
+        .or_decode("account_info: missing Flags")
+}
+
 /// What deleting an account depends on, from one node's validated ledger.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct XrpDeletionState {
@@ -353,15 +364,12 @@ impl XrplClient {
                     })
                 }
             };
-            let destination_flags = match node.account_root(&endpoint, destination).await? {
-                None => None,
-                Some(root) => Some(
-                    root.get("Flags")
-                        .and_then(Value::as_u64)
-                        .and_then(|flags| u32::try_from(flags).ok())
-                        .or_decode("account_info: missing Flags")?,
-                ),
-            };
+            let destination_flags = node
+                .account_root(&endpoint, destination)
+                .await?
+                .as_ref()
+                .map(flags_of)
+                .transpose()?;
             Ok(XrpDeletionState {
                 source,
                 destination_flags,
@@ -369,6 +377,25 @@ impl XrplClient {
                     .map_err(|_| ApiError::decode("server_state: ledger index out of range"))?,
                 reserve_base: validated("reserve_base")?,
                 reserve_increment: validated("reserve_inc")?,
+            })
+        })
+        .await
+    }
+
+    /// Whether payments to `address` must carry a destination tag
+    /// (`lsfRequireDestTag`), from a node verified to be on `chain`. An
+    /// account the ledger does not hold asks for none.
+    pub(crate) async fn requires_destination_tag(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<bool, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint.clone()]));
+            node.verify_network(chain).await?;
+            Ok(match node.account_root(&endpoint, address).await? {
+                Some(root) => flags_of(&root)? & LSF_REQUIRE_DEST_TAG != 0,
+                None => false,
             })
         })
         .await

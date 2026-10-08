@@ -199,6 +199,7 @@ impl PreparedXrpIssuedPayment {
             fee: paid.minus(&delivered).1,
             hook_program: None,
             carried_native: None,
+            recipient_registration: None,
         })
     }
 }

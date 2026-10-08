@@ -378,6 +378,13 @@ struct SendRecipientPage: View {
                 .frame(minHeight: 44)
                 .spectraInsetFill(cornerRadius: SpectraLayout.Radius.inner)
 
+            if let chain = presentation.selectedCoin?.chainId,
+               case let kinds = paymentMemoKinds(chain: chain), !kinds.isEmpty {
+                SendPaymentMemoField(
+                    kinds: kinds, kind: Bindable(store.sendFlow).memoKind,
+                    text: Bindable(store.sendFlow).memoText)
+            }
+
             if isValidating {
                 SpectraLoadingRow(title: "Checking recipient...")
             } else if let validationError {

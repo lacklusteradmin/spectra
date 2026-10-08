@@ -19,7 +19,7 @@ struct SendStagesView: View {
 
             SendTransferPartiesView(
                 store: store, walletId: artifact.walletId, chain: artifact.chainId,
-                sender: artifact.sender, recipient: artifact.recipient,
+                sender: artifact.sender, recipient: artifact.recipient, memo: artifact.memo,
                 saveRecipient: displayedTransaction.map { record in
                     { store.addressBook.saveRecipient(of: record) }
                 })
@@ -138,8 +138,15 @@ struct SendStagesView: View {
                 LabeledContent(AppLocalization.string("Sent With It"),
                                value: "\(AmountPresentation.localizedDecimal(carried)) \(artifact.chainId.gasTokenSymbol)")
             }
-            if let program = terms.hookProgram {
+            if let registration = terms.recipientRegistration {
                 if terms.fee != "0" || terms.carriedNative != nil { Divider().opacity(0.4) }
+                LabeledContent(AppLocalization.string("Recipient Registration"),
+                               value: "\(AmountPresentation.localizedDecimal(registration)) \(artifact.chainId.gasTokenSymbol)")
+            }
+            if let program = terms.hookProgram {
+                if terms.fee != "0" || terms.carriedNative != nil || terms.recipientRegistration != nil {
+                    Divider().opacity(0.4)
+                }
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                     Label(AppLocalization.string("This token runs a program on every transfer, which can refuse it."),
                           systemImage: "gearshape.2")

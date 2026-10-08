@@ -23,6 +23,7 @@ fn request(chain_id: Chain, token_standard: Option<&str>) -> SendExecutionReques
         fee_amount: None,
         evm_overrides: None,
         sign_only: true,
+        memo: None,
     }
 }
 

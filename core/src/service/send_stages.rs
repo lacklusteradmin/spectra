@@ -642,6 +642,11 @@ impl WalletService {
         if let Some(reason) = chain.transparent_send_unavailable_reason() {
             return Err(SpectraBridgeError::invalid(reason));
         }
+        request.memo = request
+            .memo
+            .as_ref()
+            .map(|memo| memo.validated(chain))
+            .transpose()?;
         super::send_execution::validate_execution_amount(chain, &request)?;
         let state = self.app_state().await;
         if let Some(contract) = &request.contract_address {
@@ -828,6 +833,7 @@ impl WalletService {
                 transaction_hash: None,
                 attempts: Vec::new(),
                 selected_endpoints: Vec::new(),
+                memo: request.memo.clone(),
             },
             request,
             prepared,

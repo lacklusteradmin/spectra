@@ -11,9 +11,15 @@ import Foundation
 final class SendFlowState {
     @ObservationIgnored let bridge: WalletServiceBridge // Service identity is not view state.
     var walletId: String = ""
-    var holdingKey: String = ""
+    /// A memo belongs to the network it was typed for, so another holding clears it.
+    var holdingKey: String = "" {
+        didSet { if holdingKey != oldValue { clearMemo() } }
+    }
     var amount: String = ""
     var address: String = ""
+    /// The destination tag or memo for the recipient, where the network takes one.
+    var memoKind: PaymentMemoKind? = nil
+    var memoText: String = ""
     var destinationRiskWarning: String? = nil
     var destinationInfoMessage: String? = nil
     /// The recipient is checked inside the preview request.
@@ -74,13 +80,25 @@ final class SendFlowState {
         evmManualNonce = ""
     }
 
+    func clearMemo() {
+        memoKind = nil
+        memoText = ""
+    }
+
     func resetComposer() {
         invalidateSession()
         clearPreview()
         amount = ""
         address = ""
+        clearMemo()
         clearDestinationCheck()
         clearEvmOverrides()
+    }
+
+    /// The memo as core reads it: none until something is typed.
+    var paymentMemo: PaymentMemo? {
+        guard let memoKind, !memoText.isEmpty else { return nil }
+        return PaymentMemo(kind: memoKind, value: memoText)
     }
 
     /// Dismissing resets the composer; one that is not on screen is reset here.

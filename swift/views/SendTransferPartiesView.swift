@@ -9,6 +9,8 @@ struct SendTransferPartiesView: View {
     let chain: Chain
     let sender: String?
     let recipient: String
+    /// The destination tag or memo the transaction carries to the recipient.
+    var memo: PaymentMemo? = nil
     var saveRecipient: (() -> Void)? = nil
 
     var body: some View {
@@ -25,6 +27,10 @@ struct SendTransferPartiesView: View {
             SendTransferPartyView(
                 store: store, walletId: walletId, chain: chain,
                 address: recipient, isSender: false, saveRecipient: saveRecipient)
+            if let memo {
+                PaymentMemoRow(memo: memo)
+                    .accessibilityIdentifier("send.review.memo")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

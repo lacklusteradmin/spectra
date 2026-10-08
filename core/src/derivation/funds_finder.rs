@@ -196,6 +196,34 @@ mod tests {
         );
     }
 
+    /// The search reads a Cardano phrase where its wallets hold it: each
+    /// account's base address, as CSL derives it
+    /// (scripts/generate-derivation-profile-vectors.cjs).
+    #[test]
+    fn cardano_candidates_are_base_addresses() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/derivation-profiles.json"
+        ))
+        .unwrap();
+        assert_eq!(fixture["phrase"], PHRASE);
+        let candidates = chain_candidates(Chain::Cardano, PHRASE, None, 2);
+        let expected: Vec<_> = fixture["vectors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|v| v["chain"] == "cardano")
+            .map(|v| v["address"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|c| c.address.as_str())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(expected.iter().all(|address| address.starts_with("addr1q")));
+    }
+
     /// Each account is its own wallet, so no two candidates on a chain share
     /// an address.
     #[test]

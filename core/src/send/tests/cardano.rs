@@ -11,14 +11,13 @@ fn params() -> CardanoProtocolParams {
 }
 
 fn test_key() -> ([u8; 64], [u8; 32]) {
-    crate::derivation::cardano::derive_cardano_icarus_material(
+    let (key, public, _) = crate::derivation::cardano::derive_cardano_base_keys(
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
         "",
-        None,
-        0,
-        Some("m/1852'/1815'/0'/0/0"),
+        "m/1852'/1815'/0'/0/0",
     )
-    .unwrap()
+    .unwrap();
+    (key, public)
 }
 
 /// A mainnet address's bech32 from its bytes.

@@ -8,6 +8,7 @@ pub mod keys;
 pub mod message;
 
 pub mod payload;
+pub mod payment_memo;
 pub mod preview_decode;
 pub mod preview_types;
 pub mod stages;
@@ -114,6 +115,9 @@ pub struct SendExecutionRequest {
     /// EVM overrides (nonce, custom gas fees). Typed; Rust assembles the
     /// payload fragment internally — no JSON shuttle from Swift.
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
+    /// The XRP destination tag or Stellar memo the payment carries.
+    #[uniffi(default = None)]
+    pub memo: Option<payment_memo::PaymentMemo>,
     /// Sign the transaction and stop, without putting it on the chain.
     ///
     /// Everything a send does except the irreversible step: the stored
@@ -507,6 +511,7 @@ mod tests {
             fee_amount: None,
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         };
         request.zeroize_sensitive_fields();
         assert_eq!(request.password.as_deref(), Some(""));

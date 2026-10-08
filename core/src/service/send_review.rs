@@ -9,6 +9,9 @@ pub struct SendReviewInput {
     pub amount: String,
     pub destination: String,
     pub overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
+    /// The XRP destination tag or Stellar memo for the recipient.
+    #[uniffi(default = None)]
+    pub memo: Option<crate::send::payment_memo::PaymentMemo>,
 }
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct OwnedSendReview {
@@ -69,6 +72,11 @@ impl WalletService {
                     input.overrides.clone(),
                 )
                 .await?;
+            quote.request.memo = input
+                .memo
+                .as_ref()
+                .map(|memo| memo.validated(quote.request.chain_id))
+                .transpose()?;
             if let Some(crate::send::flow::SendPreview::Ethereum { preview }) = &mut quote.preview {
                 let fees = quote
                     .request
@@ -235,6 +243,7 @@ mod tests {
             amount: "1.000000000000000001".into(),
             destination: format!("0x{}", "11".repeat(20)),
             overrides: None,
+            memo: None,
         }
     }
     fn reviewed(input: &SendReviewInput) -> ReviewedSend {
@@ -257,6 +266,7 @@ mod tests {
                 fee_amount: None,
                 evm_overrides: None,
                 sign_only: false,
+                memo: None,
             },
         }
     }

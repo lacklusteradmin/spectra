@@ -685,6 +685,7 @@ impl WalletService {
                 fee_amount: (shape.fee_field == SendFeeField::FeeAmount).then(|| fee.clone()),
                 evm_overrides: overrides,
                 sign_only: false,
+                memo: None,
             },
             preview,
         })

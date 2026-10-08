@@ -253,6 +253,7 @@ impl WalletService {
             fee_amount: Some(network_fee),
             evm_overrides: None,
             sign_only: false,
+            memo: None,
         };
         let state = self.app_state().await;
         let mut stored = StoredSend {
@@ -278,6 +279,7 @@ impl WalletService {
                 transaction_hash: None,
                 attempts: Vec::new(),
                 selected_endpoints: Vec::new(),
+                memo: None,
             },
             request,
             prepared,

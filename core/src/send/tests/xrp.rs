@@ -10,6 +10,7 @@ fn signed_payment_matches_official_xrpl_codec_and_signature() {
     let signed = build_signed_payment(
         tx["Account"].as_str().unwrap(),
         tx["Destination"].as_str().unwrap(),
+        None,
         &PaymentAmount::Drops(tx["Amount"].as_str().unwrap().parse().unwrap()),
         None,
         tx["Fee"].as_str().unwrap().parse().unwrap(),
@@ -40,6 +41,7 @@ fn signed_account_delete_matches_official_xrpl_codec_and_signature() {
     let signed = build_signed_account_delete(
         tx["Account"].as_str().unwrap(),
         tx["Destination"].as_str().unwrap(),
+        None,
         tx["Fee"].as_str().unwrap().parse().unwrap(),
         tx["Sequence"].as_u64().unwrap().try_into().unwrap(),
         &key,
@@ -52,6 +54,7 @@ fn signed_account_delete_matches_official_xrpl_codec_and_signature() {
         build_signed_account_delete(
             tx["Account"].as_str().unwrap(),
             tx["Account"].as_str().unwrap(),
+            None,
             200_000,
             1,
             &key,
@@ -85,6 +88,7 @@ fn issued_currency_transactions_match_the_official_codec() {
         let signed = build_signed_payment(
             tx["Account"].as_str().unwrap(),
             tx["Destination"].as_str().unwrap(),
+            None,
             &PaymentAmount::Issued(issued(&tx["Amount"])),
             send_max.as_ref(),
             tx["Fee"].as_str().unwrap().parse().unwrap(),
@@ -117,6 +121,7 @@ fn issued_currency_transactions_match_the_official_codec() {
         build_signed_payment(
             tx["Account"].as_str().unwrap(),
             tx["Destination"].as_str().unwrap(),
+            None,
             &PaymentAmount::Issued(amount.clone()),
             Some(&short),
             12,
@@ -140,4 +145,60 @@ fn issued_currency_transactions_match_the_official_codec() {
         )
         .is_err()
     );
+}
+
+/// Destination tags as ripple-binary-codec places them, after `Sequence`,
+/// on XRP and issued-currency payments and on AccountDelete, signed as
+/// ripple-keypairs signs them.
+#[test]
+fn destination_tags_match_the_official_codec() {
+    use crate::api::xrpl_amount::{IouValue, XrplIssue};
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/payment-memos.json")).unwrap();
+    let vectors = &fixture["xrpl"];
+    let key = hex::decode(vectors["key"].as_str().unwrap()).unwrap();
+    let issued = |amount: &serde_json::Value| IssuedAmount {
+        issue: XrplIssue::parse(&format!(
+            "{}.{}",
+            amount["currency"].as_str().unwrap(),
+            amount["issuer"].as_str().unwrap()
+        ))
+        .unwrap(),
+        value: IouValue::parse(amount["value"].as_str().unwrap()).unwrap(),
+    };
+    let tag = |tx: &serde_json::Value| Some(tx["DestinationTag"].as_u64().unwrap() as u32);
+    for vector in vectors["payments"].as_array().unwrap() {
+        let tx = &vector["transaction"];
+        let amount = match tx["Amount"].as_str() {
+            Some(drops) => PaymentAmount::Drops(drops.parse().unwrap()),
+            None => PaymentAmount::Issued(issued(&tx["Amount"])),
+        };
+        let send_max = (!tx["SendMax"].is_null()).then(|| issued(&tx["SendMax"]));
+        let signed = build_signed_payment(
+            tx["Account"].as_str().unwrap(),
+            tx["Destination"].as_str().unwrap(),
+            tag(tx),
+            &amount,
+            send_max.as_ref(),
+            tx["Fee"].as_str().unwrap().parse().unwrap(),
+            tx["Sequence"].as_u64().unwrap().try_into().unwrap(),
+            &key,
+            tx["SigningPubKey"].as_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(signed, vector["signed_hex"], "{tx}");
+    }
+    let vector = &vectors["account_delete"];
+    let tx = &vector["transaction"];
+    let signed = build_signed_account_delete(
+        tx["Account"].as_str().unwrap(),
+        tx["Destination"].as_str().unwrap(),
+        tag(tx),
+        tx["Fee"].as_str().unwrap().parse().unwrap(),
+        tx["Sequence"].as_u64().unwrap().try_into().unwrap(),
+        &key,
+        tx["SigningPubKey"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(signed, vector["signed_hex"]);
 }
