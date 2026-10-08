@@ -111,9 +111,10 @@ struct ImportMethodTests {
         #expect(draft.importKind == .phrase)
     }
 
-    /// Restoring a Monero wallet asks where its scan starts; a typed height
-    /// must be a block number, and no other network asks.
-    @Test func onlyARestoredMoneroWalletAsksForARestoreHeight() {
+    /// Restoring a Monero wallet, or a Zcash one for its shielded funds, asks
+    /// where its scan starts; a typed height must be a block number, and no
+    /// other network asks.
+    @Test func onlyARestoredScanningWalletAsksForARestoreHeight() {
         let draft = WalletImportDraft()
         draft.configure(chain: .monero, method: .importPhrase)
         #expect(draft.asksRestoreHeight)
@@ -122,6 +123,10 @@ struct ImportMethodTests {
         draft.restoreHeightInput = "3100000"
         #expect(draft.restoreHeight == 3_100_000)
         draft.configure(chain: .monero, method: .createPhrase)
+        #expect(!draft.asksRestoreHeight)
+        draft.configure(chain: .zcash, method: .importPhrase)
+        #expect(draft.asksRestoreHeight)
+        draft.configure(chain: .zcash, method: .importPrivateKey)
         #expect(!draft.asksRestoreHeight)
         draft.configure(chain: .bitcoin, method: .importPhrase)
         #expect(!draft.asksRestoreHeight)

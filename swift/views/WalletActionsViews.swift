@@ -15,11 +15,15 @@ extension WalletAction {
         case .scanBlocks: AppLocalization.string("Sync Local Wallet")
         case .coins: AppLocalization.string("Addresses and Coins")
         case .tokenApprovals: AppLocalization.string("Token Approvals")
+        case .nfts: AppLocalization.string("NFTs")
+        case .shieldedFunds: AppLocalization.string("Shielded Funds")
+        case .mwebFunds: AppLocalization.string("MWEB Funds")
         case .networkAccount: AppLocalization.string("Network Account")
         case .accessKeys: AppLocalization.string("Access Keys")
         case .coinObjects: AppLocalization.string("Coin Objects")
         case .getTestCoins: AppLocalization.string("Get Test Coins")
         case .tokenAccounts: AppLocalization.string("Token Accounts")
+        case .trustLines: AppLocalization.string("Trust Lines")
         case .signMessage: AppLocalization.string("Sign Message")
         case .verifyMessage: AppLocalization.string("Verify Message")
         case .addToNetwork: AppLocalization.string("Add to Another Network")
@@ -41,11 +45,15 @@ extension WalletAction {
         case .scanBlocks: "square.stack.3d.down.right"
         case .coins: "list.bullet.rectangle"
         case .tokenApprovals: "checkmark.shield"
+        case .nfts: "square.on.square"
+        case .shieldedFunds: "eye.slash"
+        case .mwebFunds: "eye.slash.circle"
         case .networkAccount: "gauge.with.dots.needle.33percent"
         case .accessKeys: "key.2.on.ring"
         case .coinObjects: "circle.grid.3x3"
         case .getTestCoins: "drop"
         case .tokenAccounts: "tray"
+        case .trustLines: "link"
         case .signMessage: "signature"
         case .verifyMessage: "checkmark.seal"
         case .addToNetwork: "plus.square.on.square"

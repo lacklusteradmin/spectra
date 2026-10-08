@@ -154,7 +154,7 @@ final class WalletImportDraft {
         // A new Monero wallet scans from near now; a restored one from the
         // height typed, if any.
         let restoreHeight: UInt64? =
-            isCreateMode ? (try? moneroNewWalletRestoreHeight(chain: chain)) : self.restoreHeight
+            isCreateMode ? newWalletRestoreHeight(chain: chain) : self.restoreHeight
         return WalletImportCommit(
             password: walletPasswordInput,
             request: WalletImportRequest(walletName: name, chain: chain, kind: kind),

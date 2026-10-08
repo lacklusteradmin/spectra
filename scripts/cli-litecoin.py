@@ -240,7 +240,7 @@ try:
         before = len(queries)
         run('send', 'build', '--from', 'protected', '--to', 'ltcmweb1unsupported',
             '--amount', '0.0001', '--endpoint', endpoint, success=False)
-        assert len(queries) == before, 'MWEB refusal must precede provider reads'
+        assert len(queries) == before, 'a malformed MWEB address is refused before provider reads'
         journal = pathlib.Path(env['SPECTRA_LOOPBACK_ONLY'])
         assert not journal.exists() or not journal.read_text().strip(), journal.read_text()
     print('Litecoin legacy/native/nested recovery, balance, quote and durable signing acceptance passed')

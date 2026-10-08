@@ -64,6 +64,19 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
                     .await
                     .is_err_and(|error| error.to_string().contains("Only an EVM wallet"))
         }
+        // The status is read from the wallet's own shielded database.
+        WalletAction::ShieldedFunds => service.zcash_shielded_status(id).await.is_ok(),
+        // The status is read from the wallet's own scan cache.
+        WalletAction::MwebFunds => service.litecoin_mweb_status(id).await.is_ok(),
+        // The inventory is an indexer's; a test asks only whether a wallet
+        // is refused as not an EVM one.
+        WalletAction::Nfts => {
+            chain.is_evm()
+                || !service
+                    .wallet_nfts(id)
+                    .await
+                    .is_err_and(|error| error.to_string().contains("Only an EVM wallet"))
+        }
         // The account is read from a node; a test asks only for the refusal
         // of a network whose account is a balance.
         WalletAction::NetworkAccount => !service
@@ -74,6 +87,15 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
             .wallet_empty_token_accounts(id)
             .await
             .is_err_and(|error| error.to_string().contains("Only a Solana wallet")),
+        // The lines are read from a node; a test asks only for the refusal
+        // of a network that keeps none.
+        WalletAction::TrustLines => {
+            matches!(chain.mainnet_counterpart(), Chain::Xrp | Chain::Stellar)
+                || !service
+                    .wallet_trust_lines(id)
+                    .await
+                    .is_err_and(|error| error.to_string().contains("keeps trust lines"))
+        }
         WalletAction::GetTestCoins => {
             crate::registry::chain_faucet_url(chain).is_some_and(|url| url.starts_with("https://"))
         }
@@ -130,7 +152,7 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
     }
 }
 
-const ACTIONS: [WalletAction; 21] = [
+const ACTIONS: [WalletAction; 25] = [
     WalletAction::Send,
     WalletAction::Receive,
     WalletAction::History,
@@ -140,10 +162,14 @@ const ACTIONS: [WalletAction; 21] = [
     WalletAction::ScanBlocks,
     WalletAction::Coins,
     WalletAction::TokenApprovals,
+    WalletAction::Nfts,
+    WalletAction::ShieldedFunds,
+    WalletAction::MwebFunds,
     WalletAction::NetworkAccount,
     WalletAction::AccessKeys,
     WalletAction::CoinObjects,
     WalletAction::TokenAccounts,
+    WalletAction::TrustLines,
     WalletAction::GetTestCoins,
     WalletAction::SignMessage,
     WalletAction::VerifyMessage,
@@ -153,6 +179,46 @@ const ACTIONS: [WalletAction; 21] = [
     WalletAction::ExportKeys,
     WalletAction::Delete,
 ];
+
+/// Each action's place in [`ACTIONS`]. A new action does not compile here
+/// until it has one, so the list cannot leave an action unchecked, as it
+/// once left three.
+fn position(action: WalletAction) -> usize {
+    match action {
+        WalletAction::Send => 0,
+        WalletAction::Receive => 1,
+        WalletAction::History => 2,
+        WalletAction::OpenInExplorer => 3,
+        WalletAction::AddKeys => 4,
+        WalletAction::Stake => 5,
+        WalletAction::ScanBlocks => 6,
+        WalletAction::Coins => 7,
+        WalletAction::TokenApprovals => 8,
+        WalletAction::Nfts => 9,
+        WalletAction::ShieldedFunds => 10,
+        WalletAction::MwebFunds => 11,
+        WalletAction::NetworkAccount => 12,
+        WalletAction::AccessKeys => 13,
+        WalletAction::CoinObjects => 14,
+        WalletAction::TokenAccounts => 15,
+        WalletAction::TrustLines => 16,
+        WalletAction::GetTestCoins => 17,
+        WalletAction::SignMessage => 18,
+        WalletAction::VerifyMessage => 19,
+        WalletAction::AddToNetwork => 20,
+        WalletAction::Rename => 21,
+        WalletAction::RevealPhrase => 22,
+        WalletAction::ExportKeys => 23,
+        WalletAction::Delete => 24,
+    }
+}
+
+#[test]
+fn the_checked_actions_are_every_action() {
+    for (index, action) in ACTIONS.into_iter().enumerate() {
+        assert_eq!(position(action), index, "{action:?}");
+    }
+}
 
 /// The descriptor is honest: on every network and for every way a wallet
 /// can be added there, each action it lists is one core performs for that

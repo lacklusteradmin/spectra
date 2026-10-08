@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "ffi", "cli", "tools/uniffi-bindgen"]
+members = ["core", "ffi", "cli", "tools/uniffi-bindgen", "tools/zcash-fixture", "tools/litecoin-mweb-fixture"]
 resolver = "3"
 
 # Dependencies are optimized even in debug and test builds. Key stretching

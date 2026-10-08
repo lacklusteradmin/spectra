@@ -97,9 +97,22 @@ impl WalletService {
             self.fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())
                 .await?
         };
+        let mut native_amount = balance_amount(&native.amount_display)?;
+        // A Zcash wallet's shielded funds are ZEC too, and a Litecoin
+        // wallet's MWEB funds LTC: what its last scan found, read from this
+        // device.
+        let scanned = match chain.mainnet_counterpart() {
+            Chain::Zcash => self.zcash_shielded_total(&entry.wallet_id).await?,
+            Chain::Litecoin => self.litecoin_mweb_total(&entry.wallet_id).await?,
+            _ => None,
+        };
+        if let Some(scanned) = scanned {
+            native_amount = crate::decimal::add(&native_amount, &scanned)
+                .ok_or_else(|| SpectraBridgeError::failure("invalid balance amount"))?;
+        }
         let mut holdings = vec![
             AssetHolding {
-                amount: balance_amount(&native.amount_display)?,
+                amount: native_amount,
                 ..native_coin_template(entry.chain_id)
                     .ok_or_else(|| SpectraBridgeError::failure("missing native asset"))?
             }

@@ -309,8 +309,9 @@ struct WalletSecretStep: View {
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
         }
     }
-    /// Where a restored Monero wallet's scan starts. Blank reads a Polyseed's
-    /// birthday, or scans a 25-word seed from the start of the chain.
+    /// Where a restored wallet's scan starts: a Monero wallet's, or a Zcash
+    /// wallet's for its shielded funds. Blank reads a Polyseed's birthday, or
+    /// scans from the first block the wallet could have received at.
     private var restoreHeightCard: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
             Text(AppLocalization.string("Restore Height (Optional)")).font(.subheadline.weight(.semibold))
@@ -319,7 +320,7 @@ struct WalletSecretStep: View {
                 .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
             if draft.isRestoreHeightValid {
                 Text(AppLocalization.string(
-                    "The scan starts here and cannot find funds received earlier. Leave it blank to use a Polyseed's creation date, or to scan a 25-word seed from the start."
+                    "The scan starts here and cannot find funds received earlier. Leave it blank to use the phrase's creation date when it records one (a Polyseed), or to scan from the first block the wallet could have received at, which takes longest."
                 )).font(.caption).foregroundStyle(.secondary)
             } else {
                 Text(AppLocalization.string("A restore height is a whole block number.")).font(.caption)

@@ -16,6 +16,15 @@ struct AddCustomTokenView: View {
     @State private var isSaving = false
     @State private var hasLoaded = false
 
+    /// What the selected network calls a token's identifier.
+    private var identifierPrompt: String {
+        let prompt = selectedChain?.entry?.contractAddressPrompt ?? ""
+        return prompt.isEmpty ? "Token Identifier" : prompt
+    }
+
+    /// The places the selected network's protocol gives every token, if it fixes them.
+    private var fixedDecimals: UInt32? { selectedChain?.entry?.fixedTokenDecimals }
+
     var body: some View {
         Form {
             Section(AppLocalization.string("Network")) {
@@ -27,7 +36,7 @@ struct AddCustomTokenView: View {
                         Text(AppLocalization.string("Select a chain")).tag(nil as Chain?)
                         ForEach(Chain.tokenHostingChains) { chain in Text(chain.displayName).tag(Optional(chain)) }
                     }
-                    TextField(AppLocalization.string("Token Identifier"), text: $identifierInput)
+                    TextField(AppLocalization.string(identifierPrompt), text: $identifierInput)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                 }
             }
@@ -35,7 +44,12 @@ struct AddCustomTokenView: View {
                 TextField(AppLocalization.string("Name"), text: $nameInput)
                 TextField(AppLocalization.string("Symbol"), text: $symbolInput)
                     .textInputAutocapitalization(.characters).autocorrectionDisabled()
-                Stepper(AppLocalization.format("Token Supports: %lld decimals", count: Int(decimalsInput), Int(decimalsInput)), value: $decimalsInput, in: 0...CoreReferenceTables.bounds.maxTokenDecimals)
+                if let fixed = fixedDecimals {
+                    // The network's protocol fixes the places; there is nothing to choose.
+                    Text(AppLocalization.format("Token Supports: %lld decimals", count: Int(fixed), Int(fixed)))
+                } else {
+                    Stepper(AppLocalization.format("Token Supports: %lld decimals", count: Int(decimalsInput), Int(decimalsInput)), value: $decimalsInput, in: 0...CoreReferenceTables.bounds.maxTokenDecimals)
+                }
             }
             Section {
                 TextField(AppLocalization.string("CoinGecko ID (Optional)"), text: $coingeckoIdInput)
@@ -61,7 +75,7 @@ struct AddCustomTokenView: View {
                         formMessage = await tokens.addCustom(
                             chain: selectedChain, symbol: symbolInput, name: nameInput,
                             contractAddress: identifierInput, coingeckoId: coingeckoIdInput,
-                            coinpaprikaId: coinpaprikaIdInput, decimals: decimalsInput, editing: editing)
+                            coinpaprikaId: coinpaprikaIdInput, decimals: fixedDecimals ?? decimalsInput, editing: editing)
                         isSaving = false
                         if formMessage == nil { dismiss() }
                     }

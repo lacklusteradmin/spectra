@@ -499,6 +499,24 @@ impl WalletService {
             })
             .to_string());
         }
+        if chain.mainnet_counterpart() == Chain::Cardano {
+            let utxos = self.cardano_inputs(chain, &address).await?;
+            let params =
+                KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
+                    .fetch_protocol_params()
+                    .await?;
+            let (fee, max) = crate::send::cardano::ada_preview(&utxos, &params, &address)?;
+            let total: u128 = utxos.iter().map(|utxo| u128::from(utxo.lovelace)).sum();
+            let ada = |lovelace: u128| crate::decimal::from_units(lovelace, 6);
+            return Ok(json!({
+                "fee_display": ada(u128::from(fee)),
+                "fee_raw": fee.to_string(),
+                "fee_rate_description": "Protocol fee for this transaction's size; ADA held with tokens stays with them as change",
+                "balance_display": ada(total),
+                "max_sendable": ada(u128::from(max)),
+            })
+            .to_string());
+        }
         let (fee, balance) = tokio::try_join!(
             self.native_fee_estimate(chain),
             self.fetch_native_balance_summary(chain, address),
@@ -690,11 +708,11 @@ impl WalletService {
             ));
         }
         if !destination.trim().is_empty() {
-            let script = crate::derivation::utxo_address::parse_utxo_address(chain, destination)?
-                .script_pubkey();
-            if amount > 0
-                && amount < crate::send::litecoin::litecoin_dust_threshold(chain, &script)?
-            {
+            let recipient = crate::send::litecoin_mweb::prepared::CanonicalRecipient::parse(
+                chain,
+                destination,
+            )?;
+            if amount > 0 && amount < recipient.minimum_amount(chain)? {
                 return Err(SpectraBridgeError::invalid(
                     "Litecoin recipient amount is below the dust threshold",
                 ));

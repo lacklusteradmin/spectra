@@ -313,6 +313,17 @@ Customisation stays functional: no colours, icons or other decoration.
   key Spectra signs with. Delete a function-call key through the send stages.
   Full-access keys are listed only, and deleting the wallet's own key is
   refused. Show the storage the account's balance must cover.
+- [ ] **NEAR: refund token storage deposits.** Each NEP-141 token contract
+  that has registered the account holds its NEP-145 storage deposit, usually
+  0.00125 NEAR. No node lists every contract an account registered with, so
+  read `storage_balance_of` on the contracts the wallet's discovery and
+  history name, list those that hold a deposit while the token balance is
+  zero, with what each returns, and unregister them with
+  `storage_unregister` through the send stages. Refuse a non-zero token
+  balance and never pass `force`, which burns the tokens. Prove the
+  transaction against @near-js vectors and the refusals through the CLI.
+  Registering a recipient when sending is under
+  [Transfer correctness](#transfer-correctness).
 - [x] **Sui: merge coin objects.** A balance spread over many `Coin<T>`
   objects costs more gas to spend. Show each type's object count and merge a
   type's objects in one reviewed transaction, keeping the SUI gas coin
@@ -383,40 +394,74 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   Stellar's SEP-29 `config.memo_required`. Account closing refuses those
   destinations today for the same reason. Prove the encodings against the
   networks' SDKs and the refusals through the CLI.
+- [ ] **Register a NEAR token's recipient before sending it.** A NEP-141
+  send is `ft_transfer` alone ([send_near.rs](../core/src/service/send_near.rs)),
+  and a standard token contract refuses a transfer to an account it has not
+  registered, after the gas is spent. Read `storage_balance_of` for the
+  recipient; when it is unregistered, read `storage_balance_bounds` and put
+  `storage_deposit` with `registration_only` and the minimum deposit before
+  `ft_transfer` in the same reviewed transaction, the deposit shown as part
+  of the cost and bound into the review digest. Refuse a contract that
+  answers neither method rather than sending blind. Prove the two-action
+  transaction against @near-js vectors and the registered, unregistered and
+  no-NEP-145 cases through the CLI. Refunding the wallet's own deposits is
+  under [Wallet details](#wallet-details).
 
 ### Asset and privacy protocols
 
-- [ ] **Implement complete Litecoin MWEB support.** Address/key derivation,
+- [ ] **Support CIP-113 programmable tokens on Cardano.** CIP-0113
+  (Proposed; merged on 2026-09-29 and launched by the Cardano Foundation on
+  2026-10-07) holds a programmable token at the shared `programmableLogicBase`
+  script address under its owner's stake credential, which a wallet sets to
+  its payment key hash. An on-chain registry keyed by policy ID marks a
+  policy programmable, and a transfer spends from the script address with the
+  protocol-parameters UTxO and the registry's nodes as reference inputs,
+  running the global and the token's own transfer logic as zero-amount
+  withdrawals; the issuer's logic can also freeze, seize or deny holders.
+  Spectra reads only the wallet's own address, so these tokens are invisible
+  to it today, and no plain transaction moves one. Derive the wallet's
+  programmable address from its payment key hash, read balances and history
+  there, identify a token by the registry, and give it its own standard,
+  `CIP-113`, beside `Cardano Native Token`. Build transfers with the script
+  executions, their execution units, collateral and reference inputs; refuse a
+  policy the registry does not list and a transfer its logic rejects, and say
+  in the review what the issuer's logic can do. Prove the address, the
+  registry proofs and the transaction bytes against the reference
+  implementation (`cardano-foundation/cip113-programmable-tokens`), and the
+  receive, transfer, refusal and recovery paths through the CLI. The standard
+  is Proposed and its reference substandards are marked for testnets: build
+  against what issuers deploy on mainnet.
+- [x] **Implement complete Litecoin MWEB support.** Address/key derivation,
   owned-output scanning, balances, recovery, MWEB transfers and peg-in/peg-out
   need a complete protocol adapter. The former incomplete peg-in builder was
   removed; MWEB destinations are currently refused. Verify protocol bytes and
   proofs independently and exercise receive, build/sign, recovery and refusal
   paths through the CLI before advertising support.
-- [ ] **Implement Zcash shielded wallets and transfers.** Only transparent
+- [x] **Implement Zcash shielded wallets and transfers.** Only transparent
   addresses and transactions are supported today. Add the supported shielded
   address/key formats, note scanning and durable recovery, balances, proof
   generation and signing as one coherent core model. Prove recovery and
   transparent/shielded transfer boundaries with independent vectors and CLI
   acceptance; do not advertise shielded support from address validation alone.
-- [ ] **Support XRP and Stellar issued assets.** Both are outside the tracked
+- [x] **Support XRP and Stellar issued assets.** Both are outside the tracked
   asset interface today. Add issuer-qualified asset identity, metadata,
   balances, history and transfers, including each chain's ownership and account
   prerequisites. CLI checks must distinguish assets with the same display code
   but different issuers and prove signing and refusal paths.
-- [ ] **Support Cardano native assets and token-bearing ADA inputs.** The
+- [x] **Support Cardano native assets and token-bearing ADA inputs.** The
   current ADA-only builder skips UTXOs containing native assets, so sufficient
   total ADA does not imply an ADA payment can be made. Add asset identity,
   balances, history, transfer and change handling; ADA payments using mixed
   inputs must return every unspent asset correctly. Prove asset conservation,
   output minimums, fees and signing with independent vectors and CLI checks.
-- [ ] **Extend Solana Token-2022 transfers.** Actual transfer fees, transfer
+- [x] **Extend Solana Token-2022 transfers.** Actual transfer fees, transfer
   hooks with a program and other extensions that change transfer semantics are
   refused. Zero-fee configurations and hooks without a program already work.
   Implement each supported extension's exact recipient amount, required
   accounts and review/signing semantics; explicitly refuse remaining unknown
   extensions. Prove both active-extension transfers and refusal paths in the
   CLI. See [mint validation](../core/src/api/solana_json_rpc.rs).
-- [ ] **Add EVM ERC-721/ERC-1155 NFT support.** Current asset discovery and
+- [x] **Add EVM ERC-721/ERC-1155 NFT support.** Current asset discovery and
   transfer assembly cover fungible ERC-20-style assets, not NFTs. Add a model
   with contract and token-ID identity, ownership/quantity reads, discovery,
   history and the appropriate transfer builders. Prove that token IDs and

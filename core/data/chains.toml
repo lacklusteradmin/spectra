@@ -82,7 +82,7 @@ id = "xrp"
 name = "XRP Ledger"
 family = "xrp"
 environment = "mainnet"
-token_standards = []
+token_standards = ["Trust Line Token"]
 derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
 ]
@@ -148,7 +148,7 @@ id = "stellar"
 name = "Stellar"
 family = "stellar"
 environment = "mainnet"
-token_standards = []
+token_standards = ["Stellar Asset"]
 derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
 ]
@@ -164,7 +164,7 @@ id = "cardano"
 name = "Cardano"
 family = "cardano"
 environment = "mainnet"
-token_standards = []
+token_standards = ["Cardano Native Token"]
 derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
 ]
@@ -1274,7 +1274,7 @@ name = "XRP Ledger Testnet"
 family = "xrp"
 environment = "testnet"
 faucet = "https://xrpl.org/resources/dev-tools/xrp-faucets"
-token_standards = []
+token_standards = ["Trust Line Token"]
 derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
 ]
@@ -1289,7 +1289,7 @@ name = "Stellar Testnet"
 family = "stellar"
 environment = "testnet"
 faucet = "https://lab.stellar.org/account/fund"
-token_standards = []
+token_standards = ["Stellar Asset"]
 derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
 ]
@@ -1304,7 +1304,7 @@ name = "Cardano Preprod"
 family = "cardano"
 environment = "testnet"
 faucet = "https://docs.cardano.org/cardano-testnets/tools/faucet"
-token_standards = []
+token_standards = ["Cardano Native Token"]
 derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
 ]

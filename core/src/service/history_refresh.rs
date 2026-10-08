@@ -4,6 +4,7 @@
 //! merges the result; a caller asks for a chain and is told what changed.
 
 use futures::{StreamExt as _, stream};
+use std::collections::HashMap;
 
 use crate::SpectraBridgeError;
 use crate::registry::Chain;
@@ -44,12 +45,12 @@ impl HistoryRefreshOutcome {
 }
 
 /// One wallet to fetch history for.
-struct Target {
-    wallet_id: String,
-    wallet_name: String,
-    address: String,
+pub(super) struct Target {
+    pub wallet_id: String,
+    pub wallet_name: String,
+    pub address: String,
     /// Exact network used both for fetching and persisted transaction identity.
-    network: Chain,
+    pub network: Chain,
 }
 
 /// The wallets on `chain` that have an address, with the address for the
@@ -97,15 +98,38 @@ fn evm_history_groups(targets: &[Target], load_more: bool) -> Vec<(Vec<String>, 
         .collect()
 }
 
+/// The name and symbol of every token the user lists, by deployment: what a
+/// row of a token the catalog does not know is called, as its sends are.
+fn token_names(state: &ResidentState) -> HashMap<String, (String, String)> {
+    state
+        .token_preferences
+        .iter()
+        .map(|entry| {
+            (
+                entry.token.deployment_id.clone(),
+                (entry.token.name.clone(), entry.token.symbol.clone()),
+            )
+        })
+        .collect()
+}
+
 /// One normalized entry as a stored record.
 ///
 /// `created_at` is the entry's own timestamp in unix seconds, which is what
 /// the merge orders and de-duplicates by.
-fn record_for(
+pub(super) fn record_for(
     target: &Target,
-    _chain: Chain,
+    names: &HashMap<String, (String, String)>,
     entry: crate::fetch::history_decode::NormalizedHistoryItem,
 ) -> crate::fetch::transactions::FetchedTransactionRecord {
+    // A token the user lists is called what the list calls it; the feed's
+    // own name for an unknown contract is the contract itself.
+    let (asset_display_name, symbol) = entry
+        .deployment_id
+        .as_ref()
+        .and_then(|id| names.get(id))
+        .cloned()
+        .unwrap_or((entry.asset_display_name, entry.symbol));
     crate::fetch::transactions::FetchedTransactionRecord {
         // The feed names every row's deployment; the ticker is display text.
         deployment_id: entry.deployment_id,
@@ -114,8 +138,8 @@ fn record_for(
         kind: entry.kind,
         status: entry.status,
         wallet_name: target.wallet_name.clone(),
-        asset_display_name: entry.asset_display_name,
-        symbol: entry.symbol,
+        asset_display_name,
+        symbol,
         chain_id: target.network,
         amount: entry.amount,
         address: entry.counterparty,
@@ -162,9 +186,9 @@ impl WalletService {
         load_more: bool,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
         let _operation = self.history_pagination.operation_lock.lock().await;
-        let targets = {
+        let (targets, names) = {
             let state = self.app_state().await;
-            targets(&state, chain, &wallet_ids)
+            (targets(&state, chain, &wallet_ids), token_names(&state))
         };
         if targets.is_empty() {
             return Ok(HistoryRefreshOutcome::nothing());
@@ -231,7 +255,7 @@ impl WalletService {
                     incoming.extend(
                         page.items
                             .into_iter()
-                            .map(|entry| record_for(target, chain, entry)),
+                            .map(|entry| record_for(target, &names, entry)),
                     );
                 }
                 Err(error) => {
@@ -568,7 +592,7 @@ impl WalletService {
                     incoming.extend(page.items.into_iter().map(|entry| {
                         record_for(
                             &target,
-                            chain,
+                            &HashMap::new(),
                             crate::fetch::history_decode::NormalizedHistoryItem {
                                 deployment_id: crate::tokens::deployment_id_for(
                                     target.network,

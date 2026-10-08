@@ -14,7 +14,8 @@ with tempfile.TemporaryDirectory(prefix="spectra-endpoints-") as directory:
     catalog = run("endpoints", "--catalog", "--source", "built-in")
     types = {(row["chainId"], row["api"]): row["supportedCapabilities"] for row in catalog["endpoints"] if row["supportedCapabilities"]}
     for index, (chain, api) in enumerate(sorted(types)):
-        url = f"https://custom-{index}.example/api"
+        # A Litecoin node is reached peer to peer, at a host and port.
+        url = f"tcp://custom-{index}.example:9333" if api == "litecoin-p2p" else f"https://custom-{index}.example/api"
         run("endpoints", "--chain", chain, "--api", api, "--capabilities", ",".join(types[(chain, api)]), "--add", url)
     custom = run("endpoints", "--catalog", "--source", "custom")
     assert len(custom["endpoints"]) == len(types)
@@ -39,8 +40,10 @@ with tempfile.TemporaryDirectory(prefix="spectra-endpoints-") as directory:
     print(f"{len(types)} catalog network/API pairs persist; source filters and capability routing passed")
 
 # Missing built-in providers stay empty, while supported custom APIs still work.
+# (Zcash testnet's transparent API has none either, but its shielded funds
+# read a built-in lightwalletd, which a health probe would contact.)
 with tempfile.TemporaryDirectory(prefix="spectra-empty-endpoints-") as directory:
-    for chain, api in [("zcash-testnet", "blockbook"), ("bitcoin-cash-testnet", "blockbook"),
+    for chain, api in [("bitcoin-cash-testnet", "blockbook"),
                        ("dash-testnet", "blockbook"), ("dogecoin-testnet", "blockcypher"),
                        ("decred-testnet", "insight")]:
         assert run("send", "configured-endpoints", chain)["endpoints"] == [], chain
@@ -71,12 +74,12 @@ with tempfile.TemporaryDirectory(prefix="spectra-health-") as directory:
     worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
     try:
         url = f"http://127.0.0.1:{server.server_port}"
-        run("endpoints", "--chain", "zcash-testnet", "--api", "blockbook", "--capabilities", "balance,fee,broadcast", "--add", url)
-        health = run("endpoints", "--chain", "zcash-testnet")
+        run("endpoints", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities", "balance,fee,broadcast", "--add", url)
+        health = run("endpoints", "--chain", "dash-testnet")
         assert health["ok"] and health["uncheckedApis"] == 0, health
         assert seen == ["/api/v2"], seen
         state["fail"] = True
-        health = run("endpoints", "--chain", "zcash-testnet")
+        health = run("endpoints", "--chain", "dash-testnet")
         assert not health["ok"] and health["unreachable"] == 1, health
         assert health["endpoints"][0]["detail"], health
     finally:

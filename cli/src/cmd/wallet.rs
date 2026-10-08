@@ -103,6 +103,44 @@ pub enum WalletCommand {
     /// Build the transaction that sets an allowance back to zero; sign and
     /// broadcast it with `send sign` and `send broadcast-signed`.
     Revoke(RevokeArgs),
+    /// The ERC-721 and ERC-1155 tokens an EVM wallet holds, from its
+    /// network's Blockscout inventory.
+    Nfts(SelectArgs),
+    /// Build the transaction that sends an NFT: one ERC-721 token, or a
+    /// quantity of an ERC-1155 id. The standard and the wallet's ownership
+    /// are read from the contract; sign and broadcast it with `send sign`
+    /// and `send broadcast-signed`.
+    SendNft(SendNftArgs),
+    /// Scan a Zcash wallet's shielded pools from a lightwalletd server, a
+    /// batch at a time until the scan is complete (one batch with `--once`).
+    /// The first batch creates the shielded account from the seed.
+    ZcashSync(ScanSyncArgs),
+    /// Where a Zcash wallet's shielded scan stands, what it holds and the
+    /// unified address it receives at.
+    ZcashStatus(SelectArgs),
+    /// Build the transaction that moves a Zcash wallet's transparent funds
+    /// into its shielded pool; sign and broadcast it with `send sign` and
+    /// `send broadcast-signed` to a lightwalletd server.
+    Shield(SelectArgs),
+    /// Build a payment from a Zcash wallet's shielded funds; sign and
+    /// broadcast it with `send sign` and `send broadcast-signed` to a
+    /// lightwalletd server.
+    SendShielded(SendShieldedArgs),
+    /// Scan for a Litecoin wallet's MWEB funds from a Litecoin node, a batch
+    /// at a time until the scan is complete (one batch with `--once`). The
+    /// first batch derives the MWEB keys from the seed.
+    MwebSync(ScanSyncArgs),
+    /// Where a Litecoin wallet's MWEB scan stands, what it holds and the
+    /// stealth address it receives at.
+    MwebStatus(SelectArgs),
+    /// Build the peg-in that moves a Litecoin wallet's transparent LTC into
+    /// its MWEB funds; sign and broadcast it with `send sign` and
+    /// `send broadcast-signed`.
+    MwebPegin(MwebPeginArgs),
+    /// Build a payment from a Litecoin wallet's MWEB funds, to an MWEB
+    /// address or by a peg-out to any other; sign and broadcast it with
+    /// `send sign` and `send broadcast-signed`.
+    SendMweb(SendMwebArgs),
     /// An Ethereum wallet's ENS primary name, where it resolves back.
     Ens(SelectArgs),
     /// What the wallet's account on its network holds and needs: Tron's
@@ -135,6 +173,15 @@ pub enum WalletCommand {
     /// their rent: the named ones, or every closable one (at most 20); sign
     /// and broadcast it with `send sign` and `send broadcast-signed`.
     CloseTokenAccounts(CloseTokenAccountsArgs),
+    /// List an XRP Ledger or Stellar wallet's trust lines, each saying
+    /// whether it can be removed.
+    TrustLines(SelectArgs),
+    /// Build the transaction that opens a trust line to an issued asset, so
+    /// the wallet can hold it; sign and broadcast it with `send`.
+    Trust(TrustArgs),
+    /// Build the transaction that removes an empty trust line, freeing its
+    /// reserve; sign and broadcast it with `send`.
+    Untrust(TrustArgs),
     /// The networks a wallet's key, or watched address, can be added to.
     CopyTargets(SelectArgs),
     /// Add a wallet's key, or watched address, to another network as a
@@ -180,9 +227,10 @@ pub struct CreationArgs {
     /// Encrypt the seed with a local key stored in this data directory, without a wallet password.
     #[arg(long, conflicts_with_all = ["password_file"])]
     no_password: bool,
-    /// Monero only: the block height the wallet's scan starts from. A new
-    /// wallet starts near now; an import from its Polyseed's birthday, or
-    /// from the start of the chain.
+    /// Monero, and a Zcash wallet's shielded pools: the block height the
+    /// wallet's scan starts from. A new wallet starts near now; an import
+    /// from its Polyseed's birthday, or from the start of the chain
+    /// (Sapling's activation for Zcash).
     #[arg(long)]
     restore_height: Option<u64>,
 }
@@ -307,6 +355,78 @@ pub struct RevokeArgs {
     spender: String,
 }
 
+/// A wallet whose private funds this device scans for: a Zcash wallet's
+/// shielded pools or a Litecoin wallet's MWEB funds.
+#[derive(Args)]
+pub struct ScanSyncArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// Scan one batch and stop.
+    #[arg(long)]
+    once: bool,
+    /// Read the wallet password from this file; `-` means stdin.
+    #[arg(long, value_name = "PATH")]
+    password_file: Option<String>,
+    /// Read the wallet password from this environment variable.
+    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
+    password_env: Option<String>,
+}
+
+#[derive(Args)]
+pub struct SendShieldedArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The recipient: a unified, Sapling or transparent Zcash address.
+    #[arg(long)]
+    to: String,
+    /// How much ZEC, as an exact decimal.
+    #[arg(long)]
+    amount: String,
+    /// A memo for a shielded recipient, at most 512 bytes.
+    #[arg(long)]
+    memo: Option<String>,
+}
+
+#[derive(Args)]
+pub struct MwebPeginArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// How much LTC arrives in MWEB, as an exact decimal.
+    #[arg(long)]
+    amount: String,
+}
+
+#[derive(Args)]
+pub struct SendMwebArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The recipient: an MWEB address, or any other Litecoin address for a
+    /// peg-out.
+    #[arg(long)]
+    to: String,
+    /// How much LTC, as an exact decimal.
+    #[arg(long)]
+    amount: String,
+}
+
+#[derive(Args)]
+pub struct SendNftArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The collection's contract.
+    #[arg(long)]
+    contract: String,
+    /// The token's id, a whole number in decimal.
+    #[arg(long)]
+    token_id: String,
+    /// How many of an ERC-1155 token; an ERC-721 token is one.
+    #[arg(long, default_value = "1")]
+    quantity: String,
+    /// The address that receives it.
+    #[arg(long)]
+    to: String,
+}
+
 #[derive(Args)]
 pub struct CloseArgs {
     /// Wallet id, name or address.
@@ -323,6 +443,16 @@ pub struct ProvePaymentArgs {
     /// The transaction's id.
     #[arg(long)]
     txid: String,
+}
+
+#[derive(Args)]
+pub struct TrustArgs {
+    /// Wallet id, name or address.
+    wallet: String,
+    /// The asset: `CODE.rIssuer` on the XRP Ledger, `CODE:ISSUER` on
+    /// Stellar.
+    #[arg(long)]
+    asset: String,
 }
 
 #[derive(Args)]
@@ -397,7 +527,7 @@ pub struct CopyArgs {
     /// Account index on the profile (default 0).
     #[arg(long)]
     account: Option<u32>,
-    /// Monero only: where the new wallet's scan starts.
+    /// Monero and Zcash: where the new wallet's scan starts.
     #[arg(long)]
     restore_height: Option<u64>,
     /// TON only: the wallet contract, `w5` (default) or `v4R2`.
@@ -441,6 +571,51 @@ pub struct ExportArgs {
     /// Read the wallet password from this environment variable.
     #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
     password_env: Option<String>,
+}
+
+fn print_zcash_status(status: &spectra_core::service::ZcashShieldedStatus) {
+    println!();
+    println!(
+        "  scanned     {} / {}",
+        status.scanned_height, status.chain_tip_height
+    );
+    println!("  spendable   {} ZEC", status.spendable);
+    println!("  pending     {} ZEC", status.pending);
+    println!("  shieldable  {} ZEC", status.shieldable);
+    if let Some(address) = &status.address {
+        println!("  address     {address}");
+    }
+}
+
+fn print_mweb_status(status: &spectra_core::service::LitecoinMwebStatus) {
+    println!();
+    println!(
+        "  scanned     block {} ({}‰)",
+        status.scanned_height, status.progress_permille
+    );
+    println!("  spendable   {} LTC", status.spendable);
+    println!("  pending     {} LTC", status.pending);
+    if let Some(address) = &status.address {
+        println!("  address     {address}");
+    }
+}
+
+/// Build the trust line change `wallet trust` or `wallet untrust` asks for.
+fn trust_change(ctx: &Ctx, out: Out, args: TrustArgs, remove: bool) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let service = ctx.service()?;
+    let artifact = ctx
+        .rt
+        .block_on(async {
+            if remove {
+                service.build_remove_trust_line(wallet.id, args.asset).await
+            } else {
+                service.build_trust_asset(wallet.id, args.asset).await
+            }
+        })
+        .map_err(CliError::from)?;
+    super::tx::emit_artifact(out, &artifact);
+    Ok(())
 }
 
 pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
@@ -599,13 +774,198 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                     args.spender,
                 ))
                 .map_err(CliError::from)?;
+            super::tx::emit_artifact(out, &artifact);
+            Ok(())
+        }
+        WalletCommand::Nfts(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let nfts = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_nfts(wallet.id))
+                .map_err(CliError::from)?;
             out.text(|| {
+                println!();
+                for nft in &nfts.nfts {
+                    println!(
+                        "  {:<8} {}  #{}  ×{}  {}",
+                        nft.standard.label(),
+                        out::info(&nft.contract),
+                        nft.token_id,
+                        nft.quantity,
+                        nft.name.as_deref().unwrap_or(&nft.collection)
+                    );
+                }
+                if !nfts.complete {
+                    println!(
+                        "  {}",
+                        out::hint("the inventory was not read to its end; more may be held")
+                    );
+                }
+            });
+            out.emit(serde_json::json!({ "ok": true, "nfts": nfts }));
+            Ok(())
+        }
+        WalletCommand::SendNft(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.build_nft_transfer(
+                    wallet.id,
+                    args.contract,
+                    args.token_id,
+                    args.quantity,
+                    args.to,
+                ))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                if let Some(spectra_core::send::stages::WalletOperation::TransferNft {
+                    contract,
+                    standard,
+                    token_id,
+                    quantity,
+                    collection,
+                    network_fee,
+                }) = &artifact.operation
+                {
+                    println!();
+                    println!("  token       {collection} #{token_id}");
+                    println!("  standard    {}", standard.label());
+                    println!("  contract    {contract}");
+                    println!("  quantity    {quantity}");
+                    println!("  to          {}", artifact.recipient);
+                    println!("  fee         {network_fee}");
+                    println!();
+                }
                 println!(
                     "{} {:?}\n{}\n{}",
                     artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
                 )
             });
             out.emit(serde_json::json!({ "artifact": artifact }));
+            Ok(())
+        }
+        WalletCommand::ZcashSync(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let password = super::tx::signing_password(
+                ctx,
+                &wallet.id,
+                args.password_file,
+                args.password_env,
+            )?;
+            let service = ctx.service()?;
+            // Each batch moves the scan on or finishes it.
+            loop {
+                let status = ctx
+                    .rt
+                    .block_on(service.sync_zcash_shielded(wallet.id.clone(), password.clone()))
+                    .map_err(CliError::from)?;
+                if args.once || status.complete {
+                    out.text(|| print_zcash_status(&status));
+                    out.emit(serde_json::json!({ "ok": true, "shielded": status }));
+                    break;
+                }
+                eprintln!(
+                    "Zcash scan: {} / {} ({}‰), {} transactions to read",
+                    status.scanned_height,
+                    status.chain_tip_height,
+                    status.progress_permille,
+                    status.unread_transactions
+                );
+            }
+            Ok(())
+        }
+        WalletCommand::ZcashStatus(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let status = ctx
+                .rt
+                .block_on(ctx.service()?.zcash_shielded_status(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| print_zcash_status(&status));
+            out.emit(serde_json::json!({ "ok": true, "shielded": status }));
+            Ok(())
+        }
+        WalletCommand::Shield(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.build_zcash_shielding(wallet.id))
+                .map_err(CliError::from)?;
+            super::tx::emit_artifact(out, &artifact);
+            Ok(())
+        }
+        WalletCommand::SendShielded(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(ctx.service()?.build_zcash_shielded_send(
+                    wallet.id,
+                    args.to,
+                    args.amount,
+                    args.memo,
+                ))
+                .map_err(CliError::from)?;
+            super::tx::emit_artifact(out, &artifact);
+            Ok(())
+        }
+        WalletCommand::MwebSync(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let password = super::tx::signing_password(
+                ctx,
+                &wallet.id,
+                args.password_file,
+                args.password_env,
+            )?;
+            let service = ctx.service()?;
+            // Each batch moves the scan on or finishes it.
+            loop {
+                let status = ctx
+                    .rt
+                    .block_on(service.sync_litecoin_mweb(wallet.id.clone(), password.clone()))
+                    .map_err(CliError::from)?;
+                if args.once || status.complete {
+                    out.text(|| print_mweb_status(&status));
+                    out.emit(serde_json::json!({ "ok": true, "mweb": status }));
+                    break;
+                }
+                eprintln!(
+                    "MWEB scan: block {} ({}‰)",
+                    status.scanned_height, status.progress_permille
+                );
+            }
+            Ok(())
+        }
+        WalletCommand::MwebStatus(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let status = ctx
+                .rt
+                .block_on(ctx.service()?.litecoin_mweb_status(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| print_mweb_status(&status));
+            out.emit(serde_json::json!({ "ok": true, "mweb": status }));
+            Ok(())
+        }
+        WalletCommand::MwebPegin(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(
+                    ctx.service()?
+                        .build_litecoin_mweb_pegin(wallet.id, args.amount),
+                )
+                .map_err(CliError::from)?;
+            super::tx::emit_artifact(out, &artifact);
+            Ok(())
+        }
+        WalletCommand::SendMweb(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let artifact = ctx
+                .rt
+                .block_on(
+                    ctx.service()?
+                        .build_litecoin_mweb_send(wallet.id, args.to, args.amount),
+                )
+                .map_err(CliError::from)?;
+            super::tx::emit_artifact(out, &artifact);
             Ok(())
         }
         WalletCommand::Ens(args) => {
@@ -750,6 +1110,31 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
             out.emit(serde_json::json!({ "ok": true, "empty": empty }));
             Ok(())
         }
+        WalletCommand::TrustLines(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let lines = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_trust_lines(wallet.id))
+                .map_err(CliError::from)?;
+            out.text(|| {
+                println!();
+                for line in &lines.lines {
+                    println!(
+                        "  {:<10} {}  {} of {}  {}",
+                        line.code,
+                        line.issuer,
+                        line.balance,
+                        line.limit,
+                        line.removal_blocked.as_deref().unwrap_or("removable")
+                    );
+                }
+                println!("  reserve per line  {}", lines.reserve_per_line);
+            });
+            out.emit(serde_json::json!({ "ok": true, "trust_lines": lines }));
+            Ok(())
+        }
+        WalletCommand::Trust(args) => trust_change(ctx, out, args, false),
+        WalletCommand::Untrust(args) => trust_change(ctx, out, args, true),
         WalletCommand::CloseTokenAccounts(args) => {
             let wallet = ctx.find_wallet(&args.wallet)?;
             let artifact = ctx
@@ -759,13 +1144,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                         .build_token_account_closure(wallet.id, args.accounts),
                 )
                 .map_err(CliError::from)?;
-            out.text(|| {
-                println!(
-                    "{} {:?}\n{}\n{}",
-                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
-                )
-            });
-            out.emit(serde_json::json!({ "artifact": artifact }));
+            super::tx::emit_artifact(out, &artifact);
             Ok(())
         }
         WalletCommand::Merge(args) => {
@@ -774,13 +1153,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                 .rt
                 .block_on(ctx.service()?.build_coin_merge(wallet.id, args.coin_type))
                 .map_err(CliError::from)?;
-            out.text(|| {
-                println!(
-                    "{} {:?}\n{}\n{}",
-                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
-                )
-            });
-            out.emit(serde_json::json!({ "artifact": artifact }));
+            super::tx::emit_artifact(out, &artifact);
             Ok(())
         }
         WalletCommand::DeleteKey(args) => {
@@ -792,13 +1165,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
                         .build_access_key_deletion(wallet.id, args.key),
                 )
                 .map_err(CliError::from)?;
-            out.text(|| {
-                println!(
-                    "{} {:?}\n{}\n{}",
-                    artifact.id, artifact.stage, artifact.review_digest, artifact.prepared_details
-                )
-            });
-            out.emit(serde_json::json!({ "artifact": artifact }));
+            super::tx::emit_artifact(out, &artifact);
             Ok(())
         }
         WalletCommand::Close(args) => {
@@ -866,15 +1233,12 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     };
     let seed_phrase = spectra_core::service::generate_seed_phrase(chain, words)
         .map_err(|error| CliError::usage(error.to_string()))?;
-    // A new Monero wallet has no outputs before now, so its scan starts here.
-    let restore_height = match args.creation.restore_height {
-        Some(height) => Some(height),
-        None if chain.mainnet_counterpart() == Chain::Monero => Some(
-            spectra_core::monero_heights::monero_new_wallet_restore_height(chain)
-                .map_err(CliError::from)?,
-        ),
-        None => None,
-    };
+    // A new wallet on a scanning network has no outputs before now, so its
+    // scan starts here.
+    let restore_height = args
+        .creation
+        .restore_height
+        .or_else(|| spectra_core::restore_heights::new_wallet_restore_height(chain));
     let outcome = seal_and_import(ctx, &args.creation, chain, &seed_phrase, restore_height)?;
 
     let wallet = first_wallet(&outcome)?;

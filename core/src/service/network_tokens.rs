@@ -218,6 +218,80 @@ impl WalletService {
                     .fetch_jetton_balances(chain, address)
                     .await?
             }
+            // A node lists every trust line of the account; a negative
+            // balance is one it owes, not one it holds.
+            Chain::Xrp | Chain::XrpTestnet => {
+                let endpoints = self.endpoints_for(chain, &discovery).await;
+                if endpoints.is_empty() {
+                    return Ok(None);
+                }
+                let places = crate::tokens::fixed_token_decimals("Trust Line Token")
+                    .expect("issued currencies are kept at fixed places");
+                crate::api::xrpl_json_rpc::XrplClient::new(endpoints)
+                    .fetch_trust_lines(address, None)
+                    .await?
+                    .into_iter()
+                    .filter_map(|line| {
+                        Some(crate::api::HeldToken {
+                            contract: line.issue.identifier(),
+                            balance_raw: line.balance.to_units(places)?,
+                            decimals: Some(places as u8),
+                        })
+                    })
+                    .collect()
+            }
+            // Every unspent output names the assets it holds; their sum is
+            // what the address holds, at decimals read in one request.
+            Chain::Cardano | Chain::CardanoPreprod => {
+                let endpoints = self.endpoints_for(chain, &discovery).await;
+                if endpoints.is_empty() {
+                    return Ok(None);
+                }
+                let client = crate::api::koios::KoiosClient::new(endpoints);
+                let mut held: std::collections::BTreeMap<
+                    crate::api::cardano_asset::CardanoAssetId,
+                    u128,
+                > = Default::default();
+                for utxo in client.fetch_utxos(address).await? {
+                    for asset in &utxo.assets {
+                        let sum = held.entry(asset.id()?).or_default();
+                        *sum = sum
+                            .checked_add(u128::from(asset.amount()?))
+                            .ok_or_else(|| SpectraBridgeError::failure("Cardano asset overflow"))?;
+                    }
+                }
+                let decimals = client
+                    .fetch_asset_decimals(&held.keys().cloned().collect::<Vec<_>>())
+                    .await?;
+                held.into_iter()
+                    .map(|(asset, balance_raw)| crate::api::HeldToken {
+                        contract: asset.identifier(),
+                        balance_raw,
+                        decimals: decimals.get(&asset).copied(),
+                    })
+                    .collect()
+            }
+            // An account's balances name every trustline it has.
+            Chain::Stellar | Chain::StellarTestnet => {
+                let endpoints = self.endpoints_for(chain, &discovery).await;
+                if endpoints.is_empty() {
+                    return Ok(None);
+                }
+                crate::api::horizon::HorizonClient::new(endpoints)
+                    .fetch_account_state(address)
+                    .await?
+                    .map(|state| state.trustlines)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|line| {
+                        Some(crate::api::HeldToken {
+                            contract: line.asset.identifier(),
+                            balance_raw: u128::try_from(line.balance).ok()?,
+                            decimals: Some(7),
+                        })
+                    })
+                    .collect()
+            }
             c if c.is_evm() => {
                 let explorers = self
                     .listing_endpoints(chain, crate::EndpointApi::Blockscout)
@@ -675,6 +749,14 @@ impl WalletService {
                     .held_tokens(chain, &address)
                     .await?
                     .ok_or_else(|| SpectraBridgeError::failure("no TON indexer configured"))?;
+                self.balances_from_holdings(chain, held, &tokens).await
+            }
+            // One read of the account's lines or outputs answers for every
+            // asset.
+            Chain::Xrp | Chain::Stellar | Chain::Cardano => {
+                let held = self.held_tokens(chain, &address).await?.ok_or_else(|| {
+                    SpectraBridgeError::failure("no node configured to list the account's assets")
+                })?;
                 self.balances_from_holdings(chain, held, &tokens).await
             }
             // The EVM family.

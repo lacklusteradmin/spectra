@@ -1,0 +1,199 @@
+{
+  "provenance": "@emurgo/cardano-serialization-lib-nodejs 15.0.3",
+  "params": {
+    "feePerByte": "44",
+    "feeFixed": "155381",
+    "coinsPerByte": "4310"
+  },
+  "sender": "610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
+  "recipient": "6122222222222222222222222222222222222222222222222222222222",
+  "cases": [
+    {
+      "name": "token_send",
+      "inputs": [
+        {
+          "tx_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "tx_index": 0,
+          "lovelace": "5000000",
+          "assets": [
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "0102",
+              "quantity": "100"
+            },
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "",
+              "quantity": "7"
+            }
+          ]
+        },
+        {
+          "tx_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "tx_index": 1,
+          "lovelace": "3000000",
+          "assets": []
+        }
+      ],
+      "outputs": [
+        {
+          "address": "6122222222222222222222222222222222222222222222222222222222",
+          "lovelace": "1155080",
+          "assets": [
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "0102",
+              "quantity": "40"
+            }
+          ],
+          "min_ada": "1012850"
+        },
+        {
+          "address": "610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
+          "lovelace": "6655731",
+          "assets": [
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "0102",
+              "quantity": "60"
+            },
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "",
+              "quantity": "7"
+            }
+          ],
+          "min_ada": "1021470"
+        }
+      ],
+      "fee": "189189",
+      "ttl": 100,
+      "body": "a400d9010282825820111111111111111111111111111111111111111111111111111111111111111100825820000000000000000000000000000000000000000000000000000000000000000001018282581d6122222222222222222222222222222222222222222222222222222222821a0011a008a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1420102182882581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42821a00658ef3a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa24007420102183c021a0002e305031864",
+      "hash": "67f102c7544cbe4f30579bc3ce8892551addf47052b3b1039f9521e356121f4b",
+      "transaction": "84a400d9010282825820111111111111111111111111111111111111111111111111111111111111111100825820000000000000000000000000000000000000000000000000000000000000000001018282581d6122222222222222222222222222222222222222222222222222222222821a0011a008a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1420102182882581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42821a00658ef3a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa24007420102183c021a0002e305031864a100d90102818258207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a58402e598967ed37e9755fee955df8c82883cf13b8c866c66c9e539eba8bc79767261de9805e5aba1a210c3113fc6affad5cb5680585b83b5fcf53ae1339c2309b0af5f6",
+      "min_fee": "170825"
+    },
+    {
+      "name": "ada_send_mixed_inputs",
+      "inputs": [
+        {
+          "tx_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "tx_index": 3,
+          "lovelace": "2000000",
+          "assets": [
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "0102",
+              "quantity": "100"
+            }
+          ]
+        },
+        {
+          "tx_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+          "tx_index": 0,
+          "lovelace": "1500000",
+          "assets": []
+        }
+      ],
+      "outputs": [
+        {
+          "address": "6122222222222222222222222222222222222222222222222222222222",
+          "lovelace": "2000000",
+          "assets": [],
+          "min_ada": "849070"
+        },
+        {
+          "address": "610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
+          "lovelace": "1323675",
+          "assets": [
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "0102",
+              "quantity": "100"
+            }
+          ],
+          "min_ada": "1012850"
+        }
+      ],
+      "fee": "176325",
+      "ttl": 100,
+      "body": "a400d9010282825820222222222222222222222222222222222222222222222222222222222222222203825820333333333333333333333333333333333333333333333333333333333333333300018282581d61222222222222222222222222222222222222222222222222222222221a001e848082581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42821a0014329ba1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa14201021864021a0002b0c5031864",
+      "hash": "e7c50f39eb03574e5679de5fec63127b0fc8cb27542ee0beabf394883339339e",
+      "transaction": "84a400d9010282825820222222222222222222222222222222222222222222222222222222222222222203825820333333333333333333333333333333333333333333333333333333333333333300018282581d61222222222222222222222222222222222222222222222222222222221a001e848082581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42821a0014329ba1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa14201021864021a0002b0c5031864a100d90102818258207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a584045efa0bd4ca45c7ff4205d69500afb005a9a30a99f166b566110d45fd822501bc96734c6ed7231fa404b355320af7d8eac9181fd27854973cd140d6fa42ee608f5f6",
+      "min_fee": "169065"
+    },
+    {
+      "name": "two_policies",
+      "inputs": [
+        {
+          "tx_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+          "tx_index": 0,
+          "lovelace": "10000000",
+          "assets": [
+            {
+              "policy": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+              "name": "ffff",
+              "quantity": "1"
+            },
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "cafe0000",
+              "quantity": "2"
+            },
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "ff",
+              "quantity": "3"
+            },
+            {
+              "policy": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+              "name": "00",
+              "quantity": "4"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "address": "6122222222222222222222222222222222222222222222222222222222",
+          "lovelace": "3000000",
+          "assets": [],
+          "min_ada": "849070"
+        },
+        {
+          "address": "610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42",
+          "lovelace": "6800000",
+          "assets": [
+            {
+              "policy": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+              "name": "ffff",
+              "quantity": "1"
+            },
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "cafe0000",
+              "quantity": "2"
+            },
+            {
+              "policy": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "ff",
+              "quantity": "3"
+            },
+            {
+              "policy": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+              "name": "00",
+              "quantity": "4"
+            }
+          ],
+          "min_ada": "1193870"
+        }
+      ],
+      "fee": "200000",
+      "ttl": 100,
+      "body": "a400d9010281825820444444444444444444444444444444444444444444444444444444444444444400018282581d61222222222222222222222222222222222222222222222222222222221a002dc6c082581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42821a0067c280a2581c0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0ba241000442ffff01581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa241ff0344cafe000002021a00030d40031864",
+      "hash": "0aebb23aa083f416326d8f5581bd5f820ab79bf32b8ad6b9de17f75128b0f153",
+      "transaction": "84a400d9010281825820444444444444444444444444444444444444444444444444444444444444444400018282581d61222222222222222222222222222222222222222222222222222222221a002dc6c082581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42821a0067c280a2581c0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0ba241000442ffff01581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa241ff0344cafe000002021a00030d40031864a100d90102818258207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a584088b70de6b559685f64577985220109365159ca34a5b76eb410ad04ead2b353a0a1cea9a7e543491f18a9a2a5917514427b04d224db1b5f10974b40f0fa13e403f5f6",
+      "min_fee": "169329"
+    }
+  ]
+}

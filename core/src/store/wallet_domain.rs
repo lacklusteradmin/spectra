@@ -24,6 +24,12 @@ pub enum TransactionKind {
     MergeCoins,
     /// Closing empty Solana token accounts, returning their rent.
     CloseTokenAccounts,
+    /// Opening a trust line so the account can hold an issued asset.
+    TrustAsset,
+    /// Removing an empty trust line, freeing its reserve.
+    RemoveTrustLine,
+    /// Moving a Zcash wallet's transparent funds into its own shielded pool.
+    Shield,
 }
 impl TransactionKind {
     pub fn as_raw(self) -> &'static str {
@@ -38,6 +44,9 @@ impl TransactionKind {
             Self::DeleteAccessKey => "deleteAccessKey",
             Self::MergeCoins => "mergeCoins",
             Self::CloseTokenAccounts => "closeTokenAccounts",
+            Self::TrustAsset => "trustAsset",
+            Self::RemoveTrustLine => "removeTrustLine",
+            Self::Shield => "shield",
         }
     }
     pub fn is_submitted(self) -> bool {
@@ -48,6 +57,12 @@ impl TransactionKind {
             self,
             Self::Stake | Self::Unstake | Self::Withdraw | Self::ClaimRewards
         )
+    }
+    /// A kind only core records, for an operation it built: a provider's
+    /// send or receive row of the same transaction confirms the record and
+    /// is not another.
+    pub fn is_operation(self) -> bool {
+        !matches!(self, Self::Send | Self::Receive)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -68,7 +83,10 @@ pub fn transaction_kind_direction(kind: TransactionKind) -> TransactionDirection
         | TransactionKind::RevokeApproval
         | TransactionKind::DeleteAccessKey
         | TransactionKind::MergeCoins
-        | TransactionKind::CloseTokenAccounts => TransactionDirection::Neutral,
+        | TransactionKind::CloseTokenAccounts
+        | TransactionKind::TrustAsset
+        | TransactionKind::RemoveTrustLine
+        | TransactionKind::Shield => TransactionDirection::Neutral,
     }
 }
 #[uniffi::export]

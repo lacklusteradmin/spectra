@@ -27,34 +27,27 @@ impl PreparedZcashTransaction {
     }
 }
 
+/// The output script paying `address` from transparent funds: a transparent
+/// address's own, or for a TEX address (ZIP-320) the P2PKH script of the key
+/// hash it carries. A Sapling or unified address is paid from shielded funds.
 fn address_script(address: &str, chain: Chain) -> Result<Vec<u8>, SendError> {
-    let raw = bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map_err(SendError::invalid)?;
-    if raw.len() != 22 {
-        return Err(SendError::Invalid(
-            "Invalid Zcash transparent address".into(),
-        ));
-    }
-    let (pkh, sh) = match chain {
-        Chain::Zcash => ([0x1c, 0xb8], [0x1c, 0xbd]),
-        Chain::ZcashTestnet => ([0x1d, 0x25], [0x1c, 0xba]),
-        _ => return Err(SendError::Invalid("Not a Zcash network".into())),
-    };
-    if raw[..2] == pkh {
-        Ok(super::bitcoin_wire::p2pkh_script(
-            raw[2..].try_into().unwrap(),
-        ))
-    } else if raw[..2] == sh {
-        let mut script = vec![0xa9, 0x14];
-        script.extend(&raw[2..]);
-        script.push(0x87);
-        Ok(script)
-    } else {
-        Err(SendError::Invalid(
-            "Zcash address is on the wrong network".into(),
-        ))
+    use zcash_keys::address::Address;
+    use zcash_transparent::address::TransparentAddress;
+    let network = chain.zcash_network()?;
+    match Address::decode(&network, address.trim()) {
+        Some(
+            Address::Transparent(TransparentAddress::PublicKeyHash(hash)) | Address::Tex(hash),
+        ) => Ok(super::bitcoin_wire::p2pkh_script(&hash)),
+        Some(Address::Transparent(TransparentAddress::ScriptHash(hash))) => {
+            let mut script = vec![0xa9, 0x14];
+            script.extend(hash);
+            script.push(0x87);
+            Ok(script)
+        }
+        Some(Address::Sapling(_) | Address::Unified(_)) => Err(SendError::invalid(
+            "A shielded address is paid from the wallet's shielded funds.",
+        )),
+        None => Err(SendError::invalid("Not a Zcash address on this network")),
     }
 }
 

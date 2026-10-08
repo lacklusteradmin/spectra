@@ -26,6 +26,12 @@ pub struct StellarHistoryEntry {
     pub amount_stroops: i64,
     pub fee_charged: u64,
     pub is_incoming: bool,
+    /// A credit asset's `CODE:ISSUER`; absent for XLM.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract: Option<String>,
+    /// A credit asset's amount, an exact decimal; absent for XLM.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_display: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +87,139 @@ pub(crate) struct HorizonAccount {
 pub(crate) struct HorizonBalance {
     pub(crate) balance: String,
     pub(crate) asset_type: String,
+    #[serde(default)]
+    pub(crate) asset_code: String,
+    #[serde(default)]
+    pub(crate) asset_issuer: String,
+    #[serde(default)]
+    pub(crate) limit: String,
+    #[serde(default)]
+    pub(crate) buying_liabilities: String,
+    #[serde(default)]
+    pub(crate) selling_liabilities: String,
+    #[serde(default)]
+    pub(crate) is_authorized: bool,
+}
+
+/// A Stellar account's trustline to one credit asset, in stroops.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarTrustline {
+    pub asset: crate::api::stellar_asset::StellarAsset,
+    pub balance: i64,
+    pub limit: i64,
+    /// Committed to open offers buying the asset: room the line keeps.
+    pub buying_liabilities: i64,
+    /// Committed to open offers selling it: not spendable.
+    pub selling_liabilities: i64,
+    /// The issuer lets the account hold and move the asset.
+    pub authorized: bool,
+}
+
+/// An account as a credit-asset payment or trustline depends on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarAccountState {
+    pub native_stroops: i64,
+    pub native_selling_liabilities: i64,
+    pub sequence: u64,
+    pub subentries: u64,
+    pub sponsoring: u64,
+    pub sponsored: u64,
+    pub trustlines: Vec<StellarTrustline>,
+}
+
+impl StellarAccountState {
+    pub fn trustline(
+        &self,
+        asset: &crate::api::stellar_asset::StellarAsset,
+    ) -> Option<&StellarTrustline> {
+        self.trustlines.iter().find(|line| line.asset == *asset)
+    }
+
+    /// The XLM the account must keep: two base reserves, and one for each
+    /// subentry and sponsorship it pays for.
+    pub fn minimum_balance(&self, base_reserve: u64) -> u64 {
+        (2 + self.subentries + self.sponsoring).saturating_sub(self.sponsored) * base_reserve
+    }
+}
+
+/// What a credit-asset payment or trustline depends on, from one verified
+/// node's latest ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarAssetState {
+    /// `None` when the account does not exist.
+    pub holder: Option<StellarAccountState>,
+    /// The destination, when one was asked about; `None` inside when it does
+    /// not exist.
+    pub destination: Option<Option<StellarAccountState>>,
+    pub issuer_exists: bool,
+    pub base_reserve: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct HorizonAccountState {
+    balances: Vec<HorizonBalance>,
+    sequence: String,
+    subentry_count: u64,
+    #[serde(default)]
+    num_sponsoring: u64,
+    #[serde(default)]
+    num_sponsored: u64,
+}
+
+impl HorizonAccountState {
+    fn state(self) -> Result<StellarAccountState, ApiError> {
+        let native = self
+            .balances
+            .iter()
+            .find(|balance| balance.asset_type == "native")
+            .or_decode("no native balance")?;
+        let liabilities = |text: &str| {
+            if text.is_empty() {
+                Ok(0)
+            } else {
+                parse_stellar_amount(text)
+            }
+        };
+        let mut trustlines = Vec::new();
+        for balance in &self.balances {
+            if !matches!(
+                balance.asset_type.as_str(),
+                "credit_alphanum4" | "credit_alphanum12"
+            ) {
+                continue;
+            }
+            let asset = crate::api::stellar_asset::StellarAsset::new(
+                &balance.asset_code,
+                &balance.asset_issuer,
+            )
+            .map_err(|_| ApiError::decode("Horizon: invalid credit asset"))?;
+            if asset.asset_type() != balance.asset_type {
+                return Err(ApiError::decode(
+                    "Horizon: asset type does not match its code",
+                ));
+            }
+            trustlines.push(StellarTrustline {
+                asset,
+                balance: parse_stellar_amount(&balance.balance)?,
+                limit: parse_stellar_amount(&balance.limit)?,
+                buying_liabilities: liabilities(&balance.buying_liabilities)?,
+                selling_liabilities: liabilities(&balance.selling_liabilities)?,
+                authorized: balance.is_authorized,
+            });
+        }
+        Ok(StellarAccountState {
+            native_stroops: parse_stellar_amount(&native.balance)?,
+            native_selling_liabilities: liabilities(&native.selling_liabilities)?,
+            sequence: self
+                .sequence
+                .parse()
+                .map_err(|e| ApiError::Decode(format!("sequence parse: {e}")))?,
+            subentries: self.subentry_count,
+            sponsoring: self.num_sponsoring,
+            sponsored: self.num_sponsored,
+            trustlines,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +258,10 @@ pub(crate) struct HorizonPaymentRecord {
     /// `native` for XLM; a payment of an issued asset names its own.
     #[serde(default)]
     pub(crate) asset_type: String,
+    #[serde(default)]
+    pub(crate) asset_code: String,
+    #[serde(default)]
+    pub(crate) asset_issuer: String,
     /// `create_account` names its ends and amount differently.
     #[serde(default)]
     pub(crate) funder: String,
@@ -387,6 +530,49 @@ impl HorizonClient {
         .await
     }
 
+    /// An account's balances, trustlines and reserve counts, or `None` when
+    /// it does not exist.
+    pub(crate) async fn fetch_account_state(
+        &self,
+        address: &str,
+    ) -> Result<Option<StellarAccountState>, ApiError> {
+        match self
+            .get::<HorizonAccountState>(&format!("/accounts/{address}"))
+            .await
+        {
+            Err(ApiError::Status { status: 404, .. }) => Ok(None),
+            read => read?.state().map(Some),
+        }
+    }
+
+    /// What paying `asset` from `holder`, or trusting it, depends on: the
+    /// holder, the destination, whether the issuer exists, and the base
+    /// reserve, all from one verified node.
+    pub(crate) async fn fetch_asset_state(
+        &self,
+        chain: crate::registry::Chain,
+        holder: &str,
+        asset: &crate::api::stellar_asset::StellarAsset,
+        destination: Option<&str>,
+    ) -> Result<StellarAssetState, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let base_reserve = node.fetch_base_reserve().await?;
+            let destination = match destination {
+                None => None,
+                Some(destination) => Some(node.fetch_account_state(destination).await?),
+            };
+            Ok(StellarAssetState {
+                holder: node.fetch_account_state(holder).await?,
+                destination,
+                issuer_exists: node.fetch_account_state(&asset.issuer).await?.is_some(),
+                base_reserve,
+            })
+        })
+        .await
+    }
+
     pub async fn fetch_base_fee(&self) -> Result<u64, ApiError> {
         let stats: HorizonFeeStats = self.get("/fee_stats").await?;
         Ok(stats.fee_charged.mode.parse::<u64>().unwrap_or(100))
@@ -428,11 +614,12 @@ impl HorizonClient {
     }
 }
 
-/// The XLM each payment record moved for `address`.
+/// What each payment record moved for `address`: XLM, or a credit asset
+/// named by its `CODE:ISSUER`.
 ///
 /// A `create_account` record carries its ends and amount as `funder`,
-/// `account` and `starting_balance`. A payment of an issued asset is not XLM
-/// and is left out rather than shown with the asset's amount under XLM's name.
+/// `account` and `starting_balance`. A payment of a credit asset is that
+/// asset's row, never XLM's.
 fn stellar_history_from_payments(
     records: Vec<HorizonPaymentRecord>,
     address: &str,
@@ -440,12 +627,25 @@ fn stellar_history_from_payments(
     let entries: Result<Vec<Option<StellarHistoryEntry>>, ApiError> = records
         .into_iter()
         .map(|r| {
+            let contract = match r.asset_type.as_str() {
+                "credit_alphanum4" | "credit_alphanum12" if r.op_type == "payment" => Some(
+                    crate::api::stellar_asset::StellarAsset::new(&r.asset_code, &r.asset_issuer)
+                        .map_err(|_| ApiError::decode("Horizon payment: invalid credit asset"))?
+                        .identifier(),
+                ),
+                _ => None,
+            };
             let (from, to, amount) = match r.op_type.as_str() {
-                "payment" if r.asset_type == "native" => (r.from, r.to, r.amount),
+                "payment" if r.asset_type == "native" || contract.is_some() => {
+                    (r.from, r.to, r.amount)
+                }
                 "create_account" => (r.funder, r.account, r.starting_balance),
                 _ => return Ok(None),
             };
             let amount_stroops = parse_stellar_amount(&amount)?;
+            let amount_display = contract
+                .is_some()
+                .then(|| crate::decimal::from_units(u128::from(amount_stroops.unsigned_abs()), 7));
             // Horizon lists only operations already in a ledger.
             let timestamp = crate::api::time::confirmed_history_time(
                 crate::api::time::parse_iso8601_timestamp(&r.created_at)
@@ -460,24 +660,31 @@ fn stellar_history_from_payments(
                 is_incoming: to == address,
                 from,
                 to,
-                amount_stroops,
+                amount_stroops: if contract.is_some() {
+                    0
+                } else {
+                    amount_stroops
+                },
                 fee_charged: 0,
+                contract,
+                amount_display,
             }))
         })
         .collect();
     Ok(entries?.into_iter().flatten().collect())
 }
 
+/// Horizon's seven-place amount ("100.0000000") in stroops, exactly: a
+/// value with more places, outside an `i64`, or not a decimal is refused.
 pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, ApiError> {
-    // "100.0000000" -> stroops
-    let parts: Vec<&str> = s.splitn(2, '.').collect();
-    let whole: i64 = parts[0]
-        .parse()
-        .map_err(|e| ApiError::Decode(format!("amount parse: {e}")))?;
-    let frac_str = parts.get(1).copied().unwrap_or("0");
-    let frac_padded = format!("{:0<7}", frac_str);
-    let frac: i64 = frac_padded[..7].parse().unwrap_or(0);
-    Ok(whole * 10_000_000 + frac)
+    let invalid = || ApiError::Decode(format!("amount parse: {s:?}"));
+    let (negative, digits) = match s.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, s),
+    };
+    let stroops = crate::decimal::to_units(digits, 7).ok_or_else(invalid)?;
+    let stroops = i64::try_from(stroops).map_err(|_| invalid())?;
+    Ok(if negative { -stroops } else { stroops })
 }
 
 impl HorizonClient {
@@ -515,8 +722,30 @@ impl HorizonClient {
 mod history_tests {
     use super::*;
 
+    #[test]
+    fn amounts_are_exact_stroops_or_refused() {
+        assert_eq!(parse_stellar_amount("100.0000000").unwrap(), 1_000_000_000);
+        assert_eq!(parse_stellar_amount("0.0000001").unwrap(), 1);
+        assert_eq!(parse_stellar_amount("-1.5").unwrap(), -15_000_000);
+        assert_eq!(
+            parse_stellar_amount("922337203685.4775807").unwrap(),
+            i64::MAX
+        );
+        for bad in [
+            "",
+            "1.00000001",
+            "922337203685.4775808",
+            "1e5",
+            "abc",
+            "--1",
+        ] {
+            assert!(parse_stellar_amount(bad).is_err(), "{bad}");
+        }
+    }
+
     const ME: &str = "GA5XIGA5C7QTPTWXQHY6MCJRMTRZDOSHR6EFIBNDQTCQHG262N4GGKTM";
     const THEM: &str = "GBUXQE5RNV267EEVS6COJSHRKIE52GFVVA66TMM7UNAYLAOZP36PZ7YX";
+    const CIRCLE: &str = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 
     /// Record shapes as Horizon's `/accounts/{id}/payments` returns them.
     #[test]
@@ -531,13 +760,23 @@ mod history_tests {
                  "from": ME, "to": THEM, "amount": "82.1781600"},
                 {"type": "payment", "created_at": "2025-08-06T01:18:03Z",
                  "transaction_hash": "usdc", "asset_type": "credit_alphanum4",
+                 "asset_code": "USDC", "asset_issuer": CIRCLE,
                  "from": THEM, "to": ME, "amount": "5000.0000000"}
             ]
         }))
         .unwrap();
         let entries = stellar_history_from_payments(records.records, ME).unwrap();
         assert_eq!(entries[0].timestamp, 1_754_445_901, "2025-08-06T02:05:01Z");
-        assert_eq!(entries.len(), 2);
+        assert_eq!(entries.len(), 3);
+        // A credit asset is its own row, named by code and issuer.
+        assert_eq!(entries[2].txid, "usdc");
+        assert!(entries[2].is_incoming);
+        assert_eq!(
+            entries[2].contract.as_deref(),
+            Some(format!("USDC:{CIRCLE}").as_str())
+        );
+        assert_eq!(entries[2].amount_display.as_deref(), Some("5000"));
+        assert_eq!(entries[2].amount_stroops, 0);
         assert_eq!(entries[0].txid, "created");
         assert!(entries[0].is_incoming);
         assert_eq!(entries[0].from, THEM);

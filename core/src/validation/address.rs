@@ -45,10 +45,10 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
             validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinSVTestnet)
         }
         "litecoin" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Litecoin)
+            validate_litecoin_address(&normalized_input, crate::registry::Chain::Litecoin)
         }
         "litecoinTestnet" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::LitecoinTestnet)
+            validate_litecoin_address(&normalized_input, crate::registry::Chain::LitecoinTestnet)
         }
         "dogecoin" => {
             validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Dogecoin)
@@ -185,8 +185,30 @@ fn validate_fixed_utxo_address(
     invalid_result()
 }
 
+/// A Litecoin address: transparent, or an MWEB stealth address, which a
+/// payment from transparent funds reaches by a peg-in and one from MWEB funds
+/// directly.
+fn validate_litecoin_address(
+    value: &str,
+    chain: crate::registry::Chain,
+) -> AddressValidationResult {
+    if crate::send::litecoin_mweb::keys::StealthAddress::decode(chain, value).is_some() {
+        return make_result(value.to_ascii_lowercase());
+    }
+    validate_fixed_utxo_address(value, chain)
+}
+
+/// Every Zcash address form on the network: transparent (`t1`/`t3`), TEX
+/// (ZIP-320), Sapling and unified (ZIP-316). Each is payable — transparent
+/// and TEX from the transparent balance, Sapling and unified from shielded
+/// funds — so each is an address the wallet can be asked to send to.
 fn validate_zcash_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if crate::derivation::zcash::validate_zcash_address(value, testnet) {
+    let network = if testnet {
+        zcash_protocol::consensus::Network::TestNetwork
+    } else {
+        zcash_protocol::consensus::Network::MainNetwork
+    };
+    if zcash_keys::address::Address::decode(&network, value).is_some() {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -489,6 +511,62 @@ mod tests {
         out
     }
 
+    /// Every Zcash address form is an address on its network — transparent
+    /// P2PKH and P2SH, TEX, Sapling and unified — and none is one on the
+    /// other network.
+    #[test]
+    fn zcash_takes_every_address_form_on_its_network() {
+        use zcash_keys::address::Address;
+        use zcash_protocol::consensus::Network;
+        let vectors: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/zcash-addresses.json"))
+                .unwrap();
+        let usk = zcash_keys::keys::UnifiedSpendingKey::from_seed(
+            &Network::MainNetwork,
+            &[0; 32],
+            zip32::AccountId::ZERO,
+        )
+        .unwrap();
+        let sapling = Address::Sapling(
+            usk.sapling()
+                .to_diversifiable_full_viewing_key()
+                .default_address()
+                .1,
+        )
+        .encode(&Network::MainNetwork);
+        let p2sh = Address::Transparent(
+            zcash_transparent::address::TransparentAddress::ScriptHash([2; 20]),
+        )
+        .encode(&Network::MainNetwork);
+        for address in [
+            vectors["tex"]["vectors"][0]["transparent"]
+                .as_str()
+                .unwrap(),
+            vectors["tex"]["vectors"][0]["tex"].as_str().unwrap(),
+            vectors["unified"]["vectors"][0]["unified_addr"]
+                .as_str()
+                .unwrap(),
+            &sapling,
+            &p2sh,
+        ] {
+            assert!(validate("zcash", address.to_string()).is_valid, "{address}");
+            assert!(
+                !validate("zcashTestnet", address.to_string()).is_valid,
+                "{address}"
+            );
+        }
+        for address in [
+            "",
+            "not-a-zec-address",
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+        ] {
+            assert!(
+                !validate("zcash", address.to_string()).is_valid,
+                "{address}"
+            );
+        }
+    }
+
     #[test]
     fn normalizes_evm_addresses() {
         let result = validate_address(AddressValidationRequest {
@@ -720,26 +798,41 @@ mod tests {
     }
 
     #[test]
-    fn litecoin_refuses_mweb_addresses_without_a_complete_protocol_adapter() {
+    fn litecoin_takes_mweb_addresses_on_their_own_network() {
+        use crate::registry::Chain;
+        use crate::send::litecoin_mweb::keys::StealthAddress;
         let key = secp256k1::PublicKey::from_secret_key(
             &secp256k1::Secp256k1::new(),
             &secp256k1::SecretKey::from_slice(&[1; 32]).unwrap(),
         );
-        let payload = [key.serialize(), key.serialize()].concat();
-        for prefix in ["ltcmweb", "tmweb"] {
-            let address =
-                bech32::encode::<bech32::Bech32m>(bech32::Hrp::parse(prefix).unwrap(), &payload)
-                    .unwrap();
-            for chain in [
-                crate::registry::Chain::Litecoin,
-                crate::registry::Chain::LitecoinTestnet,
-            ] {
-                assert!(!validate(chain.address_validation_kind(), address.clone()).is_valid);
-                assert!(!crate::send::flow::is_valid_send_address(
-                    chain,
-                    address.clone()
-                ));
-            }
+        let address = StealthAddress {
+            scan: key,
+            spend: key,
+        };
+        let mainnet = address.encode(Chain::Litecoin).unwrap();
+        let testnet = address.encode(Chain::LitecoinTestnet).unwrap();
+        assert!(mainnet.starts_with("ltcmweb1") && testnet.starts_with("tmweb1"));
+        for (chain, own, other) in [
+            (Chain::Litecoin, &mainnet, &testnet),
+            (Chain::LitecoinTestnet, &testnet, &mainnet),
+        ] {
+            let result = validate(chain.address_validation_kind(), own.clone());
+            assert!(result.is_valid);
+            assert_eq!(result.normalized_value.as_ref(), Some(own));
+            assert!(crate::send::flow::is_valid_send_address(
+                chain,
+                own.to_ascii_uppercase()
+            ));
+            assert!(!validate(chain.address_validation_kind(), other.clone()).is_valid);
+            // Bech32m and a changed character are not MWEB addresses.
+            let payload = [key.serialize(), key.serialize()].concat();
+            let hrp = bech32::Hrp::parse(&own[..own.find('1').unwrap()]).unwrap();
+            let bech32m = bech32::encode::<bech32::Bech32m>(hrp, &payload).unwrap();
+            assert!(!validate(chain.address_validation_kind(), bech32m).is_valid);
+            let mut changed = own.clone();
+            let last = changed.pop().unwrap();
+            changed.push(if last == 'q' { 'p' } else { 'q' });
+            assert!(!validate(chain.address_validation_kind(), changed).is_valid);
         }
     }
 }

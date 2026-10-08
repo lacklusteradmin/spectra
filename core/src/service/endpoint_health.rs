@@ -186,6 +186,9 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
         Insight => vec![get("/status", "/blocks")],
         KaspaRest => vec![get("/info/network", "/networkName")],
         BchRestV2 => vec![get("/blockchain/getBlockchainInfo", "/blocks")],
+        // Checked through their own clients: gRPC, and Litecoin's
+        // peer-to-peer protocol.
+        Lightwalletd | LitecoinP2p => vec![],
     };
     if checks.is_empty() {
         return Err(ApiError::invalid(
@@ -205,6 +208,39 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
         .await
         {
             Ok(()) => (true, true, "Peercoin network and precision verified".into()),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
+    if record.api == EndpointApi::Lightwalletd {
+        return match crate::api::lightwalletd::LightwalletdClient::new(std::sync::Arc::new(vec![
+            record.endpoint.clone(),
+        ]))
+        .session(chain)
+        .await
+        {
+            Ok(session) => (
+                true,
+                true,
+                format!("lightwalletd network verified at height {}", session.tip),
+            ),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
+    if record.api == EndpointApi::LitecoinP2p {
+        return match crate::api::litecoin_p2p::LitecoinP2pClient::new(std::sync::Arc::new(vec![
+            record.endpoint.clone(),
+        ]))
+        .session(chain, &Default::default())
+        .await
+        {
+            Ok(session) => (
+                true,
+                true,
+                format!(
+                    "Litecoin node at height {} offers MWEB light-client service",
+                    session.peer_height
+                ),
+            ),
             Err(error) => (true, false, error.to_string()),
         };
     }

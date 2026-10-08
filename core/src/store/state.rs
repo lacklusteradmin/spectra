@@ -65,9 +65,10 @@ pub struct WalletState {
     pub derivation_overrides: crate::store::wallet_domain::WalletDerivationOverrides,
     pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub addresses: Vec<WalletAddress>,
-    /// The block height a scanning wallet starts from: a Monero wallet's
-    /// restore height, fixed when it is imported. `None` on every other
-    /// chain, which reads balances from a provider instead of scanning.
+    /// The block height a scanning wallet starts from, fixed when it is
+    /// imported: a Monero wallet's restore height, or where a Zcash wallet's
+    /// scan for shielded funds starts. `None` on every other chain, which
+    /// reads balances from a provider instead of scanning.
     pub restore_height: Option<u64>,
     /// The deployment ids of the holdings the user hid, sorted: left out of
     /// the wallet's total and the portfolio, listed apart, still sendable.
@@ -1279,6 +1280,9 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             {
                 contract = normalized;
             }
+            // Where the protocol fixes a token's places, they are the
+            // protocol's, whatever was typed.
+            let decimals = crate::tokens::fixed_token_decimals(&standard).unwrap_or(decimals);
 
             let rejection = match hosting {
                 None => Some(TokenPreferenceRejection::UnknownChain),
@@ -1393,7 +1397,8 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 token.symbol = symbol.clone();
                 token.coingecko_id = coingecko_id.trim().to_lowercase();
                 token.coinpaprika_id = coinpaprika_id.trim().to_lowercase();
-                token.decimals = decimals;
+                token.decimals =
+                    crate::tokens::fixed_token_decimals(&token.token_standard).unwrap_or(decimals);
                 state.quotes.prices.remove(&token.deployment_id);
                 state.quotes.prices_attempt_at = None;
                 crate::store::sort_token_preferences(&mut state.token_preferences);

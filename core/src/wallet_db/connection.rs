@@ -65,7 +65,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA temp_store = MEMORY;
-         CREATE TABLE IF NOT EXISTS monero_wallets (wallet_id TEXT NOT NULL, chain_id TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(wallet_id, chain_id));
+         CREATE TABLE IF NOT EXISTS scan_caches (wallet_id TEXT NOT NULL, chain_id TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(wallet_id, chain_id));
          CREATE TABLE IF NOT EXISTS send_artifacts (
              id TEXT PRIMARY KEY NOT NULL,
              revision INTEGER NOT NULL,
@@ -107,7 +107,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              payload    TEXT NOT NULL CHECK (
                  json_valid(payload)
                  AND json_type(payload, '$.id') IS 'text'
-                 AND coalesce(json_extract(payload, '$.kind'), '') IN ('send', 'receive', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts')
+                 AND coalesce(json_extract(payload, '$.kind'), '') IN ('send', 'receive', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'trustAsset', 'removeTrustLine', 'shield')
                  AND coalesce(json_extract(payload, '$.status'), '') IN ('pending', 'confirmed', 'failed')),
              asset_key TEXT GENERATED ALWAYS AS
                  (coalesce(json_extract(payload, '$.deploymentId'), 'record:' || id)) STORED,
@@ -136,7 +136,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              (json_extract(payload, '$.status'), created_at DESC, id);
          CREATE INDEX IF NOT EXISTS idx_hr_pending_sender ON history_records
              (chain_id, lower(json_extract(payload, '$.sourceAddress')))
-             WHERE json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts') AND json_extract(payload, '$.status') = 'pending';
+             WHERE json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending';
          CREATE INDEX IF NOT EXISTS idx_hr_source_path ON history_records
              (wallet_id, chain_id, json_extract(payload, '$.sourceDerivationPath'));
          CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records

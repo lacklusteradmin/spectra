@@ -356,8 +356,9 @@ struct WalletDetailView: View {
                 openURL(url)
             }
         case .addToNetwork, .rename, .revealPhrase, .exportKeys, .delete: isShowingAdvancedPage = true
-        case .history, .addKeys, .stake, .scanBlocks, .coins, .tokenApprovals, .networkAccount, .accessKeys,
-             .coinObjects, .tokenAccounts, .signMessage, .verifyMessage:
+        case .history, .addKeys, .stake, .scanBlocks, .coins, .tokenApprovals, .nfts, .shieldedFunds,
+             .mwebFunds, .networkAccount, .accessKeys, .coinObjects, .tokenAccounts, .trustLines,
+             .signMessage, .verifyMessage:
             openedAction = action
         }
     }
@@ -378,6 +379,12 @@ struct WalletDetailView: View {
             WalletCoinsView(store: store, wallet: displayedWallet)
         case .tokenApprovals:
             WalletApprovalsView(store: store, wallet: displayedWallet)
+        case .nfts:
+            WalletNftsView(store: store, wallet: displayedWallet)
+        case .shieldedFunds:
+            WalletShieldedFundsView(store: store, wallet: displayedWallet)
+        case .mwebFunds:
+            WalletMwebFundsView(store: store, wallet: displayedWallet)
         case .networkAccount:
             WalletNetworkAccountView(store: store, wallet: displayedWallet)
         case .accessKeys:
@@ -386,6 +393,8 @@ struct WalletDetailView: View {
             WalletCoinObjectsView(store: store, wallet: displayedWallet)
         case .tokenAccounts:
             WalletTokenAccountsView(store: store, wallet: displayedWallet)
+        case .trustLines:
+            WalletTrustLinesView(store: store, wallet: displayedWallet)
         case .signMessage, .verifyMessage:
             WalletMessageView(store: store, wallet: displayedWallet, canSign: action == .signMessage)
         case .send, .receive, .openInExplorer, .getTestCoins, .addToNetwork, .rename, .revealPhrase, .exportKeys,

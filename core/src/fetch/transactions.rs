@@ -134,6 +134,9 @@ fn kind_from_raw(raw: &str) -> TransactionKind {
         "deleteAccessKey" => TransactionKind::DeleteAccessKey,
         "mergeCoins" => TransactionKind::MergeCoins,
         "closeTokenAccounts" => TransactionKind::CloseTokenAccounts,
+        "trustAsset" => TransactionKind::TrustAsset,
+        "shield" => TransactionKind::Shield,
+        "removeTrustLine" => TransactionKind::RemoveTrustLine,
         _ => TransactionKind::Receive,
     }
 }
@@ -260,9 +263,9 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransa
 
         let key = bucket_key(&incoming);
         let candidates = index.get(&key);
-        let staking_key = (key.0, key.1.clone(), "send".to_string(), key.3.clone());
-        let staking_candidates = if incoming.kind == "receive" {
-            index.get(&staking_key)
+        let operation_key = (key.0, key.1.clone(), "send".to_string(), key.3.clone());
+        let operation_candidates = if incoming.kind == "receive" {
+            index.get(&operation_key)
         } else {
             None
         };
@@ -270,10 +273,10 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransa
             .into_iter()
             .flatten()
             .chain(
-                staking_candidates
+                operation_candidates
                     .into_iter()
                     .flatten()
-                    .filter(|&&i| kind_from_raw(&merged_transactions[i].kind).is_staking()),
+                    .filter(|&&i| kind_from_raw(&merged_transactions[i].kind).is_operation()),
             )
             .copied()
             .find(|&i| matches_identity(&merged_transactions[i], &incoming, &strategy, chain_id));
@@ -318,7 +321,7 @@ fn bucket_key(record: &FetchedTransactionRecord) -> IdentityBucketKey {
     (
         record.chain_id,
         record.transaction_hash.clone(),
-        if kind_from_raw(&record.kind).is_staking() {
+        if kind_from_raw(&record.kind).is_operation() {
             "send".into()
         } else {
             record.kind.clone()
@@ -358,7 +361,7 @@ fn matches_identity(
     }
     if existing.chain_id != chain_id
         || existing.transaction_hash != incoming.transaction_hash
-        || (existing.kind != incoming.kind && !staking_provider_match(existing, incoming))
+        || (existing.kind != incoming.kind && !operation_provider_match(existing, incoming))
     {
         return false;
     }
@@ -374,7 +377,7 @@ fn matches_identity(
         TransactionMergeStrategy::Evm => {
             existing.wallet_id == incoming.wallet_id
                 && incoming.wallet_id.is_some()
-                && (staking_provider_match(existing, incoming)
+                && (operation_provider_match(existing, incoming)
                     || (normalize_evm_address(&existing.address)
                         == normalize_evm_address(&incoming.address)
                         && crate::decimal::compare(&existing.amount, &incoming.amount)
@@ -383,11 +386,12 @@ fn matches_identity(
     }
 }
 
-fn staking_provider_match(
+/// A provider's row of a transaction core recorded as an operation.
+fn operation_provider_match(
     existing: &FetchedTransactionRecord,
     incoming: &FetchedTransactionRecord,
 ) -> bool {
-    kind_from_raw(&existing.kind).is_staking()
+    kind_from_raw(&existing.kind).is_operation()
         && matches!(incoming.kind.as_str(), "send" | "receive")
 }
 
@@ -398,7 +402,7 @@ fn merge_record(
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> FetchedTransactionRecord {
     let mut incoming = incoming;
-    if kind_from_raw(&existing.kind).is_staking() {
+    if kind_from_raw(&existing.kind).is_operation() {
         incoming.kind = existing.kind.clone();
         incoming.amount = existing.amount.clone();
         incoming.address = existing.address.clone();
@@ -412,6 +416,17 @@ fn merge_record(
         TransactionMergeStrategy::Evm => {
             merge_evm(existing, incoming, preserve_created_at_sentinel_unix)
         }
+    }
+}
+
+/// The counterparty a merged row keeps: the provider's, unless its row
+/// names none, when the one the wallet recorded — a send's recipient —
+/// stays.
+fn counterparty(existing: String, incoming: String) -> String {
+    if incoming.is_empty() {
+        existing
+    } else {
+        incoming
     }
 }
 
@@ -430,7 +445,7 @@ fn merge_standard_utxo(
         symbol: incoming.symbol,
         chain_id: incoming.chain_id,
         amount: incoming.amount,
-        address: incoming.address,
+        address: counterparty(existing.address, incoming.address),
         transaction_hash: incoming.transaction_hash,
         nonce: incoming.nonce.or(existing.nonce),
         receipt_block_number: incoming
@@ -478,7 +493,7 @@ fn merge_dogecoin(
         symbol: incoming.symbol,
         chain_id: incoming.chain_id,
         amount: incoming.amount,
-        address: incoming.address,
+        address: counterparty(existing.address, incoming.address),
         transaction_hash: incoming.transaction_hash,
         nonce: incoming.nonce.or(existing.nonce),
         receipt_block_number: incoming
@@ -533,7 +548,7 @@ fn merge_account_based(
         symbol: incoming.symbol,
         chain_id: incoming.chain_id,
         amount: incoming.amount,
-        address: incoming.address,
+        address: counterparty(existing.address, incoming.address),
         transaction_hash: incoming.transaction_hash,
         nonce: existing.nonce,
         receipt_block_number: incoming
@@ -586,7 +601,7 @@ fn merge_evm(
         symbol: incoming.symbol,
         chain_id: incoming.chain_id,
         amount: incoming.amount,
-        address: incoming.address,
+        address: counterparty(existing.address, incoming.address),
         transaction_hash: incoming.transaction_hash,
         nonce: incoming.nonce.or(existing.nonce),
         receipt_block_number: incoming
@@ -777,6 +792,22 @@ mod tests {
             Some("esplora")
         );
         assert_eq!(record.created_at_unix, 500.0);
+        assert_eq!(record.address, "incoming-address");
+
+        // A row that names no counterparty keeps the recorded recipient.
+        let mut unnamed = sample_transaction(crate::registry::Chain::Bitcoin);
+        unnamed.address = String::new();
+        let merged = merge_transactions(TransactionMergeRequest {
+            existing_transactions: vec![sample_transaction(crate::registry::Chain::Bitcoin)],
+            incoming_transactions: vec![unnamed],
+            strategy: TransactionMergeStrategy::StandardUtxo,
+            chain_id: crate::registry::Chain::Bitcoin,
+            preserve_created_at_sentinel_unix: None,
+        });
+        assert_eq!(
+            merged[0].address,
+            sample_transaction(crate::registry::Chain::Bitcoin).address
+        );
     }
 
     /// Assets are told apart by deployment, never by ticker. A token that

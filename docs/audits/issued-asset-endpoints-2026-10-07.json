@@ -1,0 +1,310 @@
+{
+  "checked": "2026-10-07",
+  "method": "Read-only JSON-RPC and REST calls to each built-in XRPL JSON-RPC and Horizon endpoint, made by scripts written for this audit; nothing signed or submitted. XRPL: server_info for the network id, account_lines (with its marker) for an account with trust lines, account_tx with metadata, and fee. Horizon: the network passphrase, an account holding USDC found through /accounts?asset=, its balances, and its payments. These are the reads token balances, token discovery and token history use; history and fee were already claimed.",
+  "claims_added": [
+    "token-balance",
+    "token-discovery",
+    "token-history"
+  ],
+  "endpoints": [
+    {
+      "id": "xrp.rpc.s1",
+      "chain_id": "xrp",
+      "api": "xrpl-json-rpc",
+      "endpoint": "https://s1.ripple.com:51234/",
+      "network_id": 0,
+      "checks": [
+        {
+          "method": "account_lines",
+          "account": "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq",
+          "lines": 10,
+          "marker": true,
+          "fields": [
+            "account",
+            "balance",
+            "currency",
+            "limit",
+            "limit_peer",
+            "quality_in",
+            "quality_out"
+          ],
+          "error": null
+        },
+        {
+          "method": "account_tx",
+          "transactions": 5,
+          "ripple_state_nodes": 0,
+          "error": null
+        },
+        {
+          "method": "fee",
+          "open_ledger_fee": "10"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "xrp.rpc.s2",
+      "chain_id": "xrp",
+      "api": "xrpl-json-rpc",
+      "endpoint": "https://s2.ripple.com:51234/",
+      "network_id": 0,
+      "checks": [
+        {
+          "method": "account_lines",
+          "account": "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq",
+          "lines": 10,
+          "marker": true,
+          "fields": [
+            "account",
+            "balance",
+            "currency",
+            "limit",
+            "limit_peer",
+            "quality_in",
+            "quality_out"
+          ],
+          "error": null
+        },
+        {
+          "method": "account_tx",
+          "transactions": 5,
+          "ripple_state_nodes": 0,
+          "error": null
+        },
+        {
+          "method": "fee",
+          "open_ledger_fee": "10"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "xrp.rpc.cluster",
+      "chain_id": "xrp",
+      "api": "xrpl-json-rpc",
+      "endpoint": "https://xrplcluster.com/",
+      "network_id": 0,
+      "checks": [
+        {
+          "method": "account_lines",
+          "account": "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq",
+          "lines": 10,
+          "marker": true,
+          "fields": [
+            "account",
+            "balance",
+            "currency",
+            "limit",
+            "limit_peer",
+            "quality_in",
+            "quality_out"
+          ],
+          "error": null
+        },
+        {
+          "method": "account_tx",
+          "transactions": 5,
+          "ripple_state_nodes": 0,
+          "error": null
+        },
+        {
+          "method": "fee",
+          "open_ledger_fee": "10"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "xrp.testnet.altnet",
+      "chain_id": "xrp-testnet",
+      "api": "xrpl-json-rpc",
+      "endpoint": "https://s.altnet.rippletest.net:51234/",
+      "network_id": 1,
+      "checks": [
+        {
+          "method": "account_lines",
+          "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+          "lines": 10,
+          "marker": true,
+          "fields": [
+            "account",
+            "balance",
+            "currency",
+            "limit",
+            "limit_peer",
+            "no_ripple",
+            "quality_in",
+            "quality_out"
+          ],
+          "error": null
+        },
+        {
+          "method": "account_tx",
+          "transactions": 10,
+          "ripple_state_nodes": 0,
+          "error": null
+        },
+        {
+          "method": "fee",
+          "open_ledger_fee": "10"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "xrp.testnet.xrpllabs",
+      "chain_id": "xrp-testnet",
+      "api": "xrpl-json-rpc",
+      "endpoint": "https://testnet.xrpl-labs.com/",
+      "network_id": 1,
+      "checks": [
+        {
+          "method": "account_lines",
+          "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+          "lines": 10,
+          "marker": true,
+          "fields": [
+            "account",
+            "balance",
+            "currency",
+            "limit",
+            "limit_peer",
+            "no_ripple",
+            "quality_in",
+            "quality_out"
+          ],
+          "error": null
+        },
+        {
+          "method": "account_tx",
+          "transactions": 1,
+          "ripple_state_nodes": 0,
+          "error": null
+        },
+        {
+          "method": "fee",
+          "open_ledger_fee": "10"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "stellar.horizon.primary",
+      "chain_id": "stellar",
+      "api": "horizon",
+      "endpoint": "https://horizon.stellar.org",
+      "network_passphrase": "Public Global Stellar Network ; September 2015",
+      "checks": [
+        {
+          "path": "/accounts?asset=USDC:<issuer>",
+          "account": "GA2226DVH7XAGTRL7LELZ35V5QEAJDVQZLZOEKEIMXBGHB3CB5FCYYPH",
+          "credit_balances": 1,
+          "fields": [
+            "asset_code",
+            "asset_issuer",
+            "asset_type",
+            "balance",
+            "buying_liabilities",
+            "is_authorized",
+            "is_authorized_to_maintain_liabilities",
+            "last_modified_ledger",
+            "limit",
+            "selling_liabilities",
+            "sponsor"
+          ]
+        },
+        {
+          "path": "/accounts/<holder>/payments",
+          "records": 1,
+          "credit_payments": 0,
+          "credit_fields": []
+        },
+        {
+          "path": "/accounts/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN/payments?limit=3&order=desc",
+          "status": 200,
+          "records": 3,
+          "credit_payments": 3,
+          "credit_fields": [
+            "asset_code",
+            "asset_issuer",
+            "asset_type"
+          ]
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "stellar.horizon.lobstr",
+      "chain_id": "stellar",
+      "api": "horizon",
+      "endpoint": "https://horizon.stellar.lobstr.co",
+      "network_passphrase": "Public Global Stellar Network ; September 2015",
+      "checks": [
+        {
+          "path": "/accounts?asset=USDC:<issuer>",
+          "account": "GA2226DVH7XAGTRL7LELZ35V5QEAJDVQZLZOEKEIMXBGHB3CB5FCYYPH",
+          "credit_balances": 1,
+          "fields": [
+            "asset_code",
+            "asset_issuer",
+            "asset_type",
+            "balance",
+            "buying_liabilities",
+            "is_authorized",
+            "is_authorized_to_maintain_liabilities",
+            "last_modified_ledger",
+            "limit",
+            "selling_liabilities",
+            "sponsor"
+          ]
+        },
+        {
+          "path": "/accounts/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN/payments?limit=3&order=desc",
+          "status": 200,
+          "records": 3,
+          "credit_payments": 3,
+          "credit_fields": [
+            "asset_code",
+            "asset_issuer",
+            "asset_type"
+          ]
+        }
+      ],
+      "notes": "Answered the USDC issuer's payments with credit-asset fields, but returned 404 for the holder account's payments that horizon.stellar.org served: this Horizon appears to keep limited history. Its history claim predates this audit and is left to the endpoint audit in OPEN-ITEMS; horizon.stellar.org remains the primary."
+    },
+    {
+      "id": "stellar.testnet.horizon",
+      "chain_id": "stellar-testnet",
+      "api": "horizon",
+      "endpoint": "https://horizon-testnet.stellar.org",
+      "network_passphrase": "Test SDF Network ; September 2015",
+      "checks": [
+        {
+          "path": "/accounts?asset=USDC:<issuer>",
+          "account": "GA222IF5CAODCVDK7IAACYHQDDERQFZXF66QYIXJ7S347HC3EPWEWLWO",
+          "credit_balances": 1,
+          "fields": [
+            "asset_code",
+            "asset_issuer",
+            "asset_type",
+            "balance",
+            "buying_liabilities",
+            "is_authorized",
+            "is_authorized_to_maintain_liabilities",
+            "last_modified_ledger",
+            "limit",
+            "selling_liabilities"
+          ]
+        },
+        {
+          "path": "/accounts/<holder>/payments",
+          "records": 1,
+          "credit_payments": 0,
+          "credit_fields": []
+        }
+      ],
+      "notes": ""
+    }
+  ]
+}

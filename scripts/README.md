@@ -28,15 +28,19 @@ when tests finish. The environment must allow binding local ports.
 | `cli-token-preferences.py` | Token-wide choices and editable price-source metadata survive process restarts. |
 | `cli-send-stages.py` | Durable build, sign and explicit-node submission stages against loopback nodes. |
 | `cli-send-polkadot.py` | Polkadot and Bittensor metadata-driven signing, reviewed fees and finalized success/failure events. |
-| `cli-send-cardano.py` | Independent extended-key witness bytes, pure-ADA input selection and refusal of incomplete or changed UTXO facts. |
+| `cli-send-cardano.py` | Independent extended-key witness bytes; token-bearing inputs paying ADA and returning their assets; a native asset sent with its minimum ADA, discovered and refreshed; a node on another network refused; incomplete, changed or insufficient inputs refused. |
 | `cli-finality-account-chains.py` | Exact XRP, Stellar and Tron execution results, failed transactions and pending unknown results across process restarts. |
 | `cli-send-local-digests.py` | Sui/Aptos local transaction digests reject a mismatched submission reply and retain the same signed payload for a fresh-process retry. |
-| `cli-send-tokens.py` | Sui, Aptos and TON token stages, metadata and stale-state refusal, plus ERC-20 on Ethereum Classic and HyperEVM. |
+| `cli-send-tokens.py` | Sui, Aptos and TON token stages, metadata and stale-state refusal, plus ERC-20 on Ethereum Classic and HyperEVM; Solana Token-2022 transfer fees and hooks reviewed, a fee changed before signing refused, and every Token-2022 refusal building nothing. |
 | `cli-receipt-fees.py` | Complete historical OP Stack actual fees for confirmed and reverted transactions; missing components remain unknown after reopening. |
 | `cli-chain-coverage.py` | Network-correct raw private-key imports, signer identities and testnet watch imports. |
-| `cli-send-icp-zcash.py` | ICP and Zcash send stages against loopback providers. |
+| `cli-send-icp-zcash.py` | ICP and Zcash transparent send stages against loopback providers; transparent funds pay a TEX address (ZIP-320) and refuse a shielded one. |
 | `cli-trc10.py` | Mainnet/Nile TRC-10 metadata, discovery/history, exact token signing and durable success/failure; wrong identity/precision/funds refuse early. |
 | `cli-staking.py` | Four account chains and DOT nomination pools, ownership/funds checks, fresh-process receipts, same-payload retries and finalized outcomes. |
+| `cli-nfts.py` | ERC-721 and ERC-1155 tokens: the inventory read across pages; transfers built only for what the contract and a live read say the wallet holds, signed as ethers.js signs them and re-checked before signing; one history row per token; a collection tracked as a token never gets a balance or a token send. |
+| `cli-zcash-shielded.py` | Zcash shielded funds against `spectra-zcash-fixture`, a loopback lightwalletd whose synthetic chain checks each transaction as a node would and journals what it paid whom: scanning from the restore height, shielding, a shielded payment with a memo only its recipient reads, paying a transparent address, recovery into a second data directory; the Sapling parameters the one request beyond loopback, refused; refusals before signing. |
+| `cli-litecoin-mweb.py` | Litecoin MWEB funds against `spectra-litecoin-mweb-fixture`, a loopback Litecoin node and Esplora indexer whose synthetic chain — independent of core's MWEB, its transactions decoded by the `litecoin` crate — proves every light-client answer, checks each transaction as a node would and journals what it paid whom: a scan of forty thousand outputs in batches, a payment inside MWEB, a peg-out, a peg-in to the wallet and one to another's MWEB address from transparent funds, recovery at another path; refusals of a scan with no node, the wrong password, a key-only or second wallet of the phrase, a node on another network, and of payments past the balance, to another network or below dust. |
+| `cli-issued-assets.py` | XRP Ledger issued currencies and Stellar credit assets: one code from two issuers stays two assets in tokens, balances, discovery and history; trust lines opened, removed and paid through, each signed as the network's SDK signs it; refusals build nothing. |
 | `cli-wallet-operations.py` | Operations a wallet's page builds, against loopback nodes: closing XRP and Stellar accounts, NEAR access keys, Sui coin merges and Solana token-account closures, each prerequisite refused before anything is built and each transaction signed and broadcast through the send stages. |
 | `cli-icp-staking.py` | Controller-only neurons, explicit lock/fee review, independent Candid responses and refusal of forged execution certificates before funding. |
 | `cli-send-near.py` | Mainnet/testnet native and NEP-141 protocol fee budgets, implicit-account costs, storage reserves and fee/funds changes before signing or pending retries. |
@@ -130,6 +134,10 @@ SDK versions and installation/run commands.
 | `generate-near-key-deletion-vector.cjs` | A NEAR `DeleteKey` transaction from @near-js/transactions. |
 | `generate-sui-merge-vectors.cjs` | Sui coin merges, a token type's and SUI's own, from @mysten/sui. |
 | `generate-solana-close-accounts-vector.cjs` | Closing SPL and Token-2022 accounts, compiled and signed by @solana/web3.js. |
+| `generate-cardano-asset-vectors.cjs` | Cardano transfers carrying native assets, with each output's minimum ADA and the minimum fee, from the Cardano Serialization Library. |
+| `generate-nft-transfer-vectors.cjs` | ERC-721 and ERC-1155 `safeTransferFrom`, `ownerOf`, `balanceOf` and ERC-165 calls for token ids up to 2^256 − 1, and two transfers signed as EIP-1559 transactions, from ethers.js. |
+| `generate-issued-asset-vectors.cjs` | XRP Ledger issued-currency payments (with SendMax) and TrustSet, rippled's amount encoding, and Stellar credit-asset payments and ChangeTrust, from ripple-binary-codec and the Stellar SDK. |
+| `generate-solana-token-2022-vectors.cjs` | Token-2022 `TransferCheckedWithFee` and a transfer hook's extra accounts, every seed kind, resolved by @solana/spl-token. |
 | `generate-account-closing-vectors.cjs` | XRP AccountDelete and Stellar AccountMerge, built and signed by the official XRPL packages and the Stellar SDK. |
 | `generate-derivation-profile-vectors.cjs` | Addresses for every registry derivation profile at accounts 0 and 1, from independent libraries. |
 | `generate-private-key-vectors.cjs` | Each chain's own private-key encodings, from the chains' SDKs. |

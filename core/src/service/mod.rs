@@ -144,11 +144,18 @@ mod wallet_closing;
 mod wallet_messages;
 mod wallet_near_keys;
 mod wallet_network_account;
+mod wallet_nfts;
+pub use wallet_nfts::{WalletNft, WalletNfts};
 mod wallet_sui_coins;
 mod wallet_token_accounts;
+mod wallet_trust_lines;
 pub use wallet_messages::SignedMessage;
 pub use wallet_network_account::{NetworkAccount, TonAccountState, WalletNetworkAccount};
 mod wallet_import;
+mod zcash_shielded;
+pub use zcash_shielded::ZcashShieldedStatus;
+mod litecoin_mweb;
+pub use litecoin_mweb::LitecoinMwebStatus;
 
 pub(crate) use helpers::*;
 use keypool::keypool_key;

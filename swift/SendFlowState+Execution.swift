@@ -44,6 +44,23 @@ extension SendFlowState {
         if artifact.review.requiresSelfSendConfirmation {
             reasons.append(AppLocalization.string("This destination belongs to your wallet. Confirm intentional self-send."))
         }
+        if let terms = artifact.review.transferTerms {
+            if terms.fee != "0" {
+                reasons.append(AppLocalization.format(
+                    "The token takes %@ %@ of this amount on the way; the recipient receives %@ %@.",
+                    AmountPresentation.localizedDecimal(terms.fee), artifact.symbol,
+                    AmountPresentation.localizedDecimal(terms.received), artifact.symbol))
+            }
+            if let carried = terms.carriedNative {
+                reasons.append(AppLocalization.format(
+                    "The token goes with %@ %@, the least its output can hold; the recipient keeps it.",
+                    AmountPresentation.localizedDecimal(carried), artifact.chainId.gasTokenSymbol))
+            }
+            if let program = terms.hookProgram {
+                reasons.append(AppLocalization.format(
+                    "This token runs program %@ on every transfer, and it can refuse this one.", program))
+            }
+        }
         let network = artifact.chainId.displayName
         let amount = AmountPresentation.localizedDecimal(artifact.amount)
         reasons.insert("\(amount) \(artifact.symbol) → \(artifact.recipient) (\(network))", at: 0)

@@ -633,6 +633,8 @@ mod a_preview_quotes_the_asset_it_moves {
                     "70a08231" => json!(format!("0x{TOKEN_RAW:064x}")),
                     "313ce567" => json!(format!("0x{TOKEN_DECIMALS:064x}")),
                     "95d89b41" => json!(format!("0x{:0<64}", hex::encode("TEST"))),
+                    // ERC-165: a fungible token claims no NFT interface.
+                    "01ffc9a7" => json!(format!("0x{:064x}", 0)),
                     other => panic!("unexpected eth_call selector {other}"),
                 }
             }

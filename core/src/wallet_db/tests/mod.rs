@@ -699,7 +699,7 @@ fn unknown_metadata_and_schema_versions_are_refused() {
 #[test]
 fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
     let db = tmp_db();
-    monero_save(
+    scan_cache_save(
         &db,
         "wallet",
         crate::registry::Chain::Monero,
@@ -707,7 +707,7 @@ fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
         "encrypted-mainnet",
     )
     .unwrap();
-    monero_save(
+    scan_cache_save(
         &db,
         "wallet",
         crate::registry::Chain::MoneroStagenet,
@@ -716,13 +716,13 @@ fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
     )
     .unwrap();
     assert_eq!(
-        monero_load(&db, "wallet", crate::registry::Chain::Monero)
+        scan_cache_load(&db, "wallet", crate::registry::Chain::Monero)
             .unwrap()
             .unwrap()
             .1,
         "encrypted-mainnet"
     );
-    monero_save(
+    scan_cache_save(
         &db,
         "wallet",
         crate::registry::Chain::Monero,
@@ -731,7 +731,7 @@ fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
     )
     .unwrap();
     assert!(
-        monero_save(
+        scan_cache_save(
             &db,
             "wallet",
             crate::registry::Chain::Monero,
@@ -741,11 +741,11 @@ fn monero_scan_cache_is_network_scoped_and_rejects_stale_writers() {
         .is_err()
     );
     assert_eq!(
-        monero_load(&db, "wallet", crate::registry::Chain::Monero).unwrap(),
+        scan_cache_load(&db, "wallet", crate::registry::Chain::Monero).unwrap(),
         Some((1, "next-batch".into()))
     );
     assert_eq!(
-        monero_load(&db, "wallet", crate::registry::Chain::MoneroStagenet).unwrap(),
+        scan_cache_load(&db, "wallet", crate::registry::Chain::MoneroStagenet).unwrap(),
         Some((0, "encrypted-stagenet".into()))
     );
 }
@@ -811,7 +811,7 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
             .is_empty()
     );
     with_conn(&db, |conn| {
-        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts') AND json_extract(payload, '$.status') = 'pending'")
+        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'")
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
         assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
         Ok::<_, DbError>(())

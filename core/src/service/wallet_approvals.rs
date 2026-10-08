@@ -51,7 +51,7 @@ impl WalletService {
     ) -> Result<TokenApprovals, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
-            let (chain, owner) = this.evm_owner(&wallet_id).await?;
+            let (chain, owner) = this.evm_owner(&wallet_id, APPROVALS_REFUSAL).await?;
             let indexers = this
                 .api_endpoints(chain, crate::EndpointApi::Blockscout, &[EndpointCapability::History])
                 .await?;
@@ -145,7 +145,7 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
-            let (chain, owner) = this.evm_owner(&wallet_id).await?;
+            let (chain, owner) = this.evm_owner(&wallet_id, APPROVALS_REFUSAL).await?;
             let state = this.app_state().await;
             if state
                 .wallets
@@ -293,7 +293,9 @@ impl WalletService {
     ) -> Result<Option<String>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
-            let (chain, owner) = this.evm_owner(&wallet_id).await?;
+            let (chain, owner) = this
+                .evm_owner(&wallet_id, "Only an EVM wallet has an ENS name.")
+                .await?;
             if !chain.resolves_ens_names() {
                 return Ok(None);
             }
@@ -308,15 +310,19 @@ impl WalletService {
     }
 }
 
+const APPROVALS_REFUSAL: &str = "Only an EVM wallet grants token approvals.";
+
 impl WalletService {
-    /// An EVM wallet's network and address, or a refusal.
-    async fn evm_owner(&self, wallet_id: &str) -> Result<(Chain, String), SpectraBridgeError> {
+    /// An EVM wallet's network and address, or `refusal` for any other.
+    pub(super) async fn evm_owner(
+        &self,
+        wallet_id: &str,
+        refusal: &'static str,
+    ) -> Result<(Chain, String), SpectraBridgeError> {
         let wallet = self.stored_wallet(wallet_id).await?;
         let chain = wallet.chain_id;
         if !chain.is_evm() {
-            return Err(SpectraBridgeError::invalid(
-                "Only an EVM wallet grants token approvals.",
-            ));
+            return Err(SpectraBridgeError::invalid(refusal));
         }
         let owner = wallet
             .address_on(chain)

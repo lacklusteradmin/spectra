@@ -246,8 +246,12 @@ pub(crate) fn validated_account_xpub(xpub: &str) -> Option<String> {
 }
 
 /// Validate one address as `chain`'s, returning the normalized form to store,
-/// or `None` when it does not parse for that chain.
+/// or `None` when it does not parse for that chain. An MWEB address pays a
+/// wallet without anything public to watch, so no wallet is one.
 pub(crate) fn normalized_import_address(chain: Chain, address: &str) -> Option<String> {
+    if crate::send::litecoin_mweb::keys::StealthAddress::decode(chain, address).is_some() {
+        return None;
+    }
     let result = validate_address(AddressValidationRequest {
         kind: chain.address_validation_kind().to_string(),
         value: address.to_string(),

@@ -131,7 +131,7 @@ impl WalletSetupDescriptor {
 pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
     // A scanning chain asks where a restored wallet's scan starts; a created
     // one starts near now without asking.
-    let restore_fields = if chain.mainnet_counterpart() == Chain::Monero {
+    let restore_fields = if crate::restore_heights::takes_restore_height(chain) {
         vec![WalletSetupField::RestoreHeight]
     } else {
         Vec::new()

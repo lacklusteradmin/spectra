@@ -13,6 +13,7 @@ struct SendStagesView: View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             if !hasFinalHistoryStatus { stageProgress }
             amountSummary
+            if let terms = artifact.review.transferTerms { transferTerms(terms) }
 
             if showsImmediateNodeChoice { broadcastDestinations }
 
@@ -120,6 +121,39 @@ struct SendStagesView: View {
             symbol: artifact.symbol, chain: artifact.chainId, amount: artifact.amount,
             statusTitle: statusTitle, statusSystemImage: statusSystemImage,
             statusColor: statusColor, isReceipt: displayedTransaction?.status == .confirmed)
+    }
+
+    /// What the token's own rules do between the sender and the recipient.
+    private func transferTerms(_ terms: AssetTransferTerms) -> some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+            if terms.fee != "0" {
+                LabeledContent(AppLocalization.string("Token Fee"),
+                               value: "\(AmountPresentation.localizedDecimal(terms.fee)) \(artifact.symbol)")
+                Divider().opacity(0.4)
+                LabeledContent(AppLocalization.string("Recipient Receives"),
+                               value: "\(AmountPresentation.localizedDecimal(terms.received)) \(artifact.symbol)")
+            }
+            if let carried = terms.carriedNative {
+                if terms.fee != "0" { Divider().opacity(0.4) }
+                LabeledContent(AppLocalization.string("Sent With It"),
+                               value: "\(AmountPresentation.localizedDecimal(carried)) \(artifact.chainId.gasTokenSymbol)")
+            }
+            if let program = terms.hookProgram {
+                if terms.fee != "0" || terms.carriedNative != nil { Divider().opacity(0.4) }
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+                    Label(AppLocalization.string("This token runs a program on every transfer, which can refuse it."),
+                          systemImage: "gearshape.2")
+                        .foregroundStyle(.spectraWarning)
+                    Text(verbatim: program)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .font(.subheadline)
+        .padding(SpectraLayout.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .spectraCardFill()
     }
 
     private var statusTitle: String {

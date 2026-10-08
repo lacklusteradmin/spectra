@@ -9,7 +9,7 @@ struct SendSessionTests {
         SendArtifact(id: id, revision: 0, stage: stage, walletId: "wallet", chainId: .ethereum,
             sender: "sender", recipient: "recipient", amount: "1.000000000000000001", asset: "ETH", symbol: "ETH", staking: nil, operation: nil,
             createdAt: 0, reviewDigest: "digest-\(id)",
-            review: SendArtifactReview(warnings: [.newAddress], recipientWarnings: [], requiresSelfSendConfirmation: true, staking: nil),
+            review: SendArtifactReview(warnings: [.newAddress], recipientWarnings: [], requiresSelfSendConfirmation: true, staking: nil, transferTerms: nil),
             preparedDetails: "exact transaction", signingPayloadHex: "", signedPayload: nil,
             transactionHash: nil, attempts: [], selectedEndpoints: [])
     }

@@ -1,5 +1,5 @@
-//! XRP send: build + sign Payment and AccountDelete transactions (binary
-//! codec).
+//! XRP send: build + sign Payment (XRP or an issued currency), TrustSet
+//! and AccountDelete transactions (binary codec).
 
 use crate::send::error::SendError;
 
@@ -16,33 +16,105 @@ pub(crate) fn validate_drops(drops: u128) -> Result<(), SendError> {
     Ok(())
 }
 
-// ── XRP binary codec (minimal — Payment and AccountDelete)
+// ── XRP binary codec (Payment, TrustSet and AccountDelete)
+
+/// An issued-currency amount: a value of one issuer's currency.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IssuedAmount {
+    pub issue: crate::api::xrpl_amount::XrplIssue,
+    pub value: crate::api::xrpl_amount::IouValue,
+}
+
+impl IssuedAmount {
+    /// The 48 bytes of an `Amount` field: value, currency, issuer.
+    fn encode(&self, out: &mut Vec<u8>) -> Result<(), SendError> {
+        out.extend_from_slice(&self.value.to_bytes());
+        out.extend_from_slice(&self.issue.currency.0);
+        out.extend_from_slice(&decode_xrp_address(&self.issue.issuer)?);
+        Ok(())
+    }
+}
+
+/// What a Payment delivers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PaymentAmount {
+    Drops(u64),
+    Issued(IssuedAmount),
+}
 
 /// The transaction types Spectra signs, by their `TransactionType` code.
-#[derive(Clone, Copy)]
-enum XrpTransaction {
-    /// Moves `Amount` drops to `Destination`.
-    Payment { amount_drops: u64 },
+#[derive(Clone)]
+enum XrpTransaction<'a> {
+    /// Delivers `amount` to `Destination`, spending at most `send_max` of
+    /// the sender's issued currency when an issuer's transfer rate takes a
+    /// share on the way.
+    Payment {
+        amount: &'a PaymentAmount,
+        send_max: Option<&'a IssuedAmount>,
+    },
     /// Deletes the account and sends everything it holds, less the fee, to
     /// `Destination`.
     AccountDelete,
+    /// Sets the account's trust line to `limit`'s issuer and currency, with
+    /// rippling through the account switched off. A limit of zero on an
+    /// empty line removes it.
+    TrustSet { limit: &'a IssuedAmount },
 }
+
+/// `tfSetNoRipple`: an account that is not an issuer does not let others'
+/// payments pass through its trust lines.
+const TF_SET_NO_RIPPLE: u32 = 0x0002_0000;
 
 /// Build and sign an XRP Payment transaction.
 /// Returns the signed tx blob as an uppercase hex string.
-pub fn build_signed_payment(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_signed_payment(
     from: &str,
     to: &str,
-    amount_drops: u64,
+    amount: &PaymentAmount,
+    send_max: Option<&IssuedAmount>,
     fee_drops: u64,
     sequence: u32,
     private_key_bytes: &[u8],
     public_key_hex: &str,
 ) -> Result<String, SendError> {
+    if let (PaymentAmount::Issued(amount), Some(send_max)) = (amount, send_max)
+        && (amount.issue != send_max.issue || send_max.value < amount.value)
+    {
+        return Err(SendError::invalid(
+            "XRP: the most a payment spends must cover what it delivers",
+        ));
+    }
     build_signed(
-        XrpTransaction::Payment { amount_drops },
+        XrpTransaction::Payment { amount, send_max },
         from,
-        to,
+        Some(to),
+        fee_drops,
+        sequence,
+        private_key_bytes,
+        public_key_hex,
+    )
+}
+
+/// Build and sign an XRP TrustSet: the account `from` trusts `limit`'s
+/// issuer for up to its value of that currency.
+pub(crate) fn build_signed_trust_set(
+    from: &str,
+    limit: &IssuedAmount,
+    fee_drops: u64,
+    sequence: u32,
+    private_key_bytes: &[u8],
+    public_key_hex: &str,
+) -> Result<String, SendError> {
+    if limit.value.negative || limit.issue.issuer == from {
+        return Err(SendError::invalid(
+            "XRP: a trust line is to another account, for a limit of zero or more",
+        ));
+    }
+    build_signed(
+        XrpTransaction::TrustSet { limit },
+        from,
+        None,
         fee_drops,
         sequence,
         private_key_bytes,
@@ -69,7 +141,7 @@ pub fn build_signed_account_delete(
     build_signed(
         XrpTransaction::AccountDelete,
         from,
-        to,
+        Some(to),
         fee_drops,
         sequence,
         private_key_bytes,
@@ -78,9 +150,9 @@ pub fn build_signed_account_delete(
 }
 
 fn build_signed(
-    transaction: XrpTransaction,
+    transaction: XrpTransaction<'_>,
     from: &str,
-    to: &str,
+    to: Option<&str>,
     fee_drops: u64,
     sequence: u32,
     private_key_bytes: &[u8],
@@ -90,7 +162,7 @@ fn build_signed(
 
     let fields = |signature: Option<&[u8]>| {
         encode_fields(
-            transaction,
+            transaction.clone(),
             from,
             to,
             fee_drops,
@@ -117,9 +189,9 @@ fn build_signed(
 /// Encode the canonical STObject, optionally including its signature.
 /// Fields go in type-code then field-code order.
 fn encode_fields(
-    transaction: XrpTransaction,
+    transaction: XrpTransaction<'_>,
     from: &str,
-    to: &str,
+    to: Option<&str>,
     fee_drops: u64,
     sequence: u32,
     public_key_hex: &str,
@@ -127,28 +199,60 @@ fn encode_fields(
 ) -> Result<Vec<u8>, SendError> {
     validate_drops(u128::from(fee_drops))?;
     let mut out = Vec::new();
-    // TransactionType, field 2, type 1 (UInt16): Payment 0, AccountDelete 21.
-    let code: u16 = match transaction {
-        XrpTransaction::Payment { .. } => 0,
-        XrpTransaction::AccountDelete => 21,
+    // TransactionType, field 2, type 1 (UInt16): Payment 0, TrustSet 20,
+    // AccountDelete 21.
+    let (code, flags): (u16, u32) = match transaction {
+        XrpTransaction::Payment { .. } => (0, 0),
+        XrpTransaction::TrustSet { .. } => (20, TF_SET_NO_RIPPLE),
+        XrpTransaction::AccountDelete => (21, 0),
     };
     out.push(0x12);
     out.extend_from_slice(&code.to_be_bytes());
-    // Flags, field 2, type 2 (UInt32) = 0
-    out.extend_from_slice(&[0x22, 0x00, 0x00, 0x00, 0x00]);
+    // Flags, field 2, type 2 (UInt32)
+    out.push(0x22);
+    out.extend_from_slice(&flags.to_be_bytes());
     // Sequence, field 4, type 2
     out.push(0x24);
     out.extend_from_slice(&sequence.to_be_bytes());
-    if let XrpTransaction::Payment { amount_drops } = transaction {
-        validate_drops(u128::from(amount_drops))?;
-        // Amount, field 1, type 6 (Amount); XRP is 0x4000000000000000 | drops.
-        out.push(0x61);
-        out.extend_from_slice(&(0x4000_0000_0000_0000 | amount_drops).to_be_bytes());
+    match &transaction {
+        XrpTransaction::Payment { amount, .. } => {
+            // Amount, field 1, type 6 (Amount); XRP is 0x4000000000000000 | drops.
+            out.push(0x61);
+            match amount {
+                PaymentAmount::Drops(drops) => {
+                    validate_drops(u128::from(*drops))?;
+                    out.extend_from_slice(&(0x4000_0000_0000_0000 | drops).to_be_bytes());
+                }
+                PaymentAmount::Issued(issued) => {
+                    if issued.value.is_zero() || issued.value.negative {
+                        return Err(SendError::invalid(
+                            "XRP: a payment delivers a positive amount",
+                        ));
+                    }
+                    issued.encode(&mut out)?;
+                }
+            }
+        }
+        XrpTransaction::TrustSet { limit } => {
+            // LimitAmount, field 3, type 6
+            out.push(0x63);
+            limit.encode(&mut out)?;
+        }
+        XrpTransaction::AccountDelete => {}
     }
     // Fee, field 8, type 6
     out.push(0x68);
     let fee_encoded: u64 = 0x4000_0000_0000_0000 | fee_drops;
     out.extend_from_slice(&fee_encoded.to_be_bytes());
+    if let XrpTransaction::Payment {
+        send_max: Some(send_max),
+        ..
+    } = &transaction
+    {
+        // SendMax, field 9, type 6
+        out.push(0x69);
+        send_max.encode(&mut out)?;
+    }
     // SigningPubKey, field 3, type 7 (VL)
     out.push(0x73);
     let pk_bytes = hex::decode(public_key_hex)
@@ -163,10 +267,12 @@ fn encode_fields(
     out.push(0x81);
     let from_bytes = decode_xrp_address(from)?;
     push_vl(&mut out, &from_bytes);
-    // Destination (to), field 3, type 8
-    out.push(0x83);
-    let to_bytes = decode_xrp_address(to)?;
-    push_vl(&mut out, &to_bytes);
+    if let Some(to) = to {
+        // Destination (to), field 3, type 8
+        out.push(0x83);
+        let to_bytes = decode_xrp_address(to)?;
+        push_vl(&mut out, &to_bytes);
+    }
     Ok(out)
 }
 

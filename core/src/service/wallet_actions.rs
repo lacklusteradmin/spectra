@@ -35,6 +35,14 @@ pub enum WalletAction {
     Coins,
     /// The ERC-20 allowances an EVM wallet has granted, and revoking them.
     TokenApprovals,
+    /// The ERC-721 and ERC-1155 tokens an EVM wallet holds, and sending one.
+    Nfts,
+    /// A Zcash wallet's shielded funds: scanning for them, the address that
+    /// receives them, shielding transparent funds and sending.
+    ShieldedFunds,
+    /// A Litecoin wallet's MWEB funds: scanning for them, the stealth
+    /// address that receives them, pegging transparent funds in and sending.
+    MwebFunds,
     /// What the wallet's account on its network holds and needs beyond a
     /// balance: resources, a reserve, a contract, storage.
     NetworkAccount,
@@ -45,6 +53,9 @@ pub enum WalletAction {
     /// A Solana wallet's empty token accounts, and closing them for their
     /// rent.
     TokenAccounts,
+    /// An XRP Ledger or Stellar wallet's trust lines: the issued assets it
+    /// can hold, trusting another, and removing an empty one.
+    TrustLines,
     /// A test network's faucet page.
     GetTestCoins,
     /// Sign a message with the wallet's key to prove it holds its address,
@@ -87,11 +98,15 @@ impl WalletAction {
             | Self::ScanBlocks
             | Self::Coins
             | Self::TokenApprovals
+            | Self::Nfts
+            | Self::ShieldedFunds
+            | Self::MwebFunds
             | Self::NetworkAccount
             | Self::AccessKeys
             | Self::CoinObjects
             | Self::GetTestCoins
             | Self::TokenAccounts
+            | Self::TrustLines
             | Self::SignMessage
             | Self::VerifyMessage => WalletActionSection::Network,
             Self::AddToNetwork
@@ -118,6 +133,9 @@ impl WalletAction {
             Self::TokenAccounts => {
                 "Close the empty token accounts this wallet keeps and get their rent back."
             }
+            Self::TrustLines => {
+                "The issued assets this wallet can hold, trusting another so it can receive it, and removing an empty line to free its reserve."
+            }
             Self::GetTestCoins => {
                 "Open this test network's faucet, where its coins are free. Some faucets ask you to sign in."
             }
@@ -132,6 +150,13 @@ impl WalletAction {
             }
             Self::TokenApprovals => {
                 "Contracts this wallet has let spend its tokens, and taking that back."
+            }
+            Self::Nfts => "The NFTs this wallet holds, and sending one.",
+            Self::ShieldedFunds => {
+                "Scan for shielded ZEC, receive it privately, move transparent ZEC into the shielded pool, and send from it."
+            }
+            Self::MwebFunds => {
+                "Scan for MWEB LTC, receive it privately, move transparent LTC into MWEB, and send from it."
             }
             Self::Coins => "The addresses this wallet has handed out and the coins they hold.",
             Self::SignMessage => {
@@ -203,6 +228,15 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
         (signs && chain.scans_for_balance(), WalletAction::ScanBlocks),
         (chain.supports_deep_utxo_discovery(), WalletAction::Coins),
         (chain.is_evm(), WalletAction::TokenApprovals),
+        (chain.is_evm(), WalletAction::Nfts),
+        (
+            super::zcash_shielded::shielded_account(wallet).is_ok(),
+            WalletAction::ShieldedFunds,
+        ),
+        (
+            super::litecoin_mweb::holds_mweb_keys(wallet).is_ok(),
+            WalletAction::MwebFunds,
+        ),
         (
             super::wallet_network_account::has_network_account(chain),
             WalletAction::NetworkAccount,
@@ -218,6 +252,10 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
         (
             chain.mainnet_counterpart() == Chain::Solana,
             WalletAction::TokenAccounts,
+        ),
+        (
+            matches!(chain.mainnet_counterpart(), Chain::Xrp | Chain::Stellar),
+            WalletAction::TrustLines,
         ),
         (chain.faucet_url().is_some(), WalletAction::GetTestCoins),
         (signs && message_scheme.is_some(), WalletAction::SignMessage),

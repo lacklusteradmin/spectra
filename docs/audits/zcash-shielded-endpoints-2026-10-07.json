@@ -1,0 +1,233 @@
+{
+  "checked": "2026-10-07",
+  "method": "Read-only gRPC calls to each built-in lightwalletd endpoint's CompactTxStreamer service, over TLS against the web PKI roots with ALPN h2, by a client written for this audit on librustzcash's generated client (zcash_client_backend 0.24): GetLightdInfo, GetLatestBlock, GetTreeState at the tip, GetBlockRange over the last ten blocks, and GetSubtreeRoots from index 0 for the Sapling, Orchard and Ironwood trees. Nothing submitted.",
+  "endpoints": [
+    {
+      "id": "zcash.lightwalletd.zec-rocks",
+      "chain_id": "zcash",
+      "endpoint": "https://zec.rocks:443",
+      "last_ten_compact_blocks": {
+        "blocks": 10,
+        "chain_metadata_at_tip": {
+          "ironwood": 703794,
+          "orchard": 50473942,
+          "sapling": 73982422
+        },
+        "ironwood_actions": 98,
+        "orchard_actions": 5,
+        "sapling_outputs": 8,
+        "transactions": 49
+      },
+      "latest_block": 3510167,
+      "lightd_info": {
+        "block_height": 3510167,
+        "chain_name": "main",
+        "consensus_branch_id": "37a5165b",
+        "sapling_activation_height": 419200,
+        "taddr_support": true,
+        "vendor": "ECC LightWalletD",
+        "version": "v0.5.3"
+      },
+      "subtree_roots": {
+        "ironwood": {
+          "count": 10,
+          "last_completing_height": 3502353
+        },
+        "orchard": {
+          "count": 770,
+          "last_completing_height": 3487990
+        },
+        "sapling": {
+          "count": 1128,
+          "last_completing_height": 3390009
+        }
+      },
+      "tree_state_at_tip": {
+        "has_ironwood_tree": true,
+        "has_orchard_tree": true,
+        "has_sapling_tree": true,
+        "height": 3510167,
+        "time": 1791428961
+      }
+    },
+    {
+      "id": "zcash.lightwalletd.zec-rocks-na",
+      "chain_id": "zcash",
+      "endpoint": "https://na.zec.rocks:443",
+      "last_ten_compact_blocks": {
+        "blocks": 10,
+        "chain_metadata_at_tip": {
+          "ironwood": 703794,
+          "orchard": 50473942,
+          "sapling": 73982422
+        },
+        "ironwood_actions": 98,
+        "orchard_actions": 5,
+        "sapling_outputs": 8,
+        "transactions": 49
+      },
+      "latest_block": 3510167,
+      "lightd_info": {
+        "block_height": 3510167,
+        "chain_name": "main",
+        "consensus_branch_id": "37a5165b",
+        "sapling_activation_height": 419200,
+        "taddr_support": true,
+        "vendor": "ECC LightWalletD",
+        "version": "v0.5.3"
+      },
+      "subtree_roots": {
+        "ironwood": {
+          "count": 10,
+          "last_completing_height": 3502353
+        },
+        "orchard": {
+          "count": 770,
+          "last_completing_height": 3487990
+        },
+        "sapling": {
+          "count": 1128,
+          "last_completing_height": 3390009
+        }
+      },
+      "tree_state_at_tip": {
+        "has_ironwood_tree": true,
+        "has_orchard_tree": true,
+        "has_sapling_tree": true,
+        "height": 3510167,
+        "time": 1791428961
+      }
+    },
+    {
+      "id": "zcash.lightwalletd.zec-rocks-eu",
+      "chain_id": "zcash",
+      "endpoint": "https://eu.zec.rocks:443",
+      "last_ten_compact_blocks": {
+        "blocks": 10,
+        "chain_metadata_at_tip": {
+          "ironwood": 703794,
+          "orchard": 50473942,
+          "sapling": 73982422
+        },
+        "ironwood_actions": 98,
+        "orchard_actions": 5,
+        "sapling_outputs": 8,
+        "transactions": 49
+      },
+      "latest_block": 3510167,
+      "lightd_info": {
+        "block_height": 3510167,
+        "chain_name": "main",
+        "consensus_branch_id": "37a5165b",
+        "sapling_activation_height": 419200,
+        "taddr_support": true,
+        "vendor": "ECC LightWalletD",
+        "version": "v0.5.3"
+      },
+      "subtree_roots": {
+        "ironwood": {
+          "count": 10,
+          "last_completing_height": 3502353
+        },
+        "orchard": {
+          "count": 770,
+          "last_completing_height": 3487990
+        },
+        "sapling": {
+          "count": 1128,
+          "last_completing_height": 3390009
+        }
+      },
+      "tree_state_at_tip": {
+        "has_ironwood_tree": true,
+        "has_orchard_tree": true,
+        "has_sapling_tree": true,
+        "height": 3510167,
+        "time": 1791428961
+      }
+    },
+    {
+      "id": "zcash-testnet.lightwalletd.zec-rocks",
+      "chain_id": "zcash-testnet",
+      "endpoint": "https://testnet.zec.rocks:443",
+      "last_ten_compact_blocks": {
+        "blocks": 10,
+        "chain_metadata_at_tip": {
+          "ironwood": 508333,
+          "orchard": 249178,
+          "sapling": 404571
+        },
+        "ironwood_actions": 8,
+        "orchard_actions": 0,
+        "sapling_outputs": 0,
+        "transactions": 4
+      },
+      "latest_block": 4477002,
+      "lightd_info": {
+        "block_height": 4477002,
+        "chain_name": "test",
+        "consensus_branch_id": "77190ad9",
+        "sapling_activation_height": 280000,
+        "taddr_support": true,
+        "vendor": "ECC LightWalletD",
+        "version": "v0.5.4"
+      },
+      "subtree_roots": {
+        "ironwood": {
+          "count": 7,
+          "last_completing_height": 4454450
+        },
+        "orchard": {
+          "count": 3,
+          "last_completing_height": 4094022
+        },
+        "sapling": {
+          "count": 6,
+          "last_completing_height": 4254253
+        }
+      },
+      "tree_state_at_tip": {
+        "has_ironwood_tree": true,
+        "has_orchard_tree": true,
+        "has_sapling_tree": true,
+        "height": 4477002,
+        "time": 1791429034
+      }
+    }
+  ],
+  "restore_height_reference": {
+    "source": "core/src/restore_heights.rs ZCASH_REFERENCE",
+    "zcash": {
+      "height": 3510167,
+      "time": 1791428961,
+      "read_from": "GetTreeState at the tip of https://zec.rocks:443"
+    },
+    "zcash-testnet": {
+      "height": 4477002,
+      "time": 1791429034,
+      "read_from": "GetTreeState at the tip of https://testnet.zec.rocks:443"
+    }
+  },
+  "sapling_parameters": {
+    "source": "https://download.z.cash/downloads",
+    "files": [
+      {
+        "name": "sapling-spend.params",
+        "bytes": 47958396,
+        "blake2b_512": "8270785a1a0d0bc77196f000ee6d221c9c9894f55307bd9357c3f0105d31ca63991ab91324160d8f53e2bbd3c2633a6eb8bdf5205d822e7f3f73edac51b2b70c"
+      },
+      {
+        "name": "sapling-output.params",
+        "bytes": 3592860,
+        "blake2b_512": "657e3d38dbb5cb5e7dd2970e8b03d69b4787dd907285b5a7f0790dcc8072f60bf593b32cc2d1c030e00ff5ae64bf84c5c3beb84ddc841d48264b4a171744d028"
+      }
+    ],
+    "pinned_by": "zcash_proofs 0.30 (SAPLING_SPEND_HASH, SAPLING_OUTPUT_HASH); core/src/send/zcash_shielded.rs checks each file against the same length and hash before it is used."
+  },
+  "notes": [
+    "All three mainnet servers answer the same chain: chain_name main, Sapling activation 419200, consensus branch 37a5165b (NU6.3, Ironwood), which librustzcash 0.30 gives for the next block.",
+    "The test network server answers chain_name test, Sapling activation 280000 and branch 77190ad9 (NU7), which zcash_protocol 0.10 does not know: a testnet wallet scans, and refuses to sign until a build knows NU7.",
+    "Every server serves Ironwood compact actions, chain metadata with the Ironwood tree size, the Ironwood tree in GetTreeState, and Ironwood subtree roots; Spectra stores the roots of all three trees.",
+    "A shielded sync of a wallet restored at 3509000 against https://zec.rocks:443 scanned to the tip, with the unified address the loopback fixture derives for the same phrase."
+  ]
+}

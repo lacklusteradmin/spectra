@@ -197,6 +197,19 @@ impl BlockbookClient {
         Ok(self.get::<Status>("/api/v2").await?.blockbook.best_height)
     }
 
+    /// The hash of the block at `height`: `GET /api/v2/block-index/{height}`.
+    pub(crate) async fn fetch_block_hash(&self, height: u64) -> Result<String, ApiError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Index {
+            block_hash: String,
+        }
+        Ok(self
+            .get::<Index>(&format!("/api/v2/block-index/{height}"))
+            .await?
+            .block_hash)
+    }
+
     pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, ApiError> {
         let address = self.normalize_address(address);
         let info: BlockbookActivity = self

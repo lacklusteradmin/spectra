@@ -70,6 +70,14 @@ pub(crate) enum PreparedPayload {
         fee_stroops: u64,
         amount_stroops: i64,
     },
+    /// Pays an XRP Ledger issued currency to the artifact's recipient.
+    XrpIssuedPayment(super::xrp_issued::PreparedXrpIssuedPayment),
+    /// Pays a Stellar credit asset to the artifact's recipient.
+    StellarAssetPayment(super::stellar_issued::PreparedStellarAssetPayment),
+    /// Opens or removes the sender's XRP Ledger trust line.
+    XrpTrustSet(super::xrp_issued::PreparedXrpTrustSet),
+    /// Opens or removes the sender's Stellar trustline.
+    StellarChangeTrust(super::stellar_issued::PreparedStellarChangeTrust),
     /// Deletes the sender's XRP account into the artifact's recipient.
     XrpAccountDelete {
         sequence: u32,
@@ -81,12 +89,7 @@ pub(crate) enum PreparedPayload {
         fee_stroops: u64,
     },
     Substrate(super::polkadot::PreparedPolkadotTransaction),
-    Cardano {
-        inputs: Vec<(String, u32, u64)>,
-        amount: u64,
-        fee: u64,
-        ttl: u64,
-    },
+    Cardano(super::cardano::PreparedCardanoTransaction),
     Bitcoin(super::bitcoin::PreparedBitcoinTransaction),
     Solana(super::solana::PreparedSolanaTransaction),
     SolanaAccountClosure(super::solana::PreparedSolanaAccountClosure),
@@ -94,6 +97,14 @@ pub(crate) enum PreparedPayload {
     Aptos(super::aptos::PreparedAptosTransfer),
     Sui(super::sui::PreparedSuiTransfer),
     SuiMerge(super::sui::PreparedSuiMerge),
+    /// A Zcash transaction that touches the shielded pools, as librustzcash
+    /// proposed it.
+    ZcashShielded(super::zcash_shielded::PreparedZcashShielded),
+    /// A payment out of a Litecoin wallet's MWEB funds, to an MWEB address
+    /// or by a peg-out.
+    LitecoinMweb(super::litecoin_mweb::prepared::PreparedMwebSpend),
+    /// A Litecoin payment from transparent funds to an MWEB address.
+    LitecoinPegIn(super::litecoin_mweb::prepared::PreparedPegIn),
 }
 
 /// Protocol amounts larger than JSON's integer range stay exact in artifacts
@@ -141,6 +152,42 @@ pub struct SendArtifactReview {
     pub recipient_warnings: Vec<crate::store::EvmRecipientPreflightWarning>,
     pub requires_self_send_confirmation: bool,
     pub staking: Option<crate::staking::StakingReview>,
+    /// What the asset's own rules do to the transfer, when they do more than
+    /// move the amount.
+    pub transfer_terms: Option<AssetTransferTerms>,
+}
+
+/// What an asset's rules do to a transfer beyond moving the amount: a fee
+/// its token program or issuer takes on the way, and a program it runs that
+/// can refuse the transfer. Read from the prepared transaction, so the review
+/// digest binds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct AssetTransferTerms {
+    /// The most that leaves the sender, as an exact decimal of the asset.
+    pub debited: String,
+    /// What arrives at the recipient.
+    pub received: String,
+    /// What the asset's rules take between the two.
+    pub fee: String,
+    /// A program the asset runs on every transfer: a Solana transfer hook.
+    pub hook_program: Option<String>,
+    /// The network's own coin that travels with the asset and stays with
+    /// the recipient, as an exact decimal: the minimum ADA a Cardano output
+    /// holding the asset needs.
+    pub carried_native: Option<String>,
+}
+
+impl PreparedPayload {
+    /// The asset's transfer terms, read from what will be signed;
+    /// `token_decimals` are the sent token's.
+    pub(crate) fn transfer_terms(&self, token_decimals: Option<u32>) -> Option<AssetTransferTerms> {
+        match self {
+            Self::Solana(prepared) => prepared.token.as_ref()?.terms(),
+            Self::XrpIssuedPayment(prepared) => prepared.terms(),
+            Self::Cardano(prepared) => prepared.terms(token_decimals?),
+            _ => None,
+        }
+    }
 }
 
 /// What a transaction built from a wallet's page does when it is not a
@@ -188,6 +235,52 @@ pub enum WalletOperation {
         objects: u64,
         /// The gas budget, the most the merge costs, as an exact decimal of
         /// SUI; a merge often refunds more storage than it spends.
+        network_fee: String,
+    },
+    /// Opens a trust line (XRP Ledger) or trustline (Stellar) so the account
+    /// can hold an issued asset: the account is the recipient and nothing
+    /// leaves it but the fee.
+    TrustAsset {
+        /// `CODE.rIssuer` or `CODE:ISSUER`.
+        asset: String,
+        /// The reserve the line locks, as an exact decimal of the native coin.
+        reserve: String,
+        network_fee: String,
+    },
+    /// Removes an empty trust line, freeing its reserve.
+    RemoveTrustLine {
+        asset: String,
+        /// The reserve the line held, as an exact decimal of the native coin.
+        reserve: String,
+        network_fee: String,
+    },
+    /// Sends an NFT: the artifact's recipient receives it and its `amount` is
+    /// the quantity, a whole number; the prepared call is the collection's
+    /// `safeTransferFrom` from the wallet, with no value.
+    TransferNft {
+        /// The collection's contract, which the transaction calls.
+        contract: String,
+        standard: crate::api::evm_nft::NftStandard,
+        /// The token's id, a whole number in decimal.
+        token_id: String,
+        /// How many: one for an ERC-721 token.
+        quantity: String,
+        /// The collection's name as its contract gives it, or empty.
+        collection: String,
+        network_fee: String,
+    },
+    /// Moves a Zcash wallet's transparent funds into its own shielded pool:
+    /// the recipient is the wallet's unified address and `amount` what
+    /// arrives there.
+    ShieldTransparent {
+        /// What arrives in the shielded pool, as an exact decimal of ZEC.
+        amount: String,
+        network_fee: String,
+    },
+    /// Pays the recipient the amount from a Zcash wallet's shielded funds.
+    ShieldedPayment {
+        /// The text memo a shielded recipient reads, exactly as it is signed.
+        memo: Option<String>,
         network_fee: String,
     },
     /// Deletes one of a NEAR account's function-call keys: the account is
@@ -350,6 +443,30 @@ impl StoredSend {
 }
 
 impl StoredSend {
+    /// An MWEB payment or peg-in pays the reviewed recipient the reviewed
+    /// amount, and is one Litecoin Core relays.
+    fn validate_litecoin_mweb(&self) -> Result<(), SendError> {
+        let chain = self.view.chain_id;
+        let (recipient, amount) = match &self.prepared {
+            PreparedPayload::LitecoinMweb(prepared) => {
+                prepared.check(chain)?;
+                (&prepared.recipient, prepared.amount)
+            }
+            PreparedPayload::LitecoinPegIn(prepared) => {
+                prepared.check(chain)?;
+                (&prepared.recipient, prepared.amount)
+            }
+            _ => return Ok(()),
+        };
+        if *recipient != self.view.recipient
+            || crate::decimal::from_units(u128::from(amount), 8) != self.view.amount
+            || self.view.asset != chain.coin_symbol()
+        {
+            return Err(SendError::invalid("Transaction identity was altered"));
+        }
+        Ok(())
+    }
+
     /// The operation is exactly what the prepared payload does, and a
     /// payload only an operation builds carries one.
     fn validate_operation(&self) -> Result<(), SendError> {
@@ -359,13 +476,18 @@ impl StoredSend {
                 u32::from(self.view.chain_id.native_decimals()),
             )
         };
+        self.validate_litecoin_mweb()?;
         let Some(operation) = &self.view.operation else {
             return match self.prepared {
-                PreparedPayload::XrpAccountDelete { .. }
+                PreparedPayload::ZcashShielded(_)
+                | PreparedPayload::LitecoinMweb(_)
+                | PreparedPayload::XrpAccountDelete { .. }
                 | PreparedPayload::StellarAccountMerge { .. }
                 | PreparedPayload::NearDeleteKey(_)
                 | PreparedPayload::SuiMerge(_)
-                | PreparedPayload::SolanaAccountClosure(_) => {
+                | PreparedPayload::SolanaAccountClosure(_)
+                | PreparedPayload::XrpTrustSet(_)
+                | PreparedPayload::StellarChangeTrust(_) => {
                     Err(SendError::invalid("The wallet operation was altered"))
                 }
                 _ => Ok(()),
@@ -387,6 +509,85 @@ impl StoredSend {
                         && self.view.recipient.eq_ignore_ascii_case(token)
                         && prepared.value_wei == 0
                         && prepared.data == super::evm::encode_erc20_approve(spender, 0)?
+                        && fee_is(network_fee, prepared.maximum_fee_wei()?)
+                }
+                // Every transparent output moves to the wallet's own shielded
+                // pool: no payment to anyone, the change is the amount.
+                (
+                    WalletOperation::ShieldTransparent {
+                        amount,
+                        network_fee,
+                    },
+                    PreparedPayload::ZcashShielded(prepared),
+                ) => {
+                    prepared.payments.is_empty()
+                        && prepared.transparent_in_zat > 0
+                        && prepared.shielded_in_zat == 0
+                        && *amount == self.view.amount
+                        && *amount == crate::decimal::from_units(u128::from(prepared.change_zat), 8)
+                        && fee_is(network_fee, u128::from(prepared.fee_zat))
+                }
+                // Transparent funds pegged into the wallet's own MWEB
+                // address: the amount is what arrives there.
+                (
+                    WalletOperation::ShieldTransparent {
+                        amount,
+                        network_fee,
+                    },
+                    PreparedPayload::LitecoinPegIn(prepared),
+                ) => {
+                    *amount == self.view.amount
+                        && prepared
+                            .mweb_fee
+                            .checked_add(prepared.canonical_fee)
+                            .is_some_and(|fee| fee_is(network_fee, u128::from(fee)))
+                }
+                // A payment out of MWEB funds carries no memo.
+                (
+                    WalletOperation::ShieldedPayment { memo, network_fee },
+                    PreparedPayload::LitecoinMweb(prepared),
+                ) => memo.is_none() && fee_is(network_fee, u128::from(prepared.fee)),
+                // The one payment the proposal makes, of the reviewed amount
+                // and memo to the reviewed recipient, from shielded notes
+                // alone.
+                (
+                    WalletOperation::ShieldedPayment { memo, network_fee },
+                    PreparedPayload::ZcashShielded(prepared),
+                ) => {
+                    prepared.transparent_in_zat == 0
+                        && matches!(prepared.payments.as_slice(), [payment]
+                            if payment.address == self.view.recipient
+                                && payment.memo == *memo
+                                && crate::decimal::from_units(u128::from(payment.zatoshis), 8)
+                                    == self.view.amount)
+                        && fee_is(network_fee, u128::from(prepared.fee_zat))
+                }
+                // The collection's `safeTransferFrom` of exactly this token
+                // and quantity, from the wallet to the reviewed recipient,
+                // with no value.
+                (
+                    WalletOperation::TransferNft {
+                        contract,
+                        standard,
+                        token_id,
+                        quantity,
+                        network_fee,
+                        ..
+                    },
+                    PreparedPayload::Evm(prepared),
+                ) => {
+                    prepared.to.eq_ignore_ascii_case(contract)
+                        && self.view.asset.eq_ignore_ascii_case(contract)
+                        && self.view.amount == *quantity
+                        && prepared.value_wei == 0
+                        && prepared.data
+                            == super::evm::encode_nft_transfer(
+                                *standard,
+                                &self.view.sender,
+                                &self.view.recipient,
+                                token_id,
+                                quantity,
+                            )?
                         && fee_is(network_fee, prepared.maximum_fee_wei()?)
                 }
                 (
@@ -434,6 +635,46 @@ impl StoredSend {
                         && prepared.is_exact(&self.view.sender)
                         && fee_is(network_fee, u128::from(prepared.transaction.gas_budget))
                 }
+                // The line it names and nothing else, set to the largest
+                // limit or removed: the account changes its own line.
+                (
+                    WalletOperation::TrustAsset {
+                        asset, network_fee, ..
+                    }
+                    | WalletOperation::RemoveTrustLine {
+                        asset, network_fee, ..
+                    },
+                    PreparedPayload::XrpTrustSet(prepared),
+                ) => {
+                    let removes = matches!(operation, WalletOperation::RemoveTrustLine { .. });
+                    self.view.recipient == self.view.sender
+                        && prepared.asset == *asset
+                        && prepared.removes() == removes
+                        && (removes
+                            || prepared.limit
+                                == crate::api::xrpl_amount::IouValue::parse(
+                                    super::xrp_issued::MAX_TRUST_LIMIT,
+                                )
+                                .expect("the largest limit")
+                                .to_decimal())
+                        && fee_is(network_fee, u128::from(prepared.fee_drops))
+                }
+                (
+                    WalletOperation::TrustAsset {
+                        asset, network_fee, ..
+                    }
+                    | WalletOperation::RemoveTrustLine {
+                        asset, network_fee, ..
+                    },
+                    PreparedPayload::StellarChangeTrust(prepared),
+                ) => {
+                    let removes = matches!(operation, WalletOperation::RemoveTrustLine { .. });
+                    self.view.recipient == self.view.sender
+                        && prepared.asset == *asset
+                        && prepared.removes() == removes
+                        && (removes || prepared.limit_stroops == super::stellar::MAX_TRUST_LIMIT)
+                        && fee_is(network_fee, u128::from(prepared.fee_stroops))
+                }
                 (
                     WalletOperation::DeleteAccessKey {
                         public_key,
@@ -462,3 +703,11 @@ impl StoredSend {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/nft.rs"]
+mod nft_tests;
+
+#[cfg(test)]
+#[path = "tests/zcash_shielded_stages.rs"]
+mod zcash_shielded_tests;

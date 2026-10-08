@@ -192,6 +192,12 @@ fn contract_address_prompt_for(token_standards: &[String]) -> String {
         "Coin Standard Type"
     } else if has("TEP-74") {
         "Jetton Master Address"
+    } else if has("Trust Line Token") {
+        "Currency Code and Issuer (CODE.rIssuer)"
+    } else if has("Stellar Asset") {
+        "Asset Code and Issuer (CODE:ISSUER)"
+    } else if has("Cardano Native Token") {
+        "Policy ID and Asset Name (POLICY.NAME)"
     } else {
         "Contract Address"
     }
@@ -258,6 +264,9 @@ pub struct ChainEntry {
     /// Every protocol the network supports; each deployment owns its actual standard.
     pub token_standards: Vec<String>,
     pub contract_address_prompt: String,
+    /// The decimal places every token here has, when its protocols fix them
+    /// rather than each token: nothing for a person to choose.
+    pub fixed_token_decimals: Option<u32>,
     pub native_coingecko_id: String,
     pub native_decimals: u32,
     pub native_asset_display_name: String,
@@ -302,6 +311,16 @@ pub struct StakingChainEntry {
     pub explanation: String,
 }
 
+/// The places every token on the network has, when each of its protocols
+/// fixes the same number.
+fn fixed_token_decimals_for(token_standards: &[String]) -> Option<u32> {
+    let mut fixed = token_standards
+        .iter()
+        .map(|standard| crate::tokens::fixed_token_decimals(standard));
+    let first = fixed.next()??;
+    fixed.all(|places| places == Some(first)).then_some(first)
+}
+
 // ── Static catalog
 
 /// `chains.toml` as written, parsed once.
@@ -329,6 +348,9 @@ static DECLARED: LazyLock<TomlFile> = LazyLock::new(|| {
                         | "Sui Coin"
                         | "Aptos Coin"
                         | "AIP-21"
+                        | "Trust Line Token"
+                        | "Stellar Asset"
+                        | "Cardano Native Token"
                 ),
                 "unknown token protocol on {}: {standard}",
                 chain.id
@@ -491,6 +513,7 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 artwork_name: c.artwork_name.clone(),
                 token_standards: c.token_standards.clone(),
                 contract_address_prompt: contract_address_prompt_for(&c.token_standards),
+                fixed_token_decimals: fixed_token_decimals_for(&c.token_standards),
                 native_coingecko_id: native.coingecko_id.clone(),
                 native_decimals: native.decimals,
                 native_asset_display_name: native.name.clone(),

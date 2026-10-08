@@ -1,7 +1,7 @@
 //! Litecoin fee and capacity use the same owned inputs as the durable builder.
-use crate::derivation::utxo_address::parse_utxo_address;
 use crate::registry::Chain;
 use crate::send::error::SendError;
+use crate::send::litecoin_mweb::prepared::CanonicalRecipient;
 use crate::send::preview_types::BitcoinSendPreview;
 use crate::send::stages::UtxoPreparedInput;
 
@@ -16,18 +16,20 @@ pub(crate) fn quote_inputs(
     if amount > chain.litecoin_max_money()? {
         return Err(SendError::invalid("Litecoin amount exceeds MAX_MONEY"));
     }
-    // An empty form quotes space for the largest standard transparent output.
-    let (recipient_len, recipient_dust) = if destination.trim().is_empty() {
-        (34, None)
+    // An empty form quotes space for the largest standard transparent
+    // output. An MWEB recipient is paid by a peg-in, whose kernel's fee the
+    // canonical output carries beside the amount.
+    let (recipient_len, recipient_dust, mweb_fee) = if destination.trim().is_empty() {
+        (34, None, 0)
     } else {
-        let script = parse_utxo_address(chain, destination)?.script_pubkey();
-        let dust = super::litecoin::litecoin_dust_threshold(chain, &script)?;
+        let recipient = CanonicalRecipient::parse(chain, destination)?;
+        let dust = recipient.minimum_amount(chain)?;
         if amount > 0 && amount < dust {
             return Err(SendError::invalid(
                 "Litecoin recipient amount is below the dust threshold",
             ));
         }
-        (script.len(), Some(dust))
+        (recipient.script_len(), Some(dust), recipient.mweb_fee()?)
     };
     if inputs.is_empty() {
         return Ok(None);
@@ -44,7 +46,8 @@ pub(crate) fn quote_inputs(
         .ok_or_else(|| SendError::invalid("Litecoin fee overflow"))?;
     let remainder = total
         .checked_sub(amount)
-        .and_then(|value| value.checked_sub(fee));
+        .and_then(|value| value.checked_sub(fee))
+        .and_then(|value| value.checked_sub(mweb_fee));
     let dust = super::litecoin::litecoin_dust_threshold(chain, change_script)?;
     let uses_change = remainder.is_some_and(|change| change >= dust && change > 0);
     let actual_fee = match remainder {
@@ -53,7 +56,10 @@ pub(crate) fn quote_inputs(
             .ok_or_else(|| SendError::invalid("Litecoin fee overflow"))?,
         _ => fee,
     };
-    let maximum = total.saturating_sub(fee);
+    let actual_fee = actual_fee
+        .checked_add(mweb_fee)
+        .ok_or_else(|| SendError::invalid("Litecoin fee overflow"))?;
+    let maximum = total.saturating_sub(fee).saturating_sub(mweb_fee);
     let maximum = if recipient_dust.is_some_and(|dust| maximum < dust) {
         0
     } else {
@@ -77,6 +83,7 @@ mod tests {
     use super::*;
     use crate::derivation::litecoin::encode_litecoin_address;
     use crate::derivation::types::BitcoinScriptType;
+    use crate::derivation::utxo_address::parse_utxo_address;
     use crate::send::stages::UtxoSendSource;
 
     fn prepared_input(

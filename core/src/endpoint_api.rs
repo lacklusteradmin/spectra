@@ -33,6 +33,8 @@ pub enum EndpointApi {
     Insight,
     KaspaRest,
     BchRestV2,
+    Lightwalletd,
+    LitecoinP2p,
 }
 
 impl EndpointApi {
@@ -65,6 +67,8 @@ impl EndpointApi {
             Self::Insight => "insight",
             Self::KaspaRest => "kaspa-rest",
             Self::BchRestV2 => "bch-rest-v2",
+            Self::Lightwalletd => "lightwalletd",
+            Self::LitecoinP2p => "litecoin-p2p",
         }
     }
 
@@ -309,7 +313,18 @@ pub fn endpoint_capability_options(
         AptosRest => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
         AptosIndexer => &[History, TokenHistory, TokenDiscovery],
         NearJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
-        XrplJsonRpc => &[Balance, History, Fee, Broadcast, Verification],
+        // A node lists an account's trust lines and its payments of every
+        // currency, issued ones included.
+        XrplJsonRpc => &[
+            Balance,
+            History,
+            Fee,
+            Broadcast,
+            Verification,
+            TokenBalance,
+            TokenDiscovery,
+            TokenHistory,
+        ],
         TronHttp => &[Balance, Fee, Broadcast, Verification, TokenBalance],
         MoneroDaemonRpc => &[Fee, Broadcast, Verification],
         Esplora | Blockbook | Blockcypher | Whatsonchain | Insight => {
@@ -317,11 +332,39 @@ pub fn endpoint_capability_options(
         }
         KaspaRest => &[Balance, History, Utxo, Fee, Broadcast, Verification],
         BchRestV2 => &[Balance, History, Utxo, Broadcast, Verification],
+        // The compact blocks a shielded wallet scans are its history; the
+        // server also takes the wallet's transactions.
+        Lightwalletd => &[History, Broadcast, Verification],
+        // A node's MWEB outputs are what an MWEB wallet scans.
+        LitecoinP2p => &[History],
         Blockscout => &[History, TokenHistory, TokenDiscovery],
         ToncenterV2 => &[Balance, History, Fee, Broadcast, Verification, TokenBalance],
         ToncenterV3 => &[Verification, TokenBalance, TokenDiscovery, TokenHistory],
-        Koios => &[Balance, History, Utxo, Fee, Broadcast, Verification],
-        Horizon => &[Balance, History, Fee, Broadcast, Verification],
+        // An address's outputs name the native assets they hold, and its
+        // transactions the assets they moved.
+        Koios => &[
+            Balance,
+            History,
+            Utxo,
+            Fee,
+            Broadcast,
+            Verification,
+            TokenBalance,
+            TokenDiscovery,
+            TokenHistory,
+        ],
+        // An account's balances name every trustline, and its payments every
+        // asset.
+        Horizon => &[
+            Balance,
+            History,
+            Fee,
+            Broadcast,
+            Verification,
+            TokenBalance,
+            TokenDiscovery,
+            TokenHistory,
+        ],
         IcpRosetta => &[Balance, History, Fee, Broadcast, Verification],
         IcpReplica => &[Broadcast, Verification, Staking],
         TrongridV1 => &[History, TokenHistory, TokenDiscovery],

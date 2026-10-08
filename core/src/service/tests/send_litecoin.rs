@@ -278,23 +278,63 @@ async fn unsupported_and_other_account_litecoin_sources_fail_before_provider_rea
     assert!(server.received_requests().await.unwrap().is_empty());
 }
 
+/// An MWEB recipient is paid by a peg-in from the wallet's inputs: signed,
+/// the transaction's MWEB part pays the address the amount, and its kernel's
+/// fee rides beside it. A malformed MWEB address is refused before any
+/// provider read.
 #[tokio::test]
-async fn mweb_destination_is_refused_without_provider_reads() {
+async fn an_mweb_destination_is_paid_by_a_peg_in() {
+    use crate::send::litecoin_mweb::keys::ViewKeys;
     let server = MockServer::start().await;
-    let (wallet, _, _) = service(Chain::Litecoin, server.uri(), "m/84'/2'/0'/0/0", None).await;
-    let request = request(Chain::Litecoin, "ltcmweb1unsupported".into());
+    let path = "m/84'/2'/0'/0/0";
+    let (wallet, _, _) = service(Chain::Litecoin, server.uri(), path, None).await;
+    let malformed = request(Chain::Litecoin, "ltcmweb1unsupported".into());
     assert!(
         wallet
             .prepare_litecoin(
                 Chain::Litecoin,
-                &request,
-                &address(Chain::Litecoin, "m/84'/2'/0'/0/0"),
+                &malformed,
+                &address(Chain::Litecoin, path),
                 1_000
             )
             .await
             .is_err()
     );
     assert!(server.received_requests().await.unwrap().is_empty());
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!([{"txid": "01".repeat(32), "vout": 0, "value": "1000000", "confirmations": 1}]),
+        ))
+        .mount(&server)
+        .await;
+    let (view, _) = ViewKeys::from_seed(&[7; 64]).unwrap();
+    let recipient = view.address(2).unwrap().encode(Chain::Litecoin).unwrap();
+    let built = wallet
+        .build_send(request(Chain::Litecoin, recipient.clone()))
+        .await
+        .unwrap();
+    let stored = wallet.load_send_artifact(built.id.clone()).await.unwrap();
+    let PreparedPayload::LitecoinPegIn(pegin) = &stored.prepared else {
+        panic!("not a peg-in")
+    };
+    assert_eq!(
+        (pegin.amount, pegin.mweb_fee, pegin.recipient.as_str()),
+        (10_000, 2_100, recipient.as_str())
+    );
+    let signed = wallet
+        .sign_send(built.id, built.review_digest, None)
+        .await
+        .unwrap();
+    let raw = hex::decode(signed.signed_payload.unwrap()).unwrap();
+    let outputs = crate::send::litecoin_mweb::transaction::mweb_outputs(&raw).unwrap();
+    let keys = view.spend_keys().unwrap();
+    let paid: Vec<_> = outputs
+        .iter()
+        .filter_map(|output| crate::send::litecoin_mweb::output::rewind(output, &view, &keys))
+        .map(|coin| (coin.value, coin.address_index))
+        .collect();
+    assert_eq!(paid, [(10_000, 2)]);
 }
 
 #[tokio::test]

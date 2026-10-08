@@ -454,6 +454,15 @@ pub fn validate_protocol_identifier(
     let identifier = normalize_token_identifier(Some(identifier.into()), chain)
         .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
     let kind = match standard {
+        "Trust Line Token" => {
+            return Ok(crate::api::xrpl_amount::XrplIssue::parse(&identifier)?.identifier());
+        }
+        "Stellar Asset" => {
+            return Ok(crate::api::stellar_asset::StellarAsset::parse(&identifier)?.identifier());
+        }
+        "Cardano Native Token" => {
+            return Ok(crate::api::cardano_asset::CardanoAssetId::parse(&identifier)?.identifier());
+        }
         "ERC-20" | "BEP-20" | "ARC-20" => "evm",
         "SPL" => "solana",
         "TRC-10" => {
@@ -518,6 +527,40 @@ pub fn protocol_deployment_id(
     ))
 }
 
+/// The deployment an NFT's history rows carry: chain, standard, collection
+/// and token id, as `ethereum:erc-721:0xcontract:1234`. It names one token,
+/// not an asset with a balance: no catalog entry, price or holding has it.
+pub(crate) fn nft_deployment_id(
+    chain: crate::registry::Chain,
+    standard: crate::api::evm_nft::NftStandard,
+    contract: &str,
+    token_id: &str,
+) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        chain.str_id(),
+        standard.label().to_lowercase(),
+        contract.to_ascii_lowercase(),
+        token_id
+    )
+}
+
+/// What an NFT is called on screen: its collection and `#id`.
+pub(crate) fn nft_display_name(collection: &str, token_id: &str) -> String {
+    match collection.trim() {
+        "" => format!("#{token_id}"),
+        collection => format!("{collection} #{token_id}"),
+    }
+}
+
+/// The symbol an NFT's amount is shown with: its collection's, or `NFT`.
+pub(crate) fn nft_symbol(symbol: &str) -> String {
+    match symbol.trim() {
+        "" => "NFT".to_string(),
+        symbol => symbol.to_string(),
+    }
+}
+
 /// The canonical form of a token's contract address or identifier on a chain,
 /// for grouping and equality.
 ///
@@ -554,7 +597,36 @@ pub fn normalize_token_identifier(
         Chain::Solana | Chain::SolanaDevnet | Chain::Tron | Chain::TronNile => {
             Some(trimmed.to_string())
         }
+        // Currency and asset codes are case-sensitive, and so is an XRP
+        // issuer's base58; each has one canonical spelling when it parses.
+        Chain::Xrp | Chain::XrpTestnet => Some(
+            crate::api::xrpl_amount::XrplIssue::parse(trimmed)
+                .map(|issue| issue.identifier())
+                .unwrap_or_else(|_| trimmed.to_string()),
+        ),
+        Chain::Stellar | Chain::StellarTestnet => Some(
+            crate::api::stellar_asset::StellarAsset::parse(trimmed)
+                .map(|asset| asset.identifier())
+                .unwrap_or_else(|_| trimmed.to_string()),
+        ),
+        Chain::Cardano | Chain::CardanoPreprod => Some(
+            crate::api::cardano_asset::CardanoAssetId::parse(trimmed)
+                .map(|asset| asset.identifier())
+                .unwrap_or_else(|_| trimmed.to_lowercase()),
+        ),
         _ => Some(trimmed.to_lowercase()),
+    }
+}
+
+/// The places a standard's amounts always have, when the standard fixes
+/// them rather than each token: seven for Stellar assets (stroops), and the
+/// fifteen Spectra keeps of an XRP Ledger issued currency, whose values are
+/// sixteen significant digits at a floating exponent.
+pub fn fixed_token_decimals(standard: &str) -> Option<u32> {
+    match standard {
+        "Stellar Asset" => Some(7),
+        "Trust Line Token" => Some(15),
+        _ => None,
     }
 }
 

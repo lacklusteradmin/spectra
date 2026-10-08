@@ -48,6 +48,8 @@ class HistoryTests(unittest.TestCase):
                              'tokenName': 'Untrusted provider name', 'tokenSymbol': 'UNTRUSTED',
                              'tokenDecimal': '18', 'value': '1250000', 'logIndex': str(i)}
                             for i, contract in enumerate(contracts)]
+                elif action in ('tokennfttx', 'token1155tx'):
+                    rows = []
                 else:
                     raise AssertionError(self.path)
                 body = json.dumps({'status': '1', 'message': 'OK', 'result': rows}).encode()
@@ -106,7 +108,7 @@ class HistoryTests(unittest.TestCase):
                              'to': addresses[network], 'value': '1250000000000000000',
                              'gasPrice': '1000000000', 'gasUsed': '21000',
                              'isError': '0', 'txreceipt_status': '1'}]
-                elif action == 'tokentx':
+                elif action in ('tokentx', 'tokennfttx', 'token1155tx'):
                     rows = []
                 else:
                     raise AssertionError(self.path)

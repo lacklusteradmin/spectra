@@ -423,6 +423,58 @@ pub(crate) fn encode_erc20_approve(spender: &str, amount: u128) -> Result<Vec<u8
     encode_address_amount(crate::api::evm_json_rpc::SEL_APPROVE, spender, amount)
 }
 
+// ── ERC-721 / ERC-1155 transfer ABI encoding
+
+const SEL_SAFE_TRANSFER_721: [u8; 4] = [0x42, 0x84, 0x2e, 0x0e]; // safeTransferFrom(address,address,uint256)
+const SEL_SAFE_TRANSFER_1155: [u8; 4] = [0xf2, 0x42, 0x43, 0x2a]; // safeTransferFrom(address,address,uint256,uint256,bytes)
+
+/// The call that moves an NFT from `from` to `to`: ERC-721's
+/// `safeTransferFrom(from, to, tokenId)`, or ERC-1155's
+/// `safeTransferFrom(from, to, id, quantity, "")`. Both are the safe forms: a
+/// contract recipient must accept the token or the call reverts, so a token
+/// cannot be stranded in a contract that cannot move it. An ERC-721 token is
+/// one of a kind, so its quantity is one.
+pub(crate) fn encode_nft_transfer(
+    standard: crate::api::evm_nft::NftStandard,
+    from: &str,
+    to: &str,
+    token_id: &str,
+    quantity: &str,
+) -> Result<Vec<u8>, SendError> {
+    use crate::api::evm_nft::{NftStandard, address_word, parse_uint256, uint256_word};
+    let id = uint256_word(&parse_uint256(token_id)?);
+    let quantity = parse_uint256(quantity)?;
+    let mut out = Vec::with_capacity(4 + 6 * 32);
+    match standard {
+        NftStandard::Erc721 => {
+            if quantity != num_bigint::BigUint::from(1u8) {
+                return Err(SendError::invalid(
+                    "An ERC-721 token is sent one at a time.",
+                ));
+            }
+            out.extend(SEL_SAFE_TRANSFER_721);
+            out.extend(address_word(from)?);
+            out.extend(address_word(to)?);
+            out.extend(id);
+        }
+        NftStandard::Erc1155 => {
+            if quantity == num_bigint::BigUint::ZERO {
+                return Err(SendError::invalid("The quantity must be at least one."));
+            }
+            out.extend(SEL_SAFE_TRANSFER_1155);
+            out.extend(address_word(from)?);
+            out.extend(address_word(to)?);
+            out.extend(id);
+            out.extend(uint256_word(&quantity));
+            // The empty `bytes data`: its offset past the five head words,
+            // then its length, zero.
+            out.extend(uint256_word(&num_bigint::BigUint::from(5u8 * 32)));
+            out.extend([0u8; 32]);
+        }
+    }
+    Ok(out)
+}
+
 fn encode_address_amount(selector: [u8; 4], to: &str, amount: u128) -> Result<Vec<u8>, SendError> {
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
@@ -532,6 +584,116 @@ mod gas_tests {
             )
             .await;
             assert_eq!(result.is_ok(), gas > 0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod nft_vectors {
+    use super::*;
+    use crate::api::evm_nft::{
+        NftStandard, balance_of_call, owner_of_call, supports_interface_call,
+    };
+
+    /// Every call ethers.js 6.17.0 encodes for the same transfers and reads,
+    /// token ids from zero to 2^256 − 1 and quantities to 2^128 − 1.
+    #[test]
+    fn calls_match_ethers() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/nft-transfer-vectors.json"
+        ))
+        .unwrap();
+        let (from, to) = (
+            vectors["from"].as_str().unwrap(),
+            vectors["to"].as_str().unwrap(),
+        );
+        let hex = |bytes: Vec<u8>| format!("0x{}", hex::encode(bytes));
+        for case in vectors["erc721"].as_array().unwrap() {
+            let id = case["token_id"].as_str().unwrap();
+            assert_eq!(
+                hex(encode_nft_transfer(NftStandard::Erc721, from, to, id, "1").unwrap()),
+                case["transfer"]
+            );
+            assert_eq!(hex(owner_of_call(id).unwrap()), case["owner_of"]);
+            // One of a kind: never a quantity of an ERC-721 token.
+            for quantity in ["0", "2"] {
+                assert!(encode_nft_transfer(NftStandard::Erc721, from, to, id, quantity).is_err());
+            }
+        }
+        for case in vectors["erc1155"].as_array().unwrap() {
+            let id = case["token_id"].as_str().unwrap();
+            let quantity = case["quantity"].as_str().unwrap();
+            assert_eq!(
+                hex(encode_nft_transfer(NftStandard::Erc1155, from, to, id, quantity).unwrap()),
+                case["transfer"]
+            );
+            assert_eq!(hex(balance_of_call(from, id).unwrap()), case["balance_of"]);
+            assert!(encode_nft_transfer(NftStandard::Erc1155, from, to, id, "0").is_err());
+        }
+        assert_eq!(
+            hex(supports_interface_call(NftStandard::Erc721.interface_id())),
+            vectors["supports"]["erc721"]
+        );
+        assert_eq!(
+            hex(supports_interface_call(NftStandard::Erc1155.interface_id())),
+            vectors["supports"]["erc1155"]
+        );
+    }
+
+    /// The two transfers ethers signs with the same fields: one ERC-721
+    /// token and three of an ERC-1155 id, byte for byte.
+    #[test]
+    fn signed_transfers_match_ethers() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/nft-transfer-vectors.json"
+        ))
+        .unwrap();
+        let signed = &vectors["signed"];
+        let (signer, recipient) = (
+            signed["signer"].as_str().unwrap(),
+            signed["recipient"].as_str().unwrap(),
+        );
+        for (standard, case, id, quantity) in [
+            (NftStandard::Erc721, &signed["erc721"], "1234", "1"),
+            (NftStandard::Erc1155, &signed["erc1155"], "7", "3"),
+        ] {
+            let prepared = PreparedEvmTransaction {
+                chain_id: 1,
+                nonce: case["nonce"].as_u64().unwrap(),
+                max_fee_per_gas: 4_000_000_000,
+                max_priority_fee_per_gas: 2_000_000_000,
+                gas_limit: 108_000,
+                to: case["to"].as_str().unwrap().into(),
+                value_wei: 0,
+                data: encode_nft_transfer(standard, signer, recipient, id, quantity).unwrap(),
+                access_list: vec![],
+                additional_fee_wei: 0,
+            };
+            assert_eq!(
+                format!("0x{}", hex::encode(prepared.sign(&[1; 32]).unwrap())),
+                case["raw"]
+            );
+        }
+    }
+
+    /// A token id or quantity is a whole number, never a decimal amount: a
+    /// fraction, an exponent, a sign or 2^256 is refused rather than scaled.
+    #[test]
+    fn ids_and_quantities_are_never_amounts() {
+        let (from, to) = (
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222",
+        );
+        let past = (num_bigint::BigUint::from(1u8) << 256u32).to_string();
+        for bad in ["1.0", "0.5", "1e18", "-1", "", " 1", past.as_str()] {
+            assert!(
+                encode_nft_transfer(NftStandard::Erc1155, from, to, bad, "1").is_err(),
+                "id {bad}"
+            );
+            assert!(
+                encode_nft_transfer(NftStandard::Erc1155, from, to, "1", bad).is_err(),
+                "quantity {bad}"
+            );
         }
     }
 }

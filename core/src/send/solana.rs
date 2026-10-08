@@ -1,6 +1,6 @@
-//! Solana send: native SOL transfer + SPL TransferChecked, or
-//! TransferCheckedWithFee on a Token-2022 fee mint (with idempotent ATA
-//! create), and Ed25519 signing.
+//! Solana send: native SOL transfer, token transfers (planned under the
+//! mint's Token-2022 rules in `solana_token`), message compilation and
+//! Ed25519 signing.
 
 use crate::send::error::SendError;
 
@@ -54,16 +54,27 @@ pub fn derive_associated_token_account(
     mint: &[u8; 32],
     token_program: &[u8; 32],
 ) -> Result<[u8; 32], SendError> {
+    find_program_address(&[wallet, token_program, mint], &ASSOCIATED_TOKEN_PROGRAM_ID)
+}
+
+/// `Pubkey::find_program_address`: the first bump from 255 down whose
+/// address is off the curve, so no key can sign for it. Seeds are at most 32
+/// bytes each and, with the bump, at most 16.
+pub(crate) fn find_program_address(
+    seeds: &[&[u8]],
+    program: &[u8; 32],
+) -> Result<[u8; 32], SendError> {
     use sha2::{Digest, Sha256};
-    let seeds: [&[u8]; 3] = [wallet, token_program, mint];
-    // Brute-force the bump seed from 255 down until we find an off-curve point.
+    if seeds.len() >= 16 || seeds.iter().any(|seed| seed.len() > 32) {
+        return Err(SendError::invalid("Invalid Solana program address seeds"));
+    }
     for bump in (0u8..=255u8).rev() {
         let mut h = Sha256::new();
-        for s in seeds.iter() {
+        for s in seeds {
             h.update(s);
         }
         h.update([bump]);
-        h.update(ASSOCIATED_TOKEN_PROGRAM_ID);
+        h.update(program);
         h.update(b"ProgramDerivedAddress");
         let digest: [u8; 32] = h.finalize().into();
         if is_off_curve(&digest) {
@@ -144,6 +155,7 @@ fn compile_and_sign(
         account_seed: None,
         network_fee: None,
         stake_rent: None,
+        token: None,
     }
     .sign(key)
 }
@@ -231,6 +243,7 @@ pub(crate) fn prepare_staking_data(
         account_seed: seed.map(str::to_string),
         network_fee: None,
         stake_rent: Some(rent),
+        token: None,
     })
 }
 
@@ -259,6 +272,8 @@ pub(crate) struct PreparedSolanaTransaction {
     pub account_seed: Option<String>,
     pub network_fee: Option<u64>,
     pub stake_rent: Option<u64>,
+    /// The token transfer the message is, checked again before signing.
+    pub token: Option<super::solana_token::PreparedSolanaTokenTransfer>,
 }
 impl PreparedSolanaTransaction {
     pub fn sign(&self, key: &Ed25519Seed) -> Result<Vec<u8>, SendError> {
@@ -279,47 +294,37 @@ pub(crate) async fn prepare_transfer(
 ) -> Result<PreparedSolanaTransaction, SendError> {
     let payer = decode_b58_32(from)?;
     let recipient = decode_b58_32(to)?;
-    let blockhash = client.fetch_recent_blockhash().await?;
-    let message = if let Some((mint, decimals)) = token {
-        let transfer_mint = client.fetch_transfer_mint(mint).await?;
-        if decimals != transfer_mint.decimals {
-            return Err(SendError::Invalid(
-                "SPL decimals changed; review again".into(),
-            ));
-        }
-        let program = transfer_mint.program;
-        let mint = decode_b58_32(mint)?;
-        let source = derive_associated_token_account(&payer, &mint, &program)?;
-        let destination = derive_associated_token_account(&recipient, &mint, &program)?;
-        let data = token_transfer_data(amount, decimals, transfer_mint.transfer_fee_extension);
-        compile_message(
-            &payer,
-            &[
-                (payer, true),
-                (destination, true),
-                (source, true),
-                (recipient, false),
-                (mint, false),
-                ([0; 32], false),
-                (program, false),
-                (ASSOCIATED_TOKEN_PROGRAM_ID, false),
-            ],
-            &[
-                (7, vec![0, 1, 3, 4, 5, 6], vec![1]),
-                (6, vec![2, 4, 1, 0], data),
-            ],
-            &blockhash,
-        )?
-    } else {
-        let mut data = 2u32.to_le_bytes().to_vec();
-        data.extend(amount.to_le_bytes());
-        compile_message(
-            &payer,
-            &[(payer, true), (recipient, true), ([0; 32], false)],
-            &[(2, vec![0, 1], data)],
-            &blockhash,
-        )?
+    let token = match token {
+        Some((mint, decimals)) => Some(
+            super::solana_token::PreparedSolanaTokenTransfer::plan(
+                client, &payer, &recipient, mint, decimals, amount,
+            )
+            .await?,
+        ),
+        None => None,
     };
+    let blockhash = client.fetch_recent_blockhash().await?;
+    let message = match &token {
+        Some(token) => token.message(&payer, &recipient, &blockhash)?,
+        None => {
+            let mut data = 2u32.to_le_bytes().to_vec();
+            data.extend(amount.to_le_bytes());
+            compile_message(
+                &payer,
+                &[(payer, true), (recipient, true), ([0; 32], false)],
+                &[(2, vec![0, 1], data)],
+                &blockhash,
+            )?
+        }
+    };
+    if let Some(hook) = token.as_ref().and_then(|token| token.hook.as_ref())
+        && let Some(error) = client.simulate_message(&message).await?
+    {
+        return Err(SendError::Invalid(crate::LocalizableMessage::new(
+            "The token's transfer hook program %@ refused this transfer: %@",
+            [hook.program.as_str(), error.as_str()],
+        )));
+    }
     Ok(PreparedSolanaTransaction {
         payer,
         blockhash,
@@ -327,29 +332,26 @@ pub(crate) async fn prepare_transfer(
         account_seed: None,
         network_fee: None,
         stake_rent: None,
+        token,
     })
 }
 
 /// `TransferChecked`, or on a mint with a transfer-fee extension
-/// `TransferCheckedWithFee` asserting a zero fee. Both take the same accounts:
+/// `TransferCheckedWithFee` stating the fee. Both take the same accounts:
 /// source, mint, destination, owner.
 ///
-/// The fee is always zero because the mint check admits only fees that charge
-/// nothing. Stating it is the point: Token-2022 recomputes the fee when the
-/// transaction lands and fails it on any mismatch, so a fee switched on after
-/// review cannot quietly withhold part of the amount from the recipient.
-fn token_transfer_data(amount: u64, decimals: u8, transfer_fee_extension: bool) -> Vec<u8> {
+/// Stating the fee is the point: Token-2022 recomputes it when the
+/// transaction executes and fails the transfer on any mismatch, so a fee
+/// changed after review cannot withhold more from the recipient than the
+/// review said.
+pub(crate) fn token_transfer_data(amount: u64, decimals: u8, fee: Option<u64>) -> Vec<u8> {
     // Token-2022 `TransferFeeExtension` (26), sub-instruction
     // `TransferCheckedWithFee` (1); the base `TransferChecked` is 12.
-    let mut data = if transfer_fee_extension {
-        vec![26, 1]
-    } else {
-        vec![12]
-    };
+    let mut data = if fee.is_some() { vec![26, 1] } else { vec![12] };
     data.extend(amount.to_le_bytes());
     data.push(decimals);
-    if transfer_fee_extension {
-        data.extend(0u64.to_le_bytes());
+    if let Some(fee) = fee {
+        data.extend(fee.to_le_bytes());
     }
     data
 }
@@ -388,6 +390,7 @@ impl PreparedSolanaAccountClosure {
                 account_seed: None,
                 network_fee: Some(network_fee),
                 stake_rent: None,
+                token: None,
             },
             accounts,
         })
@@ -567,12 +570,12 @@ mod token_transfer_data_tests {
         let mut plain = vec![12];
         plain.extend([8, 7, 6, 5, 4, 3, 2, 1]);
         plain.push(6);
-        assert_eq!(token_transfer_data(amount, 6, false), plain);
+        assert_eq!(token_transfer_data(amount, 6, None), plain);
         let mut with_fee = vec![26, 1];
         with_fee.extend([8, 7, 6, 5, 4, 3, 2, 1]);
         with_fee.push(6);
-        with_fee.extend([0; 8]);
-        assert_eq!(token_transfer_data(amount, 6, true), with_fee);
+        with_fee.extend([0x39, 0x30, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(token_transfer_data(amount, 6, Some(12345)), with_fee);
     }
 }
 
