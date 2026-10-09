@@ -326,21 +326,22 @@ pub struct WatchArgs {
     chain: String,
     /// Address to track. Repeat it to watch several: an import creates one
     /// wallet per address, which is what the app's multi-line input does.
-    #[arg(long, required_unless_present_any = ["xpub", "descriptor"], conflicts_with = "xpub")]
+    #[arg(long, required_unless_present_any = ["xpub", "multisig"], conflicts_with = "xpub")]
     address: Vec<String>,
     /// Account public key, in an encoding the network's wallets write
     /// (`wallet methods --chain` lists them): xpub/ypub/zpub, Ltub, dgub, kpub….
-    #[arg(long, required_unless_present_any = ["address", "descriptor"], conflicts_with = "address")]
+    #[arg(long, required_unless_present_any = ["address", "multisig"], conflicts_with = "address")]
     xpub: Option<String>,
     /// A Monero wallet's private view key, with its primary address as
     /// `--address`: the wallet scans what it receives and cannot spend.
     #[arg(long, requires = "address", conflicts_with = "xpub")]
     view_key: Option<String>,
-    /// A Bitcoin multisig account's wsh(sortedmulti(…)) descriptor, keys
-    /// with their origins. A cosigner's phrase imported with `--upgrade`
+    /// A multisig account's policy, in its network's form (`wallet methods
+    /// --chain` names it): a UTXO network's sortedmulti descriptor, keys
+    /// with their origins, whose cosigner phrase imported with `--upgrade`
     /// lets the wallet sign its share.
     #[arg(long, conflicts_with_all = ["address", "xpub", "view_key"])]
-    descriptor: Option<String>,
+    multisig: Option<String>,
     /// Block height a view-only Monero wallet's scan starts at.
     #[arg(long, requires = "view_key")]
     restore_height: Option<u64>,
@@ -1528,7 +1529,7 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     // error escaping the planner produced.
     if args.view_key.is_none()
         && args.xpub.is_none()
-        && args.descriptor.is_none()
+        && args.multisig.is_none()
         && !chain.supports_watch_only_import()
     {
         return Err(CliError::rejected(format!(
@@ -1541,8 +1542,8 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     // Core mints one id per wallet it plans, which for a watch-only import is
     // one per address entry.
     let kind = match (args.xpub, args.view_key) {
-        _ if args.descriptor.is_some() => WalletImportKind::WatchMultisig {
-            descriptor: args.descriptor.unwrap_or_default(),
+        _ if args.multisig.is_some() => WalletImportKind::WatchMultisig {
+            policy: args.multisig.unwrap_or_default(),
         },
         (Some(xpub), _) => WalletImportKind::WatchAccountXpub { xpub },
         (None, Some(view_key)) => {
@@ -1633,7 +1634,15 @@ fn methods(out: Out, chain: &str) -> CliResult<()> {
         WalletSecretFormat::Address => "address",
         WalletSecretFormat::AccountXpub => account_key.as_str(),
         WalletSecretFormat::MoneroViewKey => "private view key (64 hex)",
-        WalletSecretFormat::MultisigDescriptor => "wsh(sortedmulti(…)) descriptor",
+        WalletSecretFormat::MultisigDescriptor => "sortedmulti(…) descriptor",
+        WalletSecretFormat::SuiMultisigPublicKey => {
+            "{\"threshold\", \"publicKeys\": [{\"publicKey\", \"weight\"}]}"
+        }
+        WalletSecretFormat::CardanoNativeScript => "cardano-cli native script JSON",
+        WalletSecretFormat::SubstrateMultisig => "{\"threshold\", \"signatories\": [SS58…]}",
+        WalletSecretFormat::AptosMultiKey => {
+            "{\"signaturesRequired\", \"publicKeys\": [\"ed25519-pub-0x…\"]}"
+        }
     };
     out.text(|| {
         println!();

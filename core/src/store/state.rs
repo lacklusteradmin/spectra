@@ -85,7 +85,7 @@ pub struct WalletState {
     /// A multisig account's descriptor (`derivation::multisig`), canonical
     /// with its checksum: the policy every address and signature follows.
     /// `None` for every single-key wallet.
-    pub multisig_descriptor: Option<String>,
+    pub multisig_policy: Option<String>,
 }
 
 // Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
@@ -144,7 +144,7 @@ impl WalletState {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
-            multisig_descriptor: None,
+            multisig_policy: None,
         }
     }
 
@@ -1526,7 +1526,7 @@ mod tests {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
-            multisig_descriptor: None,
+            multisig_policy: None,
         }
     }
 

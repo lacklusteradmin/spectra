@@ -17,9 +17,9 @@ use crate::store::state::{WalletSigning, WalletState};
 pub enum WalletAction {
     /// Send from this wallet.
     Send,
-    /// A multisig wallet's spends: PSBTs to create, read, sign, finish and
-    /// broadcast with its cosigners.
-    Psbts,
+    /// A multisig account's signers and its spends: transactions to build,
+    /// read, sign and submit with its other signers.
+    Multisig,
     /// Show the address this wallet receives at.
     Receive,
     /// This wallet's transactions.
@@ -98,7 +98,7 @@ impl WalletAction {
     pub fn section(self) -> WalletActionSection {
         match self {
             Self::Send
-            | Self::Psbts
+            | Self::Multisig
             | Self::Receive
             | Self::History
             | Self::OpenInExplorer
@@ -132,8 +132,8 @@ impl WalletAction {
     pub fn note(self) -> &'static str {
         match self {
             Self::Send => "Send from this wallet.",
-            Self::Psbts => {
-                "Spend from this multisig wallet: create a PSBT or read one a cosigner sent, sign it, and broadcast it once enough cosigners have."
+            Self::Multisig => {
+                "This account's signers and threshold, and spending from it with their signatures: build a transaction or read one a signer sent, sign it, and submit it once enough have signed."
             }
             Self::Receive => "Show the address this wallet receives at.",
             Self::History => "This wallet's transactions.",
@@ -224,10 +224,13 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
         .and_then(|address| crate::send::message::scheme_for(chain, address));
     [
         (
-            signs && wallet.multisig_descriptor.is_none(),
+            signs && wallet.multisig_policy.is_none(),
             WalletAction::Send,
         ),
-        (wallet.multisig_descriptor.is_some(), WalletAction::Psbts),
+        (
+            super::multisig::MultisigScheme::of(wallet).is_some(),
+            WalletAction::Multisig,
+        ),
         (true, WalletAction::Receive),
         (true, WalletAction::History),
         (
@@ -312,7 +315,11 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
 /// and a key where the wallet watches one address rather than an account,
 /// each as the network offers it. Empty for a wallet that has its keys.
 pub(crate) fn upgrade_methods(wallet: &WalletState) -> Vec<WalletSetupMethod> {
-    if !wallet.signing.is_watch_only() {
+    // Only a UTXO multisig account holds a cosigner's phrase itself; the
+    // others' members sign from wallets of their own.
+    if !wallet.signing.is_watch_only()
+        || (wallet.multisig_policy.is_some() && wallet.chain_id.utxo_multisig_script().is_none())
+    {
         return Vec::new();
     }
     let descriptor = wallet_setup_descriptor(wallet.chain_id);
@@ -326,7 +333,7 @@ pub(crate) fn upgrade_methods(wallet: &WalletState) -> Vec<WalletSetupMethod> {
     // takes a phrase.
     .filter(|method| {
         *method == WalletSetupMethod::ImportPhrase
-            || (wallet.xpub.is_none() && wallet.multisig_descriptor.is_none())
+            || (wallet.xpub.is_none() && wallet.multisig_policy.is_none())
     })
     .collect()
 }

@@ -225,10 +225,21 @@ panic when broken, since a broken embedded file is a build defect.
   every address its account is known to hold. `fetch/bitcoin_history.rs`
   owns provider pagination and buffered block-cohort aggregation; a display
   limit never means provider exhaustion.
-- `derivation/multisig.rs` reads a multisig account's descriptor into its
-  policy; `send/psbt.rs` builds, reviews, signs, combines and finalizes its
-  PSBTs without I/O; `service/psbt.rs` keeps the sessions (`psbt_sessions`)
-  and reads the indexer before a signature or a broadcast.
+- Multisig accounts: `derivation/multisig_policy.rs` reads a policy the
+  address derives from, each network's form in its own module
+  (`multisig.rs` for UTXO descriptors, `sui_multisig.rs`,
+  `aptos_multikey.rs`, `cardano_script.rs`, `substrate_multisig.rs`).
+  `send/<scheme>.rs` builds, decodes, signs and verifies each scheme's
+  transactions without I/O (`psbt.rs`, `p2sh_multisig.rs`, `safe.rs`,
+  `tron_multisig.rs`, `xrp_multisig.rs`, `stellar_multisig.rs`,
+  `sui_multisig.rs`, `aptos_multikey.rs`, `cardano_multisig.rs`,
+  `substrate_multisig.rs`, `ton_multisig.rs`); a policy the network keeps is
+  read in `api/` (`evm_safe.rs`, `tron_http.rs`, `xrpl_json_rpc.rs`,
+  `horizon.rs`, `substrate_json_rpc/multisig.rs`, `toncenter_v2.rs`).
+  `service/multisig.rs` owns the records, the `multisig_sessions` table and
+  the dispatch; each scheme's rules are in its `service/multisig_<scheme>.rs`
+  sibling, which reads the network again before a signature or a
+  submission.
 - `send/bitcoin_wire.rs` contains only Bitcoin-format serialization.
   Other UTXO protocols must establish byte compatibility before reusing it.
   Kaspa owns its own hash preimage encoding. Solana compiles a unique account

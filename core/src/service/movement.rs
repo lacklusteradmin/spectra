@@ -123,7 +123,7 @@ mod tests {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
-            multisig_descriptor: None,
+            multisig_policy: None,
         });
         s.quotes.prices.insert("ethereum:native".into(), 1000.0);
         s

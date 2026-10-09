@@ -58,14 +58,24 @@ fn hash160_bytes(bytes: &[u8]) -> [u8; 20] {
 }
 
 pub(crate) fn address_from_public_key(key: &PublicKey) -> Result<String, DerivationError> {
+    address_of_account_id(&hash160_bytes(&key.serialize()))
+}
+
+/// The classic address of a 20-byte account id.
+pub(crate) fn address_of_account_id(account_id: &[u8; 20]) -> Result<String, DerivationError> {
     let mut payload = vec![0x00];
-    payload.extend_from_slice(&hash160_bytes(&key.serialize()));
+    payload.extend_from_slice(account_id);
     let alphabet = bs58::Alphabet::new(XRP_ALPHABET_BYTES)
         .map_err(|e| DerivationError::invalid(format!("xrp alphabet: {e}")))?;
     Ok(bs58::encode(payload)
         .with_alphabet(&alphabet)
         .with_check()
         .into_string())
+}
+
+/// The account id a secp256k1 public key's own account has.
+pub(crate) fn account_id_of_key(key: &PublicKey) -> [u8; 20] {
+    hash160_bytes(&key.serialize())
 }
 
 // Derive XRP address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.

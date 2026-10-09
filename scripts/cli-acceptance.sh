@@ -293,7 +293,17 @@ suite "complete mined OP Stack fees and durable outcomes"       cli-receipt-fees
 suite "Litecoin SegWit recovery and durable signing"            cli-litecoin.py
 suite "Peercoin recovery, mature rewards and durable signing"   cli-peercoin.py
 suite "account recovery and multi-address signing on every UTXO network" cli-account-utxo.py
-suite "2-of-3 multisig PSBTs across cosigners and a coordinator"  cli-multisig-psbt.py
+suite "2-of-3 multisig PSBTs on Bitcoin and Litecoin"             cli-multisig-psbt.py
+suite "2-of-3 P2SH multisig on Bitcoin Cash and Dogecoin"          cli-multisig-p2sh.py
+suite "Safe owners sign, join and execute a Safe transaction"      cli-multisig-safe.py
+suite "Tron permissions: refused sends and multi-signed spends"    cli-multisig-tron.py
+suite "XRP signer lists: refused sends and multi-signed payments"  cli-multisig-xrp.py
+suite "Stellar signers: refused sends and multi-signed payments"  cli-multisig-stellar.py
+suite "Sui MultiSig and Aptos MultiKey accounts from their policies" cli-multisig-sui-aptos.py
+suite "Cardano native scripts witnessed by CIP-1854 keys"         cli-multisig-cardano.py
+suite "Asset Hub pallet-multisig approvals execute a transfer"     cli-multisig-substrate.py
+suite "Bittensor pallet-multisig approvals execute a transfer"    cli-multisig-substrate.py bittensor
+suite "TON multisig v2 orders proposed and approved by signers"     cli-multisig-ton.py
 suite "XRP signing and protocol validation"                     cli-send-xrp.py
 suite "XRP destination tags and Stellar memos, required and signed" cli-payment-memos.py
 suite "wallet operations: closing accounts, deleting keys"         cli-wallet-operations.py

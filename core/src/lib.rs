@@ -43,6 +43,13 @@ impl LocalizableMessage {
     }
 }
 
+/// Serialized as the English sentence it reads as, for the CLI.
+impl serde::Serialize for LocalizableMessage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
 impl std::fmt::Display for LocalizableMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut args = self.args.iter();

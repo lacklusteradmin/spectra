@@ -356,7 +356,7 @@ pub struct WalletView {
     /// elsewhere, and for an implicit account, whose address is its key.
     pub near_account_key: Option<String>,
     /// A multisig account's descriptor; `None` for a single-key wallet.
-    pub multisig_descriptor: Option<String>,
+    pub multisig_policy: Option<String>,
 }
 
 impl WalletView {
@@ -435,7 +435,7 @@ impl WalletView {
             hidden_holdings: self.hidden_holdings.clone(),
             icp_principal: self.icp_principal.clone(),
             near_account_key: self.near_account_key.clone(),
-            multisig_descriptor: self.multisig_descriptor.clone(),
+            multisig_policy: self.multisig_policy.clone(),
         })
     }
 }
@@ -475,7 +475,7 @@ impl crate::store::state::WalletState {
             hidden_holdings: self.hidden_holdings.clone(),
             icp_principal: self.icp_principal.clone(),
             near_account_key: self.near_account_key.clone(),
-            multisig_descriptor: self.multisig_descriptor.clone(),
+            multisig_policy: self.multisig_policy.clone(),
         }
     }
 }

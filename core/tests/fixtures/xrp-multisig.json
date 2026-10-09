@@ -1,0 +1,499 @@
+{
+  "provenance": "xrpl 4.7.0, ripple-binary-codec 2.11.0, ripple-keypairs 2.1.0, @scure/bip32 1.7.0, @scure/bip39 1.6.0",
+  "notes": [
+    "Keys: BIP-39 phrase, empty passphrase, secp256k1 BIP-32 from the \"Bitcoin seed\" master at derivation_path; private_key is the 32-byte scalar (ripple-keypairs takes it with a 00 prefix).",
+    "A multi-signed transaction carries SigningPubKey \"\" and costs base_fee_drops * (1 + signer_count) drops: https://xrpl.org/docs/concepts/transactions/transaction-cost",
+    "multisigning_hex is encodeForMultisigning(tx, signer): prefix 534D5400, the tx without signing fields, then the signer account ID. txn_signature is its secp256k1 DER signature.",
+    "multisign() sorts Signers by account ID ascending, as xrpld requires; signers_order records the result.",
+    "account_info: https://xrpl.org/docs/references/http-websocket-apis/public-api-methods/account-methods/account_info -- with signer_lists: true, API v1 nests signer_lists under account_data, API v2 (and Clio always) returns it at the result root. A present array has exactly one member.",
+    "account_objects: https://xrpl.org/docs/references/http-websocket-apis/public-api-methods/account-methods/account_objects -- type \"signer_list\" is the short name of SignerList (https://xrpl.org/docs/references/http-websocket-apis/api-conventions/ledger-entry-short-names).",
+    "SignerList entry: https://xrpl.org/docs/references/protocol/ledger-data/ledger-entry-types/signerlist -- lsfOneOwnerCount (0x00010000) is set on lists created since MultiSignReserve, so the owner reserve counts it once (OwnerCount 1).",
+    "AccountRoot Flags 0x00100000 is lsfDisableMaster: https://xrpl.org/docs/references/protocol/ledger-data/ledger-entry-types/accountroot",
+    "submit_multisigned: https://xrpl.org/docs/references/http-websocket-apis/public-api-methods/transaction-methods/submit_multisigned",
+    "Ledger hashes and PreviousTxnIDs in rpc are placeholders (SHA-512 of a label), not real ledger data. Object keys are in byte order, as xrpld writes them."
+  ],
+  "derivation_path": "m/44'/144'/0'/0/0",
+  "keys": {
+    "p0": {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "address": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+      "account_id": "AFF3C2E33458B30714CA16FFEE19952DD35C17C8",
+      "public_key": "031D68BC1A142E6766B2BDFB006CCFE135EF2E0E2E94ABB5CF5C9AB6104776FBAE",
+      "private_key": "90802A50AA84EFB6CDB225F17C27616EA94048C179142FECF03F4712A07EA7A4"
+    },
+    "p1": {
+      "phrase": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "address": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+      "account_id": "0BFA65945C18A9A3A996AC2641F5BFAADC085E8D",
+      "public_key": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+      "private_key": "A4142431371C08EEE8722133BE61F911F8AA4EBC4E2A89D2EA403B8FF5C1984F"
+    },
+    "p2": {
+      "phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+      "address": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+      "account_id": "B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12E",
+      "public_key": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+      "private_key": "9844A31DEB8105FEE8CB94CB81E7F9EA4B45AD2FEA7D896CD6AA889AA5B84C60"
+    }
+  },
+  "multisig_account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+  "signer_list": {
+    "quorum": 2,
+    "entries": [
+      {
+        "account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+        "weight": 1,
+        "account_id": "0BFA65945C18A9A3A996AC2641F5BFAADC085E8D"
+      },
+      {
+        "account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+        "weight": 1,
+        "account_id": "B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12E"
+      },
+      {
+        "account": "rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH",
+        "weight": 2,
+        "account_id": "93B89AFCAD4C8EAC2B131C1331FEF12AE1522BBE"
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "name": "payment",
+      "base_fee_drops": 10,
+      "signer_count": 2,
+      "tx": {
+        "TransactionType": "Payment",
+        "Flags": 0,
+        "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+        "Destination": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+        "Amount": "1000000",
+        "Sequence": 9,
+        "Fee": "30",
+        "LastLedgerSequence": 95000000,
+        "SigningPubKey": ""
+      },
+      "signatures": [
+        {
+          "signer": "p1",
+          "account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+          "signing_pub_key": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+          "multisigning_hex": "534D540012000022000000002400000009201B05A995C06140000000000F424068400000000000001E73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA80BFA65945C18A9A3A996AC2641F5BFAADC085E8D",
+          "txn_signature": "3044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C",
+          "single_signer_blob": "12000022000000002400000009201B05A995C06140000000000F424068400000000000001E73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E01073210283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D74463044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C81140BFA65945C18A9A3A996AC2641F5BFAADC085E8DE1F1"
+        },
+        {
+          "signer": "p2",
+          "account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+          "signing_pub_key": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+          "multisigning_hex": "534D540012000022000000002400000009201B05A995C06140000000000F424068400000000000001E73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12E",
+          "txn_signature": "304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C78610",
+          "single_signer_blob": "12000022000000002400000009201B05A995C06140000000000F424068400000000000001E73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E0107321038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB7446304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C786108114B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12EE1F1"
+        }
+      ],
+      "multisigned": {
+        "blob": "12000022000000002400000009201B05A995C06140000000000F424068400000000000001E73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E01073210283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D74463044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C81140BFA65945C18A9A3A996AC2641F5BFAADC085E8DE1E0107321038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB7446304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C786108114B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12EE1F1",
+        "tx_json": {
+          "TransactionType": "Payment",
+          "Flags": 0,
+          "Sequence": 9,
+          "LastLedgerSequence": 95000000,
+          "Amount": "1000000",
+          "Fee": "30",
+          "SigningPubKey": "",
+          "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+          "Destination": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+          "Signers": [
+            {
+              "Signer": {
+                "SigningPubKey": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+                "TxnSignature": "3044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C",
+                "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do"
+              }
+            },
+            {
+              "Signer": {
+                "SigningPubKey": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+                "TxnSignature": "304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C78610",
+                "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf"
+              }
+            }
+          ]
+        },
+        "hash": "A1A077CDBE4C83F5547FDFEAE4B9AA94DCA222A51E72D80C098162B035D09B23",
+        "signers_order": [
+          {
+            "account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+            "account_id": "0BFA65945C18A9A3A996AC2641F5BFAADC085E8D"
+          },
+          {
+            "account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+            "account_id": "B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12E"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payment_destination_tag",
+      "base_fee_drops": 15,
+      "signer_count": 2,
+      "tx": {
+        "TransactionType": "Payment",
+        "Flags": 0,
+        "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+        "Destination": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+        "DestinationTag": 4242,
+        "Amount": "1000000",
+        "Sequence": 9,
+        "Fee": "45",
+        "LastLedgerSequence": 95000000,
+        "SigningPubKey": ""
+      },
+      "signatures": [
+        {
+          "signer": "p1",
+          "account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+          "signing_pub_key": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+          "multisigning_hex": "534D5400120000220000000024000000092E00001092201B05A995C06140000000000F424068400000000000002D73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA80BFA65945C18A9A3A996AC2641F5BFAADC085E8D",
+          "txn_signature": "30440220350CDC2DE8EB3A59BCD54454EFA382E15BD3CF336658BDF8343AC4CA9DFDCA58022063C6106522414D59054B2BDBF1D030D138DEF12E9DC08EBEF3D0F29C7599B35A",
+          "single_signer_blob": "120000220000000024000000092E00001092201B05A995C06140000000000F424068400000000000002D73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E01073210283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D744630440220350CDC2DE8EB3A59BCD54454EFA382E15BD3CF336658BDF8343AC4CA9DFDCA58022063C6106522414D59054B2BDBF1D030D138DEF12E9DC08EBEF3D0F29C7599B35A81140BFA65945C18A9A3A996AC2641F5BFAADC085E8DE1F1"
+        },
+        {
+          "signer": "p2",
+          "account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+          "signing_pub_key": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+          "multisigning_hex": "534D5400120000220000000024000000092E00001092201B05A995C06140000000000F424068400000000000002D73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12E",
+          "txn_signature": "30440220341EC7A30EAEBF4E87172AE3D1DF8E2B5F974E034E351CF4ADF803CE0C377F280220176E810A31E555BC9F2205B52FB59F5DA78C6A9DBB119CA94C997C53756F0FB2",
+          "single_signer_blob": "120000220000000024000000092E00001092201B05A995C06140000000000F424068400000000000002D73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E0107321038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB744630440220341EC7A30EAEBF4E87172AE3D1DF8E2B5F974E034E351CF4ADF803CE0C377F280220176E810A31E555BC9F2205B52FB59F5DA78C6A9DBB119CA94C997C53756F0FB28114B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12EE1F1"
+        }
+      ],
+      "multisigned": {
+        "blob": "120000220000000024000000092E00001092201B05A995C06140000000000F424068400000000000002D73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E01073210283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D744630440220350CDC2DE8EB3A59BCD54454EFA382E15BD3CF336658BDF8343AC4CA9DFDCA58022063C6106522414D59054B2BDBF1D030D138DEF12E9DC08EBEF3D0F29C7599B35A81140BFA65945C18A9A3A996AC2641F5BFAADC085E8DE1E0107321038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB744630440220341EC7A30EAEBF4E87172AE3D1DF8E2B5F974E034E351CF4ADF803CE0C377F280220176E810A31E555BC9F2205B52FB59F5DA78C6A9DBB119CA94C997C53756F0FB28114B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12EE1F1",
+        "tx_json": {
+          "TransactionType": "Payment",
+          "Flags": 0,
+          "Sequence": 9,
+          "DestinationTag": 4242,
+          "LastLedgerSequence": 95000000,
+          "Amount": "1000000",
+          "Fee": "45",
+          "SigningPubKey": "",
+          "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+          "Destination": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+          "Signers": [
+            {
+              "Signer": {
+                "SigningPubKey": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+                "TxnSignature": "30440220350CDC2DE8EB3A59BCD54454EFA382E15BD3CF336658BDF8343AC4CA9DFDCA58022063C6106522414D59054B2BDBF1D030D138DEF12E9DC08EBEF3D0F29C7599B35A",
+                "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do"
+              }
+            },
+            {
+              "Signer": {
+                "SigningPubKey": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+                "TxnSignature": "30440220341EC7A30EAEBF4E87172AE3D1DF8E2B5F974E034E351CF4ADF803CE0C377F280220176E810A31E555BC9F2205B52FB59F5DA78C6A9DBB119CA94C997C53756F0FB2",
+                "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf"
+              }
+            }
+          ]
+        },
+        "hash": "7EB3A3622E7D81C8EFB4597AD557F76B3FDD2116250C3C501622F436DC1606A2",
+        "signers_order": [
+          {
+            "account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+            "account_id": "0BFA65945C18A9A3A996AC2641F5BFAADC085E8D"
+          },
+          {
+            "account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+            "account_id": "B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12E"
+          }
+        ]
+      }
+    }
+  ],
+  "rpc": {
+    "account_info_v1": {
+      "request": {
+        "method": "account_info",
+        "params": [
+          {
+            "account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+            "ledger_index": "validated",
+            "signer_lists": true
+          }
+        ]
+      },
+      "response": {
+        "result": {
+          "account_data": {
+            "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+            "Balance": "25000000",
+            "Flags": 1048576,
+            "LedgerEntryType": "AccountRoot",
+            "OwnerCount": 1,
+            "PreviousTxnID": "B65DBDFC72262BFB96D6558A4FCE5A51853339BD77FE9960199E84B546E06F9F",
+            "PreviousTxnLgrSeq": 94999100,
+            "Sequence": 9,
+            "index": "984E286CCF3F34102599A422F46ADFDC6C07DD41D1C2FC28391955721E351CD8",
+            "signer_lists": [
+              {
+                "Flags": 65536,
+                "LedgerEntryType": "SignerList",
+                "OwnerNode": "0000000000000000",
+                "PreviousTxnID": "3E35D457A0C131EA395C32928E9ED1E428DABDF34010CCA24872FC93DC600210",
+                "PreviousTxnLgrSeq": 94999000,
+                "SignerEntries": [
+                  {
+                    "SignerEntry": {
+                      "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+                      "SignerWeight": 1
+                    }
+                  },
+                  {
+                    "SignerEntry": {
+                      "Account": "rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH",
+                      "SignerWeight": 2
+                    }
+                  },
+                  {
+                    "SignerEntry": {
+                      "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+                      "SignerWeight": 1
+                    }
+                  }
+                ],
+                "SignerListID": 0,
+                "SignerQuorum": 2,
+                "index": "33BCD9E57E69F2774BE17FE3BFA5F830C410F33C5566FF830C31908CD639B5F2"
+              }
+            ]
+          },
+          "account_flags": {
+            "defaultRipple": false,
+            "depositAuth": false,
+            "disableMasterKey": true,
+            "disallowIncomingCheck": false,
+            "disallowIncomingNFTokenOffer": false,
+            "disallowIncomingPayChan": false,
+            "disallowIncomingTrustline": false,
+            "disallowIncomingXRP": false,
+            "globalFreeze": false,
+            "noFreeze": false,
+            "passwordSpent": false,
+            "requireAuthorization": false,
+            "requireDestinationTag": false
+          },
+          "ledger_hash": "A19A6C00E18167C56AC083A15BBF4DA365672E430E33036D80870F9C2C61C0E8",
+          "ledger_index": 94999990,
+          "status": "success",
+          "validated": true
+        }
+      }
+    },
+    "account_info_v2": {
+      "request": {
+        "method": "account_info",
+        "params": [
+          {
+            "account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+            "ledger_index": "validated",
+            "signer_lists": true,
+            "api_version": 2
+          }
+        ]
+      },
+      "response": {
+        "result": {
+          "account_data": {
+            "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+            "Balance": "25000000",
+            "Flags": 1048576,
+            "LedgerEntryType": "AccountRoot",
+            "OwnerCount": 1,
+            "PreviousTxnID": "B65DBDFC72262BFB96D6558A4FCE5A51853339BD77FE9960199E84B546E06F9F",
+            "PreviousTxnLgrSeq": 94999100,
+            "Sequence": 9,
+            "index": "984E286CCF3F34102599A422F46ADFDC6C07DD41D1C2FC28391955721E351CD8"
+          },
+          "account_flags": {
+            "defaultRipple": false,
+            "depositAuth": false,
+            "disableMasterKey": true,
+            "disallowIncomingCheck": false,
+            "disallowIncomingNFTokenOffer": false,
+            "disallowIncomingPayChan": false,
+            "disallowIncomingTrustline": false,
+            "disallowIncomingXRP": false,
+            "globalFreeze": false,
+            "noFreeze": false,
+            "passwordSpent": false,
+            "requireAuthorization": false,
+            "requireDestinationTag": false
+          },
+          "ledger_hash": "A19A6C00E18167C56AC083A15BBF4DA365672E430E33036D80870F9C2C61C0E8",
+          "ledger_index": 94999990,
+          "signer_lists": [
+            {
+              "Flags": 65536,
+              "LedgerEntryType": "SignerList",
+              "OwnerNode": "0000000000000000",
+              "PreviousTxnID": "3E35D457A0C131EA395C32928E9ED1E428DABDF34010CCA24872FC93DC600210",
+              "PreviousTxnLgrSeq": 94999000,
+              "SignerEntries": [
+                {
+                  "SignerEntry": {
+                    "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+                    "SignerWeight": 1
+                  }
+                },
+                {
+                  "SignerEntry": {
+                    "Account": "rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH",
+                    "SignerWeight": 2
+                  }
+                },
+                {
+                  "SignerEntry": {
+                    "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+                    "SignerWeight": 1
+                  }
+                }
+              ],
+              "SignerListID": 0,
+              "SignerQuorum": 2,
+              "index": "33BCD9E57E69F2774BE17FE3BFA5F830C410F33C5566FF830C31908CD639B5F2"
+            }
+          ],
+          "status": "success",
+          "validated": true
+        }
+      }
+    },
+    "account_objects_signer_list": {
+      "request": {
+        "method": "account_objects",
+        "params": [
+          {
+            "account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+            "ledger_index": "validated",
+            "type": "signer_list"
+          }
+        ]
+      },
+      "response": {
+        "result": {
+          "account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+          "account_objects": [
+            {
+              "Flags": 65536,
+              "LedgerEntryType": "SignerList",
+              "OwnerNode": "0000000000000000",
+              "PreviousTxnID": "3E35D457A0C131EA395C32928E9ED1E428DABDF34010CCA24872FC93DC600210",
+              "PreviousTxnLgrSeq": 94999000,
+              "SignerEntries": [
+                {
+                  "SignerEntry": {
+                    "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+                    "SignerWeight": 1
+                  }
+                },
+                {
+                  "SignerEntry": {
+                    "Account": "rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH",
+                    "SignerWeight": 2
+                  }
+                },
+                {
+                  "SignerEntry": {
+                    "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+                    "SignerWeight": 1
+                  }
+                }
+              ],
+              "SignerListID": 0,
+              "SignerQuorum": 2,
+              "index": "33BCD9E57E69F2774BE17FE3BFA5F830C410F33C5566FF830C31908CD639B5F2"
+            }
+          ],
+          "ledger_hash": "A19A6C00E18167C56AC083A15BBF4DA365672E430E33036D80870F9C2C61C0E8",
+          "ledger_index": 94999990,
+          "status": "success",
+          "validated": true
+        }
+      }
+    },
+    "submit_multisigned": {
+      "request": {
+        "method": "submit_multisigned",
+        "params": [
+          {
+            "tx_json": {
+              "TransactionType": "Payment",
+              "Flags": 0,
+              "Sequence": 9,
+              "LastLedgerSequence": 95000000,
+              "Amount": "1000000",
+              "Fee": "30",
+              "SigningPubKey": "",
+              "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+              "Destination": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+              "Signers": [
+                {
+                  "Signer": {
+                    "SigningPubKey": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+                    "TxnSignature": "3044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C",
+                    "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do"
+                  }
+                },
+                {
+                  "Signer": {
+                    "SigningPubKey": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+                    "TxnSignature": "304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C78610",
+                    "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "response": {
+        "result": {
+          "engine_result": "tesSUCCESS",
+          "engine_result_code": 0,
+          "engine_result_message": "The transaction was applied. Only final in a validated ledger.",
+          "status": "success",
+          "tx_blob": "12000022000000002400000009201B05A995C06140000000000F424068400000000000001E73008114AFF3C2E33458B30714CA16FFEE19952DD35C17C88314F667B0CA50CC7709A220B0561B85E53A48461FA8F3E01073210283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D74463044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C81140BFA65945C18A9A3A996AC2641F5BFAADC085E8DE1E0107321038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB7446304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C786108114B0569DFDB05B9BB7EFA37E7CAA66AAAFF1E4D12EE1F1",
+          "tx_json": {
+            "Account": "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3",
+            "Amount": "1000000",
+            "Destination": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+            "Fee": "30",
+            "Flags": 0,
+            "LastLedgerSequence": 95000000,
+            "Sequence": 9,
+            "Signers": [
+              {
+                "Signer": {
+                  "Account": "rpaLPza5oxhJ7V8nFDwPm9F7kmZ16uc8do",
+                  "SigningPubKey": "0283E0926EB0AB7BB8F5C0B5637D9E2526BDC398763AF79CD904F013178961692D",
+                  "TxnSignature": "3044022025F8834524020B4A07D1FAB81F079F5AD39E8B0AC9191B6D6BF22519EFE56FA702207D05805E293E33FF48D791D01E4031F5EBED860608E4F059DFF4B3A47D94D67C"
+                }
+              },
+              {
+                "Signer": {
+                  "Account": "rHnP6pbwmRUg9wVtTVhVREVVQ4CEZuwKPf",
+                  "SigningPubKey": "038CED5F3695CB096F79672A59D8340DFF938BB28582148B27C1BBB4C271EC46AB",
+                  "TxnSignature": "304402206A71B0E2F65A12037B9CF6EC342DBC3C016EE9C65D18C63156F5A88C69D0F83402200F11161374E6395DBF3E1D56FE75D72A042E0369A533031DA74C43E8B5C78610"
+                }
+              }
+            ],
+            "SigningPubKey": "",
+            "TransactionType": "Payment",
+            "hash": "A1A077CDBE4C83F5547FDFEAE4B9AA94DCA222A51E72D80C098162B035D09B23"
+          }
+        }
+      }
+    }
+  }
+}

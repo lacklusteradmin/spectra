@@ -2,6 +2,7 @@
 //! scripts/generate-multisig-psbt-vectors.cjs).
 
 use super::*;
+use bitcoin::Address;
 use std::str::FromStr;
 
 struct Case {

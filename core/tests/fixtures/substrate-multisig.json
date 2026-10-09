@@ -1,0 +1,249 @@
+{
+  "provenance": "@polkadot/types 17.0.2, @polkadot/keyring 14.0.3, @polkadot/util-crypto 14.0.3, @polkadot/util 14.0.3, @polkadot/wasm-crypto 7.5.4 (scripts/generate-substrate-multisig-vectors.cjs)",
+  "signatories": [
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "public_key": "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972",
+      "polkadot": "13KVd4f2a4S5pLp4gTTFezyXdPWx27vQ9vS6xBXJ9yWVd7xo",
+      "substrate": "5EPCUjPxiHAcNooYipQFWr9NmmXJKpNG5RhcntXwbtUySrgH"
+    },
+    {
+      "phrase": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "public_key": "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+      "polkadot": "13DyfGHEWo6GF98AxoBbovBHy82rrr4H3LrWaxggtEpgku8o",
+      "substrate": "5EHgWw2Af1pnoc7f1A8bfmM97W3DAYW8xr82RfhLL9oAabAe"
+    },
+    {
+      "phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+      "public_key": "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414",
+      "polkadot": "13pss2AZd6pcwBxS4voSGFXfK47zMNT5XvthqK8jqAssFs9X",
+      "substrate": "5EtaiguVmKZ9Vewv7HkS86hWTS8Lf4twTSADg29PH5rM5Wng"
+    }
+  ],
+  "sorted_order": [
+    1,
+    0,
+    2
+  ],
+  "multisig": {
+    "threshold_2": {
+      "account_id": "0x9a2f8eed8becdf3badb1a38bfa3c1c2aadf4b9f9b906ac0a4ee8125cc16c159c",
+      "polkadot": "14VAW7mzeyWc57nPrF6yoJrjztNQYHCXAHoy8zj89gYykL9b",
+      "substrate": "5FYsMnWvoCF8damstc3yfA2b9GNkqyeP5o5UyhjmbbXTZtA5"
+    },
+    "threshold_3": {
+      "account_id": "0x8faa1d6ff7891db4a0da5c9e775e85ebfcaa4b7aee9d0343134a59228cd96fb8",
+      "polkadot": "14FNPAnmEr7fuFhoWx76z38aFV6JdP4rSmtS9Zgh4Awfm1hL",
+      "substrate": "5FK5EqXhP4rCTihHZK46qtJRPs6ew5WiNH9wzGhLW5v9aTSk"
+    }
+  },
+  "recipient": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "timepoint": {
+    "height": 123,
+    "index": 2
+  },
+  "max_weight": {
+    "ref_time": "1000000000",
+    "proof_size": "100000"
+  },
+  "runtimes": {
+    "polkadot-asset-hub": {
+      "metadata": "core/tests/fixtures/asset-hub-polkadot-metadata.scale",
+      "metadata_sha256": "104f632e638db176eefdc69bc06f7d096593330fd2766ac28b3e01205509beba",
+      "spec_name": "statemint",
+      "spec_version": 2005000,
+      "ss58_prefix": 0,
+      "balances": {
+        "pallet_index": 10,
+        "calls": {
+          "transfer_keep_alive": 3
+        }
+      },
+      "multisig": {
+        "pallet_index": 41,
+        "calls": {
+          "as_multi_threshold_1": 0,
+          "as_multi": 1,
+          "approve_as_multi": 2,
+          "cancel_as_multi": 3
+        },
+        "deposit_base": "2008800000",
+        "deposit_factor": "3200000",
+        "max_signatories": 100
+      },
+      "inner": {
+        "call": "Balances.transfer_keep_alive",
+        "dest": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "value": "12345678900",
+        "hex": "0x0a0300dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd07341cdcdf02",
+        "call_hash": "0xe810ea77832ea503386cb6906b75de39248c6d790c59fe795a8e273033c675da"
+      },
+      "calls": {
+        "approve_as_multi_first": {
+          "submitter": 0,
+          "other_signatories": [
+            "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x2902020008625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b7157cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb41400e810ea77832ea503386cb6906b75de39248c6d790c59fe795a8e273033c675da02286bee821a0600"
+        },
+        "as_multi_final": {
+          "submitter": 1,
+          "other_signatories": [
+            "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x290102000866933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed79727cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414017b000000020000000a0300dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd07341cdcdf0202286bee821a0600"
+        },
+        "as_multi_first": {
+          "submitter": 0,
+          "other_signatories": [
+            "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x2901020008625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b7157cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414000a0300dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd07341cdcdf0202286bee821a0600"
+        },
+        "cancel_as_multi": {
+          "submitter": 0,
+          "other_signatories": [
+            "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x2903020008625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b7157cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb4147b00000002000000e810ea77832ea503386cb6906b75de39248c6d790c59fe795a8e273033c675da"
+        }
+      },
+      "storage": {
+        "pallet_prefix": "Multisig",
+        "item": "Multisigs",
+        "hashers": [
+          "Twox64Concat",
+          "Blake2_128Concat"
+        ],
+        "prefix": "0x7474449cca95dc5d0c00e71735a6d17d3cd15a3fd6e04e47bee3922dbfa92c8d",
+        "multisig_account": "0x9a2f8eed8becdf3badb1a38bfa3c1c2aadf4b9f9b906ac0a4ee8125cc16c159c",
+        "call_hash": "0xe810ea77832ea503386cb6906b75de39248c6d790c59fe795a8e273033c675da",
+        "key": "0x7474449cca95dc5d0c00e71735a6d17d3cd15a3fd6e04e47bee3922dbfa92c8ded7cbca0c71dee029a2f8eed8becdf3badb1a38bfa3c1c2aadf4b9f9b906ac0a4ee8125cc16c159cc01f701f6ca7e05e713a2499ef3d2ab3e810ea77832ea503386cb6906b75de39248c6d790c59fe795a8e273033c675da",
+        "value": {
+          "type": "pallet_multisig::Multisig",
+          "fields": {
+            "when": "PalletMultisigTimepoint",
+            "deposit": "u128",
+            "depositor": "AccountId32",
+            "approvals": "Vec<AccountId32>"
+          },
+          "input": {
+            "when": {
+              "height": 123,
+              "index": 2
+            },
+            "deposit": "20000000000",
+            "depositor": "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972",
+            "approvals": [
+              "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972"
+            ]
+          },
+          "hex": "0x7b0000000200000000c817a804000000000000000000000066933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed79720466933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972"
+        }
+      }
+    },
+    "bittensor": {
+      "metadata": "core/tests/fixtures/bittensor-finney-metadata.scale",
+      "metadata_sha256": "11d536a4d31e1140630d4b443996c544ec2cdad82076241a66e3ef31d728eb18",
+      "spec_name": "node-subtensor",
+      "spec_version": 472,
+      "ss58_prefix": 42,
+      "balances": {
+        "pallet_index": 5,
+        "calls": {
+          "transfer_keep_alive": 3
+        }
+      },
+      "multisig": {
+        "pallet_index": 13,
+        "calls": {
+          "as_multi_threshold_1": 0,
+          "as_multi": 1,
+          "approve_as_multi": 2,
+          "cancel_as_multi": 3
+        },
+        "deposit_base": "132000000",
+        "deposit_factor": "32000000",
+        "max_signatories": 100
+      },
+      "inner": {
+        "call": "Balances.transfer_keep_alive",
+        "dest": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "value": "1234567890",
+        "hex": "0x050300dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd03d2029649",
+        "call_hash": "0x631a3bf22bf1a83dff64771649aa7781b5b72eb9b2d74425a0d5978048b9a61d"
+      },
+      "calls": {
+        "approve_as_multi_first": {
+          "submitter": 0,
+          "other_signatories": [
+            "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x0d02020008625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b7157cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb41400631a3bf22bf1a83dff64771649aa7781b5b72eb9b2d74425a0d5978048b9a61d02286bee821a0600"
+        },
+        "as_multi_final": {
+          "submitter": 1,
+          "other_signatories": [
+            "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x0d0102000866933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed79727cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414017b00000002000000050300dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd03d202964902286bee821a0600"
+        },
+        "as_multi_first": {
+          "submitter": 0,
+          "other_signatories": [
+            "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x0d01020008625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b7157cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb41400050300dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd03d202964902286bee821a0600"
+        },
+        "cancel_as_multi": {
+          "submitter": 0,
+          "other_signatories": [
+            "0x625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b715",
+            "0x7cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb414"
+          ],
+          "hex": "0x0d03020008625e25364c7b68e0a83065ccb40afed43f8fe933e669b24f3d69a57eddb3b7157cfc381486c8de5731bdd63ced8f36da5dd700bfb9b1b02a4f1d212a84fdb4147b00000002000000631a3bf22bf1a83dff64771649aa7781b5b72eb9b2d74425a0d5978048b9a61d"
+        }
+      },
+      "storage": {
+        "pallet_prefix": "Multisig",
+        "item": "Multisigs",
+        "hashers": [
+          "Twox64Concat",
+          "Blake2_128Concat"
+        ],
+        "prefix": "0x7474449cca95dc5d0c00e71735a6d17d3cd15a3fd6e04e47bee3922dbfa92c8d",
+        "multisig_account": "0x9a2f8eed8becdf3badb1a38bfa3c1c2aadf4b9f9b906ac0a4ee8125cc16c159c",
+        "call_hash": "0x631a3bf22bf1a83dff64771649aa7781b5b72eb9b2d74425a0d5978048b9a61d",
+        "key": "0x7474449cca95dc5d0c00e71735a6d17d3cd15a3fd6e04e47bee3922dbfa92c8ded7cbca0c71dee029a2f8eed8becdf3badb1a38bfa3c1c2aadf4b9f9b906ac0a4ee8125cc16c159c0ef7e37fc65779ab4b1e5f873d0074e5631a3bf22bf1a83dff64771649aa7781b5b72eb9b2d74425a0d5978048b9a61d",
+        "value": {
+          "type": "pallet_multisig::Multisig",
+          "fields": {
+            "when": "PalletMultisigTimepoint",
+            "deposit": "u64",
+            "depositor": "AccountId32",
+            "approvals": "Vec<AccountId32>"
+          },
+          "input": {
+            "when": {
+              "height": 123,
+              "index": 2
+            },
+            "deposit": "20000000000",
+            "depositor": "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972",
+            "approvals": [
+              "0x66933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972"
+            ]
+          },
+          "hex": "0x7b0000000200000000c817a80400000066933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed79720466933bd1f37070ef87bd1198af3dacceb095237f803f3d32b173e6b425ed7972"
+        }
+      }
+    }
+  }
+}

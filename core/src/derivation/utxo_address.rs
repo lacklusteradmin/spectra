@@ -45,6 +45,36 @@ impl ParsedUtxoAddress {
     }
 }
 
+/// `script` as an address on `chain`: P2PKH and P2SH in the network's
+/// Base58 versions, a witness program in its SegWit encoding. `None` for a
+/// script no address on the network names.
+pub(crate) fn script_address(chain: Chain, script: &[u8]) -> Option<String> {
+    use crate::derivation::bitcoin::base58check_encode;
+    let (p2pkh, p2sh) = chain.fixed_utxo_address_versions().ok()?;
+    match script {
+        [0x76, 0xa9, 0x14, hash @ .., 0x88, 0xac] if hash.len() == 20 => {
+            Some(base58check_encode(&[&[p2pkh], hash].concat()))
+        }
+        [0xa9, 0x14, hash @ .., 0x87] if hash.len() == 20 => {
+            Some(base58check_encode(&[&[*p2sh.first()?], hash].concat()))
+        }
+        [opcode, length, program @ ..] if usize::from(*length) == program.len() => {
+            let version = match opcode {
+                0 => 0,
+                0x51..=0x60 => opcode - 0x50,
+                _ => return None,
+            };
+            if !chain.fixed_utxo_supports_witness(version, program.len()) {
+                return None;
+            }
+            let hrp = bech32::Hrp::parse(chain.fixed_utxo_segwit_hrp()?).ok()?;
+            let version = bech32::Fe32::try_from(version).ok()?;
+            bech32::segwit::encode(hrp, version, program).ok()
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_utxo_address(
     chain: Chain,
     address: &str,

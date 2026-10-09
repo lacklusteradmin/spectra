@@ -88,7 +88,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              updated_at             INTEGER NOT NULL,
              PRIMARY KEY (wallet_id, chain_id)
          );
-         CREATE TABLE IF NOT EXISTS psbt_sessions (
+         CREATE TABLE IF NOT EXISTS multisig_sessions (
              id        TEXT NOT NULL PRIMARY KEY,
              wallet_id TEXT NOT NULL,
              payload   TEXT NOT NULL CHECK(json_valid(payload))

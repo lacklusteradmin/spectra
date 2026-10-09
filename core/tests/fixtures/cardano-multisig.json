@@ -1,0 +1,234 @@
+{
+  "provenance": "@emurgo/cardano-serialization-lib-nodejs 15.0.3, bip39 3.1.0, @noble/hashes 1.8.0 (scripts/generate-cardano-multisig-vectors.cjs)",
+  "encoding": {
+    "body_inputs_tag_258": true,
+    "vkey_witnesses_tag_258": true,
+    "native_scripts_tag_258": true
+  },
+  "cosigners": [
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "account_path": "m/1854'/1815'/0'",
+      "account_xvk": "eecd25c67ef97559fc2802c4ef2b84514b6d2cc08d02d96b284c65abf2f2eada65b40c2d2e420e6b59b7d78cb476c88954a113fa6bc9d22c42e5bccbf25e77a0",
+      "path": "m/1854'/1815'/0'/0/0",
+      "public_key": "b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e",
+      "key_hash": "32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a",
+      "private_key": "f86762026fc853d6a33a938b6f320001565a4c0885be29d1dcb2d358790e6f53c30b13fdf32fbcb8b784faebc0e12b80aa443ec6044965a06a280d1e4ee9df9f"
+    },
+    {
+      "phrase": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "account_path": "m/1854'/1815'/0'",
+      "account_xvk": "64b99ad9790ceaf579f67216e6ac2615c03c0614131e07e086a7807c192ea8c01a6c99766f7bd84e46d9dda841cd71c30b5a0ab4203937f2cb4082e013746cd8",
+      "path": "m/1854'/1815'/0'/0/0",
+      "public_key": "98d2ff1fbf251eb5555400be89f5f1332651704cf78f7c98a175feedd6343741",
+      "key_hash": "234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f",
+      "private_key": "180ec0c3fe659ce8db295bb1cfff28873989cf743a3e4e30209a19d9575fad59601444aa80f6e9745fd89e66a88154d025b2c024143f3bef074ef43fbaa8c975"
+    },
+    {
+      "phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+      "account_path": "m/1854'/1815'/0'",
+      "account_xvk": "b11f19cc92b4027c79bd66ee1ef97167caa7c30a2bd22c5cf54cf0cf689bbb30a980e525213c34081e35138a1efbb6a095d14a0780484cb697314518a36cb9f8",
+      "path": "m/1854'/1815'/0'/0/0",
+      "public_key": "a38d593479a517caae1b7eb2b0886bca90bc55445d92c5eb77d907054bd7814f",
+      "key_hash": "24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc",
+      "private_key": "1037231103c748110e64fcf3157a27605ab36fbd7ac91a076a79a2139ffed444b4cf14b05d95ee7a834d99b0f34a33c3cfe2aeba781f78ac9b1e7691fe293863"
+    }
+  ],
+  "scripts": {
+    "s1": {
+      "json": {
+        "type": "atLeast",
+        "required": 2,
+        "scripts": [
+          {
+            "type": "sig",
+            "keyHash": "32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a"
+          },
+          {
+            "type": "sig",
+            "keyHash": "234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f"
+          },
+          {
+            "type": "sig",
+            "keyHash": "24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc"
+          }
+        ]
+      },
+      "cbor": "830302838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f8200581c24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc",
+      "hash": "0e908fe868b0b76c3f5addcfa69c584429ab9afc72be602a81bd2aa3",
+      "addresses": {
+        "cardano": {
+          "address": "addr1wy8fprlgdzctwmplttwulf5utpzzn2u6l3etucp2sx7j4gca4f2d4",
+          "bytes": "710e908fe868b0b76c3f5addcfa69c584429ab9afc72be602a81bd2aa3"
+        },
+        "cardano-preprod": {
+          "address": "addr_test1wq8fprlgdzctwmplttwulf5utpzzn2u6l3etucp2sx7j4gcxaakzs",
+          "bytes": "700e908fe868b0b76c3f5addcfa69c584429ab9afc72be602a81bd2aa3"
+        }
+      }
+    },
+    "s2": {
+      "json": {
+        "type": "all",
+        "scripts": [
+          {
+            "type": "sig",
+            "keyHash": "32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a"
+          },
+          {
+            "type": "sig",
+            "keyHash": "234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f"
+          },
+          {
+            "type": "before",
+            "slot": 90000000
+          }
+        ]
+      },
+      "cbor": "8201838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f82051a055d4a80",
+      "hash": "4fbf28eb790ea9fabe45879eb98f492361d3be867249d5c275dffcb8",
+      "addresses": {
+        "cardano": {
+          "address": "addr1w98m728t0y82n747gkreawv0fy3kr5a7seeyn4wzwh0lewqj6s7e5",
+          "bytes": "714fbf28eb790ea9fabe45879eb98f492361d3be867249d5c275dffcb8"
+        },
+        "cardano-preprod": {
+          "address": "addr_test1wp8m728t0y82n747gkreawv0fy3kr5a7seeyn4wzwh0lewqfjyzk3",
+          "bytes": "704fbf28eb790ea9fabe45879eb98f492361d3be867249d5c275dffcb8"
+        }
+      }
+    },
+    "s3": {
+      "json": {
+        "type": "any",
+        "scripts": [
+          {
+            "type": "sig",
+            "keyHash": "24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc"
+          },
+          {
+            "type": "sig",
+            "keyHash": "234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f"
+          }
+        ]
+      },
+      "cbor": "8202828200581c24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f",
+      "hash": "842e4b5ef26095db7d1da474ddec662d736564d71e8cfae8fabe85ef",
+      "addresses": {
+        "cardano": {
+          "address": "addr1wxzzuj677fsftkmarkj8fh0vvckhxety6u0ge7hgl2lgtmcef9x6g",
+          "bytes": "71842e4b5ef26095db7d1da474ddec662d736564d71e8cfae8fabe85ef"
+        },
+        "cardano-preprod": {
+          "address": "addr_test1wzzzuj677fsftkmarkj8fh0vvckhxety6u0ge7hgl2lgtmczp364d",
+          "bytes": "70842e4b5ef26095db7d1da474ddec662d736564d71e8cfae8fabe85ef"
+        }
+      }
+    }
+  },
+  "recipient": {
+    "address": "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x",
+    "bytes": "019493315cd92eb5d8c4304e67b7e16ae36d61d34502694657811a2c8e337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c47251"
+  },
+  "transactions": [
+    {
+      "name": "s1_spend",
+      "script": "s1",
+      "inputs": [
+        {
+          "tx_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "tx_index": 0,
+          "lovelace": "10000000"
+        }
+      ],
+      "outputs": [
+        {
+          "address": "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x",
+          "lovelace": "2000000"
+        },
+        {
+          "address": "addr1wy8fprlgdzctwmplttwulf5utpzzn2u6l3etucp2sx7j4gca4f2d4",
+          "lovelace": "7800000"
+        }
+      ],
+      "fee": "200000",
+      "ttl": 50000000,
+      "validity_start": null,
+      "body": "a400d9010281825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000182825839019493315cd92eb5d8c4304e67b7e16ae36d61d34502694657811a2c8e337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c472511a001e848082581d710e908fe868b0b76c3f5addcfa69c584429ab9afc72be602a81bd2aa31a007704c0021a00030d40031a02faf080",
+      "hash": "1e98f4a05727a99562c7fd2e209b37fafe5f0dc9cb663e9e858192715fdae226",
+      "witnesses": {
+        "k0": {
+          "public_key": "b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e",
+          "signature": "12e0c7477d46d08310308266d597b5079e87e1bad343975bae2998d444a7e5643822b6c05afe597207cbd02ceaa2a14770734a541ecd7acad8b69737fab0b804"
+        },
+        "k2": {
+          "public_key": "a38d593479a517caae1b7eb2b0886bca90bc55445d92c5eb77d907054bd7814f",
+          "signature": "98e66576c3a8d043a9c9ffd4ee9949c6e62d7c94065707a8c679a2ead4fa61fa5629a8c554de66f5ade8b35e5fd0f5f49b97780c511b796f4459765d508a2001"
+        }
+      },
+      "signed": [
+        {
+          "signers": [
+            "k0",
+            "k2"
+          ],
+          "witness_set": "a200d9010282825820b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e584012e0c7477d46d08310308266d597b5079e87e1bad343975bae2998d444a7e5643822b6c05afe597207cbd02ceaa2a14770734a541ecd7acad8b69737fab0b804825820a38d593479a517caae1b7eb2b0886bca90bc55445d92c5eb77d907054bd7814f584098e66576c3a8d043a9c9ffd4ee9949c6e62d7c94065707a8c679a2ead4fa61fa5629a8c554de66f5ade8b35e5fd0f5f49b97780c511b796f4459765d508a200101d9010281830302838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f8200581c24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc",
+          "transaction": "84a400d9010281825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000182825839019493315cd92eb5d8c4304e67b7e16ae36d61d34502694657811a2c8e337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c472511a001e848082581d710e908fe868b0b76c3f5addcfa69c584429ab9afc72be602a81bd2aa31a007704c0021a00030d40031a02faf080a200d9010282825820b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e584012e0c7477d46d08310308266d597b5079e87e1bad343975bae2998d444a7e5643822b6c05afe597207cbd02ceaa2a14770734a541ecd7acad8b69737fab0b804825820a38d593479a517caae1b7eb2b0886bca90bc55445d92c5eb77d907054bd7814f584098e66576c3a8d043a9c9ffd4ee9949c6e62d7c94065707a8c679a2ead4fa61fa5629a8c554de66f5ade8b35e5fd0f5f49b97780c511b796f4459765d508a200101d9010281830302838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f8200581c24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925ccf5f6"
+        },
+        {
+          "signers": [
+            "k0"
+          ],
+          "witness_set": "a200d9010281825820b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e584012e0c7477d46d08310308266d597b5079e87e1bad343975bae2998d444a7e5643822b6c05afe597207cbd02ceaa2a14770734a541ecd7acad8b69737fab0b80401d9010281830302838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f8200581c24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925cc",
+          "transaction": "84a400d9010281825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000182825839019493315cd92eb5d8c4304e67b7e16ae36d61d34502694657811a2c8e337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c472511a001e848082581d710e908fe868b0b76c3f5addcfa69c584429ab9afc72be602a81bd2aa31a007704c0021a00030d40031a02faf080a200d9010281825820b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e584012e0c7477d46d08310308266d597b5079e87e1bad343975bae2998d444a7e5643822b6c05afe597207cbd02ceaa2a14770734a541ecd7acad8b69737fab0b80401d9010281830302838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f8200581c24dc754a68e0dbb7b05810da1fa2350a7fe8b82f9900e65b3cd925ccf5f6"
+        }
+      ]
+    },
+    {
+      "name": "s2_spend",
+      "script": "s2",
+      "inputs": [
+        {
+          "tx_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "tx_index": 1,
+          "lovelace": "10000000"
+        }
+      ],
+      "outputs": [
+        {
+          "address": "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x",
+          "lovelace": "2000000"
+        },
+        {
+          "address": "addr1w98m728t0y82n747gkreawv0fy3kr5a7seeyn4wzwh0lewqj6s7e5",
+          "lovelace": "7800000"
+        }
+      ],
+      "fee": "200000",
+      "ttl": 80000000,
+      "validity_start": null,
+      "body": "a400d9010281825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb010182825839019493315cd92eb5d8c4304e67b7e16ae36d61d34502694657811a2c8e337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c472511a001e848082581d714fbf28eb790ea9fabe45879eb98f492361d3be867249d5c275dffcb81a007704c0021a00030d40031a04c4b400",
+      "hash": "e71dc1210f83f8c29212a17aff9f21ea6ce2f47d0925e179ca42aae22eadec2d",
+      "witnesses": {
+        "k0": {
+          "public_key": "b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e",
+          "signature": "47782ec94a53d42c6608edcbdb37956f59f463b0adc40836ebb5e4ca4cf8ce774213033a2502c92207b8d771fc972d09b721eeb8fc9762e831833add68c9ea03"
+        },
+        "k1": {
+          "public_key": "98d2ff1fbf251eb5555400be89f5f1332651704cf78f7c98a175feedd6343741",
+          "signature": "96ea1c0d71afc050871a7fa7b5e329e096047cec6f91682bdefbd50001bd0c3449b01e6c7b29788bdc761d008624763f6502f56b4228baffae5e82d9d8b04401"
+        }
+      },
+      "signed": [
+        {
+          "signers": [
+            "k0",
+            "k1"
+          ],
+          "witness_set": "a200d9010282825820b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e584047782ec94a53d42c6608edcbdb37956f59f463b0adc40836ebb5e4ca4cf8ce774213033a2502c92207b8d771fc972d09b721eeb8fc9762e831833add68c9ea0382582098d2ff1fbf251eb5555400be89f5f1332651704cf78f7c98a175feedd6343741584096ea1c0d71afc050871a7fa7b5e329e096047cec6f91682bdefbd50001bd0c3449b01e6c7b29788bdc761d008624763f6502f56b4228baffae5e82d9d8b0440101d90102818201838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f82051a055d4a80",
+          "transaction": "84a400d9010281825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb010182825839019493315cd92eb5d8c4304e67b7e16ae36d61d34502694657811a2c8e337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c472511a001e848082581d714fbf28eb790ea9fabe45879eb98f492361d3be867249d5c275dffcb81a007704c0021a00030d40031a04c4b400a200d9010282825820b06934aae5f7b50aa50a77df8fbc9e4260de18bfa993c4a990679cbda9e27e6e584047782ec94a53d42c6608edcbdb37956f59f463b0adc40836ebb5e4ca4cf8ce774213033a2502c92207b8d771fc972d09b721eeb8fc9762e831833add68c9ea0382582098d2ff1fbf251eb5555400be89f5f1332651704cf78f7c98a175feedd6343741584096ea1c0d71afc050871a7fa7b5e329e096047cec6f91682bdefbd50001bd0c3449b01e6c7b29788bdc761d008624763f6502f56b4228baffae5e82d9d8b0440101d90102818201838200581c32000809732f4d5b9a53e2eec996e7c79a24963068ffbf3565318e9a8200581c234571f745cd06331beeac0b68204f01eecbb63de7fc9fa5c612170f82051a055d4a80f5f6"
+        }
+      ]
+    }
+  ]
+}

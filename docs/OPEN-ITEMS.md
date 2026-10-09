@@ -513,6 +513,134 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
   derivation and durable discovery; CLI checks must prove watch-only recovery
   and reject incompatible networks or account formats before storing.
 
+### Multisig accounts
+
+Every network below now has its multisig account and sessions
+([CHAIN-SUPPORT.md](CHAIN-SUPPORT.md#multisig-accounts), and the 2026-10-08
+entry in [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md)). The accounts below are
+where multisig funds otherwise sit. Each needs what Bitcoin's has: a policy core reads and
+checks itself, a review digest a signature is given for, signatures verified
+before they count, and sessions that survive a restart. None may depend on a
+coordination service that needs an API key; signatures travel between
+cosigners as data, as PSBTs do.
+
+- [x] **Add Safe multisig accounts on EVM networks.** Most EVM multisig funds
+  sit in Safe contracts, which a wallet can neither watch as one account nor
+  spend from. Read a Safe's owners, threshold, nonce, version, modules and
+  guard from the network, and accept only a proxy whose singleton is an
+  official Safe deployment of a supported version; show its enabled modules
+  and guard, which can move or block funds outside the threshold. Build each
+  Safe transaction (EIP-712 `SafeTx`) in core with its review digest, sign it
+  with an owner's key, and exchange signed transactions as data: Safe's hosted
+  Transaction Service requires an API key. Verify every signature against the
+  owners before counting it, and execute with the signatures sorted by owner
+  from an owner's account, which pays the gas. Refuse a delegate call in the
+  first version, a nonce already used and a transaction whose hash is not the
+  one reviewed. Prove hashes and signatures against Safe's protocol-kit
+  fixtures, and signing, combining and submission through the CLI against a
+  loopback node.
+- [x] **Add Tron multisig through account permissions.** A Tron account's
+  owner and active permissions can each require several weighted keys (at most
+  five, whose summed weights must meet the permission's threshold), and the
+  wallet does not read them. A send from an account whose permissions no
+  longer hold its key, the usual result of a permission-hijack scam, fails
+  only at broadcast, and a multisig account cannot be spent from at all. First
+  read and show the account's permissions, and refuse a send before signing,
+  saying why, when the wallet's key cannot meet the threshold of the
+  permission the contract needs. Then spend from a multisig account: choose
+  the permission (`Permission_id`) that covers the contract, build the
+  transaction with an explicit expiration (the network allows at most 24
+  hours, so the review states the deadline and signing after it is refused),
+  collect each key's signature as data, and check the summed weights before
+  broadcast. Creating or changing permissions is not part of this item:
+  `AccountPermissionUpdate` replaces the whole permission set for a fee (100
+  TRX today), and one mistake locks the account. Prove transaction ids and
+  signatures against TronWeb fixtures, and the permission refusal and the
+  multisig flow through the CLI against a loopback node.
+- [x] **Add multisig on every other network that has one.** Each network's own
+  scheme, owned by core like Bitcoin's: read the policy from the network or
+  derive it from the address, show the signers with their weights or
+  threshold, refuse a send the wallet's key alone cannot authorize, and build,
+  review, sign, collect, verify and submit with sessions that survive a
+  restart. Setting up or changing a signer set is separate from spending and
+  needs a review as strict as a send's: on most of these networks a wrong one
+  locks the account. Prove each against its reference SDK's vectors and
+  through the CLI against a loopback node.
+  - [x] **XRP Ledger.** A signer list (`SignerListSet`: 1 to 32 signers with
+    weights, and a quorum their summed weights must meet) authorizes a
+    multi-signed transaction. Every field is fixed before signatures are
+    collected, so the review is the transaction; the fee is at least N+1 times
+    the base fee for N signatures; `LastLedgerSequence` bounds how long
+    collection can take, and a Ticket keeps a pending transaction from holding
+    the account's next sequence. Vectors: xrpl.js.
+  - [x] **Stellar.** Up to 20 signers per account, weighted 1 to 255, against
+    low, medium and high thresholds an operation's category must meet (a
+    payment medium, changing signers high). The envelope carries the
+    signatures, time bounds set the deadline, and the sequence number is fixed
+    at review. Vectors: the Stellar JS SDK.
+  - [x] **Cardano.** A native script (`all`, `any`, `atLeast`, with optional
+    validity bounds) is the account and its hash the address, each cosigner's
+    key derived along CIP-1854 (`m/1854'/1815'/account'/role/index`). A spend
+    carries the script and every cosigner's vkey witness over the reviewed
+    body's hash. Vectors: cardano-serialization-lib.
+  - [x] **Polkadot and Bittensor.** `pallet-multisig`, which both runtimes
+    carry: the account derives from the sorted signatories and the threshold
+    with no registration; the first approval reserves a deposit, later ones
+    name its timepoint, and every approval must carry the same call, threshold
+    and signatories. Vectors: polkadot.js.
+  - [x] **TON.** No protocol multisig: the account is a contract. Support the
+    TON Foundation's multisig v2 (signers, proposers, a threshold, and an
+    order contract per proposal with its expiry), reading the wallet's and the
+    order's state before approving. Vectors: the contract's own tests and
+    @ton/ton.
+  - [x] **Sui.** Native `MultiSig`: up to 10 keys (Ed25519, secp256k1,
+    secp256r1) with u8 weights and a u16 threshold, the address derived from
+    them; the cosigners' signatures combine into one. Vectors: @mysten/sui.
+  - [x] **Aptos.** A `MultiKey` account (k of up to 32 keys of mixed schemes,
+    in its authentication key) signs offline as Sui's does; an on-chain
+    `0x1::multisig_account` holds owners and proposals executed in nonce
+    order. Decide whether to support both before starting. Vectors: the Aptos
+    TS SDK. Decided: `MultiKey` only; `0x1::multisig_account` is not
+    supported.
+  - [x] **Bitcoin Cash.** P2SH `sortedmulti` signed under SIGHASH_FORKID, with
+    ECDSA or the Schnorr multisig of the November 2019 upgrade. Bitcoin Cash
+    Node has PSBT commands and Electron Cash its own partial-transaction
+    format: check which BCH wallets exchange, and read and write that. Reuses
+    the account code's fork-id signer. Done with BCHN's PSBTs and ECDSA;
+    Schnorr multisig signatures are refused.
+  - [x] **Dogecoin.** P2SH multisig under the legacy sighash. Whether Dogecoin
+    Core exchanges PSBTs is unconfirmed: check what Dogecoin wallets exchange
+    partially signed before choosing the format. Done with the partially
+    signed transactions Dogecoin Core's `signrawtransaction` passes on;
+    Dogecoin 1.14 has no PSBTs.
+  - [x] **Litecoin.** P2WSH, as Bitcoin's: the policy, PSBT and session code
+    is Bitcoin's and Litecoin signs the same SegWit scripts. Add Litecoin and
+    its testnet to `Chain::supports_multisig` with their own address encoding
+    and the descriptor key versions Litecoin Core writes, checked against its
+    source (SLIP-132's `Ltub` is not necessarily Core's), and refuse an MWEB
+    recipient, which a plain PSBT cannot pay.
+- [ ] **Set up and change multisig signer sets.** Every account above is
+  spent from, never created or changed: deploying a Safe and changing its
+  owners or threshold, Tron's `AccountPermissionUpdate` (which replaces the
+  whole permission set for a fee), XRP's `SignerListSet`, Stellar's
+  `SetOptions` signers and thresholds, and TON's `update_multisig_params`
+  order. Each needs a review as strict as a send's — on most of these
+  networks a wrong signer set locks the account — and should state what
+  the account can no longer do afterwards. Policies that derive the account
+  (UTXO descriptors, Sui, Aptos MultiKey, Cardano scripts, Substrate
+  signatories) change only by moving the funds to a new account, which is a
+  spend.
+- [ ] **Spend tokens from multisig accounts.** Sessions pay the network's own
+  coin only. ERC-20 from a Safe, TRC-10/TRC-20 from a Tron account, issued
+  currencies and Stellar assets, Cardano native assets and TON jettons each
+  need their transfer encoded in the session, decoded back on review and
+  checked against the token's identity, as single-key sends already do.
+- [ ] **Cancel a pending Substrate multisig operation.** A `pallet-multisig`
+  operation whose first approval is on chain keeps its depositor's deposit
+  reserved until it executes or the depositor cancels it (`cancel_as_multi`).
+  Discarding the session here leaves it pending; offer the cancel to the
+  depositor's wallet, with the timepoint read from the chain.
+
 ### History and provider coverage
 
 - [ ] **Add built-in EVM history and token-discovery providers.** BNB,

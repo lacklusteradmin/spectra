@@ -455,11 +455,11 @@ pub(super) fn plan_import(
             let keys = crate::derivation::monero::view_keys(chain, address, view_key)?;
             vec![ImportedAddress::Address(keys.address.to_string())]
         }
-        WalletImportKind::WatchMultisig { descriptor } => {
-            let policy = crate::derivation::multisig::MultisigPolicy::parse(chain, descriptor)?;
+        WalletImportKind::WatchMultisig { policy } => {
+            let policy = crate::derivation::multisig_policy::AccountPolicy::parse(chain, policy)?;
             vec![ImportedAddress::Multisig {
-                address: policy.address(chain, (0, 0))?,
-                descriptor: policy.descriptor(),
+                address: policy.address(chain)?,
+                descriptor: policy.canonical(),
             }]
         }
     };
@@ -681,7 +681,7 @@ fn place_import(
     // signature: the wallet keeps its policy and addresses, and signs
     // with the key at the cosigner's origin.
     if let Some(bound) = bound
-        && let Some(descriptor) = bound.multisig_descriptor.as_deref()
+        && let Some(descriptor) = bound.multisig_policy.as_deref()
     {
         let policy = crate::derivation::multisig::MultisigPolicy::parse(chain, descriptor)?;
         let seed = plan

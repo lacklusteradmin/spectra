@@ -32,6 +32,7 @@ pub(crate) mod cardano_asset;
 pub mod esplora;
 pub mod evm_json_rpc;
 pub mod evm_nft;
+pub(crate) mod evm_safe;
 pub mod fastnear;
 pub mod horizon;
 pub mod icp_replica;

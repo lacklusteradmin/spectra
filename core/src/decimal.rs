@@ -9,6 +9,17 @@
 
 use std::cmp::Ordering;
 
+/// An amount of `chain`'s own coin in its smallest unit, as a decimal of
+/// the coin: exact native balances without money arithmetic in a platform
+/// view. `None` when `smallest_unit` is not a whole number.
+#[uniffi::export]
+pub fn format_native_amount(
+    chain: crate::registry::Chain,
+    smallest_unit: String,
+) -> Option<String> {
+    from_unit_digits(&smallest_unit, u32::from(chain.native_decimals()))
+}
+
 /// Split a valid decimal into its whole and fractional digits.
 fn parts(text: &str) -> Option<(&str, &str)> {
     let text = text.trim();

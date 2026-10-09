@@ -1348,6 +1348,16 @@ impl Chain {
         }
     }
 
+    /// The SS58 prefix a Substrate network's addresses carry: Polkadot's
+    /// 0, and the generic 42 on Westend and Bittensor.
+    pub fn ss58_prefix(self) -> Option<u16> {
+        match self {
+            Self::Polkadot => Some(0),
+            Self::PolkadotWestend | Self::Bittensor => Some(42),
+            _ => None,
+        }
+    }
+
     /// Expected genesis for a Substrate deployment. DOT balances and
     /// transfers live on Asset Hub, rather than the relay chain.
     pub fn substrate_genesis_hash(self) -> Option<&'static str> {
@@ -1836,10 +1846,36 @@ impl Chain {
         }
     }
 
-    /// `true` when a wallet on this chain can be a multisig account
-    /// (`derivation::multisig`): Bitcoin and its test networks.
-    pub fn supports_multisig(self) -> bool {
-        self.bitcoin_network().is_some()
+    /// The form a multisig account's policy takes on this chain, where its
+    /// address derives from one: a UTXO network's `sortedmulti` descriptor,
+    /// Sui's multisig public key, Aptos's MultiKey, Cardano's native script,
+    /// a Substrate multisig's signatories.
+    pub fn multisig_policy_format(self) -> Option<crate::derivation::setup::WalletSecretFormat> {
+        use crate::derivation::setup::WalletSecretFormat;
+        if self.utxo_multisig_script().is_some() {
+            return Some(WalletSecretFormat::MultisigDescriptor);
+        }
+        match self.mainnet_counterpart() {
+            Self::Sui => Some(WalletSecretFormat::SuiMultisigPublicKey),
+            Self::Aptos => Some(WalletSecretFormat::AptosMultiKey),
+            Self::Cardano => Some(WalletSecretFormat::CardanoNativeScript),
+            Self::Polkadot | Self::Bittensor => Some(WalletSecretFormat::SubstrateMultisig),
+            _ => None,
+        }
+    }
+
+    /// The script a UTXO multisig account pays its `sortedmulti` through:
+    /// P2WSH on Bitcoin and Litecoin, P2SH on Bitcoin Cash and Dogecoin,
+    /// which have no SegWit.
+    pub(crate) fn utxo_multisig_script(
+        self,
+    ) -> Option<crate::derivation::multisig::UtxoMultisigScript> {
+        use crate::derivation::multisig::UtxoMultisigScript;
+        match self.mainnet_counterpart() {
+            Self::Bitcoin | Self::Litecoin => Some(UtxoMultisigScript::Wsh),
+            Self::BitcoinCash | Self::Dogecoin => Some(UtxoMultisigScript::Sh),
+            _ => None,
+        }
     }
 
     /// `true` when a wallet on this chain can be watched from its address

@@ -10,6 +10,7 @@ use crate::api::http::HttpClient;
 use crate::registry::Chain;
 
 mod metadata;
+pub mod multisig;
 pub mod pools;
 pub use metadata::{PolkadotExtension, PolkadotRuntime};
 

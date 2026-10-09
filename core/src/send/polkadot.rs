@@ -268,7 +268,16 @@ pub fn native_transfer_call(
     recipient: &[u8; 32],
     amount: u128,
 ) -> Vec<u8> {
-    let mut call = vec![runtime.transfer_pallet, runtime.transfer_call, 0];
+    transfer_call_at(
+        (runtime.transfer_pallet, runtime.transfer_call),
+        recipient,
+        amount,
+    )
+}
+
+/// `Balances.transfer_keep_alive` at a runtime's `(pallet, call)` indices.
+pub(crate) fn transfer_call_at(indices: (u8, u8), recipient: &[u8; 32], amount: u128) -> Vec<u8> {
+    let mut call = vec![indices.0, indices.1, 0];
     call.extend(recipient);
     call.extend(Compact(amount).encode());
     call

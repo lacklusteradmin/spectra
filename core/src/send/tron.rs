@@ -149,7 +149,19 @@ pub(crate) fn prepare_transfer(
     transfer: Transfer<'_>,
     block: BlockReference,
 ) -> Result<PreparedTronTransfer, SendError> {
-    let owner = address(from)?;
+    prepare_transfer_under(from, transfer, block, 0, 60_000)
+}
+
+/// A transfer signed under the account's permission `permission_id` (0,
+/// the owner's, is what a transaction without one names), expiring
+/// `lifetime_ms` after its timestamp.
+pub(crate) fn prepare_transfer_under(
+    from: &str,
+    transfer: Transfer<'_>,
+    block: BlockReference,
+    permission_id: u8,
+    lifetime_ms: u64,
+) -> Result<PreparedTronTransfer, SendError> {
     positive_i64(block.timestamp_ms)?;
     if block.id[..8] != block.number.to_be_bytes() {
         return Err(SendError::Invalid(
@@ -158,9 +170,42 @@ pub(crate) fn prepare_transfer(
     }
     let expiration = block
         .timestamp_ms
-        .checked_add(60_000)
+        .checked_add(lifetime_ms)
         .filter(|n| *n <= i64::MAX as u64)
         .ok_or_else(|| SendError::Invalid("Tron expiration overflow".into()))?;
+    let reference = RawReference {
+        ref_bytes: block.number.to_be_bytes()[6..]
+            .try_into()
+            .expect("two bytes"),
+        ref_hash: block.id[8..16].try_into().expect("eight bytes"),
+        expiration,
+        timestamp: block.timestamp_ms,
+        permission_id,
+    };
+    encode(from, transfer, &reference)
+}
+
+/// What places a transaction in time and under a permission, beside its
+/// contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RawReference {
+    pub ref_bytes: [u8; 2],
+    pub ref_hash: [u8; 8],
+    pub expiration: u64,
+    pub timestamp: u64,
+    pub permission_id: u8,
+}
+
+/// The transaction's `raw_data` bytes and the JSON a node reads them as,
+/// fields in protobuf order.
+pub(crate) fn encode(
+    from: &str,
+    transfer: Transfer<'_>,
+    reference: &RawReference,
+) -> Result<PreparedTronTransfer, SendError> {
+    let owner = address(from)?;
+    positive_i64(reference.timestamp)?;
+    positive_i64(reference.expiration)?;
     let mut value = Vec::new();
     bytes(1, &owner, &mut value);
     let (kind, name, parameter, fee) = match transfer {
@@ -239,16 +284,20 @@ pub(crate) fn prepare_transfer(
     let mut contract = Vec::new();
     integer(1, kind, &mut contract);
     bytes(2, &any, &mut contract);
-    let ref_bytes = &block.number.to_be_bytes()[6..];
-    let ref_hash = &block.id[8..16];
+    integer(5, u64::from(reference.permission_id), &mut contract);
     let mut raw = Vec::new();
-    bytes(1, ref_bytes, &mut raw);
-    bytes(4, ref_hash, &mut raw);
-    integer(8, expiration, &mut raw);
+    bytes(1, &reference.ref_bytes, &mut raw);
+    bytes(4, &reference.ref_hash, &mut raw);
+    integer(8, reference.expiration, &mut raw);
     bytes(11, &contract, &mut raw);
-    integer(14, block.timestamp_ms, &mut raw);
+    integer(14, reference.timestamp, &mut raw);
     integer(18, fee, &mut raw);
-    let mut raw_json = json!({"ref_block_bytes":hex::encode(ref_bytes),"ref_block_hash":hex::encode(ref_hash),"expiration":expiration,"timestamp":block.timestamp_ms,"contract":[{"type":name,"parameter":{"type_url":type_url,"value":parameter}}]});
+    let mut contract_json =
+        json!({"type":name,"parameter":{"type_url":type_url,"value":parameter}});
+    if reference.permission_id != 0 {
+        contract_json["Permission_id"] = json!(reference.permission_id);
+    }
+    let mut raw_json = json!({"ref_block_bytes":hex::encode(reference.ref_bytes),"ref_block_hash":hex::encode(reference.ref_hash),"expiration":reference.expiration,"timestamp":reference.timestamp,"contract":[contract_json]});
     if fee != 0 {
         raw_json["fee_limit"] = json!(fee);
     }

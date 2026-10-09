@@ -407,7 +407,7 @@ impl WalletService {
         };
         let _overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
         // A multisig account is its policy, whoever signs it.
-        if let Some(descriptor) = wallet.multisig_descriptor.as_deref() {
+        if let Some(descriptor) = wallet.multisig_policy.as_deref() {
             return UtxoDerivation::from_multisig(chain, descriptor).map(Some);
         }
         let xpub = wallet

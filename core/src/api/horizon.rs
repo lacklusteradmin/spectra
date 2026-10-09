@@ -280,6 +280,87 @@ pub(crate) struct HorizonPaymentRecord {
     pub(crate) transaction_hash: String,
 }
 
+/// What an account's signers read finds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StellarAccountSigners {
+    pub signers: crate::send::stellar_multisig::StellarSigners,
+    pub sequence: i64,
+}
+
+/// Horizon's `/accounts/{id}` as signers and thresholds: ed25519 keys apart
+/// from hash and pre-authorized-transaction signers.
+pub(crate) fn account_signers(
+    account: &serde_json::Value,
+    address: &str,
+) -> Result<StellarAccountSigners, ApiError> {
+    use serde_json::Value;
+    if account
+        .get("account_id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| id != address)
+    {
+        return Err(ApiError::decode("Horizon answered for another account"));
+    }
+    let sequence = account
+        .get("sequence")
+        .and_then(Value::as_str)
+        .and_then(|sequence| sequence.parse::<i64>().ok())
+        .filter(|sequence| *sequence >= 0)
+        .or_decode("account: missing sequence")?;
+    let threshold = |name: &str| -> Result<u64, ApiError> {
+        match account.pointer(&format!("/thresholds/{name}")) {
+            None => Ok(0),
+            Some(value) => value
+                .as_u64()
+                .filter(|weight| *weight <= 255)
+                .or_decode("account: threshold out of range"),
+        }
+    };
+    let (mut keys, mut other) = (Vec::new(), Vec::new());
+    match account.get("signers").and_then(Value::as_array) {
+        None => keys.push((address.to_string(), 1)),
+        Some(signers) => {
+            for signer in signers {
+                let key = signer
+                    .get("key")
+                    .and_then(Value::as_str)
+                    .or_decode("account: signer key")?;
+                let weight = signer
+                    .get("weight")
+                    .and_then(Value::as_u64)
+                    .filter(|weight| *weight <= 255)
+                    .or_decode("account: signer weight")?;
+                if weight == 0 {
+                    continue;
+                }
+                match signer.get("type").and_then(Value::as_str) {
+                    Some("ed25519_public_key") => {
+                        crate::derivation::stellar::decode_stellar_address(key)
+                            .map_err(ApiError::decode)?;
+                        keys.push((key.to_string(), weight));
+                    }
+                    _ => other.push((key.to_string(), weight)),
+                }
+            }
+        }
+    }
+    if keys.len() + other.len() > crate::send::stellar_multisig::MAX_SIGNERS + 1 {
+        return Err(ApiError::decode(
+            "account: more signers than an account holds",
+        ));
+    }
+    Ok(StellarAccountSigners {
+        signers: crate::send::stellar_multisig::StellarSigners {
+            keys,
+            other,
+            low: threshold("low_threshold")?,
+            medium: threshold("med_threshold")?,
+            high: threshold("high_threshold")?,
+        },
+        sequence,
+    })
+}
+
 // ── Client
 
 pub struct HorizonClient {
@@ -446,6 +527,27 @@ impl HorizonClient {
                     base_reserve,
                 },
             })
+        })
+        .await
+    }
+
+    /// An account's signers, thresholds and sequence, from one verified
+    /// node; `None` when the account is not on the network. An answer
+    /// without signers is an account that never set any: its master key
+    /// alone, every threshold zero.
+    pub(crate) async fn fetch_account_signers(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<Option<StellarAccountSigners>, ApiError> {
+        crate::api::http::race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let account: serde_json::Value = match node.get(&format!("/accounts/{address}")).await {
+                Err(ApiError::Status { status: 404, .. }) => return Ok(None),
+                read => read?,
+            };
+            account_signers(&account, address).map(Some)
         })
         .await
     }

@@ -392,11 +392,11 @@ impl WalletService {
         if self
             .stored_wallet(&request.wallet_id)
             .await?
-            .multisig_descriptor
+            .multisig_policy
             .is_some()
         {
             return Err(SpectraBridgeError::invalid(
-                "A multisig wallet spends through a PSBT that its cosigners sign.",
+                "A multisig wallet spends from its Multisig page, where its signers sign.",
             ));
         }
         // Both scripts before any provider read.

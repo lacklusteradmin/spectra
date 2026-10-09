@@ -199,6 +199,133 @@ impl XrplClient {
     }
 }
 
+/// What an account's policy read finds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct XrpAccountPolicy {
+    pub exists: bool,
+    pub master_disabled: bool,
+    pub regular_key: Option<String>,
+    pub signer_list: Option<crate::send::xrp_multisig::XrpSignerList>,
+    /// The account's next sequence and its balance, when the node gave them
+    /// as numbers in range.
+    pub sequence: Option<u32>,
+    pub balance_drops: Option<u64>,
+    /// The open ledger the account was read at, when the node said.
+    pub ledger: Option<u32>,
+    /// The open ledger's fee for one signature, in drops, when it was read.
+    pub fee_drops: Option<u64>,
+}
+
+/// `account_info`'s answer with `signer_lists` as an account's policy:
+/// the list under `account_data` (API v1) or beside it (API v2).
+pub(crate) fn account_policy(
+    response: &Value,
+    address: &str,
+    fee_drops: Option<u64>,
+) -> Result<XrpAccountPolicy, ApiError> {
+    let result = response
+        .get("result")
+        .or_decode("account_info: missing result")?;
+    let ledger = result
+        .get("ledger_current_index")
+        .or_else(|| result.get("ledger_index"))
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok());
+    match result.get("error").and_then(Value::as_str) {
+        Some("actNotFound") => {
+            return Ok(XrpAccountPolicy {
+                exists: false,
+                master_disabled: false,
+                regular_key: None,
+                signer_list: None,
+                sequence: None,
+                balance_drops: None,
+                ledger,
+                fee_drops,
+            });
+        }
+        Some(error) => return Err(ApiError::rejected(format!("account_info: {error}"))),
+        None => {}
+    }
+    let data = result
+        .get("account_data")
+        .or_decode("account_info: missing account_data")?;
+    if data
+        .get("Account")
+        .and_then(Value::as_str)
+        .is_some_and(|account| account != address)
+    {
+        return Err(ApiError::decode("account_info names another account"));
+    }
+    let lists = data
+        .get("signer_lists")
+        .or_else(|| result.get("signer_lists"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let signer_list = match lists.as_slice() {
+        [] => None,
+        [list] => {
+            let entries = list
+                .get("SignerEntries")
+                .and_then(Value::as_array)
+                .or_decode("signer list: missing entries")?
+                .iter()
+                .map(|entry| {
+                    let entry = entry.get("SignerEntry").or_decode("signer list: entry")?;
+                    let account = entry
+                        .get("Account")
+                        .and_then(Value::as_str)
+                        .or_decode("signer list: entry account")?;
+                    crate::derivation::xrp::decode_xrp_address(account)
+                        .map_err(ApiError::decode)?;
+                    Ok((
+                        account.to_string(),
+                        entry
+                            .get("SignerWeight")
+                            .and_then(Value::as_u64)
+                            .filter(|weight| *weight > 0)
+                            .or_decode("signer list: entry weight")?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, ApiError>>()?;
+            let quorum = list
+                .get("SignerQuorum")
+                .and_then(Value::as_u64)
+                .filter(|quorum| *quorum > 0)
+                .or_decode("signer list: missing quorum")?;
+            if entries.is_empty()
+                || entries.len() > crate::send::xrp_multisig::MAX_SIGNERS
+                || entries.iter().map(|(_, weight)| weight).sum::<u64>() < quorum
+            {
+                return Err(ApiError::decode("signer list cannot meet its quorum"));
+            }
+            Some(crate::send::xrp_multisig::XrpSignerList { quorum, entries })
+        }
+        _ => return Err(ApiError::decode("account_info: more than one signer list")),
+    };
+    let flags = data.get("Flags").and_then(Value::as_u64).unwrap_or(0) as u32;
+    Ok(XrpAccountPolicy {
+        exists: true,
+        master_disabled: flags & crate::send::xrp_multisig::LSF_DISABLE_MASTER != 0,
+        regular_key: data
+            .get("RegularKey")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        signer_list,
+        sequence: data
+            .get("Sequence")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
+        balance_drops: data
+            .get("Balance")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse().ok()),
+        ledger,
+        fee_drops,
+    })
+}
+
 // XRP fetch paths: balance, sequence, fee, history.
 
 impl XrplClient {
@@ -397,6 +524,37 @@ impl XrplClient {
                 Some(root) => flags_of(&root)? & LSF_REQUIRE_DEST_TAG != 0,
                 None => false,
             })
+        })
+        .await
+    }
+
+    /// An account's signing policy in the current ledger, read from one node
+    /// on `chain`: whether its master key still signs, its regular key, its
+    /// signer list, its sequence and balance, with the ledger it was read
+    /// at, and with `fee` the open ledger's fee. An account not on the
+    /// ledger is its master key alone.
+    pub(crate) async fn fetch_account_policy(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+        fee: bool,
+    ) -> Result<XrpAccountPolicy, ApiError> {
+        use crate::api::http::{RetryProfile, race};
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint.clone()]));
+            node.verify_network(chain).await?;
+            let body = json!({"method": "account_info", "params": [{
+                "account": address, "ledger_index": "current", "signer_lists": true}]});
+            let response: Value = self
+                .client
+                .post_json(&endpoint, &body, RetryProfile::ChainRead)
+                .await?;
+            let fee_drops = if fee {
+                Some(node.fetch_fee().await?)
+            } else {
+                None
+            };
+            account_policy(&response, address, fee_drops)
         })
         .await
     }

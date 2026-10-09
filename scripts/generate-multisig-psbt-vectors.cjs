@@ -9,7 +9,10 @@
 // network's receive and change addresses (P2WSH of the BIP-67-sorted 2-of-3
 // script), builds a PSBT spending two of them with BIP-174 key origins on
 // every input and on the change output, signs it as cosigner B, and signs it
-// as A and B and finalizes it. ECDSA is RFC 6979 and low-S on both sides,
+// as A and B and finalizes it, on Bitcoin and Litecoin mainnet. Litecoin
+// needs no special handling beyond its network parameters: the same BIP-143
+// sighash, and xpub/tpub versions for the keys, as Litecoin Core's
+// descriptors use (BIP-48 coin 2 on mainnet, 1 on testnet). ECDSA is RFC 6979 and low-S on both sides,
 // so the final transaction is compared byte for byte. The descriptor's
 // checksum is not computed here: core's checksum is tested against BIP-380's
 // own vector.
@@ -28,7 +31,20 @@ const PHRASES = [
 const NETWORKS = [
   ['bitcoin', bitcoin.networks.bitcoin, 0],
   ['bitcoin-testnet', bitcoin.networks.testnet, 1],
+  ['litecoin', {
+    messagePrefix: '\x19Litecoin Signed Message:\n', bech32: 'ltc',
+    bip32: { public: 0x0488b21e, private: 0x0488ade4 }, pubKeyHash: 0x30, scriptHash: 0x32, wif: 0xb0,
+  }, 2],
+  ['litecoin-testnet', {
+    messagePrefix: '\x19Litecoin Signed Message:\n', bech32: 'tltc',
+    bip32: { public: 0x043587cf, private: 0x04358394 }, pubKeyHash: 0x6f, scriptHash: 0x3a, wif: 0xef,
+  }, 1],
 ];
+// The PSBT case's recipient per chain: BIP-173's P2WPKH example program.
+const RECIPIENTS = {
+  bitcoin: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+  litecoin: 'ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n9',
+};
 const THRESHOLD = 2;
 
 function account(phrase, network, coin) {
@@ -68,13 +84,13 @@ for (const [chain, network, coin] of NETWORKS) {
     })),
     addresses,
   };
-  if (chain === 'bitcoin') {
+  if (RECIPIENTS[chain]) {
     // Two inputs, at 0/0 and 1/0; a recipient and change to 1/1.
     const inputs = [
       { txid: '11'.repeat(32), vout: 0, value: 100000n, place: [0, 0] },
       { txid: '22'.repeat(32), vout: 3, value: 50000n, place: [1, 0] },
     ];
-    const recipient = { address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', value: 120000n };
+    const recipient = { address: RECIPIENTS[chain], value: 120000n };
     const change = { place: [1, 1], value: 29000n };
     const psbt = new bitcoin.Psbt({ network });
     psbt.setVersion(2);

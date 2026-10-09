@@ -5758,6 +5758,7 @@ dependencies = [
  "monero-wallet",
  "num-bigint",
  "orchard",
+ "p256",
  "parity-scale-codec",
  "parking_lot",
  "prost",

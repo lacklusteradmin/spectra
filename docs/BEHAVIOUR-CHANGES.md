@@ -17,6 +17,105 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-08 — Multisig accounts on every network that has one
+
+- **Before:** only Bitcoin's P2WSH `sortedmulti` was a multisig account,
+  spent through `spectra psbt …` and the app's PSBTs page, its sessions in
+  `psbt_sessions` and its policy in `WalletState::multisig_descriptor`
+  (`wallet watch --descriptor`). Every other network's multisig account could
+  be neither watched as one nor spent from, and an ordinary send from a Tron,
+  XRP or Stellar account whose key no longer authorizes it alone failed only
+  at broadcast, after signing.
+- **After:** one model for every scheme. `service::multisig` keeps sessions
+  of any scheme in `multisig_sessions` (`id`, `wallet_id`, a JSON payload),
+  `MultisigScheme` names the scheme, and one FFI and CLI surface reviews,
+  signs and submits them: `multisig_account`, `create_multisig`,
+  `import_multisig`, `sign_multisig`, `multisig_session(s)`,
+  `finalize_multisig`, `submit_multisig`, `discard_multisig`, and
+  `spectra multisig account|create|import|sign|show|list|finalize|submit|discard`.
+  The app's `Psbts` action is `Multisig` (`WalletMultisigView`). A policy
+  the address derives from is `WalletState::multisig_policy`, imported with
+  `WalletImportKind::WatchMultisig { policy }` (`wallet watch --multisig`) in
+  the network's own form (`Chain::multisig_policy_format`); a policy the
+  network keeps is read from it for a watched (Safe, TON) or any (Tron, XRP,
+  Stellar) wallet. Every scheme verifies signatures before counting them,
+  gives each session a review digest a signature names, re-reads what the
+  network holds before a signature or a submission, and decodes data read
+  from elsewhere only when it encodes back byte for byte:
+  - `SortedMulti` (was `Psbt`): Bitcoin and Litecoin P2WSH through BIP-174
+    PSBTs, as before; Bitcoin Cash and Dogecoin P2SH (`sh(sortedmulti(…))`,
+    up to 15 keys) through BCHN's PSBTs (SIGHASH_ALL|FORKID) and Dogecoin
+    Core's partially signed transactions (the legacy digest), at the
+    network's static fee per started kilobyte. A Dogecoin transaction's
+    inputs must be the account's unspent outputs, whose amounts and places
+    the indexer gives (discovering the account's addresses when needed).
+    Bitcoin Cash Schnorr multisig signatures are refused; Litecoin refuses
+    MWEB recipients and PSBTs carrying MWEB fields.
+  - `Safe` (watched EVM address): official Safe proxies of 1.3.0 and 1.4.1
+    only; owners, threshold, nonce, version, modules and guard read from the
+    node, modules and guard shown as warnings; `SafeTx` signed by owner
+    wallets and executed by one of them (`--executor`), which pays the gas;
+    delegate calls and used nonces refused.
+  - `TronPermissions`: a transfer names the permission that covers it
+    (`Permission_id`), signed by weighted keys within its expiration.
+  - `XrplSignerList`: a multi-signed payment, its fee N+1 base fees and its
+    `LastLedgerSequence` fixed before signing.
+  - `StellarSigners`: the envelope carries every signer's signature against
+    the medium threshold, with time bounds.
+  - `SuiMultisig`, `AptosMultiKey`: offline signatures combined into one
+    authenticator; Aptos's on-chain `0x1::multisig_account` is not supported.
+  - `CardanoNativeScript`: cardano-cli's native-script JSON; spends carry
+    the script and CIP-1854 vkey witnesses from signer phrase wallets.
+  - `SubstrateMultisig` (Polkadot Asset Hub, Bittensor; `Chain::ss58_prefix`):
+    `pallet-multisig` approvals submitted by each signatory's wallet; the
+    first reserves the deposit, the one meeting the threshold carries the
+    call within the weight the node reports and executes it. A threshold of
+    one is refused.
+  - `TonMultisig` (watched multisig v2 contract, its code hash checked): the
+    first signer's wallet proposes the order, the others approve it at the
+    order's address; the approval meeting the threshold executes it. A
+    multisig taking orders by arbitrary number is refused.
+  `MultisigAccount` says how its sessions reach the network
+  (`MultisigSubmission::AsIs`, `ByExecutor`, `ByApproval`; `submit` and
+  `finalize` refuse the last) and which wallets here may sign
+  (`signer_wallet_ids`); its warnings are `LocalizableMessage`s. Ordinary
+  sends are refused before signing when the wallet's key alone cannot
+  authorize them: on Tron when no permission it meets alone covers the
+  contract (and a send names `Permission_id` when only an active permission
+  does), on the XRP Ledger when the master key is disabled, on Stellar when
+  the master key's weight is below the operation's threshold.
+  `format_staking_amount` is `decimal::format_native_amount`, since
+  multisig sessions show native amounts too.
+- **Why:** the open item asked for multisig on every network that has one,
+  each owned by core like Bitcoin's. Nine schemes behind one session model,
+  one table and one surface replace a Bitcoin-only PSBT model rather than
+  sitting beside it; the per-scheme rules live in `multisig_<scheme>`
+  siblings. The send refusals stop a signature for a transaction the network
+  would reject, the usual result of a permission-hijack scam. The renames
+  follow: a session is no longer always a PSBT, and a policy no longer
+  always a descriptor. Setting up or changing a signer set stays out: it
+  needs a review as strict as a send's (see OPEN-ITEMS).
+- **CLI check:** `scripts/cli-acceptance.sh`'s multisig suites, each in two
+  or three data directories against loopback nodes that keep the network's
+  state and verify every signature they receive:
+  `cli-multisig-psbt.py` (Bitcoin, Litecoin), `cli-multisig-p2sh.py`
+  (Bitcoin Cash, Dogecoin; submission refused, since a loopback node cannot
+  prove which of them it serves), `cli-multisig-safe.py`,
+  `cli-multisig-tron.py`, `cli-multisig-xrp.py`, `cli-multisig-stellar.py`,
+  `cli-multisig-sui-aptos.py`, `cli-multisig-cardano.py`,
+  `cli-multisig-substrate.py` (Asset Hub and Bittensor) and
+  `cli-multisig-ton.py`.
+- **Verification:** vectors from each network's reference SDK, generated by
+  `scripts/generate-*-multisig-vectors.cjs` and `generate-aptos-multikey-vectors.cjs`
+  into `core/tests/fixtures/` (Safe protocol-kit 6.1.2, TronWeb, xrpl.js,
+  stellar-base, @mysten/sui, the Aptos TS SDK, cardano-serialization-lib,
+  polkadot.js, @ton/core with multisig-contract-v2's build, bitcoinjs-lib,
+  bitcore-lib-cash and ecash-lib): addresses, digests, signatures and
+  finished transactions match byte for byte.
+  Suites at the change: `make lint` clean, `cargo test --workspace` 1305
+  passed, `scripts/cli-acceptance.sh` 110 passed, `make test-ios` 142 passed
+  on an iPhone 17 Pro simulator.
+
 ## 2026-10-08 — Bitcoin multisig accounts and their PSBTs
 
 - **Before:** every wallet was one key's: no multisig account could be

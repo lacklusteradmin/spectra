@@ -1,0 +1,129 @@
+{
+  "provenance": "@mysten/sui 1.45.2",
+  "keys": [
+    {
+      "scheme": "ed25519",
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "path": "m/44'/784'/0'/0'/0'",
+      "weight": 1,
+      "flag": 0,
+      "public_key": "900b4d81eecea3df2f74b14200c4f4cf3f49afaca7a634ffd2cf6ff82bdaecf2",
+      "sui_public_key": "AJALTYHuzqPfL3SxQgDE9M8/Sa+sp6Y0/9LPb/gr2uzy",
+      "address": "0x5e93a736d04fbb25737aa40bee40171ef79f65fae833749e3c089fe7cc2161f1",
+      "secret_key": "8869cb07178bf67e08d7c4abdf45487dbf379c9a452fcec2836854bf4a3d29b0"
+    },
+    {
+      "scheme": "secp256k1",
+      "phrase": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "path": "m/54'/784'/0'/0/0",
+      "weight": 1,
+      "flag": 1,
+      "public_key": "02e2bf280519a1a03f32595576b53f188f21d1ea7fd9989a88bb2558fdad5de044",
+      "sui_public_key": "AQLivygFGaGgPzJZVXa1PxiPIdHqf9mYmoi7JVj9rV3gRA==",
+      "address": "0xb8ae49029c878cff38ca39c2fc4e2dd8ea424ff6b038cfaecb96dc1287195a91",
+      "secret_key": "6edad9448aed9fbd65181306a488fd43caf36545943118b769c0da07f9e8dea6"
+    },
+    {
+      "scheme": "secp256r1",
+      "phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+      "path": "m/74'/784'/0'/0/0",
+      "weight": 2,
+      "flag": 2,
+      "public_key": "027b38a972db8e21b1754a00dfd8ab853bd63832e248ba8df73dcfeee1540d0293",
+      "sui_public_key": "AgJ7OKly244hsXVKAN/Yq4U71jgy4ki6jfc9z+7hVA0Ckw==",
+      "address": "0x51a0c7aeefc0eadbdb88c6df7321b73e14911d441a36a185923434399d01fe2a",
+      "secret_key": "60c6f0796b994d18e00d30096741846f121aa8c4e551df5b3d7d9f079cd7747e"
+    }
+  ],
+  "multisig": {
+    "threshold": 2,
+    "weights": [
+      1,
+      1,
+      2
+    ],
+    "address": "0x75726aa524e67ec8a632bebedebbb9ed4a6f4f9267e89454b5157fc9f6b565d1",
+    "public_key": "0300900b4d81eecea3df2f74b14200c4f4cf3f49afaca7a634ffd2cf6ff82bdaecf2010102e2bf280519a1a03f32595576b53f188f21d1ea7fd9989a88bb2558fdad5de0440102027b38a972db8e21b1754a00dfd8ab853bd63832e248ba8df73dcfeee1540d0293020200",
+    "public_key_base64": "AwCQC02B7s6j3y90sUIAxPTPP0mvrKemNP/Sz2/4K9rs8gEBAuK/KAUZoaA/MllVdrU/GI8h0ep/2ZiaiLslWP2tXeBEAQICezipctuOIbF1SgDf2KuFO9Y4MuJIuo33Pc/u4VQNApMCAgA=",
+    "sui_public_key": "AwMAkAtNge7Oo98vdLFCAMT0zz9Jr6ynpjT/0s9v+Cva7PIBAQLivygFGaGgPzJZVXa1PxiPIdHqf9mYmoi7JVj9rV3gRAECAns4qXLbjiGxdUoA39irhTvWODLiSLqN9z3P7uFUDQKTAgIA"
+  },
+  "unreachable_policy": {
+    "threshold": 3,
+    "weights": [
+      1,
+      1,
+      1
+    ],
+    "address": "0x10531338b6aa95c888dc6e4f0cf1b708ff448ff823c2028adff204f85d557882"
+  },
+  "transaction": {
+    "sender": "0x75726aa524e67ec8a632bebedebbb9ed4a6f4f9267e89454b5157fc9f6b565d1",
+    "recipient": "0x0000000000000000000000000000000000000000000000000000000000000dad",
+    "amount": "1000000",
+    "gas_payment": [
+      {
+        "objectId": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "version": "7",
+        "digest": "11111111111111111111111111111111"
+      }
+    ],
+    "gas_price": "1000",
+    "gas_budget": "10000000",
+    "raw": "000002000840420f000000000000200000000000000000000000000000000000000000000000000000000000000dad020200010100000101030000000001010075726aa524e67ec8a632bebedebbb9ed4a6f4f9267e89454b5157fc9f6b565d1013333333333333333333333333333333333333333333333333333333333333333070000000000000020000000000000000000000000000000000000000000000000000000000000000075726aa524e67ec8a632bebedebbb9ed4a6f4f9267e89454b5157fc9f6b565d1e803000000000000809698000000000000",
+    "raw_base64": "AAACAAhAQg8AAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADa0CAgABAQAAAQEDAAAAAAEBAHVyaqUk5n7IpjK+vt67ue1Kb0+SZ+iUVLUVf8n2tWXRATMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzBwAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB1cmqlJOZ+yKYyvr7eu7ntSm9PkmfolFS1FX/J9rVl0egDAAAAAAAAgJaYAAAAAAAA",
+    "digest": "3hqB1QFQaLt83YgRQKfFRCgxc1eBRQJijz3toacjf7vv",
+    "intent_message_digest": "a1fa7489d1df642af1c6bfa6f013cea60c2451bf69052190c58d3d673db845f6"
+  },
+  "partial_signatures": [
+    {
+      "scheme": "ed25519",
+      "signature": "AIZu+fn/2XXI7XmW6fnZMmrEgIHewN7xKHPaD7/VC8OEd9WopS5y/m3LHiXjnD0af9OLU+OmJx0C63ncnwFsDgeQC02B7s6j3y90sUIAxPTPP0mvrKemNP/Sz2/4K9rs8g=="
+    },
+    {
+      "scheme": "secp256k1",
+      "signature": "AVL9AT7jqkGIPt9lIQOapMKZsPR4MIKmek2YsefSs2llA19Xludxx1PMODXTz2NgXTU5gsjKcE1FYhSEEEwmRuoC4r8oBRmhoD8yWVV2tT8YjyHR6n/ZmJqIuyVY/a1d4EQ="
+    },
+    {
+      "scheme": "secp256r1",
+      "signature": "AjtOYNRXSkhgTbrImnCcwtruKUuN1N/hGyqefYaSu0+Kf/C7Uggr6KprvrYIIvsT2b3o+X/i9Gp/I1/riol8KTECezipctuOIbF1SgDf2KuFO9Y4MuJIuo33Pc/u4VQNApM="
+    }
+  ],
+  "combined_signatures": [
+    {
+      "name": "k0_k1",
+      "members": [
+        0,
+        1
+      ],
+      "weight": 2,
+      "bitmap": 3,
+      "signature": "AwIAhm75+f/ZdcjteZbp+dkyasSAgd7A3vEoc9oPv9ULw4R31ailLnL+bcseJeOcPRp/04tT46YnHQLredyfAWwOBwFS/QE+46pBiD7fZSEDmqTCmbD0eDCCpnpNmLHn0rNpZQNfV5bnccdTzDg1089jYF01OYLIynBNRWIUhBBMJkbqAwADAJALTYHuzqPfL3SxQgDE9M8/Sa+sp6Y0/9LPb/gr2uzyAQEC4r8oBRmhoD8yWVV2tT8YjyHR6n/ZmJqIuyVY/a1d4EQBAgJ7OKly244hsXVKAN/Yq4U71jgy4ki6jfc9z+7hVA0CkwICAA==",
+      "signature_hex": "030200866ef9f9ffd975c8ed7996e9f9d9326ac48081dec0def12873da0fbfd50bc38477d5a8a52e72fe6dcb1e25e39c3d1a7fd38b53e3a6271d02eb79dc9f016c0e070152fd013ee3aa41883edf6521039aa4c299b0f4783082a67a4d98b1e7d2b36965035f5796e771c753cc3835d3cf63605d353982c8ca704d45621484104c2646ea03000300900b4d81eecea3df2f74b14200c4f4cf3f49afaca7a634ffd2cf6ff82bdaecf2010102e2bf280519a1a03f32595576b53f188f21d1ea7fd9989a88bb2558fdad5de0440102027b38a972db8e21b1754a00dfd8ab853bd63832e248ba8df73dcfeee1540d0293020200",
+      "verified": true
+    },
+    {
+      "name": "k2",
+      "members": [
+        2
+      ],
+      "weight": 2,
+      "bitmap": 4,
+      "signature": "AwECO05g1FdKSGBNusiacJzC2u4pS43U3+EbKp59hpK7T4p/8LtSCCvoqmu+tggi+xPZvej5f+L0an8jX+uKiXwpMQQAAwCQC02B7s6j3y90sUIAxPTPP0mvrKemNP/Sz2/4K9rs8gEBAuK/KAUZoaA/MllVdrU/GI8h0ep/2ZiaiLslWP2tXeBEAQICezipctuOIbF1SgDf2KuFO9Y4MuJIuo33Pc/u4VQNApMCAgA=",
+      "signature_hex": "0301023b4e60d4574a48604dbac89a709cc2daee294b8dd4dfe11b2a9e7d8692bb4f8a7ff0bb52082be8aa6bbeb60822fb13d9bde8f97fe2f46a7f235feb8a897c293104000300900b4d81eecea3df2f74b14200c4f4cf3f49afaca7a634ffd2cf6ff82bdaecf2010102e2bf280519a1a03f32595576b53f188f21d1ea7fd9989a88bb2558fdad5de0440102027b38a972db8e21b1754a00dfd8ab853bd63832e248ba8df73dcfeee1540d0293020200",
+      "verified": true
+    },
+    {
+      "name": "k0_k1_k2",
+      "members": [
+        0,
+        1,
+        2
+      ],
+      "weight": 4,
+      "bitmap": 7,
+      "signature": "AwMAhm75+f/ZdcjteZbp+dkyasSAgd7A3vEoc9oPv9ULw4R31ailLnL+bcseJeOcPRp/04tT46YnHQLredyfAWwOBwFS/QE+46pBiD7fZSEDmqTCmbD0eDCCpnpNmLHn0rNpZQNfV5bnccdTzDg1089jYF01OYLIynBNRWIUhBBMJkbqAjtOYNRXSkhgTbrImnCcwtruKUuN1N/hGyqefYaSu0+Kf/C7Uggr6KprvrYIIvsT2b3o+X/i9Gp/I1/riol8KTEHAAMAkAtNge7Oo98vdLFCAMT0zz9Jr6ynpjT/0s9v+Cva7PIBAQLivygFGaGgPzJZVXa1PxiPIdHqf9mYmoi7JVj9rV3gRAECAns4qXLbjiGxdUoA39irhTvWODLiSLqN9z3P7uFUDQKTAgIA",
+      "signature_hex": "030300866ef9f9ffd975c8ed7996e9f9d9326ac48081dec0def12873da0fbfd50bc38477d5a8a52e72fe6dcb1e25e39c3d1a7fd38b53e3a6271d02eb79dc9f016c0e070152fd013ee3aa41883edf6521039aa4c299b0f4783082a67a4d98b1e7d2b36965035f5796e771c753cc3835d3cf63605d353982c8ca704d45621484104c2646ea023b4e60d4574a48604dbac89a709cc2daee294b8dd4dfe11b2a9e7d8692bb4f8a7ff0bb52082be8aa6bbeb60822fb13d9bde8f97fe2f46a7f235feb8a897c293107000300900b4d81eecea3df2f74b14200c4f4cf3f49afaca7a634ffd2cf6ff82bdaecf2010102e2bf280519a1a03f32595576b53f188f21d1ea7fd9989a88bb2558fdad5de0440102027b38a972db8e21b1754a00dfd8ab853bd63832e248ba8df73dcfeee1540d0293020200",
+      "verified": true
+    }
+  ]
+}

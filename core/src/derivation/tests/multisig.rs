@@ -98,7 +98,9 @@ fn only_a_networks_wsh_sortedmulti_with_origins_is_read() {
     for (chain, text) in [
         (Chain::Bitcoin, testnet.clone()),
         (Chain::BitcoinTestnet, mainnet.clone()),
-        (Chain::Litecoin, mainnet.clone()),
+        (Chain::LitecoinTestnet, mainnet.clone()),
+        (Chain::Litecoin, testnet.clone()),
+        (Chain::Dogecoin, mainnet.clone()),
         (
             Chain::Bitcoin,
             mainnet.replace("[73c5da0a/48h/0h/0h/2h]", ""),
@@ -139,12 +141,15 @@ fn only_a_networks_wsh_sortedmulti_with_origins_is_read() {
 /// `m/48'/coin'/0'/2'`: for tests of networks the fixture does not cover.
 pub(crate) fn descriptor_of_phrases(chain: Chain) -> String {
     let fixture = fixture();
-    let network = chain.bitcoin_network().unwrap();
-    let coin = if network == bitcoin::Network::Bitcoin {
-        0
-    } else {
+    let coin = if chain.is_testnet() {
         1
+    } else {
+        match chain.mainnet_counterpart() {
+            Chain::Litecoin => 2,
+            _ => 0,
+        }
     };
+    let script = chain.utxo_multisig_script().unwrap();
     let secp = Secp256k1::new();
     let keys: Vec<String> = fixture["phrases"]
         .as_array()
@@ -159,7 +164,7 @@ pub(crate) fn descriptor_of_phrases(chain: Chain) -> String {
                 None,
             )
             .unwrap();
-            let master = Xpriv::new_master(NetworkKind::from(network), seed.as_ref()).unwrap();
+            let master = Xpriv::new_master(network_kind(chain), seed.as_ref()).unwrap();
             let origin = DerivationPath::from_str(&format!("m/48'/{coin}'/0'/2'")).unwrap();
             let key = Xpub::from_priv(&secp, &master.derive_priv(&secp, &origin).unwrap());
             format!(
@@ -168,5 +173,5 @@ pub(crate) fn descriptor_of_phrases(chain: Chain) -> String {
             )
         })
         .collect();
-    format!("wsh(sortedmulti(2,{}))", keys.join(","))
+    format!("{}(sortedmulti(2,{}))", script.name(), keys.join(","))
 }

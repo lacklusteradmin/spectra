@@ -36,6 +36,15 @@ pub struct TonSendResult {
 
 // ── Client
 
+/// An account as `getAddressInformation` shows it.
+#[derive(Debug, Clone)]
+pub struct TonAccountState {
+    pub state: String,
+    pub nanotons: u64,
+    pub code: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
 pub struct ToncenterV2Client {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
@@ -124,6 +133,49 @@ impl ToncenterV2Client {
                 return Err(ApiError::rejected("TON wallet information refused"));
             }
             Ok((response.result.account_state, response.result.wallet_type))
+        })
+        .await
+    }
+
+    /// An account's state (`active`, `uninitialized`, `frozen`), balance in
+    /// nanotons, and its code and data as BOCs (empty unless active), from
+    /// one verified node.
+    pub async fn fetch_account_state(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+    ) -> Result<TonAccountState, ApiError> {
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let response: Value = node
+                .get(&format!("/getAddressInformation?address={address}"))
+                .await?;
+            let result = &response["result"];
+            if response["ok"].as_bool() != Some(true) {
+                return Err(ApiError::rejected("TON account information refused"));
+            }
+            use base64::Engine;
+            let boc = |field: &str| {
+                base64::engine::general_purpose::STANDARD
+                    .decode(result[field].as_str().unwrap_or_default())
+                    .map_err(|_| ApiError::Decode("TON: invalid account BOC".into()))
+            };
+            Ok(TonAccountState {
+                state: result["state"]
+                    .as_str()
+                    .or_decode("TON: missing account state")?
+                    .to_string(),
+                nanotons: result["balance"]
+                    .as_str()
+                    .map(str::to_string)
+                    .or_else(|| result["balance"].as_u64().map(|n| n.to_string()))
+                    .or_decode("TON: missing account balance")?
+                    .parse()
+                    .map_err(ApiError::decode)?,
+                code: boc("code")?,
+                data: boc("data")?,
+            })
         })
         .await
     }

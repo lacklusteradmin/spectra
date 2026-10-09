@@ -26,10 +26,12 @@ pub enum WalletImportKind {
     /// A Monero wallet's primary address and private view key (64 hex
     /// digits): it scans what the wallet receives, and spends nothing.
     WatchViewKey { address: String, view_key: String },
-    /// A Bitcoin multisig account's `wsh(sortedmulti(…))` descriptor
-    /// (`derivation::multisig`), watched as one wallet. A cosigner's phrase
-    /// imported bound to it gives it that cosigner's signature.
-    WatchMultisig { descriptor: String },
+    /// A multisig account's policy in its network's form
+    /// (`Chain::multisig_policy_format`, `derivation::multisig_policy`),
+    /// watched as one wallet at the address it derives. On a UTXO network
+    /// a cosigner's phrase imported bound to it gives it that cosigner's
+    /// signature; elsewhere its members sign from wallets of their own.
+    WatchMultisig { policy: String },
 }
 
 impl WalletImportKind {
@@ -301,8 +303,8 @@ impl WalletImportRequest {
             WalletImportKind::WatchViewKey { address, view_key } => {
                 super::monero::view_keys(chain, address, view_key).map(drop)
             }
-            WalletImportKind::WatchMultisig { descriptor } => {
-                super::multisig::MultisigPolicy::parse(chain, descriptor).map(drop)
+            WalletImportKind::WatchMultisig { policy } => {
+                super::multisig_policy::AccountPolicy::parse(chain, policy).map(drop)
             }
         }
     }
@@ -314,8 +316,8 @@ impl WalletImportRequest {
 pub(crate) enum ImportedAddress {
     Address(String),
     AccountXpub(String),
-    /// A multisig account: its first receive address and its canonical
-    /// descriptor.
+    /// A multisig account: its address (a UTXO account's first receive
+    /// address) and its canonical policy.
     Multisig {
         address: String,
         descriptor: String,
@@ -379,7 +381,7 @@ pub(crate) fn wallets_for_import(
         .into_iter()
         .enumerate()
         .map(|(index, imported)| {
-            let (address, account_xpub, multisig_descriptor) = match imported {
+            let (address, account_xpub, multisig_policy) = match imported {
                 ImportedAddress::Address(address) => (Some(address), None, None),
                 ImportedAddress::AccountXpub(xpub) => (None, Some(xpub), None),
                 ImportedAddress::Multisig {
@@ -411,7 +413,7 @@ pub(crate) fn wallets_for_import(
                 // A named NEAR account's key is set where the import
                 // confirmed it.
                 near_account_key: None,
-                multisig_descriptor,
+                multisig_policy,
             }
         })
         .collect()

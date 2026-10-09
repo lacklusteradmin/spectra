@@ -285,7 +285,7 @@ fn encode_fields(
     Ok(out)
 }
 
-fn push_vl(out: &mut Vec<u8>, data: &[u8]) {
+pub(super) fn push_vl(out: &mut Vec<u8>, data: &[u8]) {
     let len = data.len();
     if len < 193 {
         out.push(len as u8);
@@ -298,7 +298,7 @@ fn push_vl(out: &mut Vec<u8>, data: &[u8]) {
     out.extend_from_slice(data);
 }
 
-fn sha512_half(data: &[u8]) -> [u8; 32] {
+pub(super) fn sha512_half(data: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha512};
     let hash = Sha512::digest(data);
     let mut out = [0u8; 32];
