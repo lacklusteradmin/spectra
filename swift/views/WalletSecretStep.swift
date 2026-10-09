@@ -98,9 +98,11 @@ struct WalletSecretStep: View {
         Text(copy.createSeedPhraseWarning).font(.footnote).foregroundStyle(.secondary)
         seedPhraseDisplayHeader
         LazyVGrid(columns: seedPhraseGridColumns, spacing: SpectraLayout.Space.xs) {
-            ForEach(draft.seedPhraseWords.indices, id: \.self) { index in
+            // Each cell is given its word, not an index into a list that may
+            // be shorter by the time the cell is drawn.
+            ForEach(Array(draft.seedPhraseWords.enumerated()), id: \.offset) { index, word in
                 SeedPhraseWordCell(index: index) {
-                    Text(draft.seedPhraseWords[index]).font(.system(.callout, design: .monospaced).weight(.medium))
+                    Text(word).font(.system(.callout, design: .monospaced).weight(.medium))
                         .foregroundStyle(Color.primary).lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
@@ -341,8 +343,7 @@ struct WalletSecretStep: View {
                     draft.prepareBackupVerificationChallenge()
                 }.buttonStyle(.glass)
             } else {
-                ForEach(draft.backupVerificationWordIndices.indices, id: \.self) { offset in
-                    let wordIndex = draft.backupVerificationWordIndices[offset]
+                ForEach(Array(draft.backupVerificationWordIndices.enumerated()), id: \.offset) { offset, wordIndex in
                     HStack(spacing: SpectraLayout.Space.s) {
                         Text(AppLocalization.format("Word #%lld", wordIndex + 1)).font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
                         TextField("", text: backupVerificationBinding(for: offset)).textInputAutocapitalization(

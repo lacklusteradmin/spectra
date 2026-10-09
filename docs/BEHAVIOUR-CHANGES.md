@@ -17,6 +17,32 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-08 — Backing out of a new wallet's phrase no longer crashes
+
+- **Before:** the wallet-setup form had one draft for the app's lifetime,
+  cleared in place whenever a form closed. Backing out of a setup form's first
+  page closed the form while that page was still animating off screen, so the
+  page redrew from an emptied draft: on Create New Wallet, on any network, its
+  phrase grid read a word past the end of the now empty phrase and the app
+  crashed (`Index out of range` in `WalletSecretStep`). Every other method's
+  page turned blank, on no network, as it left.
+- **After:** each form gets a new `WalletImportDraft`; closing hands the next
+  form an empty one and leaves the closed form's draft as it was to the pages
+  still leaving, which drop it, and its secrets, once they are gone. The
+  phrase grid and the backup-verification rows are given their words rather
+  than an index into a list that can be shorter when the row is drawn.
+- **Why:** a form's lifetime ends when its pages are gone, not when the
+  binding that dismisses them is written; wiping the draft at the second
+  pulled the state out from under views SwiftUI was still rendering.
+- **CLI check:** none applies — native form lifetime only. Core's import
+  operations and the CLI's `wallet` commands are unchanged.
+- **Verification:** reproduced in the iPhone simulator (Add Wallet → Bitcoin →
+  Create New Wallet → Back) before the change and not after, along with Import
+  Seed Phrase and Watch Addresses → Back and a 24 → 12 word switch. The new
+  `WalletImportSessionTests` regression passed, with the whole iPhone
+  simulator suite (`make test-ios`, 143 tests). Rust and CLI suites not run:
+  no Rust, FFI or CLI source changed.
+
 ## 2026-10-08 — Multisig accounts on every network that has one
 
 - **Before:** only Bitcoin's P2WSH `sortedmulti` was a multisig account,

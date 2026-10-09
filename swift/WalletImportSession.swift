@@ -4,7 +4,10 @@ import Foundation
 @MainActor
 @Observable
 final class WalletImportSession {
-    let draft = WalletImportDraft()
+    /// The open form's draft. Each form gets a new one: the pages of a closed
+    /// form are still drawing theirs while they leave the screen, and drop it,
+    /// with its secrets, once they are gone.
+    private(set) var draft = WalletImportDraft()
     private(set) var id = UUID()
     private(set) var isBusy = false
     private(set) var editingWalletId: String?
@@ -18,7 +21,7 @@ final class WalletImportSession {
         isBusy = false
         error = nil
         editingWalletId = nil
-        draft.clear()
+        draft = WalletImportDraft()
     }
 
     func begin(editing wallet: WalletView? = nil, configure: (WalletImportDraft) -> Void) {

@@ -65,6 +65,25 @@ struct WalletImportSessionTests {
         #expect(session.isPresented)
     }
 
+    /// Backing out of a form leaves the draft its pages show as it was, for
+    /// the pages still leaving the screen, and gives the next form a new one.
+    /// Clearing it in place emptied a created phrase under its grid during
+    /// the pop transition, which read a word past the end and crashed.
+    @Test func dismissalGivesTheNextFormANewDraftAndLeavesTheShownOneIntact() {
+        let session = WalletImportSession()
+        session.begin { $0.configure(chain: .bitcoin, method: .createPhrase) }
+        let shown = session.draft
+        let words = shown.seedPhraseWords
+        #expect(words.count == 12)
+        // Navigation bindings dismiss by writing this property.
+        session.isPresented = false
+        #expect(session.draft !== shown)
+        #expect(session.draft.chain == nil)
+        #expect(session.draft.seedPhraseWords.isEmpty)
+        #expect(shown.chain == .bitcoin)
+        #expect(shown.seedPhraseWords == words)
+    }
+
     @Test func currentFailureKeepsFormForRetryAndDismissalClearsSecrets() async {
         let session = WalletImportSession()
         session.begin {
